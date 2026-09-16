@@ -392,12 +392,14 @@ struct MarkdownEditorReuseTests {
             window.displayIfNeeded()
             // The standalone test helper establishes prepared DOM layout;
             // display-service paint requires a separate app-based journey.
-            let laidOut = try await javascript("""
-                const editor = document.querySelector('.cm-editor');
-                const rect = editor?.getBoundingClientRect();
-                return !!rect && rect.width > 0 && rect.height > 0
-                    && document.querySelector('.cm-content')?.textContent.length > 0;
-                """) as? Bool
+            let laidOut =
+                try await javascript(
+                    """
+                    const editor = document.querySelector('.cm-editor');
+                    const rect = editor?.getBoundingClientRect();
+                    return !!rect && rect.width > 0 && rect.height > 0
+                        && document.querySelector('.cm-content')?.textContent.length > 0;
+                    """) as? Bool
             #expect(laidOut == true)
         }
 
@@ -420,7 +422,8 @@ struct MarkdownEditorReuseTests {
         }
 
         func undo() async throws {
-            _ = try await javascript("""
+            _ = try await javascript(
+                """
                 document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
                     key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
                     metaKey: true, bubbles: true, cancelable: true
@@ -468,8 +471,9 @@ struct MarkdownEditorReuseTests {
             if let document = attachment.current {
                 EditorSurface(
                     session: document.session, source: document.source,
-                    title: document.title, mode: document.mode)
-                    .id(document.session.bridgeDocumentID)
+                    title: document.title, mode: document.mode
+                )
+                .id(document.session.bridgeDocumentID)
             } else {
                 Color.clear
             }

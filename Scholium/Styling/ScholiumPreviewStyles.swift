@@ -4,7 +4,8 @@ enum ScholiumPreviewStyles {
     /// Mermaid's theme parser requires concrete opaque colors. Resolve native
     /// roles against the preview canvas rather than inheriting workspace Paper.
     @MainActor static func diagramColorCSS(dark: Bool, increasedContrast: Bool) -> String {
-        let appearance: NSAppearance.Name = increasedContrast
+        let appearance: NSAppearance.Name =
+            increasedContrast
             ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
             : (dark ? .darkAqua : .aqua)
         var declarations = ""
@@ -22,9 +23,11 @@ enum ScholiumPreviewStyles {
             ] {
                 guard let color = native.usingColorSpace(.sRGB) else { continue }
                 let alpha = color.alphaComponent
-                let rgb = zip([color.redComponent, color.greenComponent, color.blueComponent],
-                              [background.redComponent, background.greenComponent, background.blueComponent])
-                    .map { Int((($0 * alpha + $1 * (1 - alpha)) * 255).rounded()) }
+                let rgb = zip(
+                    [color.redComponent, color.greenComponent, color.blueComponent],
+                    [background.redComponent, background.greenComponent, background.blueComponent]
+                )
+                .map { Int((($0 * alpha + $1 * (1 - alpha)) * 255).rounded()) }
                 declarations += String(format: "--scholium-color-%@: #%02x%02x%02x;", variable, rgb[0], rgb[1], rgb[2])
             }
         }

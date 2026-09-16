@@ -24,6 +24,7 @@ oauth_signed_in = False
 pending_questions = {}
 pending_approvals = {}
 pending_child_reads = []
+pending_turn_acks = []
 client_capabilities = {}
 tool_config_file = home / 'fixture-tool-config.json'
 
@@ -167,6 +168,11 @@ for line in sys.stdin:
         result = {'authorizationUrl': 'file:///fixture' if (home / 'unsafe-auth-url').exists()
             else 'https://auth.example.test/authorize?state=fixture'}
     elif method == 'account/rateLimits/read':
+        if (home / 'release-input-ack').exists():
+            (home / 'release-input-ack').unlink()
+            for response in pending_turn_acks:
+                write(response)
+            pending_turn_acks.clear()
         release = home / 'release-queued-turn'
         if release.exists():
             release.unlink()
@@ -294,6 +300,10 @@ for line in sys.stdin:
         save()
     elif method in ('turn/start', 'turn/steer'):
         (home / 'last-turn.json').write_text(json.dumps(params))
+        inputs_file = home / 'turn-inputs.json'
+        inputs = json.loads(inputs_file.read_text()) if inputs_file.exists() else []
+        inputs.append(params)
+        inputs_file.write_text(json.dumps(inputs))
         tid = params['threadId']
         text = params['input'][0]['text']
         turn_id = str(uuid.uuid4())
@@ -452,6 +462,10 @@ source → interpretation → objection
                 reply += "\n```\n\n| 材料 | 原文 | 解释 | 后续工作 |\n|---|---|---|---|\n"
                 reply += "\n".join(f'| 材料 {i} | 精确引用 | 尚待核对 | 保留不确定性并回到来源 |' for i in range(1, 13))
                 reply += "\n\n```mermaid\nflowchart LR\n A[来源 Source] --> B[解释 Interpretation]\n B --> C{核对出处}\n C -->|支持| D[保留区分]\n C -->|未确认| E[继续研究]\n```"
+            if 'object-identity-fixture' in text:
+                reply = '| Alpha |\n|---|\n| One |\n\n| Beta |\n|---|\n| Two |\n\n'
+                reply += '```swift\nprint("third object")\n```\n\n<div>Fourth HTML</div>\n\n'
+                reply += '```mermaid\nflowchart LR\n A-->B\n```'
             event('item/agentMessage/delta', {'threadId': tid, 'itemId': mid, 'delta': reply})
             item = {'type': 'agentMessage', 'id': mid, 'text': reply}
             if 'phased' in text: item['phase'] = 'final_answer'
@@ -505,6 +519,9 @@ source → interpretation → objection
         if 'disconnect' in text:
             sys.exit(0)
         result = {'turnId': 'wrong-turn' if 'mismatched-steer-ack' in text else turn['id']} if method == 'turn/steer' else {'turn': turn_metadata(turn)}
+        if 'defer-input-ack' in text:
+            pending_turn_acks.append({'id': request['id'], 'result': result})
+            continue
     elif method == 'thread/compact/start':
         tid = params['threadId']
         turn = {'id': str(uuid.uuid4()), 'status': 'inProgress', 'items': []}
@@ -532,7 +549,7 @@ source → interpretation → objection
                 write({'id': request['id'], 'result': {}})
                 continue
             threads[tid]['status'] = {'type': 'idle'}
-        turn['status'] = 'interrupted'
+        turn['status'] = 'completed' if (home / 'complete-on-interrupt').exists() else 'interrupted'
         for item in turn['items']:
             if item.get('type') == 'commandExecution' and item.get('status') == 'inProgress' and not item.get('backgroundFixture'):
                 item.update(status='failed', exitCode=130)

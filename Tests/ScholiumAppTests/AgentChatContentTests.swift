@@ -10,19 +10,19 @@ import WebKit
 @MainActor
 struct AgentChatContentTests {
     @Test func objectGeometryRejectsInvalidOrAmbiguousIdentity() throws {
-        let entry: [String: Any] = ["index": 0, "identity": 7, "left": 0.0, "top": 35.0,
-            "width": 300.0, "height": 120.0, "naturalWidth": 800.0, "naturalHeight": 90.0]
+        let entry: [String: Any] = [
+            "identity": "object-7", "left": 0.0, "top": 35.0,
+            "width": 300.0, "height": 120.0, "naturalWidth": 800.0, "naturalHeight": 90.0,
+        ]
         let object = try #require(ReadReplyObject.decode([entry])?.first)
-        #expect(object.id == 7 && object.index == 0 && object.naturalSize.width == 800)
+        #expect(object.id == "object-7" && object.naturalSize.width == 800)
         for (key, value) in [("width", Double.nan), ("top", Double.infinity), ("height", -1.0)] {
             var bad = entry
             bad[key] = value
             #expect(ReadReplyObject.decode([bad]) == nil)
         }
-        var duplicate = entry
-        duplicate["index"] = 1
-        #expect(ReadReplyObject.decode([entry, duplicate]) == nil)
-        #expect(ReadReplyObject.decode([entry.merging(["index": 2]) { _, new in new }]) == nil)
+        #expect(ReadReplyObject.decode([entry, entry]) == nil)
+        #expect(ReadReplyObject.decode([entry.merging(["identity": ""]) { _, new in new }]) == nil)
     }
 
     @Test func richReplyForwardsCompleteVerticalGesture() throws {
@@ -159,21 +159,16 @@ struct AgentChatContentTests {
         #expect(centered.midX == screen.midX && centered.midY == screen.midY)
     }
 
-    @Test func inlineCodeUsesNativeBackground() {
-        let rendered = AgentChatObjectProjection.layoutReply("普通 `concept` 文字").text
-        let range = (rendered.string as NSString).range(of: "concept")
-        #expect(rendered.attribute(.backgroundColor, at: range.location, effectiveRange: nil) as? NSColor == .quaternaryLabelColor)
-        #expect(rendered.attribute(.backgroundColor, at: 0, effectiveRange: nil) == nil)
-    }
-
-    @Test func richSegmentsPreserveObjectContent() throws {
+    @Test func richObjectsUseTheirOwnRendererPayload() throws {
         let source = "前文 😀\n\n| 概念 | 理由 |\n|---|---|\n|情绪|评价|\n\n后文中的评价。\n\n```mermaid\ngraph LR\nA --> B\n```"
-        let layout = AgentChatObjectProjection.layoutReply(source)
-        let segments = AgentChatRichSegment.collect(layout)
-        #expect(segments.count == 4)
-        #expect(segments[1].columns == 2)
-        #expect(segments.last?.language == "mermaid")
-        #expect(segments.map { layout.text.attributedSubstring(from: $0.range).string }.joined() == layout.text.string)
+        let snapshot = AgentChatReplyProjection.Snapshot(source)
+        #expect(snapshot.objects.count == 2)
+        let table = try #require(snapshot.objects.values.first { $0.kind == .table })
+        let diagram = try #require(snapshot.objects.values.first { $0.kind == .diagram })
+        #expect(table.copyText == "| 概念 | 理由 |\n|---|---|\n|情绪|评价|")
+        #expect(diagram.copyText == "graph LR\nA --> B\n")
+        #expect(snapshot.html.contains("data-scholium-object=\"" + table.id + "\""))
+        #expect(snapshot.html.contains("data-scholium-object=\"" + diagram.id + "\""))
     }
 
     @Test func viewedIsPerReceiptAndNotAnOutcome() {

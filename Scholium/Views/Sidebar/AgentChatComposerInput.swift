@@ -15,7 +15,7 @@ struct AgentChatComposerInput: NSViewRepresentable {
     var candidates: [AgentChatComposerCandidate] = []
     var candidateQuery: AgentChatComposerQuery? = nil
     var canChooseCompletion: ((AgentChatComposerCandidate) -> Bool)? = nil
-    var chooseCompletion: ((AgentChatComposerCandidate) -> Void)? = nil
+    var chooseCompletion: ((AgentChatComposerCandidate, @escaping (Bool) -> Void) -> Void)? = nil
     var transferMaterials: (([AgentChatTransferredMaterial], AgentChatLocalMaterial.CaptureOrigin) -> Void)? = nil
 
     func makeNSView(context: Context) -> AgentChatComposerHost {

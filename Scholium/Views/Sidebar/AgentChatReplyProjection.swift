@@ -9,9 +9,12 @@ import SwiftUI
     struct Snapshot: Sendable {
         let document: NoteDocument
         let html: String
+        let objects: [String: RenderedMarkdownObject]
         nonisolated init(_ source: String) {
             document = NoteDocument(relativePath: "Reply.md", rawContent: source)
-            html = SafeMarkdownRenderer.render(document).htmlBody
+            let rendered = SafeMarkdownRenderer.render(document)
+            html = rendered.htmlBody
+            objects = Dictionary(uniqueKeysWithValues: rendered.objects.map { ($0.id, $0) })
         }
     }
     @Published private(set) var snapshot: Snapshot?

@@ -69,17 +69,14 @@ export function installChatReply(
   root.addEventListener('keydown', keydown);
   root.addEventListener('dragstart', dragstart);
   root.tabIndex = 0;
-  let nextObjectIdentity = 0;
   const decorateObjects = () => {
-    root.querySelectorAll<HTMLElement>('table, pre, .scholium-mermaid').forEach((element) => {
-      if (element.closest('.scholium-mermaid') !== element && element.closest('.scholium-mermaid')) return;
-      if (element.parentElement?.closest('pre, table, .scholium-mermaid')) return;
-      element.dataset.replyObject = 'true';
-    });
-    root.querySelectorAll<HTMLElement>('[data-reply-object]').forEach((element) => {
+    root.querySelectorAll<HTMLElement>('[data-scholium-object]').forEach((element) => {
+      // Only the safe renderer authorizes object actions. Nested Mermaid source
+      // retains its ancestor's identity and must not acquire duplicate controls.
+      if (element.parentElement?.closest('[data-scholium-object]')) return;
       if (element.closest('.scholium-reply-object')) return;
       const wrapper = document.createElement('div'); wrapper.className = 'scholium-reply-object';
-      wrapper.dataset.replyIdentity = String(++nextObjectIdentity);
+      wrapper.dataset.replyIdentity = element.dataset.scholiumObject;
       const controls = document.createElement('div'); controls.className = 'scholium-reply-controls';
       // Native controls occupy this stable layout slot. WebKit retains all
       // text, selection and horizontal scrolling; it reports geometry only.
@@ -112,12 +109,12 @@ export function installChatReply(
       paragraph.style.width = width;
       paragraph.style.maxWidth = maximum;
     }
-    const objects = [...root.querySelectorAll<HTMLElement>('[data-reply-object]')].map((element, index) => {
-      const wrapper = element.closest<HTMLElement>('.scholium-reply-object')!;
+    const objects = [...root.querySelectorAll<HTMLElement>('.scholium-reply-object')].map((wrapper) => {
+      const element = wrapper.querySelector<HTMLElement>('[data-scholium-object]')!;
       const rect = wrapper.getBoundingClientRect();
       const svg = element.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
       const box = svg?.viewBox.baseVal;
-      return {index, identity: Number(wrapper.dataset.replyIdentity), left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+      return {identity: wrapper.dataset.replyIdentity, left: rect.left, top: rect.top, width: rect.width, height: rect.height,
         naturalWidth: box?.width || Math.max(1, element.scrollWidth),
         naturalHeight: box?.height || Math.max(1, element.getBoundingClientRect().height)};
     });

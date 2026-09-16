@@ -118,8 +118,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(selected.contains("Reason 😀.") && selected.contains("Evidence") && selected.contains("last line"))
         #expect(AgentChatReplyQuotation.passage(.reader(source: source, excerpt: selected), in: source) == selected)
         #expect(AgentChatReplyQuotation.passage(.reader(source: source, excerpt: selected), in: "Changed") == nil)
+        // WebKit reserves geometry; the surrounding native reply owns actions.
+        let slots = try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-reply-controls').length;") as? Int
         let controls = try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-reply-controls button').length;") as? Int
-        #expect(controls == 4)
+        #expect(slots == 2 && controls == 0)
+        let identities =
+            try await harness.callBridgeJavaScript(
+                "return [...document.querySelectorAll('[data-scholium-object]')].map(e => e.dataset.scholiumObject);") as? [String]
+        #expect(identities == SafeMarkdownRenderer.render(document).objects.map(\.id))
     }
 
     @Test("Review restores an exact repeated-text range and rejects unrendered Markdown syntax")

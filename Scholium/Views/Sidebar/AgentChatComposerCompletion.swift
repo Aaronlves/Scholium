@@ -51,11 +51,13 @@ struct AgentChatComposerCandidate: Identifiable {
     @ObservationIgnored var candidateQuery: AgentChatComposerQuery?
     @ObservationIgnored var candidates: [AgentChatComposerCandidate] = []
     @ObservationIgnored var canAccept: ((AgentChatComposerCandidate) -> Bool)?
-    @ObservationIgnored var choose: ((AgentChatComposerCandidate) -> Void)?
+    @ObservationIgnored var choose: ((AgentChatComposerCandidate, @escaping (Bool) -> Void) -> Void)?
+    private var pendingAcceptanceID: UUID?
     @ObservationIgnored private var dismissedQuery: AgentChatComposerQuery?
 
     func attach(to editor: AgentChatComposerTextView, in conversationID: UUID?) {
         if self.editor !== editor || self.conversationID != conversationID {
+            pendingAcceptanceID = nil
             dismissedQuery = nil
             query = nil
             selectedCandidateID = nil
@@ -72,7 +74,7 @@ struct AgentChatComposerCandidate: Identifiable {
         guard let conversationID, let editor, editor.window != nil, editor.isEditable,
             self.conversationID == conversationID, editor.completionConversationID == conversationID
         else { return false }
-        return !editor.hasMarkedText()
+        return pendingAcceptanceID == nil && !editor.hasMarkedText()
     }
 
     func refresh(from editor: AgentChatComposerTextView, in conversationID: UUID?) {
@@ -83,7 +85,7 @@ struct AgentChatComposerCandidate: Identifiable {
         if isComposing != composing { isComposing = composing }
         let current = AgentChatComposerQuery.read(text: editor.string, selection: editor.selectedRange(), isComposing: composing)
         if current != dismissedQuery { dismissedQuery = nil }
-        let next = current == dismissedQuery ? nil : current
+        let next = pendingAcceptanceID != nil || current == dismissedQuery ? nil : current
         if query != next {
             query = next
             selectedCandidateID = nil
@@ -93,6 +95,7 @@ struct AgentChatComposerCandidate: Identifiable {
     func detach(from editor: AgentChatComposerTextView) {
         guard self.editor === editor else { return }
         self.editor = nil
+        pendingAcceptanceID = nil
         conversationID = nil
         choose = nil
         canAccept = nil
@@ -123,14 +126,22 @@ struct AgentChatComposerCandidate: Identifiable {
     }
 
     func accept(_ candidate: AgentChatComposerCandidate) {
-        guard let editor, editor.isEditable, let query, candidateQuery == query,
+        guard pendingAcceptanceID == nil, let action = choose,
+            let editor, editor.isEditable, let query, candidateQuery == query,
             canAccept?(candidate) == true, candidates.contains(where: { $0.id == candidate.id }),
             conversationID == editor.completionConversationID, !editor.hasMarkedText(),
             AgentChatComposerQuery.read(text: editor.string, selection: editor.selectedRange(), isComposing: false) == query
         else { return }
-        let action = choose
-        // Accepting a candidate is one text edit, including a /skills -> $
-        // handoff, and must not coalesce with the command the researcher typed.
+        let identity = UUID()
+        let owner = conversationID
+        let source = editor.string
+        let selection = editor.selectedRange()
+        pendingAcceptanceID = identity
+        self.query = nil
+        editor.window?.makeFirstResponder(editor)
+        // A synchronous command and its query consumption share one Undo edit,
+        // including /skills -> $. Asynchronous preparation leaves the draft intact
+        // until success, then consumes only the unchanged native input snapshot.
         editor.breakUndoCoalescing()
         let undo = editor.undoManager
         undo?.beginUndoGrouping()
@@ -138,10 +149,24 @@ struct AgentChatComposerCandidate: Identifiable {
             undo?.endUndoGrouping()
             editor.breakUndoCoalescing()
         }
-        editor.insertText("", replacementRange: query.range)
-        self.query = nil
-        editor.window?.makeFirstResponder(editor)
-        action?(candidate)
+        action(candidate) { [weak self, weak editor] succeeded in
+            guard let self, let editor, self.pendingAcceptanceID == identity,
+                self.editor === editor, self.conversationID == owner,
+                editor.completionConversationID == owner
+            else { return }
+            self.pendingAcceptanceID = nil
+            if succeeded, editor.isEditable, !editor.hasMarkedText(),
+                editor.string == source, editor.selectedRange() == selection
+            {
+                editor.breakUndoCoalescing()
+                let undo = editor.undoManager
+                undo?.beginUndoGrouping()
+                editor.insertText("", replacementRange: query.range)
+                undo?.endUndoGrouping()
+                editor.breakUndoCoalescing()
+            }
+            self.refresh(from: editor, in: owner)
+        }
     }
 
     func keyDown(_ event: NSEvent) -> Bool {

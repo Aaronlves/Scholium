@@ -192,6 +192,9 @@ Tables and code retain bounded horizontal scrolling; Mermaid reuses the local
 safe renderer with visible failure fallback. Diagrams omit developer hints,
 format labels and a separate source disclosure; Copy returns exact diagram code.
 Rich objects offer Copy and Expand without executing content or changing Notes.
+Table Copy retains the corresponding source Markdown; code and diagram Copy
+retain the corresponding code. Each action addresses the same object as its
+inline presentation, including repeated objects and source-only fallbacks.
 Their shared native action row appears when the pointer enters the object or its
 controls receive focus, and remains visible with assistive navigation. Revealing
 it preserves layout and selection. Copy uses the ordinary content-copy symbol

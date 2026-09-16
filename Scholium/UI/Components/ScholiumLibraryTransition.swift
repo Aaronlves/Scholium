@@ -38,12 +38,15 @@ struct LibraryTransitionContent<Content: View>: View {
             .environment(\.layoutDirection, environment.layoutDirection)
             .environment(\.dynamicTypeSize, environment.dynamicTypeSize)
             .environment(\.colorScheme, environment.colorScheme)
-            .environment(\.scholiumVisualEnvironmentOverride, ScholiumVisualEnvironmentOverride(
-                increasedContrast: environment.scholiumIncreasedContrast,
-                reduceTransparency: environment.scholiumReduceTransparency,
-                reduceMotion: environment.scholiumReduceMotion,
-                appearsActive: environment.scholiumAppearsActive
-            ))
+            .environment(
+                \.scholiumVisualEnvironmentOverride,
+                ScholiumVisualEnvironmentOverride(
+                    increasedContrast: environment.scholiumIncreasedContrast,
+                    reduceTransparency: environment.scholiumReduceTransparency,
+                    reduceMotion: environment.scholiumReduceMotion,
+                    appearsActive: environment.scholiumAppearsActive
+                )
+            )
             .disabled(!environment.isEnabled)
     }
 }

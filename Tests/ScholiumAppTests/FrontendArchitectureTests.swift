@@ -2979,9 +2979,17 @@ struct FrontendArchitectureTests {
             "liveProjectionNavigation.extension",
             "previewPopover.extension",
         ] {
-            #expect(liveModeExtensions.contains(liveOnlyExtension))
-            #expect(!sourceModeExtensions.contains(liveOnlyExtension))
-            #expect(!staticExtensions.contains(liveOnlyExtension))
+            // Check an installed extension entry, not a mode-name string inside
+            // a shared callback (for example the text-transfer position adapter).
+            func installs(_ block: Substring) -> Bool {
+                block.split(separator: "\n").contains {
+                    let entry = $0.trimmingCharacters(in: .whitespaces)
+                    return entry == liveOnlyExtension + "," || entry == "Prec.high(" + liveOnlyExtension + "),"
+                }
+            }
+            #expect(installs(liveModeExtensions))
+            #expect(!installs(sourceModeExtensions))
+            #expect(!installs(staticExtensions))
         }
         #expect(staticExtensions.contains("modeCompartment.of(sourceMode)"))
         #expect(staticExtensions.contains("bidiIsolates()"))

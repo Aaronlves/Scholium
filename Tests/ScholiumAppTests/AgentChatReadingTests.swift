@@ -11,19 +11,20 @@ struct AgentChatReadingTests {
     @Test("Reply pointer selection reaches WebKit through message actions and supports native Copy")
     func nativeReplyPointerSelectionAndCopy() async throws {
         _ = NSApplication.shared
-        let host = NSHostingView(rootView:
-            AgentChatMessageActionVisibility {
-                AgentChatMessageSurface(isUser: false) {
-                    AgentChatReadReply(
-                        source: "Alpha **selection** remains intact.\n\nSecond paragraph.",
-                        quote: { _ in }, openLink: { _ in })
+        let host = NSHostingView(
+            rootView:
+                AgentChatMessageActionVisibility {
+                    AgentChatMessageSurface(isUser: false) {
+                        AgentChatReadReply(
+                            source: "Alpha **selection** remains intact.\n\nSecond paragraph.",
+                            quote: { _ in }, openLink: { _ in })
+                    }
+                } actions: {
+                    Button("Copy Markdown") {}
+                        .contextMenu { Button("Quote in Reply") {} }
                 }
-            } actions: {
-                Button("Copy Markdown") {}
-                    .contextMenu { Button("Quote in Reply") {} }
-            }
-            .padding(20)
-            .frame(width: 480, height: 240, alignment: .topLeading))
+                .padding(20)
+                .frame(width: 480, height: 240, alignment: .topLeading))
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 480, height: 240),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -46,19 +47,21 @@ struct AgentChatReadingTests {
             if let webView = reader(in: host) {
                 mountedReader = webView
                 // Read geometry only: selection must be created by native pointer events.
-                points = try await webView.callAsyncJavaScript("""
-                    const paragraph = document.querySelector('#scholium-document p');
-                    const emphasis = paragraph?.querySelector('strong');
-                    if (!paragraph || !emphasis) return null;
-                    const start = document.createRange();
-                    start.setStart(paragraph.firstChild, 0);
-                    start.setEnd(paragraph.firstChild, 1);
-                    const first = start.getBoundingClientRect();
-                    const last = emphasis.getBoundingClientRect();
-                    if (!first.width || !last.width) return null;
-                    return {startX: first.left + 0.5, startY: first.top + first.height / 2,
-                        endX: last.right - 0.5, endY: last.top + last.height / 2};
-                    """, arguments: [:], in: nil, contentWorld: .page) as? [String: Double]
+                points =
+                    try await webView.callAsyncJavaScript(
+                        """
+                        const paragraph = document.querySelector('#scholium-document p');
+                        const emphasis = paragraph?.querySelector('strong');
+                        if (!paragraph || !emphasis) return null;
+                        const start = document.createRange();
+                        start.setStart(paragraph.firstChild, 0);
+                        start.setEnd(paragraph.firstChild, 1);
+                        const first = start.getBoundingClientRect();
+                        const last = emphasis.getBoundingClientRect();
+                        if (!first.width || !last.width) return null;
+                        return {startX: first.left + 0.5, startY: first.top + first.height / 2,
+                            endX: last.right - 0.5, endY: last.top + last.height / 2};
+                        """, arguments: [:], in: nil, contentWorld: .page) as? [String: Double]
                 if points != nil { break }
             }
             try await Task.sleep(for: .milliseconds(20))
@@ -79,10 +82,11 @@ struct AgentChatReadingTests {
             let fraction = min(Double(step) / 8, 1)
             let location = NSPoint(x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction)
             let type: NSEvent.EventType = step == 0 ? .leftMouseDown : step == 9 ? .leftMouseUp : .leftMouseDragged
-            let event = try #require(NSEvent.mouseEvent(
-                with: type, location: location, modifierFlags: [], timestamp: timestamp + Double(step) * 0.025,
-                windowNumber: window.windowNumber, context: nil, eventNumber: step, clickCount: 1,
-                pressure: type == .leftMouseUp ? 0 : 1))
+            let event = try #require(
+                NSEvent.mouseEvent(
+                    with: type, location: location, modifierFlags: [], timestamp: timestamp + Double(step) * 0.025,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: step, clickCount: 1,
+                    pressure: type == .leftMouseUp ? 0 : 1))
             // SwiftPM's host has no key application window. Resolve the real
             // native recipient through the complete SwiftUI hierarchy first.
             switch type {
@@ -121,35 +125,37 @@ struct AgentChatReadingTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(pasteboard.string(forType: .string) == selected)
-        let transfer = try #require(try await webView.callAsyncJavaScript("""
-            const range = window.getSelection().getRangeAt(0);
-            const rect = range.getClientRects()[0];
-            const data = new DataTransfer();
-            const root = document.getElementById('scholium-document');
-            const x = rect.left + 1, y = rect.top + rect.height / 2;
-            const target = document.elementFromPoint(x, y);
-            target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
-                button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
-            const rootIsNative = !root.hasAttribute('draggable');
-            let dragImageCalls = 0;
-            Object.defineProperty(data, 'setDragImage', {value: () => { dragImageCalls++; }});
-            const previewObserver = new MutationObserver(() => {});
-            previewObserver.observe(document.body, {childList: true});
-            // Verify the DOM payload contract without asserting the system's
-            // physical gesture recognition or native drag-image timing.
-            root.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
-                dataTransfer: data, clientX: x, clientY: y}));
-            const previewNodes = previewObserver.takeRecords()
-                .reduce((count, record) => count + record.addedNodes.length, 0);
-            previewObserver.disconnect();
-            const nativeDuringDrag = !root.hasAttribute('draggable');
-            root.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
-            return {text: data.getData('text/plain'),
-                selected: window.getSelection().toString(), types: Array.from(data.types).join(','),
-                rootIsNative: String(rootIsNative), nativeDuringDrag: String(nativeDuringDrag),
-                dragImageCalls: String(dragImageCalls), previewNodes: String(previewNodes),
-                rootStillNative: String(!root.hasAttribute('draggable'))};
-            """, arguments: [:], in: nil, contentWorld: .page) as? [String: String])
+        let transfer = try #require(
+            try await webView.callAsyncJavaScript(
+                """
+                const range = window.getSelection().getRangeAt(0);
+                const rect = range.getClientRects()[0];
+                const data = new DataTransfer();
+                const root = document.getElementById('scholium-document');
+                const x = rect.left + 1, y = rect.top + rect.height / 2;
+                const target = document.elementFromPoint(x, y);
+                target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
+                const rootIsNative = !root.hasAttribute('draggable');
+                let dragImageCalls = 0;
+                Object.defineProperty(data, 'setDragImage', {value: () => { dragImageCalls++; }});
+                const previewObserver = new MutationObserver(() => {});
+                previewObserver.observe(document.body, {childList: true});
+                // Verify the DOM payload contract without asserting the system's
+                // physical gesture recognition or native drag-image timing.
+                root.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
+                    dataTransfer: data, clientX: x, clientY: y}));
+                const previewNodes = previewObserver.takeRecords()
+                    .reduce((count, record) => count + record.addedNodes.length, 0);
+                previewObserver.disconnect();
+                const nativeDuringDrag = !root.hasAttribute('draggable');
+                root.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
+                return {text: data.getData('text/plain'),
+                    selected: window.getSelection().toString(), types: Array.from(data.types).join(','),
+                    rootIsNative: String(rootIsNative), nativeDuringDrag: String(nativeDuringDrag),
+                    dragImageCalls: String(dragImageCalls), previewNodes: String(previewNodes),
+                    rootStillNative: String(!root.hasAttribute('draggable'))};
+                """, arguments: [:], in: nil, contentWorld: .page) as? [String: String])
         #expect(transfer["text"] == selected)
         #expect(transfer["selected"] == selected)
         #expect(transfer["types"] == "text/plain")

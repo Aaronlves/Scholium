@@ -23,36 +23,71 @@ extension WindowModel {
 
     @MainActor @discardableResult
     func addCurrentSelectionToChat(inquiry: AgentChatSelectionInquiry = .ask) async -> Bool {
-        guard let chat = chatController else { return false }
-        let selected = chat.selectedID
         do {
-            let attachment = try await currentSelectionAttachment()
-            guard chatController === chat, selected == chat.selectedID else { return false }
-            if chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
-            guard let conversationID = chat.selectedID else { return false }
-            return chat.prepareSelectionInquiry([attachment], inquiry: inquiry, to: conversationID)
+            return try await stageCurrentSelectionInChat(inquiry: inquiry)
+        } catch is CancellationError {
+            return false
         } catch {
             reportOperationIssue(error.localizedDescription, kind: .information)
             return false
         }
     }
 
+    /// Menu, composer and Ask Agent share one captured destination and preparation
+    /// scope. Their invoking surfaces retain ownership of error presentation.
     @MainActor
-    func runSelectionInquiry(_ inquiry: AgentChatSelectionInquiry, validate: AgentSelectionValidation, continueInChat: @escaping () -> Void) async throws
+    private func stageCurrentSelectionInChat(
+        inquiry: AgentChatSelectionInquiry, validate: @escaping AgentSelectionValidation = { true }
+    ) async throws -> Bool {
+        guard !Task.isCancelled, let chat = chatController else { return false }
+        let selected = chat.selectedID
+        @MainActor func capture() async throws {
+            let attachment = try await currentSelectionAttachment()
+            guard await validate(), !Task.isCancelled, chatController === chat, selected == chat.selectedID else {
+                throw CancellationError()
+            }
+            // A missing or archived destination has no live draft to guard.
+            // Create its replacement only after a valid passage is captured.
+            if chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
+            guard let conversationID = chat.selectedID,
+                chat.prepareSelectionInquiry([attachment], inquiry: inquiry, to: conversationID)
+            else { throw AgentChatNoteMaterialError.unavailable }
+        }
+        if let selected, chat.selected?.isAvailable == true {
+            var failure: (any Error)?
+            let prepared = await chat.performMaterialPreparation(in: selected) {
+                do { try await capture() } catch {
+                    failure = error
+                    throw CancellationError()
+                }
+            }
+            if let failure { throw failure }
+            return prepared
+        }
+        try await capture()
+        return true
+    }
+
+    @MainActor
+    func runSelectionInquiry(_ inquiry: AgentChatSelectionInquiry, validate: @escaping AgentSelectionValidation, continueInChat: @escaping () -> Void)
+        async throws
         -> AgentSelectionResult?
     {
         guard !Task.isCancelled else { return nil }
         guard let chat = chatController, let descriptor = currentDocumentDescriptor else { throw AgentChatNoteMaterialError.unavailable }
         do {
+            if inquiry.question == nil {
+                let prepared = try await stageCurrentSelectionInChat(inquiry: inquiry) { [self] in
+                    guard await validate() else { return false }
+                    return currentDocumentDescriptor?.sessionKey == descriptor.sessionKey
+                }
+                if prepared { continueInChat() }
+                return nil
+            }
             let attachment = try await currentSelectionAttachment()
             guard chatController === chat, currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
                 await validate(), !Task.isCancelled
             else { return nil }
-            if inquiry.question == nil {
-                guard chat.attachContext([attachment]) else { throw AgentChatNoteMaterialError.unavailable }
-                continueInChat()
-                return nil
-            }
             guard let id = chat.beginSelectionInquiry(inquiry, attachment: attachment) else { throw AgentChatNoteMaterialError.unavailable }
             let adopt: ((String) async throws -> Void)?
             if inquiry.resultKind == .replacement, presentedDocumentMode != .read {

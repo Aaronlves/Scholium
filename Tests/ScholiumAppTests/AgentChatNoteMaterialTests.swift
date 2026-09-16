@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
@@ -112,12 +113,69 @@ struct AgentChatNoteMaterialTests {
             let selected = try #require(window.documentController.selectedDocument)
             let session = window.documentController.session(for: selected.editingTarget)
             session.suppressAutosave = true
+            session.preparePresentationMode(.read)
+            window.rememberPresentationMode(.read)
+            try await wait { window.presentedDocumentMode == .read }
+            session.renderedReadFingerprint = DocumentFingerprint(content: source).sha256
+            let passageRange = (source as NSString).range(of: "Literal")
+            session.readSelection = .init(
+                startLine: 7, endLine: 7, excerpt: "Literal",
+                utf16LowerBound: passageRange.location, utf16UpperBound: NSMaxRange(passageRange))
+            var releaseSelection: CheckedContinuation<Bool, Never>?
+            defer { releaseSelection?.resume(returning: false) }
+            var didContinueSelection = false
+            let ask = Task {
+                try await window.runSelectionInquiry(
+                    .ask,
+                    validate: {
+                        await withCheckedContinuation { releaseSelection = $0 }
+                    }
+                ) { didContinueSelection = true }
+            }
+            try await wait { releaseSelection != nil }
+            #expect(chat.preparingMaterials.contains(target))
+            chat.select(other)
+            releaseSelection?.resume(returning: true)
+            releaseSelection = nil
+            #expect(try await ask.value == nil && !didContinueSelection)
+            #expect(chat.selectedID == other && chat.preparingMaterials.isEmpty)
+            #expect(chat.conversations.first { $0.id == target }?.attachments.isEmpty == true)
+            #expect(chat.selected?.attachments.isEmpty == true)
+            chat.select(target)
+            _ = try await window.runSelectionInquiry(.ask, validate: { true }) { didContinueSelection = true }
+            #expect(didContinueSelection && chat.selected?.attachments.first?.text == "Literal")
+            #expect(chat.preparingMaterials.isEmpty)
+            chat.removeAttachment(try #require(chat.selected?.attachments.first?.id))
+            session.readSelection = nil
             session.editingSource = "Unsaved source that must never be replaced by the saved Note."
             await #expect(throws: AgentChatNoteMaterialError.self) { try await window.addNoteToChat(note, conversationID: other) }
             #expect(chat.conversations.first { $0.id == other }?.attachments.isEmpty == true)
             #expect(session.editingSource.hasPrefix("Unsaved source"))
             #expect(try Data(contentsOf: file) == Data(source.utf8))
             await chat.disconnect()
+            // Both the global menu and the composer call this Window-owned
+            // entry. Even a failed capture participates in the same preparation
+            // scope; it never consumes a draft or creates an empty replacement.
+            chat.editDraft("Keep @selection while source selection is unavailable")
+            var preparationStates: [Set<UUID>] = []
+            let preparationObservation = chat.$preparingMaterials.sink { preparationStates.append($0) }
+            let retainedConversationIDs = chat.conversations.map(\.id)
+            #expect(!(await window.addCurrentSelectionToChat()))
+            #expect(preparationStates.contains([target]) && chat.preparingMaterials.isEmpty)
+            #expect(chat.selected?.draft == "Keep @selection while source selection is unavailable")
+            #expect(chat.conversations.map(\.id) == retainedConversationIDs)
+            preparationObservation.cancel()
+            chat.setArchived(target, archived: true)
+            #expect(chat.selected?.isAvailable == false)
+            #expect(!(await window.addCurrentSelectionToChat()))
+            #expect(chat.selectedID == target && chat.conversations.map(\.id) == retainedConversationIDs)
+            #expect(chat.selected?.draft == "Keep @selection while source selection is unavailable")
+            chat.deleteConversation(target)
+            let remainingConversationIDs = chat.conversations.map(\.id)
+            #expect(chat.selectedID == nil)
+            #expect(!(await window.addCurrentSelectionToChat()))
+            #expect(chat.selectedID == nil && chat.conversations.map(\.id) == remainingConversationIDs)
+            try await chat.flushPersistence()
             await store.shutdownApplicationRuntime()
         } catch {
             await store.shutdownApplicationRuntime()

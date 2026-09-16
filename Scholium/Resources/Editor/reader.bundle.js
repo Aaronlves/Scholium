@@ -146,18 +146,13 @@
     root.addEventListener("keydown", keydown);
     root.addEventListener("dragstart", dragstart);
     root.tabIndex = 0;
-    let nextObjectIdentity = 0;
     const decorateObjects = () => {
-      root.querySelectorAll("table, pre, .scholium-mermaid").forEach((element) => {
-        if (element.closest(".scholium-mermaid") !== element && element.closest(".scholium-mermaid")) return;
-        if (element.parentElement?.closest("pre, table, .scholium-mermaid")) return;
-        element.dataset.replyObject = "true";
-      });
-      root.querySelectorAll("[data-reply-object]").forEach((element) => {
+      root.querySelectorAll("[data-scholium-object]").forEach((element) => {
+        if (element.parentElement?.closest("[data-scholium-object]")) return;
         if (element.closest(".scholium-reply-object")) return;
         const wrapper = document.createElement("div");
         wrapper.className = "scholium-reply-object";
-        wrapper.dataset.replyIdentity = String(++nextObjectIdentity);
+        wrapper.dataset.replyIdentity = element.dataset.scholiumObject;
         const controls = document.createElement("div");
         controls.className = "scholium-reply-controls";
         controls.setAttribute("aria-hidden", "true");
@@ -187,14 +182,13 @@
         paragraph.style.width = width;
         paragraph.style.maxWidth = maximum;
       }
-      const objects = [...root.querySelectorAll("[data-reply-object]")].map((element, index) => {
-        const wrapper = element.closest(".scholium-reply-object");
+      const objects = [...root.querySelectorAll(".scholium-reply-object")].map((wrapper) => {
+        const element = wrapper.querySelector("[data-scholium-object]");
         const rect = wrapper.getBoundingClientRect();
         const svg = element.querySelector(".scholium-mermaid-output")?.shadowRoot?.querySelector("svg");
         const box = svg?.viewBox.baseVal;
         return {
-          index,
-          identity: Number(wrapper.dataset.replyIdentity),
+          identity: wrapper.dataset.replyIdentity,
           left: rect.left,
           top: rect.top,
           width: rect.width,
@@ -1004,7 +998,7 @@
         const wrapper = document.createElement("figure");
         wrapper.className = "scholium-mermaid";
         wrapper.dataset.scholiumProtected = "mermaid";
-        for (const name of ["data-source-utf16-start", "data-source-utf16-end", "data-source-start-line", "data-source-end-line"]) {
+        for (const name of ["data-source-utf16-start", "data-source-utf16-end", "data-source-start-line", "data-source-end-line", "data-scholium-object"]) {
           const value2 = original.getAttribute(name);
           if (value2 !== null) wrapper.setAttribute(name, value2);
         }

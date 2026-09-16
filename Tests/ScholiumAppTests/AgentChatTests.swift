@@ -866,25 +866,29 @@ struct AgentChatTests {
         controller.editDraft("hold active turn")
         controller.send()
         try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
-        controller.editDraft("queued research question")
+        controller.editDraft("hold queued research question")
         #expect(controller.canQueue)
         #expect(controller.queue())
         controller.editDraft("second queued research question")
         #expect(controller.queue())
         let queued = try #require(controller.selected?.queuedMessages.first)
         let secondQueued = try #require(controller.selected?.queuedMessages.dropFirst().first)
-        #expect(queued.text == "queued research question" && queued.turnID == nil)
+        #expect(queued.text == "hold queued research question" && queued.turnID == nil)
         #expect(secondQueued.text == "second queued research question" && !controller.canSendQueuedMessage(secondQueued.id))
         #expect(controller.selected?.draft.isEmpty == true)
         controller.stop()
         try await eventually { !controller.isBusy }
         #expect(controller.canSendQueuedMessage(queued.id))
         #expect(controller.sendQueuedMessage(queued.id))
-        try await eventually { controller.selected?.queuedMessages.count == 1 && controller.selected?.lastRunStatus == .completed }
+        try await eventually {
+            controller.state == .working && controller.selected?.queuedMessages.count == 1 && controller.selected?.pendingMessageID == nil
+        }
         let request = try JSONDecoder().decode(
             MCPJSONValue.self,
             from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json")))
-        #expect(request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue == "queued research question")
+        #expect(request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue == "hold queued research question")
+        controller.stop()
+        try await eventually { !controller.isBusy }
         #expect(controller.canSendQueuedMessage(secondQueued.id))
         #expect(controller.sendQueuedMessage(secondQueued.id))
         try await eventually { controller.selected?.queuedMessages.isEmpty == true && controller.selected?.lastRunStatus == .completed }
@@ -912,6 +916,231 @@ struct AgentChatTests {
             MCPJSONValue.self,
             from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json")))
         #expect(request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue == "queued after completion")
+        await controller.disconnect()
+    }
+
+    @Test("Stop revokes automatic queue admission even when the runtime reports normal completion")
+    func queuedCompletionAfterStop() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("hold active")
+        controller.send()
+        try await eventually { controller.currentTurnID != nil && controller.selected?.pendingMessageID == nil }
+        controller.editDraft("must remain queued")
+        #expect(controller.queue())
+        let queued = controller.queuedMessages
+        try Data().write(to: controller.runtimeHome.appendingPathComponent("complete-on-interrupt"))
+        controller.stop()
+        try await eventually { !controller.isBusy }
+        #expect(controller.queuedMessages == queued)
+        #expect(controller.selected?.messages.filter { $0.role == .user }.count == 1)
+        // A later, ordinary request must not silently retry a stopped queue.
+        controller.editDraft("ordinary request")
+        controller.send()
+        try await eventually { !controller.isBusy }
+        #expect(controller.queuedMessages == queued)
+        await controller.disconnect()
+    }
+
+    @Test("Queue advancement joins completion and acknowledgement exactly once", arguments: [false, true])
+    func queuedDeliveryOrder(completionFirst: Bool) async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("hold-queue original")
+        controller.send()
+        try await eventually { controller.currentTurnID != nil && controller.selected?.pendingMessageID == nil }
+        let firstText = completionFirst ? "defer-input-ack first" : "hold-queue first"
+        controller.editDraft(firstText)
+        #expect(controller.queue())
+        controller.editDraft("hold second")
+        #expect(controller.queue())
+        let queued = controller.queuedMessages
+        try Data().write(to: controller.runtimeHome.appendingPathComponent("release-queued-turn"))
+        controller.refreshQuota()
+        try await eventually {
+            controller.selected?.messages.contains { $0.id == queued[0].id } == true
+                && (completionFirst
+                    ? controller.state == .ready && controller.selected?.pendingMessageID != nil
+                    : controller.state == .working && controller.selected?.pendingMessageID == nil)
+                && !controller.isRefreshingQuota
+        }
+        #expect(controller.queuedMessages.map(\.id) == [queued[1].id])
+        #expect(controller.error == nil)
+        let release = completionFirst ? "release-input-ack" : "release-queued-turn"
+        try Data().write(to: controller.runtimeHome.appendingPathComponent(release))
+        controller.refreshQuota()
+        try await eventually {
+            controller.queuedMessages.isEmpty && controller.selected?.pendingMessageID == nil && controller.state == .working
+        }
+        #expect(controller.error == nil)
+        let requests = try JSONDecoder().decode(
+            [MCPJSONValue].self, from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("turn-inputs.json")))
+        #expect(requests.count == 3)
+        #expect(controller.selected?.messages.filter { $0.id == queued[1].id }.count == 1)
+        controller.stop()
+        try await eventually { !controller.isBusy }
+        await controller.disconnect()
+    }
+
+    @Test("Failed write-ahead saves preserve later edits and retain the original request without automatic retry", arguments: [false, true])
+    func failedPreparedInputSave(editedWhileSaving: Bool) async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptych = UUID()
+        let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
+        let gate = AgentChatHistorySaveGate(storage: storage)
+        let controller = AgentChatController(
+            triptychID: triptych, root: root,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
+            saveHistory: { try await gate.save($0) }, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("original request")
+        let owner = try #require(controller.selectedID)
+        let attachment = AgentChatAttachment(
+            noteID: UUID(), vaultID: UUID(), relativePath: "Fixture.md", text: "retained source",
+            fingerprint: .init(content: "retained source"))
+        #expect(controller.attachContext([attachment]))
+        try await controller.flushPersistence()
+        gate.arm()
+        controller.send()
+        try await eventually { gate.isWaiting }
+        #expect(controller.selected?.draft == "original request")
+        #expect(gate.snapshot?.first(where: { $0.id == owner })?.draft == "")
+        if editedWhileSaving { controller.editDraft("later edited draft") }
+        controller.newConversation()
+        controller.editDraft("other conversation draft")
+        let other = controller.selectedID
+        gate.finish(failure: true)
+        try await eventually { !controller.isBusy(in: owner) }
+        try await controller.flushPersistence()
+        let restored = try await storage.load()
+        let failed = try #require(restored.first { $0.id == owner })
+        let retainedDraft = editedWhileSaving ? "later edited draft" : "original request"
+        let retainedQueue = editedWhileSaving ? ["original request"] : []
+        #expect(failed.draft == retainedDraft && failed.attachments == [attachment])
+        #expect(failed.pendingMessageID == nil && failed.messages.isEmpty && failed.title.isEmpty)
+        #expect(failed.queuedMessages.map(\.text) == retainedQueue)
+        if editedWhileSaving { #expect(failed.queuedMessages.first?.attachments == [attachment]) }
+        #expect(restored.first { $0.id == other }?.draft == "other conversation draft")
+        #expect(!FileManager.default.fileExists(atPath: controller.runtimeHome.appendingPathComponent("last-turn.json").path))
+        controller.select(owner)
+        controller.send()
+        try await eventually { !controller.isBusy }
+        #expect(controller.queuedMessages.map(\.text) == retainedQueue)
+        #expect(controller.selected?.messages.filter { $0.role == .user }.map(\.text) == [retainedDraft])
+        await controller.disconnect()
+    }
+
+    @Test("Successful prepared delivery preserves intervening edits in the ordered archive")
+    func editedPreparedInputSave() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptych = UUID()
+        let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
+        let gate = AgentChatHistorySaveGate(storage: storage)
+        let controller = AgentChatController(
+            triptychID: triptych, root: root,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
+            saveHistory: { try await gate.save($0) }, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("hold captured request")
+        let owner = try #require(controller.selectedID)
+        try await controller.flushPersistence()
+        gate.arm()
+        controller.send()
+        try await eventually { gate.isWaiting }
+        controller.editDraft("new draft")
+        controller.newConversation()
+        controller.editDraft("other draft")
+        let other = controller.selectedID
+        gate.finish(failure: false)
+        try await eventually {
+            controller.state(for: owner) == .working
+                && controller.conversations.first(where: { $0.id == owner })?.pendingMessageID == nil
+        }
+        try await controller.flushPersistence()
+        let saved = try await storage.load()
+        let sent = try #require(saved.first { $0.id == owner })
+        #expect(sent.draft == "new draft" && sent.queuedMessages.isEmpty)
+        #expect(sent.messages.filter { $0.role == .user }.map(\.text) == ["hold captured request"])
+        #expect(saved.first { $0.id == other }?.draft == "other draft")
+        controller.stop(in: owner)
+        try await eventually { !controller.isBusy(in: owner) }
+        await controller.disconnect()
+    }
+
+    @Test("Successful write-ahead followed by Stop restores queued input before any runtime delivery")
+    func stopAfterPreparedInputSave() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptych = UUID()
+        let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
+        let gate = AgentChatHistorySaveGate(storage: storage)
+        let controller = AgentChatController(
+            triptychID: triptych, root: root,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
+            saveHistory: { try await gate.save($0) }, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("hold original")
+        controller.send()
+        try await eventually { controller.currentTurnID != nil && controller.selected?.pendingMessageID == nil }
+        controller.editDraft("queued request")
+        #expect(controller.queue())
+        let queued = try #require(controller.queuedMessages.first)
+        controller.stop()
+        try await eventually { !controller.isBusy }
+        try await controller.flushPersistence()
+        gate.arm()
+        #expect(controller.sendQueuedMessage(queued.id))
+        try await eventually { gate.isWaiting }
+        controller.editDraft("new draft while saving")
+        controller.stop()
+        gate.finish(failure: false)
+        try await eventually { !controller.isBusy }
+        try await controller.flushPersistence()
+        #expect(controller.queuedMessages == [queued])
+        #expect(controller.selected?.pendingMessageID == nil && controller.selected?.draft == "new draft while saving")
+        #expect(controller.selected?.messages.filter { $0.role == .user }.count == 1)
+        let requests = try JSONDecoder().decode(
+            [MCPJSONValue].self, from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("turn-inputs.json")))
+        #expect(requests.count == 1)
+        await controller.disconnect()
+    }
+
+    @Test("Late preparation cleanup cannot reactivate a disconnected execution")
+    func disconnectDuringPreparedInputSave() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptych = UUID()
+        let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
+        let gate = AgentChatHistorySaveGate(storage: storage)
+        let controller = AgentChatController(
+            triptychID: triptych, root: root,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
+            saveHistory: { try await gate.save($0) }, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("unsent across disconnect")
+        try await controller.flushPersistence()
+        gate.arm()
+        controller.send()
+        try await eventually { gate.isWaiting }
+        let closing = Task { await controller.disconnect() }
+        try await eventually { controller.connectionState == .disconnected }
+        gate.finish(failure: false)
+        await closing.value
+        try await eventually { controller.selected?.pendingMessageID == nil }
+        try await connect(controller)
+        controller.editDraft("hold new connection request")
+        controller.send()
+        try await eventually { controller.currentTurnID != nil && controller.selected?.pendingMessageID == nil }
+        #expect(controller.state == .working && controller.selected?.messages.filter { $0.role == .user }.count == 1)
+        #expect(controller.queuedMessages.isEmpty)
+        controller.stop()
+        try await eventually { !controller.isBusy }
         await controller.disconnect()
     }
 
@@ -1538,5 +1767,31 @@ struct AgentChatTests {
                 AgentChatReference.parse(try #require(URL(string: "scholium-note://\(id)\(suffix)"))) == nil
             )
         }
+    }
+}
+
+/// One controllable durable write, with all subsequent writes using real storage.
+@MainActor
+private final class AgentChatHistorySaveGate {
+    let storage: AgentChatStorage
+    private var armed = false
+    private var continuation: CheckedContinuation<Void, Error>?
+    private(set) var snapshot: [AgentChatConversation]?
+    var isWaiting: Bool { continuation != nil }
+
+    init(storage: AgentChatStorage) { self.storage = storage }
+    func arm() { armed = true }
+    func save(_ values: [AgentChatConversation]) async throws {
+        if armed, values.contains(where: { $0.pendingMessageID != nil }) {
+            armed = false
+            snapshot = values
+            try await withCheckedThrowingContinuation { continuation = $0 }
+        }
+        try await storage.save(values)
+    }
+    func finish(failure: Bool) {
+        let waiting = continuation
+        continuation = nil
+        if failure { waiting?.resume(throwing: CocoaError(.fileWriteOutOfSpace)) } else { waiting?.resume(returning: ()) }
     }
 }

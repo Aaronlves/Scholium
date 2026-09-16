@@ -20,6 +20,10 @@ struct AgentChatExecutionState {
     /// apply to the next turn only.
     var permission: AgentChatPermission = .ask
     var completedTurns: Set<String> = []
+    /// A matching normal completion may advance the queue once delivery settles.
+    /// Stop and connection replacement revoke this permission.
+    var pendingQueueAdvanceTurnID: String?
+    var automaticallyAdvancesQueue = false
     /// Notification validity only; public run state retains its existing owner.
     var notificationTurnID: String?
     var runtimeItems: [String: CodexChatOperationContext] = [:]

@@ -48,19 +48,25 @@ struct AgentChatReadReply: View {
                 .overlay(alignment: .topLeading) {
                     ZStack(alignment: .topLeading) {
                         ForEach(objects) { object in
-                            AgentChatRichObjectActions(object: object, copy: {
-                                guard let objectsSource, let payload = objectContent(object.index, expectedSource: objectsSource) else { return false }
-                                readingInteraction()
-                                NSPasteboard.general.clearContents()
-                                return NSPasteboard.general.setString(payload.copyText, forType: .string)
-                            }, expand: { origin in
-                                guard let objectsSource, let payload = objectContent(object.index, expectedSource: objectsSource) else { return }
-                                readingInteraction()
-                                preview.present(title: payload.title, copyText: payload.copyText, from: origin) {
-                                    AgentChatRichContent(text: payload.text, diagramSource: payload.diagram,
-                                        naturalSize: object.naturalSize, openLink: openLink)
+                            AgentChatRichObjectActions(
+                                object: object,
+                                copy: {
+                                    guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource) else { return false }
+                                    readingInteraction()
+                                    NSPasteboard.general.clearContents()
+                                    return NSPasteboard.general.setString(payload.copyText, forType: .string)
+                                },
+                                expand: { origin in
+                                    guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource) else { return }
+                                    readingInteraction()
+                                    preview.present(
+                                        title: ScholiumL10n.string(payload.kind == .diagram ? "Diagram" : payload.kind == .code ? "Code" : "Table"),
+                                        copyText: payload.copyText, from: origin
+                                    ) {
+                                        AgentChatRichContent(object: payload, naturalSize: object.naturalSize, openLink: openLink)
+                                    }
                                 }
-                            })
+                            )
                             .disabled(objectsSource != source || objectsSource != projection.document.rawContent)
                             .frame(width: object.frame.width, height: object.frame.height, alignment: .topTrailing)
                             .offset(x: object.frame.minX, y: object.frame.minY)
@@ -92,7 +98,7 @@ struct AgentChatReadReply: View {
         case .layout(let value, let width, let objects):
             height = value
             intrinsicWidth = width
-            self.objects = objects
+            self.objects = objects.filter { renderer.snapshot?.objects[$0.id] != nil }
             objectsSource = expectedSource
         case .quote(let text):
             guard expectedSource == source else { return }
@@ -100,14 +106,16 @@ struct AgentChatReadReply: View {
         case .selectionContext(let text, let point, let view):
             guard expectedSource == source else { return }
             let menu = NSMenu()
-            menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Copy")) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-            })
-            if let quote {
-                menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Ask About Selection")) {
-                    quote(.reader(source: source, excerpt: text))
+            menu.addItem(
+                AgentChatNoteMenuItem(ScholiumL10n.string("Copy")) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
                 })
+            if let quote {
+                menu.addItem(
+                    AgentChatNoteMenuItem(ScholiumL10n.string("Ask About Selection")) {
+                        quote(.reader(source: source, excerpt: text))
+                    })
             }
             // Leave WebKit's script-message callback before AppKit starts the
             // native menu event loop. Copy owns this exact selected snapshot.
@@ -128,16 +136,11 @@ struct AgentChatReadReply: View {
         }
     }
 
-    private func objectContent(_ index: Int, expectedSource: String) -> (title: String, copyText: String, text: NSAttributedString, diagram: String?)? {
-        guard expectedSource == source, expectedSource == renderer.snapshot?.document.rawContent else { return nil }
-        let layout = AgentChatObjectProjection.layoutReply(expectedSource)
-        let segments = AgentChatRichSegment.collect(layout).filter(\.isObject)
-        guard segments.indices.contains(index) else { return nil }
-        let segment = segments[index]
-        let text = layout.text.attributedSubstring(from: segment.range)
-        let isDiagram = segment.language?.lowercased() == "mermaid"
-        return (ScholiumL10n.string(isDiagram ? "Diagram" : segment.code != nil ? "Code" : "Table"),
-                segment.code ?? text.string, text, isDiagram ? segment.code : nil)
+    private func objectContent(_ id: String, expectedSource: String) -> RenderedMarkdownObject? {
+        guard expectedSource == source, let snapshot = renderer.snapshot,
+            expectedSource == snapshot.document.rawContent
+        else { return nil }
+        return snapshot.objects[id]
     }
 
     private var css: String {
@@ -206,8 +209,10 @@ private struct AgentChatRichObjectActions: View {
         // Accessibility activation must not depend on a prior pointer reveal.
         .background(alignment: .topTrailing) {
             ScholiumPreviewAttachment { origin = $0 }
-                .frame(width: ScholiumGrid.Dimension.preferredCustomTarget,
-                       height: ScholiumGrid.Dimension.preferredCustomTarget)
+                .frame(
+                    width: ScholiumGrid.Dimension.preferredCustomTarget,
+                    height: ScholiumGrid.Dimension.preferredCustomTarget
+                )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }

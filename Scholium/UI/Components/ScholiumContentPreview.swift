@@ -121,8 +121,9 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
         // A restrained, origin-directed transition avoids repeatedly reflowing
         // a full reader through a tiny window on every open and close.
         let size = NSSize(width: max(320, frame.width * 0.96), height: max(240, frame.height * 0.96))
-        let center = NSPoint(x: frame.midX + (anchor.midX - frame.midX) * 0.08,
-                             y: frame.midY + (anchor.midY - frame.midY) * 0.08)
+        let center = NSPoint(
+            x: frame.midX + (anchor.midX - frame.midX) * 0.08,
+            y: frame.midY + (anchor.midY - frame.midY) * 0.08)
         let screen = window.screen?.visibleFrame ?? window.frame
         return NSRect(
             x: min(max(center.x - size.width / 2, screen.minX), screen.maxX - size.width),

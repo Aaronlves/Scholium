@@ -149,7 +149,7 @@ struct AgentChatVisualEvidenceTests {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         for scheme in [ColorScheme.light, .dark] {
             let content = AgentChatView(
-                controller: controller, isVisible: false, addSelection: {},
+                controller: controller, isVisible: false, addSelection: { _ in false },
                 noteChoices: [], addNote: { _, _ in },
                 openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
@@ -474,7 +474,7 @@ struct AgentChatVisualEvidenceTests {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         for scheme in [ColorScheme.light, .dark] {
             let content = AgentChatView(
-                controller: controller, isVisible: false, addSelection: {},
+                controller: controller, isVisible: false, addSelection: { _ in false },
                 noteChoices: [], addNote: { _, _ in }, openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
             )

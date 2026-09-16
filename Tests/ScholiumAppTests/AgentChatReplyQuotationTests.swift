@@ -35,9 +35,7 @@ struct AgentChatReplyQuotationTests {
         let view = AgentChatObjectTextView()
         view.frame = NSRect(x: 0, y: 0, width: 300, height: 120)
         view.textStorage?.setAttributedString(
-            AgentChatObjectProjection.render(
-                AttributedString(String(repeating: "原文与解释需要区分。 ", count: 20)), font: .systemFont(ofSize: 13)
-            ))
+            AgentChatRichContent.codeText(String(repeating: "原文与解释需要区分。 ", count: 20)))
         view.setSelectedRange(NSRange(location: 2, length: 4))
         let frame = view.frame
         let container = view.textContainer?.containerSize

@@ -65,6 +65,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private let workspaceDirectory: @MainActor () async throws -> URL
     private var connectedHome: URL?
     private let storage: AgentChatStorage
+    private let saveHistory: @MainActor ([AgentChatConversation]) async throws -> Void
+    // References provisional history messages only; the live draft stays editable
+    // until its write-ahead snapshot has been saved and input dispatch begins.
+    private var pendingDraftConsumption: [UUID: String] = [:]
     private let materialStore: AgentChatMaterialStore
     @Published private(set) var preparingMaterials: Set<UUID> = []
     @Published private(set) var materialErrors: [UUID: String] = [:]
@@ -94,6 +98,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         triptychID: UUID, root: URL,
         workspaceDirectory: @escaping @MainActor () async throws -> URL,
         methodDefaults: UserDefaults = .standard,
+        saveHistory: (@MainActor ([AgentChatConversation]) async throws -> Void)? = nil,
         zotero: (any ZoteroUseCases)? = nil,
         displayWindow: @escaping @MainActor (UUID) -> AgentChatDisplayScope? = { _ in nil },
         notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
@@ -111,8 +116,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         connectionDefaults = methodDefaults
         capabilities = AgentChatCapabilitiesController(zotero: zotero)
         runtimeHome = root.appendingPathComponent("Codex", isDirectory: true)
-        storage = AgentChatStorage(
+        let storage = AgentChatStorage(
             root: root.appendingPathComponent(triptychID.uuidString, isDirectory: true))
+        self.storage = storage
+        self.saveHistory = saveHistory ?? { try await storage.save($0) }
         materialStore = AgentChatMaterialStore(
             root: root.appendingPathComponent(triptychID.uuidString, isDirectory: true)
                 .appendingPathComponent("Materials", isDirectory: true))
@@ -551,7 +558,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         presentContext(in: conversationID)
     }
 
-    private func performMaterialPreparation(in conversationID: UUID, work: @escaping @MainActor () async throws -> Void) async -> Bool {
+    func performMaterialPreparation(in conversationID: UUID, work: @escaping @MainActor () async throws -> Void) async -> Bool {
         guard isLoaded, !preparingMaterials.contains(conversationID),
             conversations.contains(where: { $0.id == conversationID && $0.isAvailable == true })
         else { return false }
@@ -961,17 +968,39 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         if conversations[index] != previous { conversations[index].updatedAt = Date() }
     }
 
-    private func persist() {
-        guard isLoaded else { return }
-        let snapshot = conversations
+    private func historySnapshot() -> [AgentChatConversation] {
+        var snapshot = conversations
+        for index in snapshot.indices {
+            guard let messageID = pendingDraftConsumption[snapshot[index].id],
+                let message = snapshot[index].messages.first(where: { $0.id == messageID })
+            else { continue }
+            consumeDraft(message, from: &snapshot[index])
+        }
+        return snapshot
+    }
+
+    /// Both ordinary updates and write-ahead saves use this one ordered writer.
+    /// Edits during a send preparation therefore cannot overwrite the durable
+    /// pending-message state with an older, unconsumed draft snapshot.
+    private func enqueueHistorySave() -> Task<Void, Error> {
+        let snapshot = historySnapshot()
         let previous = persistenceTask
-        let storage = storage
-        persistenceTask = Task { [weak self] in
+        let saveHistory = saveHistory
+        let operation = Task { @MainActor in
             await previous?.value
-            do { try await storage.save(snapshot) } catch {
+            try await saveHistory(snapshot)
+        }
+        persistenceTask = Task { [weak self] in
+            do { try await operation.value } catch {
                 self?.connectionError = String(localized: "Conversation not saved: \(error.localizedDescription)")
             }
         }
+        return operation
+    }
+
+    private func persist() {
+        guard isLoaded else { return }
+        _ = enqueueHistorySave()
     }
 
     func flushPersistence() async throws {
@@ -980,8 +1009,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     private func saveNow() async throws {
-        await persistenceTask?.value
-        try await storage.save(conversations)
+        try await enqueueHistorySave().value
     }
 
     func connect(executable: URL, home: URL, helper: URL, signInIfNeeded: Bool = false) {
@@ -1148,6 +1176,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     func queue() -> Bool {
         guard canQueue, let selectedID, let selected else { return false }
         let message = draftMessage(selected)
+        if selected.queuedMessages.isEmpty { executions[selectedID]?.automaticallyAdvancesQueue = true }
         update(in: selectedID) { conversation in
             conversation.queuedMessages.append(message)
             consumeDraft(message, from: &conversation)
@@ -1168,7 +1197,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     @discardableResult
     func sendQueuedMessage(_ messageID: String) -> Bool {
-        guard let selectedID else { return false }
+        guard let selectedID, canSendQueuedMessage(messageID) else { return false }
+        executions[selectedID]?.automaticallyAdvancesQueue = true
         return dispatchQueuedMessage(messageID, in: selectedID)
     }
 
@@ -1246,12 +1276,20 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     private func drainQueuedMessage(in conversationID: UUID) {
+        guard executions[conversationID]?.pendingQueueAdvanceTurnID != nil,
+            executions[conversationID]?.isSending == false
+        else { return }
+        // Completion and delivery acknowledgement can arrive in either order.
+        // Consume the completion once, only after delivery has settled.
+        executions[conversationID]?.pendingQueueAdvanceTurnID = nil
         guard connectionState == .ready, !isRenewingSettings,
+            executions[conversationID]?.automaticallyAdvancesQueue == true,
             executions[conversationID]?.state == .ready,
             conversation(conversationID)?.messages.contains(where: { $0.asyncQuestion?.isPending == true }) != true,
             let message = conversation(conversationID)?.queuedMessages.first
         else { return }
         if !dispatchQueuedMessage(message.id, in: conversationID) {
+            executions[conversationID]?.automaticallyAdvancesQueue = false
             executions[conversationID]?.error = ScholiumL10n.string(
                 "The next queued message needs attention before it can be sent.")
         }
@@ -1278,11 +1316,44 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 return
             }
             var receipt = AgentChatDeliveryReceipt.unavailable
+            var hasPreparedMessage = false
             defer {
+                if receipt == .unavailable, hasPreparedMessage {
+                    if self.pendingDraftConsumption[conversationID] == message.id {
+                        self.pendingDraftConsumption.removeValue(forKey: conversationID)
+                    }
+                    self.update(in: conversationID) { conversation in
+                        conversation.messages.removeAll { $0.id == message.id }
+                        if conversation.pendingMessageID == message.id { conversation.pendingMessageID = nil }
+                        // Keep edits made during preparation. If they replaced the
+                        // captured request, retain that unsent request in the queue.
+                        if consumesDraft, conversation.draft != message.text,
+                            !conversation.queuedMessages.contains(where: { $0.id == message.id })
+                        {
+                            conversation.queuedMessages.append(message)
+                        }
+                    }
+                    if self.connectionID == connectionID,
+                        self.executions[conversationID]?.sendingMessageID == message.id,
+                        self.executions[conversationID]?.turnID == nil
+                    {
+                        self.executions[conversationID]?.admissionID = nil
+                        self.executions[conversationID]?.state = .ready
+                    }
+                    self.persist()
+                }
                 if self.connectionID == connectionID, self.executions[conversationID]?.sendingMessageID == message.id {
                     self.executions[conversationID]?.sendingMessageID = nil
                 }
                 completion(receipt)
+                if self.connectionID == connectionID {
+                    if receipt == .received {
+                        self.drainQueuedMessage(in: conversationID)
+                    } else {
+                        self.executions[conversationID]?.pendingQueueAdvanceTurnID = nil
+                        self.executions[conversationID]?.automaticallyAdvancesQueue = false
+                    }
+                }
             }
             do {
                 if let target = message.coordinationTarget {
@@ -1335,14 +1406,11 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 }
                 if expectedTurnID == nil { self.configureTools(in: conversationID) }
                 self.update(in: conversationID) {
-                    if $0.title.isEmpty { $0.title = String(message.text.prefix(70)) }
                     $0.messages.append(message)
                     $0.pendingMessageID = message.id
-                    if consumesDraft {
-                        self.consumeDraft(message, from: &$0)
-                    }
                 }
-                receipt = .unconfirmed
+                hasPreparedMessage = true
+                if consumesDraft { self.pendingDraftConsumption[conversationID] = message.id }
                 try await self.saveNow()
                 guard self.connectionID == connectionID, !Task.isCancelled else { return }
                 let thread: String
@@ -1388,6 +1456,20 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                     "clientUserMessageId": .string(message.id),
                 ]
                 if let expectedTurnID {
+                    guard self.executions[conversationID]?.state == .working,
+                        self.executions[conversationID]?.turnID == expectedTurnID
+                    else { throw CancellationError() }
+                }
+                // The durable archive already contains this exact pending input.
+                // Only an actual delivery attempt consumes the live draft.
+                self.update(in: conversationID) {
+                    if $0.title.isEmpty { $0.title = String(message.text.prefix(70)) }
+                    if consumesDraft { self.consumeDraft(message, from: &$0) }
+                }
+                self.pendingDraftConsumption.removeValue(forKey: conversationID)
+                receipt = .unconfirmed
+                self.persist()
+                if let expectedTurnID {
                     turn["expectedTurnId"] = .string(expectedTurnID)
                     let result = try await runtime.request("turn/steer", params: turn)
                     guard result.objectValue?["turnId"]?.stringValue == expectedTurnID else {
@@ -1423,7 +1505,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 guard receipt == .unconfirmed else {
                     if !Task.isCancelled {
                         self.executions[conversationID]?.error = String(
-                            localized: "The Agent target could not be verified. Reopen it before sending.", bundle: .module)
+                            localized: "The message was not sent. Your input is preserved. \(error.localizedDescription)", bundle: .module)
                     }
                     return
                 }
@@ -1798,6 +1880,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     func stop(in conversationID: UUID) {
+        executions[conversationID]?.pendingQueueAdvanceTurnID = nil
+        executions[conversationID]?.automaticallyAdvancesQueue = false
         executions[conversationID]?.notificationTurnID = nil
         if executions[conversationID]?.state == .branching {
             executions[conversationID]?.operationTask?.cancel()
@@ -2758,7 +2842,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 && executions[conversationID]?.state != .stopping
                 && executions[conversationID]?.admissionID != nil
                 && executions[conversationID]?.completedTurns.contains(turn.id) == false
-            let wasCurrentTurn = executions[conversationID]?.turnID == turn.id
+            let mayAdvanceQueue =
+                executions[conversationID]?.turnID == turn.id
+                && executions[conversationID]?.state != .stopping
+                && turn.status == .completed
             attributeTurn(turn, in: conversationID)
             executions[conversationID]?.completedTurns.insert(turn.id)
             if let active = executions[conversationID]?.turnID, active != turn.id { return }
@@ -2791,7 +2878,9 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             }
             for approval in executions[conversationID]?.approvals ?? [] { answer(approval.id, allow: false) }
             persist()
-            if wasCurrentTurn, turn.status == .completed { drainQueuedMessage(in: conversationID) }
+            if !mayAdvanceQueue { executions[conversationID]?.automaticallyAdvancesQueue = false }
+            executions[conversationID]?.pendingQueueAdvanceTurnID = mayAdvanceQueue ? turn.id : nil
+            drainQueuedMessage(in: conversationID)
         case .item(let item, let completed, let context):
             if !completed, let turn = event.turnID, executions[conversationID]?.completedTurns.contains(turn) == true { return }
             switch item.content {

@@ -196,8 +196,11 @@ decoding preserves BOM, PDFKit supplies page-indexed text, and ImageIO validates
 supported single images. The immutable `AgentChatLocalMaterial` records the
 source location, fingerprint, representation, page coverage and preparation issue.
 The Chat controller owns conversation-scoped preparation/cancellation and only
-attaches confirmed results to that conversation. File picker, file-URL paste and
-drop call the same operation. The native message editor captures pasteboard
+attaches confirmed results to that conversation. Direct Note and selection
+candidates, Note picker, file picker, file-URL paste and drop use this preparation
+owner. Preparing material disables delivery only in its own conversation; view
+tasks for native picker presentation do not gate another conversation's input.
+The native message editor captures pasteboard
 materials only on explicit Paste or accepted copy-drop; drag entry inspects
 types without loading bytes. Ordinary text drag/paste retains NSTextView ownership.
 `AgentChatLocalMaterial.Source` records a file URL or a typed image-capture origin;
@@ -209,9 +212,14 @@ preparation, validation and disposal owner. Explicit replacement/removal release
 copy only after history saving succeeds and no draft/message retains its identity.
 Cancelled unpublished copies are discarded without changing original files.
 
-Send validates retained copies before adding a delivery-pending message. Failure
-keeps the draft and material; Stop during this preparation cancels without a
-runtime turn. Prepared text and page coverage enter text input; supported images
+Send validates retained copies before adding a delivery-pending message. Its
+ordered history writer saves a write-ahead projection while the live draft stays
+editable; actual input dispatch consumes only the captured draft content.
+Known pre-dispatch failure removes provisional history and retains current input.
+If newer text has replaced the captured request, that original request remains in
+the paused queue for explicit handling. Stop during preparation cancels without a
+runtime turn; only an attempted input delivery can enter uncertain recovery.
+Prepared text and page coverage enter text input; supported images
 use `localImage` input. The original file is never reread at delivery. Native
 material detail views own disclosure and system Quick Look/thumbnail tasks,
 without a second document reader, bibliography store or inference loop.
@@ -255,11 +263,18 @@ Reply actions copy original text and project explicit links into Sources.
 native composer mounted and inert while a request occupies the same bottom
 surface; request identities, answers and submission remain controller-owned.
 Queue-to-steer reuses the current-turn send path with the captured turn identity
-and exact retained message, leaving the unsent draft untouched.
+and exact retained message, leaving the unsent draft untouched. Automatic queue
+advancement reconciles matching normal completion with settled delivery once.
+Stop, failure and connection replacement revoke automatic advancement; a paused
+queue requires explicit Send Next, not completion of an unrelated new request.
 `AgentChatReadReply` owns every user, commentary and answer body through the same
 safe reader, including plain prose. DOM selection crosses prose, tables and code;
-reader height events reserve each message’s wrapped space in the transcript. Native
-attributed text remains limited to expanded object previews. Chat reader updates are
+reader height events reserve each message’s wrapped space in the transcript.
+The safe renderer supplies immutable rich-object identities, copy payloads and
+sanitized preview content with the same reply snapshot. DOM geometry refers to
+those identities; Copy and Expand never independently parse the reply or match
+objects by array position. Native attributed text is a code display only, while
+table previews reuse sanitized renderer output. Chat reader updates are
 serialized and bound to the page generation and starting fingerprint; they reconcile
 sanitized blocks in the existing page rather than navigating on each text delta.
 Unchanged decorated blocks retain identity. Reader interaction suspends native follow;

@@ -60,34 +60,15 @@ struct AgentChatPresentationTests {
         #expect(files.count == 1 && files.first?.url == url && files.first?.title == "论证")
     }
 
-    @Test("Long replies preserve paragraphs, quotation, argument numbering and exact code")
-    func markdownBlocks() {
-        let source =
-            "## A distinction\n\nA **strong** claim.\n\nA second paragraph with 中文 😀.\n\n> Source quotation.\n\n3. Premise\n4. Conclusion\n\n```text\na < b\n  exact spacing\n```"
-        let blocks = AgentChatMarkdownBlock.parse(source)
-        #expect(
-            blocks.map(\.kind) == [.heading, .prose, .prose, .quote, .list("3."), .list("4."), .code])
-        #expect(String(blocks[2].text.characters) == "A second paragraph with 中文 😀.")
-        #expect(String(blocks[6].text.characters) == "a < b\n  exact spacing\n")
-        #expect(
-            blocks[1].text.runs.contains {
-                $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
-            })
-        #expect(Set(blocks.map(\.id)).count == blocks.count)
-        #expect(AgentChatMarkdownBlock.parse("> 1. Quoted premise").first?.isQuoted == true)
-    }
-
-    @Test("Note citations remain links and comparison tables retain cells")
-    func referencesAndTables() throws {
-        let url = AgentChatReference.url(
-            noteID: UUID(), line: 5,
-            revision: DocumentFingerprint(content: "Exact source\r\n"), vaultID: UUID())
-        let blocks = AgentChatMarkdownBlock.parse(
-            "Read [this note](\(url)).\n\n| View | Objection |\n|---|---|\n| One | Two |")
-        #expect(blocks.first?.text.runs.contains { $0.link == url } == true)
-        #expect(blocks[1].kind == .tableRow(true))
-        #expect(blocks[1].cells.map { String($0.characters) } == ["View", "Objection"])
-        #expect(blocks[2].cells.map { String($0.characters) } == ["One", "Two"])
+    @Test("Reply prose and objects share the safe renderer")
+    func markdownPresentation() {
+        let source = "## A distinction\n\nA **strong** claim.\n\n> Source quotation.\n\n3. Premise\n4. Conclusion\n\n```text\na < b\n  exact spacing\n```"
+        let rendered = SafeMarkdownRenderer.render(NoteDocument(relativePath: "Reply.md", rawContent: source))
+        #expect(rendered.htmlBody.contains("<strong>strong</strong>"))
+        #expect(rendered.htmlBody.contains("<ol start=\"3\""))
+        #expect(rendered.htmlBody.contains("Source quotation."))
+        #expect(rendered.objects.count == 1)
+        #expect(rendered.objects.first?.copyText == "a < b\n  exact spacing\n")
     }
 
     @Test("Activity can collapse without hiding replies or losing exact change links")

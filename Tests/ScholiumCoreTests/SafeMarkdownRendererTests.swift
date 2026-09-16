@@ -384,7 +384,7 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("<table class=\"scholium-table\""))
         #expect(rendered.contains("class=\"scholium-math scholium-math-inline\""))
         #expect(rendered.contains("class=\"scholium-math scholium-math-display\""))
-        #expect(rendered.contains("<pre dir=\"ltr\"><code dir=\"ltr\" class=\"language-swift\">let value = 1"))
+        #expect(rendered.contains("<code dir=\"ltr\" class=\"language-swift\">let value = 1"))
         #expect(rendered.contains(">Following paragraph.</p>"))
         #expect(!rendered.contains("<div class=\"footnote-content\"><p dir=\"auto\">Following paragraph."))
     }

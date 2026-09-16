@@ -25,14 +25,16 @@ final class MarkdownEditorWebViewPool {
         removeAll()
         let expectedGeneration = generation
         preparation = Task { @MainActor [weak self] in
-            let cleared = try? await webView.callAsyncJavaScript(
-                "return window.scholiumEditor?.prepareForReuse() === true",
-                arguments: [:], in: nil, contentWorld: .page
-            ) as? Bool
+            let cleared =
+                try? await webView.callAsyncJavaScript(
+                    "return window.scholiumEditor?.prepareForReuse() === true",
+                    arguments: [:], in: nil, contentWorld: .page
+                ) as? Bool
             guard !Task.isCancelled, let self,
                 self.generation == expectedGeneration,
                 !self.isInvalidated, webView.navigationDelegate == nil,
-                cleared == true else { return }
+                cleared == true
+            else { return }
             self.idleWebView = webView
             self.preparation = nil
         }

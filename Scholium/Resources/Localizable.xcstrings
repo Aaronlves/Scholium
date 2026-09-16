@@ -12848,6 +12848,22 @@
         }
       }
     },
+    "Expand" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放大"
+          }
+        }
+      }
+    },
     "Expand All" : {
       "localizations" : {
         "en" : {
@@ -28640,6 +28656,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "原回复不可用。"
+          }
+        }
+      }
+    },
+    "The message was not sent. Your input is preserved. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The message was not sent. Your input is preserved. %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息未发送。你的输入已保留。%@"
           }
         }
       }

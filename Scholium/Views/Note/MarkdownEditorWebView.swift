@@ -800,13 +800,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             let expectedGeneration = pageGeneration
             Task { @MainActor [weak self, weak webView] in
                 guard let self, let webView, webView.navigationDelegate === self else { return }
-                let available = try? await webView.callAsyncJavaScript(
-                    "return typeof window.scholiumEditor?.dispatch === 'function'",
-                    arguments: [:], in: nil, contentWorld: .page
-                ) as? Bool
+                let available =
+                    try? await webView.callAsyncJavaScript(
+                        "return typeof window.scholiumEditor?.dispatch === 'function'",
+                        arguments: [:], in: nil, contentWorld: .page
+                    ) as? Bool
                 guard webView.navigationDelegate === self,
                     self.session.webView === webView,
-                    self.pageGeneration == expectedGeneration else { return }
+                    self.pageGeneration == expectedGeneration
+                else { return }
                 if available == true {
                     self.signalReady()
                 } else {

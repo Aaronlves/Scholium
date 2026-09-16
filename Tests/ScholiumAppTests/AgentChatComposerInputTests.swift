@@ -229,7 +229,10 @@ struct AgentChatComposerInputTests {
         let candidate = AgentChatComposerCandidate(id: "note", title: "论证", detail: "", symbol: "doc", action: .notePicker)
         var choices = 0
         completion.canAccept = { _ in true }
-        completion.choose = { _ in choices += 1 }
+        completion.choose = { _, finish in
+            finish(true)
+            choices += 1
+        }
         completion.candidates = [candidate]
         completion.accept(candidate)
         #expect(choices == 0 && host.editor.string == "中文 😀 @论证 后文")
@@ -260,6 +263,88 @@ struct AgentChatComposerInputTests {
         #expect(completion.editor === host.editor && completion.choose != nil)
         completion.detach(from: host.editor)
         #expect(completion.editor == nil && completion.choose == nil && completion.candidates.isEmpty)
+    }
+
+    @Test("Deferred material completion keeps a failed query and consumes a successful query with Undo")
+    func deferredCompletionResult() throws {
+        let host = AgentChatComposerHost()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        let id = UUID()
+        let completion = AgentChatComposerCompletion()
+        host.editor.completionConversationID = id
+        host.completion = completion
+        host.editor.string = "Discuss @selection"
+        host.editor.setSelectedRange(NSRange(location: 18, length: 0))
+        completion.attach(to: host.editor, in: id)
+        completion.refresh(from: host.editor, in: id)
+        let query = try #require(completion.query)
+        let candidate = AgentChatComposerCandidate(id: "selection", title: "Add Selection", detail: "", symbol: "text.quote", action: .selection)
+        var finish: ((Bool) -> Void)?
+        completion.choose = { _, result in finish = result }
+        completion.canAccept = { _ in true }
+        completion.candidates = [candidate]
+        completion.candidateQuery = query
+        completion.accept(candidate)
+        #expect(host.editor.string == "Discuss @selection" && completion.query == nil)
+        #expect(!completion.canSubmit(in: id))
+        let failedResult = try #require(finish)
+        failedResult(false)
+        #expect(host.editor.string == "Discuss @selection" && completion.query == query)
+        #expect(completion.canSubmit(in: id))
+        completion.accept(candidate)
+        let successfulResult = try #require(finish)
+        successfulResult(true)
+        #expect(host.editor.string == "Discuss " && completion.query == nil)
+        try #require(host.editor.undoManager).undo()
+        #expect(host.editor.string == "Discuss @selection")
+    }
+
+    @Test(
+        "A late material result cannot rewrite edited text, selection, composition or another conversation",
+        arguments: ["text", "selection", "composition", "conversation", "detached"])
+    func deferredCompletionIdentity(change: String) throws {
+        let host = AgentChatComposerHost()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        let id = UUID()
+        let completion = AgentChatComposerCompletion()
+        host.editor.completionConversationID = id
+        host.completion = completion
+        host.editor.string = "Discuss @note"
+        host.editor.setSelectedRange(NSRange(location: 13, length: 0))
+        completion.attach(to: host.editor, in: id)
+        completion.refresh(from: host.editor, in: id)
+        let candidate = AgentChatComposerCandidate(id: "note", title: "Note", detail: "", symbol: "doc", action: .notePicker)
+        var finish: ((Bool) -> Void)?
+        completion.choose = { _, result in finish = result }
+        completion.canAccept = { _ in true }
+        completion.candidates = [candidate]
+        completion.candidateQuery = completion.query
+        completion.accept(candidate)
+        switch change {
+        case "text": host.editor.insertText(" with new text", replacementRange: NSRange(location: 13, length: 0))
+        case "selection": host.editor.setSelectedRange(NSRange(location: 0, length: 7))
+        case "composition":
+            host.editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: 13, length: 0))
+        case "conversation":
+            let other = UUID()
+            host.editor.completionConversationID = other
+            completion.attach(to: host.editor, in: other)
+        default: completion.detach(from: host.editor)
+        }
+        let source = host.editor.string
+        let selection = host.editor.selectedRange()
+        let composing = host.editor.hasMarkedText()
+        let responder = window.firstResponder
+        let lateResult = try #require(finish)
+        lateResult(true)
+        #expect(host.editor.string == source && host.editor.selectedRange() == selection)
+        #expect(host.editor.hasMarkedText() == composing && window.firstResponder === responder)
     }
 
     @Test("Refreshing candidates preserves selection by identity beyond the first page")
@@ -320,7 +405,10 @@ struct AgentChatComposerInputTests {
         completion.candidates = [candidate]
         completion.candidateQuery = completion.query
         completion.canAccept = { _ in true }
-        completion.choose = { _ in completion.begin("$") }
+        completion.choose = { _, finish in
+            finish(true)
+            completion.begin("$")
+        }
         completion.accept(candidate)
         #expect(host.editor.string == "$")
         try #require(host.editor.undoManager).undo()

@@ -1770,18 +1770,16 @@ final class AgentChatReadWebView: WKWebView {}
 
 /// Untrusted DOM geometry is a bounded presentation projection, never content authority.
 struct ReadReplyObject: Identifiable, Equatable {
-    let id: Int
-    let index: Int
+    let id: String
     let frame: CGRect
     let naturalSize: CGSize
 
     static func decode(_ value: Any?) -> [Self]? {
         guard let entries = value as? [[String: Any]], entries.count < 10_000 else { return nil }
         var result: [Self] = []
-        var identities: Set<Int> = []
-        for (index, entry) in entries.enumerated() {
-            guard entry["index"] as? Int == index,
-                let identity = entry["identity"] as? Int, identity > 0,
+        var identities: Set<String> = []
+        for entry in entries {
+            guard let identity = entry["identity"] as? String, !identity.isEmpty, identity.utf8.count < 128,
                 identities.insert(identity).inserted
             else { return nil }
             let keys = ["left", "top", "width", "height", "naturalWidth", "naturalHeight"]
@@ -1790,9 +1788,11 @@ struct ReadReplyObject: Identifiable, Equatable {
                 numbers.allSatisfy({ $0.isFinite && abs($0) < 1_000_000 }),
                 numbers.dropFirst(2).allSatisfy({ $0 > 0 })
             else { return nil }
-            result.append(Self(id: identity, index: index,
-                frame: CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3]),
-                naturalSize: CGSize(width: numbers[4], height: numbers[5])))
+            result.append(
+                Self(
+                    id: identity,
+                    frame: CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3]),
+                    naturalSize: CGSize(width: numbers[4], height: numbers[5])))
         }
         return result
     }

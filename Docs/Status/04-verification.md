@@ -111,6 +111,21 @@ machine state unchanged. This Beta is ad-hoc signed and not Developer ID
 signed or notarized; human accessibility and interaction acceptance remain
 separate open boundaries.
 
+**2026-09-16 — Chat delivery, preparation and object identity:** Stop and failed
+delivery revoke automatic queue advancement; matching completion and delivery
+acknowledgement reconcile once regardless of order. Local pre-send saving retains
+live edits and uses the same ordered history writer. All material/selection entry
+points share conversation-scoped preparation, and failed candidates retain their
+query. Rich-object Copy/Expand use renderer-owned descriptors rather than a second
+Markdown parse and positional matching. Owning runs pass 30 renderer and 101 Chat
+tests; a subsequent 24-test native run overlaps that coverage. WebEditor passes
+340 tests and bundle reproducibility. Disposable 500-Note Debug QA verifies failed
+selection/query retention, successful Note preparation, independent table/code/
+HTML/Mermaid actions, preview dismissal, and Stop with a normal-completion race
+retaining its queue. Evidence and final integration results are recorded in
+`.build/chat-fixes/verification.md`; installed IME and human accessibility remain
+separate acceptance boundaries.
+
 **2026-09-16 — Chat input-area responsibility cleanup:** The input-area owner
 now measures queue/dock geometry and anchors candidates to their actual size;
 the shell no longer compensates with negative queue padding or estimated popup
@@ -122,8 +137,8 @@ resizing and selection, expanded queued input, question completion, Stop and
 cross-conversation draft retention. Native tests additionally cover light/dark
 request presentation, selection/identity preservation and marked-text callbacks.
 Installed IME and full assistive-technology/adaptation acceptance remain open.
-The shell's conversation-state lifetime, duplicate rich-object projection and
-implicit reader-mode selection remain separate structural work. Evidence:
+The shell's conversation-state lifetime and implicit reader-mode selection
+remain separate structural work. Evidence:
 `.build/chat-layering/verification.md`.
 
 **2026-09-15 — In-app Chat presentation and runtime controls:** Focused slices

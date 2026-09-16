@@ -11,7 +11,7 @@ struct AgentChatView: View {
     @Environment(\.controlActiveState) private var controlActiveState
     @ObservedObject var controller: AgentChatController
     let isVisible: Bool
-    let addSelection: () -> Void
+    let addSelection: (UUID) async -> Bool
     let noteChoices: [WorkspaceCatalogNote]
     let addNote: (WorkspaceCatalogNote, UUID) async throws -> Void
     let openReference: (URL) -> Bool
@@ -55,7 +55,7 @@ struct AgentChatView: View {
     @State private var pdfPagesTarget: AgentChatPDFPagesView.Target?
     @State private var comparisonRequest: AgentChatApproval?
     @State private var inspectedAgent: AgentChatChildController?
-    @State private var materialTask: Task<Void, Never>?
+    @State private var fileSelectionTask: Task<Void, Never>?
     @State private var conversationQuery = ""
     @State private var conversationFilter = AgentChatListFilter.all
     @State private var showsFind = false
@@ -134,7 +134,7 @@ struct AgentChatView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.chat")
         .sheet(item: $notePickerTarget) { target in
-            AgentChatNotePicker(notes: noteChoices) { note in try await addNote(note, target.id) }
+            AgentChatNotePicker(notes: noteChoices) { note in try await prepareNote(note, in: target.id) }
         }
         .sheet(item: $pdfPagesTarget) { target in AgentChatPDFPagesView(controller: controller, target: target) }
         .sheet(item: $comparisonRequest) { request in
@@ -142,9 +142,9 @@ struct AgentChatView: View {
                 AgentChatUpdateComparisonSheet(controller: controller, requestID: request.id, preview: preview)
             }
         }
-        .onDisappear { materialTask?.cancel() }
+        .onDisappear { fileSelectionTask?.cancel() }
         .dropDestination(for: URL.self) { urls, _ in
-            guard materialTask == nil, let id = controller.selectedID, !urls.isEmpty,
+            guard let id = controller.selectedID, !controller.preparingMaterials.contains(id), !urls.isEmpty,
                 urls.allSatisfy(\.isFileURL)
             else { return false }
             prepareFiles(urls, to: id)
@@ -1267,26 +1267,40 @@ struct AgentChatView: View {
     }
 
     private func chooseFiles(replacing materialID: UUID? = nil) {
-        guard materialTask == nil, let conversationID = controller.selectedID else { return }
+        guard fileSelectionTask == nil, let conversationID = controller.selectedID,
+            !controller.preparingMaterials.contains(conversationID)
+        else { return }
         controller.reportMaterialError(nil, in: conversationID)
-        materialTask = Task { @MainActor in
-            defer { materialTask = nil }
+        fileSelectionTask = Task { @MainActor in
             do {
                 let urls = try await fileSelectionPresenter.requiredForFileSelection().selectURLs(
                     .init(
                         kind: .files(allowedContentTypes: [.pdf, .plainText, .image], allowsMultipleSelection: materialID == nil)))
+                fileSelectionTask = nil
                 guard let urls, !Task.isCancelled else { return }
-                await controller.addLocalFiles(urls, to: conversationID, replacing: materialID)
-            } catch { controller.reportMaterialError(error.localizedDescription, in: conversationID) }
+                prepareFiles(urls, to: conversationID, replacing: materialID)
+            } catch {
+                fileSelectionTask = nil
+                if !(error is CancellationError) { controller.reportMaterialError(error.localizedDescription, in: conversationID) }
+            }
         }
     }
 
-    private func prepareFiles(_ urls: [URL], to conversationID: UUID) {
-        controller.reportMaterialError(nil, in: conversationID)
-        materialTask = Task { @MainActor in
-            defer { materialTask = nil }
-            await controller.addLocalFiles(urls, to: conversationID)
+    private func prepareFiles(_ urls: [URL], to conversationID: UUID, replacing materialID: UUID? = nil) {
+        Task { @MainActor in
+            await controller.addLocalFiles(urls, to: conversationID, replacing: materialID)
         }
+    }
+
+    private func prepareNote(_ note: WorkspaceCatalogNote, in conversationID: UUID) async throws {
+        var failure: (any Error)?
+        let prepared = await controller.performMaterialPreparation(in: conversationID) {
+            do { try await addNote(note, conversationID) } catch {
+                failure = error
+                throw error
+            }
+        }
+        guard prepared else { throw failure ?? CancellationError() }
     }
 
     private var completionCandidates: [AgentChatComposerCandidate] {
@@ -1297,7 +1311,9 @@ struct AgentChatView: View {
             candidates = AgentChatComposerCatalog.skills(
                 methods: controller.capabilities.methods,
                 canRefresh: controller.capabilities.isConnected && !controller.capabilities.isRefreshing)
-        case "@": candidates = AgentChatComposerCatalog.materials(notes: materialTask == nil ? noteChoices : [])
+        case "@":
+            let isPreparing = controller.selectedID.map { controller.preparingMaterials.contains($0) } ?? false
+            candidates = AgentChatComposerCatalog.materials(notes: isPreparing ? [] : noteChoices)
         default:
             candidates = AgentChatComposerCatalog.commands(
                 isBusy: controller.isBusy, hasChanges: !conversationChangeIDs.isEmpty,
@@ -1314,7 +1330,10 @@ struct AgentChatView: View {
             controller.selected?.isAvailable == true
         else { return false }
         switch candidate.action {
-        case .file, .notePicker, .note: return materialTask == nil
+        case .file:
+            return fileSelectionTask == nil && conversationID.map { !controller.preparingMaterials.contains($0) } == true
+        case .notePicker, .note, .selection:
+            return conversationID.map { !controller.preparingMaterials.contains($0) } == true
         case .webSearch: return !controller.isBusy
         case .refreshMethods: return controller.capabilities.isConnected && !controller.capabilities.isRefreshing
         case .method(let selected):
@@ -1326,12 +1345,34 @@ struct AgentChatView: View {
         }
     }
 
-    private func chooseCompletion(_ candidate: AgentChatComposerCandidate, in conversationID: UUID?) {
-        guard let conversationID, conversationID == controller.selectedID else { return }
+    private func chooseCompletion(
+        _ candidate: AgentChatComposerCandidate, in conversationID: UUID?, finish: @escaping (Bool) -> Void
+    ) {
+        guard let conversationID, conversationID == controller.selectedID else {
+            finish(false)
+            return
+        }
+        switch candidate.action {
+        case .note(let note):
+            Task { @MainActor in
+                do {
+                    try await prepareNote(note, in: conversationID)
+                    finish(true)
+                } catch { finish(false) }
+            }
+            return
+        case .selection:
+            Task { @MainActor in
+                finish(await addSelection(conversationID))
+            }
+            return
+        default: break
+        }
+        finish(true)
         switch candidate.action {
         case .file: chooseFiles()
         case .notePicker: notePickerTarget = .init(id: conversationID)
-        case .selection: addSelection()
+        case .selection, .note: break
         case .methods:
             completion.begin("$")
         case .refreshMethods:
@@ -1356,12 +1397,6 @@ struct AgentChatView: View {
             showsAgents = true
         case .webSearch(let mode): controller.setWebSearch(mode)
         case .method(let method): controller.toggleMethod(method)
-        case .note(let note):
-            guard materialTask == nil else { return }
-            materialTask = Task { @MainActor in
-                defer { materialTask = nil }
-                do { try await addNote(note, conversationID) } catch { controller.reportMaterialError(error.localizedDescription, in: conversationID) }
-            }
         }
     }
 
@@ -1540,15 +1575,14 @@ struct AgentChatView: View {
                 },
                 completion: completion, candidates: completionCandidates, candidateQuery: completion.query,
                 canChooseCompletion: { canChooseCompletion($0, in: conversationID) },
-                chooseCompletion: { candidate in chooseCompletion(candidate, in: conversationID) },
+                chooseCompletion: { candidate, finish in chooseCompletion(candidate, in: conversationID, finish: finish) },
                 transferMaterials: { materials, origin in
                     guard let conversationID else { return }
-                    guard materialTask == nil else {
+                    guard !controller.preparingMaterials.contains(conversationID) else {
                         controller.reportMaterialError(ScholiumL10n.string("Finish preparing the current material before adding another."), in: conversationID)
                         return
                     }
-                    materialTask = Task { @MainActor in
-                        defer { materialTask = nil }
+                    Task { @MainActor in
                         await controller.addTransferredMaterials(materials, origin: origin, to: conversationID) { item in
                             let note = try AgentChatPasteboardSnapshot.resolve(item, in: noteChoices)
                             try await addNote(note, conversationID)
@@ -1559,7 +1593,8 @@ struct AgentChatView: View {
             .frame(maxWidth: .infinity)
             HStack {
                 Menu {
-                    Button("Choose File…") { chooseFiles() }.disabled(materialTask != nil)
+                    Button("Choose File…") { chooseFiles() }
+                        .disabled(fileSelectionTask != nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
                     Button {
                         completion.begin("@")
                     } label: {

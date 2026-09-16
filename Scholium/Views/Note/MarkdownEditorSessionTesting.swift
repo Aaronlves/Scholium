@@ -222,7 +222,7 @@
             let nativeSelectionBackground: String
             let nativeCaretIsTransparent: Bool
             let drawnCursorCount: Int
-            let selectedBackgroundsMatchAccent: Bool
+            let selectedBackgroundsMatchFocusState: Bool
             let activeLineTexts: [String]
             let activeLineGutterCount: Int
         }
@@ -764,7 +764,10 @@
                 """
                 const runs = Array.from(document.querySelectorAll('.cm-scholium-selected-text'));
                 const probe = document.createElement('span');
-                probe.style.background = 'color-mix(in srgb, var(--scholium-color-accent) 24%, transparent)';
+                const focused = document.querySelector('.cm-editor')?.classList.contains('cm-focused');
+                probe.style.background = focused
+                    ? 'color-mix(in srgb, var(--scholium-color-accent) 24%, transparent)'
+                    : 'var(--scholium-native-inactive-text-selection)';
                 document.body.appendChild(probe);
                 const expected = getComputedStyle(probe).backgroundColor;
                 probe.remove();
@@ -798,7 +801,7 @@
                         ? getComputedStyle(content).caretColor === transparentColor
                         : false,
                     drawnCursorCount: drawnCursors.length,
-                    selectedBackgroundsMatchAccent: runs.every(
+                    selectedBackgroundsMatchFocusState: runs.every(
                         run => getComputedStyle(run).backgroundColor === expected
                     ),
                     activeLineTexts: Array.from(document.querySelectorAll('.cm-line.cm-activeLine'))

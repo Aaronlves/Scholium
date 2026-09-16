@@ -145,7 +145,10 @@ struct ContentView: View {
                     AgentChatView(
                         controller: chat,
                         isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
-                        addSelection: { Task { await appState.addCurrentSelectionToChat() } },
+                        addSelection: { conversationID in
+                            guard chat.selectedID == conversationID else { return false }
+                            return await appState.addCurrentSelectionToChat()
+                        },
                         noteChoices: appState.workspaceCatalog?.notes ?? [],
                         addNote: { note, conversationID in
                             try await appState.addNoteToChat(note, conversationID: conversationID)

@@ -10,62 +10,66 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
-    @Test("Native text drag payloads preserve internal move, Option-copy and exact Undo",
-          arguments: [MarkdownEditorMode.livePreview, .source], [false, true])
+    @Test(
+        "Native text drag payloads preserve internal move, Option-copy and exact Undo",
+        arguments: [MarkdownEditorMode.livePreview, .source], [false, true])
     func nativeTextDragPreservesPayloadAndExactUndo(mode: MarkdownEditorMode, copy: Bool) async throws {
         let source = "Selected passage remains.\n\nOther paragraph."
-        let harness = EditorHarness(source: source, initialMode: mode, initialSourceRange: 0..<8,
-                                    laysOutForPointerTesting: true)
+        let harness = EditorHarness(
+            source: source, initialMode: mode, initialSourceRange: 0..<8,
+            laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         try await harness.waitUntilPresentedMode(mode)
         try await harness.waitUntilSelection(head: 8)
         try await harness.session.focusAndWait()
-        let result = try #require(try await harness.callPageJavaScript("""
-            await document.fonts.ready;
-            const selected = window.getSelection();
-            const rect = selected.getRangeAt(0).getClientRects()[0];
-            const x = rect.left + 1, y = rect.top + rect.height / 2;
-            const target = document.elementFromPoint(x, y);
-            const content = document.querySelector('.cm-content');
-            target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
-                button: 0, buttons: 1, detail: 1, altKey: copy, clientX: x, clientY: y}));
-            const rootIsNative = !content.hasAttribute('draggable');
-            const data = new DataTransfer();
-            let dragImageCalls = 0;
-            Object.defineProperty(data, 'setDragImage', {value: () => { dragImageCalls++; }});
-            const previewObserver = new MutationObserver(() => {});
-            previewObserver.observe(document.body, {childList: true});
-            // DOM dispatch checks our payload and ownership contract. The OS
-            // owns gesture recognition and timing; this does not simulate it.
-            content.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
-                dataTransfer: data, altKey: copy, clientX: x, clientY: y}));
-            const previewNodes = previewObserver.takeRecords()
-                .reduce((count, record) => count + record.addedNodes.length, 0);
-            previewObserver.disconnect();
-            const nativeDuringDrag = !content.hasAttribute('draggable');
-            const text = data.getData('text/plain');
-            const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
-            let endNode, endOffset;
-            while ((endNode = walker.nextNode())) {
-                const index = endNode.nodeValue.indexOf('Other paragraph.');
-                if (index >= 0) { endOffset = index + 'Other paragraph.'.length; break; }
-            }
-            if (!endNode) throw new Error('Missing visible drop target');
-            const caret = document.createRange();
-            caret.setStart(endNode, endOffset - 1);
-            caret.setEnd(endNode, endOffset);
-            const endRect = caret.getBoundingClientRect();
-            if (!endRect.width || !endRect.height) throw new Error('Missing drop target geometry');
-            content.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true,
-                dataTransfer: data, altKey: copy,
-                clientX: endRect.right, clientY: endRect.top + endRect.height / 2}));
-            content.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
-            document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
-            return {text, rootIsNative: String(rootIsNative), nativeDuringDrag: String(nativeDuringDrag),
-                dragImageCalls: String(dragImageCalls), previewNodes: String(previewNodes),
-                rootStillNative: String(!content.hasAttribute('draggable'))};
-            """, arguments: ["copy": copy]) as? [String: String])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                await document.fonts.ready;
+                const selected = window.getSelection();
+                const rect = selected.getRangeAt(0).getClientRects()[0];
+                const x = rect.left + 1, y = rect.top + rect.height / 2;
+                const target = document.elementFromPoint(x, y);
+                const content = document.querySelector('.cm-content');
+                target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, altKey: copy, clientX: x, clientY: y}));
+                const rootIsNative = !content.hasAttribute('draggable');
+                const data = new DataTransfer();
+                let dragImageCalls = 0;
+                Object.defineProperty(data, 'setDragImage', {value: () => { dragImageCalls++; }});
+                const previewObserver = new MutationObserver(() => {});
+                previewObserver.observe(document.body, {childList: true});
+                // DOM dispatch checks our payload and ownership contract. The OS
+                // owns gesture recognition and timing; this does not simulate it.
+                content.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
+                    dataTransfer: data, altKey: copy, clientX: x, clientY: y}));
+                const previewNodes = previewObserver.takeRecords()
+                    .reduce((count, record) => count + record.addedNodes.length, 0);
+                previewObserver.disconnect();
+                const nativeDuringDrag = !content.hasAttribute('draggable');
+                const text = data.getData('text/plain');
+                const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+                let endNode, endOffset;
+                while ((endNode = walker.nextNode())) {
+                    const index = endNode.nodeValue.indexOf('Other paragraph.');
+                    if (index >= 0) { endOffset = index + 'Other paragraph.'.length; break; }
+                }
+                if (!endNode) throw new Error('Missing visible drop target');
+                const caret = document.createRange();
+                caret.setStart(endNode, endOffset - 1);
+                caret.setEnd(endNode, endOffset);
+                const endRect = caret.getBoundingClientRect();
+                if (!endRect.width || !endRect.height) throw new Error('Missing drop target geometry');
+                content.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true,
+                    dataTransfer: data, altKey: copy,
+                    clientX: endRect.right, clientY: endRect.top + endRect.height / 2}));
+                content.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
+                document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
+                return {text, rootIsNative: String(rootIsNative), nativeDuringDrag: String(nativeDuringDrag),
+                    dragImageCalls: String(dragImageCalls), previewNodes: String(previewNodes),
+                    rootStillNative: String(!content.hasAttribute('draggable'))};
+                """, arguments: ["copy": copy]) as? [String: String])
         #expect(result["text"] == "Selected")
         #expect(result["rootIsNative"] == "true")
         #expect(result["nativeDuringDrag"] == "true")
@@ -75,40 +79,46 @@ struct MarkdownEditorWebViewIntegrationTests {
         let expected = copy ? source + "Selected" : " passage remains.\n\nOther paragraph.Selected"
         let movedSource = try await harness.session.currentText()
         #expect(movedSource == expected)
-        let undoHandled = try await harness.callPageJavaScript("""
-            const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90,
-                which: 90, metaKey: true, bubbles: true, cancelable: true});
-            document.querySelector('.cm-content').dispatchEvent(event);
-            return event.defaultPrevented;
-            """, arguments: [:]) as? Bool
+        let undoHandled =
+            try await harness.callPageJavaScript(
+                """
+                const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90,
+                    which: 90, metaKey: true, bubbles: true, cancelable: true});
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """, arguments: [:]) as? Bool
         #expect(undoHandled == true)
         #expect(try await harness.session.currentText() == source)
-        let ordinarySelection = try #require(try await harness.callPageJavaScript("""
-            const selected = window.getSelection();
-            const rect = selected.getRangeAt(0).getClientRects()[0];
-            const target = document.elementFromPoint(rect.left + 1, rect.top + rect.height / 2);
-            target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
-                button: 0, buttons: 1, detail: 1, clientX: rect.left + 1, clientY: rect.top + rect.height / 2}));
-            document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
-            const collapsed = selected.isCollapsed;
-            document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
-                key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, which: 39,
-                shiftKey: true, bubbles: true, cancelable: true}));
-            return {collapsed, selectedLength: selected.toString().length};
-            """, arguments: [:]) as? [String: Any])
+        let ordinarySelection = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const selected = window.getSelection();
+                const rect = selected.getRangeAt(0).getClientRects()[0];
+                const target = document.elementFromPoint(rect.left + 1, rect.top + rect.height / 2);
+                target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, clientX: rect.left + 1, clientY: rect.top + rect.height / 2}));
+                document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
+                const collapsed = selected.isCollapsed;
+                document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, which: 39,
+                    shiftKey: true, bubbles: true, cancelable: true}));
+                return {collapsed, selectedLength: selected.toString().length};
+                """, arguments: [:]) as? [String: Any])
         #expect(ordinarySelection["collapsed"] as? Bool == true)
         #expect(ordinarySelection["selectedLength"] as? Int == 1)
         await harness.closeAndDrain()
     }
 
-    @Test("Heading transfers preserve complete Markdown lines and exact partial text",
-          arguments: [MarkdownEditorMode.livePreview, .source], ["heading", "headingAndParagraph", "partial"])
+    @Test(
+        "Heading transfers preserve complete Markdown lines and exact partial text",
+        arguments: [MarkdownEditorMode.livePreview, .source], ["heading", "headingAndParagraph", "partial"])
     func headingTextTransferPreservesSourceStructure(mode: MarkdownEditorMode, scope: String) async throws {
         let heading = "##   Moved 中文 title\r\n"
         let paragraph = "Moved paragraph.\r\n"
         let source = heading + paragraph + "\r\n# Target heading\r\nTail.\r\n"
         let structural = scope != "partial"
-        let selectedRange: Range<Int> = structural
+        let selectedRange: Range<Int> =
+            structural
             ? 0..<(heading.utf16.count + (scope == "headingAndParagraph" ? paragraph.utf16.count : 0))
             : 5..<10
         let payload = (source as NSString).substring(with: NSRange(selectedRange))
@@ -117,7 +127,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let expected = (removed as NSString).replacingCharacters(
             in: NSRange(location: target - selectedRange.count, length: 0), with: payload)
         let tail = (source as NSString).range(of: "Tail.").location
-        let harness = EditorHarness(source: source, initialMode: mode,
+        let harness = EditorHarness(
+            source: source, initialMode: mode,
             initialSourceRange: mode == .source ? selectedRange : tail..<tail,
             laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -129,7 +140,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             // Select rendered text using CodeMirror's real pointer path. The
             // complete-heading case deliberately starts after its hidden marker.
             // Source mode above instead selects an explicit exact source range.
-            _ = try await harness.callPageJavaScript("""
+            _ = try await harness.callPageJavaScript(
+                """
                 await document.fonts.ready;
                 const content = document.querySelector('.cm-content');
                 const point = (text, end) => {
@@ -170,58 +182,62 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.context?.selections == [MarkdownEditorSelectionRange(anchor: selectedAnchor, head: selectedHead)])
         #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
 
-        let transfer = try #require(try await harness.callPageJavaScript("""
-            const content = document.querySelector('.cm-content');
-            const locate = text => {
-                for (const line of content.querySelectorAll('.cm-line')) {
-                    let offset = line.textContent.indexOf(text);
-                    if (offset < 0) continue;
-                    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-                    let node;
-                    while ((node = walker.nextNode())) {
-                        if (offset >= node.length) { offset -= node.length; continue; }
-                        const range = document.createRange();
-                        range.setStart(node, offset); range.setEnd(node, offset + 1);
-                        const rect = range.getBoundingClientRect();
-                        if (!rect.width || !rect.height) break;
-                        return {node, rect};
+        let transfer = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                const locate = text => {
+                    for (const line of content.querySelectorAll('.cm-line')) {
+                        let offset = line.textContent.indexOf(text);
+                        if (offset < 0) continue;
+                        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                        let node;
+                        while ((node = walker.nextNode())) {
+                            if (offset >= node.length) { offset -= node.length; continue; }
+                            const range = document.createRange();
+                            range.setStart(node, offset); range.setEnd(node, offset + 1);
+                            const rect = range.getBoundingClientRect();
+                            if (!rect.width || !rect.height) break;
+                            return {node, rect};
+                        }
                     }
+                    throw new Error('Missing transfer text: ' + text);
+                };
+                const start = locate('Moved 中文 title');
+                const x = start.rect.left + 1, y = start.rect.top + start.rect.height / 2;
+                start.node.parentElement.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
+                const data = new DataTransfer();
+                content.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
+                    dataTransfer: data, clientX: x, clientY: y}));
+                const payload = data.getData('text/plain');
+                const target = locate(structural && !edit ? '# Target heading' : 'Target heading');
+                let dropX = target.rect.left + 0.2;
+                let dropY = target.rect.top + target.rect.height / 2;
+                if (structural && edit) {
+                    const line = target.node.parentElement.closest('.cm-live-heading');
+                    const top = parseFloat(getComputedStyle(line).paddingTop);
+                    if (!(top > 0)) throw new Error('Fixture has no target heading padding');
+                    dropY = line.getBoundingClientRect().top + top / 2;
                 }
-                throw new Error('Missing transfer text: ' + text);
-            };
-            const start = locate('Moved 中文 title');
-            const x = start.rect.left + 1, y = start.rect.top + start.rect.height / 2;
-            start.node.parentElement.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
-                button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
-            const data = new DataTransfer();
-            content.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
-                dataTransfer: data, clientX: x, clientY: y}));
-            const payload = data.getData('text/plain');
-            const target = locate(structural && !edit ? '# Target heading' : 'Target heading');
-            let dropX = target.rect.left + 0.2;
-            let dropY = target.rect.top + target.rect.height / 2;
-            if (structural && edit) {
-                const line = target.node.parentElement.closest('.cm-live-heading');
-                const top = parseFloat(getComputedStyle(line).paddingTop);
-                if (!(top > 0)) throw new Error('Fixture has no target heading padding');
-                dropY = line.getBoundingClientRect().top + top / 2;
-            }
-            content.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true,
-                dataTransfer: data, clientX: dropX, clientY: dropY}));
-            content.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true,
-                dataTransfer: data, clientX: dropX, clientY: dropY}));
-            content.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
-            document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
-            return payload;
-            """, arguments: ["structural": structural, "edit": mode == .livePreview]) as? String)
+                content.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true,
+                    dataTransfer: data, clientX: dropX, clientY: dropY}));
+                content.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true,
+                    dataTransfer: data, clientX: dropX, clientY: dropY}));
+                content.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
+                document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
+                return payload;
+                """, arguments: ["structural": structural, "edit": mode == .livePreview]) as? String)
         #expect(transfer == payload.replacingOccurrences(of: "\r\n", with: "\n"))
         #expect(Data(try await harness.session.currentText().utf8) == Data(expected.utf8))
-        let handled = try await harness.callPageJavaScript("""
-            const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
-                metaKey: true, bubbles: true, cancelable: true});
-            document.querySelector('.cm-content').dispatchEvent(event);
-            return event.defaultPrevented;
-            """) as? Bool
+        let handled =
+            try await harness.callPageJavaScript(
+                """
+                const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                    metaKey: true, bubbles: true, cancelable: true});
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """) as? Bool
         #expect(handled == true)
         #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
         await harness.closeAndDrain()
@@ -336,15 +352,16 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.generation == 1)
 
         func historyKey(redo: Bool) async throws {
-            let handled = try await harness.callPageJavaScript(
-                """
-                const event = new KeyboardEvent('keydown', {
-                  key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
-                  metaKey: true, shiftKey: redo, bubbles: true, cancelable: true
-                });
-                document.querySelector('.cm-content').dispatchEvent(event);
-                return event.defaultPrevented;
-                """, arguments: ["redo": redo]) as? Bool
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const event = new KeyboardEvent('keydown', {
+                      key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                      metaKey: true, shiftKey: redo, bubbles: true, cancelable: true
+                    });
+                    document.querySelector('.cm-content').dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: ["redo": redo]) as? Bool
             #expect(handled == true)
         }
         try await historyKey(redo: false)
@@ -2681,7 +2698,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot.selectedBlankLineRunCount == 0)
         #expect(snapshot.visibleStockRectangleCount == 0)
         #expect(snapshot.nativeSelectionBackground == "rgba(0, 0, 0, 0)")
-        #expect(snapshot.selectedBackgroundsMatchAccent)
+        #expect(snapshot.selectedBackgroundsMatchFocusState)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }

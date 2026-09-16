@@ -297,7 +297,7 @@ async function initializeReader(value: unknown): Promise<void> {
       const wrapper = document.createElement('figure');
       wrapper.className = 'scholium-mermaid';
       wrapper.dataset.scholiumProtected = 'mermaid';
-      for (const name of ['data-source-utf16-start', 'data-source-utf16-end', 'data-source-start-line', 'data-source-end-line']) {
+      for (const name of ['data-source-utf16-start', 'data-source-utf16-end', 'data-source-start-line', 'data-source-end-line', 'data-scholium-object']) {
         const value = original.getAttribute(name);
         if (value !== null) wrapper.setAttribute(name, value);
       }

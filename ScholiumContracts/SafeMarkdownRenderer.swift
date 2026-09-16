@@ -4,10 +4,39 @@ import Markdown
 public struct RenderedMarkdownDocument: Hashable, Sendable {
     public let htmlBody: String
     public let semanticDocument: MarkdownSemanticDocument
+    public let objects: [RenderedMarkdownObject]
 
-    public init(htmlBody: String, semanticDocument: MarkdownSemanticDocument) {
+    public init(htmlBody: String, semanticDocument: MarkdownSemanticDocument, objects: [RenderedMarkdownObject]) {
         self.htmlBody = htmlBody
         self.semanticDocument = semanticDocument
+        self.objects = objects
+    }
+}
+
+/// Immutable action payload emitted by the same visitor as its displayed HTML.
+/// IDs identify content within this source snapshot, never a second parse order.
+public struct RenderedMarkdownObject: Hashable, Sendable, Identifiable {
+    public enum Kind: String, Hashable, Sendable { case code, diagram, table }
+    public let id: String
+    public let kind: Kind
+    public let copyText: String
+    public let html: String
+}
+
+private final class RenderedMarkdownObjects {
+    var values: [RenderedMarkdownObject] = []
+    private var occurrences: [String: Int] = [:]
+
+    func append(kind: RenderedMarkdownObject.Kind, text: String, html: String, tag: String) -> String {
+        let fingerprint = DocumentFingerprint(content: kind.rawValue + "\n" + text + "\n" + html).sha256
+        let occurrence = occurrences[fingerprint, default: 0]
+        occurrences[fingerprint] = occurrence + 1
+        let id = "\(fingerprint):\(occurrence)"
+        values.append(.init(id: id, kind: kind, copyText: text, html: html))
+        guard let range = html.range(of: "<" + tag), let end = html[range.upperBound...].firstIndex(of: ">") else { return html }
+        var annotated = html
+        annotated.insert(contentsOf: " data-scholium-object=\"\(id)\"", at: end)
+        return annotated
     }
 }
 
@@ -29,8 +58,9 @@ public enum SafeMarkdownRenderer {
         guard semantic.fingerprint == document.fingerprint else {
             return render(document)
         }
-        let html = renderBody(document: document, semantic: semantic, depth: 0)
-        return RenderedMarkdownDocument(htmlBody: html, semanticDocument: semantic)
+        let objects = RenderedMarkdownObjects()
+        let html = renderBody(document: document, semantic: semantic, depth: 0, objects: objects)
+        return RenderedMarkdownDocument(htmlBody: html, semanticDocument: semantic, objects: objects.values)
     }
 
     private struct Replacement {
@@ -46,6 +76,7 @@ public enum SafeMarkdownRenderer {
         document: NoteDocument,
         semantic: MarkdownSemanticDocument,
         depth: Int,
+        objects: RenderedMarkdownObjects?,
         locatedLinkSpans: [SourceSpan]? = nil
     ) -> String {
         guard depth < 12 else {
@@ -76,19 +107,17 @@ public enum SafeMarkdownRenderer {
         let removedDefinitionSpans = semantic.footnoteDefinitions
             .filter { !$0.isInline }
             .map(\.span)
+        let visibleBlocks = semantic.blocks.filter { block in
+            !(outerCallouts.map(\.span) + removedDefinitionSpans + standaloneAnchorSpans).contains {
+                $0.utf16LowerBound <= block.span.utf16LowerBound
+                    && $0.utf16UpperBound >= block.span.utf16UpperBound
+            }
+        }
         let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]] =
             depth == 0
-            ? Dictionary(
-                grouping: semantic.blocks.filter { block in
-                    !(outerCallouts.map(\.span) + removedDefinitionSpans + standaloneAnchorSpans).contains {
-                        $0.utf16LowerBound <= block.span.utf16LowerBound
-                            && $0.utf16UpperBound >= block.span.utf16UpperBound
-                    }
-                }, by: \.kind
-            ).mapValues { blocks in
+            ? Dictionary(grouping: visibleBlocks, by: \.kind).mapValues { blocks in
                 blocks.map(\.span).sorted { $0.utf16LowerBound < $1.utf16LowerBound }
-            }
-            : [:]
+            } : [:]
         for (index, callout) in outerCallouts.enumerated() {
             guard let relative = relativeRange(callout.span, bodyStart: bodyStart, bodyLength: bodyLength) else { continue }
             let key = "\(nonce)-block-\(index)"
@@ -105,7 +134,7 @@ public enum SafeMarkdownRenderer {
             blockHTML[key] = renderCallout(
                 callout,
                 locatedLinkSpans: nestedLinkSpans,
-                depth: depth + 1
+                depth: depth + 1, objects: objects
             )
             replacements.append(
                 Replacement(
@@ -240,13 +269,17 @@ public enum SafeMarkdownRenderer {
             blockHTML: blockHTML,
             inlineHTML: inlineHTML,
             blockSourceSpans: blockSourceSpans,
-            quoteDepths: quoteDepths
+            quoteDepths: quoteDepths,
+            source: transformed, objects: objects,
+            tableSources: visibleBlocks.filter { $0.kind == .table }.map {
+                (document.rawContent as NSString).substring(with: $0.span.nsRange)
+            }
         )
         visitor.visit(parsed)
 
         let footnoteSection = renderFootnoteSection(
             semantic.footnoteDefinitions,
-            depth: depth + 1
+            depth: depth + 1, objects: objects
         )
         return visitor.renderedHTML(
             source: document.body,
@@ -257,7 +290,7 @@ public enum SafeMarkdownRenderer {
     private static func renderCallout(
         _ callout: CalloutBlock,
         locatedLinkSpans: [SourceSpan],
-        depth: Int
+        depth: Int, objects: RenderedMarkdownObjects?
     ) -> String {
         let roleLabel = escapeHTML(callout.role.displayLabel)
         let purpose = escapeAttribute(callout.role.purpose)
@@ -282,6 +315,7 @@ public enum SafeMarkdownRenderer {
             document: fragment,
             semantic: fragmentSemantic,
             depth: depth,
+            objects: objects,
             locatedLinkSpans: fragmentSemantic.links.count == locatedLinkSpans.count
                 ? locatedLinkSpans
                 : nil
@@ -365,7 +399,7 @@ public enum SafeMarkdownRenderer {
 
     private static func renderFootnoteSection(
         _ definitions: [FootnoteDefinition],
-        depth: Int
+        depth: Int, objects: RenderedMarkdownObjects?
     ) -> String {
         let referenced = definitions.filter { $0.ordinal != nil }
         guard !referenced.isEmpty else { return "" }
@@ -375,7 +409,7 @@ public enum SafeMarkdownRenderer {
             let content = renderBody(
                 document: fragment,
                 semantic: MarkdownSemanticDocument(parsing: fragment),
-                depth: depth
+                depth: depth, objects: objects
             )
             return
                 "<li id=\"fn-\(ordinal)\" dir=\"auto\" data-footnote=\"\(ordinal)\" \(sourceAttributes(definition.span))><div class=\"footnote-content\">\(content)</div><button type=\"button\" class=\"footnote-return\" data-footnote=\"\(ordinal)\" aria-label=\"Return to footnote reference \(ordinal)\">↩</button></li>"
@@ -407,7 +441,7 @@ public enum SafeMarkdownRenderer {
         let annotationHTML = renderBody(
             document: fragment,
             semantic: MarkdownSemanticDocument(parsing: fragment),
-            depth: depth
+            depth: depth, objects: nil
         )
         let label = escapeAttribute("Show link annotation for \(display)")
         let target = escapeAttribute(display)
@@ -832,6 +866,11 @@ private struct SafeHTMLVisitor: MarkupWalker {
     let inlineHTML: [String: String]
     let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]]
     let quoteDepths: [SourceSpan: Int]
+    var source = ""
+    var sourceLines: [(text: String, ending: String)]? = nil
+    var objects: RenderedMarkdownObjects? = nil
+    var tableSources: [String] = []
+    var tableSourceIndex = 0
     var blockSourceIndices: [MarkdownBlockKind: Int] = [:]
     var quoteMetadata: [String: SafeHTMLQuoteMetadata] = [:]
     var nextQuoteIdentifier = 0
@@ -864,8 +903,13 @@ private struct SafeHTMLVisitor: MarkupWalker {
     }
     mutating func visitCodeBlock(_ codeBlock: CodeBlock) {
         let language = codeBlock.language.map { " class=\"language-\(SafeMarkdownRenderer.escapeAttribute($0))\"" } ?? ""
-        result +=
+        let html =
             "<pre dir=\"ltr\"\(sourceAttributes(for: .code))><code dir=\"ltr\"\(language)>\(SafeMarkdownRenderer.escapeHTML(codeBlock.code))</code></pre>\n"
+        let copy = sourceLineEndings(in: codeBlock.code, range: codeBlock.range, skipsFence: true)
+        result +=
+            objects?.append(
+                kind: codeBlock.language?.lowercased() == "mermaid" ? .diagram : .code,
+                text: copy, html: html, tag: "pre") ?? html
     }
     mutating func visitInlineCode(_ inlineCode: InlineCode) {
         result += "<code dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(inlineCode.code))</code>"
@@ -942,14 +986,20 @@ private struct SafeHTMLVisitor: MarkupWalker {
         if let key = blockToken(in: html.rawHTML), let replacement = blockHTML[key] {
             result += replacement
         } else {
-            result +=
+            let rendered =
                 "<pre class=\"raw-html\" dir=\"ltr\"\(sourceAttributes(for: .html))><code dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(html.rawHTML))</code></pre>"
+            result +=
+                objects?.append(
+                    kind: .code,
+                    text: sourceLineEndings(in: html.rawHTML, range: html.range, skipsFence: false), html: rendered, tag: "pre") ?? rendered
         }
     }
     mutating func visitInlineHTML(_ inlineHTML: InlineHTML) {
         result += "<code class=\"raw-html-inline\" dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(inlineHTML.rawHTML))</code>"
     }
     mutating func visitTable(_ table: Table) {
+        let prefix = result
+        result = ""
         let previousAlignments = tableColumnAlignments
         let previousColumn = currentTableColumn
         let previousHeadState = isInsideTableHead
@@ -959,6 +1009,14 @@ private struct SafeHTMLVisitor: MarkupWalker {
         result += "<div class=\"scholium-table-scroll\" data-scholium-protected=\"table\"><table class=\"scholium-table\"\(sourceAttributes(for: .table))>"
         descendInto(table)
         result += "</table></div>"
+        let html = result
+        if tableSources.indices.contains(tableSourceIndex) {
+            result = prefix + (objects?.append(kind: .table, text: tableSources[tableSourceIndex], html: html, tag: "table") ?? html)
+        } else {
+            // No exact source range means no action payload; never reconstruct source.
+            result = prefix + html
+        }
+        tableSourceIndex += 1
         tableColumnAlignments = previousAlignments
         currentTableColumn = previousColumn
         isInsideTableHead = previousHeadState
@@ -1026,6 +1084,50 @@ private struct SafeHTMLVisitor: MarkupWalker {
     private mutating func sourceAttributes(for kind: MarkdownBlockKind) -> String {
         guard let span = nextSourceSpan(for: kind) else { return "" }
         return " \(SafeMarkdownRenderer.sourceAttributes(span))"
+    }
+
+    /// The AST owns code/container interpretation. Preserve this render fragment's
+    /// line terminators instead of cmark's LF normalization or synthetic EOF LF.
+    /// Callout/footnote fragments retain their semantic projection's normalization;
+    /// an object payload is not a replacement for exact whole-document Markdown.
+    private mutating func sourceLineEndings(in literal: String, range: SourceRange?, skipsFence: Bool) -> String {
+        guard let range else { return literal }
+        if sourceLines == nil {
+            let ns = source as NSString
+            var lines: [(text: String, ending: String)] = []
+            var position = 0
+            while position < ns.length {
+                var start = 0
+                var end = 0
+                var contentsEnd = 0
+                ns.getLineStart(&start, end: &end, contentsEnd: &contentsEnd, for: NSRange(location: position, length: 0))
+                lines.append(
+                    (
+                        ns.substring(with: NSRange(location: start, length: contentsEnd - start)),
+                        ns.substring(with: NSRange(location: contentsEnd, length: end - contentsEnd))
+                    ))
+                position = end
+            }
+            sourceLines = lines
+        }
+        guard let lines = sourceLines else { return literal }
+        var first = range.lowerBound.line - 1
+        guard lines.indices.contains(first) else { return literal }
+        if skipsFence {
+            let bytes = Array(lines[first].text.utf8)
+            let column = range.lowerBound.column - 1
+            let marker = bytes.dropFirst(max(0, column)).prefix(3)
+            let hasFenceMarker = marker.count == 3 && (marker.allSatisfy { $0 == 96 } || marker.allSatisfy { $0 == 126 })
+            let contentLines = literal.components(separatedBy: "\n").count - (literal.hasSuffix("\n") ? 1 : 0)
+            // An indented block can itself begin with literal backticks. The
+            // AST span includes delimiter lines only for an actual fenced block.
+            if hasFenceMarker, range.upperBound.line - range.lowerBound.line + 1 > contentLines { first += 1 }
+        }
+        let content = literal.components(separatedBy: "\n")
+        return content.enumerated().map { index, line in
+            guard index < content.count - 1 else { return line }
+            return line + (lines.indices.contains(first + index) ? lines[first + index].ending : "\n")
+        }.joined()
     }
 
     private mutating func nextSourceSpan(for kind: MarkdownBlockKind) -> SourceSpan? {

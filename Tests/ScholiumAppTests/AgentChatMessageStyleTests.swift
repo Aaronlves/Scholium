@@ -333,16 +333,16 @@ struct AgentChatMessageStyleTests {
         }
     }
 
-    @Test("Native object previews retain the shared body font and semantic ink")
+    @Test("Code previews retain native monospace and shared semantic ink")
     @MainActor
     func sharedBodyStyle() {
-        let rendered = AgentChatObjectProjection.layoutReply("同一段正文。\n\n第二段。").text
+        let rendered = AgentChatRichContent.codeText("let value = 1\n")
         let bodyFont = rendered.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
         let bodyColor = rendered.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
         let actualColor = bodyColor?.usingColorSpace(.sRGB)
         let expectedColor = ScholiumChatAppearance.messageNSForeground.usingColorSpace(.sRGB)
 
-        #expect(bodyFont == ScholiumChatAppearance.messageNSFont)
+        #expect(bodyFont == .monospacedSystemFont(ofSize: ScholiumChatAppearance.messageNSFont.pointSize, weight: .regular))
         #expect(actualColor != nil && expectedColor != nil)
         #expect(abs((actualColor?.redComponent ?? 0) - (expectedColor?.redComponent ?? 0)) < 0.001)
         #expect(abs((actualColor?.greenComponent ?? 0) - (expectedColor?.greenComponent ?? 0)) < 0.001)
