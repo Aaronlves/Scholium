@@ -2,6 +2,7 @@ import {EditorView} from "@codemirror/view";
 import type {Text} from "@codemirror/state";
 import type {EditorScrollAnchor} from "./protocol";
 import {recordEditorMetric} from "./performance";
+import {AnimationFrameCoalescer} from "./interaction-reporting";
 
 export interface EditorGeometrySnapshot {
   anchor: EditorScrollAnchor;
@@ -64,7 +65,13 @@ export function createEditorScrollCoordinator(
     options.post(currentAnchor());
   }
 
-  let reportTimer: number | undefined;
+  const scrollReports = new AnimationFrameCoalescer(
+    (callback) => window.requestAnimationFrame(callback),
+    (identifier) => window.cancelAnimationFrame(identifier),
+    (callback, delay) => window.setTimeout(callback, delay),
+    (identifier) => window.clearTimeout(identifier),
+  );
+  let sessionTimer: number | undefined;
   let sessionStartedAt: number | null = null;
   let previousFrameAt: number | null = null;
   let measurementFrame: number | null = null;
@@ -73,6 +80,9 @@ export function createEditorScrollCoordinator(
   let sessionDroppedFrameCount = 0;
   editor.scrollDOM.addEventListener("scroll", () => {
     options.onScroll();
+    // Follow the painted viewport during scrolling, independently of the
+    // quiet-period timer that closes the performance measurement session.
+    scrollReports.schedule(postCurrent);
     if (sessionStartedAt === null) sessionStartedAt = performance.now();
     if (measurementFrame === null) {
       measurementFrame = window.requestAnimationFrame(() => {
@@ -87,9 +97,8 @@ export function createEditorScrollCoordinator(
         previousFrameAt = now;
       });
     }
-    window.clearTimeout(reportTimer);
-    reportTimer = window.setTimeout(() => {
-      postCurrent();
+    window.clearTimeout(sessionTimer);
+    sessionTimer = window.setTimeout(() => {
       if (sessionStartedAt !== null) {
         recordEditorMetric("scroll-session", sessionStartedAt, {
           frameCount: sessionFrameCount,
@@ -256,8 +265,9 @@ export function createEditorScrollCoordinator(
       geometryReportGeneration += 1;
       geometryReportScheduled = false;
       pendingGeometrySnapshot = undefined;
-      window.clearTimeout(reportTimer);
-      reportTimer = undefined;
+      scrollReports.cancel();
+      window.clearTimeout(sessionTimer);
+      sessionTimer = undefined;
       if (measurementFrame !== null) window.cancelAnimationFrame(measurementFrame);
       measurementFrame = null;
       sessionStartedAt = null;

@@ -814,14 +814,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             return nil
         }
         let anchor = EditorScrollAnchor(
-            sourceFingerprint: DocumentFingerprint(content: checkedSource).sha256,
+            sourceFingerprint: checkedSourceBuffer.fingerprint.sha256,
             sourceUTF16Offset: sourceOffset,
             blockUTF16LowerBound: lowerBound,
             blockUTF16UpperBound: upperBound,
             relativeBlockPosition: wireAnchor.relativeBlockPosition,
             fallbackFraction: fraction
         )
-        guard anchor.isValid(forUTF16Length: checkedSource.utf16.count) else {
+        guard anchor.isValid(forUTF16Length: checkedSourceBuffer.utf16Length) else {
             pendingScrollAnchor = nil
             return nil
         }

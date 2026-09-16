@@ -6,6 +6,46 @@ import {createEditorScrollCoordinator} from "../scroll-coordinator";
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("scroll coordination across runtime reuse", () => {
+  it.each([16, 1_000])("reports the latest viewport during uninterrupted scroll with %i ms frames", (frameDelay) => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", {
+      setTimeout, clearTimeout,
+      requestAnimationFrame: (callback: () => void) => setTimeout(callback, frameDelay),
+      cancelAnimationFrame: clearTimeout,
+    });
+    let scroll = () => {};
+    const scrollDOM = {
+      scrollTop: 0, scrollHeight: 2_000, clientHeight: 100,
+      getBoundingClientRect: () => ({top: 0}),
+      addEventListener: (_event: string, callback: () => void) => { scroll = callback; },
+    };
+    const editor = {
+      state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM,
+      get documentTop() { return -scrollDOM.scrollTop; },
+      lineBlockAtHeight: (height: number) => ({from: height, to: height + 1, top: height, height: 20}),
+    } as unknown as EditorView;
+    const post = vi.fn();
+    createEditorScrollCoordinator(editor, {
+      onScroll: () => {}, post, flushPresentationGeometry: () => {},
+    });
+    // Keep the gap below the old 120 ms debounce for the entire gesture.
+    for (let index = 1; index <= 100; index += 1) {
+      scrollDOM.scrollTop = index * 10;
+      scroll();
+      vi.advanceTimersByTime(5);
+      if (index === 20) expect(post.mock.calls.length).toBeGreaterThan(0);
+    }
+    expect(post.mock.calls.length).toBeGreaterThan(1);
+    expect(post.mock.calls.length).toBeLessThanOrEqual(frameDelay === 16 ? 32 : 10);
+    vi.advanceTimersByTime(50);
+    expect(post.mock.lastCall?.[0]).toMatchObject({
+      sourceUTF16Offset: 1_008, fallbackFraction: 1_000 / 1_900,
+    });
+    const count = post.mock.calls.length;
+    vi.advanceTimersByTime(120);
+    expect(post).toHaveBeenCalledTimes(count);
+  });
+
   it("cancels old scroll reports and pending geometry before a new document", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {

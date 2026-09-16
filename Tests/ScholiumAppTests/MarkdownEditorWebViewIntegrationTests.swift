@@ -10,6 +10,44 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Edit and Source publish section positions while scrolling continues", arguments: [MarkdownEditorMode.livePreview, .source])
+    func continuousScrollReports(mode: MarkdownEditorMode) async throws {
+        let source = (1...24).map { section in
+            "## Section \(section)\r\n\r\n" + String(repeating: "Nonprivate 中文 😀 paragraph.\r\n\r\n", count: 15)
+        }.joined()
+        let harness = EditorHarness(source: source, initialMode: mode)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        var observedOffsets: [Int] = []
+        var step = 0
+        // Drive input from native time: WebKit marks test pages hidden and
+        // throttles their own intervals, which would create artificial pauses.
+        while observedOffsets.count < 2 {
+            step += 1
+            _ = try await harness.callPageJavaScript(
+                """
+                const scroller = document.querySelector('.cm-scroller');
+                scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * fraction;
+                scroller.dispatchEvent(new Event('scroll'));
+                """, arguments: ["fraction": min(0.9, 0.1 + Double(step) * 0.008)])
+            if let anchor = harness.latestScrollAnchor,
+                anchor.sourceUTF16Offset > source.utf16.count / 4,
+                observedOffsets.last.map({ abs($0 - anchor.sourceUTF16Offset) > 500 }) ?? true
+            {
+                observedOffsets.append(anchor.sourceUTF16Offset)
+            }
+            if ContinuousClock.now >= deadline {
+                Issue.record(Comment(rawValue: "No continuous scroll reports; latest: \(String(describing: harness.latestScrollAnchor)); observed: \(observedOffsets)"))
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(observedOffsets.count == 2)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+    }
+
     @Test("A lost commit acknowledgement can be replayed without replacing later input", arguments: [false, true])
     func lostCommitAcknowledgementCanBeReplayed(withLaterInput: Bool) async throws {
         let source = "Original.\r\n"

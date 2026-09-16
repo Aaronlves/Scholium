@@ -7,6 +7,7 @@ import ScholiumContracts
 /// persistence, conflict, recovery, or diagnostic boundary.
 final class EditorExactSourceBuffer {
     private var storage: NSMutableString
+    private var cachedFingerprint: DocumentFingerprint?
     private(set) var utf8ByteCount: Int
 
     init(source: String = "") {
@@ -15,6 +16,14 @@ final class EditorExactSourceBuffer {
     }
 
     var utf16Length: Int { storage.length }
+
+    /// Scroll observations reuse the exact-source identity until a mutation.
+    var fingerprint: DocumentFingerprint {
+        if let cachedFingerprint { return cachedFingerprint }
+        let fingerprint = DocumentFingerprint(content: snapshot())
+        cachedFingerprint = fingerprint
+        return fingerprint
+    }
 
     func snapshot() -> String {
         storage.copy() as! NSString as String
@@ -31,6 +40,7 @@ final class EditorExactSourceBuffer {
     func replace(with source: String) {
         storage = NSMutableString(string: source)
         utf8ByteCount = source.utf8.count
+        cachedFingerprint = nil
     }
 
     func apply(
@@ -83,5 +93,6 @@ final class EditorExactSourceBuffer {
             )
         }
         utf8ByteCount = nextUTF8ByteCount
+        cachedFingerprint = nil
     }
 }

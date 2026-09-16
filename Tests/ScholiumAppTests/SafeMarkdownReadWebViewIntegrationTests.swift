@@ -7,6 +7,41 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Review publishes source positions while scrolling continues")
+    func reviewContinuousScrollReports() async throws {
+        let source = (1...24).map { section in
+            "## Section \(section)\r\n\r\n" + String(repeating: "Nonprivate 中文 😀 paragraph.\r\n\r\n", count: 15)
+        }.joined()
+        let document = NoteDocument(relativePath: "Scroll.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        var observedOffsets: [Int] = []
+        var step = 0
+        while observedOffsets.count < 2 {
+            step += 1
+            _ = try await harness.callBridgeJavaScript(
+                """
+                const extent = document.documentElement.scrollHeight - window.innerHeight;
+                window.scrollTo({top: extent * fraction, behavior: 'auto'});
+                window.dispatchEvent(new Event('scroll'));
+                """, arguments: ["fraction": min(0.9, 0.1 + Double(step) * 0.008)])
+            if let anchor = harness.latestObservedScrollPosition.anchor,
+                anchor.sourceUTF16Offset > source.utf16.count / 4,
+                observedOffsets.last.map({ abs($0 - anchor.sourceUTF16Offset) > 500 }) ?? true
+            {
+                observedOffsets.append(anchor.sourceUTF16Offset)
+                #expect(anchor.sourceFingerprint == document.fingerprint.sha256)
+            }
+            try #require(ContinuousClock.now < deadline, "No Review section updates during continuous scroll")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(observedOffsets.count == 2)
+    }
+
     @Test("Received reply text is immediately readable and selectable")
     func chatReplyImmediateContent() async throws {
         let source = "Existing " + String(repeating: "中文 👩‍💻 e\u{301} reply. ", count: 20)

@@ -9,7 +9,9 @@ describe("source selection action", () => {
   it("dismisses on scroll before the anchor report without changing the selection", () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {
-      setTimeout, clearTimeout, requestAnimationFrame: () => 1,
+      setTimeout, clearTimeout,
+      requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16),
+      cancelAnimationFrame: clearTimeout,
     });
     const sent: NativeFloatingPayload[] = [];
     const bridge = createNativeFloatingBridge(surface => sent.push(surface));
@@ -21,7 +23,7 @@ describe("source selection action", () => {
       scrollTop: 40, scrollHeight: 200, clientHeight: 100,
       getBoundingClientRect: () => ({top: 0} as DOMRect),
     });
-    const editor = {state, scrollDOM,
+    const editor = {state, scrollDOM, documentTop: 0,
       lineBlockAtHeight: () => ({from: 0, to: 4, top: 0, height: 100}),
     } as unknown as EditorView;
     const post = vi.fn();
@@ -34,12 +36,13 @@ describe("source selection action", () => {
     expect(sent.at(-1)!.kind).toBe("hidden");
     expect(bridge.event(id, "choose", 0)).toBe(false);
     expect(post).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(60);
-    scrollDOM.dispatchEvent(new Event("scroll"));
-    vi.advanceTimersByTime(119);
-    expect(post).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(16);
     expect(post).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({fallbackFraction: 0.4}));
+    scrollDOM.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersByTime(15);
+    expect(post).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(post).toHaveBeenCalledTimes(2);
     expect(editor.state).toBe(state);
     actions.update();
     expect(sent.at(-1)!.kind).toBe("hidden");

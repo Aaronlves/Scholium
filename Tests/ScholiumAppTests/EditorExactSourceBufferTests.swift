@@ -6,6 +6,25 @@ import Testing
 
 @Suite("Editor exact-source buffer")
 struct EditorExactSourceBufferTests {
+    @Test("Scroll fingerprint stays exact across edits, rejected edits, and replacement")
+    func fingerprintTracksExactSource() throws {
+        let source = "\u{FEFF}中文 😀 e\u{301}\r\n"
+        let buffer = EditorExactSourceBuffer(source: source)
+        let original = DocumentFingerprint(content: source)
+        #expect(buffer.fingerprint == original)
+        #expect(buffer.fingerprint == original)
+        #expect(throws: MarkdownEditorDeltaError.self) {
+            try buffer.apply([.init(fromUTF16: 0, toUTF16: 0, insertion: "x")], maximumUTF8Bytes: 0)
+        }
+        #expect(buffer.fingerprint == original)
+        try buffer.apply([.init(fromUTF16: 0, toUTF16: 0, insertion: "prefix\r\n")])
+        #expect(buffer.fingerprint == DocumentFingerprint(content: "prefix\r\n" + source))
+        buffer.replace(with: "Replacement\n")
+        #expect(buffer.fingerprint == DocumentFingerprint(content: "Replacement\n"))
+        buffer.replace(with: "")
+        #expect(buffer.fingerprint == DocumentFingerprint(content: ""))
+    }
+
     @Test("Incremental storage preserves LF, CRLF, Unicode, and batch semantics")
     func preservesExactBytes() throws {
         let sources = [

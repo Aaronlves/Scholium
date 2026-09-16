@@ -33239,6 +33239,66 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     appendBlockChildren(cursor, source, parent, options);
   }
 
+  // interaction-reporting.ts
+  function interactionAvailabilitySignature(context) {
+    return JSON.stringify({
+      activeInlineConstructs: context.activeInlineConstructs,
+      activeBlockConstructs: context.activeBlockConstructs,
+      tablePosition: context.tablePosition ?? null,
+      composing: context.composing,
+      hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
+      availableCommands: context.availableCommands,
+      undoLabel: context.undoLabel ?? null,
+      redoLabel: context.redoLabel ?? null
+    });
+  }
+  var AnimationFrameCoalescer = class {
+    constructor(requestFrame, cancelFrame, requestWatchdog, cancelWatchdog, watchdogMilliseconds = 50) {
+      this.requestFrame = requestFrame;
+      this.cancelFrame = cancelFrame;
+      this.requestWatchdog = requestWatchdog;
+      this.cancelWatchdog = cancelWatchdog;
+      this.watchdogMilliseconds = watchdogMilliseconds;
+    }
+    requestFrame;
+    cancelFrame;
+    requestWatchdog;
+    cancelWatchdog;
+    watchdogMilliseconds;
+    frame = null;
+    watchdog = null;
+    latest = null;
+    generation = 0;
+    schedule(callback) {
+      this.latest = callback;
+      if (this.frame !== null) return;
+      const generation = ++this.generation;
+      this.frame = this.requestFrame(() => this.flush("frame", generation));
+      this.watchdog = this.requestWatchdog(
+        () => this.flush("watchdog", generation),
+        this.watchdogMilliseconds
+      );
+    }
+    cancel() {
+      if (this.frame !== null) this.cancelFrame(this.frame);
+      if (this.watchdog !== null) this.cancelWatchdog(this.watchdog);
+      this.frame = null;
+      this.watchdog = null;
+      this.latest = null;
+      this.generation += 1;
+    }
+    flush(source, generation) {
+      if (generation !== this.generation) return;
+      if (source === "watchdog" && this.frame !== null) this.cancelFrame(this.frame);
+      if (source === "frame" && this.watchdog !== null) this.cancelWatchdog(this.watchdog);
+      this.frame = null;
+      this.watchdog = null;
+      const latest = this.latest;
+      this.latest = null;
+      latest?.();
+    }
+  };
+
   // scroll-coordinator.ts
   function createEditorScrollCoordinator(editor2, options) {
     let scrollRevision = 0;
@@ -33266,7 +33326,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     function postCurrent() {
       options.post(currentAnchor());
     }
-    let reportTimer;
+    const scrollReports = new AnimationFrameCoalescer(
+      (callback) => window.requestAnimationFrame(callback),
+      (identifier4) => window.cancelAnimationFrame(identifier4),
+      (callback, delay) => window.setTimeout(callback, delay),
+      (identifier4) => window.clearTimeout(identifier4)
+    );
+    let sessionTimer;
     let sessionStartedAt = null;
     let previousFrameAt = null;
     let measurementFrame = null;
@@ -33275,6 +33341,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     let sessionDroppedFrameCount = 0;
     editor2.scrollDOM.addEventListener("scroll", () => {
       options.onScroll();
+      scrollReports.schedule(postCurrent);
       if (sessionStartedAt === null) sessionStartedAt = performance.now();
       if (measurementFrame === null) {
         measurementFrame = window.requestAnimationFrame(() => {
@@ -33289,9 +33356,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           previousFrameAt = now;
         });
       }
-      window.clearTimeout(reportTimer);
-      reportTimer = window.setTimeout(() => {
-        postCurrent();
+      window.clearTimeout(sessionTimer);
+      sessionTimer = window.setTimeout(() => {
         if (sessionStartedAt !== null) {
           recordEditorMetric("scroll-session", sessionStartedAt, {
             frameCount: sessionFrameCount,
@@ -33429,8 +33495,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         geometryReportGeneration += 1;
         geometryReportScheduled = false;
         pendingGeometrySnapshot = void 0;
-        window.clearTimeout(reportTimer);
-        reportTimer = void 0;
+        scrollReports.cancel();
+        window.clearTimeout(sessionTimer);
+        sessionTimer = void 0;
         if (measurementFrame !== null) window.cancelAnimationFrame(measurementFrame);
         measurementFrame = null;
         sessionStartedAt = null;
@@ -34131,66 +34198,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
     };
   }
-
-  // interaction-reporting.ts
-  function interactionAvailabilitySignature(context) {
-    return JSON.stringify({
-      activeInlineConstructs: context.activeInlineConstructs,
-      activeBlockConstructs: context.activeBlockConstructs,
-      tablePosition: context.tablePosition ?? null,
-      composing: context.composing,
-      hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
-      availableCommands: context.availableCommands,
-      undoLabel: context.undoLabel ?? null,
-      redoLabel: context.redoLabel ?? null
-    });
-  }
-  var AnimationFrameCoalescer = class {
-    constructor(requestFrame, cancelFrame, requestWatchdog, cancelWatchdog, watchdogMilliseconds = 50) {
-      this.requestFrame = requestFrame;
-      this.cancelFrame = cancelFrame;
-      this.requestWatchdog = requestWatchdog;
-      this.cancelWatchdog = cancelWatchdog;
-      this.watchdogMilliseconds = watchdogMilliseconds;
-    }
-    requestFrame;
-    cancelFrame;
-    requestWatchdog;
-    cancelWatchdog;
-    watchdogMilliseconds;
-    frame = null;
-    watchdog = null;
-    latest = null;
-    generation = 0;
-    schedule(callback) {
-      this.latest = callback;
-      if (this.frame !== null) return;
-      const generation = ++this.generation;
-      this.frame = this.requestFrame(() => this.flush("frame", generation));
-      this.watchdog = this.requestWatchdog(
-        () => this.flush("watchdog", generation),
-        this.watchdogMilliseconds
-      );
-    }
-    cancel() {
-      if (this.frame !== null) this.cancelFrame(this.frame);
-      if (this.watchdog !== null) this.cancelWatchdog(this.watchdog);
-      this.frame = null;
-      this.watchdog = null;
-      this.latest = null;
-      this.generation += 1;
-    }
-    flush(source, generation) {
-      if (generation !== this.generation) return;
-      if (source === "watchdog" && this.frame !== null) this.cancelFrame(this.frame);
-      if (source === "frame" && this.watchdog !== null) this.cancelWatchdog(this.watchdog);
-      this.frame = null;
-      this.watchdog = null;
-      const latest = this.latest;
-      this.latest = null;
-      latest?.();
-    }
-  };
 
   // callout-presentation.ts
   var neutralCallout = {

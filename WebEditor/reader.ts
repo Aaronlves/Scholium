@@ -15,6 +15,7 @@ import {
   validatedReaderConfiguration,
 } from "./reader-configuration";
 import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
+import {AnimationFrameCoalescer} from "./interaction-reporting";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -1159,14 +1160,18 @@ async function initializeReader(value: unknown): Promise<void> {
     }
   };
 
-  let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+  const scrollReports = new AnimationFrameCoalescer(
+    (callback) => window.requestAnimationFrame(callback),
+    (identifier) => window.cancelAnimationFrame(identifier),
+    (callback, delay) => window.setTimeout(callback, delay),
+    (identifier) => window.clearTimeout(identifier),
+  );
   window.addEventListener('scroll', () => {
-    clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => {
+    scrollReports.schedule(() => {
       const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
       post('scrollChanged', {fraction, anchor: currentReadScrollAnchor(fraction)});
-    }, 120);
+    });
   }, {passive: true});
   // Install only after the rendered document and its event
   // handlers exist. The native side also probes this API from

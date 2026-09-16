@@ -100,7 +100,9 @@ initialization and recovery use the same source limit. JSON transport capacity
 accounts separately for escaped source and multi-source acknowledgements.
 
 Swift maintains a checked mutable UTF-16 mirror, cached UTF-8 count and derived
-CRLF offsets. Generation-ordered deltas carry normalized text and required exact
+CRLF offsets. Its exact-source fingerprint is lazily cached until mutation, so
+scroll observations do not repeatedly copy and hash an unchanged buffer.
+Generation-ordered deltas carry normalized text and required exact
 insertions; the receiver validates agreement before applying their exact bytes.
 Only dirty/activity state reaches the document model during input. Complete
 snapshots are reserved for persistence, conflict, recovery, reconstruction,
@@ -132,7 +134,9 @@ previews, suggestions, and scroll share one `EditorView`. None may
 persist Markdown or create another `EditorState`.
 `scroll-coordinator` owns the view's scroll observation and immediately notifies
 the composed selection-action controller to dismiss its floating surface;
-anchor reporting remains independently debounced.
+anchor reports are coalesced per animation frame with a bounded timer fallback,
+independently of the quiet-period timer used for scroll performance metrics.
+Review uses the same frame coalescer for its source-located viewport reports.
 
 Secondary click follows one public event path. A CodeMirror DOM `contextmenu`
 handler preserves an existing clicked selection or moves the sole

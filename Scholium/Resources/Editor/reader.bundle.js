@@ -763,6 +763,54 @@
     return Math.min(6, Math.max(1, markdownLevel) + 1);
   }
 
+  // interaction-reporting.ts
+  var AnimationFrameCoalescer = class {
+    constructor(requestFrame, cancelFrame, requestWatchdog, cancelWatchdog, watchdogMilliseconds = 50) {
+      this.requestFrame = requestFrame;
+      this.cancelFrame = cancelFrame;
+      this.requestWatchdog = requestWatchdog;
+      this.cancelWatchdog = cancelWatchdog;
+      this.watchdogMilliseconds = watchdogMilliseconds;
+    }
+    requestFrame;
+    cancelFrame;
+    requestWatchdog;
+    cancelWatchdog;
+    watchdogMilliseconds;
+    frame = null;
+    watchdog = null;
+    latest = null;
+    generation = 0;
+    schedule(callback) {
+      this.latest = callback;
+      if (this.frame !== null) return;
+      const generation = ++this.generation;
+      this.frame = this.requestFrame(() => this.flush("frame", generation));
+      this.watchdog = this.requestWatchdog(
+        () => this.flush("watchdog", generation),
+        this.watchdogMilliseconds
+      );
+    }
+    cancel() {
+      if (this.frame !== null) this.cancelFrame(this.frame);
+      if (this.watchdog !== null) this.cancelWatchdog(this.watchdog);
+      this.frame = null;
+      this.watchdog = null;
+      this.latest = null;
+      this.generation += 1;
+    }
+    flush(source, generation) {
+      if (generation !== this.generation) return;
+      if (source === "watchdog" && this.frame !== null) this.cancelFrame(this.frame);
+      if (source === "frame" && this.watchdog !== null) this.cancelWatchdog(this.watchdog);
+      this.frame = null;
+      this.watchdog = null;
+      const latest = this.latest;
+      this.latest = null;
+      latest?.();
+    }
+  };
+
   // reader.ts
   var readerWindow = window;
   function requiredElement(id) {
@@ -1801,14 +1849,18 @@
         return restoreReadScrollAnchor(anchor);
       }
     };
-    let scrollTimer;
+    const scrollReports = new AnimationFrameCoalescer(
+      (callback) => window.requestAnimationFrame(callback),
+      (identifier) => window.cancelAnimationFrame(identifier),
+      (callback, delay) => window.setTimeout(callback, delay),
+      (identifier) => window.clearTimeout(identifier)
+    );
     window.addEventListener("scroll", () => {
-      clearTimeout(scrollTimer);
-      scrollTimer = setTimeout(() => {
+      scrollReports.schedule(() => {
         const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
         const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
         post("scrollChanged", { fraction, anchor: currentReadScrollAnchor(fraction) });
-      }, 120);
+      });
     }, { passive: true });
   }
   readerWindow.scholiumRead = {
