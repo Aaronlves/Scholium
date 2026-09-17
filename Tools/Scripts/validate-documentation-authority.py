@@ -18,6 +18,14 @@ MAX_AUTHORITY_LINE_LENGTH = 300
 MAX_CHAPTER_WORDS = 6_500
 MAX_DESIGN_LINES = 140
 MAX_DESIGN_WORDS = 1_100
+# Post-simplification baselines: Architecture 7,277, Status 2,811, authored
+# developer instructions 41,132 words. Leave bounded room for necessary work;
+# AGENTS.md requires researcher direction to raise or evade these limits.
+MAX_COLLECTION_WORDS = {
+    "Architecture": 8_000,
+    "Status": 3_200,
+    "Developer instructions": 45_000,
+}
 DESIGN_HEADINGS = (
     "# Scholium Design",
     "## 19. Scholarly Editorialism",
@@ -71,18 +79,61 @@ def validate_design_document(path: Path) -> None:
         failure("Design.md cannot contain local geometry, opacity or timing recipes")
 
 
-def validate_unique_specification_paragraphs(paths: list[Path]) -> None:
+def developer_instruction_paths(root: Path) -> list[Path]:
+    """Count authored guidance, including new files, but not the external HIG corpus."""
+    skills_root = root / ".agents" / "skills"
+    corpus = skills_root / "apple-hig"
+    excluded_directories = (corpus / "sources", corpus / "distilled")
+    return [root / "AGENTS.md"] + sorted(
+        path
+        for path in skills_root.rglob("*.md")
+        if path != corpus / "routing-index.md"
+        and not any(directory in path.parents for directory in excluded_directories)
+    )
+
+
+def validate_collection_budget(name: str, paths: list[Path], maximum: int) -> int:
+    words = sum(len(path.read_text(encoding="utf-8").split()) for path in sorted(set(paths)))
+    if words > maximum:
+        failure(
+            f"{name} collection has {words} words (maximum {maximum}); "
+            "remove redundant prose, not safety or active evidence. "
+            "Changing the budget requires researcher direction."
+        )
+    return words
+
+
+def validate_unique_paragraphs(paths: list[Path]) -> None:
     """Catch copied prose, without pretending to decide semantic equivalence."""
     owners: dict[str, Path] = {}
-    for path in paths:
-        for paragraph in re.split(r"\n\s*\n", path.read_text(encoding="utf-8")):
+    for path in dict.fromkeys(paths):
+        prose: list[str] = []
+        fence: tuple[str, int] | None = None
+        for line in path.read_text(encoding="utf-8").splitlines():
+            marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+            if fence is None and marker:
+                fence = (marker[1][0], len(marker[1]))
+                prose.append("")
+            elif fence is not None:
+                if (
+                    marker and marker[1][0] == fence[0]
+                    and len(marker[1]) >= fence[1] and not marker[2].strip()
+                ):
+                    fence = None
+                    prose.append("")
+            else:
+                prose.append(line)
+        for paragraph in re.split(r"\n\s*\n", "\n".join(prose)):
+            if all(line.startswith(("    ", "\t"))
+                   for line in paragraph.splitlines() if line.strip()):
+                continue
             normalized = " ".join(paragraph.split())
-            if len(normalized.split()) < 35 or normalized.startswith(("#", "|", "```")):
+            if len(normalized.split()) < 35 or normalized.startswith(("#", "|")):
                 continue
             if normalized in owners:
                 failure(
-                    f"repeated specification paragraph in {owners[normalized].name} "
-                    f"and {path.name}; retain one owner and link to it"
+                    f"repeated maintained paragraph in {owners[normalized]} "
+                    f"and {path}; retain one owner and link to it"
                 )
             owners[normalized] = path
 
@@ -284,19 +335,36 @@ def main() -> None:
     validate_line_lengths(authority_paths)
     valid_section_ids = validate_specification_sections(declared_sets[0])
     validate_specification_references(authority_paths, valid_section_ids)
-    validate_unique_specification_paragraphs(declared_sets[0])
-
     link_sources = authority_paths + [
         REPOSITORY_ROOT / "README.md",
         REPOSITORY_ROOT / "README.zh-Hans.md",
     ]
-    checked_links = validate_local_links(link_sources)
+    developer_paths = developer_instruction_paths(REPOSITORY_ROOT)
+    collections = {
+        "Architecture": [MANIFESTS[1][0], *MANIFESTS[1][1].rglob("*.md")],
+        "Status": [MANIFESTS[2][0], *MANIFESTS[2][1].rglob("*.md")],
+        "Developer instructions": developer_paths,
+    }
+    used_words = {
+        name: validate_collection_budget(name, paths, MAX_COLLECTION_WORDS[name])
+        for name, paths in collections.items()
+    }
+    validate_unique_paragraphs(link_sources + [
+        path for paths in collections.values() for path in paths
+    ])
+    checked_links = validate_local_links(link_sources + [REPOSITORY_ROOT / "AGENTS.md"])
     chapter_count = sum(len(declared) for declared in declared_sets)
     largest_chapter = max(len(path.read_text(encoding="utf-8").split()) for path in authority_paths)
     print(
         "Documentation authority: "
         f"{len(MANIFESTS)} manifests, {chapter_count} chapters, "
         f"{checked_links} local links; largest chapter {largest_chapter} words."
+    )
+    print(
+        "Documentation budgets: " + "; ".join(
+            f"{name} {words}/{MAX_COLLECTION_WORDS[name]} words"
+            for name, words in used_words.items()
+        )
     )
 
 
