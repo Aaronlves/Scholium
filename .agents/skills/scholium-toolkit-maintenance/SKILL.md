@@ -9,7 +9,6 @@ Maintain only the canonical `.agents/skills/` tree and capability catalog.
 Keep release-shipped skills, personal plugins, and installed caches outside
 this task; never create or publish a developer-toolkit mirror.
 
-Apply the shared [development contract](references/researcher-codex-development-contract.md).
 For instruction, resource, or discovery changes, use the
 [authoring contract](references/developer-skill-authoring-contract.md).
 

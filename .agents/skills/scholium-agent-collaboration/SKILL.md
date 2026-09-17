@@ -9,7 +9,6 @@ Own the functional boundary between an external Agent and the running App,
 including guarded mutations and their exact-source evidence. Conversation and
 research method remain with the external host and researcher.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Read the specification, architecture, and status manifests, then their Agent
 collaboration chapters. Resolve current tools, schemas, storage, and recovery
 semantics there rather than treating this skill as a protocol specification.

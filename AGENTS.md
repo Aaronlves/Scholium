@@ -4,32 +4,29 @@ These instructions apply to the Scholium package and all of its descendants.
 
 ## Task execution and collaboration
 
-The execution guidance below adapts OpenAI's
-[GPT-6 Astra prompting guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices),
-checked on 2026-09-14, to Scholium's development workflow. It governs agent
-collaboration; the product authorities and research-data boundaries below remain
-binding. It does not select a runtime model or change API configuration.
+Execution guidance adapts [OpenAI's prompting guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices),
+checked on 2026-09-14; it selects no runtime model or API configuration.
 
-- Carry an implementation or fix request through the required scoped
-  verification and a reviewable result. A plan or offer to continue is not
-  completion. Respect requests limited to discussion, diagnosis, or design.
-- Resolve routine implementation details from the owning documents and current
-  code. Ask only for missing facts or researcher-owned decisions that materially
-  affect correctness, scope, authorization, or an established product contract.
-  Do not invent research facts or silently decide an open product question.
-- Reuse authorization already established in the conversation. Continue
-  authorized inspection, edits, and checks while a separate decision is pending.
-  If a final action needs approval, first prepare the work the researcher can
-  review. Do not add permission gates for hypothetical risks or infer permission
-  to publish, distribute, or operate on real research vaults from a coding task.
-- Follow explicit researcher instructions over skill guidance, subject to
-  higher-priority instructions. Before treating a skill exception as a blocker,
-  check its scope and existing authorization. If an instruction actually prevents
-  progress, link the exact file, quote the relevant rule, and explain the blocked
-  action; distinguish the rule from your interpretation.
-- Treat follow-up corrections and status questions as steering the current task
-  unless the researcher changes the goal. Preserve completed work and outstanding
-  obligations across context compaction. Report an actual blocker precisely.
+- Complete implementation requests through scoped verification, a reviewable
+  result and test-owned cleanup. Respect discussion, diagnosis and design-only scope.
+- The researcher owns product intent, material tradeoffs and experiential
+  acceptance. Resolve routine choices from the owning documents and live code;
+  ask only for missing facts or material researcher-owned decisions. Never invent
+  research facts or silently settle an open product question.
+- Existing authorization remains valid. Continue independent authorized work
+  while a decision is pending and prepare reviewable work before a required final
+  approval. Coding does not authorize publication, distribution or real-vault use.
+- User instructions override skills, subject to higher-priority rules. Before
+  treating a skill as a blocker, check its scope and existing authorization;
+  link and quote an actual blocking rule and distinguish it from interpretation.
+- Treat corrections and status questions as steering, not a restart. Preserve
+  completed work and outstanding obligations across turns and compaction.
+- On resumption, refresh the objective, authorization, worktree, proof, unresolved
+  decisions and cleanup state against live evidence. Task context is not product
+  authority and must not be copied into canonical documents or skills.
+- Select the narrow subsystem owner; add a capability only for a distinct contract
+  or proof requirement. For external claims use the conditional
+  [live-source research policy](.agents/skills/scholium-toolkit-maintenance/references/live-source-research.md).
 
 ### Parallel work
 
@@ -138,24 +135,14 @@ must reference it rather than introduce further branded surfaces or exceptions.
 
 ## Implementation and architecture choices
 
-- Start with the existing owner and established project/platform patterns.
-  Research mature comparable solutions when a new mechanism, material
-  interaction, dependency, or unresolved design choice requires comparison.
-  A bounded correction following a verified pattern needs no competitor survey.
-  Prefer proven approaches unless Scholium's requirements justify a departure.
-- Build progressively in stable end-to-end slices. First deliver the smallest
-  version that is usable through the complete path, then add capability to the
-  working product. A minimal version must be a sound foundation, not throwaway
-  scaffolding, and immature complexity must not displace usable behavior.
-- Choose the simplest implementation that fully meets the current requirements.
-  Avoid abstractions, configuration, indirection, or future-facing scaffolding
-  without a concrete requirement.
-- Keep components modular, with explicit responsibility and concern boundaries.
-  Give each behavior, state, and authority one clear owner; avoid modules that
-  duplicate policy or mix unrelated responsibilities.
-- Make architecture decisions for long-term evolution. Do not adopt an
-  expedient design that is known to solve only the immediate case and is
-  expected to require replacement later.
+- Start with the existing owner and verified project/platform patterns. Research
+  mature comparable solutions for a genuinely new mechanism, interaction,
+  dependency or unresolved design choice, not every bounded correction.
+- Build stable end-to-end slices: the smallest usable version must be a durable
+  foundation, not throwaway scaffolding. Prefer the simplest complete solution;
+  add no abstraction, configuration or indirection without a concrete need.
+- Give each behavior, state and authority one explicit owner. Keep concerns
+  modular and avoid duplicate policy or a knowingly short-lived architecture.
 - Before implementing a capability or adding a dependency, evaluate the
   standard library, Apple SDK, and dependencies already used by the project.
   Read the relevant current documentation and type definitions; do not assume
@@ -206,17 +193,12 @@ must reference it rather than introduce further branded surfaces or exceptions.
 
 ## Agent skill source
 
-Treat the repository-owned `.agents/skills/` tree as the canonical working source
-for Scholium development skills and the only developer-skill discovery surface
-maintained for this checkout. Track the complete toolkit, capability catalog,
-references, metadata, evaluations, and validation scripts in Git so clones and
-worktrees receive the same guidance. Keep generated caches and local agent state
-ignored. These are developer resources, not release-shipped product Skills.
-Do not duplicate project-specific packages through a personal plugin or installed
-cache. Skill prose routes by responsibility rather than sibling package ID.
-`.agents/skills/catalog.json` is the canonical, machine-checked mapping from
-those capabilities to the current package IDs and routing-significant modes;
-update it whenever either changes.
+`.agents/skills/` is the only canonical developer-toolkit source and discovery
+surface for this checkout, not release-shipped product Skills. Track its catalog,
+references, metadata, evaluations and validators in Git; ignore generated caches
+and local state. Do not duplicate packages through personal plugins or installed
+caches. Prose routes by responsibility; `.agents/skills/catalog.json` maps that
+capability to package IDs and routing-significant modes. Update it when either changes.
 
 Keep development skills limited to stable triggers, authority routing,
 methods, permission boundaries, invariants, and verification procedures. Put
@@ -224,6 +206,8 @@ frequently changing product rules, architecture state, implementation evidence,
 active decisions, and release status in the authoritative `Docs/` hierarchy.
 Skills must read those documents at task time instead of copying volatile
 snapshots into skill prose.
+Repository-wide development rules live here, not in a second shared contract
+loaded by every skill. Skill entries need not repeat this document's instructions.
 
 Use `scholium-toolkit-maintenance` when it is available to audit, create,
 rename, merge, validate, or evaluate these development skills. This routing

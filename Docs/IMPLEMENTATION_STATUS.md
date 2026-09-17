@@ -1,29 +1,51 @@
 # Scholium Implementation Status
 
-- **Evidence dates:** per entry in Verification Evidence; no whole-app pass implied
 - **Target authority:** [SCHOLIUM_SPEC.md](SCHOLIUM_SPEC.md)
-- **Scope:** current reachability, open implementation and acceptance work,
-  and dated verification evidence.
+- **Structural reference:** [IMPLEMENTATION_ARCHITECTURE.md](IMPLEMENTATION_ARCHITECTURE.md)
+- **Evidence dates:** per entry; no whole-app or human-acceptance pass implied.
 
-This is the sole entry point and closed manifest for the current implementation
-snapshot. Reachable chapters describe the build, Open Work lists only remaining
-work or acceptance, and Verification records the latest dated evidence and its
-boundary. This set does not redefine target or architecture and retains no
-completed sequence or per-change transcript.
+This is the sole entry point and closed manifest for implementation status.
+It records the current reachability profile, remaining work and consequential
+proof boundaries, not a second feature specification or source-code inventory.
+Live construction, tests and scripts establish precise current behavior.
+
+## Current reachability profile
+
+The native App reaches a registered three-vault Triptych, Library and document
+tabs, Review/Edit/Source, source-derived Search and Links, Writing References,
+Settlement, guarded Note/file operations, note reorganization and Recovery.
+Exact Markdown remains authoritative; YAML properties are authored in source,
+not a separate managed metadata editor. File links and paragraph anchors refer
+to current source, not snapshot citations or inferred philosophical evidence.
+
+External Agents connect through the bundled App-mediated MCP helper. Note
+operations, attachment reads, display, move previews and Agent Change review/Undo
+retain the Application's source, revision and recovery owners. The helper requires
+the running App; it is not a standalone/headless workspace product.
+
+Optional in-app Chat reaches retained conversations, materials, runtime settings,
+Skills/tools, questions and approvals, branching, concurrent turns and bounded
+delegated-Agent observation. The bundled read-only Zotero integration and original
+material navigation are reachable. Runtime reports, material access and mutation
+receipts remain distinct from independently verified evidence or researcher
+acceptance. There is no Research Action, Reading Lead, passage Discussion or Review
+Comment lifecycle, external-host conversation handoff, or MCP research-result API.
+
+The public release profile is Core App Beta. External Agent Collaboration and
+optional in-app Chat remain Preview; reachability is not implicit acceptance.
+The distribution is an App with bundled helpers. The latest artifact's exact proof
+and incomplete clean-account smoke are recorded below; source reachability does
+not establish packaged external-host, provider, physical-input or release acceptance.
 
 ## Status chapters
 
 | Question | Chapter |
 | --- | --- |
-| What product capabilities are reachable now? | [Reachable Capabilities](Status/01-capabilities.md) |
-| What user-facing interface is reachable now? | [Reachable Interface](Status/02-interface.md) |
-| What implementation, acceptance, performance, or release work remains? | [Open Work](Status/03-open-work.md) |
-| What is the latest dated proof boundary? | [Verification Evidence](Status/04-verification.md) |
+| What implementation, environment or acceptance work remains? | [Open Work](Status/03-open-work.md) |
+| What dated proof, measurement and release provenance can be carried forward? | [Verification Evidence](Status/04-verification.md) |
 
-Each current claim, measurement, or open gate belongs to exactly one status
-chapter. A before/after explanation appears only when it is necessary to
-interpret a still-current measurement; otherwise Git owns it.
-
-Focused entries retain their evidence boundary and enough reproduction context
-for that claim. Exact source, toolchain, artifact, fixture, procedure, and result
-provenance is required when an entry supports release or gate acceptance.
+Open Work contains only unresolved implementation and acceptance. Verification
+retains representative evidence and useful measurement comparisons, not completed
+task narratives. Keep exact source, toolchain, artifact, fixture, procedure and
+result provenance when supporting gate/release acceptance. Test counts from
+separate runs are not additive; Git owns superseded details.

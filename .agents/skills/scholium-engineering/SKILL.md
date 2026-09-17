@@ -7,7 +7,6 @@ description: "Implement Scholium changes across subsystem owners, transfer state
 
 Own actual cross-layer implementation or explicit final integration. Work
 fully owned by one specialist does not need this capability.
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Start at the specification, architecture, and status manifests and follow only
 the affected responsibility routes.
 

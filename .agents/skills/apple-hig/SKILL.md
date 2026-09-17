@@ -5,7 +5,6 @@ description: "Verify official Apple HIG and SDK guidance for Apple-platform inte
 
 # Apple HIG
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Apple guidance owns platform conventions; Scholium documents own product and
 research meaning and visual identity.
 

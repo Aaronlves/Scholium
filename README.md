@@ -40,19 +40,9 @@ research continuity comes from the same inspectable documents, sources, and
 explicit researcher judgments—not from hidden model state or a parallel
 private database.
 
-The researcher is a constitutive participant in the knowledge base, not merely
-the reviewer of memories chosen by a model. Exact writing, declared scope and
-limitations, Settle, and deliberate next steps retain
-their own narrow meanings. Opening, reading, silence, or permission to write
-does not become acceptance, importance, or belief.
-
-Source claims, interpretations, Agent reconstructions, researcher commitments,
-objections, and later revisions remain distinguishable rather than being
-flattened into unattributed facts or one confidence score. Derived Search
-indexes, graph snapshots, caches, rankings, and machine-generated summaries
-are disposable projections. They may improve discovery and context assembly,
-but they never replace exact Markdown, sources, or explicit
-researcher judgment as authority.
+Sources, interpretations, Agent reconstructions and researcher judgments remain
+distinct. Derived indexes and renderings never replace exact Markdown or turn
+permission to write into acceptance.
 
 The manual core works without Obsidian, Zotero, or Agents. Scholium is not
 project management, reference management, a general Agent harness, or a full
@@ -60,72 +50,16 @@ Obsidian replacement.
 
 ## Documentation
 
-Use the smallest authority set that answers the question:
+- [Specification](Docs/SCHOLIUM_SPEC.md): target product behavior, interface,
+  accessibility and release contracts; includes [Design](Design.md).
+- [Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md): module, state-owner,
+  transaction and editor boundaries, not a source-code inventory.
+- [Implementation Status](Docs/IMPLEMENTATION_STATUS.md): compact implementation
+  scope, remaining work and dated proof. Reachability is not acceptance.
+- [AGENTS.md](AGENTS.md): development and verification rules.
 
-1. [Scholium Specification](Docs/SCHOLIUM_SPEC.md) is the sole target-authority
-   manifest. Its declared chapters own product behavior, interface design,
-   accessibility, release requirements, and active decisions.
-2. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) routes to
-   the chapters that own modules, runtimes, state, editor, and presentation
-   boundaries.
-3. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) routes to current
-   reachable capabilities and interface, open work, dated verification, and
-   acceptance boundaries.
-4. This README, live construction, tests, and scripts provide setup and current
-   implementation evidence.
-
-[Design.md](Design.md) holds the stable global design philosophy; feature
-layout and interaction stay in their owning specification chapters. The
-[ownership table](Docs/SCHOLIUM_SPEC.md#single-owner-editing-rule) routes edits.
-
-Target prose is not proof of implementation. The completed migration roadmap
-and superseded decision records remain available through Git history rather
-than as parallel authorities.
-
-Feature-specific details remain in their owning specifications:
-
-- [Advanced CSS target boundary](Docs/Specification/07-document-and-research-interface.md#1841-advanced-css-boundary)
-- [Zotero integration](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)
-- [Scholium Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
-
-## Current implementation
-
-Scholium is a compiler-enforced modular monolith. Immutable values and use-case
-protocols live in `ScholiumContracts`; internal repositories, stores, indexes,
-watchers, and filesystem I/O live in `ScholiumCore`; one headless
-`ScholiumApplication` layer is shared by the native App and bundled helper. Neither
-delivery target imports Core.
-
-The current product supports independent Triptychs and windows, exact-source
-Markdown editing, Search and Connections, Note and Folder file operations,
-external-edit conflicts, interrupted-save recovery, Settle, Zotero,
-and a fixed local MCP collaboration surface. Search remains one disposable
-Note-only projection for the App and MCP adapter.
-Ordinary Wikilinks may carry source-owned multiline Markdown annotations with
-`[[Target]]{{annotation}}`; Connect, Search, Review, Edit, and MCP all project
-the same authored occurrence without inventing semantic classification.
-
-The App-bundled `ScholiumAgentHelper` provides the local MCP service. It connects
-an external MCP host only to the currently running Scholium App; it does not
-launch the App, open a headless workspace, or read Triptych files directly.
-The surface is exactly workspace status, Note search/read/link retrieval, and
-explicit create/update/system-Trash mutations. Stable Note identities,
-fingerprint compare-and-swap, editor flush, atomic write/readback, and derived
-coherence remain App-owned.
-
-Every confirmed MCP mutation produces one machine-local Agent Change with exact
-revision evidence. Agent Changes support comparison and eligible direct Undo
-for updates; they are not chat, permission, review, acceptance, Settlement, or
-research discussion. Explicit selection handoff for the development Chat client
-follows the in-app Chat specification; it is not an external-host handoff service.
-
-The release bundles only the thin Scholium Core Protocol Skill. Researcher-owned
-method Skills live in the Agent host or the Triptych Chat workspace and run
-through the Agent runtime. These paths establish engineering reachability, not
-human acceptance or general philosophical adequacy.
-
-See [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for exact evidence
-and unresolved human, accessibility, performance, packaging, and release work.
+Each entry routes to its owning chapter. This README provides setup, not another
+maintained feature list; Git preserves superseded decisions and change history.
 
 ## Requirements
 
@@ -166,11 +100,10 @@ formats Swift source in place before checking it.
 
 The UI runner uses a disposable TestVault copy and isolated state beneath the
 ignored repository `.build/` directory. `smoke` runs the canonical journey;
-`complete` enumerates and runs the retained critical UI suite, builds once, and
-runs serially. Ordinary feature-level UI tests are intentionally removed from
-the automated bundle; use the app directly for those checks. These are
-automated development checks, not human visual or assistive-technology
-acceptance.
+`complete` runs the retained critical UI suite serially after one build. Neither
+establishes human visual or assistive-technology acceptance. Use AGENTS.md to
+select the scoped checks required for a change; the complete gate is not the
+default for every task.
 
 When `WebEditor/` changes, rebuild and verify its checked-in bundle:
 
@@ -234,9 +167,6 @@ checksum:
 4. open **System Settings → Privacy & Security** and choose **Open Anyway**;
 5. authenticate and confirm **Open**.
 
-For the historical `v0.1.0-beta.6` App ZIP, expand it and move **Scholium** to
-Applications before following steps 3–5.
-
 Never disable Gatekeeper or recursively remove quarantine. Exact release gates,
 artifact contents, clean-account verification, and future signed-channel rules
 are maintained in
@@ -297,16 +227,10 @@ pre-production bytes remain machine-local under:
 ~/Library/Application Support/Scholium/State-v1/
 ```
 
-Every authoritative write validates containment and the expected revision,
-preserves displaced bytes, validates targeted source, writes atomically, and
-reports conflicts without discarding a dirty editor buffer. macOS file
-coordination negotiates access with other participants while descriptor-
-relative validation remains the write authority; prewrite recovery retains
-exact interrupted-save candidates rather than treating watcher events or an
-incomplete operation as authority. Acceptance against a configured File
-Provider domain remains explicitly open in Implementation Status. Derived
-Search, graph, render, and diagnostic state is disposable and never
-reconstructs writable source.
+Writes preserve exact source and report concurrent-edit conflicts without
+discarding unsaved text. Safety and recovery contracts belong to
+[Save and Recovery §14](Docs/Specification/04-connect-search-and-recovery.md#14-save-agent-changes-and-recovery);
+their mechanisms belong to Architecture and acceptance gaps to Status.
 
 Never use real research vaults for development tests.
 
@@ -334,7 +258,7 @@ Docs/IMPLEMENTATION_ARCHITECTURE.md
 Docs/Architecture/        Module, runtime, state, editor, presentation, and boundary chapters
 Docs/IMPLEMENTATION_STATUS.md
                            Current-evidence manifest and reading routes
-Docs/Status/              Capabilities, interface, open work, and current proof
+Docs/Status/              Remaining work and current proof
 Tools/Scripts/             Build, verification, QA, performance, and release tools
 ```
 

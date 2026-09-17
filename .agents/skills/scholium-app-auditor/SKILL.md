@@ -8,7 +8,6 @@ description: "Audit Scholium architecture, defects, conformance, or release read
 Audit the live app through reproducible evidence. Remain read-only unless the
 researcher separately requests a fix.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
 ## Select one mode
 

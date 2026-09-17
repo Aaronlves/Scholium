@@ -5,7 +5,6 @@ description: "Build or diagnose Apple projects, inspect SDK APIs, or verify isol
 
 # Xcode Workflow
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Use the live repository build and QA rules. Identify the actual workspace,
 project, or `Package.swift`; do not invent a project wrapper.
 

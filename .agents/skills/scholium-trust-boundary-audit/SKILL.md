@@ -8,7 +8,6 @@ description: "Audit or harden Scholium authorization, containment, privacy, revi
 Treat researcher control, exact-source preservation, and current-revision
 checks as security properties. Reject an ambiguous consequential action.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 The functional subsystem retains its semantics; this capability adds the trust boundary.
 
 ## Modes

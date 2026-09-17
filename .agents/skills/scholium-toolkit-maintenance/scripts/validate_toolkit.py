@@ -55,9 +55,6 @@ def validate_entry(skill_dir: Path) -> tuple[str, int, int]:
     description = frontmatter.get("description")
     if name != skill_dir.name or not isinstance(description, str) or not description.strip():
         fail(f"{skill_path.relative_to(SKILLS_ROOT)} name or description is invalid")
-    if "researcher-codex-development-contract.md" not in source:
-        fail(f"{skill_path.relative_to(SKILLS_ROOT)} does not route the shared development contract")
-
     metadata_path = skill_dir / "agents" / "openai.yaml"
     metadata = load_yaml(metadata_path)
     if not isinstance(metadata, dict) or not isinstance(metadata.get("interface"), dict):

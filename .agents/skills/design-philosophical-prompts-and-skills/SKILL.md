@@ -11,7 +11,6 @@ reviewable research knowledge. Technical completion is supporting evidence,
 not the scholarly outcome. This skill designs methods; it does not perform the
 underlying research or authorize writes to research notes.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Keep Scholium-specific behavior subordinate to its live authorities.
 
 ## Core boundaries

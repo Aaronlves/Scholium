@@ -9,7 +9,6 @@ Translate ordinary researcher language into professional native-interface
 judgment. Keep the research document primary and keep target, current behavior,
 implementation, automation, and human acceptance distinct.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Read the affected workflow, interface, accessibility, and Design authority as
 required by `AGENTS.md`; Apple HIG and selected SDKs support platform claims.
 

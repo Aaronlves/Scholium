@@ -1,754 +1,211 @@
 # Architecture: Documents and Editor
 
-[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Document sessions,
-CodeMirror/WebKit, exact source, rendering, and editor performance.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Retained
+document ownership, exact-source transport, and nonauthorizing rendering.
 
 ## Documents and CodeMirror
 
-`DocumentController` owns vault/Note-keyed sessions. Transfer moves ownership;
-CodeMirror document identity survives attachment while transport identity rotates.
-Renames preserve state.
+Document owns vault/Note-keyed sessions. Transfer moves the same owner; document
+identity survives attachment while transport identity rotates. Dirty, composing,
+conflicted, saving and recovery states pin sessions. Destination leases precede
+release; close flushes before membership removal. Clean unleased sessions discard
+source, Undo, rendered content and previews, retaining only bounded volatile
+position state. Equal paths in different vaults remain distinct.
 
-Destination leases precede release. Dirty, conflict, save-in-flight,
-retryable-recovery and recovery-buffer states pin sessions. Tab close flushes
-before membership removal; clean unleased, unpinned sessions discard editor,
-source, Undo, HTML and previews. Only a volatile 64-entry scroll LRU survives
-close; memory pressure reduces it to 16 or clears it. Vault-qualified keys
-isolate equal paths across Triptych vaults.
+Each document session owns one persistent editor/flush identity, checked exact
+mirror and committed revision, atomic presentation phase, pending intent,
+allocation/configuration, source-bound scroll anchor, save tasks and conflict/
+retry/comparison state. Review and allocated editor hosts retain identity across
+mode/layout/theme changes; hidden hosts cannot receive input or accessibility
+focus. Requested mode is not presented fact until matching acknowledgment.
 
-`DocumentController` defaults `currentPresentationMode`
-to Edit. Writable selections inherit it; unavailable Notes present
-Review. Chrome reports the session's actual mode. Sessions retain only
-editor safety state, not path-mapped presentation.
+Detachment atomically freezes input and captures exact source, selection and
+history. Detached saves require unchanged document/revision/generation proof;
+cancelled transitions resume only their matching suspension. Committed snapshots
+update clean detached sessions atomically. Dirty sessions retain exact bytes for
+conflict comparison. External events reconcile all tabs by stable identity before
+changing paths/projections; clean deleted sessions release, unsafe sessions retain
+their buffers.
 
-Each retained `DocumentSessionModel` owns:
-
-- its persistent `MarkdownEditorSession` and flush token;
-- the exact editor mirror and committed revision;
-- one atomic `DocumentPresentationState`: active runtime phase, the current
-  presentation's pending editor intent, retained configuration, and surface
-  allocation;
-- a revision-bound semantic source scroll anchor plus normalized fallback;
-- autosave and in-flight save tasks with stale tokens;
-- rendered Review projection state; and
-- save error, conflict, retry, and comparison presentation state.
-
-CodeMirror owns editing. The boundary uses generation-bound full-buffer reads
-at lifecycle edges, an incremental exact-source mirror, fingerprint-gated save,
-committed-text synchronization, conflict comparison and flush-before-agent-work.
-Before tab detachment, a token-bound suspension atomically freezes input and
-captures exact source, selection and history. Detached persistence requires that
-unchanged document/revision/generation proof; transition cancellation resumes
-only its matching suspension. Committed detached saves rebase recovery without
-mounting WebKit. SwiftUI reconstruction retains these facts; HTML, parsed YAML
-and other projections never reconstruct writable Markdown.
-`DocumentConflictSnapshot` supplies exact editor/disk inputs to the Contracts-
-owned `ExactSourceComparisonBuilder`, the sole line-diff owner. Document still
-owns conflict actions and buffer authority, while the
-comparison value and future shared sheet remain pure disposable presentation.
-Save tasks retain confirmed commits until editor acknowledgement; lost replies
-replay idempotently against their exact commit. Flush callers retain receipts. Committed snapshots reconcile
-clean detached sessions, including Review, by updating source and revision
-together; dirty sessions retain their checked source for conflict comparison.
-
-`DocumentEditorHost` retains Review and, once allocated, CodeMirror for the
-selected session. Modes change stacking, hit testing, accessibility and focus,
-not view identity. Hidden surfaces receive no input. Typed acknowledgement
-advances `presentedMode`; document-bound readiness keeps pending Edit/Source
-behind an opaque plane until positioning completes. Ordinary Edit restores a
-valid title/body selection or mapped Review selection, otherwise the body start
-after YAML. Explicit locators take precedence; Source keeps its exact selection.
-Focus revisions prevent delayed callbacks from overriding newer requests.
-
-Managed New Note atomically installs source, Edit phase and body-start offset
-through `DocumentController`. Initialization acknowledges the mapped UTF-16
-selection; native code verifies it, converges style/scroll, awaits focus, then
-publishes readiness and announces once. Until then neither Review nor Empty
-Note appears. Clean external publication replaces pending source and body
-boundary together. Failure blurs the hidden editor and retains source behind
-**Retry Edit** and **Source**; retry replaces only that WebView.
-
-Pending editor intent stays in Review until the controller atomically begins
-editing and allocates the surface. Finishing returns to Review while retaining
-the editor configuration. `DocumentPresentationState` owns these transitions;
-separate mutable mode/editing/allocation flags do not exist. `NoteContentView`
-observes its session directly, without ancestor notification forwarding.
-
-Committed revisions refresh hidden Review HTML and invalidate older readiness;
-hidden scroll reports cannot change the shared anchor. Generation-checked
-external reconciliation updates every open tab by stable identity before path
-or document projection changes. Clean deleted Notes release their tabs and
-activate a neighbor or no-document state; dirty, conflicted, retryable, saving
-and recovery sessions retain exact bytes. Layout, theme, scaling and ordinary
-SwiftUI reconstruction reconfigure presentation without recreating retained
-`WKWebView` or `EditorState`. Memory remains a measured acceptance concern,
-not permission to weaken this lifecycle.
+Managed creation installs exact committed source and initial intent together.
+Initialization/focus acknowledgments and mapped selection must match before
+readiness; failure preserves source behind retry/Source. Clean external publication
+replaces pending source/boundary together. Revision changes invalidate stale
+readiness and refresh hidden Review. Document owns lightweight position/focus,
+not another writable path-mapped presentation record.
 
 ### Editor boundary contract
 
-The editor is an app-private typed boundary. Exact Markdown is the writable
-authority; Review projects a committed revision. Edit and Source share one
-CodeMirror `EditorState`, selection, composition and Undo owner, using LF
-internally. `exact-source-history` keeps `ExactSourceMirror` in an immutable
-StateField; CodeMirror inverted effects restore original newline bytes.
-Persistent `Text` ropes retain normalized and exact source, including BOM,
-CRLF/LF, Unicode and final newlines. Derived offsets map their coordinates.
-Transactions validate deleted spans and apply deltas atomically without a
-whole-document scan or a second editing owner. The exact-source state owns
-incremental UTF-8 capacity admission for ordinary input and commands;
-initialization and recovery use the same source limit. JSON transport capacity
-accounts separately for escaped source and multi-source acknowledgements.
+Edit and Source share one CodeMirror EditorState, selection, composition and Undo
+owner. Review projects a committed revision. Exact Markdown remains writable
+authority: normalized LF editor coordinates and exact BOM/CRLF/LF bytes are distinct.
+The immutable exact-source StateField and inverted transaction effects preserve
+original newline bytes through Undo/Redo. Mapping between normalized positions,
+UTF-16 source coordinates and UTF-8 ranges never reconstructs bytes from HTML.
 
-Swift maintains a checked mutable UTF-16 mirror, cached UTF-8 count and derived
-CRLF offsets. Its exact-source fingerprint is lazily cached until mutation, so
-scroll observations do not repeatedly copy and hash an unchanged buffer.
-Generation-ordered deltas carry normalized text and required exact
-insertions; the receiver validates agreement before applying their exact bytes.
-Only dirty/activity state reaches the document model during input. Complete
-snapshots are reserved for persistence, conflict, recovery, reconstruction,
-commands and diagnostics. Attached persistence reconciles the live complete
-source first; detached persistence consumes the validated suspension capture.
-Full replies validate source capacity and selection before changing the mirror;
-an unexplained same-generation disagreement remains dirty and fails validation.
+Swift retains a checked exact mirror and generation. Ordered deltas prove deleted
+spans and exact insertions before atomic application. Full-buffer capture is
+reserved for persistence, conflict, recovery, reconstruction and commands requiring
+it; ordinary input does not echo/materialize the whole Note. Unexplained current-
+identity disagreement pins the session dirty and coalesces a complete editor read
+before save. Both runtimes enforce the same source limit; escaped transport
+capacity is checked separately.
 
-`MarkdownEditorSession` owns the attached WebView, checked mirror, generation,
-recovery and requests. Native requests carry one expiration through queueing,
-dispatch and composition deferral; the Web owner rejects expired work before
-execution. A compile-time exhaustive operation policy coordinates title and
-body composition. An unsettled filename draft prevents suspension rather than
-being discarded. A window-local pool admits one idle page after completed
-dispatches and source/history clearing. Reattachment validates readiness and
-restores destination-only state. Composition/errors prevent reuse; memory
-pressure clears the pool; workspace teardown invalidates admission.
-`MarkdownEditorBridgeAdapter` owns typed inbound decoding and
-outbound JavaScript dispatch;
-`MarkdownEditorNativeWebView` owns AppKit
-attachment, image paste, and the context menu; and
-`MarkdownEditorWebView` composes SwiftUI/WebKit and routes messages. Debug-only
-WebKit probes and interaction drivers live in `MarkdownEditorSessionTesting*`.
-`editor.ts` remains the sole Web composition root and source/identity
-owner. `live-projection-index` owns the semantic catalog,
-`projected-widget-registry` pointer mapping, `live-selection` selection paint,
-and bounded components semantic widgets and layout. Source direction, actions,
-previews, suggestions, and scroll share one `EditorView`. None may
-persist Markdown or create another `EditorState`.
-`scroll-coordinator` owns the view's scroll observation and immediately notifies
-the composed selection-action controller to dismiss its floating surface;
-anchor reports are coalesced per animation frame with a bounded timer fallback,
-independently of the quiet-period timer used for scroll performance metrics.
-Review uses the same frame coalescer for its source-located viewport reports.
+Every request binds protocol, request, session/document, fingerprint, generation
+and expiration. Mutation requests serialize and recheck identity after suspension;
+nonmutating snapshots may observe later generations. Expired/composing work cannot
+mutate source. Requests pass source as structured page-world arguments/encoded
+JSON, never interpolated executable JavaScript. Foundation object decoding is not
+used on outbound source values because leading BOM must survive exactly.
 
-Secondary click follows one public event path. A CodeMirror DOM `contextmenu`
-handler preserves an existing clicked selection or moves the sole
-`EditorSelection` to the clicked exact-source position, prevents WebKit's
-generic menu, and posts the finalized mode, context, and viewport anchor.
-`MarkdownEditorNativeWebView` then presents one compact AppKit menu containing
-standard Cut, Copy, Paste, and Select All selectors followed, only for a
-collapsed Edit caret, by available clicked-construct commands. It never installs
-an `NSEvent` right-mouse monitor, queries WebKit private descendant views for a
-premature menu, or opens a replacement menu beside WebKit's own menu.
+A save acknowledges one immutable committed snapshot. Newer input stays dirty
+and schedules another save rather than being overwritten. Proven commits remain
+retained until editor acknowledgment; lost acknowledgments replay idempotently
+against that exact commit, not by reissuing an uncertain filesystem write.
+Full-buffer reconciliation precedes save/departure. Clean external source may enter
+through generation-checked non-history replacement; dirty source enters Conflict.
+Review handoff relinquishes focus and requires a clean, noncomposing, conflict-free
+final flush. Close/quit cannot classify a dirty Review session as clean.
 
-`live-projection-index` owns whole-Note topology rather than only the current
-viewport. Before reading its catalog, construction asks CodeMirror's native
-incremental parser for bounded completion through the document end. This keeps
-the parser's viewport-limited initialization tree from being mistaken for a
-complete catalog. If that bounded attempt cannot finish, the index temporarily
-uses the current tree and the later parser-only state transaction rebuilds it;
-there is no regex fallback or second Markdown parser.
+Replacement navigation captures the selected flush/reconstruction policy once;
+it does not duplicate history/position capture. Content-process termination reloads
+the controlled page and restores a matching bounded snapshot. If unavailable,
+recovery uses the checked mirror/last selection, never disk over dirty source.
+Undo-history loss is distinct from source loss. Invalid reconstruction cannot
+silently normalize or repair source.
 
-Edit and Source are one atomic CodeMirror configuration boundary. One
-`Compartment` owns the mode facet, root/content accessibility attributes,
-wrapping and gutters, and every Live Preview projection field, plugin, widget
-provider, navigation keymap, and cached-preview overlay.
-The editor initializes in fail-closed Source configuration, and an absent mode
-facet also resolves to Source; exact document bytes are therefore never loaded
-through Live Preview merely because an Edit request has not arrived yet.
-Overlay DOM and document-level listeners are created and destroyed with their
-Live Preview `ViewPlugin` lifecycle rather than remaining hidden across Source.
-Swift publishes
-one coherent requested mode; `MarkdownEditorSession` serializes bridge work,
-publishes the acknowledged mode as fact, and continues toward the newest
-request if an older request completes in flight. No imperative DOM class or
-second native mode flag may separately reconstruct presentation. Source keeps
-the common parser for exact-source navigation and editing commands but installs
-no Live Preview state field, semantic widget, projection keymap, overlay, or
-semantic typography highlighter. Selection-match highlighting is absent;
-adjacent-bracket matching highlighting is likewise absent because it would
-create a second selection-like presentation beside Markdown delimiter
-projection without changing the actual insertion point. Selection belongs
-only to the researcher's explicit range. Live Preview invalidation follows
-document, viewport, selection, presentation, and title/body focus. Title/body
-transitions refresh syntax exposure; window focus does not, preventing inactive
-WebKit from erasing projections through an empty visible range.
+One atomic CodeMirror configuration owns Edit/Source facets and all projection
+extensions/listeners. Initialization or absent facet fails closed to Source.
+Source has no semantic widgets or Live Preview overlays, while keeping shared
+exact navigation/editing. Pending native input cannot independently toggle DOM
+mode. Lezer topology completion is bounded; incomplete parsing remains incomplete
+until the parser transaction, with no regex fallback or second Markdown parser.
 
-Selection meaning and selection paint are deliberately separate. CodeMirror's
-`EditorSelection` remains the sole Edit/Source range, command, copy, IME, and
-accessibility owner. CodeMirror's cursor layer is the sole Edit/Source caret
-painter; WebKit's native caret remains transparent so projection remeasurement
-cannot leave a compositor ghost at an obsolete baseline. CodeMirror's stock
-selection rectangles remain suppressed: one mode-neutral decoration source
-marks only selected source characters on each physical line and excludes line
-endings, authored blank lines, widgets, padding, and semantic gaps. The
-synchronized native DOM selection stays visually transparent. Source adds
-active-line and gutter markers only for collapsed selections, so a triple-click
-range ending after a line break cannot mark the next logical line. Review
-likewise retains WebKit's
-native `Selection`, while a CSS Custom Highlight
-mirrors only intersected nonempty text-node subranges. Its contextual action
-converts the retained DOM Range to a document-coordinate anchor and remeasures
-that anchor on viewport resize. The
-static Review DOM is not mutated, copied text is unchanged, and block padding
-or virtual line endings cannot acquire selection paint. Both adapters consume
-the same resolved Accent mix; `==text==` instead consumes the fixed shared
-Markup-highlight token.
+CodeMirror owns real ranges, caret, text commands, copy and IME. Selection paint
+is a separate disposable character-range projection; it cannot extend selection
+into widgets, gaps, blank separators or virtual line endings. Review owns native
+DOM Selection and read-only highlights. Pointer selection is evaluated as completed
+context only at pointer-up; keyboard selection remains immediate. Projected entry
+maps to one exact source position in the same state, not an independent range.
+Direction adapters consume one content/bidi model without replacing text or
+altering composition, selection, insertion, deletion or Undo.
 
-Writing direction is content-owned at the adapter boundary. Static Review DOM
-places `dir="auto"` on researcher-authored text blocks and `dir="ltr"` on code,
-mathematics, and inert raw-HTML source. Live semantic lines and every fragment
-component use the same attributes. Source has a viewport-bounded decoration
-plugin that adds only `dir="auto"` to rendered exact-source lines; it owns no
-replacement, typography, or vertical geometry. The shared editor configuration
-enables CodeMirror's per-line text-direction facet and official syntax-tree
-bidi-isolate extension, so the DOM order, visual cursor, selection, and neutral
-Markdown punctuation use one direction model. These decorations never replace
-or lock text; Edit and Source continue to route pointer, keyboard, selection,
-composition, insertion, deletion, and Undo through the same CodeMirror state.
-Raw HTML remains escaped or an
-inert literal projection and cannot become a parallel rendering authority.
+Each Markdown command creates one atomic transaction/Undo event, preserving all
+bytes outside proved edit ranges. Multi-selection transformations refuse protected
+frontmatter, code/literal/comment/raw-HTML and malformed/ambiguous boundaries.
+Filename editing is an identity-checked native move request, never a Markdown title
+writer. Failed rename retains its draft error.
 
-The bridge type itself is editor-only: `MarkdownEditorMode` contains Edit and
-Source, while the researcher-facing `NotePresentationMode` additionally owns
-Review. `MarkdownEditorSession` publishes one
-`MarkdownEditorPresentationState` snapshot containing Web-content readiness,
-document loading/ready phase, acknowledged editor mode, and error. Pending mode
-and exact document input remain private session state. The SwiftUI adapter's
-`lastModeInput` is only a one-way diff cache that prevents an unchanged view
-input from being resent after a session publication; it never initializes or
-recovers a session and never converts a bridge acknowledgement into Document
-state. The parent view's source is a lifecycle snapshot, not a per-transaction
-echo. Reattaching the same retained document initializes from the session's
-exact mirror, while a different document uses the newly proposed source.
-Initial exact input is staged without publishing during `makeNSView`;
-the page-ready boundary publishes loading once and starts initialization. A
-matching recovery snapshot is selected by the session's exact document,
-starting-fingerprint, and source identity, including after Web-content process
-termination or SwiftUI view reconstruction.
+### Source locations and transient interaction
 
-Every bridge request carries bounded protocol, request, session, document,
-fingerprint, and generation identity. Mutations are serialized; invalid
-requests cannot mutate source. A rejected current-identity forward delta pins
-the session dirty and coalesces a full CodeMirror read before revision-checked
-autosave. Both runtimes cap source at 8 MB UTF-8. Source crosses
-`WKWebView.callAsyncJavaScript` through
-structured arguments in the page content world; it is never interpolated into
-executable JavaScript.
+The document session owns fingerprint-bound semantic scroll continuity and fallback
+fraction. Only lifecycle edges create restoration requests; ordinary reports do
+not publish a second scroll state. One tokenized claim is acknowledged only after
+successful current-load restoration. Cancellation/failure/report echoes cannot
+consume or recreate requests. Review and editor map the same exact source contract
+to native geometry; invalid mappings fall back, never guess textual matches.
+Arrival requires matching document/load identity and actual destination completion.
 
-The typed bridge sends source deltas immediately in generation order, includes a
-nonmutating exact UTF-16 source-range reveal operation, and carries an optional
-initial selection in the same typed initialization transaction. Identity remains
-strict while snapshot queries may observe a later generation than the caller
-knew. A save acknowledges one immutable committed snapshot: if input advanced
-during the repository write, the newer buffer remains dirty and schedules the
-next autosave instead of being rejected as a replaced session. Source-mutating
-bridge operations remain serialized; nonmutating snapshot and presentation
-queries do not wait behind that queue. It coalesces
-selection-only reports to the latest envelope per animation frame, with a 50 ms
-offscreen watchdog. Each typed inbound envelope is decoded once; source deltas
-avoid `Codable` re-encoding. It carries exact selection and coordinates but
-includes command availability only when changed. Swift keeps coordinates as
-non-Observable session state and publishes semantic or lifecycle changes only.
-The incremental native exact-source mirror is the live recovery authority.
-Bounded history capture at explicit reconstruction boundaries uses public
-Undo/Redo on detached states to retain newline metadata omitted by CodeMirror
-JSON. Recovery rebuilds both history branches through public transactions;
-invalid or oversized history retains the existing explicit history-loss outcome.
-Every awaited request binds a session epoch and revalidates WebView,
-document, fingerprint, and nondecreasing generation. Selection snapshots are
-valid only for that identity and generation; a committed fingerprint rebases
-fallback recovery before scheduling bounded history capture.
+Review selection maps only source-identical complete blocks. Formatted/synthesized
+content remains unmappable rather than searched back into source. Document-bound
+locations recheck revisions and generations before selection/reveal. Superseded
+requests fail; unmappable editable passage requests may use Source. Current-Note
+Search consumes an immutable checked editor snapshot without flush, save or index
+publication; navigation validates freshness before a non-history reveal.
 
-Its diagnostic snapshot is a fixed 256-sample buffer of metric names, durations,
-and counts only—never research content or identifiers. Scroll frames aggregate
-once per session and clear their User Timing entries. Visible-paint samples use
-`requestMeasure` plus the next animation frame; throttled missing samples are
-not replaced by internal-work durations. UI automation and exact process-set
-measurement remain the authorities for visible response and retained memory.
-Process attribution uses the originator's launchd service map and verifies each
-executable; PPID or process-name matching is insufficient for WebKit workers.
+Previews/completion/Find are transient and retain their originating session/window,
+request and geometry identity. Scroll, context exit, document change and teardown
+dismiss through that owner. Swift owns graph resolution, committed preview content,
+containment and URL policy; WebKit reports anchors/geometry only. Stale/ambiguous
+preview results are discarded. Find matching/replacement remains CodeMirror-owned;
+Review matching is read-only. Completion and reference insertion validate current
+context, generation, selection and protected ranges before one Undo transaction.
+Insertion receipts are revocable projections, never a second buffer.
 
-Ordinary input does not materialize the complete CodeMirror document. The
-exact-source StateField applies transaction deltas and their deleted spans;
-the update listener projects exact insertions from the resulting state.
-Enter, Tab, Backtab, and direct link activation
-query CodeMirror `Text` lines around the active ranges. One immutable sorted
-mutation-sensitive interval set is cached with `LiveProjectionIndex` and reused
-by every projection field. Plain edits outside raw HTML map its existing ranges;
-full source strings remain reserved for bounded semantic constructs or explicit
-whole-document commands that actually require them. The native receiver applies
-the same small deltas directly to `EditorExactSourceBuffer`; one
-deadline-driven autosave task moves its deadline during continued typing
-instead of being cancelled and recreated for every English or IME transaction.
-Its dirty-path publication changes only when the path changes. Document
-navigation and Review reuse fingerprint-bound semantics from
-`WorkspaceNoteSnapshot`; stale input reparses; SwiftUI `body` never does.
-
-The retained-memory journey uses a run-specific app handshake. Initial load
-and each typed Live Preview/Source transition publish progress after bridge
-acknowledgement; the external sampler records the attributed app/WebKit process
-set and acknowledges before the driver advances. Its QA transport addresses
-the retained session directly to prevent SwiftUI request coalescing. The runner
-supplies a predeclared bounded transition count and the summarizer applies the
-two-tail convergence rule in [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate).
-A separate attached-WKWebView journey checks the dirty buffer, accessibility
-chrome, and diagnostic ring; it cannot establish memory convergence or visible
-p95.
-
-The connected Editor driver measures visible or accessible boundaries.
-A Document uses a source-free, network-denied view to prime
-nonpersistent WebKit and allowlisted font during opening.
-First-use Review takes it after selection instead of constructing the primed
-page context; bounded expiry otherwise releases it. Initial navigation skips a
-redundant loading publication; replacement retains it. Multi-`WKProcessPool`
-is unused.
-
-Edit/Source excludes Command-R and ends after matching bridge acknowledgement
-and layout. Key-to-paint registers before native delta delivery and publishes
-after frame plus task for the accepted session/generation. Cached preview ends
-after its surface paints. Warm Edit reuses the prepared Editor. First-use Edit
-launches to no document, reaches the 5,000-word Note's interactive Review as
-setup, then times the Edit request. Both end at the matching visible,
-accessible Editor. Visible projection times one synchronous CodeMirror refresh.
-QA-only notifications drive those paths; `PerformanceProbe` enforces metric,
-fixture, duration, and sample budget.
-
-`generate-rdf1.py` owns manifest-listed RDF-1 bytes;
-`run-performance-benchmarks.sh` owns isolated driving, predeclared sampling,
-inventory recheck, evidence class, and production-state nonmutation. Packaged
-Release honors `SCHOLIUM_HOME` only with the marker. Warm metrics reuse
-processes; launch/first-use metrics relaunch. Records retain timing,
-correctness, and provenance without research content. Gate mode requires a
-clean-tag package and may capture either the complete campaign or one focused
-replacement series. `summarize-performance-results.py` accepts only the bounded
-product-gate plans, labels a focused report Incomplete, and can pass G7 only
-when every series and shared correctness check are present. Scenario omissions
-remain explicit. Limits and evidence rules belong to [Specification
-§21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
-dated evidence belongs to [Status](../IMPLEMENTATION_STATUS.md).
-
-`ScholiumContracts` owns durable Markdown meanings and the immutable editing
-dialect. TypeScript may parse an uncommitted buffer for immediate projection
-and exact transformations, but cannot invent persistence, link meaning,
-callout, or diagnostic semantics. Every Markdown command creates one
-CodeMirror transaction and one undo event. Multi-selection transformations are
-atomic and refuse frontmatter, code, raw HTML, comments, protected literals,
-and malformed ranges whose boundaries cannot be proved. Outside proven edit
-ranges, BOM, newline style, final newline, YAML, comments, unknown syntax, and
-malformed source remain exact.
-
-At autosave and explicit source-snapshot or document-departure boundaries,
-Swift requests complete CodeMirror text and reconciles it with the checked
-mirror. A clean external revision may replace the buffer through a
-generation-checked non-history transaction; a dirty buffer stays exact and
-enters Conflict. Review handoff captures position and relinquishes editor focus
-before its final flush, then synchronously requires a clean, noncomposing,
-conflict-free session. Dirty Review sessions cannot pass close/quit flushing as clean.
-Structural commands wait for composition and reject changed identity or generation.
-Outbound bridge requests cross WebKit as encoded JSON text and are parsed in
-JavaScript. They do not pass source strings through Foundation's
-`JSONSerialization.jsonObject`, because that conversion removes a leading
-U+FEFF from a string value and would violate the exact-source contract.
-
-Document-replacement navigation performs that exact full-buffer flush once,
-then discards selection, scroll, recovery, and Undo serialization belonging to
-the replaced tab. Transitions that preserve tab membership capture retained
-editor state once before reconstruction. The transition coordinator does not
-run a second capture after the flush path has already applied the selected
-policy.
-
-After WebKit content-process termination, the retained session reloads its
-controlled document and restores a matching bounded CodeMirror snapshot. If
-that snapshot is unavailable, it reconstructs from the checked mirror and last
-selection; it never rereads disk over a dirty buffer. Undo-history loss is
-reported separately from source loss.
-
-The retained `DocumentSessionModel`, never writable Markdown or a path-keyed
-view, owns scroll continuity. `EditorScrollAnchor` binds source position,
-semantic block, relative position, fallback fraction, and fingerprint.
-Ordinary reports update non-published `ObservedScrollPosition`; only load,
-mode handoff, WebView rebuild, or navigation creates a numbered
-`ScrollRestoreRequest`. Its single tokenized claim is acknowledged only after
-successful current-load restoration, so failure, cancellation, or the
-resulting scroll report cannot consume or recreate it.
-
-CodeMirror maps exact-source CRLF offsets to its geometry. Review maps the same
-contract through a load-time registry of source-located DOM blocks, using
-`elementFromPoint` and the range map rather than full-DOM measurement on every
-scroll. Invalid ranges or fingerprints fall back to the normalized fraction.
-Live/Source also use CodeMirror's native snapshot. Reconstruction freezes a
-handoff anchor, and delayed restoration requires the same document or Review-load
-generation. It never depends only on throttle-prone animation frames.
-Review arrival awaits the scroll destination before publishing its anchor; superseded, timed-out or destroyed requests cannot confirm navigation.
-
-Markdown owns written annotation, including semantic Callouts; Scholium has no
-parallel comment store, margin widget, or passage-discussion anchor. Review is
-read-only. Edit exposes Markdown formatting and source-owned constructs;
-Source exposes exact text. `ScholiumSystemSymbol` is the icon catalog, and
-`ScholiumWebSymbolAssets` injects its data-URI masks into WebKit surfaces.
-
-Transient surfaces are nonpersistent.
-`DocumentWebViewContainer` owns viewport geometry and the shared accessibility tree.
-`DocumentFloatingSurfaceController` retains candidate width/edge and selection
-containers; `NSTableView` handles list scrolling.
-`DocumentPreviewPopover` reuses one renderer until host reset; navigation/generation
-checks guard premeasured presentation. The Web controller owns preview identity
-and hover intent.
-`SelectionActionBar` uses native accessory action buttons with pointer-only
-bezels and a menu. Selection admission revalidates identity;
-`replacePassage` checks source/range and preserves Undo.
-`MarkdownReviewSourceSelection` maps DOM offsets only when the complete rendered
-block equals its source span, excluding a terminating newline. Unsupported
-rendering remains unmappable; no excerpt search or source reconstruction occurs.
-`DocumentController` owns document-bound location requests carrying checked revisions.
-Switching documents invalidates them; only matching acknowledgements consume them.
-Review validates its revision and bounded DOM candidate before selection. Editor
-uses its exact-source offset map and generation-checked bridge; one request-scoped
-view task applies navigation or reports failure. Unmappable Chat ranges use Source;
-ordinary line arrival keeps its transient marker. Versioned projections preserve source, focus, and viewport;
-preview builders remain DOM-detached. Scroll, resize, teardown,
-and context exit dismiss through the originating controller. Completion geometry
-uses one keyed CodeMirror measure with an idle fallback when WebKit throttles
-animation frames. Review activity deactivation clears transient selection paint.
-
-`input-suggestions` owns writing decorations/completion. Slash commands share
-CodeMirror's completion state and retained native list. Typing and deletion stay
-in the editor; acceptance validates current context and cancellation preserves source.
-`EditorWritingSuggestions` projects vocabulary; `EditorLinkCompletionIndex` resolves
-links. `queryText` captures exact context. `RelatedMaterialsSession` owns reference
-discovery/cards. Its insertion receipt binds session, generation and caret;
-`insertReference` rechecks generation, selection and protected context before one
-Undo transaction, without duplicating buffers.
-
-The native `DocumentFindPanel` owns Command-F, query/options, replacement disclosure,
-and focus intent. `DocumentFindSearchField` supplies AppKit input/menu behavior;
-CodeMirror owns exact matching and replacement, and Review uses its read-only
-coordinator. The overlay reserves no document layout or scroll space.
-CodeMirror's hidden panel transports state only.
-
-**This Note** receives an immutable editor source snapshot containing note,
-session, source, and revision identifiers. Search reads that value without a
-flush, autosave, repository mutation, or index publication. Result navigation
-checks the request freshness, session, revision, and fingerprint before
-issuing a CodeMirror `revealSourceRange` transaction with no history entry;
-cross-document navigation continues through the ordinary dirty-buffer,
-autosave, and conflict coordinator.
+Attachment preparation joins the existing editor insertion and scoped rollback
+in [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).
+Quick Look retains only its scoped URL lease until dismissal/replacement/teardown.
 
 ### Shared document rendering
 
-`MarkdownSemanticDocument` is the one Contracts-owned semantic projection.
-`MarkdownEditingDialect` serializes the same supported syntax and
-delimiter rules to CodeMirror. Swift parses committed revisions for Read,
-graph, diagnostics, and persistence-adjacent consumers. TypeScript incrementally
-parses the uncommitted buffer for immediate Live Preview only, and shared
-fixtures require its source spans and meanings to agree with Contracts.
-`MarkdownEditingDialect` carries the source syntax owned by §§5 and 12.
-Shared fixtures test both parsers against those rules. The TypeScript adapter
-fails closed when it receives a dialect it does not implement.
+Contracts owns the committed semantic document and immutable editing dialect.
+Swift supplies committed Review, graph and diagnostic meaning. TypeScript may
+incrementally parse uncommitted source for immediate projection/transformation
+only. Shared fixtures require agreeing spans/meanings; unsupported dialects fail
+closed. Source syntax remains owned by the Specification, not adapter heuristics.
 
-Complete note source uses one CodeMirror language owner from `yamlFrontmatter`
-around the locked Markdown language. Closed frontmatter is an incremental YAML
-subtree, including diagnostics; body remains Markdown. Live Preview keeps valid
-frontmatter in place and adds source-located YAML marks only; it never creates a
-second editable surface. An unclosed opening suppresses semantic projections
-but keeps exact text in place. Table, callout, footnote, mathematics, and
-preview adapters honor this fail-closed guard.
+One frontmatter-aware Markdown language owns complete source. Valid YAML remains
+in the same editor/history; unclosed frontmatter suppresses semantic projections
+without hiding exact text. Typed extension nodes locate constructs; no consumer
+infers them outside proved syntax ranges. Normalized parser views map every node
+back to exact original half-open UTF-16 coordinates, preserving BOM, CRLF, Unicode
+and final newlines. Marker/visible/parent ranges distinguish source from layout.
+Graph publishes directed authored occurrences; incoming/outgoing are projections
+of the same exact occurrence, not deduplicated philosophical meaning.
 
-That Markdown content language is extended through the locked Lezer API with
-typed Wikilink, named/inline footnote, callout, inline/display
-mathematics, highlight, and Obsidian-comment nodes. Live consumers do not infer
-those constructs outside the corresponding syntax ranges. The shared
-cross-runtime fixture projector parses a normalized LF/BOM-free view only for
-Lezer compatibility and maps every node boundary back to the exact original
-UTF-16 offset, so CRLF, leading BOM, Unicode decomposition, and final-newline
-form remain source-authoritative. These nodes locate editing syntax; Swift
-`MarkdownSemanticDocument` and `GraphSnapshot` remain the authorities for
-diagnostics, identity, authored link occurrences, and committed Read output.
-`GraphSnapshot` publishes only directed source-to-destination occurrences.
-Outgoing and Incoming are two projections of the same occurrence, preserving
-its whole span, link span, optional annotation, and local context without
-deduplication or inferred meaning.
+One central semantic/topology index owns literal and construct ranges. Components
+derive projections from it, not parallel regex invalidation. Proved topology-safe
+prose changes may map ranges incrementally; structural or uncertain changes rebuild
+conservatively. Complete whole-Note topology cannot be assumed from a viewport tree.
+Direct CodeMirror fields own block/line geometry; viewport plugins own inline
+projection only. Authored separators remain exact rows, not source-less duplicate
+spacing. Semantic widgets, selection, pointer mapping and scrolling share native
+measurement. No decoration state is mutated by an independent geometry cache.
 
-The mode-neutral presentation catalog is explicit rather than assumed.
-Contracts publishes source-located CommonMark/GFM blocks plus strong,
-emphasis, strikethrough, highlight, inline-code, link, and image nodes. The
-TypeScript catalog extends those base roles with the editing dialect's
-Callouts, footnotes, mathematics, comments, Wikilinks with optional annotations, and protected
-literals. Each catalog entry carries its exact half-open UTF-16 range, exact
-marker ranges, visible ranges, parent and nesting role, and, where applicable,
-heading level, list depth, task marker, link target, and alias range. Opening
-ATX-heading and quotation prefixes include their required separator. Heading
-style follows the live syntax catalog, including empty ATX headings; only
-Setext underlines use marker-line geometry. Inactive
-Edit gives short delimiter ranges zero measure; active Edit exposes their
-exact glyphs inline. A measured leading prefix can borrow available whitespace
-only when its width alone would wrap prose. The activation retains that placement
-until concealment; technical and long source uses ordinary wrapping. Semantic blocks exclude terminal CR/LF; task-list prose starts
-after its marker. LF and BOM/CRLF/Unicode fixtures enforce those boundaries.
-Incomplete extension markers remain ordinary editable source; only opened
-block mathematics and comments produce fail-closed malformed diagnostics.
+Read and Live consume one semantic component/presentation contract. Application
+owns byte-checked Appearance/snippet storage and explicit reload; stale/invalid
+external edits preserve loaded state and cannot be overwritten by stale GUI saves.
+The host transports protected components, dynamic presentation and sanitized user
+CSS as distinct ordered layers on both surfaces. Style/font measurement remains
+document-bound and does not recreate WebView, EditorState, source, composition or
+Undo. Source font preferences configure the same exact editor.
 
-`LiveProjectionIndex` derives list-prefix and task-item ranges with the
-semantic catalog and maps them through topology-safe prose edits. A prefix
-stays on its marker line and stops before any parent marker. Projected and
-exact prefixes consume one protected track, so neither owns prose geometry.
-Horizontal entry queries the sorted indexes instead of merging and sorting
-whole-Note ranges per Arrow key. Pointer and command paths consume one pure
-task-marker transition in `transformations`; the widget dispatches only that
-exact three-character source change.
+Review emits sanitized read-only DOM. In-page projection updates preserve selection
+and scroll; only source/style/capability page identity can replace the page.
+Inactive Edit constructs map to source; activation exposes exact Markdown in the
+same EditorState. Tables and mathematical/diagram output never become writable
+round-trip models. Callout folds are session-local and source-neutral; hiding a
+body cannot hide the active caret. Footnote preview resolves the current definition
+only; normalized continuation content maps back to exact source, and shared fixtures
+check block ownership as well as IDs.
 
-Live vertical geometry uses direct CodeMirror `StateField` decorations. One
-immutable `LiveProjectionIndex` owns the typed catalog plus sorted frontmatter,
-literal, code-block, table, Callout, footnote-reference, and mathematics ranges. Direct
-fields own semantic line classes, measured source separator lines, inter-block gaps,
-frontmatter, tables, display mathematics, raw HTML, Callouts, and footnote
-reference markers.
-At a typed block boundary that already contains authored Markdown separators,
-each exact blank line remains a normal prose-height CodeMirror row and no
-source-less gap is emitted. Only a boundary without an authored separator uses
-a zero-content block widget. Edit does not copy Review paragraph-end padding;
-its authored blank rows provide that separation instead. Heading padding and
-projected component spacing continue to use generated Appearance values.
-Review and inactive Edit therefore share local block geometry but may differ in
-cumulative vertical position by at most one Edit row per authored blank line
-before the block. A blank row keeps the same block size and line height before
-entry, while active, and after its first visible input, so its line box cannot
-overflow into the following row. Its source-offset-bound pointer target spans
-at least the manuscript paragraph gap without contributing additional layout
-height. Only top-level lists receive semantic
-gaps; list-item paragraphs and nested lists retain prose line height without
-internal gaps. The visible line maps to its exact source offset, while
-selection, navigation, deletion, composition, and Undo keep their existing
-source semantics. DOM, height map, pointer mapping, selection, and scrolling
-therefore have one geometry owner. A prefix-maximum interval
-index handles nested half-open overlap and containment without mutating
-StateField-owned arrays. Plain bounded insertions outside constructs map
-existing positions only after a physical-line-local semantic-catalog
-comparison proves that Markdown topology is unchanged. This replaces
-marker-proximity guessing, so ordinary prose beside emphasis, links,
-citations, or other syntax does not rebuild the complete document projection
-merely because a marker is nearby. Deletions, structural markers,
-cached-content constructs such as mathematics, and any changed or uncertain
-local topology rebuild conservatively. The central index is the sole topology
-owner; component fields derive their table, mathematics, raw-HTML, Callout,
-and footnote projections from it rather than maintaining parallel regex
-invalidation rules. A new background Lezer tree may refresh structure once;
-selection and viewport transactions reuse it.
+### Embedded renderers and trust
 
-The remaining `ViewPlugin` is an inline adapter only. It projects visible
-ranges plus a 2,000 UTF-16 buffer and never supplies block widgets, source-line
-geometry, or semantic gaps. Indexed literals and fenced-code ranges avoid scanning
-from line one. Selection changes replace only merged old/new neighborhoods
-within that margin, not the visible buffer or structural index. Widget equality
-preserves DOM; height work stays inside CodeMirror's measurement cycle.
+Raw HTML stays escaped/inert exact source. KaTeX is pinned and locally bundled with
+allowlisted read-only fonts. It renders bounded untrusted input with trust disabled
+and HTML/MathML output, no remote resources; failure retains escaped source and
+diagnostics. Only original delimiter spans are editable.
 
-Read and Live Preview consume one presentation contract:
+Mermaid is pinned/local and loaded lazily by a versioned document-bound bridge
+request. Review begins with escaped source-located fences; inactive Edit uses
+source-backed block projections. Source installs none. Activation reveals the exact
+fence; cancellation/teardown aborts stale rendering. Serialized calls protect
+runtime-global configuration.
 
-- `ScholiumWebDesignTokens.documentPresentationCSS` derives default Appearance
-  CSS from `DocumentAppearanceSettings.defaultSettings`;
-- `StyleOperations` validates and explicitly reloads editable `appearances.json`
-  in Application Support; coordinated, byte-checked writes reject stale edits.
-  Reload failure retains the loaded appearance; the frontend derives its CSS;
-- `DocumentSourceAppearance` stores the unrestricted installed font and size;
-  escaped CSS transports them to Source without replacing the editor;
-- protected render-component CSS owns common callout, link, table, footnote,
-  and mathematics roles;
-- Read emits static semantic DOM from the committed semantic document; and
-- the Live adapter maps the same roles to bounded CodeMirror decorations and
-  widgets without replacing active source, selection, composition, or undo.
+The diagram adapter bounds source/lines/edges and permits strict static local
+rendering only: no authored initialization, HTML labels, links/callbacks, external
+resources or diagram-local styling. Returned SVG is parsed and rejected for active/
+embedded content, scripts, links, events, external URLs, unsafe CSS or selectors.
+Only validated nodes mount once in isolated, bounded app-controlled presentation;
+binding callbacks and secondary HTML sinks are forbidden. Local fragment marker
+references remain admissible. Protected semantic variables own theme. Missing
+authored accessibility descriptions retain source-based alternatives and visible
+diagnostics, never inferred philosophical content. Bundled dependency/license
+provenance follows the actual build graph.
 
-Both modes use strict line breaking, normal word boundaries, and emergency
-long-token wrapping. CodeMirror `break-spaces` preserves each Edit space without
-a visible-whitespace decoration. Footnote locators bind following punctuation;
-Appearance alone owns numeric rhythm.
+### Measurement boundary
 
-Native chrome and Review use the resolved filename title. Live Preview's
-borderless field sends the exact editor envelope and expected title; native
-validates both before `moveNote`. Success follows stable identity; failure
-retains the accessible draft error. It never writes Markdown; headings stay
-below it and Source has no title projection.
+Content-free diagnostics are bounded and do not log researcher identifiers.
+Visible-paint samples end at measured native/WebKit presentation, not internal
+work. Process-set attribution validates launchd ownership/executable identity,
+not process names or PPID guesses. Source-free network-denied priming creates no
+source/runtime authority. Isolated performance driving and packaged evidence
+follow [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
+dated results belong to Status. A focused series cannot pass the complete gate.
 
-`NoteContentView` inserts prepared attachment links through editor protocol 31's
-`insertAttachment` transaction. File-menu copy/reference shares the existing
-preparation and exact rollback owner. Links and embeds in Markdown are the only
-Note-to-file relationships; no retained sidebar attachment list exists.
-File activation checks the current source, then acquires a scoped Quick Look
-lease. SwiftUI owns the system preview window and opening actions;
-`DocumentAttachmentQuickLookSession` retains only its URL and lease, releasing
-on dismissal, replacement or document teardown.
+## Source entry points
 
-Review page identity excludes asynchronously derived link previews. Only fingerprint, CSS, or capability changes replace the page;
-in-page updates are read-only and preserve selection and scroll.
-`reader.bundle.js` owns the Read DOM,
-`SafeMarkdownReadWebView` owns its configuration, and coordinators own
-cancellable work. Layout never reconstructs the retained
-`WKWebView` or `EditorState`.
-
-The Host owns three ordered CSS layers on both surfaces: app/protected
-components, dynamic presentation (including the selected typed Appearance),
-then sanitized advanced user CSS. The bridge keeps the latter two in distinct
-controlled elements, coalesces changes into one CodeMirror measure, and reports
-scroll only afterward. Font-ready measurement stays bound to the same document,
-preserving geometry and equal cascade authority across Read and Live.
-Each Window forwards the shared style store's change signal into its existing
-view model, so selecting or saving an Appearance updates open Read and Live
-surfaces through those controlled style elements without replacing the retained
-WebView, EditorState, buffer, selection, composition, or undo history.
-
-Expanded Edit Callouts retain CodeMirror source lines in every selection state.
-The semantic-line field owns the continuous header/body surface, and the inline
-projection exposes only the active physical line's exact markers. A direct
-Callout field supplies reusable heading/disclosure widgets and collapsed-body
-ranges; source-mapped session-local fold choices never modify Markdown. Selection
-inside a body exposes it. Explicit collapse moves the caret to its header rather
-than hiding the input position. Ordinary pointer and keyboard text navigation
-remain with CodeMirror rather than mapping the entire Callout to its final byte.
-Review continues to use the shared fragment renderer and Callout stylesheet.
-
-`syntax-presentation` owns retained short delimiter marks and bounded visual
-transitions. Hidden marks remain atomic for cursor traversal and inaccessible;
-exposed marks retain the exact editable characters. Its view plugin measures
-visible tokens and maintains only disposable animation/placement state. It
-reconciles caret geometry during motion, cancels on input/composition, and removes
-listeners and animation frames with the mode. Technical objects retain their
-own projections and use local appearance transitions instead of width motion.
-Raw HTML remains inert exact source in persistent lines in Edit and Source.
-
-Semantic tables follow that adapter boundary. Read emits a protected scroll
-container with a real `table`, `thead`, column-scoped `th`, `tbody`, and
-alignment roles. Inactive Live tables use the same `tables.css` roles through
-a direct CodeMirror `StateField` block replacement, because a widget that
-changes vertical geometry cannot be supplied as an indirect viewport
-decoration. Each displayed cell retains its source offset; pointer or keyboard
-entry removes the projection and reveals the exact Markdown table in the same
-EditorState. The table DOM is never a writable or round-trip source.
-
-Edit has no footnote end-section projection. Review owns the end section,
-navigation, and return; both preview controllers resolve locator hover or focus
-to an inert current-definition preview. A Live `StateField` derives IDs,
-ordinals, repetitions, inline notes, and bounded continuations while excluding
-non-prose ranges and replaces inactive references. Activation selects the exact
-definition or inline range. Definitions remain editable as composite
-Lezer blocks with nested projections at their source location. There is no
-hidden or reconstructed content or second pointer geometry. Named insertion
-appends an unused numeric definition; inline insertion wraps each selection in
-`^[…]`. Each is one transaction and Undo event. Invalid forms are not repaired.
-
-One Live-selection StateField separates CodeMirror's continuously authoritative
-pointer range from the projection snapshot. Ordinary `select.pointer`
-transactions update the real range without changing syntax decorations; one
-mouse-up effect commits the final range after CodeMirror's own event handler.
-Triple-click starts in an immediate phase because paragraph selection is one
-discrete projection gesture, but the same phase remains non-idle until mouse-up,
-preserving the pointer-selection completion boundary.
-Review mirrors this completion boundary with one pointer-active flag around its
-native DOM Selection; selection paint may follow the gesture, while completed
-selection context is evaluated only after pointer-up. Keyboard selection has no pending pointer phase
-and remains immediate. Projected widgets map pointer-down to one collapsed exact
-source position and commit the matching projection snapshot in that same
-pointer-down transaction, never a constructed range or a deferred boundary
-caret. Modified projected links activate from this same owner before selection
-begins; direct links reveal source, and Source retains its ordinary
-modifier-click path. No manual mousemove range, timer-delayed projection, or
-independent Callout activation state exists.
-
-Continuation normalization removes exactly one two-space or tab ownership
-indent and preserves every deeper space. Nested lists, block quotations, and
-fenced code therefore retain their structure in the committed Review renderer.
-Review alone renders the one-definition footnote preview and owns return
-navigation; raw HTML stays inert. Shared
-fixtures compare definition content as well as identifiers so Swift and
-TypeScript cannot silently choose different block ownership.
-
-Mathematics uses a locally bundled, exactly pinned KaTeX runtime and matching
-CSS/fonts. Bundled fonts use a read-only filename allowlist scheme, never
-filesystem/network access or base64 HTML. Review and Editor load the math runtime
-only for a source/preview candidate; a later validated request refreshes only
-disposable projection. The first admissible integration must use `htmlAndMathml`,
-`trust: false`, bounded `maxExpand` and `maxSize`, no remote resources, and
-escaped plain-source diagnostics for failures. KaTeX output is a projection;
-only the original delimiter span is editable or writable. Inactive display
-mathematics is a direct StateField block replacement; its component remains
-marginless in Edit while the shared semantic-gap field owns the equivalent
-Review flow spacing. Raw HTML retains its literal line presentation without a source/widget swap.
-
-Mermaid uses one separately bundled, exactly pinned, mode-neutral local runtime
-and one shared component stylesheet. Neither WebView injects the approximately
-3.46 MB runtime at document start. The first real Mermaid projection sends a
-versioned, document-bound request through its existing native bridge; Swift
-installs the app-owned bundle into that page world once and resolves the one
-shared page promise. A page with no Mermaid projection therefore creates no
-Mermaid runtime. Contracts Read first emits ordinary
-escaped, source-located fenced-code DOM. Its thin adapter recognizes only the
-exact `mermaid` info-string token, replaces that one block after the runtime
-settles, and preserves its source coordinates before the Read scroll registry
-and readiness boundary are finalized. Live derives the same fenced ranges from
-the central projection index and owns inactive Mermaid geometry through a
-direct `StateField` block replacement. Activation removes the widget and
-exposes the complete exact fence in the retained `EditorState`; no render is
-requested while the selection remains inside it. Leaving the whole block
-constructs one projection from the latest source. Destroying an inactive Live
-widget aborts its request; the serialized runtime skips an aborted request
-before parsing or rendering rather than accumulating stale off-screen work.
-Source has no Mermaid field.
-
-The locked Mermaid runtime, rather than a Scholium-maintained diagram-family
-list, decides which built-in static syntaxes parse. Calls are serialized because
-Mermaid configuration is process-global. The adapter enforces source and line
-bounds, an edge bound, strict security, local-only execution, deterministic identifiers, no
-HTML labels, no authored initialization directives, no links or callbacks, no
-external-resource syntax, and no diagram-local custom styling. Generated SVG
-is parsed again into a node before insertion: scripts, active or embedded
-content, links, event handlers, external URLs, shadow-host selectors, and
-unsafe CSS values reject the whole output; local fragment marker references
-alone remain. Only a node marked by that successful pass can be mounted, once,
-inside an open Shadow DOM whose app-owned sizing, paint containment, and static
-motion rules bound generated Mermaid CSS. The same boundary preserves the
-intrinsic size of narrow SVGs, proportionally caps wide or overly tall SVGs at
-the document and viewport measures, and replaces generated multicolor scales
-with protected semantic document variables plus an app-owned final Mindmap
-override in both Review and inactive Edit. Review and Edit use no second
-`innerHTML` sink for the returned SVG. The returned binding callback
-is never invoked. Failure keeps escaped source and a text diagnostic. Missing
-authored `accTitle` or `accDescr` keeps a source-based assistive alternative and
-adds an ordinary visible diagnostic, not a repeatedly announced live region,
-rather than synthesizing philosophical meaning.
-Runtime theme input comes only from the protected document-background,
-surface, system Accent, primary-text, and separator semantic variables; Edit rebuilds
-its inactive widget when presentation or system appearance changes, and Read
-rerenders the retained source-backed figure on the same system changes. The
-esbuild input graph deterministically regenerates the distributed Mermaid and
-transitive-package license notice, so packaging cannot silently omit a newly
-bundled runtime dependency.
-
-Link previews are revision-bound Edit requests. Review resolves footnote preview
-and navigation against its committed sanitized projection. Swift owns graph
-resolution, committed preview content, containment, and external-URL policy.
-WebKit reports source anchors, modifier feedback and viewport geometry; native
-code owns presentation. Edit recognizes Command-hover whether modifier or pointer arrives
-first; source activation and document change dismiss it. One bounded surface
-presents link-annotation templates in Review and inactive Edit without inserting
-prose into document flow.
-Responses carry session, document, revision, generation, request, and target
-identity; stale or ambiguous responses are discarded. A Review footnote preview
-contains one referenced definition, never the whole footnote section.
-
-Boundary verification and remaining human acceptance belong to
-[Implementation Status](../IMPLEMENTATION_STATUS.md).
-
-The editor does not introduce Milkdown, ProseMirror, a hidden rich-text model,
-HTML-to-Markdown persistence, normalization or repair, a floating formatting
-toolbar, arbitrary media management, embedded AI chat or suggestions,
-real-time collaboration, a new SwiftPM target, or a generic editor plugin
-framework.
-
-Frontmatter stays above the app-owned title in the same CodeMirror source and
-history; opening and reconstruction never position the title.
+- `Scholium/Features/Document/DocumentController.swift`: retained document workflows.
+- `Scholium/Views/Note/MarkdownEditorSession.swift`: checked native bridge/recovery.
+- `WebEditor/editor.ts` and `WebEditor/reader.ts`: controlled Web composition.
+- `ScholiumContracts/MarkdownSemanticDocument.swift`: committed source semantics.

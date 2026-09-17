@@ -29,71 +29,24 @@ Scholium 是学术研究知识库与研究工作台，不是聊天外壳或独�
 不同 Agent、不同会话之间的研究连续性来自同一套可检查的文档、来源与研究者明确
 判断，而不是隐藏的模型状态或平行的私有数据库。
 
-研究者是知识库的构成性参与者，而不只是审核模型选择保存哪些“记忆”的人。准确
-书写、声明范围与限制、Settle 与主动安排的下一步，各自
-保留狭窄而明确的语义。打开、阅读、沉默或允许写入不等于接受、重要性或 belief。
-
-来源主张、解释、Agent 重构、研究者承诺、异议和后续修订保持可区分，不被压成没有
-出处的事实或一个统一置信分数。派生搜索索引、关系图快照、缓存、排名与机器摘要是
-可删除、可重建的投影；它们可以改善发现与上下文装配，却不能取代准确 Markdown、
-来源或研究者明确判断的权威。
+来源、解释、Agent 重构与研究者判断保持可区分。派生索引与呈现不能取代准确
+Markdown，写入权限也不等于接受。
 
 Scholium 的人工核心不依赖 Obsidian、Zotero 或 Agent。它不是项目管理、文献管理、
 永久 AI 聊天工具或完整的 Obsidian 替代品。
 
 ## 文档
 
-请使用足以回答问题的最小权威集合：
+- [规格](Docs/SCHOLIUM_SPEC.md)：目标产品行为、界面、辅助功能与发布契约，
+  包括 [Design](Design.md)。
+- [架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)：模块、状态所有者、事务与编辑器
+  边界，不是源码目录册。
+- [实现状态](Docs/IMPLEMENTATION_STATUS.md)：简短实现范围、剩余工作和注明日期的
+  证据。可达不等于已验收。
+- [AGENTS.md](AGENTS.md)：开发与验证规则。
 
-1. [Scholium 规格](Docs/SCHOLIUM_SPEC.md)是唯一目标权威清单；由它声明的章节分别
-   负责产品行为、界面设计、辅助功能、发布要求和现行决策。
-2. [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)将任务路由到负责模块、运行时、
-   状态、编辑器与呈现边界的章节。
-3. [实现状态](Docs/IMPLEMENTATION_STATUS.md)将任务路由到当前可达能力与界面、
-   开放工作、注明日期的验证证据和尚未完成的验收。
-4. 本 README、实际构建、测试和脚本提供设置方法与当前实现证据。
-
-[Design.md](Design.md) 只负责稳定的全局设计思路，具体布局与交互归各自的规范章节。
-修改文档时以[内容归属表](Docs/SCHOLIUM_SPEC.md#single-owner-editing-rule)定位 owner。
-
-目标文字不等于实现证明。已经完成使命的迁移 Roadmap 与被取代的决策记录保留在
-Git 历史中，不再作为平行权威。
-
-各功能的详细规则仍由对应的规范章节负责：
-
-- [高级 CSS 目标边界](Docs/Specification/07-document-and-research-interface.md#1841-advanced-css-boundary)
-- [Zotero 集成](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)
-- [Scholium Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
-
-## 当前实现
-
-Scholium 是一个由编译器强制边界的模块化单体。不可变值与用例协议位于
-`ScholiumContracts`；内部仓储、存储、索引、监听与文件系统 I/O 位于
-`ScholiumCore`；原生应用与随附连接组件 共享无界面的 `ScholiumApplication` 层。两个
-交付目标都不导入 Core。
-
-当前产品支持独立脉络与窗口、准确来源 Markdown 编辑、搜索与关联、Note 与文件夹
-操作、外部编辑冲突、中断保存恢复、Settle、Zotero，以及固定的本机 MCP
-协作面。Search 始终是供应用与 MCP adapter 共用的可丢弃 Note-only 投影。
-
-App 随附的 `ScholiumAgentHelper` 提供 stdio MCP 服务。它只把
-外部 MCP host 连接到当前正在运行的 Scholium App；不会启动应用、打开无界面
-workspace，或直接读取脉络文件。首版只提供 workspace status、Note 搜索／读取／链接，
-以及明确的创建／更新／移至系统纸篓操作。稳定 Note 身份、fingerprint compare-and-swap、
-编辑器 flush、原子写入与 readback、派生一致性仍由应用拥有。
-
-每个已确认 MCP 变更只生成一条本机 Agent Change 准确修订证据。Agent Changes 支持
-比较与满足条件的更新直接 Undo；它们不是聊天、权限、审查、接受、Settlement 或
-研究讨论。应用内 Chat 按规范提供明确的选区传递；它不是外部 host 之间的
-会话交接服务。
-
-发行版只捆绑精简的 Scholium Core Protocol Skill。研究者自己的 method Skills 位于
-外部 Agent host 或每个脉络的 Chat workspace，并通过 Agent runtime 运行；Scholium
-不注册、检查或执行它们。这些路径只证明工程可达性，不证明人类验收或普遍的哲学
-充分性。
-
-准确证据以及尚未完成的人类、辅助功能、性能、打包和发布工作，请参阅
-[实现状态](Docs/IMPLEMENTATION_STATUS.md)。
+各入口路由到对应章节。README 提供设置方法，不再维护另一份功能清单；被取代的
+决策和修改经过由 Git 保存。
 
 ## 环境要求
 
@@ -131,9 +84,9 @@ DEVELOPER_DIR="$developer_dir" swift test
 对 WebEditor 执行类型检查。`--fix` 会先原地格式化 Swift 源码，再执行检查。
 
 UI runner 使用一次性 TestVault 副本和仓库内被忽略的 `.build/` 状态。`smoke`
-运行规范旅程；`complete` 枚举并串行执行保留下来的关键 UI 测试，只构建一次。普通功能
-级别的 UI 测试已从自动化测试包中直接删除，这些检查改为直接操作应用完成。这些属于自动化
-开发检查，不等于人类视觉或辅助技术验收。
+运行规范旅程；`complete` 构建一次后串行运行保留的关键 UI 测试。两者都不等于
+人类视觉或辅助技术验收。每次任务所需的 scoped checks 由 AGENTS.md 规定，
+完整门禁不是所有修改的默认步骤。
 
 修改 `WebEditor/` 后，请重建并验证已检入的 bundle：
 
@@ -188,9 +141,6 @@ Core Protocol 随应用一起更新，不再发行或支持独立 CLI、安装�
 3. 从“应用程序”尝试启动 Scholium 一次；
 4. 打开**系统设置 → 隐私与安全性**，选择**仍要打开**；
 5. 完成认证并确认**打开**。
-
-对于历史版本 `v0.1.0-beta.6` 的应用 ZIP，请先解压并把 **Scholium** 移到
-“应用程序”，再执行第 3–5 步。
 
 不要关闭 Gatekeeper，也不要递归移除 quarantine。准确发布门禁、产物内容、干净
 账户验证与未来签名渠道规则维护在
@@ -254,12 +204,9 @@ Bookmark、绝对路径、窗口 session、索引、保存的查询、恢复、�
 ~/Library/Application Support/Scholium/State-v1/
 ```
 
-每次权威写入都必须验证容纳边界与预期修订、保留被替换字节、验证目标源码、原子
-写入，并在冲突时保留未保存的编辑器 buffer。macOS 文件协调负责与其他参与者协商
-访问，描述符相对验证仍是实际写入权威；预写入恢复会保留被中断保存的准确候选内容，
-而不会把监听事件或未完成操作当作权威。已配置 File Provider domain 的真实验收仍
-明确列在实现状态中。派生的搜索、图、渲染与诊断状态都是可丢弃投影，绝不用于重建
-可写源码。
+写入保持准确来源；并发编辑冲突不会丢弃未保存文本。安全与恢复契约归
+[保存与恢复 §14](Docs/Specification/04-connect-search-and-recovery.md#14-save-agent-changes-and-recovery)，
+机制归架构，尚未验收的边界归实现状态。
 
 开发测试绝不能使用真实研究库。
 
@@ -287,6 +234,6 @@ Docs/IMPLEMENTATION_ARCHITECTURE.md
 Docs/Architecture/        模块、运行时、状态、编辑器、呈现与边界章节
 Docs/IMPLEMENTATION_STATUS.md
                            当前证据清单与阅读路由
-Docs/Status/              能力、界面、开放工作与当前证据
+Docs/Status/              剩余工作与当前证据
 Tools/Scripts/             构建、验证、QA、性能与发布工具
 ```

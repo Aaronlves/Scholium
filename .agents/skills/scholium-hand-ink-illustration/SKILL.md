@@ -10,7 +10,6 @@ the existing icon supplies the hand-ink character; solid color fields and a
 small number of flat shapes reinforce one intended action or relation at a
 glance without becoming the task's sole meaning carrier.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Before material artwork or a production-placement recommendation, apply the
 [restrained-design protocol](../scholium-toolkit-maintenance/references/restrained-design-and-solution-research.md).
 

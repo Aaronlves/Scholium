@@ -8,7 +8,6 @@ description: "Implement, diagnose, or test exact Markdown/YAML parsing, projecti
 Keep exact Markdown bytes authoritative. Parsed YAML, rendered Markdown, and
 typed projections are views of source, never replacement authorities.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
 ## Locate the representation that loses fidelity
 

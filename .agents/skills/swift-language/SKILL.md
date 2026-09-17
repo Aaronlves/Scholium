@@ -8,7 +8,6 @@ description: "Implement, review, or test Swift language and API behavior; native
 Make the smallest Swift change that satisfies the request and preserves
 unaffected behavior. A language cleanup does not authorize adjacent refactoring.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Inspect the declaration, callers, tests, serialization or ABI boundary, selected
 toolchain, and relevant official Swift/SDK evidence before changing behavior.
 

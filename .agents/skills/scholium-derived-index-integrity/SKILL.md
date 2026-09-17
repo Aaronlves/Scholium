@@ -9,7 +9,6 @@ Keep every index disposable, deterministic, vault-scoped, access-checked, and
 traceable to exact source revisions. Retrieval is a lead, not evidence or write
 authority.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 For a tokenizer, engine, dependency, or backend-lifecycle decision, load
 [engine evaluation](references/engine-evaluation.md). Ordinary active-index
 corrections use the method below without an engine comparison or shadow runtime.

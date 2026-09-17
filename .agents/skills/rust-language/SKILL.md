@@ -9,7 +9,6 @@ Use Rust only for a bounded capability with a verified advantage. Preserve
 Scholium's Swift-owned authorization, recovery, and authoritative-write
 boundary.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
 ## Adoption decisions
 

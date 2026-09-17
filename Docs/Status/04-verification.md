@@ -2,462 +2,242 @@
 
 [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) · Dated proof and its limits.
 
-## Current verification snapshot
+## Release artifacts and gate provenance
 
-**2026-09-17 — `v0.2.3-beta` packaged artifact:** The exact clean tag
-`v0.2.3-beta` at commit `211cce2dfea6d25a848559311efa2b5386df228f` produced
-`Scholium-v0.2.3-beta-macos-arm64.dmg` with marketing version `0.2.3`, build
-`4`, minimum macOS `26.0`, SDK `27.0`, and an arm64 ad-hoc-signed App plus
-version-matched helper. The package script passed resource, license, private
-path, provenance, nested-signature, read-only DMG layout and SHA-256 checks;
-the recorded checksum is `2e43bafe64616e44a3384faebb6fc8e85e05fc761bbf425a9f9146a4ea11ff1a`.
-The complete repository gate passed its Core (481), Core performance (3),
-Contracts (96), Application (173), architecture measurement (1), and App
-(`1009` across `122` suites) targets; the first App run had one existing flaky
-WebKit layout assertion and its full target recheck passed. The exact packaged
-clean-account Bootstrap smoke was attempted twice but the XCTest runner timed
-out enabling macOS Automation Mode before launching; this is environment
-failure evidence, not a product pass. The public prerelease therefore records
-G9 clean-account smoke as incomplete. Evidence: `.build/package-v0.2.3-beta.log`,
+**2026-09-17 — `v0.2.3-beta`:** Exact clean tag at
+`211cce2dfea6d25a848559311efa2b5386df228f` produced
+`Scholium-v0.2.3-beta-macos-arm64.dmg`: marketing version `0.2.3`, build `4`,
+minimum macOS `26.0`, SDK `27.0`, arm64 ad-hoc-signed App and version-matched
+helper. Resource, license, private-path, provenance, nested-signature, read-only
+DMG layout and SHA-256 checks passed; checksum:
+`2e43bafe64616e44a3384faebb6fc8e85e05fc761bbf425a9f9146a4ea11ff1a`.
+The complete repository gate passed Core (481), Core performance (3), Contracts
+(96), Application (173), architecture measurement (1), and App (1,009 across
+122 suites). An existing flaky WebKit layout assertion failed the first App
+run; its full target recheck passed. Exact packaged clean-account Bootstrap
+smoke was attempted twice, but XCTest timed out enabling macOS Automation Mode
+before launch. G9 is incomplete: this is environment failure, not a product pass.
+Evidence: `.build/package-v0.2.3-beta.log`,
 `.build/package-v0.2.3-first-launch.log`,
 `.build/package-v0.2.3-first-launch-retry.log`,
-`.build/release-0.2.3-preflight.log` and
+`.build/release-0.2.3-preflight.log`,
 `.build/release-0.2.3-app-recheck.log`.
 
-**2026-09-17 — Writing References source identity and opening feedback:**
-Revision-bound source opening now verifies exact source inside the serialized
-navigation transition, preserves an already-open dirty buffer, and carries the
-verified fingerprint to the renderer. Changed versions open without old
-coordinates and explain the mismatch; dirty or unreadable sources explain that
-location cannot be verified. Duplicate result titles show their vault/directory;
-headers, passages and actions expose registered role and relative path in AX
-naming. Distinct Note grouping, paragraph order and retrieval scores are unchanged.
-Seventeen owning reference/state tests pass, including BOM/CRLF source fidelity,
-changed, unreadable and dirty source handling, duplicate-title identity and all
-three roles. Seventy-three adjacent navigation/composition tests pass on recheck;
-the first run had one multiwindow external-deletion timeout (two reported issues),
-whose isolated recheck also passed. Isolated Debug QA over disposable standard
-500-Note copies confirms normal Source navigation, visible mismatch feedback and
-dismissal, distinct same-title directories in 960-pixel Light/Dark windows, and
-role/path AX identity through disclosure. Localization, Swift lint and
-documentation validation pass. No private vault or Chat service was used; QA
-process, bundle and temporary state are removed. Human VoiceOver, full adaptation
-and 3–5-second native usable-card acceptance remain separate open boundaries.
+**2026-09-17 — Earlier clean-account baseline, `v0.2.2-beta`:** Exact clean tag
+at `ea4918ec1958293879786a889108d0b186d33744` produced
+`Scholium-v0.2.2-beta-macos-arm64.dmg`: marketing version `0.2.2`, build `3`,
+minimum macOS `26.0`, arm64 App and matched helper/Core Protocol resources.
+Exact-tag `verify.sh` passed 355 Web, 410 Core, three Core performance, 92
+Contracts, 165 Application, one architecture measurement and 1,002 App tests,
+resource reproduction, public-symbol guards, Release compilation and helper
+isolation. Signatures, entitlements, architecture, provenance, package contents,
+read-only mount/copy and checksum checks passed. Packaged first-launch Bootstrap
+passed with production machine state unchanged. This earlier pass is retained
+as a baseline, not substituted for `v0.2.3-beta` G9. Both artifacts are ad-hoc
+Beta packages, not Developer ID/notarized releases or human acceptance.
+
+## Current source and native development proof
+
+The following are scoped source/fixture results, not fresh verification of the
+documentation simplification. Xcode 27.0 (27A5218g), Swift 6.4 and macOS 27.0 SDK
+are recorded for the 2026-09-16 editor/Settings development runs. QA used
+disposable standard 500-Note Triptych copies and isolated state; recorded QA
+processes, bundles and temporary state were removed.
+
+**2026-09-17 — Writing References identity/navigation:** Seventeen owning tests
+cover BOM/CRLF, exact revision-bound source opening, changed/unreadable/dirty
+sources, duplicate titles and all three roles. Seventy-three adjacent navigation/
+composition tests pass on recheck; the initial multiwindow external-deletion
+timeout also passed isolated recheck. Debug QA verifies normal Source arrival,
+visible mismatch feedback/dismissal, same-title directory distinction in
+960-pixel Light/Dark windows and role/path AX identity. An earlier scoped journey
+also covered Inspector switching, loading/results/empty states, Insert-menu/
+Shift-Command-J entry, selection updates, group disclosure, pane/document departure,
+Review command availability and unsent Chat staging; 13 state tests cover
+late-response cancellation, provenance and complete-result insertion admission.
+No private vault or Chat service was used. This does not establish VoiceOver,
+physical input, full adaptations or native usable-card latency.
 Evidence: `.build/reference-interface-fix-acceptance.md`,
-`.build/reference-interface-fix-tests.log` and
-`.build/reference-interface-fix-navigation-integration-recheck.log`.
+`.build/reference-interface-fix-tests.log`,
+`.build/reference-interface-fix-navigation-integration-recheck.log`,
+`.build/retrieval-ui-acceptance.md`, `.build/retrieval-ui-state-tests.log`.
 
-**2026-09-17 — Writing References interface behavior audit:** A current-source
-isolated Debug QA build over disposable standard 500-Note Triptych copies
-exercised Inspector switching, loading/results/empty states, Insert-menu and
-Shift-Command-J entry, automatic Source selection updates, source navigation,
-group disclosure, query-time document departure and pane closure, Review command
-availability, a 960-pixel Dark window, and unsent Chat material staging.
-The 13 owning Related Material state tests pass, including late-response
-cancellation, provenance and complete-result insertion admission. Computer Use
-observations do not establish deterministic full-UI, physical keyboard,
-VoiceOver, IME, full adaptation or 3–5-second native latency acceptance.
-Source changes safely discard old navigation coordinates but supply no visible
-explanation; same-named result Notes lack directory distinction, and result-row
-AX descriptions omit their research role. Those feedback/identity findings
-were recorded for correction and are addressed in the entry above. No private vault or Chat service was used; the QA process, bundle,
-copied fixtures and isolated state are cleaned up. Evidence:
-`.build/retrieval-ui-acceptance.md`, `.build/retrieval-ui-qa-build.log` and
-`.build/retrieval-ui-state-tests.log`.
+**2026-09-16 — Editor authority/recovery:** Deterministic coverage retains detached
+exact-source persistence, background Review revision adoption including NFC/NFD,
+conflict fidelity, suspension/resume ordering, lost commit-reply replay, composition
+expiry and UTF-8 capacity admission. Two native 500-Note QA journeys retain
+background saves/external revisions through further editing and dirty external
+conflict/Recovery. Earlier scoped checks retain newline Undo/Redo/reconstruction,
+half-open/CRLF selection, rename autosave, inactive-tab publication, replacement-size
+rejection and newer-input preservation during Conflict Reload; native journeys
+covered dirty Review handoff and continued autosave after external rename.
+Evidence: `.build/editor-boundary-evidence/`, `.build/note-editing-fix/`.
+Syntax-continuity fixture QA (2026-09-07) covers Callouts, Chinese paste/Undo,
+disclosure, Light/Dark and mode switching with byte-identical Undo; it does not
+establish installed IME, minimum width, full adaptation or human perception.
+Evidence: `.build/editor-presentation-*.log`.
 
-**2026-09-17 — Recommendation quality and authorized-copy evaluation:** Search
-schema 21 and Related-Content contract 11/ranking policy 9 add persisted compact
-lexical preparation, full-span focus sampling with minority-script retention,
-information-weighted paragraph coverage, bounded explicit identity context and
-cross-Note duplicate diversification. Thirty-six provisional synthetic cases
-split equally into development and heldout sets improve distinct-material
-nDCG@6 from 0.582/0.598 to 0.601/0.641, with material recall unchanged at 0.625.
-Raw Note recall decreases when duplicate material is represented once; these
-agent-authored cases are neither blind validation nor researcher acceptance.
-An explicitly authorized, byte-verified private copy contains 433 Markdown
-Notes across all three roles. Tests use a second disposable copy and verify
-unchanged source bytes. After native-only performance remediation, initial
-configuration takes 24.963 s; twenty varied backend queries have median 1.840 s
-and sample p95 1.975 s, down from 2.546/2.731 s immediately before those
-performance changes. All sixteen private cases preserve their ordered Note
-results through this speedup. Their aggregate known-useful recall@6 remains
-0.375. The earlier ranking change replaced one formerly sixth-ranked judged
-Note with unjudged results in a mixed-script case; incomplete pooled judgments
-cannot establish whether that case's philosophical usefulness improved or
-worsened. Reports now include opaque Note IDs and exact selected source ranges
-for private passage-level review without logging content or paths.
-Review of twelve selected passages in two changed cases found no source-coordinate
-defect and found relevant material outside the frozen judgment pool. This limited
-agent review does not establish overall precision or researcher acceptance.
-Profiling then identified repeated readable-text normalization and projection
-re-decoding. Native-only remediation reuses prepared normalization and protects
-resident requested projections during over-budget scans without raising the
-64 MiB estimated retention budget. The same 2,000-Note Release fixture now
-configures in 37.274 s; its first query takes 2.883 s, repeats 2.003–2.012 s
-(previously 3.222–3.256 s), varied focuses 1.818–2.377 s and a selected draft
-paragraph 2.327 s. Reopening takes 5.716 s, then a first query 2.786 s. All source
-candidates remain checked and scored. Sixty-two scoped retrieval tests pass;
-all 36 frozen synthetic case outcomes remain identical. These backend timings
-exclude editor debounce, link-action preparation and native publication.
-A separate, ignored Python/ONNX multilingual prototype over the private copy
-raises known-useful recall to 0.479; fixed lexical/semantic RRF reaches 0.500.
-However, 72 of 96 hybrid results are unjudged and Chinese-query recall is only
-0.200. The prototype uses different paragraph preparation and is not wired to
-the App, added to its dependencies, or verified for native distribution.
-It establishes neither full precision nor a shipping model backend. The scoped
-Debug checks pass 479 Core, 96 Contracts, 27 Workspace runtime, 22 Related
-Material/Search-controller and two App-MCP Search tests. Changed Swift files
-pass formatting lint; the updated native `ScholiumApp` Release product compiles
-without added model or inference-runtime dependencies. This is not packaging, signing, installation
-or native interaction acceptance. Private queries, judgments, source paths, vectors and
-downloaded model assets remain
-outside tracked fixtures. Evidence: `.build/recommendation-private-evaluation/`,
-`.build/recommendation-evaluation/`, `.build/semantic-multilingual-prototype/`,
-`.build/recommendation-final-2000.log`,
-`.build/recommendation-final-owning-tests.log` and
-`.build/recommendation-final-mcp-tests.log`,
-`.build/recommendation-native-profile.txt`,
-`.build/recommendation-normalized-reuse-2000.log`,
-`.build/recommendation-scan-protection-tests.log` and
-`.build/recommendation-scan-protection-2000.log` and
-`.build/recommendation-private-native-optimized.log`,
-`.build/recommendation-native-comparison.json` and
-`.build/recommendation-native-release-build.log`.
+**2026-09-16 — Bootstrap and Settings:** Bootstrap's 102 scoped lifecycle tests
+and two QA journeys cover connect/restore/create, non-replacing destination
+conflict, picker cancellation, retained Back input, parent authorization,
+480-point width, immediate handoff, relaunch and registration editing.
+Evidence: `.build/bootstrap-verification/RESULTS.md`.
+Settings' three separate scoped XCTest journeys cover five categories, drafts,
+rename/cancel, empty search/recovery, hidden default actions, sidebar arrows,
+native 780-point resizing, Chinese presentation, Notifications reload/discard/save/
+relaunch and Selection Actions validation/cancel/save/reopen/relaunch. Native
+containment checks retain resize and field-editor ownership; earlier representative
+QA includes English/Dark, inactive-page AX and disabled Save.
+Evidence: `.build/settings-ui-audit/`, `.build/settings-redesign/`,
+`.build/settings-performance-fix/`.
+These are staged development journeys, not the complete UI suite or human
+VoiceOver/Full Keyboard Access/IME/adaptation acceptance.
 
-**2026-09-17 — Earlier three-vault Search and Writing References baseline:** Search contract 20/
-schema 20/ranking policy 5 and Related-Content contract 10/ranking policy 8 use
-role-specific field weights. Recommendations include other Works as researcher
-writing, prioritize explicit local focus coverage, and diversify comparably
-ranked Notes across roles without reserved slots for weaker matches. Index
-publication persists checksummed, revision-bound paragraph preparation; query
-matching batches simple words while retaining canonical Unicode boundaries,
-current source readback and complete comparison-set statistics.
-In an isolated Release Core/Application harness, 2,000 generated multilingual
-Notes (640 Analyses, 880 Topics, 480 Works, 16 paragraphs each, plus one Works
-seed) take 33.162 s to configure initially. The first ready recommendation takes
-3.179 s; repeats take 2.794–2.808 s. Reopening takes 4.379 s separately, followed
-by a 3.188 s first recommendation. Varied short focuses take 2.306–2.924 s;
-a full selected paragraph in a 50-paragraph draft takes 3.336 s. Ordinary
-English/Chinese/annotation Search takes 0.053–0.136 s; one atomic Note edit and
-refresh takes 1.244 s. The subsequent unique-term recommendation takes 0.016 s
-and Search 0.004 s; these selective queries are not broad-query comparisons.
-Sixty-seven selected Release Core tests cover source/rebuild/restart/corruption,
-Unicode and field ranking, Works provenance, scope and relevance-bound role
-diversity. The owning Debug run passes 458 Core, 96 Contracts, 27 Workspace
-runtime and 22 Related Material/Search-controller tests, including Work identity
-through unsent Chat staging. Two App-MCP Search checks also pass for Boolean
-scope/provenance and paragraph pagination. The opening timing assertion checks its source
-work and assembly measurements independently instead of imposing a wall-clock
-bound on summed concurrent read durations. The independent coverage counterexample fails before the ranking
-change and passes afterward; its relevant first result moves from rank two to
-rank one. Synthetic semantic diagnostics still expose paraphrase/cross-language
-misses and same-word ambiguity, so no philosophical-usefulness acceptance is claimed.
-These timings exclude editor capture, debounce, link-action preparation and native
-publication; they are scoped scenarios, not p95 or packaged end-to-end acceptance.
-The harness excludes App targets because their Release test build references
-Debug-only test helpers. Evidence: `.build/writing-references-three-vault-balanced.log`,
-`.build/writing-references-quality-baseline.log`,
-`.build/writing-references-final-owning-tests.log`,
-`.build/writing-references-mcp-search-tests.log`, and
-`.build/writing-references-release-harness/.build/writing-references-performance/`.
-
-**2026-09-17 — Derived refresh performance:** The identical expanded standard
-500-Note Triptych (6,973,820 bytes; exact source bytes and query provenance
-checked) reduces Debug cold configuration from 35.91 s to 13.05 s, reopened
-usable state from 10.94–11.03 s to 2.99–3.10 s, completion after the
-presentation signal from 17.33–17.45 s to 4.87–4.93 s, and unchanged refresh
-from 2.26–2.30 s to 0.750–0.756 s. Reopening restores all 500 Search projections
-with no projection recomputation; source authorization and semantic parsing
-remain fresh. Source preparation is 2.32–2.38 s. Independent three-sample
-index opening falls from 4.74–4.83 s to 2.39–2.50 s while retaining complete
-SOM1 validation and corruption recovery. ASCII normalization reduces isolated
-projection work by 43.7%; all 501 complete projections match the baseline
-with unordered Set encoding canonicalized. Scoped Contracts, Application,
-cache, codec and paragraph-recovery checks pass. That measured checkout's full
-`verify.sh` gate passes 355 Web, 423 Core, three Core performance, 96 Contracts,
-171 Application, one architecture measurement and 1,002 App tests, public-symbol
-guards, Release compilation and bundled-helper isolation. These schema-19 diagnostics
-exclude presentation wait and do not establish packaged performance or native
-click-to-paint acceptance. Evidence: `.build/refresh-optimization/`,
-`.build/projection-cost/`, and `.build/search-opening-diagnostics/`.
-
-**2026-09-17 — `v0.2.2-beta` packaged artifact:** The clean exact-tagged
-commit `ea4918ec1958293879786a889108d0b186d33744` produced the arm64 DMG
-`Scholium-v0.2.2-beta-macos-arm64.dmg` with marketing version `0.2.2`, build
-`3`, minimum macOS `26.0`, and the version-matched bundled helper and Core
-Protocol resources. The exact-tag `verify.sh` run passed 355 Web tests, 410
-Core, three Core performance tests, 92 Contracts, 165 Application, one
-architecture measurement, and 1,002 App tests, plus resource reproduction,
-public-symbol guards, Release compilation and helper isolation. App/helper
-signatures, entitlements, architecture, provenance, package contents,
-read-only DMG mount/copy and SHA-256 checksum passed. Packaged first-launch
-Bootstrap passed with production machine state unchanged. This Beta is ad-hoc
-signed and not Developer ID signed or notarized; human accessibility and
-interaction acceptance remain separate open boundaries.
-
-**2026-09-16 — Editor state authority:** Xcode 27.0 (27A5218g), Swift 6.4
-and macOS 27.0 SDK verification covers detached exact-source persistence,
-background Review revision adoption (including NFC/NFD byte differences),
-conflict source fidelity, suspension/resume ordering, lost commit-reply replay,
-composition request expiry and exact UTF-8 capacity admission. `verify.sh`
-passes 355 Web tests, 410 Core, 92 Contracts, 165 Application and 1,002 App
-tests, plus four performance/architecture measurements, resource reproduction,
-public-symbol guards, Release compilation and bundled-helper checks. Two
-isolated 500-Note QA journeys pass: retained native tabs preserve background
-saves and external revisions through further editing; dirty external edits
-retain exact conflict/recovery behavior. Final copy-only localization changes
-pass resource rebuild/typecheck and localization validation. QA app/state are
-removed. Installed-release, physical IME and human accessibility acceptance
-remain separate. Evidence: `.build/editor-boundary-evidence/`.
-
-**2026-09-16 — Bootstrap simplification:** Xcode 27 Debug compilation and 102
-scoped architecture/window-lifecycle tests pass. Two isolated QA journeys pass
-for connecting/restoring a 500-Note Triptych and creating a new one after a
-non-replacing destination conflict. They cover picker cancellation, retained
-Back-navigation input, exact parent authorization, 480-point width, immediate
-workspace handoff, relaunch and registration editing. English/Light screenshots
-and Chinese/Light Computer Use were inspected; scoped lint, localization and
-documentation checks pass. Dark, system adaptations and human assistive-technology
-acceptance remain outside this evidence. QA app/state cleanup is recorded with
-commands and results in `.build/bootstrap-verification/RESULTS.md`.
-
-**2026-09-16 — Note switching:** Window-local editor-page reuse passes five
-native regressions for exact source, Undo/selection isolation, direct replacement,
-pool invalidation and unfinished dispatch. Two isolated 500-Note QA journeys pass
-for mode/Library handoff and dirty-buffer process recovery. In a Debug synthetic
-60-paragraph Edit scenario (2 warmups + 5 samples per path), median attached-editor
-preparation falls from 197.438 to 50.358 ms. The boundary includes state capture,
-pool clearing, bridge readiness and DOM layout; WebKit throttled frame delivery
-in the test host, so no paint latency or Release gate is claimed. Cold startup
-and human IME/accessibility acceptance remain outside this evidence.
-Details: `.build/note-switch/RESULTS.md`.
-
-**2026-09-16 — Settings performance:** Xcode 27 Debug build and 31 scoped
-Settings tests pass. In the same disposable 500-Note, Time Profiler + Hangs
-scenario, six warm Appearance selections reduce median hosting-layout CPU sample
-weight from 72 to 40 ms; total action-window main-thread weight falls from 225.5
-to 200.5 ms. Workspace totals overlap the baseline range. No >250 ms hang is
-detected after the change, versus the baseline's 267.9 ms first-Appearance event.
-These are sampled Debug measurements, not click-to-paint or Release acceptance.
-Computer Use verifies drafts, hidden default-action isolation, active Return
-save, Revert, search recovery, sidebar keyboard focus, child selectors, loaded
-font menus and English/Chinese Light presentation. The subsequent scoped UI
-audit below supplies deterministic interaction evidence. Native containment
-tests cover resize and field-editor ownership. Dark and human adaptation
-acceptance remain open. Evidence: `.build/settings-performance-fix/`.
-
-**2026-09-16 — Settings UI automation:** After restarting the idle test service,
-three scoped XCTest journeys pass separately on the same isolated Debug build.
-Navigation covers five categories, drafts, rename/cancel, empty search/recovery,
-hidden default actions, sidebar arrows, native 780-point resizing and Chinese
-presentation. Notifications covers draft retention, reload cancellation and
-confirmed discard, explicit save and relaunch persistence. Selection Actions
-covers editor validation/cancel, nested and root hidden-action isolation,
-positive search/restore, explicit save, window reopening and relaunch persistence.
-Two new journeys are registered in the UI test project. Initial test-only
-failures corrected native Outline/title queries and restored a saved QA
-preference baseline before repetition. Scoped lint, project syntax and
-documentation checks pass. This is staged scoped evidence, not the complete UI
-suite or human acceptance. Dark/system adaptations, shortcut conflict recording
-and live integration operations remain outside this run. Evidence:
-`.build/settings-ui-audit/`.
-
-**2026-09-16 — Settings redesign:** Xcode 27.0 (27A5218g), Swift 6.4
-and macOS 27 SDK Debug compilation pass. The 26 scoped Settings tests and one
-representative disposable 500-Note UI journey pass. The journey covers category
-geometry, retained Appearance and Workspace drafts, rename/cancel, search empty
-state and recovery, inactive-page accessibility, disabled Save state, consecutive
-sidebar keyboard selection, native resizing to 780 points, and Chinese/Light
-alongside English/Dark rendering. It caught and corrected inherited hosting
-accessibility context, sidebar focus, and the Settings scene overwriting the
-native resizable flag. Scoped lint, localization and documentation checks pass.
-Window resizing animation and page reconstruction were removed; no frame-level
-speedup or human smoothness acceptance is claimed. VoiceOver, Full Keyboard
-Access, IME and system contrast/transparency/motion acceptance remain separate.
-QA bundles and temporary state were removed. Evidence: `.build/settings-redesign/`.
-
-**2026-09-16 — Note editing reliability:** Scoped checks cover the final Review
-save boundary, exact newline Undo/Redo and reconstruction, half-open block
-selection, CRLF logical lines, rename autosave admission, inactive-tab external
-publication, and replacement-size rejection. Conflict Reload also preserves newer
-revisions and byte-distinct input received during its awaited work. The Editor
-suite passes 289 tests across 44 files; Core 405 plus three performance tests,
-Contracts 92, and Application 165 plus one architecture measurement pass.
-The 946-test App run had one invalid synthetic-pointer/animation-timing test;
-after replacing it with the existing native click route and waiting for natural
-animation completion, that test passed separately with its original caret and
-pixel requirements. Static checks, resource reproduction, public-symbol boundary,
-Release compilation and bundled-helper checks pass. This is staged verification,
-not an uninterrupted green gate. Two disposable 500-Note UI journeys pass: dirty
-Review handoff and continued autosave after external rename. QA app/state were
-removed; installed-release, IME and human accessibility acceptance remain separate.
-Evidence: `.build/note-editing-fix/` and
-`.build/editor-history-review/heading-animation-settle.log`.
-
-**2026-09-15 — Beta preparation repository gate:** With Xcode 27.0
-(27A5218g), Swift 6.4 and the macOS 27.0 SDK, the complete `verify.sh` run
-finished successfully on the versioned pre-tag tree. Documentation authority,
-localization, lint, Contracts purity, entitlement and performance self-tests,
-Editor typecheck and 43-file/273-test Editor suite, deterministic RDF-1
-fixture, 405 Core tests plus three Core performance tests, 92 Contracts tests,
-165 Application tests plus one architecture measurement, 929 App tests, the
-symbol graph boundary, Release build and bundled-helper checks all passed.
-This is repository evidence for the Beta candidate; exact-tag packaging,
-artifact checks, clean-account smoke, and human accessibility/interaction
-acceptance remain separate evidence classes.
-
-**2026-09-15 — `v0.2.1-beta.1` packaged artifact:** The clean tagged commit
-`c251d2122a890e8ec477a074b96821d4dd7bbf24` produced the arm64 DMG
-`Scholium-v0.2.1-beta.1-macos-arm64.dmg` with marketing version `0.2.1`, build
-`2`, minimum macOS `26.0`, and the version-matched bundled helper and Core
-Protocol resources. App/helper signatures, entitlements, architecture,
-provenance, package contents, read-only DMG mount/copy, and SHA-256 checksum
-passed. The exact packaged first-launch Bootstrap smoke passed with production
-machine state unchanged. This Beta is ad-hoc signed and not Developer ID
-signed or notarized; human accessibility and interaction acceptance remain
-separate open boundaries.
-
-**2026-09-16 — Chat delivery, preparation and object identity:** Stop and failed
-delivery revoke automatic queue advancement; matching completion and delivery
-acknowledgement reconcile once regardless of order. Local pre-send saving retains
-live edits and uses the same ordered history writer. All material/selection entry
-points share conversation-scoped preparation, and failed candidates retain their
-query. Rich-object Copy/Expand use renderer-owned descriptors rather than a second
-Markdown parse and positional matching. Owning runs pass 30 renderer and 101 Chat
-tests; a subsequent 24-test native run overlaps that coverage. WebEditor passes
-340 tests and bundle reproducibility. Disposable 500-Note Debug QA verifies failed
-selection/query retention, successful Note preparation, independent table/code/
-HTML/Mermaid actions, preview dismissal, and Stop with a normal-completion race
-retaining its queue. Evidence and final integration results are recorded in
-`.build/chat-fixes/verification.md`; installed IME and human accessibility remain
-separate acceptance boundaries.
-
-**2026-09-16 — Chat input-area responsibility cleanup:** The input-area owner
-now measures queue/dock geometry and anchors candidates to their actual size;
-the shell no longer compensates with negative queue padding or estimated popup
-height. Submission and composition use the explicitly attached conversation
-editor, and request disclosure disables that native editor. Xcode 27 Debug build,
-25 focused composer/catalog/dock tests, scoped Swift formatting and documentation
-validation pass. Disposable 500-Note QA at a 300-point sidebar covered candidate
-resizing and selection, expanded queued input, question completion, Stop and
-cross-conversation draft retention. Native tests additionally cover light/dark
-request presentation, selection/identity preservation and marked-text callbacks.
-Installed IME and full assistive-technology/adaptation acceptance remain open.
-The shell's conversation-state lifetime and implicit reader-mode selection
-remain separate structural work. Evidence:
+**2026-09-16 — Chat delivery/composer:** Owning renderer/Chat checks cover Stop/
+failed-delivery queue revocation, completion/acknowledgement ordering, ordered
+pre-send saving, conversation-scoped material preparation and renderer-owned rich
+object actions. Native 300-point-sidebar QA covers candidate resizing/selection,
+expanded queue, question completion, Stop and independent drafts; additional
+fixtures cover Light/Dark requests, marked-text callbacks and object actions.
+Evidence: `.build/chat-fixes/verification.md`,
 `.build/chat-layering/verification.md`.
+That input-area proof did not establish shell conversation-state lifetime or
+implicit reader-mode selection correctness; no new debt conclusion is inferred.
+The 2026-09-08 input correction's 106 owning checks and simulated-runtime journey
+retain whitespace geometry, wrapping, Return/Shift-Return, marked-text dispatch,
+blank clicks, caret, Undo, drafts, disconnected Return and multiline sending.
+This is not installed-IME or real inference acceptance.
 
-**2026-09-15 — In-app Chat presentation and runtime controls:** Focused slices
-report 19 final-panel checks, 29 composer-entry checks, 32 context/message
-checks, and 31 Agent-roster checks, with overlapping coverage rather than an
-additive total. Xcode 27 Debug builds plus scoped formatting, localization and
-documentation validation pass. Disposable 500-Note QA covered English/Light and
-Chinese/Dark states, composer focus and draft retention, candidate lists, pending
-questions, queued input, Stop, Context, Changes, Agent monitoring and recovery
-routes. Some Context inspection attempts closed `SkyComputerUseService`; the
-native-disclosure correction was verified, but this remains a tooling boundary,
-not a claim that the service is repaired internally. Full Keyboard Access,
-VoiceOver, Switch Control, installed IME, complete adaptation and real-provider
-acceptance remain open. Evidence is under `.build/chat-sidebar-audit/` and
-`.build/agent-roster/`.
+**Retained Chat component boundaries:** Deterministic fixtures and inspected
+Light/Dark offscreen native renders cover Note/file/image/PDF materials and
+selected-page-only delivery, retained draft failure, native clipboard/drop
+callbacks, text Undo, questions/secret exclusion, exact Note-update previews,
+runtime approvals, branching/retry, concurrent conversation states, Find and
+archive actions, plans/context/quota, ancestry-verified Agent history/Stop and
+generic notification routing. These inherited component results do not establish
+live picker/paste/drop, actual system notifications, provider interpretation,
+browser authentication, provider forks/questions/approvals, physical IME or
+assistive technology. Installed official-runtime Skill discovery/disable/enable
+has isolated local evidence, not inference acceptance.
+The 2026-09-15 presentation QA covers English/Light and Chinese/Dark composer,
+candidates, questions, queue, Stop, Context, Changes and Agent monitoring;
+some Context inspections closed `SkyComputerUseService`. Native disclosure was
+corrected, not the automation service's internals.
+Evidence: `.build/chat-sidebar-audit/`, `.build/agent-roster/`.
 
-**2026-09-15 — Search and staged gate evidence:** Contracts purity, current
-Search rendering and system-Trash wording checks pass. A staged gate recorded
-405 Core, 3 performance, 92 Contracts, 165 Application and one
-architecture-measurement test pass. The 895-test App phase had one retired Trash
-wording assertion; after its test-only correction, the 77 Frontend Architecture
-tests passed, but the six-minute App phase was not rerun. Release compilation,
-symbol-boundary checks and helper protocol isolation passed. This is staged
-evidence, not one uninterrupted green `verify.sh` run.
+**2026-09-08 — Bounded signed-in Chat loop:** Official-runtime QA completed one
+multi-turn read, native approval, exact Note update, comparison, eligible Undo,
+restart restoration and Stop; source returned to its starting bytes.
+CHAT-LIVE-01/02 close only for this route. Provider breadth, concurrency,
+packaging, prolonged offline/material recovery and human accessibility remain open.
+Evidence: `.build/agent-chat-evolution/real-loop-retest-*.json`.
 
-That measured build used Search contract 20, schema 18, and ranking policy 4. Its 2,056-Note
-benchmark reports warm-query p95 of 97 ms, first-five-page p95 of 466 ms, and
-incremental-publication p95 of 27 ms against the unchanged 100/500/250 ms
-budgets. Current Saved Searches use the ordinary parser only; unsupported stored
-definitions remain protected and nonexecuting. Paragraph predicates, term-group
-insertion, exact ranges, Unicode source preservation, hydration recovery and
-App/MCP provenance have scoped evidence. A separate Search integration attempt
-hit a Preview Styles `LineLength` failure; the line is fixed and scoped lint
-passes, but the complete gate has not been rerun. Evidence includes
-`.build/check-blocker-final-integration-gate.log`,
-`.build/search-performance-final-correctness.log`,
-`.build/search-clean-cutover-tests.log` and
-`.build/verification-release/release-build.log`.
+**2026-09-13–15 — Files, reorganization and source safety:** Late-writer
+reproductions retain exact external bytes and Recovery Required; 111 selected
+tests cover interruption, retention/cleanup failure, revision-checked restoration,
+move and Agent Undo. App-only delivery has bounded helper/symbol/Release evidence.
+Reorganization fixtures cover anchors, footnotes, YAML choices, reference scope,
+resource relocation, dirty conflicts/readback and detached saves; native QA covers
+paragraph insertion, Undo/Redo, cancellation, merge, incoming references and
+system-Trash routing. Library batch checks (38 App/28 Core) plus 22 native renders
+cover narrow/partial/unavailable/recovery states and mixed-script paths; QA covers
+selection, Move, cancellation/collision, remaining-only retry, retained documents
+and resize. Automation connection loss limits final sheet/Trash/physical-input proof.
+Background-tab insertion, post-Trash cleanup, live sync/File Provider/Finder and
+human Recovery remain open.
+Evidence: `.build/note-safety-fix/`, `.build/source-cutover/`,
+`.build/knowledge-reuse-fixes-tests.log`,
+`.build/library-file-operation-final-tests.log`,
+`.build/file-operation-final-layout-tests.log`, `.build/file-operation-review/`.
 
-**2026-09-15 — Workspace shell and Search presentation:** Focus Layout and the
-unified Search entry have bounded scoped checks (18 Focus Layout tests, plus 19
-Search-controller and three field/menu-wiring tests, with overlap). Disposable
-500-Note QA confirms ordinary/full-screen entry and exit, pane restoration,
-retained Document state and the existing advanced Search window. The earlier
-layout-dependent Search route is not part of the current surface. Hover-specific
-behavior, VoiceOver, IME, conflict/recovery and the complete adaptation matrix
-remain open. Evidence includes `.build/fullscreen-focus-final-tests.log`,
-`.build/advanced-search-shortcut-tests.log` and
+**2026-09-15 — Shell/Search:** Focus Layout/Search owning checks and native QA
+cover ordinary/full-screen entry/exit, pane restoration, retained Document state
+and the existing advanced Search window. Hover, physical input, IME, human AX,
+conflict/recovery and full adaptation are not established.
+Evidence: `.build/fullscreen-focus-final-tests.log`,
+`.build/advanced-search-shortcut-tests.log`,
 `.build/sidebar-search-simplification-tests.log`.
 
-**2026-09-15 — Library batches and file sheets:** Thirty-eight scoped App and
-28 Core tests pass, together with presentation checks for compact, narrow,
-partial, unavailable and recovery states. Twenty-two native renders cover
-normal/narrow widths, Light/high-contrast Dark and mixed-script paths. Disposable
-500-Note QA verified selection, menu/accessibility Move, cancellation,
-collision handling, remaining-only retry preparation, retained documents and
-window resizing. The native Computer Use connection was then lost, so final
-full-app sheet polish, Trash and physical-input routes remain open. Evidence is
-under `.build/library-file-operation-final-tests.log`,
-`.build/file-operation-final-layout-tests.log` and
-`.build/file-operation-review/`.
+## Retrieval quality and useful measurement comparisons
 
-**2026-09-14 — Note reorganization and editor boundaries:** Scoped Core, App and
-Contracts checks cover paragraph anchors, footnote dependencies, exact YAML
-choices, reference-scope isolation, resource relocation, dirty conflicts,
-source readback and detached WebView save receipts. Disposable-fixture QA
-verified paragraph insertion, destination Undo/Redo, preview cancellation,
-Merge, incoming-reference following and system-Trash routing. Complete
-background-tab insertion, full visual/assistive-technology acceptance and
-post-Trash cleanup remain open. Editor candidate/deletion, native document
-previews, research sheets and preview-renderer reuse also have bounded focused
-evidence; their physical input, IME, VoiceOver and complete adaptation claims
-remain open. Evidence includes `.build/knowledge-reuse-fixes-tests.log`,
-`.build/preview-perf-tests.log`, `.build/slash-candidates-journey.log`,
-`.build/native-research-sheet-tests.log`.
+**2026-09-17 — Current lexical retrieval:** Search schema 21 and Related-Content
+contract 11/ranking policy 9 have 62 scoped retrieval checks and unchanged outcomes
+for all 36 frozen synthetic cases after native-only normalization/projection reuse.
+The Release App compiles without model/inference-runtime dependencies; this is
+not packaging or native interaction acceptance. Measurements below are backend
+harness/Debug samples unless stated, excluding editor capture/debounce, link-action
+preparation and native publication; they are not G7 or click-to-paint acceptance.
 
-**2026-09-13 — Source safety and App-only delivery:** Late-writer
-reproductions preserve exact external bytes and return Recovery Required; 111
-selected Core, Application and App-MCP-router tests cover interruption, failed
-retention, deferred cleanup, revision-checked restoration and move/Agent Undo.
-The App-only cutover also passed its bounded owning tests, helper smoke,
-public-symbol checks and a Release build. These are source/fixture and delivery
-proof only; installed-release, live sync-provider, packaged external-host and
-human Recovery acceptance remain open. Evidence is under
-`.build/note-safety-fix/`, `.build/cli-removal-*/` and
-`.build/source-cutover/`.
+- **Current 2,000-Note Release harness:** generated multilingual Notes, 16
+  paragraphs each, plus Works seed. Configure 37.274 s; first query 2.883 s;
+  repeats 2.003–2.012 s versus 3.222–3.256 s immediately before normalization/
+  scan protection; varied focus 1.818–2.377 s; selected draft paragraph 2.327 s;
+  reopen 5.716 s plus first query 2.786 s. Retention estimate remains 64 MiB;
+  all candidates are checked/scored.
+- **Earlier three-role baseline, same fixture:** schema 20 / Related ranking 8.
+  Configure 33.162 s; first query 3.179 s; repeats 2.794–2.808 s; reopen 4.379 s
+  plus first query 3.188 s; varied focus 2.306–2.924 s; selected 50-paragraph draft
+  focus 3.336 s. Scenario samples, not p95; the Release harness excludes App
+  tests using Debug-only helpers.
+- **Task-authorized 433-Note private-copy evaluation, all roles:** byte-verified
+  copy with tests on a second disposable copy. Configure 24.963 s; 20 backend
+  queries median/sample p95 1.840/1.975 s versus 2.546/2.731 s immediately before
+  native optimization. All 16 private cases preserve ordered results; source
+  bytes unchanged. This recorded exception is not standing private-vault authority.
+- **Expanded standard 500-Note Debug refresh, schema 19:** 6,973,820 bytes.
+  Cold configure 35.91 → 13.05 s; reopened usable state 10.94–11.03 → 2.99–3.10 s;
+  completion after presentation signal 17.33–17.45 → 4.87–4.93 s; unchanged refresh
+  2.26–2.30 → 0.750–0.756 s. All 500 projections restore without recomputation;
+  authorization/parsing remain fresh.
+- **2026-09-15 Search benchmark, 2,056 Notes:** schema 18 / ranking policy 4.
+  Warm query p95 97 ms, first five pages p95 466 ms, incremental publication
+  p95 27 ms against unchanged 100/500/250 ms budgets. A dated measured-build
+  result, not current packaged performance.
+- **2026-09-16 editor reuse:** synthetic 60-paragraph Debug Edit, two warmups and
+  five samples/path. Median attached-editor preparation 197.438 → 50.358 ms,
+  including capture, pool clearing, bridge readiness and DOM layout. Throttled
+  WebKit frame delivery excludes paint/Release claims.
+- **2026-09-16 Settings:** Debug Time Profiler + Hangs, six warm Appearance
+  selections. Median hosting-layout CPU sample weight 72 → 40 ms; action-window
+  main-thread weight 225.5 → 200.5 ms; no detected >250 ms hang versus baseline
+  first-Appearance 267.9 ms. Workspace totals overlap; not click-to-paint.
 
-**2026-09-08 — Bounded signed-in Chat loop:** Disposable 500-Note QA with the
-official Codex runtime completed one bounded multi-turn read, native approval,
-exact Note update, comparison, eligible Undo, restart restoration and Stop; the
-Note returned to its starting bytes. This closes CHAT-LIVE-01 and CHAT-LIVE-02
-only for that route. Provider breadth, concurrency, packaging and human
-accessibility remain separate acceptance boundaries. Evidence:
-`.build/agent-chat-evolution/real-loop-retest-*.json`.
+Synthetic quality cases split 18 development/18 heldout: distinct-material nDCG@6
+0.582/0.598 → 0.601/0.641; material recall stays 0.625. Agent-authored cases are
+not blind validation or researcher acceptance; raw Note recall falls when duplicate
+material is represented once. Private aggregate known-useful recall@6 stays 0.375;
+one earlier ranking change replaces a judged sixth result with unjudged material.
+Incomplete pools cannot establish improved/worsened philosophical usefulness.
+Agent review of 12 passages in two changed cases finds no coordinate defect and
+additional relevant material, not overall precision or researcher acceptance.
 
-**2026-09-07 — Editor syntax continuity:** Editor tests, TypeScript and
-resource-reproduction checks, Debug compilation and focused Swift/WebKit checks
-pass. Disposable fixture QA covered Callouts, Chinese paste/Undo, disclosure,
-Light/Dark and mode switching with byte-identical Undo. Minimum width, system
-adaptation, IME, conflict/recovery and human perceptual acceptance remain open.
-Evidence: `.build/editor-presentation-*.log`.
+The ignored Python/ONNX multilingual prototype yields known-useful recall 0.479,
+or 0.500 with fixed lexical/semantic RRF, but 72/96 hybrid results are unjudged and
+Chinese-query recall is 0.200. Different paragraph preparation, absent App wiring
+and unverified distribution mean this is neither a shipping backend nor full
+precision evidence. Private content/paths, judgments, vectors and model assets
+remain outside tracked fixtures.
+
+Evidence: `.build/recommendation-evaluation/`,
+`.build/recommendation-private-evaluation/`,
+`.build/recommendation-native-comparison.json`,
+`.build/recommendation-private-native-optimized.log`,
+`.build/recommendation-scan-protection-2000.log`,
+`.build/recommendation-final-owning-tests.log`,
+`.build/recommendation-native-release-build.log`,
+`.build/semantic-multilingual-prototype/`,
+`.build/writing-references-release-harness/.build/writing-references-performance/`,
+`.build/refresh-optimization/`, `.build/search-opening-diagnostics/`,
+`.build/search-performance-final-correctness.log`,
+`.build/note-switch/RESULTS.md`, `.build/settings-performance-fix/`.
 
 ## Evidence boundary
 
-These entries retain one representative result for each active proof boundary,
-not a per-change transcript. Test counts from separate runs are not additive.
-Focused tests, offscreen renders, Debug QA and deterministic fixtures prove only
-their named scope; they do not establish packaged behavior, G7/G9,
-VoiceOver, Full Keyboard Access, installed Simplified Chinese IME, physical
-input or full visual adaptation unless explicitly stated.
-
-Current capabilities belong to [Reachable Capabilities](01-capabilities.md),
-user-facing reachability to [Reachable Interface](02-interface.md), and open
-implementation or acceptance work to [Open Work](03-open-work.md). Target rules
-remain in the Specification set. Superseded task narratives belong to Git
-history; `.build` logs are local reproduction pointers, not release artifacts.
+Compilation, deterministic tests, offscreen renders, exploratory Debug QA,
+measurements, packaged smoke and human acceptance establish different claims.
+Test counts are not additive. No development entry closes VoiceOver, physical Full
+Keyboard Access, installed Simplified Chinese IME, complete visual adaptation,
+G7/G9 or packaged external-host acceptance unless explicitly stated.
+[Open Work](03-open-work.md) owns remaining limitations; the
+[status entry](../IMPLEMENTATION_STATUS.md) summarizes reachability. Superseded
+task narratives belong to Git; local `.build` pointers are not release artifacts.

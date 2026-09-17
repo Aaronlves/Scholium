@@ -66,7 +66,7 @@ Architecture owns parser, module, runtime, and persistence mechanics.
 | Accessibility requirements and human acceptance method | §20; feature chapters add no parallel checklist. |
 | Release profiles, gates and artifact requirements | §21; status records evidence only. |
 | Current implementation owners and mechanisms | Architecture set; source holds exact local defaults. |
-| Reachability, remaining work and dated proof | Respective Status chapter. |
+| Implementation scope, remaining work and dated proof | Status entry snapshot, Open Work and Verification respectively. |
 
 Put each rule in that owner and link from consumers. Move a rule rather than
 copying it; remove superseded wording in the same edit. Do not carry obsolete

@@ -1,214 +1,146 @@
 # Architecture: Source Storage and Read Models
 
-[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Source writes,
-recovery, immutable read models, and metadata.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Descriptor
+authorization, transaction recovery, and source-bound projections.
 
 ## Vault write and prewrite-recovery boundary
 
-`MarkdownRelativePath` is the typed authorization input for research Markdown.
-It preserves display spelling, treats backslash as a literal character, and
-rejects absolute paths, empty or dot components, NUL, and non-Markdown targets.
-`VaultPathResolver` scopes lookup to one canonical root and uses a
-volume-sensitive `VaultPathComparisonKey` only for case/Unicode collision
-decisions; neither rewrites Markdown or stored display paths.
+Typed Markdown-relative paths preserve spelling and reject absolute/dot/empty/NUL
+or non-Markdown targets. Root-owned volume comparison keys handle collision
+decisions without rewriting source or stored paths.
 
-`VaultDescriptorAccess` captures the authorized root's device and inode when a
-repository opens, then verifies that exact directory identity whenever it opens
-the registered root path. A moved, replaced, inaccessible, or symlinked root is
-latched unavailable and cannot be reused merely because a directory later
-appears at the same path. Each authorized operation walks every parent with
-`openat` plus `O_NOFOLLOW`, and opens leaves with `O_NOFOLLOW | O_NONBLOCK`.
-Immediate `fstat` accepts regular files only.
-Enumeration supplies candidates, never final authorization. Vault loads,
-fingerprints, precommit checks, postcommit readback, and recovery verification
-all use this descriptor-relative boundary. `FilePresence` distinguishes
-present, `ENOENT` absence, and inaccessible/error; only confirmed absence may
-complete deletion.
+Repository authorization captures root device/inode and verifies that exact
+directory on every operation. Moved/replaced/inaccessible/symlinked roots latch
+unavailable. Every parent is walked descriptor-relatively with no-follow opens;
+leaves are nonblocking and immediately proved regular by descriptor metadata.
+Enumeration admits candidates only. Loads, fingerprints, final authorization,
+readback and recovery all use this boundary. Presence distinguishes confirmed
+absence from inaccessible/error; only confirmed absence completes deletion.
 
-`VaultMutationCoordinator` performs short `NSFileCoordinator` accessors around
-that descriptor authority. Create and move use exclusive rename. Existing-file
-update retains the original descriptor, writes and synchronizes one
-same-directory candidate, rechecks the exact expected bytes and parent
-identity, and delegates the atomic replacement to
-`FileManager.replaceItemAt` inside a `.forReplacing` coordinated accessor. The
-`withoutDeletingBackupItem` option retains a transaction-named sibling backup;
-the system still preserves or adjusts standard
-filesystem metadata; Scholium neither copies nor compares the complete
-mode/owner/ACL/xattr/flags/birth-metadata envelope. It then performs canonical
-no-follow exact-byte readback and rechecks the current parent. Only that source
-authority and reconciliation of the actual replaced bytes determine the outcome.
+Core's mutation coordinator wraps short native coordinated accessors around
+descriptor authority. Create/move use exclusive no-replace rename. Update retains
+the original descriptor, synchronizes a same-directory candidate, rechecks expected
+bytes/parent identity and performs Foundation atomic replacement in a replacing
+accessor. The system-managed sibling backup is retained until reconciliation.
+Foundation owns preservation/adjustment of standard filesystem metadata; Scholium
+does not reconstruct or compare the full ACL/xattr/ownership/flags envelope.
 
-Before canonical replacement can occur, the coordinator records the relative
-path and exact expected/candidate fingerprints in a schema-versioned
-machine-local transaction; `VaultRepository` durably persists both byte sets
-before the final authorization check. A failure before replacement leaves
-canonical source unchanged and removes the same-directory candidate on a
-best-effort basis. A failure after replacement never initiates a compensating
-source write: exact canonical readback may prove the candidate committed, while
-any other state retains the transaction for recovery and reports no Saved
-outcome. Before success or transaction removal, Core no-follow reads the system
-backup. A differing source is exclusively persisted as `displaced.md` and bound
-in the manifest before the backup is removed. Recovery exposes it against the
-attempted canonical revision, retaining `expected.md` and `candidate.md` for
-inspection. Failure leaves the backup in place; startup reconciles that same
-transaction-named location before considering canonical readback or cleanup.
-There is no automatic compensating source write or fourth Document outcome.
+Before replacement, durable machine-local recovery binds exact expected/candidate
+bytes, fingerprints and path. Pre-replacement failure leaves canonical source
+unchanged. Post-replacement failure never triggers an automatic compensating write.
+Canonical no-follow readback plus parent identity proves commit or leaves recovery
+uncertain; no generic Saved result is allowed without that proof.
 
-The retained interrupted-save candidate contributes a workspace health issue
-and a vault-qualified entry in the existing Recovery sheet. Core no-follow reads
-revalidate its manifest plus expected/candidate bytes; read-only source, Copy,
-and Finder reveal grant no write authority. Restore carries the displayed
-vault, path, revisions, creation identity, and retained reason back to Core,
-flushes all Triptych editors, and uses the ordinary revision-checked repository
-save only while canonical source remains at the expected revision. Current
-evidence and remaining acceptance belong to
-[Implementation Status](../IMPLEMENTATION_STATUS.md).
+Backup bytes are no-follow read before success/transaction removal. Differing
+displaced source is durably retained and bound to the same transaction before
+backup cleanup. Failure preserves the backup; startup reconciles its exact
+transaction-bound location first. Expected, candidate and displaced bytes survive
+uncertainty even if canonical bytes equal the attempted candidate. Ordinary proven
+saves leave no history.
 
-`PrewriteRecoveryLedger` is Core-only machine state under
-`Vaults/<vault-id>/save-transactions-v2/`. Each unresolved replacement owns one
-small manifest plus exact expected, candidate and optional displaced bytes.
-The manifest records whether replacement evidence has been reconciled. Proven
-ordinary saves leave no history; uncertainty and displaced-source recovery survive
-restart even when canonical bytes equal the original attempted candidate. Unsupported pre-use bytes remain
-unchanged and nonauthorizing. The ledger exposes no versions or history API.
-`DocumentOperations` vault-qualifies listing, read-only content, Finder
-location, and restore; `ResearchController` owns that listing beside durable
-recovery state, while `WindowModel` owns cross-window editor flush and
-presentation effects.
+Recovery read/reveal/copy is nonauthorizing. Explicit restore carries exact vault,
+path, revisions and retained creation identity, flushes Triptych editors, and uses
+the same revision-checked repository writer only while canonical source remains at
+the expected revision. Window/Research owners borrow recovery projections, not
+filesystem transaction ownership. Unsupported records remain unchanged and
+nonauthorizing.
 
-`AgentChangeStore` is a separate Core actor under
-`Triptychs/<triptych-id>/agent-changes-v1/`. One descriptor-contained JSON file
-records one MCP create, update, or trash transaction and binds stable Note
-identity, role, paths, exact before/after fingerprints, optional bounded source
-bytes, and recovery state. It is machine-local evidence, not a task, result,
-permission, research history, or source authority. Prepared entries are
-confirmed only after the ordinary source owner proves readback. Outcome-uncertain
-entries require exact reconciliation. Direct Undo exists only for a confirmed
-update whose current authoritative fingerprint still equals the recorded after
-fingerprint.
+Agent Changes use a separate machine-local evidence store, binding operation,
+stable identity, exact before/after fingerprints and retained source/recovery.
+Prepared entries confirm only after source readback; uncertain evidence requires
+exact reconciliation. Update Undo requires a confirmed current ending fingerprint;
+move recovery retains all linked-source preimages and checks the whole inverse
+through [Agent Collaboration](02-agent-collaboration.md#note-mutation-authority-and-evidence).
+Create/trash evidence does not fabricate text preimages or comparisons.
 
-`SecureRecordDirectory` is the Core-only descriptor-relative primitive for
-bounded JSON state. It owns no-follow containment, byte limits,
-atomic replacement, readback, staging/deletion recovery, and the companion
-`AdvisoryFileLock` for cooperating-process serialization. Agent Changes, the
-prewrite ledger and other bounded stores retain their own schema,
-path, transaction, recovery, and error semantics. The primitive interprets no
-research object and never becomes a writable source authority.
+Bounded JSON stores share the Core-only secure-record primitive for descriptor
+containment, byte limits, atomic replacement/readback and staging/deletion recovery.
+An advisory lock serializes cooperating processes. Each store owns its own schema,
+path, transaction and error semantics; the primitive interprets no research object.
+Portable identity bootstrap uses no-replace creation. Identity mutation carries
+its exact decoded preimage through coordinated swap and readback, preventing a
+stale writer from erasing newer identity. Source bytes alone never grant identity.
 
 ## System Trash and coordinated source boundary
 
-`NoteSystemTrashDeletionCoordinator` is the Core owner for one
-researcher-confirmed source cutover. `prepareNote` and `prepareFolder` bind
-exact source revisions, stable identities, and complete directory manifests
-into one immutable preview.
-`WorkspaceHandle` holds the source-mutation lease and flushes every Triptych
-editor before preparation and execution.
+One Core deletion coordinator freezes source revisions, identities and complete
+folder manifests. The Application handle holds the source lease and flushes
+Triptych editors before preparation/execution. Durable plans precede filesystem
+effects; each source has an independent receipt/binding identity and duplicates
+fail before side effects.
 
-`TriptychMutationRecoveryStore` persists the `SystemTrashDeletionPlan` before
-the first filesystem call. Each source owns an independent receipt and stable
-binding identity; duplicates fail before the deletion gate or another side
-effect. `VaultRepository` repeats descriptor-relative containment and revision
-or manifest checks. `VaultMutationCoordinator` atomically renames the checked
-directory entry into the plan-owned hidden sibling, verifies the bound inode
-and exact bytes or complete manifest, and only then calls Foundation's native
-system-Trash API inside a coordinated deleting accessor. A late path
-replacement is restored or retained without entering Trash. A pending plan
-resumes an interrupted binding; absence of both original entry and a valid
-binding becomes `outcomeUnknown`. Returned URLs remain machine-local recovery
-evidence only.
+Core repeats containment/revision checks, renames the entry into a plan-bound
+hidden sibling, proves its inode and exact source or complete manifest, then invokes
+native Trash inside a deleting accessor. Late path replacement is restored or
+retained without entering Trash. Interrupted bindings resume only under their
+exact plan; absent original and absent valid binding report unknown outcome.
+Returned Trash locations are machine-local recovery evidence.
 
-`SettlementStore` owns portable judgments at `.scholium/settlements/v3/`,
-independently of research prose. It uses strict schema decoding, coordinated
-writes, and the shared Triptych lock; unsupported directories are not imported.
+Portable Settlement and identity, and machine-local Agent Changes, have independent
+writers and are not deletion cleanup targets. Watchers, Finder/sync observations
+cannot execute a deletion plan. Settlement writes retain strict schema validation
+and shared control-store coordination, independently of source prose.
 
-Settlement, stable identity records, and Agent Changes are not
-portable cleanup targets of source deletion. Watcher reconciliation, Finder
-actions, and sync tools cannot construct or execute the plan; they publish
-ordinary source inventory changes and stable-identity diagnostics only.
 ## Shared read models and source properties
 
-`WorkspaceNoteSnapshot` carries exact `NoteDocument`, stable vault-qualified
-identity, observed file facts and derived graph/search state. Filename owns
-Note title. There is no second mutable property record or catalog.
-`SearchPropertyProjection` reads arbitrary top-level YAML keys using Yams and
-proves source ranges, refusing ambiguous keys or unbounded scalar tokens.
-`SearchDocumentProjection` supplies lexical summary, keywords, authored title,
-aliases, author text and publication date. These are discovery projections,
-not bibliographic validation or writable source.
+An immutable Note snapshot carries exact document, vault-qualified stable identity,
+descriptor-observed file facts and disposable graph/search state. Filename is
+display identity; no second writable metadata record exists. Yams-backed property
+projection proves source ranges and refuses ambiguity. Semantic field projection
+supports discovery, not bibliographic validation.
 
-`SourceSearchProjectionCache` persists disposable Search text and coordinates
-under machine-local `Vaults/<vault-id>/source-projections-v1/`. The pooled
-`VaultSourceCatalog` restores them only after fresh descriptor-backed source
-reads and semantic parsing. Records bind exact path bytes, fingerprint, vault,
-role/profile, parser and Search policies, and validate payload digests and
-coordinates against fresh source. Bounded no-follow reads, atomic writes and
-pruning use `SecureRecordDirectory`; missing, incompatible, corrupt or unwritable
-cache records cause recomputation. The store contains no authoritative source,
-file facts, stable identity or dynamic graph state.
+Disposable source-projection caches bind exact path/fingerprint, role/profile,
+parser/search policy and checked coordinates/payload digest. Fresh descriptor reads
+and semantic parsing precede restoration; invalid/missing/unwritable caches cause
+recomputation. Caches contain no authoritative source, file facts or identity.
+Search index publication transactionally binds complete paragraph/offset maps and
+lexical preparation to exact source revisions. Negation cannot evaluate cropped
+body passages. Literal term groups persist raw alternatives with group-level
+preimage comparison, not query macros or hidden expansion.
 
-Search contract 20 and disposable schema 21 use the existing `property:`
-grammar with quoted literal keys and normalized scalar/direct-list equality.
-All property rows and persisted projection-completeness issues come from source.
-`SearchDocumentProjection` also derives top-level paragraph text, exact offset maps and
-ranges. The index stores complete paragraphs through private records that reuse
-the lexical segments' binary offset-map encoding; the public paragraph projection
-and exact coordinate arrays are unchanged. It also stores the body-completeness flag;
-negation never evaluates a cropped passage. Opening validates complete paragraphs
-and offset maps against indexed source bounds, scanning stored binary coordinates
-without reconstructing discarded projections. `SearchTermGroupStore` owns the app-local versioned
-`search-term-groups.json` beside Saved Searches, using bounded reads, group-level
-preimage comparison and atomic persistence through WorkspaceRuntime. It stores literal
-input alternatives, not ASTs or hidden query expansion.
-No source-kind discriminator or managed record refresh path remains. Incompatible
-indexes rebuild; Saved Search decoding accepts only the current contract. Unsupported
-definitions use the existing unreadable-store protection without migration or a
-version-specific execution path. Rebuild and incremental publication consume the
-same exact-source manifests. User YAML cannot assign stable identity or Settle.
+Recommendation retrieval shares that index and semantic parser. It checks all
+eligible current source candidates, ranks complete comparison-set scores before
+selected excerpts, and retains exact passage ranges separately from readable
+highlight projections. Revision-bound memoization cannot skip source validation
+or candidate scoring. Within/cross-Note deduplication preserves original source
+provenance; role diversity and local weighting are ranking mechanisms, not
+philosophical interpretation. Ordinary Search coordinates/clauses remain separate.
 
-Managed creation takes complete authored Markdown and preserves its bytes.
-GUI creation starts empty. `FrontmatterPatchPlanner` remains the existing
-bounded source-edit utility, not a property store or a catalog validator.
+Source resource projection walks current links/images and validated Zotero
+locators without API calls or inferred bindings. One portable attachment registry
+provides file identity, never Note relationships. Markdown alone supplies those.
+External access requires exact machine-local path/bookmark binding; filename
+cannot substitute. Contained unregistered links receive derived IDs.
 
-`SourceResourceReferences` walks Markdown links/images. Zotero occurrences
-retain exact library-qualified references; Links presents them on its outgoing
-page. No Zotero API call, inferred binding or bibliography write occurs during
-projection. The existing independent Zotero read tools remain unchanged.
+The attachment owner performs no-follow bounded reads, exclusive copies and
+exact-fingerprint rollback. Preparation joins the existing editor insertion
+transaction. Failed insertion rolls back newly prepared state only; uncertainty
+preserves files. Quick Look holds a scoped preview-lifetime lease. Agent reads
+recheck relationships/revisions and cannot gain arbitrary-path access. Link
+deletion never deletes file bytes.
 
-Attachments use one file registry at `.scholium/attachments/v2/`: attachment
-UUID, vault UUID and a contained path or neutral external filename descriptor.
-It provides file identity only. There is no Note-to-file catalog. Current
-Markdown alone supplies relationships; unregistered contained file links get
-deterministic projection IDs. Missing external access yields unavailable.
-`IndexedAttachmentAccessStore` owns exact absolute path/bookmark matching in
-machine-local Application Support; filenames never substitute for identity.
-
-`VaultAttachmentStore` owns no-follow file validation, bounded reads, exclusive
-copies and exact-fingerprint rollback. `PreparedSourceAttachment` joins that
-file preparation to the existing editor insertion transaction. Failed insertion
-rolls back only newly created preparation state; uncertain commits preserve
-files. Native Quick Look holds an explicit preview-lifetime lease. Agent reads
-recheck source/listing fingerprints and containment and never acquire access
-from a caller-supplied arbitrary path. Link deletion never deletes file bytes.
-
-Retired Metadata, Zotero-binding and Note-attachment control files remain
-untouched and nonauthorizing. There are no readers, writers or migration paths
-for those preproduction records.
+Creation preserves complete authored Markdown; GUI creation starts empty.
+Targeted YAML edits remain bounded source transformations, not a catalog writer.
+Unsupported preproduction control records have no readers/writers/migration route.
 
 ## Note reorganization
 
-`ParagraphAnchorPlanner` derives authored paragraph identities and exact source edits;
-Graph contract 8 projects their current locations. Editor bridge protocol 36 carries
-the corresponding source-derived presentation without making the projection writable.
-`NoteRestructurePlanner` validates the captured range, destination, link resolution and
-identity consequences. Its dependency planner derives exact footnote closures and
-Markdown link edits from the existing semantic parser and swift-markdown.
-Parser-owned footnote content slices map normalized content back to exact source;
-footnotes and protected projections are isolated before reference resolution.
-The append planner reparses both scopes, escapes newly captured literal openers,
-and verifies existing link occurrences retain their meaning. Frontmatter planning
-separates parser-proven entries from independent comment/blank-line slices and
-checks combined values; per-key choices remain in the revision-bound request. `DocumentOperations` routes prepare/commit through the workspace
-source gate. `NoteRestructureCoordinator` rechecks revisions, records exact recovery
-bytes before writes, and uses existing repository and system-Trash owners. The Note
-Actions and passage menus share `WindowDocumentActions`; their preview sheet never
-owns source. Recovery bytes are machine-local transaction evidence, not research citations.
+Contracts planners derive paragraph anchors, exact block edits, source dependency
+closures and identity consequences from shared semantic parsers. Parser-owned
+footnote slices map back to exact bytes. Append/restructure reparses source scopes,
+preserves existing link meaning and handles captured literal openers without
+reconstructing source. Frontmatter planning distinguishes proved entries from
+independent comments/blank lines and retains explicit per-key conflict choices.
+
+Application prepares/commits through the source gate. Core rechecks all revisions,
+retains exact recovery bytes before writes, and uses existing repository/Trash
+owners. Preview presentation never owns source. Reorganization recovery is
+machine-local transaction evidence, not a citation snapshot.
+
+## Source entry points
+
+- `ScholiumCore/VaultRepository.swift` and `VaultMutationCoordinator.swift`:
+  descriptor-backed source transactions.
+- `ScholiumCore/SecureRecordDirectory.swift`: bounded state persistence.
+- `ScholiumCore/NoteRestructureCoordinator.swift`: multi-source reorganization.
+- `ScholiumContracts/MarkdownSemanticDocument.swift`: shared source projection.

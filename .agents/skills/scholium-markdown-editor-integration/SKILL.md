@@ -8,7 +8,6 @@ description: "Implement, diagnose, or test Scholium CodeMirror/WKWebView editing
 Preserve one exact Markdown buffer across editing, persistence, and
 presentation. Rendered or decorated forms never become writable source.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
 ## Find the first divergent state
 

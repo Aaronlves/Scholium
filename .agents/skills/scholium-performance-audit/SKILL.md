@@ -8,7 +8,6 @@ description: "Diagnose or fix a concrete Scholium performance problem using meas
 Optimize only a concrete, measured problem. Performance evidence never relaxes
 source fidelity, current-revision checks, accessibility, or researcher control.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
 ## Modes
 

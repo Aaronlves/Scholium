@@ -8,7 +8,6 @@ description: "Implement, diagnose, or test Scholium filesystem observation, conc
 Treat the filesystem as concurrently mutable. Events invalidate assumptions;
 only a fresh authorized read establishes current content.
 
-Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
 ## Reconstruct the interleaving
 
