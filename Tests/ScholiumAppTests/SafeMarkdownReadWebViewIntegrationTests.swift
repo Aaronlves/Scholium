@@ -1075,9 +1075,11 @@ extension MarkdownEditorWebViewIntegrationTests {
 
     @Test("Review updates text presentation in place without reloading the document page")
     func reviewTextPresentationConvergesInPlace() async throws {
-        let source = "---\ntitle: Zoomed YAML\n---\n\n" + (1...40).map { section in
-            "## Section \(section)\n\n" + String(repeating: "Scrollable review text.\n\n", count: 4)
-        }.joined()
+        let source =
+            "---\ntitle: Zoomed YAML\n---\n\n"
+            + (1...40).map { section in
+                "## Section \(section)\n\n" + String(repeating: "Scrollable review text.\n\n", count: 4)
+            }.joined()
         let document = NoteDocument(relativePath: "TextScale.md", rawContent: source)
         let harness = ReadHarness(
             source: source,

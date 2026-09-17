@@ -132,7 +132,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             linkPreviewRevision: linkPreviewRevision,
             in: webView
         )
-        return DocumentWebViewContainer(webView: webView)
+        return DocumentWebViewContainer(
+            webView: webView,
+            keyEquivalentRoute: { event in
+                ScholiumCommandKeyEquivalentRouter.route(event)
+            }
+        )
     }
 
     func updateNSView(_ container: DocumentWebViewContainer, context: Context) {
@@ -1031,11 +1036,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         self.documentID == expectedDocumentID,
                         self.fingerprint == expectedFingerprint
                     else { return }
-                    guard await self.applyPresentationStylesIfNeeded(
-                        in: webView,
-                        generation: expectedLoadGeneration,
-                        signature: expectedSignature
-                    ) else {
+                    guard
+                        await self.applyPresentationStylesIfNeeded(
+                            in: webView,
+                            generation: expectedLoadGeneration,
+                            signature: expectedSignature
+                        )
+                    else {
                         guard !Task.isCancelled else { return }
                         throw CocoaError(.coderReadCorrupt)
                     }

@@ -12,7 +12,7 @@ enum ScholiumCommandKeyEquivalentRouter {
         menu: NSMenu? = NSApp.mainMenu,
         defaults: UserDefaults = .standard
     ) -> Bool {
-        guard ScholiumHotkeyPreferences.command(for: event, defaults: defaults) != nil else {
+        guard ScholiumHotkeyEventAdapter.command(for: event, defaults: defaults) != nil else {
             return false
         }
         if menu?.performKeyEquivalent(with: event) != true {

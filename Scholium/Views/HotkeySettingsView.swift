@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct HotkeySettingsView: View {
@@ -191,7 +190,7 @@ private struct HotkeyRecordingEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            HotkeyRecorderControl(binding: $draft, isRecording: $isRecording, isActive: paneIsActive)
+            ScholiumHotkeyRecorder(binding: $draft, isRecording: $isRecording, isActive: paneIsActive)
                 .frame(maxWidth: .infinity, minHeight: 52)
                 .accessibilityIdentifier("scholium.hotkeys.recorder")
             Text("Include ⌘. Press Delete to clear the shortcut or Escape to stop recording.")
@@ -236,116 +235,5 @@ private struct HotkeyRecordingEditor: View {
     private var validationIssue: ScholiumHotkeyValidationIssue? {
         guard let draft else { return nil }
         return ScholiumHotkeyPreferences.validationIssue(for: draft, command: command, data: preferencesData)
-    }
-}
-
-private struct HotkeyRecorderControl: NSViewRepresentable {
-    @Binding var binding: ScholiumHotkeyBinding?
-    @Binding var isRecording: Bool
-    let isActive: Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeNSView(context: Context) -> RecorderButton {
-        let button = RecorderButton(title: "", target: context.coordinator, action: #selector(Coordinator.beginRecording))
-        button.bezelStyle = .rounded
-        button.controlSize = .large
-        button.setAccessibilityLabel("Shortcut recorder")
-        context.coordinator.button = button
-        update(button, coordinator: context.coordinator)
-        return button
-    }
-
-    func updateNSView(_ nsView: RecorderButton, context: Context) {
-        context.coordinator.parent = self
-        update(nsView, coordinator: context.coordinator)
-    }
-
-    private func update(_ button: RecorderButton, coordinator: Coordinator) {
-        button.title =
-            isRecording
-            ? String(localized: "Press a Shortcut…")
-            : binding?.displayName ?? String(localized: "Record Shortcut")
-        button.isRecording = isRecording && isActive
-        button.isEnabled = isActive
-        if !isActive, button.window?.firstResponder === button {
-            button.window?.makeFirstResponder(nil)
-        }
-        button.setAccessibilityValue(binding?.displayName ?? String(localized: "No shortcut"))
-        button.setAccessibilityHelp(
-            "Activate, then press a shortcut that includes the Command key."
-        )
-        button.capture = { captured in
-            coordinator.parent.binding = captured
-            coordinator.parent.isRecording = false
-        }
-        button.clear = {
-            coordinator.parent.binding = nil
-            coordinator.parent.isRecording = false
-        }
-        button.cancel = {
-            coordinator.parent.isRecording = false
-        }
-    }
-
-    @MainActor
-    final class Coordinator {
-        var parent: HotkeyRecorderControl
-        weak var button: RecorderButton?
-
-        init(parent: HotkeyRecorderControl) {
-            self.parent = parent
-        }
-
-        @objc func beginRecording() {
-            guard parent.isActive else { return }
-            parent.isRecording = true
-            button?.isRecording = true
-            button?.title = String(localized: "Press a Shortcut…")
-            button?.window?.makeFirstResponder(button)
-        }
-    }
-
-    final class RecorderButton: ScholiumPointingHandButton {
-        var isRecording = false
-        var capture: ((ScholiumHotkeyBinding) -> Void)?
-        var clear: (() -> Void)?
-        var cancel: (() -> Void)?
-
-        override var acceptsFirstResponder: Bool { true }
-
-        override func keyDown(with event: NSEvent) {
-            guard isRecording else {
-                super.keyDown(with: event)
-                return
-            }
-            handle(event)
-        }
-
-        override func performKeyEquivalent(with event: NSEvent) -> Bool {
-            guard isRecording else {
-                return super.performKeyEquivalent(with: event)
-            }
-            handle(event)
-            return true
-        }
-
-        private func handle(_ event: NSEvent) {
-            if event.keyCode == 53 {
-                cancel?()
-                return
-            }
-            if event.keyCode == 51 || event.keyCode == 117 {
-                clear?()
-                return
-            }
-            guard let binding = ScholiumHotkeyBinding(event: event) else {
-                NSSound.beep()
-                return
-            }
-            capture?(binding)
-        }
     }
 }

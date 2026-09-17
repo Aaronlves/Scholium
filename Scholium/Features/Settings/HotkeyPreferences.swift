@@ -1,6 +1,4 @@
-import AppKit
 import Foundation
-import SwiftUI
 
 enum ScholiumHotkeyCategory: String, CaseIterable, Identifiable, Sendable {
     case workspace
@@ -213,25 +211,6 @@ struct ScholiumHotkeyModifiers: OptionSet, Codable, Hashable, Sendable {
     static let shift = Self(rawValue: 1 << 2)
     static let command = Self(rawValue: 1 << 3)
 
-    var eventModifiers: EventModifiers {
-        var result: EventModifiers = []
-        if contains(.control) { result.insert(.control) }
-        if contains(.option) { result.insert(.option) }
-        if contains(.shift) { result.insert(.shift) }
-        if contains(.command) { result.insert(.command) }
-        return result
-    }
-
-    static func from(_ flags: NSEvent.ModifierFlags) -> Self {
-        let flags = flags.intersection(.deviceIndependentFlagsMask)
-        var result: Self = []
-        if flags.contains(.control) { result.insert(.control) }
-        if flags.contains(.option) { result.insert(.option) }
-        if flags.contains(.shift) { result.insert(.shift) }
-        if flags.contains(.command) { result.insert(.command) }
-        return result
-    }
-
     var displayPrefix: String {
         var result = ""
         if contains(.control) { result += "⌃" }
@@ -256,23 +235,6 @@ struct ScholiumHotkeyBinding: Codable, Hashable, Sendable {
         self.modifiers = modifiers
     }
 
-    init?(event: NSEvent) {
-        guard event.type == .keyDown,
-            let characters = event.characters(byApplyingModifiers: .command)
-                ?? event.charactersIgnoringModifiers,
-            let character = characters.first
-        else { return nil }
-        self.init(
-            key: String(character),
-            modifiers: ScholiumHotkeyModifiers.from(event.modifierFlags)
-        )
-    }
-
-    func matches(event: NSEvent) -> Bool {
-        guard let eventBinding = Self(event: event) else { return false }
-        return matches(key: eventBinding.key, modifiers: eventBinding.modifiers)
-    }
-
     func matches(key: String, modifiers: ScholiumHotkeyModifiers) -> Bool {
         let key = key.lowercased()
         if self.key == key && self.modifiers == modifiers {
@@ -284,10 +246,6 @@ struct ScholiumHotkeyBinding: Codable, Hashable, Sendable {
             && key == "="
             && !self.modifiers.contains(.shift)
             && modifiers == self.modifiers.union(.shift)
-    }
-
-    var keyEquivalent: KeyEquivalent {
-        KeyEquivalent(key.first!)
     }
 
     var displayName: String {
@@ -352,16 +310,24 @@ enum ScholiumHotkeyPreferences {
         return override
     }
 
-    @MainActor
     static func command(
-        for event: NSEvent,
+        for candidate: ScholiumHotkeyBinding,
+        data: Data
+    ) -> ScholiumHotkeyCommand? {
+        return ScholiumHotkeyCommand.allCases.first {
+            guard let activeBinding = binding(for: $0, data: data) else { return false }
+            return activeBinding.matches(key: candidate.key, modifiers: candidate.modifiers)
+        }
+    }
+
+    static func command(
+        for candidate: ScholiumHotkeyBinding,
         defaults: UserDefaults = .standard
     ) -> ScholiumHotkeyCommand? {
-        let data = defaults.data(forKey: defaultsKey) ?? defaultData
-        return ScholiumHotkeyCommand.allCases.first {
-            guard let binding = binding(for: $0, data: data) else { return false }
-            return binding.matches(event: event)
-        }
+        command(
+            for: candidate,
+            data: defaults.data(forKey: defaultsKey) ?? defaultData
+        )
     }
 
     static func data(
@@ -504,24 +470,4 @@ enum ScholiumHotkeyPreferences {
             binding("r", [.shift, .command]),  // Chat selection quotation
         ])
     }()
-}
-
-extension View {
-    func scholiumKeyboardShortcut(_ command: ScholiumHotkeyCommand) -> some View {
-        modifier(ScholiumMenuShortcutModifier(command: command))
-    }
-}
-
-private struct ScholiumMenuShortcutModifier: ViewModifier {
-    let command: ScholiumHotkeyCommand
-    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
-    private var data = ScholiumHotkeyPreferences.defaultData
-
-    func body(content: Content) -> some View {
-        if let binding = ScholiumHotkeyPreferences.binding(for: command, data: data) {
-            content.keyboardShortcut(binding.keyEquivalent, modifiers: binding.modifiers.eventModifiers)
-        } else {
-            content
-        }
-    }
 }

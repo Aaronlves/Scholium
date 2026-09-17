@@ -185,7 +185,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             Self.editorScript != nil
         else {
             session.reportError(String(localized: "The bundled Markdown editor resources could not be found.", table: "Localizable", bundle: .module))
-            return DocumentWebViewContainer(webView: webView)
+            return DocumentWebViewContainer(
+                webView: webView,
+                keyEquivalentRoute: { event in
+                    ScholiumCommandKeyEquivalentRouter.route(event)
+                }
+            )
         }
         if reusedWebView != nil {
             webView.onFirstWindowAttachment = { [weak webView, weak coordinator = context.coordinator] in
@@ -198,7 +203,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 webView?.loadHTMLString(editorHTML, baseURL: nil)
             }
         }
-        return DocumentWebViewContainer(webView: webView)
+        return DocumentWebViewContainer(
+            webView: webView,
+            keyEquivalentRoute: { event in
+                ScholiumCommandKeyEquivalentRouter.route(event)
+            }
+        )
     }
 
     func updateNSView(_ container: DocumentWebViewContainer, context: Context) {

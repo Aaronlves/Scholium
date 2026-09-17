@@ -178,21 +178,21 @@ struct HotkeyPreferencesTests {
                     characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: key == "j" ? 38 : 15))
         }
         #expect(
-            ScholiumHotkeyPreferences.command(for: try event("r", .command), defaults: defaults)
+            ScholiumHotkeyEventAdapter.command(for: try event("r", .command), defaults: defaults)
                 == .toggleReviewEdit
         )
         #expect(
-            ScholiumHotkeyPreferences.command(for: try event("r", []), defaults: defaults) == nil
+            ScholiumHotkeyEventAdapter.command(for: try event("r", []), defaults: defaults) == nil
         )
         let custom = ScholiumHotkeyBinding(key: "j", modifiers: [.command, .option])!
         defaults.set(
             ScholiumHotkeyPreferences.data(setting: custom, for: .toggleReviewEdit, in: Data()),
             forKey: ScholiumHotkeyPreferences.defaultsKey)
         #expect(
-            ScholiumHotkeyPreferences.command(for: try event("r", .command), defaults: defaults) == nil
+            ScholiumHotkeyEventAdapter.command(for: try event("r", .command), defaults: defaults) == nil
         )
         #expect(
-            ScholiumHotkeyPreferences.command(
+            ScholiumHotkeyEventAdapter.command(
                 for: try event("j", [.command, .option]), defaults: defaults
             ) == .toggleReviewEdit
         )
@@ -223,7 +223,7 @@ struct HotkeyPreferencesTests {
         }
 
         #expect(
-            ScholiumHotkeyPreferences.command(
+            ScholiumHotkeyEventAdapter.command(
                 for: try event(
                     characters: "-", charactersIgnoringModifiers: "-", keyCode: 27,
                     flags: .command
@@ -232,7 +232,7 @@ struct HotkeyPreferencesTests {
             ) == .decreaseTextSize
         )
         #expect(
-            ScholiumHotkeyPreferences.command(
+            ScholiumHotkeyEventAdapter.command(
                 for: try event(
                     characters: "+", charactersIgnoringModifiers: "=", keyCode: 24,
                     flags: [.command, .shift]

@@ -1,6 +1,8 @@
 import AppKit
 import WebKit
 
+typealias ScholiumDocumentKeyEquivalentRoute = @MainActor (NSEvent) -> Bool
+
 @MainActor
 protocol ScholiumDocumentInputStateProviding: AnyObject {
     var scholiumIsComposing: Bool { get }
@@ -10,11 +12,16 @@ protocol ScholiumDocumentInputStateProviding: AnyObject {
 /// WebKit owns the document; contextual native surfaces are sibling views.
 final class DocumentWebViewContainer: NSView {
     let webView: WKWebView
+    private let keyEquivalentRoute: ScholiumDocumentKeyEquivalentRoute
     private var loadingObservation: NSKeyValueObservation?
     override var isFlipped: Bool { true }
 
-    init(webView: WKWebView) {
+    init(
+        webView: WKWebView,
+        keyEquivalentRoute: @escaping ScholiumDocumentKeyEquivalentRoute = { _ in false }
+    ) {
         self.webView = webView
+        self.keyEquivalentRoute = keyEquivalentRoute
         super.init(frame: webView.frame)
         setAccessibilityElement(true)
         setAccessibilityEnabled(true)
@@ -77,14 +84,14 @@ final class DocumentWebViewContainer: NSView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // A focused WebKit document gets key equivalents before the menu bar.
         // Give registered app commands to their native menu owner first. The
-        // application router owns matching and dispatch; this shared container
-        // only supplies the native boundary and composition guard.
+        // composition root injects any app-level routing. This shared
+        // container only supplies the native boundary and composition guard.
         // Hidden retained documents and other windows must never participate.
         if !isHiddenOrHasHiddenAncestor,
             window?.isKeyWindow == true,
             documentOwnsKeyEquivalentFocus,
             (webView as? any ScholiumDocumentInputStateProviding)?.scholiumIsComposing != true,
-            ScholiumCommandKeyEquivalentRouter.route(event)
+            keyEquivalentRoute(event)
         {
             return true
         }
