@@ -1073,6 +1073,66 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review updates text presentation in place without reloading the document page")
+    func reviewTextPresentationConvergesInPlace() async throws {
+        let source = "---\ntitle: Zoomed YAML\n---\n\n" + (1...40).map { section in
+            "## Section \(section)\n\n" + String(repeating: "Scrollable review text.\n\n", count: 4)
+        }.joined()
+        let document = NoteDocument(relativePath: "TextScale.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let pageIdentity = try #require(
+            try await harness.callPageJavaScript(
+                "return window.__scholiumTestingPageIdentity ??= `${Date.now()}:${Math.random()}`"
+            ) as? String
+        )
+        let webViewIdentity = try harness.webViewIdentity()
+        let initialFrontmatterFontSize = try #require(
+            try await harness.callPageJavaScript(
+                "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-frontmatter-source')).fontSize);"
+            ) as? Double
+        )
+
+        harness.setPresentationCSS(ScholiumDocumentPresentationConfiguration(textScale: 2).css)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        var textScale = ""
+        while textScale != "2.000000em" {
+            textScale =
+                (try? await harness.callPageJavaScript(
+                    "return getComputedStyle(document.documentElement).getPropertyValue('--scholium-document-text-scale').trim();"
+                ) as? String) ?? ""
+            if clock.now >= deadline {
+                Issue.record("Review did not apply the updated text scale in place.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        #expect(textScale == "2.000000em")
+        #expect(harness.isReady)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return window.__scholiumTestingPageIdentity"
+            ) as? String == pageIdentity
+        )
+        #expect(try harness.webViewIdentity() == webViewIdentity)
+        let scaledFrontmatterFontSize = try #require(
+            try await harness.callPageJavaScript(
+                "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-frontmatter-source')).fontSize);"
+            ) as? Double
+        )
+        #expect(scaledFrontmatterFontSize >= initialFrontmatterFontSize * 1.9)
+        await harness.closeAndDrain()
+    }
+
     @Test("Review shares link, preview, and finite embedded Note presentation")
     func reviewLinkAndEmbeddedNotePresentation() async throws {
         let previewSource = "[[Target]] and [External](https://example.com)\n\n![[Embedded]]\n"
@@ -2436,6 +2496,10 @@ extension MarkdownEditorWebViewIntegrationTests {
             sourceBox.updateLinkPreviews(previews, revision: revision)
         }
 
+        func setPresentationCSS(_ css: String) {
+            sourceBox.presentationCSS = css
+        }
+
         func setSelectionSurfaceActive(_ active: Bool) {
             sourceBox.selectionSurfaceIsActive = active
         }
@@ -3012,7 +3076,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 htmlBody: htmlBody,
                 presentationCSS: sourceBox.presentationCSS,
                 userCSS: sourceBox.userCSS,
-                configurationRevision: "read-harness:\(sourceBox.presentationCSS.hashValue):\(sourceBox.userCSS.hashValue)",
+                configurationRevision: "read-harness",
                 linkPreviews: sourceBox.linkPreviews,
                 linkPreviewRevision: sourceBox.linkPreviewRevision,
                 onLinkClick: { _ in },

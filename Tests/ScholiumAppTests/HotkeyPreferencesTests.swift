@@ -177,14 +177,69 @@ struct HotkeyPreferencesTests {
                     modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil,
                     characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: key == "j" ? 38 : 15))
         }
-        #expect(ScholiumHotkeyPreferences.isMenuShortcut(try event("r", .command), defaults: defaults))
-        #expect(!ScholiumHotkeyPreferences.isMenuShortcut(try event("r", []), defaults: defaults))
+        #expect(
+            ScholiumHotkeyPreferences.command(for: try event("r", .command), defaults: defaults)
+                == .toggleReviewEdit
+        )
+        #expect(
+            ScholiumHotkeyPreferences.command(for: try event("r", []), defaults: defaults) == nil
+        )
         let custom = ScholiumHotkeyBinding(key: "j", modifiers: [.command, .option])!
         defaults.set(
             ScholiumHotkeyPreferences.data(setting: custom, for: .toggleReviewEdit, in: Data()),
             forKey: ScholiumHotkeyPreferences.defaultsKey)
-        #expect(!ScholiumHotkeyPreferences.isMenuShortcut(try event("r", .command), defaults: defaults))
-        #expect(ScholiumHotkeyPreferences.isMenuShortcut(try event("j", [.command, .option]), defaults: defaults))
+        #expect(
+            ScholiumHotkeyPreferences.command(for: try event("r", .command), defaults: defaults) == nil
+        )
+        #expect(
+            ScholiumHotkeyPreferences.command(
+                for: try event("j", [.command, .option]), defaults: defaults
+            ) == .toggleReviewEdit
+        )
+    }
+
+    @Test("Hardware punctuation events reach document text-size shortcuts")
+    @MainActor
+    func punctuationMenuEventMatching() throws {
+        let suite = "ScholiumShortcutPunctuationTests." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        func event(
+            characters: String,
+            charactersIgnoringModifiers: String,
+            keyCode: UInt16,
+            flags: NSEvent.ModifierFlags
+        ) throws -> NSEvent {
+            try #require(
+                NSEvent.keyEvent(
+                    with: .keyDown, location: .zero,
+                    modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil,
+                    characters: characters,
+                    charactersIgnoringModifiers: charactersIgnoringModifiers,
+                    isARepeat: false, keyCode: keyCode
+                )
+            )
+        }
+
+        #expect(
+            ScholiumHotkeyPreferences.command(
+                for: try event(
+                    characters: "-", charactersIgnoringModifiers: "-", keyCode: 27,
+                    flags: .command
+                ),
+                defaults: defaults
+            ) == .decreaseTextSize
+        )
+        #expect(
+            ScholiumHotkeyPreferences.command(
+                for: try event(
+                    characters: "+", charactersIgnoringModifiers: "=", keyCode: 24,
+                    flags: [.command, .shift]
+                ),
+                defaults: defaults
+            ) == .increaseTextSize
+        )
     }
 
     @Test("Restoring a default never steals a reassigned shortcut")

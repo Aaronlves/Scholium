@@ -1,6 +1,11 @@
 import AppKit
 import WebKit
 
+@MainActor
+protocol ScholiumDocumentInputStateProviding: AnyObject {
+    var scholiumIsComposing: Bool { get }
+}
+
 /// Native geometry and accessibility boundary shared by the editor and reader.
 /// WebKit owns the document; contextual native surfaces are sibling views.
 final class DocumentWebViewContainer: NSView {
@@ -64,23 +69,23 @@ final class DocumentWebViewContainer: NSView {
         )
     }
 
+    private var documentOwnsKeyEquivalentFocus: Bool {
+        guard let responder = window?.firstResponder as? NSView else { return false }
+        return responder === webView || responder.isDescendant(of: webView)
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // A focused WebKit document gets key equivalents before the menu bar.
-        // Give registered app commands to their native menu owner first, so
-        // WebKit's editing/browser bindings cannot consume the same shortcut.
+        // Give registered app commands to their native menu owner first. The
+        // application router owns matching and dispatch; this shared container
+        // only supplies the native boundary and composition guard.
         // Hidden retained documents and other windows must never participate.
         if !isHiddenOrHasHiddenAncestor,
             window?.isKeyWindow == true,
-            let responder = window?.firstResponder as? NSView,
-            responder === webView || responder.isDescendant(of: webView),
-            (webView as? WindowAttachedWebView)?.editorSession?.isComposing != true,
-            ScholiumHotkeyPreferences.isMenuShortcut(event)
+            documentOwnsKeyEquivalentFocus,
+            (webView as? any ScholiumDocumentInputStateProviding)?.scholiumIsComposing != true,
+            ScholiumCommandKeyEquivalentRouter.route(event)
         {
-            // A disabled app command must not fall through to a different
-            // browser action with the same key (for example rich-text Italic).
-            if NSApp.mainMenu?.performKeyEquivalent(with: event) != true {
-                NSSound.beep()
-            }
             return true
         }
         return super.performKeyEquivalent(with: event)

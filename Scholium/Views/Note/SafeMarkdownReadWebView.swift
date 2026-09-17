@@ -242,6 +242,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var loadingLinkPreviewRevision = ""
         private var desiredLinkPreviews: [DocumentLinkPreview] = []
         private var deferredLoadTask: Task<Void, Never>?
+        private var desiredPresentationCSS = ""
+        private var desiredUserCSS = ""
+        private var appliedPresentationCSS = ""
+        private var appliedUserCSS = ""
+        private var presentationStyleRevision: UInt64 = 0
+        private var presentationStyleTask: Task<Void, Never>?
         private var onScrollFractionChange: ((Double) -> Void)?
 
         private var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
@@ -384,6 +390,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             in webView: WKWebView
         ) {
             let interfaceLocalization = WebKitInterfaceLocalization.current()
+            if desiredPresentationCSS != presentationCSS || desiredUserCSS != userCSS {
+                presentationStyleRevision &+= 1
+                desiredPresentationCSS = presentationCSS
+                desiredUserCSS = userCSS
+            }
             let capabilitySignature = "\(onSelectionChange != nil)"
             let previewRevision = linkPreviewRevision ?? String(linkPreviews.hashValue)
             let signature =
@@ -408,6 +419,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     in: webView
                 )
                 applyLinkPreviewsIfNeeded(in: webView)
+                schedulePresentationStyleUpdate(in: webView)
                 applySelectionCommandsIfNeeded(in: webView)
                 applyFindRequestIfNeeded(in: webView)
                 return
@@ -448,6 +460,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadedSignature = signature
             finalizedSignature = nil
             renderingReadinessIsAcknowledged = false
+            presentationStyleTask?.cancel()
+            presentationStyleTask = nil
+            appliedPresentationCSS = presentationCSS
+            appliedUserCSS = userCSS
             loadingLinkPreviewRevision = previewRevision
             pageIsReady = false
             selectionCoordinator.resetForDocumentChange()
@@ -658,6 +674,82 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     self.desiredLinkPreviewRevision == revision
                 else { return }
                 self.appliedLinkPreviewRevision = revision
+            }
+        }
+
+        private func applyPresentationStylesIfNeeded(
+            in webView: WKWebView,
+            generation: UInt64,
+            signature: String
+        ) async -> Bool {
+            guard pageIsReady,
+                activeWebView === webView,
+                loadGeneration == generation,
+                activeLoadSignature == signature,
+                loadedSignature == signature
+            else { return false }
+            let presentationCSS = desiredPresentationCSS
+            let userCSS = desiredUserCSS
+            guard presentationCSS != appliedPresentationCSS || userCSS != appliedUserCSS else {
+                return true
+            }
+            let result = try? await webView.callAsyncJavaScript(
+                """
+                return await window.scholiumSetPresentationCSS?.(presentationCSS, userCSS) === true;
+                """,
+                arguments: [
+                    "presentationCSS": presentationCSS,
+                    "userCSS": userCSS,
+                ],
+                in: nil,
+                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+            )
+            guard !Task.isCancelled,
+                result as? Bool == true,
+                activeWebView === webView,
+                loadGeneration == generation,
+                activeLoadSignature == signature,
+                loadedSignature == signature
+            else { return false }
+            // The bridge serializes its own updates. If SwiftUI published a
+            // newer style while this call was in flight, let finalization or
+            // the newer scheduled task apply that value instead of treating
+            // the older, already-valid update as a load failure.
+            guard desiredPresentationCSS == presentationCSS,
+                desiredUserCSS == userCSS
+            else { return true }
+            appliedPresentationCSS = presentationCSS
+            appliedUserCSS = userCSS
+            return true
+        }
+
+        private func schedulePresentationStyleUpdate(in webView: WKWebView) {
+            guard pageIsReady,
+                let signature = activeLoadSignature,
+                finalizedSignature == signature
+            else { return }
+            let generation = loadGeneration
+            let revision = presentationStyleRevision
+            presentationStyleTask?.cancel()
+            presentationStyleTask = Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView else { return }
+                let applied = await self.applyPresentationStylesIfNeeded(
+                    in: webView,
+                    generation: generation,
+                    signature: signature
+                )
+                guard applied,
+                    !Task.isCancelled,
+                    self.presentationStyleRevision == revision,
+                    self.activeWebView === webView,
+                    self.loadedSignature == signature,
+                    self.finalizedSignature == signature
+                else { return }
+                self.presentationStyleTask = nil
+                if !self.renderingReadinessIsAcknowledged {
+                    self.renderingReadinessIsAcknowledged = true
+                    self.onRenderingReady?()
+                }
             }
         }
 
@@ -939,6 +1031,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         self.documentID == expectedDocumentID,
                         self.fingerprint == expectedFingerprint
                     else { return }
+                    guard await self.applyPresentationStylesIfNeeded(
+                        in: webView,
+                        generation: expectedLoadGeneration,
+                        signature: expectedSignature
+                    ) else {
+                        guard !Task.isCancelled else { return }
+                        throw CocoaError(.coderReadCorrupt)
+                    }
                     await self.scrollToSourceLineIfNeeded(
                         generation: expectedLoadGeneration,
                         signature: expectedSignature,
@@ -970,6 +1070,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     else { return }
                     self.finalizedSignature = expectedSignature
                     self.renderingReadinessIsAcknowledged = true
+                    self.schedulePresentationStyleUpdate(in: webView)
                     self.onRenderingReady?()
                 } catch {
                     self.failCurrentLoadFinalization(
@@ -1271,6 +1372,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             sourceLineNavigationTask = nil
             linkPreviewUpdateTask?.cancel()
             linkPreviewUpdateTask = nil
+            presentationStyleTask?.cancel()
+            presentationStyleTask = nil
             deferredLoadTask?.cancel()
             deferredLoadTask = nil
             selectionCoordinator.cancel()

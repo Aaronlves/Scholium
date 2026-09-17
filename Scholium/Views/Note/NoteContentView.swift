@@ -1061,9 +1061,6 @@ struct NoteContentView: View {
         [
             noteFingerprint.sha256,
             String(note.displayName.hashValue),
-            String(state.documentTextScale.bitPattern),
-            String(state.appearanceCSS.hashValue),
-            String(state.readCSS.hashValue),
         ].joined(separator: ":")
     }
 

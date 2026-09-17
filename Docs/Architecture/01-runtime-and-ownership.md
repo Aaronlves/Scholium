@@ -273,9 +273,12 @@ titlebar/toolbar section association and divider geometry; SwiftUI owns selectio
 and discovery.
 
 Shortcuts have one command catalog/validated preference writer; menus consume it.
-Document shortcuts are offered to native menus only for the exact focused visible
-document, outside composition. CodeMirror retains local editing/history. Selection
-Actions have one machine-local preference owner; views retain unsaved drafts only.
+The application command-key-equivalent router owns hardware-event normalization
+and native-menu transport for registered document shortcuts. It is reached only
+through the active visible document boundary, outside composition; the shared
+WebKit container supplies that boundary and guard but does not match shortcuts or
+own actions. CodeMirror retains local editing/history. Selection Actions have one
+machine-local preference owner; views retain unsaved drafts only.
 Chat settings borrow the selected Triptych's connection/configuration owner.
 External-host setup copies verified helper commands and reveals bundled resources;
 it neither executes setup nor claims host configuration success.

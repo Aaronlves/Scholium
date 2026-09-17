@@ -14,11 +14,12 @@ enum EditorPastedImageSource: Sendable {
 /// class therefore never monitors or consumes `rightMouseDown`, asks WebKit's
 /// private descendant views for a premature menu, or opens a second nested
 /// menu loop.
-final class WindowAttachedWebView: WKWebView {
+final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProviding {
     var onFirstWindowAttachment: (() -> Void)?
     var onPasteImage: ((EditorPastedImageSource) -> Bool)?
     weak var editorSession: MarkdownEditorSession?
     var onPassageAction: ((DocumentPassageAction) -> Void)?
+    var scholiumIsComposing: Bool { editorSession?.isComposing == true }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

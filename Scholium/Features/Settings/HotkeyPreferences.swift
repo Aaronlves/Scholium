@@ -256,6 +256,36 @@ struct ScholiumHotkeyBinding: Codable, Hashable, Sendable {
         self.modifiers = modifiers
     }
 
+    init?(event: NSEvent) {
+        guard event.type == .keyDown,
+            let characters = event.characters(byApplyingModifiers: .command)
+                ?? event.charactersIgnoringModifiers,
+            let character = characters.first
+        else { return nil }
+        self.init(
+            key: String(character),
+            modifiers: ScholiumHotkeyModifiers.from(event.modifierFlags)
+        )
+    }
+
+    func matches(event: NSEvent) -> Bool {
+        guard let eventBinding = Self(event: event) else { return false }
+        return matches(key: eventBinding.key, modifiers: eventBinding.modifiers)
+    }
+
+    func matches(key: String, modifiers: ScholiumHotkeyModifiers) -> Bool {
+        let key = key.lowercased()
+        if self.key == key && self.modifiers == modifiers {
+            return true
+        }
+        // AppKit represents the physical Command-Plus event as the shifted
+        // "=" key, while SwiftUI registers the menu item as Command-"=".
+        return self.key == "="
+            && key == "="
+            && !self.modifiers.contains(.shift)
+            && modifiers == self.modifiers.union(.shift)
+    }
+
     var keyEquivalent: KeyEquivalent {
         KeyEquivalent(key.first!)
     }
@@ -323,16 +353,14 @@ enum ScholiumHotkeyPreferences {
     }
 
     @MainActor
-    static func isMenuShortcut(_ event: NSEvent, defaults: UserDefaults = .standard) -> Bool {
-        guard event.type == .keyDown else { return false }
-        let modifiers = ScholiumHotkeyModifiers.from(event.modifierFlags)
-        let key =
-            event.characters(byApplyingModifiers: .command)?.lowercased()
-            ?? event.charactersIgnoringModifiers?.lowercased()
+    static func command(
+        for event: NSEvent,
+        defaults: UserDefaults = .standard
+    ) -> ScholiumHotkeyCommand? {
         let data = defaults.data(forKey: defaultsKey) ?? defaultData
-        return ScholiumHotkeyCommand.allCases.contains {
+        return ScholiumHotkeyCommand.allCases.first {
             guard let binding = binding(for: $0, data: data) else { return false }
-            return binding.key == key && binding.modifiers == modifiers
+            return binding.matches(event: event)
         }
     }
 

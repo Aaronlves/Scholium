@@ -837,7 +837,10 @@ enum ScholiumWebDesignTokens {
           .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-line
         ) {
           font-family: var(--scholium-document-source-font-family);
-          font-size: var(--scholium-document-source-font-size);
+          font-size: calc(
+            var(--scholium-document-source-font-size)
+            * var(--scholium-document-text-scale-factor)
+          );
           line-height: 1.7;
           text-indent: 0;
           background: transparent;
@@ -877,7 +880,10 @@ enum ScholiumWebDesignTokens {
           block-size: auto;
           min-block-size: 1.7em;
           line-height: 1.7;
-          font-size: var(--scholium-document-source-font-size);
+          font-size: calc(
+            var(--scholium-document-source-font-size)
+            * var(--scholium-document-text-scale-factor)
+          );
           overflow: visible;
           opacity: 0;
         }

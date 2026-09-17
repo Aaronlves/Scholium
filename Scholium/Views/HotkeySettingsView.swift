@@ -341,15 +341,7 @@ private struct HotkeyRecorderControl: NSViewRepresentable {
                 clear?()
                 return
             }
-            guard
-                let characters = event.characters(byApplyingModifiers: .command)
-                    ?? event.charactersIgnoringModifiers,
-                let character = characters.first,
-                let binding = ScholiumHotkeyBinding(
-                    key: String(character),
-                    modifiers: ScholiumHotkeyModifiers.from(event.modifierFlags)
-                )
-            else {
+            guard let binding = ScholiumHotkeyBinding(event: event) else {
                 NSSound.beep()
                 return
             }

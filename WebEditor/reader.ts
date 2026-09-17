@@ -46,6 +46,7 @@ type ReaderWindow = Window & {
   scholiumReviewSelection?: ReturnType<typeof createReviewSelectionPresentation>;
   scholiumMermaidReady?: Promise<void>;
   scholiumSetLinkPreviews?: (previews: ReadLinkPreview[]) => void;
+  scholiumSetPresentationCSS?: (presentationCSS: string, userCSS: string) => Promise<boolean>;
   scholiumSetReviewSelectionSurfaceActive?: (active: boolean) => boolean;
   scholiumReadScroll?: {
     restoreCount: number;
@@ -78,6 +79,7 @@ async function initializeReader(value: unknown): Promise<void> {
   presentationStyle.textContent = presentationCSS;
   userStyle.textContent = userCSS;
   const documentRoot = requiredElement('scholium-document');
+  let presentationUpdateSequence = 0;
   const replyProjection = config.chatReply ? createReplyProjection(documentRoot) : null;
   readerWindow.scholiumReadNavigation?.destroy();
   readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
@@ -321,6 +323,35 @@ async function initializeReader(value: unknown): Promise<void> {
     const current = readerWindow.scholiumMermaidReady || Promise.resolve();
     readerWindow.scholiumMermaidReady = current.catch(() => {}).then(refreshMermaidNodes);
   }
+
+  readerWindow.scholiumSetPresentationCSS = async (nextPresentationCSS, nextUserCSS) => {
+    if (typeof nextPresentationCSS !== 'string' || typeof nextUserCSS !== 'string'
+        || nextPresentationCSS.length > 8_000_000 || nextUserCSS.length > 8_000_000) {
+      return false;
+    }
+    const sequence = ++presentationUpdateSequence;
+    const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const fallbackTop = window.scrollY;
+    const fraction = extent > 0 ? Math.max(0, Math.min(1, fallbackTop / extent)) : 0;
+    const anchor = currentReadScrollAnchor(fraction);
+    if (presentationStyle.textContent !== nextPresentationCSS) {
+      presentationStyle.textContent = nextPresentationCSS;
+    }
+    if (userStyle.textContent !== nextUserCSS) {
+      userStyle.textContent = nextUserCSS;
+    }
+    scheduleMermaidRefresh();
+    await new Promise<void>(resolve => window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    }));
+    if (sequence !== presentationUpdateSequence) return false;
+    if (anchor) {
+      restoreReadScrollAnchor(anchor);
+    } else {
+      window.scrollTo({top: Math.max(0, fallbackTop), behavior: 'auto'});
+    }
+    return true;
+  };
   readerWindow.scholiumMermaidReady = renderMermaidNodes();
   await readerWindow.scholiumMermaidReady;
   if (config.chatReply === true) {
