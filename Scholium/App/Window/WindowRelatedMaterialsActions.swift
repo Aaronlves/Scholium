@@ -239,18 +239,10 @@ extension WindowModel {
                         $0.reference.vaultID == card.reference.vaultID && $0.reference.relativePath == card.reference.relativePath
                     })
                 else { throw RelatedMaterialsError.changedSource }
-                let document = try await capabilities.documents.load(card.candidate.note)
-                guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
-                    materials.seed?.request.id == seed.request.id
-                else { return false }
-                let dirtySource =
-                    current.reference.stableNoteID.flatMap(UUID.init(uuidString:)).flatMap {
-                        documentController.retainedSession(for: .init(vaultID: current.reference.vaultID, noteID: $0))
-                    }?.hasUnsavedChanges == true
                 await openWorkspaceReference(
                     current.reference,
-                    line: !dirtySource && document.fingerprint == card.candidate.fingerprint ? card.passage.range.line : nil,
-                    inspectorMode: .related)
+                    line: card.passage.range.line, inspectorMode: .related,
+                    sourceFingerprint: card.candidate.fingerprint)
                 return true
             }
             let document = try await capabilities.documents.load(card.candidate.note)

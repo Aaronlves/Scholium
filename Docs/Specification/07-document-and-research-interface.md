@@ -425,17 +425,16 @@ Pane focus preserves context until a successful query. Note departure, including
 opening a recommendation, synchronously clears results, context and insertion;
 departed requests cannot publish after returning. Results lead without a standing
 context summary, refresh command or caret-confirmation step.
-§13 retrieves Analyses, Topics and other Works; Works remain researcher writing. Results lead
-with the Note title, then a bounded excerpt around a verified wording match, then
-quiet role information and two named icon actions: Link to This Note and Add to Chat.
-Each Note uses the same disclosure-group pattern as Links, with one vault-role symbol and
-a title in its header; role identity remains in Help and accessibility. The role
-symbol precedes the title; the disclosure chevron sits immediately after the
-title with the grid label-accessory gap, separate from the trailing action menu.
-It appears on hover or focus, retaining its space to avoid title reflow. The header toggles expansion without navigating;
-its link action inserts the Note link. Groups start expanded with the distinct
-passages already returned by retrieval (at most two per Note). A shared
-native passage-card container owns the insets, type alignment and grouping in both
+§13 retrieves Analyses, Topics and other Works as researcher writing. Results show
+the Note title, verified match excerpt, quiet role identity, Link to This Note and
+Add to Chat. Headers share Links' disclosure pattern: role symbol, title, adjacent
+chevron and trailing actions. The chevron appears on hover or focus without
+reflow. Help and accessible headers, passages and actions identify role and
+relative path. Duplicate titles add quiet vault/directory context; unique titles
+remain compact. Identity context never changes ranking. Headers toggle expansion
+without navigation; their link action inserts the Note link. Groups start
+expanded with at most two retrieved passages. A shared native passage-card
+container owns insets, type alignment and grouping in both
 panes. Each excerpt opens its checked paragraph; its chat action stages that
 paragraph and the captured writing context without sending. No action generates
 philosophical prose. Note order follows retrieval's Note ranking and passages
@@ -484,11 +483,12 @@ A contextual Retry action recovers from failure or unavailable sources. Normal a
 Content YAML contributes to Note ordering but is not displayed as a separate
 result. Each recommended Note presents an actual matching paragraph; metadata,
 a title or another paragraph matching cannot substitute for that paragraph.
-Opening preserves the Document mode and follows the destination Note's recommendation lifecycle.
-Raw Markdown, full paths and internal offsets are not standing card content.
-Matches are discovery leads, never support, objection, or correctness verdicts.
-Open Source locates the checked paragraph revision; when the Note has changed,
-it opens the current Note without claiming the old paragraph location. Add to Chat stages the captured
+Opening preserves Document mode and follows the destination's recommendation lifecycle.
+Cards omit raw Markdown, full paths and internal offsets. Matches are discovery
+leads, never evidential verdicts. Open Source checks the paragraph revision when
+queued navigation executes. Changed sources open without old positioning and
+explain the mismatch; unverifiable or unsaved sources receive a distinct
+explanation. Add to Chat stages the captured
 writing passage and that paragraph, retaining each identity, revision and locator,
 without sending or replacing the draft. Chat owns provider selection and transport;
 this handoff has no provider-specific configuration. Context attachments appear as

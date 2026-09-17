@@ -5964,22 +5964,74 @@ final class WindowModel: ObservableObject {
         _ reference: VaultNoteReference,
         line: Int? = nil,
         mode: NotePresentationMode? = nil,
-        inspectorMode: ResearchInspectorMode? = nil
+        inspectorMode: ResearchInspectorMode? = nil,
+        sourceFingerprint: DocumentFingerprint? = nil
     ) async {
         if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
-            await owner.openWorkspaceReference(reference, line: line, mode: mode, inspectorMode: inspectorMode)
+            await owner.openWorkspaceReference(
+                reference, line: line, mode: mode, inspectorMode: inspectorMode, sourceFingerprint: sourceFingerprint)
             return
         }
         let navigationMode = mode ?? presentedDocumentMode
-        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
+        let retainedTarget = sourceFingerprint.flatMap { _ in
+            reference.stableNoteID.flatMap(UUID.init(uuidString:)).map {
+                DocumentSessionKey(vaultID: reference.vaultID, noteID: $0)
+            }
+        }
+        enqueueDocumentTransition(preservingCurrentEditorState: false, retainingCurrentDocument: retainedTarget) { [weak self] in
             guard let self else { return }
-            try await self.activateWorkspaceReference(
-                reference,
-                tabActivation: .place(.replaceSelected)
-            )
+            let alreadyCurrent =
+                sourceFingerprint != nil
+                && self.currentDocumentDescriptor?.reference.vaultID == reference.vaultID
+                && self.currentDocumentDescriptor?.reference.relativePath == reference.relativePath
+            if !alreadyCurrent {
+                try await self.activateWorkspaceReference(
+                    reference,
+                    tabActivation: .place(.replaceSelected)
+                )
+            }
             if let inspectorMode { self.researchController.selectInspectorMode(inspectorMode) }
-            self.documentController.requestSourceLocation(line: line.map { max(1, $0) })
+            var verifiedLine = line
+            var locationNotice: String?
+            if let sourceFingerprint, line != nil {
+                guard let capabilities = self.windowWorkspaceController.activeCapabilities,
+                    let descriptor = self.currentDocumentDescriptor,
+                    descriptor.reference.vaultID == reference.vaultID,
+                    descriptor.reference.relativePath == reference.relativePath
+                else { throw CancellationError() }
+                let session = self.documentController.session(for: descriptor)
+                let document: NoteDocument?
+                do {
+                    document = try await capabilities.documents.load(
+                        .init(vaultID: reference.vaultID, relativePath: reference.relativePath))
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    document = nil
+                }
+                try Task.checkCancellation()
+                guard self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                    self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey
+                else { throw CancellationError() }
+                if session.hasUnsavedChanges || session.editorSession.isComposing || document == nil {
+                    verifiedLine = nil
+                    locationNotice = String(
+                        localized: "This reference location could not be verified. The Note was opened without selecting a passage.", bundle: .module)
+                } else if document?.fingerprint != sourceFingerprint {
+                    verifiedLine = nil
+                    locationNotice = String(
+                        localized: "This reference is from a different version. The Note was opened without selecting a passage.", bundle: .module)
+                } else if self.currentNote?.workspaceSnapshot?.fingerprint != document?.fingerprint {
+                    verifiedLine = nil
+                    locationNotice = String(
+                        localized: "This reference location could not be verified. The Note was opened without selecting a passage.", bundle: .module)
+                }
+            }
+            self.documentController.requestSourceLocation(
+                line: verifiedLine.map { max(1, $0) },
+                sourceFingerprint: verifiedLine == nil ? nil : sourceFingerprint?.sha256)
+            if let locationNotice { self.reportOperationIssue(locationNotice, kind: .information) }
             // Read-only destinations already enter Review through DocumentController.
             // Ordinary navigation must not turn that exception into an edit warning.
             self.requestPresentationMode =

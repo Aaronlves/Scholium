@@ -54,6 +54,56 @@ struct RelatedMaterialsTests {
             reference: .init(vaultID: vault, vaultName: "Topics", vaultRole: .topicKnowledge, relativePath: path))
     }
 
+    private func identityPassage(_ reference: VaultNoteReference, title: String, line: Int = 1) -> RelatedContentPassage {
+        let candidate = RelatedContentCandidate(
+            note: .init(vaultID: reference.vaultID, relativePath: reference.relativePath), vaultRole: reference.vaultRole,
+            title: title, fingerprint: .init(content: "自由"),
+            reason: .lexicalOverlap(.init(matchedFields: [.body], seedMatches: [.init(seedKind: .selectedPassage, terms: ["自由"])])))
+        return .init(
+            candidate: candidate,
+            range: .init(
+                utf16LowerBound: line * 3, utf16UpperBound: line * 3 + 2,
+                line: line, column: 1, endLine: line, endColumn: 3),
+            source: "自由", displayText: "自由", excerpt: "自由", excerptMatches: [0..<2],
+            matches: [.init(seedKind: .selectedPassage, terms: ["自由"])])
+    }
+
+    @Test("Duplicate titles show their directories while preserving ranked cards and Note groups")
+    func duplicateTitleIdentity() async {
+        let references = ["Philosophy/Freedom.md", "Ethics/Freedom.md", "Unique.md"].map {
+            VaultNoteReference(vaultID: vault, vaultName: "My Topics", vaultRole: .topicKnowledge, relativePath: $0)
+        }
+        let first = identityPassage(references[0], title: "Freedom")
+        let unique = identityPassage(references[2], title: "Unique")
+        let second = identityPassage(references[1], title: "Freedom")
+        let another = identityPassage(references[0], title: "Freedom", line: 3)
+        let passages = [first, unique, second, another]
+        let model = RelatedMaterialsSession()
+        let seed = seed()
+        let response = RelatedContentResponse(
+            requestID: seed.request.id, seedFingerprint: seed.request.seed.fingerprint,
+            freshnessToken: .init("fixture"), availability: .unavailable, state: .current,
+            identityCandidates: [], lexicalCandidates: passages.map(\.candidate), identityHasMore: false,
+            lexicalHasMore: false, passages: passages)
+        await model.find(capture: { seed }, retrieve: { _ in response }, references: references).value
+        #expect(model.cards.map(\.id) == passages.map(\.id))
+        #expect(model.noteGroups.map(\.id) == [first.candidate.note, unique.candidate.note, second.candidate.note])
+        #expect(model.noteGroups.map(\.directoryContext) == ["My Topics / Philosophy", nil, "My Topics / Ethics"])
+        #expect(model.noteGroups.first?.passages.map(\.id) == [first.id, another.id])
+    }
+
+    @Test(
+        "Source identity retains exact authored title and path with each localized registered role",
+        arguments: [VaultRole.sourceCorpus, .topicKnowledge, .draftProject])
+    func sourceRoleIdentity(_ role: VaultRole) {
+        let title = "自由 — Freedom 😀"
+        let reference = VaultNoteReference(
+            vaultID: vault, vaultName: "Private Vault", vaultRole: role,
+            relativePath: "研究/自由 — Freedom 😀.md")
+        let card = RelatedMaterialCard(passage: identityPassage(reference, title: title), reference: reference)
+        #expect(card.sourceIdentity == [title, ScholiumL10n.dynamicString(role.displayName), reference.relativePath].joined(separator: ", "))
+    }
+
     @Test("Document selection clears recommendations synchronously, including while hidden", arguments: [false, true])
     func documentDeparture(closing: Bool) async {
         let documents = DocumentController()
@@ -160,6 +210,7 @@ struct RelatedMaterialsTests {
         #expect(model.cards.count == 2)
         #expect(model.noteGroups.count == 1)
         #expect(model.noteGroups.first?.passages.count == 2)
+        #expect(model.noteGroups.first?.directoryContext == nil)
         #expect(model.cards.map(\.id) == [first.id, second.id])
         #expect(model.seed?.attachment.text == seed.attachment.text)
         #expect(model.didSearch && !model.isLoading)

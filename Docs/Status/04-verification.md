@@ -4,6 +4,47 @@
 
 ## Current verification snapshot
 
+**2026-09-17 — Writing References source identity and opening feedback:**
+Revision-bound source opening now verifies exact source inside the serialized
+navigation transition, preserves an already-open dirty buffer, and carries the
+verified fingerprint to the renderer. Changed versions open without old
+coordinates and explain the mismatch; dirty or unreadable sources explain that
+location cannot be verified. Duplicate result titles show their vault/directory;
+headers, passages and actions expose registered role and relative path in AX
+naming. Distinct Note grouping, paragraph order and retrieval scores are unchanged.
+Seventeen owning reference/state tests pass, including BOM/CRLF source fidelity,
+changed, unreadable and dirty source handling, duplicate-title identity and all
+three roles. Seventy-three adjacent navigation/composition tests pass on recheck;
+the first run had one multiwindow external-deletion timeout (two reported issues),
+whose isolated recheck also passed. Isolated Debug QA over disposable standard
+500-Note copies confirms normal Source navigation, visible mismatch feedback and
+dismissal, distinct same-title directories in 960-pixel Light/Dark windows, and
+role/path AX identity through disclosure. Localization, Swift lint and
+documentation validation pass. No private vault or Chat service was used; QA
+process, bundle and temporary state are removed. Human VoiceOver, full adaptation
+and 3–5-second native usable-card acceptance remain separate open boundaries.
+Evidence: `.build/reference-interface-fix-acceptance.md`,
+`.build/reference-interface-fix-tests.log` and
+`.build/reference-interface-fix-navigation-integration-recheck.log`.
+
+**2026-09-17 — Writing References interface behavior audit:** A current-source
+isolated Debug QA build over disposable standard 500-Note Triptych copies
+exercised Inspector switching, loading/results/empty states, Insert-menu and
+Shift-Command-J entry, automatic Source selection updates, source navigation,
+group disclosure, query-time document departure and pane closure, Review command
+availability, a 960-pixel Dark window, and unsent Chat material staging.
+The 13 owning Related Material state tests pass, including late-response
+cancellation, provenance and complete-result insertion admission. Computer Use
+observations do not establish deterministic full-UI, physical keyboard,
+VoiceOver, IME, full adaptation or 3–5-second native latency acceptance.
+Source changes safely discard old navigation coordinates but supply no visible
+explanation; same-named result Notes lack directory distinction, and result-row
+AX descriptions omit their research role. Those feedback/identity findings
+were recorded for correction and are addressed in the entry above. No private vault or Chat service was used; the QA process, bundle,
+copied fixtures and isolated state are cleaned up. Evidence:
+`.build/retrieval-ui-acceptance.md`, `.build/retrieval-ui-qa-build.log` and
+`.build/retrieval-ui-state-tests.log`.
+
 **2026-09-17 — Recommendation quality and authorized-copy evaluation:** Search
 schema 21 and Related-Content contract 11/ranking policy 9 add persisted compact
 lexical preparation, full-span focus sampling with minority-script retention,

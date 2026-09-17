@@ -18,10 +18,13 @@ struct RelatedMaterialNoteGroupView: View {
             ResearchNoteGroupHeader(
                 title: first.candidate.title, role: first.reference.vaultRole,
                 expanded: $expanded,
-                entranceProgress: entranceProgress
+                entranceProgress: entranceProgress,
+                directoryContext: group.directoryContext,
+                relativePath: first.reference.relativePath
             ) {
                 Button("Link to This Note") { insert(first) }
                     .disabled(!canInsert || first.linkTarget == nil)
+                    .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString("Link to This Note") + ", " + first.sourceIdentity))
                 Menu("Insert Paragraph Link") {
                     ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
                         Button {
@@ -34,8 +37,10 @@ struct RelatedMaterialNoteGroupView: View {
                     }
                 }
                 .disabled(!canInsertParagraph)
+                .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString("Insert Paragraph Link") + ", " + first.sourceIdentity))
                 .help("Creates a paragraph anchor in the source note when needed, then inserts a link at the writing cursor.")
                 Button("Open Linked Note") { open(first) }
+                    .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString("Open Linked Note") + ", " + first.sourceIdentity))
                 Menu("Add to Chat") {
                     ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
                         Button {
@@ -47,6 +52,7 @@ struct RelatedMaterialNoteGroupView: View {
                         }.disabled(card.attachment == nil)
                     }
                 }
+                .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString("Add to Chat") + ", " + first.sourceIdentity))
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if !isLoading {
@@ -109,7 +115,8 @@ private struct RelatedMaterialPassageView: View {
                 style: .continuous
             )
         )
-        .accessibilityLabel(Text(card.passage.excerpt))
+        .accessibilityLabel(Text(verbatim: card.sourceIdentity + ", " + card.passage.excerpt))
+        .accessibilityHint(Text("Show this passage"))
         .help("Show this passage")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isLoading {

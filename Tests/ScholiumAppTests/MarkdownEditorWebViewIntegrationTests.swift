@@ -38,7 +38,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                 observedOffsets.append(anchor.sourceUTF16Offset)
             }
             if ContinuousClock.now >= deadline {
-                Issue.record(Comment(rawValue: "No continuous scroll reports; latest: \(String(describing: harness.latestScrollAnchor)); observed: \(observedOffsets)"))
+                let message =
+                    "No continuous scroll reports; latest: \(String(describing: harness.latestScrollAnchor)); observed: \(observedOffsets)"
+                Issue.record(Comment(rawValue: message))
                 throw MarkdownEditorSession.SessionError.unavailable
             }
             try await Task.sleep(for: .milliseconds(20))

@@ -18,6 +18,11 @@ struct RelatedMaterialCard: Identifiable, Equatable, Sendable {
     var line: Int { passage.range.line }
     var id: String { passage.id }
 
+    var sourceIdentity: String {
+        [candidate.title, ScholiumL10n.dynamicString(reference.vaultRole.displayName), reference.relativePath]
+            .joined(separator: ", ")
+    }
+
     var attachment: AgentChatAttachment? {
         guard let stableID = reference.stableNoteID.flatMap(UUID.init(uuidString:)) else { return nil }
         return AgentChatAttachment(
@@ -80,6 +85,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     struct NoteGroup: Identifiable {
         let id: VaultQualifiedNoteID
         var passages: [RelatedMaterialCard]
+        var directoryContext: String? = nil
     }
 
     var noteGroups: [NoteGroup] {
@@ -90,6 +96,18 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
             } else {
                 groups.append(.init(id: card.candidate.note, passages: [card]))
             }
+        }
+        let titleCounts = Dictionary(
+            groups.compactMap { $0.passages.first?.candidate.title }.map { ($0, 1) },
+            uniquingKeysWith: +
+        )
+        for index in groups.indices {
+            guard let first = groups[index].passages.first, titleCounts[first.candidate.title, default: 0] > 1 else { continue }
+            let folder = (first.reference.relativePath as NSString).deletingLastPathComponent
+            groups[index].directoryContext =
+                folder.isEmpty
+                ? first.reference.vaultName
+                : first.reference.vaultName + " / " + folder
         }
         return groups
     }
