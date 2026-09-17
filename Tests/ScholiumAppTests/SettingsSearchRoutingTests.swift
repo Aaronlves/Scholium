@@ -10,9 +10,10 @@ struct SettingsSearchRoutingTests {
     func commandSearchRevealsItsEditingLocation() {
         for command in ScholiumHotkeyCommand.customizableCommands {
             for query in [String(localized: command.title), String(localized: command.menuPath)] {
-                #expect(SettingsSearchTarget.matches(query).contains {
-                    $0.destination == .shortcuts && $0.sectionID == command.rawValue
-                })
+                #expect(
+                    SettingsSearchTarget.matches(query).contains {
+                        $0.destination == .shortcuts && $0.sectionID == command.rawValue
+                    })
             }
         }
     }
@@ -47,9 +48,10 @@ struct SettingsSearchRoutingTests {
             ("Copy Claude Setup Command", .agents, "agents.external"),
         ]
         for (query, destination, section) in cases {
-            #expect(SettingsSearchTarget.matches(query).contains {
-                $0.destination == destination && $0.sectionID == section
-            }, "Query: \(query); target: \(section)")
+            #expect(
+                SettingsSearchTarget.matches(query).contains {
+                    $0.destination == destination && $0.sectionID == section
+                }, "Query: \(query); target: \(section)")
         }
         #expect(SettingsSearchTarget.matches("no-such-setting-qa").isEmpty)
         #expect(SettingsSearchTarget.matches("  ").isEmpty)

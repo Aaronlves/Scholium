@@ -191,6 +191,10 @@ public protocol ResearchUseCases: Sendable {
     ) async throws -> SettlementRecord
     func settings() async throws -> TriptychSettingsSnapshot
     func settingsLoadState() async throws -> TriptychSettingsLoadState
+    func settingsRecoverySnapshot() async throws -> TriptychSettingsRecoverySnapshot
+    func resetSettingsToDefaults(
+        expectedRevision: SettingsRevision?
+    ) async throws -> TriptychSettingsRecoveryResult
     func saveSettings(
         _ settings: TriptychSettings,
         expectedRevision: SettingsRevision
@@ -209,6 +213,9 @@ public protocol StyleUseCases: Sendable {
     func removeAppearanceProfile(_ id: UUID) async throws -> StyleSnapshot
     func appearanceConfigurationURL() async throws -> URL
     func reloadAppearanceConfiguration() async throws -> StyleSnapshot
+    func restoreAppearanceDefaults() async throws -> StyleSnapshot
+    func repairAppearanceProfile(_ profile: DocumentAppearanceProfile) async throws -> StyleSnapshot
+    func restoreStyleSnippetDefaults() async throws -> StyleSnapshot
     func importStyleSnippet(from sourceURL: URL) async throws -> StyleSnapshot
     /// Reconciles the machine-local CSS folder with the persisted snippet
     /// manifest and rebuilds both document projections from fresh disk bytes.
@@ -272,6 +279,9 @@ public struct StyleSnapshot: Codable, Hashable, Sendable {
     public let safeModeReason: String?
     public let storeError: String?
     public let canModify: Bool
+    public let canModifyAppearance: Bool
+    public let appearanceError: String?
+    public let snippetError: String?
 
     public init(
         appearanceProfiles: [DocumentAppearanceProfile],
@@ -282,7 +292,10 @@ public struct StyleSnapshot: Codable, Hashable, Sendable {
         livePreviewCSS: String,
         safeModeReason: String?,
         storeError: String?,
-        canModify: Bool
+        canModify: Bool,
+        canModifyAppearance: Bool,
+        appearanceError: String?,
+        snippetError: String?
     ) {
         self.appearanceProfiles = appearanceProfiles
         self.selectedAppearanceProfileID = selectedAppearanceProfileID
@@ -293,6 +306,9 @@ public struct StyleSnapshot: Codable, Hashable, Sendable {
         self.safeModeReason = safeModeReason
         self.storeError = storeError
         self.canModify = canModify
+        self.canModifyAppearance = canModifyAppearance
+        self.appearanceError = appearanceError
+        self.snippetError = snippetError
     }
 }
 

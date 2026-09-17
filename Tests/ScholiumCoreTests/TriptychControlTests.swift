@@ -236,51 +236,128 @@ struct TriptychControlTests {
         #expect(try await store.settings() == initial)
     }
 
-    @Test("Settings loader distinguishes old, future, corrupt, and current-schema review states")
+    @Test("Settings failures retain exact bytes while runtime uses effective defaults")
     func settingsFailureStatesRemainDistinct() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
-        _ = try await store.bootstrap(
-            vaultIDs: Dictionary(
-                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
-            ))
+        _ = try await store.bootstrap(vaultIDs: Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }))
         let url = fixture.root.appendingPathComponent(".scholium/settings.json")
+        for text in [
+            #"{"properties":{}}"#,
+            #"{"schemaVersion":999}"#,
+            #"{"schemaVersion":3,"promptTemplates":[]}"#,
+            #"{"schemaVersion":9,"attentionDismissalDays":"damaged"}"#,
+            #"{"schemaVersion":9,"attentionDismissalDays":0}"#,
+            #"{"schemaVersion":9}"#,
+            #"{"schemaVersion":9.5}"#,
+            "damaged JSON",
+        ] {
+            let bytes = Data(text.utf8)
+            try bytes.write(to: url, options: .atomic)
+            #expect(try await store.settings().settings == TriptychSettings())
+            #expect(try await store.settingsRecoverySnapshot().revision?.fingerprint == DocumentFingerprint(data: bytes))
+            try await store.validateExistingSupportedControlState()
+            #expect(try Data(contentsOf: url) == bytes)
+        }
+    }
 
-        var invalidObject = try #require(
-            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
-                as? [String: Any]
+    @Test("Explicit settings reset preserves opaque bytes and unrelated portable state")
+    func settingsResetPreservesExactBytes() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        _ = try await store.bootstrap(vaultIDs: ids)
+        let control = fixture.root.appendingPathComponent(".scholium")
+        let manifest = try Data(contentsOf: control.appendingPathComponent("manifest.json"))
+        let identities = try Data(contentsOf: control.appendingPathComponent("identities.json"))
+        for text in [#"{"schemaVersion":999,"unknown":"opaque"}"#, "bad JSON", #"{"schemaVersion":9,"attentionDismissalDays":null}"#] {
+            let original = Data(text.utf8)
+            try original.write(to: control.appendingPathComponent("settings.json"), options: .atomic)
+            let observation = try await store.settingsRecoverySnapshot()
+            let result = try await store.resetSettingsToDefaults(expectedRevision: observation.revision)
+            #expect(result.snapshot.settings == TriptychSettings())
+            #expect(try Data(contentsOf: #require(result.preservedSettingsURL)) == original)
+            #expect(try await store.settings() == result.snapshot)
+            #expect(try Data(contentsOf: control.appendingPathComponent("manifest.json")) == manifest)
+            #expect(try Data(contentsOf: control.appendingPathComponent("identities.json")) == identities)
+        }
+    }
+
+    @Test("Ordinary settings repair preserves unknown current-schema keys")
+    func settingsRepairPreservesUnknownKeys() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        _ = try await store.bootstrap(vaultIDs: Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }))
+        let url = fixture.root.appendingPathComponent(".scholium/settings.json")
+        try Data(#"{"schemaVersion":9,"attentionDismissalDays":"broken","unrelated":{"retained":true}}"#.utf8).write(to: url)
+        let loaded = try await store.settings()
+        _ = try await store.saveSettings(TriptychSettings(attentionDismissalDays: 14), expectedRevision: loaded.revision)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        #expect((object["unrelated"] as? [String: Bool]) == ["retained": true])
+    }
+
+    @Test("Missing and stale settings recovery never replaces an unobserved file")
+    func settingsResetConflictAndMissing() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let first = try await store.resetSettingsToDefaults(expectedRevision: nil)
+        #expect(first.preservedSettingsURL == nil)
+        let url = fixture.root.appendingPathComponent(".scholium/settings.json")
+        let external = Data("external".utf8)
+        try external.write(to: url)
+        await #expect(throws: TriptychControlError.self) {
+            try await store.resetSettingsToDefaults(expectedRevision: first.snapshot.revision)
+        }
+        await #expect(throws: TriptychControlError.self) {
+            try await store.resetSettingsToDefaults(expectedRevision: nil)
+        }
+        #expect(try Data(contentsOf: url) == external)
+    }
+
+    @Test("Linked portable settings are rejected without touching the target")
+    func settingsResetRejectsSymlink() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        _ = try await store.resetSettingsToDefaults(expectedRevision: nil)
+        let url = fixture.root.appendingPathComponent(".scholium/settings.json")
+        try FileManager.default.removeItem(at: url)
+        let outside = fixture.root.appendingPathComponent("outside.json")
+        let original = Data("private outside bytes".utf8)
+        try original.write(to: outside)
+        try FileManager.default.createSymbolicLink(at: url, withDestinationURL: outside)
+        await #expect(throws: (any Error).self) { try await store.settingsRecoverySnapshot() }
+        await #expect(throws: (any Error).self) {
+            try await store.resetSettingsToDefaults(expectedRevision: SettingsRevision(fingerprint: DocumentFingerprint(data: original)))
+        }
+        #expect(try Data(contentsOf: outside) == original)
+    }
+
+    @Test("A reset conflict retains both the external revision and the exact recovery copy")
+    func settingsResetFinalWindowConflict() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let external = Data("external settings".utf8)
+        let seedStore = TriptychControlStore(worksVaultURL: fixture.works)
+        let initial = try await seedStore.resetSettingsToDefaults(expectedRevision: nil)
+        let store = TriptychControlStore(
+            worksVaultURL: fixture.works,
+            controlWriteHook: { url in try external.write(to: url, options: .atomic) }
         )
-        invalidObject["attentionDismissalDays"] = 0
-        let invalidBytes = try JSONSerialization.data(withJSONObject: invalidObject)
-        try invalidBytes.write(to: url, options: .atomic)
-        await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
-        #expect(try Data(contentsOf: url) == invalidBytes)
-
-        try Data(#"{"properties":{}}"#.utf8).write(to: url, options: .atomic)
-        await expectSettingsError(store, matching: { if case .settingsOldSchema(nil) = $0 { true } else { false } })
-
-        try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
-        await expectSettingsError(store, matching: { if case .settingsFutureSchema(999) = $0 { true } else { false } })
-
-        let oldSchemaBytes = Data(
-            #"{"schemaVersion":3,"promptTemplates":[],"activePromptTemplateIDs":{}}"#.utf8
-        )
-        try oldSchemaBytes.write(to: url, options: .atomic)
-        await expectSettingsError(store, matching: { if case .settingsOldSchema(3) = $0 { true } else { false } })
-        #expect(try Data(contentsOf: url) == oldSchemaBytes)
-
-        try Data(#"{"schemaVersion":9,"attentionDismissalDays":"damaged"}"#.utf8).write(to: url, options: .atomic)
-        await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
-
-        var reviewedObject = try #require(
-            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
-                as? [String: Any]
-        )
-        reviewedObject["attentionDismissalDays"] = 0
-        try JSONSerialization.data(withJSONObject: reviewedObject)
-            .write(to: url, options: .atomic)
-        await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
+        let url = fixture.root.appendingPathComponent(".scholium/settings.json")
+        let original = try Data(contentsOf: url)
+        await #expect(throws: TriptychControlError.self) {
+            try await store.resetSettingsToDefaults(expectedRevision: initial.snapshot.revision)
+        }
+        #expect(try Data(contentsOf: url) == external)
+        let backups = try FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("settings.recovery-") }
+        #expect(backups.count == 1)
+        #expect(try Data(contentsOf: #require(backups.first)) == original)
     }
 
     @Test("Typed Settings load preserves repairable data and distinguishes unavailable states")
@@ -300,7 +377,6 @@ struct TriptychControlTests {
         )
         reviewableObject["attentionDismissalDays"] = 0
         let reviewableBytes = try JSONSerialization.data(withJSONObject: reviewableObject)
-        let reviewable = try JSONDecoder().decode(TriptychSettings.self, from: reviewableBytes)
         try reviewableBytes.write(to: url, options: .atomic)
         guard
             case .needsReview(let decoded, let revision, let reason) =
@@ -309,7 +385,7 @@ struct TriptychControlTests {
             Issue.record("Expected a repairable current-schema state.")
             return
         }
-        #expect(decoded == reviewable)
+        #expect(decoded == TriptychSettings())
         #expect(revision.fingerprint == DocumentFingerprint(data: reviewableBytes))
         #expect(!reason.isEmpty)
         #expect(try Data(contentsOf: url) == reviewableBytes)
@@ -1012,20 +1088,6 @@ struct TriptychControlTests {
         )
         #expect(resolved.id == first.id)
         #expect(try await store.pendingIdentityRebindings(vaultID: vaultID).first?.fingerprint == editedFingerprint)
-    }
-
-    private func expectSettingsError(
-        _ store: TriptychControlStore,
-        matching predicate: (TriptychControlError) -> Bool
-    ) async {
-        do {
-            _ = try await store.settings()
-            Issue.record("Expected settings loading to fail.")
-        } catch let error as TriptychControlError {
-            #expect(predicate(error))
-        } catch {
-            Issue.record("Unexpected settings error: \(error)")
-        }
     }
 
     private struct Fixture {

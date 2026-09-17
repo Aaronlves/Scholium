@@ -189,10 +189,11 @@ struct StyleOperationsTests {
 
         let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
         let loaded = try await operations.styleSnapshot()
-        #expect(loaded.appearanceProfiles.isEmpty)
-        #expect(loaded.selectedAppearanceProfileID == nil)
-        #expect(!loaded.canModify)
-        #expect(loaded.storeError != nil)
+        #expect(loaded.appearanceProfiles.count == 1)
+        #expect(loaded.selectedAppearanceProfileID == profile.id)
+        #expect(!loaded.canModifyAppearance)
+        #expect(loaded.canModify)
+        #expect(loaded.appearanceError != nil)
         #expect(try Data(contentsOf: styles.appendingPathComponent("appearances.json")) == manifestData)
     }
 
@@ -360,4 +361,150 @@ struct StyleOperationsTests {
         #expect(appearance.showLineNumbers == true)
         #expect(appearance.defaultViewMode == "source")
     }
+    @Test("Appearance and snippet failures recover independently with exact backups", arguments: ["appearances.json", "snippets.json"])
+    func independentRecovery(_ brokenFile: String) async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/style-recovery-fixtures/\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let support = root.appendingPathComponent("Support", isDirectory: true)
+        let source = root.appendingPathComponent("kept.css")
+        let css = Data("p { color: #543210; }".utf8)
+        try css.write(to: source)
+        let setup = StyleOperations(applicationSupportURL: support)
+        let original = try await setup.importStyleSnippet(from: source)
+        let appearanceURL = try await setup.appearanceConfigurationURL()
+        let styles = appearanceURL.deletingLastPathComponent()
+        let target = styles.appendingPathComponent(brokenFile)
+        let corrupt = Data("{broken configuration".utf8)
+        try corrupt.write(to: target, options: .atomic)
+        let operations = StyleOperations(applicationSupportURL: support)
+        let damaged = try await operations.styleSnapshot()
+        if brokenFile == "appearances.json" {
+            #expect(!damaged.canModifyAppearance && damaged.canModify)
+            #expect(damaged.readCSS.contains("#543210"))
+            let recovered = try await operations.restoreAppearanceDefaults()
+            #expect(recovered.canModifyAppearance && recovered.appearanceError == nil)
+            #expect(recovered.snippets == damaged.snippets)
+        } else {
+            #expect(damaged.canModifyAppearance && !damaged.canModify)
+            #expect(damaged.appearanceProfiles == original.appearanceProfiles)
+            let recovered = try await operations.restoreStyleSnippetDefaults()
+            #expect(recovered.canModify && recovered.snippetError == nil)
+            #expect(recovered.snippets.count == 1 && recovered.snippets.allSatisfy { !$0.isEnabled })
+            #expect(recovered.appearanceProfiles == original.appearanceProfiles)
+            let refreshed = try await operations.refreshStyleSnippets()
+            #expect(refreshed.snippets.allSatisfy { !$0.isEnabled } && refreshed.readCSS.isEmpty)
+        }
+        let backups = try FileManager.default.contentsOfDirectory(at: styles, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("\(brokenFile).recovery-") }
+        #expect(backups.count == 1)
+        #expect(try Data(contentsOf: try #require(backups.first)) == corrupt)
+        let managed = styles.appendingPathComponent("Snippets", isDirectory: true)
+        let files = try FileManager.default.contentsOfDirectory(at: managed, includingPropertiesForKeys: nil)
+        #expect(try Data(contentsOf: try #require(files.first)) == css)
+    }
+
+    @Test("An invalid appearance option retains other values without rewriting configuration")
+    func partialAppearanceRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ScholiumAppearanceRecovery-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let setup = StyleOperations(applicationSupportURL: root)
+        _ = try await setup.styleSnapshot()
+        let url = try await setup.appearanceConfigurationURL()
+        var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var profiles = try #require(manifest["profiles"] as? [[String: Any]])
+        var settings = try #require(profiles[0]["settings"] as? [String: Any])
+        var body = try #require(settings["body"] as? [String: Any])
+        body["alignment"] = "unsupported-version-value"
+        body["fontSizePoints"] = 15
+        settings["body"] = body
+        profiles[0]["settings"] = settings
+        manifest["profiles"] = profiles
+        let bytes = try JSONSerialization.data(withJSONObject: manifest)
+        try bytes.write(to: url, options: .atomic)
+        let operations = StyleOperations(applicationSupportURL: root)
+        let loaded = try await operations.styleSnapshot()
+        let retained = try #require(loaded.appearanceProfiles.first)
+        #expect(retained.settings.body.fontSizePoints == 15)
+        #expect(retained.settings.body.alignment == .start)
+        #expect(!loaded.canModifyAppearance && loaded.appearanceError != nil)
+        #expect(try Data(contentsOf: url) == bytes)
+        var draft = retained
+        draft.settings.body.fontSizePoints = 16
+        let repaired = try await operations.repairAppearanceProfile(draft)
+        #expect(repaired.canModifyAppearance && repaired.appearanceError == nil)
+        #expect(repaired.appearanceProfiles.first?.settings.body.fontSizePoints == 16)
+        let backup = try FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+            .first { $0.lastPathComponent.hasPrefix("appearances.json.recovery-") }
+        #expect(try Data(contentsOf: try #require(backup)) == bytes)
+    }
+
+    @Test("One malformed snippet registration preserves readable snippets and can be repaired")
+    func partialSnippetRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ScholiumSnippetRecovery-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let support = root.appendingPathComponent("Support", isDirectory: true)
+        let source = root.appendingPathComponent("kept.css")
+        try Data("p { color: #543210; }".utf8).write(to: source)
+        let setup = StyleOperations(applicationSupportURL: support)
+        let original = try await setup.importStyleSnippet(from: source)
+        let appearance = try await setup.appearanceConfigurationURL()
+        let target = appearance.deletingLastPathComponent().appendingPathComponent("snippets.json")
+        let validBytes = try Data(contentsOf: target)
+        let records = try #require(JSONSerialization.jsonObject(with: validBytes) as? [Any])
+        let corrupt = try JSONSerialization.data(withJSONObject: records + [["id": "bad", "name": false]])
+        try corrupt.write(to: target, options: .atomic)
+        let operations = StyleOperations(applicationSupportURL: support)
+        let damaged = try await operations.styleSnapshot()
+        #expect(damaged.snippets == original.snippets)
+        #expect(damaged.readCSS.contains("#543210") && !damaged.canModify)
+        #expect(damaged.canModifyAppearance && damaged.snippetError != nil)
+        #expect(try Data(contentsOf: target) == corrupt)
+        let safe = try await operations.enterStyleSafeMode(reason: "fixture rendering failure")
+        #expect(safe.readCSS.isEmpty && safe.safeModeReason == "fixture rendering failure")
+        #expect(try Data(contentsOf: target) == corrupt)
+        try validBytes.write(to: target, options: .atomic)
+        let repaired = try await operations.refreshStyleSnippets()
+        #expect(repaired.canModify && repaired.snippetError == nil)
+    }
+
+    @Test("Profile repair preserves unknown keys and sibling profiles and rejects a stale file")
+    func appearanceRepairPreservesUnknownState() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ScholiumAppearanceOverlay-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let setup = StyleOperations(applicationSupportURL: root)
+        _ = try await setup.styleSnapshot()
+        let url = try await setup.appearanceConfigurationURL()
+        var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var profiles = try #require(manifest["profiles"] as? [[String: Any]])
+        var settings = try #require(profiles[0]["settings"] as? [String: Any])
+        settings["lineWidthCharacterUnits"] = "bad option"
+        settings["unknownSetting"] = ["preserved": true]
+        profiles[0]["settings"] = settings
+        let sibling: [String: Any] = ["id": UUID().uuidString, "futureProfile": ["exactValue": 23]]
+        manifest["profiles"] = profiles + [sibling]
+        manifest["futureEnvelope"] = "retained"
+        let original = try JSONSerialization.data(withJSONObject: manifest)
+        try original.write(to: url, options: .atomic)
+        let operations = StyleOperations(applicationSupportURL: root)
+        let loaded = try await operations.styleSnapshot()
+        var draft = try #require(loaded.appearanceProfiles.first)
+        draft.settings.body.fontSizePoints = 16
+        let repaired = try await operations.repairAppearanceProfile(draft)
+        #expect(!repaired.canModifyAppearance && repaired.appearanceError != nil)
+        #expect(repaired.appearanceProfiles.first?.settings.body.fontSizePoints == 16)
+        let saved = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let savedProfiles = try #require(saved["profiles"] as? [[String: Any]])
+        #expect(saved["futureEnvelope"] as? String == "retained")
+        #expect((savedProfiles[1] as NSDictionary).isEqual(to: sibling))
+        let savedSettings = try #require(savedProfiles[0]["settings"] as? [String: Any])
+        #expect((savedSettings["unknownSetting"] as? [String: Bool])?["preserved"] == true)
+        let external = Data("changed elsewhere".utf8)
+        try external.write(to: url, options: .atomic)
+        await #expect(throws: (any Error).self) { try await operations.repairAppearanceProfile(draft) }
+        #expect(try Data(contentsOf: url) == external)
+    }
+
 }

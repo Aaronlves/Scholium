@@ -129,6 +129,18 @@ struct HotkeyPreferencesTests {
                 == ScholiumHotkeyCommand.searchResearch.defaultBinding
         )
     }
+    @Test("A malformed shortcut entry cannot discard unrelated overrides")
+    func individualEntryRecovery() {
+        let bytes = Data(
+            #"{"overrides":{"showAttention":{"key":"j","modifiers":10},"searchResearch":{"key":99,"modifiers":8}},"disabled":["toggleLibrary"]}"#.utf8)
+        #expect(ScholiumHotkeyPreferences.needsRecovery(bytes))
+        #expect(ScholiumHotkeyPreferences.binding(for: .showAttention, data: bytes) == ScholiumHotkeyBinding(key: "j", modifiers: [.option, .command]))
+        #expect(ScholiumHotkeyPreferences.binding(for: .searchResearch, data: bytes) == nil)
+        #expect(ScholiumHotkeyPreferences.binding(for: .toggleLibrary, data: bytes) == nil)
+        #expect(ScholiumHotkeyPreferences.needsRecovery(Data("invalid".utf8)))
+        #expect(!ScholiumHotkeyPreferences.needsRecovery(Data()))
+    }
+
     @Test("Every fixed menu binding is reserved and cannot be remapped")
     func fixedMenuBindings() {
         for command in ScholiumHotkeyCommand.allCases where !command.isCustomizable {

@@ -446,12 +446,38 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.triptychSettingsLoadState()
     }
 
+    public func settingsRecoverySnapshot() async throws -> TriptychSettingsRecoverySnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.triptychSettingsRecoverySnapshot()
+    }
+
     public func saveSettings(
         _ settings: TriptychSettings,
         expectedRevision: SettingsRevision
     ) async throws -> TriptychSettingsSnapshot {
         let handle = try await reference.requireHandle()
         return try await handle.saveTriptychSettings(settings, expectedRevision: expectedRevision)
+    }
+
+    public func saveSettingsOutcome(
+        _ settings: TriptychSettings,
+        expectedRevision: SettingsRevision
+    ) async throws -> WorkspaceMutationOutcome<TriptychSettingsSnapshot> {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveTriptychSettingsOutcome(settings, expectedRevision: expectedRevision)
+    }
+
+    public func resetSettingsToDefaults(
+        expectedRevision: SettingsRevision?
+    ) async throws -> TriptychSettingsRecoveryResult {
+        try await resetSettingsToDefaultsOutcome(expectedRevision: expectedRevision).committedValue
+    }
+
+    public func resetSettingsToDefaultsOutcome(
+        expectedRevision: SettingsRevision?
+    ) async throws -> WorkspaceMutationOutcome<TriptychSettingsRecoveryResult> {
+        let handle = try await reference.requireHandle()
+        return try await handle.resetTriptychSettingsToDefaultsOutcome(expectedRevision: expectedRevision)
     }
 
     public func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {

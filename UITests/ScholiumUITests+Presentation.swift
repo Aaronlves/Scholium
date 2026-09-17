@@ -122,7 +122,8 @@ extension ScholiumUITests {
         taskSearch.buttons["cancel"].click()
         window.radioButtons["External Access"].click()
         capture("settings-external-access")
-        XCTAssertFalse(window.buttons["Show Core Protocol in Finder…"].exists,
+        XCTAssertFalse(
+            window.buttons["Show Core Protocol in Finder…"].exists,
             "External access must lead to the sole protocol viewing location")
         let skillsLink = window.buttons["Open Skills and Tools"]
         scrollUntilHittable(skillsLink, in: settingsContentScrollView(in: window))

@@ -550,8 +550,20 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 registeredTriptychs: triptychs
             )
         }
-        let handle = try await workspaceHandle(id: assignment.id)
-        let settingsLoadState = try await handle.research.settingsLoadState()
+        let settingsLoadState: TriptychSettingsLoadState
+        do {
+            let handle = try await workspaceHandle(id: assignment.id)
+            settingsLoadState = try await handle.research.settingsLoadState()
+        } catch {
+            // Registration is independently authoritative. An inaccessible
+            // portable store must not erase it or disable machine-local pages.
+            return WorkspaceSettingsSnapshot(
+                registeredVaults: vaults,
+                registeredTriptychs: triptychs,
+                activeTriptychID: assignment.id,
+                portableSettingsState: .readFailed(error.localizedDescription)
+            )
+        }
         let triptychSettings: TriptychSettings
         let settingsRevision: SettingsRevision?
         let portableSettingsState: WorkspacePortableSettingsState
@@ -584,7 +596,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         return WorkspaceSettingsSnapshot(
             registeredVaults: vaults,
             registeredTriptychs: triptychs,
-            activeTriptychID: handle.id,
+            activeTriptychID: assignment.id,
             triptychSettings: triptychSettings,
             settingsRevision: settingsRevision,
             portableSettingsState: portableSettingsState,
@@ -657,14 +669,29 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 },
                 saveTriptychSettings: { [self] id, settings, expectedRevision in
                     let handle = try await workspaceHandle(id: id)
-                    let snapshot = try await handle.research.saveSettings(
+                    let outcome = try await handle.research.saveSettingsOutcome(
                         settings,
                         expectedRevision: expectedRevision
                     )
                     return WorkspaceSettingsCommit(
                         triptychID: id,
-                        snapshot: snapshot,
-                        derivedRefreshWarning: nil
+                        snapshot: outcome.committedValue,
+                        derivedRefreshWarning: outcome.derivedRefreshWarning
+                    )
+                },
+                loadSettingsRecovery: { [self] id in
+                    let handle = try await workspaceHandle(id: id)
+                    return try await handle.research.settingsRecoverySnapshot()
+                },
+                resetTriptychSettings: { [self] id, expectedRevision in
+                    let handle = try await workspaceHandle(id: id)
+                    let outcome = try await handle.research.resetSettingsToDefaultsOutcome(
+                        expectedRevision: expectedRevision
+                    )
+                    return WorkspaceSettingsRecoveryCommit(
+                        triptychID: id,
+                        recovery: outcome.committedValue,
+                        derivedRefreshWarning: outcome.derivedRefreshWarning
                     )
                 },
                 portableContainerURL: { [self] url in

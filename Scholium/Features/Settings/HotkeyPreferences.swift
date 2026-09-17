@@ -389,22 +389,62 @@ enum ScholiumHotkeyPreferences {
 
     static var defaultData: Data { Data() }
 
-    private static func decode(_ data: Data) -> Payload {
-        guard !data.isEmpty,
-            let payload = try? JSONDecoder().decode(Payload.self, from: data)
-        else { return Payload() }
+    static func needsRecovery(_ data: Data) -> Bool {
+        guard !data.isEmpty else { return false }
+        return decodedPayload(data).needsRecovery
+    }
 
-        let validOverrides = payload.overrides.filter { rawCommand, binding in
-            ScholiumHotkeyCommand(rawValue: rawCommand)?.isCustomizable == true
-                && binding.isStructurallyValid
+    private static func decode(_ data: Data) -> Payload { decodedPayload(data).payload }
+
+    private static func decodedPayload(_ data: Data) -> (payload: Payload, needsRecovery: Bool) {
+        guard !data.isEmpty else { return (Payload(), false) }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (Payload(), true)
         }
-        let validDisabled = payload.disabled.filter {
-            ScholiumHotkeyCommand(rawValue: $0) != nil
+        var payload = Payload()
+        var needsRecovery = !Set(object.keys).subtracting(["overrides", "disabled"]).isEmpty
+        if let rawDisabled = object["disabled"] as? [Any] {
+            for value in rawDisabled {
+                if let name = value as? String, ScholiumHotkeyCommand(rawValue: name)?.isCustomizable == true {
+                    payload.disabled.insert(name)
+                } else {
+                    needsRecovery = true
+                }
+            }
+        } else if object["disabled"] != nil {
+            needsRecovery = true
         }
-        return Payload(
-            overrides: validOverrides,
-            disabled: Set(validDisabled)
-        )
+        if let overrides = object["overrides"] as? [String: Any] {
+            for (name, value) in overrides {
+                guard ScholiumHotkeyCommand(rawValue: name)?.isCustomizable == true else {
+                    needsRecovery = true
+                    continue
+                }
+                guard let bytes = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed),
+                    let binding = try? JSONDecoder().decode(ScholiumHotkeyBinding.self, from: bytes), binding.isStructurallyValid
+                else {
+                    // An unusable binding cannot activate a command; it also
+                    // must not discard every other valid shortcut.
+                    payload.disabled.insert(name)
+                    needsRecovery = true
+                    continue
+                }
+                payload.overrides[name] = binding
+            }
+        } else if object["overrides"] != nil {
+            needsRecovery = true
+        }
+        for (name, binding) in payload.overrides {
+            if systemReservedBindings.contains(binding)
+                || ScholiumHotkeyCommand.customizableCommands.contains(where: {
+                    $0.rawValue != name && !payload.disabled.contains($0.rawValue)
+                        && (payload.overrides[$0.rawValue] ?? $0.defaultBinding) == binding
+                })
+            {
+                needsRecovery = true
+            }
+        }
+        return (payload, needsRecovery)
     }
 
     private static func encode(_ payload: Payload) -> Data {

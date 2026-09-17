@@ -171,7 +171,7 @@ struct WorkspaceRuntimeMembershipTests {
         await runtime.shutdown()
     }
 
-    @Test("Unsupported portable control can be archived and the same Triptych reopened")
+    @Test("Unsupported portable identity can be archived and the same Triptych reopened")
     func unsupportedPortableControlRecovery() async throws {
         let fixture = try await RuntimeMembershipFixture.make()
         defer { fixture.remove() }
@@ -183,9 +183,9 @@ struct WorkspaceRuntimeMembershipTests {
         let researchBytes = [Data("analysis".utf8), Data([0, 1, 2]), Data("draft".utf8)]
         for (url, data) in zip(researchFiles, researchBytes) { try data.write(to: url) }
         let control = fixture.rootURL.appendingPathComponent(".scholium", isDirectory: true)
-        let settingsURL = control.appendingPathComponent("settings.json")
-        let oldSettings = Data("{\"schemaVersion\":0,\"opaque\":true}".utf8)
-        try oldSettings.write(to: settingsURL)
+        let manifestURL = control.appendingPathComponent("manifest.json")
+        let oldManifest = Data("{\"schemaVersion\":0,\"opaque\":true}".utf8)
+        try oldManifest.write(to: manifestURL)
         let registryURL = fixture.registryStorageURL.appendingPathComponent(
             "workspace-registration-v3.json"
         )
@@ -202,7 +202,7 @@ struct WorkspaceRuntimeMembershipTests {
                 triptychName: fixture.assignment.triptych.name
             )
         }
-        #expect(try Data(contentsOf: settingsURL) == oldSettings)
+        #expect(try Data(contentsOf: manifestURL) == oldManifest)
         #expect(try Data(contentsOf: registryURL) == registryBeforeFailure)
 
         let preserved = try await runtime.preserveUnsupportedPortableControl(
@@ -211,8 +211,8 @@ struct WorkspaceRuntimeMembershipTests {
             triptychID: fixture.assignment.id
         )
         #expect(
-            try Data(contentsOf: preserved.appendingPathComponent("settings.json"))
-                == oldSettings)
+            try Data(contentsOf: preserved.appendingPathComponent("manifest.json"))
+                == oldManifest)
         let opened = try await runtime.configureTriptych(
             paperAnalysisURL: fixture.analysesURL,
             topicKnowledgeURL: fixture.topicsURL,
@@ -239,6 +239,39 @@ struct WorkspaceRuntimeMembershipTests {
                 return
             }
         }
+        await runtime.shutdown()
+    }
+
+    @Test("Unsupported settings preserve exact bytes while registration and Notes remain available")
+    func unsupportedSettingsDoNotBlockWorkspaceRegistration() async throws {
+        let fixture = try await RuntimeMembershipFixture.make()
+        defer { fixture.remove() }
+        let noteURL = fixture.analysesURL.appendingPathComponent("Analysis.md")
+        let noteBytes = Data("# Analysis\n\nResearch stays available.\n".utf8)
+        try noteBytes.write(to: noteURL)
+        let settingsURL = fixture.rootURL.appendingPathComponent(".scholium/settings.json")
+        let oldSettings = Data("{\"schemaVersion\":0,\"opaque\":true}".utf8)
+        try oldSettings.write(to: settingsURL)
+        let runtime = fixture.liveRuntime()
+
+        let opened = try await runtime.configureTriptych(
+            paperAnalysisURL: fixture.analysesURL,
+            topicKnowledgeURL: fixture.topicsURL,
+            outputURL: fixture.worksURL,
+            portableContainerURL: fixture.rootURL,
+            triptychID: fixture.assignment.id,
+            triptychName: fixture.assignment.triptych.name
+        )
+        #expect(opened.assignment.id == fixture.assignment.id)
+        #expect(try await runtime.availableWorkspaces().map(\.id) == [fixture.assignment.id])
+        #expect(try await opened.research.settingsLoadState() == .oldSchema(0))
+        let vaultID = try #require(opened.assignment.vault(for: .paperAnalysis)?.id)
+        let document = try await opened.documents.load(
+            VaultQualifiedNoteID(
+                vaultID: vaultID, relativePath: "Analysis.md"
+            ))
+        #expect(document.sourceBytes == noteBytes)
+        #expect(try Data(contentsOf: settingsURL) == oldSettings)
         await runtime.shutdown()
     }
 

@@ -115,6 +115,15 @@ Use observation opens Settings with Command-Comma from the focused QA editor.
 The beta XCTest literal-comma attempts remain failures, not keyboard proof.
 Evidence: `.build/settings-normalization-evidence/RESULTS.md`;
 unchanged transaction journeys: `.build/settings-redesign-evidence/RESULTS.md`.
+Recovery extensions have 121 owning checks and five distinct native journeys:
+corrupt portable settings, scoped appearance repair, reminder draft lifecycle,
+category navigation and default-value field repair. Exact backups, unknown-field
+retention and unchanged Note bytes are checked. Independent review added a
+rollback-writer preservation regression. Evidence:
+`.build/settings-recovery-evidence/RESULTS.md`.
+The complete source gate passed 364 Web, 494 Core plus three performance,
+96 Contracts, 191 Application plus one architecture measurement and 1,038 App
+tests, public-symbol guards, Release compilation and helper isolation.
 These are scoped development results, not the complete UI suite or human
 VoiceOver/Full Keyboard Access/installed-IME/system-adaptation acceptance.
 

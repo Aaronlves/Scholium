@@ -12,6 +12,10 @@ struct WritingContinuationSettingsContent: View {
             }
             .accessibilityIdentifier("scholium.settings.writingContinuation.enabled")
 
+            if let error = preferences.loadError {
+                Label(error, systemImage: "exclamationmark.triangle")
+                Button("Restore Writing Continuation Defaults") { preferences.restoreDefaults() }
+            }
             if let controller {
                 WritingContinuationModelSettings(controller: controller, preferences: preferences)
                     .id(controller.triptychID)

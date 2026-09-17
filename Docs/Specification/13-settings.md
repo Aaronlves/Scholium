@@ -164,6 +164,25 @@ and clearly distinguishes unapplied changes. Presentation preferences do not
 rewrite research source; any data-changing action names its target and effect
 under its owning workflow contract.
 
+### Configuration failure and recovery
+
+A failed preference or configuration group does not disable unrelated settings
+or prevent opening Settings. Read-time fallback never silently replaces saved
+configuration. A supported configuration isolates invalid entries or fields,
+keeps valid choices effective and identifies the affected values. An unreadable
+or unsupported envelope remains preserved, with safe effective defaults and a
+scoped reload or recovery route; unsupported values grant no new access.
+
+Workspace owns explicit restoration of this Triptych's portable settings.
+Confirmation identifies the scope; restoration preserves an exact copy of an
+existing file before replacing it with defaults and checks the observed revision.
+Folder registration, access grants, research source and unrelated preferences
+remain unchanged. Missing files require an absence check before creation. A
+changed target or file requires a fresh read and confirmation. Existing drafts
+remain attached to their original target and revision; stale drafts need explicit
+reload before saving. Recovery failure retains context and a retry route;
+committed restoration with a later refresh failure is reported separately.
+
 ### Feature ownership
 
 [Document Appearance §18.4](07-document-and-research-interface.md#184-document-modes-context-and-source-properties)

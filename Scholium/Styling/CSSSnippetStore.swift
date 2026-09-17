@@ -17,12 +17,18 @@ final class CSSSnippetStore: ObservableObject {
     @Published private(set) var livePreviewCSS = ""
     @Published private(set) var safeModeReason: String?
     @Published private(set) var storeError: String?
-    @Published private(set) var canModify = true
+    @Published private(set) var canModify = false
+    @Published private(set) var canModifyAppearance = false
+    @Published private(set) var appearanceError: String?
+    @Published private(set) var snippetError: String?
+    @Published private(set) var isRestoringAppearance = false
+    @Published private(set) var isRestoringSnippets = false
 
     private let operations: any StyleUseCases
     private var directoryWatcher: DispatchSourceFileSystemObject?
     private var snippetWatchers: [String: DispatchSourceFileSystemObject] = [:]
     private var refreshTask: Task<Void, Never>?
+    private var operationTail: Task<Void, Never>?
 
     init(operations: any StyleUseCases) {
         self.operations = operations
@@ -42,28 +48,23 @@ final class CSSSnippetStore: ObservableObject {
         for watcher in snippetWatchers.values { watcher.cancel() }
     }
 
+    var canRepairAppearance: Bool { !canModifyAppearance && !appearanceProfiles.isEmpty }
+
     var enabledCount: Int { snippets.lazy.filter(\.isEnabled).count }
     var selectedAppearanceProfile: DocumentAppearanceProfile? {
         appearanceProfiles.first { $0.id == selectedAppearanceProfileID }
     }
 
     func refresh() async {
-        do {
-            apply(try await operations.refreshStyleSnippets())
-            await restartSnippetWatchers()
-        } catch {
-            storeError = error.localizedDescription
-        }
+        _ = await enqueue(observeSnippets: true) { try await self.operations.refreshStyleSnippets() }.result
     }
 
     func reloadSnippets() {
-        Task { @MainActor [weak self] in
-            await self?.refresh()
-        }
+        _ = enqueue(observeSnippets: true) { try await self.operations.refreshStyleSnippets() }
     }
 
     func importSnippet(from sourceURL: URL) async throws {
-        apply(try await operations.importStyleSnippet(from: sourceURL))
+        _ = try await enqueue(observeSnippets: true) { try await self.operations.importStyleSnippet(from: sourceURL) }.value
     }
 
     func createAppearance(named name: String = "Untitled Appearance") {
@@ -100,11 +101,30 @@ final class CSSSnippetStore: ObservableObject {
     }
 
     func reloadAppearanceConfiguration() {
-        Task {
-            do {
-                apply(try await operations.reloadAppearanceConfiguration())
-                appearanceReloadRevision += 1
-            } catch { storeError = error.localizedDescription }
+        _ = enqueue(reloadAppearance: true) { try await self.operations.reloadAppearanceConfiguration() }
+    }
+
+    func repairAppearanceProfile(_ profile: DocumentAppearanceProfile) {
+        guard !isRestoringAppearance else { return }
+        isRestoringAppearance = true
+        _ = enqueue(reloadAppearance: true, completion: { self.isRestoringAppearance = false }) {
+            try await self.operations.repairAppearanceProfile(profile)
+        }
+    }
+
+    func restoreAppearanceDefaults() {
+        guard !isRestoringAppearance else { return }
+        isRestoringAppearance = true
+        _ = enqueue(reloadAppearance: true, completion: { self.isRestoringAppearance = false }) {
+            try await self.operations.restoreAppearanceDefaults()
+        }
+    }
+
+    func restoreStyleSnippetDefaults() {
+        guard !isRestoringSnippets else { return }
+        isRestoringSnippets = true
+        _ = enqueue(observeSnippets: true, completion: { self.isRestoringSnippets = false }) {
+            try await self.operations.restoreStyleSnippetDefaults()
         }
     }
 
@@ -121,7 +141,7 @@ final class CSSSnippetStore: ObservableObject {
     }
 
     func duplicate(_ id: UUID) {
-        perform { try await self.operations.duplicateStyleSnippet(id) }
+        _ = enqueue(observeSnippets: true) { try await self.operations.duplicateStyleSnippet(id) }
     }
 
     func reload(_ id: UUID) {
@@ -129,7 +149,7 @@ final class CSSSnippetStore: ObservableObject {
     }
 
     func remove(_ id: UUID) {
-        perform { try await self.operations.removeStyleSnippet(id) }
+        _ = enqueue(observeSnippets: true) { try await self.operations.removeStyleSnippet(id) }
     }
 
     func disableAll() {
@@ -231,13 +251,39 @@ final class CSSSnippetStore: ObservableObject {
     private func perform(
         _ operation: @escaping @Sendable () async throws -> StyleSnapshot
     ) {
-        Task {
+        _ = enqueue(operation)
+    }
+
+    /// One MainActor queue owns request order through authoritative publication.
+    /// Watcher debounce may cancel before enqueueing; an enqueued operation runs
+    /// to proof even if its caller stops awaiting it.
+    private func enqueue(
+        reloadAppearance: Bool = false,
+        observeSnippets: Bool = false,
+        completion: @escaping @MainActor () -> Void = {},
+        _ operation: @escaping @Sendable () async throws -> StyleSnapshot
+    ) -> Task<StyleSnapshot, Error> {
+        let predecessor = operationTail
+        let task = Task { @MainActor in
+            await predecessor?.value
+            defer { completion() }
             do {
-                apply(try await operation())
+                let snapshot = try await operation()
+                apply(snapshot)
+                if reloadAppearance { appearanceReloadRevision += 1 }
+                if observeSnippets { await restartSnippetWatchers() }
+                return snapshot
             } catch {
+                // A failed reload may still have changed the owner's failure
+                // state. Publish it before reporting the original error; this
+                // exposes recovery without replacing the retained draft.
+                if let snapshot = try? await operations.styleSnapshot() { apply(snapshot) }
                 storeError = error.localizedDescription
+                throw error
             }
         }
+        operationTail = Task { @MainActor in _ = await task.result }
+        return task
     }
 
     private func apply(_ snapshot: StyleSnapshot) {
@@ -253,5 +299,8 @@ final class CSSSnippetStore: ObservableObject {
         safeModeReason = snapshot.safeModeReason
         storeError = snapshot.storeError
         canModify = snapshot.canModify
+        canModifyAppearance = snapshot.canModifyAppearance
+        appearanceError = snapshot.appearanceError
+        snippetError = snapshot.snippetError
     }
 }

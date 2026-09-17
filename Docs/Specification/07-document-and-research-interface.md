@@ -210,15 +210,15 @@ layout from another mode.
 A View-menu action may navigate to Frontmatter without creating an empty
 envelope or changing its document order.
 Source always displays the full original text. The documented `appearances.json`
-file owns the structured appearance profile; the separately managed Advanced
-CSS snippets own fine typography and other ordinary-content overrides. The
-native Appearance settings pane edits structured body typography and headings
-without creating a second appearance owner; Callout geometry remains
-file-managed. Finder, configuration guidance, explicit Reload, and Restore
-Defaults remain available. An external edit prevents stale GUI overwrite;
-invalid reload preserves the loaded appearance and draft and identifies the
-invalid field. Saving the profile does not rewrite or reset CSS snippets. CSS
-snippets remain separately managed under §18.4.1.
+file owns structured profiles, including file-managed Callout geometry; Advanced CSS owns content overrides. Finder, guidance, Reload and Restore
+Defaults remain available. External edits prevent stale overwrite; invalid
+reload preserves loaded appearance and drafts and identifies the invalid field.
+Profile saves preserve CSS snippets under §18.4.1.
+Appearance and snippets fail independently. Supported profiles offer scoped
+repair preserving other configuration. Whole-file recovery preserves previous
+bytes and creates a default profile; snippet recovery retains CSS files with
+all snippets disabled.
+Recovery preserves the other group and research source.
 
 The app-owned filename title is the primary document title. Review and Edit
 place it at the top of the shared document plane, inside the document's

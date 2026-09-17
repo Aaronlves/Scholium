@@ -324,11 +324,20 @@ struct WorkspaceSettingsView: View {
             } else {
                 Form {
                     registrationSection
-                    ScholiumContentStateView(
-                        "No Triptych Registered",
-                        detail: Text("Create a Triptych by choosing Analyses, Topics, and Works folders."),
-                        indicator: .symbol("rectangle.3.group")
-                    )
+                    if settingsModel.isRefreshing {
+                        ProgressView("Loading Registered Triptychs")
+                    } else if let error = settingsModel.errorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
+                        Button("Reload Triptych Registration") {
+                            Task { await settingsModel.refreshRegisteredVaults() }
+                        }
+                    } else {
+                        ScholiumContentStateView(
+                            "No Triptych Registered",
+                            detail: Text("Create a Triptych by choosing Analyses, Topics, and Works folders."),
+                            indicator: .symbol("rectangle.3.group")
+                        )
+                    }
                 }.scholiumSettingsFormStyle()
             }
         }
@@ -432,6 +441,8 @@ private struct AppearanceSettingsView: View {
     @State private var showRename = false
     @State private var showDeleteConfirmation = false
     @State private var showRestoreDefaultConfirmation = false
+    @State private var confirmsAppearanceRecovery = false
+    @State private var confirmsSnippetRecovery = false
     @State private var showDiscardChangesConfirmation = false
     private enum ProfileSelection {
         case existing(UUID)
@@ -447,6 +458,14 @@ private struct AppearanceSettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             if let draftBinding {
                 appearanceSectionContent(profile: draftBinding)
+            } else {
+                Form {
+                    appearanceRecoverySection
+                    Section("CSS Snippets") { cssSnippetsContent }.id("appearance.css")
+                    configurationFileSection.id("appearance.file")
+                }
+                .scholiumSettingsFormStyle()
+                .scholiumSettingsSearchDestination()
             }
 
             appearanceStatus
@@ -502,6 +521,22 @@ private struct AppearanceSettingsView: View {
                 "This removes the selected configuration from this Mac. Research documents are not changed."
             )
         }
+        .confirmationDialog("Recover Default Appearance?", isPresented: $confirmsAppearanceRecovery, titleVisibility: .visible) {
+            Button("Recover Default Appearance", role: .destructive) { store.restoreAppearanceDefaults() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Replace saved appearance profiles with a default profile and discard the current appearance draft. The previous configuration file is preserved separately. CSS snippets and research files are unchanged."
+            )
+        }
+        .confirmationDialog("Recover CSS Snippet Settings?", isPresented: $confirmsSnippetRecovery, titleVisibility: .visible) {
+            Button("Recover CSS Snippet Settings", role: .destructive) { store.restoreStyleSnippetDefaults() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Restore snippet settings with all snippets disabled. The previous settings file is preserved separately. CSS files, appearance profiles and research files are unchanged."
+            )
+        }
         .confirmationDialog(
             "Restore Default Appearance?",
             isPresented: $showRestoreDefaultConfirmation,
@@ -540,9 +575,10 @@ private struct AppearanceSettingsView: View {
         profile: Binding<DocumentAppearanceProfile>
     ) -> some View {
         Form {
-            configurationSection.id("appearance.profile")
-            AppearanceReadingEditor(profile: profile, fontCatalog: fontCatalog)
-            TypographySettingsView(profile: profile, fontCatalog: fontCatalog)
+            configurationSection.id("appearance.profile").disabled(!store.canModifyAppearance)
+            appearanceRecoverySection
+            AppearanceReadingEditor(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
+            TypographySettingsView(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
             Section("CSS Snippets") { cssSnippetsContent }.id("appearance.css")
             configurationFileSection.id("appearance.file")
         }
@@ -550,6 +586,18 @@ private struct AppearanceSettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .scholiumSettingsSearchDestination()
         .accessibilityIdentifier("scholium.settings.appearance")
+    }
+
+    @ViewBuilder
+    private var appearanceRecoverySection: some View {
+        if let error = store.appearanceError {
+            Section("Appearance Recovery") {
+                Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
+                Button("Recover Default Appearance…") { confirmsAppearanceRecovery = true }
+                    .disabled(store.isRestoringAppearance)
+                    .accessibilityIdentifier("scholium.settings.appearance.recover")
+            }
+        }
     }
 
     private var configurationFileSection: some View {
@@ -564,6 +612,7 @@ private struct AppearanceSettingsView: View {
                         store.reloadAppearanceConfiguration()
                     }
                 }
+                .accessibilityIdentifier("scholium.settings.appearance.reload")
                 Button("Configuration Guide…") {
                     if let url = Bundle.module.url(
                         forResource: "AppearanceConfiguration", withExtension: "md")
@@ -632,12 +681,20 @@ private struct AppearanceSettingsView: View {
             Spacer()
             Button("Revert to Saved") { loadSelectedDraft() }
                 .disabled(!hasUnsavedChanges)
+            if store.canRepairAppearance {
+                Button("Repair Saved Profile") {
+                    guard let draft else { return }
+                    store.repairAppearanceProfile(draft)
+                }
+                .disabled(store.isRestoringAppearance)
+                .accessibilityIdentifier("scholium.settings.appearance.repair")
+            }
             Button("Save Appearance") {
                 guard let draft else { return }
                 store.updateAppearance(draft)
             }
             .scholiumSettingsDefaultAction()
-            .disabled(!hasUnsavedChanges || !store.canModify)
+            .disabled(!hasUnsavedChanges || !store.canModifyAppearance)
             .accessibilityLabel("Save Appearance")
         }
         .padding(.horizontal, 24)
@@ -678,12 +735,19 @@ private struct AppearanceSettingsView: View {
 
             Divider()
 
+            if let error = store.snippetError {
+                Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
+                Button("Recover CSS Snippet Settings…") { confirmsSnippetRecovery = true }
+                    .disabled(store.isRestoringSnippets)
+                    .accessibilityIdentifier("scholium.settings.css.recover")
+            }
+
             ForEach(store.snippets) { snippet in
                 CSSSnippetRow(
                     snippet: snippet,
                     error: store.validationErrors[snippet.id],
                     store: store
-                )
+                ).disabled(!store.canModify)
             }
 
             if store.snippets.isEmpty {
@@ -1450,9 +1514,29 @@ private struct WorkspacePathEditor<Registration: View>: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }.id("workspace.portable")
 
+                if loadedCurrentValues { PortableSettingsRecoverySection(triptychID: targetTriptychID) }
+
             }
+            .disabled(!loadedCurrentValues)
             .scholiumSettingsFormStyle()
             .scholiumSettingsSearchDestination()
+
+            if !loadedCurrentValues {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    if settingsModel.isRefreshing {
+                        ProgressView("Loading Registered Triptychs")
+                    } else {
+                        if let error = settingsModel.errorMessage {
+                            Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
+                        }
+                        Button("Reload Triptych Registration") {
+                            Task { await settingsModel.refreshRegisteredVaults() }
+                        }
+                    }
+                }
+                .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+            }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -1481,7 +1565,9 @@ private struct WorkspacePathEditor<Registration: View>: View {
             .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
         }
         .accessibilityIdentifier("scholium.triptychSetup")
+        .onChange(of: targetAssignment) { _, _ in loadCurrentValuesIfNeeded() }
         .task {
+            loadCurrentValuesIfNeeded()
             await settingsModel.refreshWorkspaceAssignment()
             loadCurrentValuesIfNeeded()
             await loadPortableContainerIfAvailable()
@@ -1510,7 +1596,7 @@ private struct WorkspacePathEditor<Registration: View>: View {
     }
 
     private func loadCurrentValuesIfNeeded() {
-        guard !loadedCurrentValues else { return }
+        guard !loadedCurrentValues, targetAssignment != nil else { return }
         loadedCurrentValues = true
         paperAnalysisURL = assignedURL(for: .paperAnalysis)
         topicKnowledgeURL = assignedURL(for: .topicKnowledge)
@@ -1523,9 +1609,9 @@ private struct WorkspacePathEditor<Registration: View>: View {
             portableContainerURL = nil
             return
         }
-        if let registered = await settingsModel.portableContainerURL(for: outputURL) {
-            portableContainerURL = registered
-        }
+        let registered = await settingsModel.portableContainerURL(for: outputURL)
+        guard self.outputURL?.standardizedFileURL == outputURL.standardizedFileURL else { return }
+        if let registered { portableContainerURL = registered }
     }
 
     private var targetAssignment: TriptychAssignment? {
@@ -1546,6 +1632,7 @@ private struct WorkspacePathEditor<Registration: View>: View {
                 table: "Localizable", bundle: .module)
             return
         }
+        let submittedName = triptychName
         isSaving = true
         errorMessage = nil
         Task {
@@ -1556,7 +1643,7 @@ private struct WorkspacePathEditor<Registration: View>: View {
                     outputURL: outputURL,
                     portableContainerURL: portableContainerURL,
                     triptychID: targetTriptychID,
-                    triptychName: triptychName
+                    triptychName: submittedName
                 )
                 settingsModel.workspaceRecoveryMessage = nil
                 isSaving = false

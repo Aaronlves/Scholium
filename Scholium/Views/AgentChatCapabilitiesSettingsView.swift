@@ -1,5 +1,4 @@
 import AppKit
-import ScholiumApplication
 import ScholiumContracts
 import SwiftUI
 
@@ -7,6 +6,7 @@ struct AgentChatCapabilitiesSettingsView: View {
     @ObservedObject var controller: AgentChatController
     @ObservedObject var capabilities: AgentChatCapabilitiesController
     var zoteroOnly = false
+    var coreProtocolURL: URL? = nil
     @FocusState private var focusedToolAction: String?
 
     @Environment(\.openURL) private var openURL
@@ -27,7 +27,7 @@ struct AgentChatCapabilitiesSettingsView: View {
         Group {
             statusSection
             if !zoteroOnly {
-                CoreProtocolSettingsSection()
+                CoreProtocolSettingsSection(coreProtocolURL: coreProtocolURL)
                 Section("Skills") {
                     VStack(alignment: .leading, spacing: 10) {
                         if let workspace = capabilities.workspaceURL {
@@ -372,7 +372,7 @@ struct AgentChatCapabilitiesSettingsView: View {
 }
 
 struct CoreProtocolSettingsSection: View {
-    private let coreProtocolURL = try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL()
+    let coreProtocolURL: URL?
 
     var body: some View {
         Section("Core Protocol") {

@@ -45,4 +45,22 @@ struct WritingContinuationPreferencesTests {
         #expect(preferences.model == "model-not-in-current-inventory")
         #expect(defaults.string(forKey: WritingContinuationPreferences.modelKey) == preferences.model)
     }
+    @Test("Malformed enablement cannot opt in to AI and recovery leaves unrelated preferences unchanged")
+    func malformedBoolean() throws {
+        let domain = "writing-continuation-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set("YES", forKey: WritingContinuationPreferences.enabledKey)
+        defaults.set("chosen-model", forKey: WritingContinuationPreferences.modelKey)
+        defaults.set("queue", forKey: AgentChatInputBehavior.key)
+        let preferences = WritingContinuationPreferences(defaults: defaults)
+        #expect(!preferences.enabled && preferences.model == "chosen-model")
+        #expect(preferences.loadError != nil)
+        #expect(defaults.string(forKey: WritingContinuationPreferences.enabledKey) == "YES")
+        preferences.restoreDefaults()
+        #expect(preferences.loadError == nil && !preferences.enabled)
+        #expect(defaults.object(forKey: WritingContinuationPreferences.enabledKey) == nil)
+        #expect(defaults.string(forKey: AgentChatInputBehavior.key) == "queue")
+    }
+
 }

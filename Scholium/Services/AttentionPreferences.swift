@@ -8,13 +8,23 @@ enum AttentionPreferences {
         min(max(value, 1), 365)
     }
 
+    static func ledgerNeedsRecovery(_ data: Data) -> Bool {
+        !data.isEmpty && (try? JSONDecoder().decode(AttentionDismissalLedger.self, from: data)) == nil
+    }
+
     static func decodeLedger(_ data: Data) -> AttentionDismissalLedger {
-        guard !data.isEmpty,
-            let ledger = try? JSONDecoder().decode(AttentionDismissalLedger.self, from: data)
-        else {
-            return AttentionDismissalLedger()
+        if let ledger = try? JSONDecoder().decode(AttentionDismissalLedger.self, from: data) { return ledger }
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let entries = root["dismissedUntilByItemID"] as? [String: Any]
+        else { return AttentionDismissalLedger() }
+        var retained: [String: Date] = [:]
+        for (id, value) in entries {
+            guard let bytes = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed),
+                let date = try? JSONDecoder().decode(Date.self, from: bytes), date.timeIntervalSinceReferenceDate.isFinite
+            else { continue }
+            retained[id] = date
         }
-        return ledger
+        return AttentionDismissalLedger(dismissedUntilByItemID: retained)
     }
 
     static func encodeLedger(_ ledger: AttentionDismissalLedger) -> Data {

@@ -444,18 +444,8 @@ public actor TriptychControlStore {
             }
             manifest = decoded
         }
-        switch try settingsLoadState() {
-        case .current, .needsReview:
-            break
-        case .missing:
-            throw TriptychControlError.settingsMissing
-        case .oldSchema(let version):
-            throw TriptychControlError.settingsOldSchema(version)
-        case .futureSchema(let version):
-            throw TriptychControlError.settingsFutureSchema(version)
-        case .corrupted:
-            throw TriptychControlError.settingsCorrupted
-        }
+        // Settings availability does not determine Triptych availability.
+        _ = try settingsLoadState()
         _ = try identitySnapshot()
         do {
             _ = try attachmentRecords()
@@ -485,22 +475,11 @@ public actor TriptychControlStore {
         }
     }
 
-    /// Validates only portable control files that already exist. Missing
-    /// current files remain bootstrap-able; unsupported or damaged existing
-    /// files fail before any machine-local registration is changed.
+    /// Existing identities and attachment catalogs remain strict. Settings
+    /// semantics may fall back without blocking registration; reading them
+    /// still validates containment and never rewrites their saved bytes.
     public func validateExistingSupportedControlState() throws {
-        if fileManager.fileExists(atPath: settingsURL.path) {
-            switch try settingsLoadState() {
-            case .current, .needsReview, .missing:
-                break
-            case .oldSchema(let version):
-                throw TriptychControlError.settingsOldSchema(version)
-            case .futureSchema(let version):
-                throw TriptychControlError.settingsFutureSchema(version)
-            case .corrupted:
-                throw TriptychControlError.settingsCorrupted
-            }
-        }
+        _ = try settingsLoadState()
         if fileManager.fileExists(atPath: identitiesURL.path) {
             _ = try identitySnapshot()
         }
@@ -520,28 +499,84 @@ public actor TriptychControlStore {
     }
 
     public func settings() throws -> TriptychSettingsSnapshot {
-        switch try settingsLoadState() {
-        case .current(let snapshot):
-            return snapshot
-        case .needsReview(_, _, let reason):
-            throw TriptychControlError.settingsNeedsReview(reason)
-        case .missing:
-            throw TriptychControlError.settingsMissing
-        case .oldSchema(let version):
-            throw TriptychControlError.settingsOldSchema(version)
-        case .futureSchema(let version):
-            throw TriptychControlError.settingsFutureSchema(version)
-        case .corrupted:
-            throw TriptychControlError.settingsCorrupted
+        let observation = try settingsRecoverySnapshot()
+        switch observation.loadState {
+        case .current(let snapshot): return snapshot
+        case .needsReview(let settings, let revision, _):
+            return TriptychSettingsSnapshot(settings: settings, revision: revision)
+        case .missing: throw TriptychControlError.settingsMissing
+        case .oldSchema, .futureSchema, .corrupted:
+            guard let revision = observation.revision else { throw TriptychControlError.settingsMissing }
+            return TriptychSettingsSnapshot(settings: TriptychSettings(), revision: revision)
         }
     }
 
     public func settingsLoadState() throws -> TriptychSettingsLoadState {
-        guard fileManager.fileExists(atPath: settingsURL.path) else {
-            return .missing
+        try settingsRecoverySnapshot().loadState
+    }
+
+    public func settingsRecoverySnapshot() throws -> TriptychSettingsRecoverySnapshot {
+        guard let data = try readSettingsIfPresent() else {
+            return TriptychSettingsRecoverySnapshot(loadState: .missing, revision: nil)
         }
-        let data = try Data(contentsOf: settingsURL, options: [.mappedIfSafe])
-        return decodeSettingsLoadState(data)
+        return TriptychSettingsRecoverySnapshot(
+            loadState: decodeSettingsLoadState(data),
+            revision: SettingsRevision(fingerprint: DocumentFingerprint(data: data))
+        )
+    }
+
+    /// Explicit recovery changes settings alone and preserves any previous
+    /// bytes before replacement. A stale observation never authorizes recovery.
+    @discardableResult
+    public func resetSettingsToDefaults(
+        expectedRevision: SettingsRevision?
+    ) throws -> TriptychSettingsRecoveryResult {
+        try withPortableControlLock {
+            let current = try readSettingsIfPresent()
+            guard
+                current.map({ SettingsRevision(fingerprint: DocumentFingerprint(data: $0)) })
+                    == expectedRevision
+            else { throw TriptychControlError.settingsRevisionConflict }
+            let candidate = try encodedData(TriptychSettings())
+            try ensureControlDirectory()
+            let result: ExactFileReplacementResult
+            do {
+                if current == nil { try controlCreateHook?(settingsURL) }
+                result = try ExactFileReplacement.replace(
+                    at: settingsURL, expected: current, candidate: candidate,
+                    preserveOriginal: true,
+                    preCommitHook: controlWriteHook,
+                    postCommitHook: controlPostSwapHook
+                )
+            } catch ExactFileReplacementError.revisionConflict {
+                throw TriptychControlError.settingsRevisionConflict
+            } catch ExactFileReplacementError.commitUncertain(let reason) {
+                throw TriptychControlError.controlFileCommitUncertain(reason)
+            }
+            let readback = result.data
+            let settings = try decodeValidatedSettings(readback)
+            return TriptychSettingsRecoveryResult(
+                snapshot: TriptychSettingsSnapshot(
+                    settings: settings,
+                    revision: SettingsRevision(fingerprint: DocumentFingerprint(data: readback))
+                ),
+                preservedSettingsURL: result.preservedOriginalURL
+            )
+        }
+    }
+
+    private func readSettingsIfPresent() throws -> Data? {
+        var status = stat()
+        if lstat(controlURL.path, &status) != 0 {
+            guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            return nil
+        }
+        let directory = Darwin.open(controlURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard directory >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { Darwin.close(directory) }
+        do { return try ExactFileReplacement.read(directory: directory, name: "settings.json") } catch let error as POSIXError where error.code == .ENOENT {
+            return nil
+        }
     }
 
     @discardableResult
@@ -558,14 +593,23 @@ public actor TriptychControlStore {
         guard fileManager.fileExists(atPath: settingsURL.path) else {
             throw TriptychControlError.settingsMissing
         }
-        let current = try Data(contentsOf: settingsURL, options: [.mappedIfSafe])
+        guard let current = try readSettingsIfPresent() else {
+            throw TriptychControlError.settingsMissing
+        }
         guard DocumentFingerprint(data: current) == expectedRevision.fingerprint else {
             throw TriptychControlError.settingsRevisionConflict
         }
-        guard (try? decoder().decode(TriptychSettings.self, from: current)) != nil else {
-            throw TriptychControlError.settingsCorrupted
+        switch decodeSettingsLoadState(current) {
+        case .current, .needsReview: break
+        case .oldSchema(let version): throw TriptychControlError.settingsOldSchema(version)
+        case .futureSchema(let version): throw TriptychControlError.settingsFutureSchema(version)
+        case .corrupted, .missing: throw TriptychControlError.settingsCorrupted
         }
-        let candidate = try encodedData(settings)
+        // Saving the owned field does not discard unrelated future keys.
+        guard var envelope = try JSONSerialization.jsonObject(with: current) as? [String: Any]
+        else { throw TriptychControlError.settingsCorrupted }
+        envelope["attentionDismissalDays"] = settings.attentionDismissalDays
+        let candidate = try JSONSerialization.data(withJSONObject: envelope, options: [.prettyPrinted, .sortedKeys])
         let readback = try replaceExactFile(
             at: settingsURL,
             expected: current,
@@ -1642,29 +1686,26 @@ public actor TriptychControlStore {
         else {
             return .corrupted
         }
-        let version = number.intValue
+        guard number.doubleValue.isFinite,
+            number.doubleValue.rounded(.towardZero) == number.doubleValue,
+            let version = Int(number.stringValue)
+        else { return .corrupted }
         guard version >= TriptychSettings.currentSchemaVersion else {
             return .oldSchema(version)
         }
         guard version <= TriptychSettings.currentSchemaVersion else {
             return .futureSchema(version)
         }
+        let revision = SettingsRevision(fingerprint: DocumentFingerprint(data: data))
         let settings: TriptychSettings
-        do {
-            settings = try decoder().decode(TriptychSettings.self, from: data)
-        } catch {
-            return .corrupted
-        }
-        let revision = SettingsRevision(
-            fingerprint: DocumentFingerprint(data: data)
-        )
-        do {
-            try TriptychSettingsValidator.validate(settings)
-        } catch {
+        if let decoded = try? decoder().decode(TriptychSettings.self, from: data),
+            (try? TriptychSettingsValidator.validate(decoded)) != nil
+        {
+            settings = decoded
+        } else {
             return .needsReview(
-                settings: settings,
-                revision: revision,
-                reason: error.localizedDescription
+                settings: TriptychSettings(), revision: revision,
+                reason: "Attention dismissal days must be a positive whole number. The default is used until this setting is repaired."
             )
         }
         return .current(
@@ -1674,132 +1715,22 @@ public actor TriptychControlStore {
             ))
     }
 
-    /// Replaces a portable control file only if the exact authorized preimage
-    /// is still the atomically displaced file. NSFileCoordinator covers
-    /// participating sync providers; the swap/readback proof detects an
-    /// uncoordinated writer in the final-check window and restores its bytes.
     private func replaceExactFile(
         at url: URL,
         expected: Data,
         candidate: Data,
         conflict: @autoclosure () -> Error
     ) throws -> Data {
-        let coordinator = NSFileCoordinator(filePresenter: nil)
-        var coordinationError: NSError?
-        var outcome: Result<Data, Error>?
-        var swapOccurred = false
-        coordinator.coordinate(
-            writingItemAt: url,
-            options: .forReplacing,
-            error: &coordinationError
-        ) { coordinatedURL in
-            outcome = Result {
-                let initial = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
-                guard initial == expected else { throw conflict() }
-
-                let stagingURL = coordinatedURL.deletingLastPathComponent()
-                    .appendingPathComponent(
-                        ".\(coordinatedURL.lastPathComponent)-staging-\(UUID().uuidString.lowercased())"
-                    )
-                var stagingExists = false
-                defer {
-                    if stagingExists { try? self.fileManager.removeItem(at: stagingURL) }
-                }
-                try candidate.write(to: stagingURL, options: .withoutOverwriting)
-                stagingExists = true
-                let stagingDescriptor = Darwin.open(stagingURL.path, O_RDONLY | O_NOFOLLOW)
-                guard stagingDescriptor >= 0 else { throw POSIXError(.EIO) }
-                defer { Darwin.close(stagingDescriptor) }
-                var stagingStatus = stat()
-                guard fstat(stagingDescriptor, &stagingStatus) == 0,
-                    (stagingStatus.st_mode & S_IFMT) == S_IFREG,
-                    stagingStatus.st_nlink == 1,
-                    fsync(stagingDescriptor) == 0
-                else {
-                    throw POSIXError(.EIO)
-                }
-
-                let rechecked = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
-                guard rechecked == expected else { throw conflict() }
-                try self.controlWriteHook?(coordinatedURL)
-
-                guard
-                    renameatx_np(
-                        AT_FDCWD,
-                        stagingURL.path,
-                        AT_FDCWD,
-                        coordinatedURL.path,
-                        UInt32(RENAME_SWAP)
-                    ) == 0
-                else {
-                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                }
-                swapOccurred = true
-
-                do {
-                    try self.controlPostSwapHook?(coordinatedURL)
-                    let canonical = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
-                    let displaced = try Data(contentsOf: stagingURL, options: [.mappedIfSafe])
-                    guard canonical == candidate, displaced == expected else {
-                        if canonical == candidate,
-                            renameatx_np(
-                                AT_FDCWD,
-                                stagingURL.path,
-                                AT_FDCWD,
-                                coordinatedURL.path,
-                                UInt32(RENAME_SWAP)
-                            ) == 0
-                        {
-                            swapOccurred = false
-                            throw conflict()
-                        }
-                        throw conflict()
-                    }
-                    try self.fileManager.removeItem(at: stagingURL)
-                    stagingExists = false
-                    let directoryDescriptor = Darwin.open(
-                        coordinatedURL.deletingLastPathComponent().path,
-                        O_RDONLY | O_DIRECTORY
-                    )
-                    if directoryDescriptor >= 0 {
-                        defer { Darwin.close(directoryDescriptor) }
-                        guard fsync(directoryDescriptor) == 0 else { throw POSIXError(.EIO) }
-                    }
-                    let readback = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
-                    guard readback == candidate else {
-                        throw CocoaError(.fileWriteUnknown)
-                    }
-                    return readback
-                } catch {
-                    if !swapOccurred { throw error }
-                    if let controlError = error as? TriptychControlError,
-                        case .controlFileCommitUncertain = controlError
-                    {
-                        throw controlError
-                    }
-                    throw TriptychControlError.controlFileCommitUncertain(
-                        error.localizedDescription
-                    )
-                }
-            }
+        do {
+            return try ExactFileReplacement.replace(
+                at: url, expected: expected, candidate: candidate,
+                preCommitHook: controlWriteHook, postCommitHook: controlPostSwapHook
+            ).data
+        } catch ExactFileReplacementError.revisionConflict {
+            throw conflict()
+        } catch ExactFileReplacementError.commitUncertain(let reason) {
+            throw TriptychControlError.controlFileCommitUncertain(reason)
         }
-        if let coordinationError {
-            if swapOccurred {
-                throw TriptychControlError.controlFileCommitUncertain(
-                    coordinationError.localizedDescription
-                )
-            }
-            throw coordinationError
-        }
-        guard let outcome else {
-            if swapOccurred {
-                throw TriptychControlError.controlFileCommitUncertain(
-                    CocoaError(.fileWriteUnknown).localizedDescription
-                )
-            }
-            throw CocoaError(.fileWriteUnknown)
-        }
-        return try outcome.get()
     }
 
     private func withPortableControlLock<T>(

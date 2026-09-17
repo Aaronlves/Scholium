@@ -21,17 +21,30 @@ final class SelectionActionPreferences: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        if let data = defaults.data(forKey: Self.key) {
-            if let decoded = try? JSONDecoder().decode([SelectionActionDefinition].self, from: data),
-                Self.validationError(decoded) == nil
-            {
-                actions = decoded
-            } else {
-                actions = []
-                loadError = ScholiumL10n.string("Selection actions could not be loaded. Restore defaults to replace these settings.")
-            }
-        } else {
+        guard let persisted = defaults.object(forKey: Self.key) else {
             actions = Self.defaultActions
+            return
+        }
+        guard let data = persisted as? Data,
+            let objects = try? JSONSerialization.jsonObject(with: data) as? [Any]
+        else {
+            actions = []
+            loadError = ScholiumL10n.string("Selection actions could not be loaded. Restore defaults to replace these settings.")
+            return
+        }
+        var usable: [SelectionActionDefinition] = []
+        for object in objects {
+            guard usable.count < Self.maximumCount,
+                let bytes = try? JSONSerialization.data(withJSONObject: object, options: .fragmentsAllowed),
+                let action = try? JSONDecoder().decode(SelectionActionDefinition.self, from: bytes),
+                Self.validationError([action]) == nil, !usable.contains(where: { $0.id == action.id })
+            else { continue }
+            usable.append(action)
+        }
+        actions = usable
+        if usable.count != objects.count {
+            loadError = ScholiumL10n.string(
+                "Some selection actions could not be loaded. Available actions are retained. Save your changes or restore defaults to replace these settings.")
         }
     }
 

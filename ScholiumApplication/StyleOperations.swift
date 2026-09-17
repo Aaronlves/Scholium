@@ -1,5 +1,6 @@
 import Foundation
 import ScholiumContracts
+import ScholiumCore
 
 /// Owns named Appearance profiles and every persisted CSS-snippet byte under
 /// Application Support. The frontend receives immutable snapshots and may
@@ -20,6 +21,8 @@ public actor StyleOperations: StyleUseCases {
     private var safeModeReason: String?
     private var storeError: String?
     private var manifestLoadFailure: Error?
+    private var appearanceLoadFailure: Error?
+    private var loadedSnippetBytes: Data?
     private var didLoad = false
     private var loadedAppearanceBytes: Data?
 
@@ -50,30 +53,24 @@ public actor StyleOperations: StyleUseCases {
 
     public func reloadAppearanceConfiguration() throws -> StyleSnapshot {
         ensureLoaded()
-        let bytes = try readAppearanceBytes()
-        let manifest = try decodeAppearance(bytes)
-        var recoveredSnippets = snippets
-        // A repaired file can also recover a failed first load. Snippet errors
-        // are rechecked independently before allowing writes again.
-        if manifestLoadFailure != nil {
-            if fileManager.fileExists(atPath: manifestURL.path) {
-                recoveredSnippets = try JSONDecoder().decode([CSSSnippetRecord].self, from: Data(contentsOf: manifestURL))
-                    .map(normalizedSnippetRecord)
-            }
+        do {
+            let bytes = try readAppearanceBytes()
+            loadedAppearanceBytes = bytes
+            let manifest = try decodeAppearance(bytes)
+            appearanceProfiles = manifest.profiles
+            selectedAppearanceProfileID = manifest.selectedProfileID
+            loadedAppearanceBytes = bytes
+            appearanceLoadFailure = nil
+            return snapshot()
+        } catch {
+            appearanceLoadFailure = error
+            throw error
         }
-        appearanceProfiles = manifest.profiles
-        selectedAppearanceProfileID = manifest.selectedProfileID
-        loadedAppearanceBytes = bytes
-        snippets = recoveredSnippets
-        manifestLoadFailure = nil
-        rebuildCSS()
-        storeError = nil
-        return snapshot()
     }
 
     public func createAppearanceProfile(named requestedName: String) throws -> StyleSnapshot {
         ensureLoaded()
-        try requireWritableManifest()
+        try requireWritableAppearance()
         let name = normalizedName(requestedName, fallback: "Untitled Appearance")
         let profile = DocumentAppearanceProfile(name: name)
         try commitAppearance(appearanceProfiles + [profile], selectedID: profile.id)
@@ -181,6 +178,11 @@ public actor StyleOperations: StyleUseCases {
 
     public func refreshStyleSnippets() throws -> StyleSnapshot {
         ensureLoaded()
+        do { try loadSnippetManifest() } catch {
+            manifestLoadFailure = error
+            rebuildCSS()
+            throw error
+        }
         try requireWritableManifest()
         try ensureDirectory()
         // The folder is the source of truth for snippet bytes. The manifest
@@ -283,15 +285,18 @@ public actor StyleOperations: StyleUseCases {
 
     public func enterStyleSafeMode(reason: String) throws -> StyleSnapshot {
         ensureLoaded()
-        guard snippets.contains(where: \.isEnabled), manifestLoadFailure == nil else {
-            return snapshot()
-        }
+        guard snippets.contains(where: \.isEnabled) else { return snapshot() }
         var candidate = snippets
         for index in candidate.indices { candidate[index].isEnabled = false }
         do {
-            try commit(candidate, clearingSafeMode: false)
-            try Data(reason.utf8).write(to: safeModeURL, options: .atomic)
+            if manifestLoadFailure == nil {
+                try commit(candidate, clearingSafeMode: false)
+            }
+            let existing = fileManager.fileExists(atPath: safeModeURL.path) ? try readRecoveryBytes(at: safeModeURL) : nil
+            try coordinatedReplace(at: safeModeURL, bytes: Data(reason.utf8), expected: existing)
+            snippets = candidate
             safeModeReason = reason
+            rebuildCSS()
         } catch {
             readCSS = ""
             livePreviewCSS = ""
@@ -358,51 +363,77 @@ public actor StyleOperations: StyleUseCases {
         didLoad = true
         do {
             try ensureDirectory()
-            if fileManager.fileExists(atPath: manifestURL.path) {
-                snippets = try JSONDecoder()
-                    .decode([CSSSnippetRecord].self, from: Data(contentsOf: manifestURL))
-                    .map(normalizedSnippetRecord)
-            }
-            if fileManager.fileExists(atPath: appearanceManifestURL.path) {
-                let bytes = try readAppearanceBytes()
-                let manifest = try decodeAppearance(bytes)
-                loadedAppearanceBytes = bytes
-                appearanceProfiles = manifest.profiles
-                selectedAppearanceProfileID = manifest.selectedProfileID
-            } else {
-                let profile = DocumentAppearanceProfile(name: "Custom")
-                appearanceProfiles = [profile]
-                selectedAppearanceProfileID = profile.id
-                try writeAppearanceManifest(
-                    AppearanceManifest(selectedProfileID: profile.id, profiles: [profile])
-                )
-            }
-            if appearanceProfiles.isEmpty {
-                let profile = DocumentAppearanceProfile(name: "Custom")
-                appearanceProfiles = [profile]
-                selectedAppearanceProfileID = profile.id
-            } else if !appearanceProfiles.contains(where: { $0.id == selectedAppearanceProfileID }) {
-                selectedAppearanceProfileID = appearanceProfiles.first?.id
-            }
-            if fileManager.fileExists(atPath: safeModeURL.path),
-                let persisted = String(data: try Data(contentsOf: safeModeURL), encoding: .utf8),
-                !persisted.isEmpty
-            {
-                safeModeReason = persisted
-                for index in snippets.indices { snippets[index].isEnabled = false }
-            }
-            rebuildCSS()
+            try loadSnippetManifest()
         } catch {
             manifestLoadFailure = error
-            snippets = []
-            appearanceProfiles = []
-            selectedAppearanceProfileID = nil
-            validationErrors = [:]
-            readCSS = ""
-            livePreviewCSS = ""
-            storeError = StyleUseCaseError.unavailable(error.localizedDescription).localizedDescription
-            safeModeReason = "Scholium disabled document CSS because its snippet settings could not be read."
         }
+        do {
+            if fileManager.fileExists(atPath: appearanceManifestURL.path) {
+                let bytes = try readAppearanceBytes()
+                loadedAppearanceBytes = bytes
+                do {
+                    let manifest = try decodeAppearance(bytes)
+                    appearanceProfiles = manifest.profiles
+                    selectedAppearanceProfileID = manifest.selectedProfileID
+                } catch {
+                    appearanceLoadFailure = error
+                    // Derive a usable projection, preserving readable fields.
+                    // The original bytes stay untouched and cannot be written
+                    // through this projection until explicit recovery/reload.
+                    if let recovered = recoverAppearance(bytes) {
+                        appearanceProfiles = recovered.profiles
+                        selectedAppearanceProfileID = recovered.selectedProfileID
+                    }
+                }
+            } else {
+                let profile = DocumentAppearanceProfile(name: "Custom")
+                try writeAppearanceManifest(AppearanceManifest(selectedProfileID: profile.id, profiles: [profile]))
+                appearanceProfiles = [profile]
+                selectedAppearanceProfileID = profile.id
+            }
+        } catch {
+            appearanceLoadFailure = error
+        }
+        if let persisted = try? String(contentsOf: safeModeURL, encoding: .utf8), !persisted.isEmpty {
+            safeModeReason = persisted
+            for index in snippets.indices { snippets[index].isEnabled = false }
+        }
+        rebuildCSS()
+    }
+
+    private func loadSnippetManifest() throws {
+        let bytes = fileManager.fileExists(atPath: manifestURL.path) ? try readManifestBytes(at: manifestURL) : nil
+        loadedSnippetBytes = bytes
+        guard let bytes else {
+            snippets = []
+            manifestLoadFailure = nil
+            return
+        }
+        guard let objects = try JSONSerialization.jsonObject(with: bytes) as? [Any], objects.count <= 1_000 else {
+            throw StyleUseCaseError.invalidConfiguration("CSS snippet settings must be an array of up to 1,000 registrations.")
+        }
+        var candidate: [CSSSnippetRecord] = []
+        var invalidCount = 0
+        for object in objects {
+            guard let data = try? JSONSerialization.data(withJSONObject: object, options: .fragmentsAllowed),
+                let record = try? JSONDecoder().decode(CSSSnippetRecord.self, from: data),
+                !candidate.contains(where: { $0.id == record.id || $0.managedFileName == record.managedFileName })
+            else {
+                invalidCount += 1
+                continue
+            }
+            candidate.append(normalizedSnippetRecord(record))
+        }
+        snippets = candidate
+        if safeModeReason != nil {
+            for index in snippets.indices { snippets[index].isEnabled = false }
+        }
+        if invalidCount > 0 {
+            throw StyleUseCaseError.invalidConfiguration(
+                "\(invalidCount) CSS snippet registration(s) could not be loaded. Readable snippets remain available; repair or restore their settings before saving."
+            )
+        }
+        manifestLoadFailure = nil
     }
 
     private func snapshot() -> StyleSnapshot {
@@ -415,7 +446,10 @@ public actor StyleOperations: StyleUseCases {
             livePreviewCSS: livePreviewCSS,
             safeModeReason: safeModeReason,
             storeError: storeError,
-            canModify: manifestLoadFailure == nil
+            canModify: manifestLoadFailure == nil,
+            canModifyAppearance: appearanceLoadFailure == nil,
+            appearanceError: appearanceLoadFailure?.localizedDescription,
+            snippetError: manifestLoadFailure?.localizedDescription
         )
     }
 
@@ -438,7 +472,9 @@ public actor StyleOperations: StyleUseCases {
         let build = buildCSS(from: candidate)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(build.snippets).write(to: manifestURL, options: [.atomic])
+        let bytes = try encoder.encode(build.snippets)
+        try coordinatedReplace(at: manifestURL, bytes: bytes, expected: loadedSnippetBytes)
+        loadedSnippetBytes = bytes
         if clearingSafeMode { try? fileManager.removeItem(at: safeModeURL) }
         snippets = build.snippets
         validationErrors = build.errors
@@ -457,7 +493,7 @@ public actor StyleOperations: StyleUseCases {
         _ profiles: [DocumentAppearanceProfile],
         selectedID: UUID?
     ) throws {
-        try requireWritableManifest()
+        try requireWritableAppearance()
         try ensureDirectory()
         let normalizedProfiles = profiles.map(normalized)
         guard let firstID = normalizedProfiles.first?.id else { return }
@@ -484,32 +520,151 @@ public actor StyleOperations: StyleUseCases {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let bytes = try encoder.encode(manifest)
-        var coordinationError: NSError?
-        var writeError: Error?
-        NSFileCoordinator().coordinate(writingItemAt: appearanceManifestURL, options: .forReplacing, error: &coordinationError) { url in
-            do {
-                let current = fileManager.fileExists(atPath: url.path) ? try readAppearanceBytes() : nil
-                guard current == loadedAppearanceBytes else { throw StyleUseCaseError.configurationChanged }
-                try bytes.write(to: url, options: .atomic)
-            } catch { writeError = error }
-        }
-        if let coordinationError { throw coordinationError }
-        if let writeError { throw writeError }
+        try coordinatedReplace(at: appearanceManifestURL, bytes: bytes, expected: loadedAppearanceBytes)
         loadedAppearanceBytes = bytes
     }
 
     private func readAppearanceBytes() throws -> Data {
-        let values = try appearanceManifestURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+        try readManifestBytes(at: appearanceManifestURL)
+    }
+
+    private func readManifestBytes(at url: URL) throws -> Data {
+        let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
         guard values.isRegularFile == true, values.isSymbolicLink != true,
             (values.fileSize ?? 0) <= 2_000_000
-        else {
-            throw StyleUseCaseError.invalidConfiguration("appearances.json must be a regular file smaller than 2 MB.")
-        }
-        let bytes = try Data(contentsOf: appearanceManifestURL)
+        else { throw StyleUseCaseError.invalidConfiguration("\(url.lastPathComponent) must be a regular file smaller than 2 MB.") }
+        let bytes = try Data(contentsOf: url)
         guard bytes.count <= 2_000_000 else {
-            throw StyleUseCaseError.invalidConfiguration("appearances.json must be smaller than 2 MB.")
+            throw StyleUseCaseError.invalidConfiguration("\(url.lastPathComponent) must be smaller than 2 MB.")
         }
         return bytes
+    }
+
+    private func readRecoveryBytes(at url: URL) throws -> Data {
+        let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        guard values.isRegularFile == true, values.isSymbolicLink != true else {
+            throw StyleUseCaseError.invalidConfiguration("\(url.lastPathComponent) must be a regular file.")
+        }
+        return try Data(contentsOf: url, options: .mappedIfSafe)
+    }
+
+    private func requireWritableAppearance() throws {
+        if let appearanceLoadFailure { throw StyleUseCaseError.unavailable(appearanceLoadFailure.localizedDescription) }
+    }
+
+    /// Recovery backs up the exact current bytes before replacing only this group.
+    /// Failed backup or replacement leaves the live configuration unchanged.
+    private func coordinatedReplace(at target: URL, bytes: Data, expected: Data?, preservingOriginal: Bool = false) throws {
+        do {
+            _ = try ExactFileReplacement.replace(at: target, expected: expected, candidate: bytes, preserveOriginal: preservingOriginal)
+        } catch ExactFileReplacementError.revisionConflict {
+            throw StyleUseCaseError.configurationChanged
+        }
+    }
+
+    public func restoreAppearanceDefaults() throws -> StyleSnapshot {
+        ensureLoaded()
+        try ensureDirectory()
+        let current = fileManager.fileExists(atPath: appearanceManifestURL.path) ? try readRecoveryBytes(at: appearanceManifestURL) : nil
+        let profile = DocumentAppearanceProfile(name: "Custom")
+        let bytes = try JSONEncoder().encode(AppearanceManifest(selectedProfileID: profile.id, profiles: [profile]))
+        try coordinatedReplace(at: appearanceManifestURL, bytes: bytes, expected: current, preservingOriginal: true)
+        loadedAppearanceBytes = bytes
+        appearanceProfiles = [profile]
+        selectedAppearanceProfileID = profile.id
+        appearanceLoadFailure = nil
+        storeError = nil
+        return snapshot()
+    }
+
+    public func repairAppearanceProfile(_ profile: DocumentAppearanceProfile) throws -> StyleSnapshot {
+        ensureLoaded()
+        guard appearanceLoadFailure != nil, appearanceProfiles.contains(where: { $0.id == profile.id }),
+            let original = loadedAppearanceBytes,
+            var root = try JSONSerialization.jsonObject(with: original) as? [String: Any],
+            var objects = root["profiles"] as? [Any],
+            let index = objects.firstIndex(where: {
+                (($0 as? [String: Any])?["id"] as? String).flatMap(UUID.init(uuidString:)) == profile.id
+            })
+        else { throw StyleUseCaseError.invalidConfiguration("This appearance profile cannot be repaired from its saved configuration.") }
+        let repairedProfile = normalized(profile)
+        let known = try JSONSerialization.jsonObject(with: JSONEncoder().encode(repairedProfile))
+        objects[index] = overlayConfiguration(objects[index], known: known)
+        root["profiles"] = objects
+        root["selectedProfileID"] = profile.id.uuidString
+        let bytes = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+        try coordinatedReplace(at: appearanceManifestURL, bytes: bytes, expected: original, preservingOriginal: true)
+        loadedAppearanceBytes = bytes
+        do {
+            let manifest = try decodeAppearance(bytes)
+            appearanceProfiles = manifest.profiles
+            selectedAppearanceProfileID = manifest.selectedProfileID
+            appearanceLoadFailure = nil
+        } catch {
+            appearanceLoadFailure = error
+            if let recovered = recoverAppearance(bytes) {
+                appearanceProfiles = recovered.profiles
+                selectedAppearanceProfileID = recovered.selectedProfileID
+            }
+        }
+        storeError = nil
+        return snapshot()
+    }
+
+    /// Overlay only known profile values. Unknown keys and unrecognized array
+    /// members retain their original value and remain nonauthorizing.
+    private nonisolated func overlayConfiguration(_ original: Any, known: Any) -> Any {
+        if var object = original as? [String: Any], let values = known as? [String: Any] {
+            let optionalKeys: [String]
+            if values["role"] != nil {
+                optionalKeys = [
+                    "lineHeight", "startInsetEm", "endInsetEm", "titleGapEm", "paddingBlockEm", "paddingInlineEm", "contentIndentEm", "quotationScale",
+                    "attributionScale",
+                ]
+            } else if values["alignment"] != nil || values["weight"] != nil {
+                optionalKeys = ["cjkStrongFontFamily", "cjkEmphasisFontFamily"]
+            } else {
+                optionalKeys = []
+            }
+            for key in optionalKeys where values[key] == nil { object.removeValue(forKey: key) }
+            for (key, value) in values { object[key] = overlayConfiguration(object[key] ?? value, known: value) }
+            return object
+        }
+        if let originals = original as? [Any], let values = known as? [Any] {
+            var consumed: Set<Int> = []
+            let overlaid = values.enumerated().map { index, value -> Any in
+                let identity = (value as? [String: Any])?["role"] as? String
+                let match =
+                    identity.flatMap { role in originals.firstIndex { ($0 as? [String: Any])?["role"] as? String == role } }
+                    ?? (identity == nil && originals.indices.contains(index) ? index : nil)
+                guard let match else { return value }
+                consumed.insert(match)
+                return overlayConfiguration(originals[match], known: value)
+            }
+            return overlaid + originals.enumerated().filter { !consumed.contains($0.offset) }.map(\.element)
+        }
+        return known
+    }
+
+    public func restoreStyleSnippetDefaults() throws -> StyleSnapshot {
+        ensureLoaded()
+        try ensureDirectory()
+        let current = fileManager.fileExists(atPath: manifestURL.path) ? try readRecoveryBytes(at: manifestURL) : nil
+        // Retain every managed CSS file. Persist disabled registrations so the
+        // next folder reconciliation cannot silently enable them again.
+        let records = try discoveredSnippetURLs().map { url in
+            CSSSnippetRecord(
+                id: UUID(), name: url.deletingPathExtension().lastPathComponent,
+                managedFileName: url.lastPathComponent, isEnabled: false)
+        }
+        let bytes = try JSONEncoder().encode(records)
+        try coordinatedReplace(at: manifestURL, bytes: bytes, expected: current, preservingOriginal: true)
+        loadedSnippetBytes = bytes
+        snippets = records.map(normalizedSnippetRecord)
+        manifestLoadFailure = nil
+        rebuildCSS()
+        storeError = nil
+        return snapshot()
     }
 
     private func decodeAppearance(_ bytes: Data) throws -> AppearanceManifest {
@@ -545,6 +700,78 @@ public actor StyleOperations: StyleUseCases {
             let components = context.codingPath.map { $0.stringValue } + (missingKey.map { [$0] } ?? [])
             throw StyleUseCaseError.invalidConfiguration("\((components.isEmpty ? ["$"] : components).joined(separator: ".")): \(context.debugDescription)")
         }
+    }
+
+    private func recoverAppearance(_ bytes: Data) -> AppearanceManifest? {
+        guard let root = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+            let objects = root["profiles"] as? [Any], objects.count <= 100
+        else { return nil }
+        var recovered: [DocumentAppearanceProfile] = []
+        for rawObject in objects {
+            guard let object = rawObject as? [String: Any], let rawID = object["id"] as? String, let id = UUID(uuidString: rawID),
+                !recovered.contains(where: { $0.id == id })
+            else { continue }
+            let defaults = DocumentAppearanceProfile(name: "Custom")
+            guard let baselineBytes = try? JSONEncoder().encode(defaults),
+                let baseline = try? JSONSerialization.jsonObject(with: baselineBytes)
+            else { continue }
+            var candidate: Any = object
+            for _ in 0..<100 {
+                guard let data = try? JSONSerialization.data(withJSONObject: candidate) else { break }
+                do {
+                    let profile = try JSONDecoder().decode(DocumentAppearanceProfile.self, from: data)
+                    recovered.append(normalized(profile))
+                    break
+                } catch let error as DecodingError {
+                    let path: [String]
+                    switch error {
+                    case .keyNotFound(let key, let context): path = context.codingPath.map(\.stringValue) + [key.stringValue]
+                    case .typeMismatch(_, let context), .valueNotFound(_, let context), .dataCorrupted(let context):
+                        path = context.codingPath.map(\.stringValue)
+                    @unknown default: path = []
+                    }
+                    guard !path.isEmpty, path.first != "id",
+                        let repaired = replacingConfigurationValue(at: path, in: candidate, with: configurationValue(at: path, in: baseline) ?? NSNull())
+                    else { break }
+                    candidate = repaired
+                } catch { break }
+            }
+        }
+        guard let first = recovered.first else { return nil }
+        let requestedID = (root["selectedProfileID"] as? String).flatMap(UUID.init(uuidString:))
+        return AppearanceManifest(selectedProfileID: recovered.first(where: { $0.id == requestedID })?.id ?? first.id, profiles: recovered)
+    }
+
+    private nonisolated func configurationValue(at path: [String], in value: Any) -> Any? {
+        guard let key = path.first else { return value }
+        if let object = value as? [String: Any], let next = object[key] {
+            return configurationValue(at: Array(path.dropFirst()), in: next)
+        }
+        if let values = value as? [Any], let index = configurationIndex(key), values.indices.contains(index) {
+            return configurationValue(at: Array(path.dropFirst()), in: values[index])
+        }
+        return nil
+    }
+
+    private nonisolated func replacingConfigurationValue(at path: [String], in value: Any, with replacement: Any) -> Any? {
+        guard let key = path.first else { return replacement }
+        let remaining = Array(path.dropFirst())
+        if var object = value as? [String: Any] {
+            guard let repaired = replacingConfigurationValue(at: remaining, in: object[key] ?? [:], with: replacement) else { return nil }
+            object[key] = repaired
+            return object
+        }
+        if var values = value as? [Any], let index = configurationIndex(key), values.indices.contains(index),
+            let repaired = replacingConfigurationValue(at: remaining, in: values[index], with: replacement)
+        {
+            values[index] = repaired
+            return values
+        }
+        return nil
+    }
+
+    private nonisolated func configurationIndex(_ key: String) -> Int? {
+        Int(key) ?? Int(key.replacingOccurrences(of: "Index ", with: ""))
     }
 
     private func firstConfigurationDifference(_ original: Any, _ normalized: Any, path: String) -> String? {

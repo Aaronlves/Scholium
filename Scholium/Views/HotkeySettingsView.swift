@@ -56,12 +56,17 @@ struct HotkeySettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if ScholiumHotkeyPreferences.needsRecovery(preferencesData) {
+                    Label(
+                        "Some shortcuts could not be loaded. Available shortcuts remain usable; restore defaults to repair the saved settings.",
+                        systemImage: "exclamationmark.triangle")
+                }
                 HStack {
                     Spacer()
                     Button("Restore Default Shortcuts…") {
                         pendingResetAll = true
                     }
-                    .disabled(!hasCustomizations)
+                    .disabled(!hasCustomizations && !ScholiumHotkeyPreferences.needsRecovery(preferencesData))
                 }
             }
             .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
@@ -199,10 +204,16 @@ private struct HotkeyRecordingEditor: View {
                     .accessibilityIdentifier("scholium.hotkeys.validation")
             }
             HStack {
-                Button("Clear") { draft = nil; isRecording = false }
-                    .disabled(draft == nil)
+                Button("Clear") {
+                    draft = nil
+                    isRecording = false
+                }
+                .disabled(draft == nil)
                 Spacer()
-                Button("Cancel", role: .cancel) { isRecording = false; finish() }
+                Button("Cancel", role: .cancel) {
+                    isRecording = false
+                    finish()
+                }
                 Button("Save Shortcut") {
                     guard validationIssue == nil else { return }
                     isRecording = false

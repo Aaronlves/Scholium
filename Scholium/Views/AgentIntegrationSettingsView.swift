@@ -37,6 +37,7 @@ enum AgentSettingsCategory: String, CaseIterable, Identifiable {
 
 struct AgentIntegrationSettingsView: View {
     let searchQuery: String
+    private let coreProtocolURL = try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL()
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.agentChatSettingsController) private var chatController
     @Environment(\.scholiumSettingsSearchTarget) private var searchTarget
@@ -94,9 +95,9 @@ struct AgentIntegrationSettingsView: View {
                     Form {
                         if let chatController {
                             AgentChatCapabilitiesSettingsView(
-                                controller: chatController, capabilities: chatController.capabilities)
+                                controller: chatController, capabilities: chatController.capabilities, coreProtocolURL: coreProtocolURL)
                         } else {
-                            CoreProtocolSettingsSection()
+                            CoreProtocolSettingsSection(coreProtocolURL: coreProtocolURL)
                             Section("Skills and Tools") {
                                 Text("Open a Triptych to manage its Skills and Tools.", bundle: .module)
                                     .foregroundStyle(.secondary)

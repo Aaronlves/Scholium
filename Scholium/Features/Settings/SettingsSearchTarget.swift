@@ -24,13 +24,14 @@ struct SettingsSearchTarget: Identifiable, Equatable {
         self.aliases = aliases.map {
             LocalizedStringResource($0.defaultValue, table: $0.table ?? "Localizable", bundle: .module)
         }
-        self.searchableLabels = ([self.title] + self.aliases).flatMap { label in
-            ["en", "zh-Hans"].map { language in
-                var resource = label
-                resource.locale = Locale(identifier: language)
-                return String(localized: resource)
-            }
-        } + terms
+        self.searchableLabels =
+            ([self.title] + self.aliases).flatMap { label in
+                ["en", "zh-Hans"].map { language in
+                    var resource = label
+                    resource.locale = Locale(identifier: language)
+                    return String(localized: resource)
+                }
+            } + terms
     }
 
     static let all: [Self] = {
@@ -49,8 +50,12 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 "workspace.portable", .workspace, "Portable Triptych Data",
                 ["authorization", "access", "portable data", "授权", "访问", "便携数据"]),
             Self(
-                "appearance.profile", .document, "Profile", ["appearance", "configuration", "文稿外观", "外观配置"],
-                aliases: ["Rename Appearance…", "Restore Default Appearance…", "Save Appearance"]),
+                "workspace.settingsRecovery", .workspace, "Portable Settings",
+                ["restore defaults", "recovery", "damaged settings", "恢复默认", "修复设置", "设置损坏"],
+                aliases: ["Restore Portable Settings Defaults…"]),
+            Self(
+                "appearance.profile", .document, "Profile", ["appearance", "configuration", "repair profile", "文稿外观", "外观配置", "修复外观"],
+                aliases: ["Rename Appearance…", "Restore Default Appearance…", "Save Appearance", "Recover Default Appearance…", "Repair Saved Profile"]),
             Self(
                 "appearance.bodyFont", .document, "Body Font", ["reading", "font", "阅读", "正文字体"],
                 section: "appearance.reading"),

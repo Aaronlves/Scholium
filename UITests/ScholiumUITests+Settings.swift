@@ -186,6 +186,123 @@ extension ScholiumUITests {
         XCTAssertFalse(reopened.buttons["scholium.selectionActions.save"].isEnabled)
     }
 
+    /// An opaque configuration cannot prevent Settings opening or unrelated
+    /// preferences working. Recovery is explicit and preserves exact bad bytes.
+    @MainActor
+    func testDamagedPortableSettingsRecoverWithoutLosingResearch() throws {
+        app.terminate()
+        let control = triptychDirectory.appendingPathComponent(".scholium", isDirectory: true)
+        let settings = control.appendingPathComponent("settings.json")
+        let damaged = Data("{broken settings".utf8)
+        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalNote = try Data(contentsOf: note)
+        try damaged.write(to: settings, options: .atomic)
+        relaunchSettingsTransactionApplication()
+        let window = openSettingsForTransactionTest()
+        selectSettingsCategory("writing", in: window)
+        XCTAssertTrue(window.descendants(matching: .any)["scholium.settings.writingContinuation.enabled"].firstMatch.waitForExistence(timeout: 5))
+        let search = window.searchFields["scholium.settings.search"]
+        typeCommittedText("damaged settings", into: search, in: app)
+        let restore = window.buttons["scholium.settings.portable.restore"]
+        XCTAssertTrue(restore.waitForExistence(timeout: 5))
+        restore.click()
+        let confirm = window.buttons["Restore Portable Settings Defaults"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        window.buttons["Cancel"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !confirm.exists })
+        XCTAssertEqual(try Data(contentsOf: settings), damaged)
+        restore.click()
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.click()
+        let result = window.staticTexts["scholium.settings.portable.result"]
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: settings)) != damaged })
+        let copies = try FileManager.default.contentsOfDirectory(at: control, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("settings.recovery-") }
+        XCTAssertEqual(copies.count, 1)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(copies.first)), damaged)
+        XCTAssertEqual(try Data(contentsOf: note), originalNote)
+        selectSettingsCategory("notifications", in: window)
+        XCTAssertTrue(window.popUpButtons["scholium.settings.notifications.duration"].waitForExistence(timeout: 5))
+        captureSettingsTransaction(window, named: "settings-portable-recovered")
+    }
+
+    /// Invalid external reload retains the form and opens a scoped repair
+    /// route rather than making document appearance unusable.
+    @MainActor
+    func testInvalidAppearanceReloadAllowsScopedProfileRepair() throws {
+        let window = openSettingsForTransactionTest()
+        selectSettingsCategory("document", in: window)
+        let size = window.textFields["Body font size"]
+        XCTAssertTrue(size.waitForExistence(timeout: 5))
+        let styles = homeDirectory.appendingPathComponent("ApplicationSupport/Workspace/Styles", isDirectory: true)
+        let url = styles.appendingPathComponent("appearances.json")
+        let snippetsURL = styles.appendingPathComponent("snippets.json")
+        let snippetsBefore = try? Data(contentsOf: snippetsURL)
+        var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var profiles = try XCTUnwrap(manifest["profiles"] as? [[String: Any]])
+        var profileSettings = try XCTUnwrap(profiles[0]["settings"] as? [String: Any])
+        var body = try XCTUnwrap(profileSettings["body"] as? [String: Any])
+        body["alignment"] = "unsupported-value"
+        profileSettings["body"] = body
+        profiles[0]["settings"] = profileSettings
+        manifest["profiles"] = profiles
+        let damaged = try JSONSerialization.data(withJSONObject: manifest)
+        try damaged.write(to: url, options: .atomic)
+        let search = window.searchFields["scholium.settings.search"]
+        typeCommittedText("configuration file", into: search, in: app)
+        let reload = window.buttons["scholium.settings.appearance.reload"]
+        XCTAssertTrue(reload.waitForExistence(timeout: 5))
+        reload.click()
+        let repair = window.buttons["Repair Saved Profile"]
+        XCTAssertTrue(repair.waitForExistence(timeout: 5))
+        XCTAssertTrue(repair.isEnabled)
+        typeCommittedText("body font size", into: search, in: app)
+        XCTAssertTrue(size.waitForExistence(timeout: 5))
+        XCTAssertTrue(size.isEnabled)
+        typeCommittedText("17", into: size, in: app)
+        app.typeKey(.tab, modifierFlags: [])
+        repair.click()
+        XCTAssertTrue(waitUntil(timeout: 10) { !repair.exists })
+        let repaired = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let repairedProfiles = try XCTUnwrap(repaired["profiles"] as? [[String: Any]])
+        let repairedSettings = try XCTUnwrap(repairedProfiles[0]["settings"] as? [String: Any])
+        let repairedBody = try XCTUnwrap(repairedSettings["body"] as? [String: Any])
+        XCTAssertEqual(repairedBody["fontSizePoints"] as? Double, 17)
+        let backup = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(at: styles, includingPropertiesForKeys: nil)
+                .first { $0.lastPathComponent.hasPrefix("appearances.json.recovery-") })
+        XCTAssertEqual(try Data(contentsOf: backup), damaged)
+        XCTAssertEqual(try? Data(contentsOf: snippetsURL), snippetsBefore)
+        captureSettingsTransaction(window, named: "settings-appearance-repaired")
+    }
+
+    /// An invalid field has an effective default, but still needs an explicit
+    /// save even when the researcher accepts that value without editing it.
+    @MainActor
+    func testInvalidReminderTimingSupportsDefaultFieldRepair() throws {
+        let settings = triptychDirectory.appendingPathComponent(".scholium/settings.json")
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any])
+        let expectedDefault = try XCTUnwrap(envelope["attentionDismissalDays"] as? Int)
+        envelope["attentionDismissalDays"] = "unavailable-value"
+        envelope["retainedFuturePreference"] = "kept"
+        try JSONSerialization.data(withJSONObject: envelope).write(to: settings, options: .atomic)
+        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalNote = try Data(contentsOf: note)
+        let window = openSettingsForTransactionTest()
+        selectSettingsCategory("notifications", in: window)
+        let save = window.buttons["scholium.settings.notifications.save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) { save.isEnabled })
+        save.click()
+        XCTAssertTrue(waitUntil(timeout: 10) { !save.isEnabled })
+        let repaired = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any])
+        XCTAssertEqual(repaired["attentionDismissalDays"] as? Int, expectedDefault)
+        XCTAssertEqual(repaired["retainedFuturePreference"] as? String, "kept")
+        XCTAssertEqual(try Data(contentsOf: note), originalNote)
+        captureSettingsTransaction(window, named: "settings-reminder-field-repaired")
+    }
+
     @MainActor
     func settingsContentScrollView(in window: XCUIElement) -> XCUIElement {
         window.descendants(matching: .any)["scholium.settings.pages"].firstMatch.scrollViews.firstMatch

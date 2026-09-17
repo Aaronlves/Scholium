@@ -57,6 +57,13 @@ Bounded JSON stores share the Core-only secure-record primitive for descriptor
 containment, byte limits, atomic replacement/readback and staging/deletion recovery.
 An advisory lock serializes cooperating processes. Each store owns its own schema,
 path, transaction and error semantics; the primitive interprets no research object.
+Portable settings and machine-local style manifests share exact-byte coordinated
+replacement, exclusive recovery copies and checked absence creation. Application
+owns independent appearance/snippet load failures; Settings retains target-bound
+drafts and recovery confirmation. The style adapter serializes requests through
+returned-snapshot publication; failed reload publishes repair availability while
+retaining the loaded profile and draft. Unsupported settings project safe defaults
+without rewriting their saved envelope.
 Portable identity bootstrap uses no-replace creation. Identity mutation carries
 its exact decoded preimage through coordinated swap and readback, preventing a
 stale writer from erasing newer identity. Source bytes alone never grant identity.

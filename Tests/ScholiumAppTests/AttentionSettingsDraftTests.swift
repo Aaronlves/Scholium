@@ -43,6 +43,26 @@ struct AttentionSettingsDraftTests {
         #expect(draft.revision == original.settingsRevision)
     }
 
+    @Test("A repaired default can be saved even when the effective draft was not edited")
+    func invalidPersistedTimingRemainsRepairable() throws {
+        let id = UUID()
+        let old = SettingsRevision(fingerprint: DocumentFingerprint(content: "invalid timing"))
+        let invalid = WorkspaceSettingsSnapshot(
+            activeTriptychID: id,
+            triptychSettings: TriptychSettings(),
+            portableSettingsState: .needsReview(old, reason: "invalid timing"))
+        let draft = try #require(AttentionSettingsDraft(snapshot: invalid))
+        #expect(draft.needsRepair)
+        #expect(!draft.isDirty)
+        #expect(draft.matches(invalid))
+        #expect(draft.settingsToSave == TriptychSettings())
+        let repaired = WorkspaceSettingsSnapshot(
+            activeTriptychID: id,
+            settingsRevision: SettingsRevision(fingerprint: DocumentFingerprint(content: "repaired timing")))
+        #expect(try #require(AttentionSettingsDraft(snapshot: repaired)).needsRepair == false)
+        #expect(!draft.matches(repaired))
+    }
+
     @Test("Unreadable settings do not initialize or authorize a reminder draft")
     func unavailableSettingsCannotAuthorizeDraft() throws {
         let triptychID = UUID()

@@ -19,10 +19,9 @@ public struct TriptychSettingsSnapshot: Codable, Hashable, Sendable {
     }
 }
 
-/// Read result for portable settings before the app decides whether editing or
-/// managed creation is authorized. A current-schema semantic failure retains
-/// the decoded candidate and exact-byte revision so Settings can repair it;
-/// unsupported or damaged envelopes remain byte-preserved but undecoded.
+/// Saved configuration health is separate from effective runtime settings.
+/// Invalid current-schema fields project safe defaults and retain the exact
+/// revision for explicit repair; opaque envelopes remain byte-preserved.
 public enum TriptychSettingsLoadState: Equatable, Sendable {
     case current(TriptychSettingsSnapshot)
     case needsReview(
@@ -35,6 +34,28 @@ public enum TriptychSettingsLoadState: Equatable, Sendable {
     case futureSchema(Int)
     case corrupted
 
+}
+
+/// Observed portable settings and the exact revision required for recovery.
+/// A nil revision authorizes creation only while the settings file is absent.
+public struct TriptychSettingsRecoverySnapshot: Equatable, Sendable {
+    public let loadState: TriptychSettingsLoadState
+    public let revision: SettingsRevision?
+
+    public init(loadState: TriptychSettingsLoadState, revision: SettingsRevision?) {
+        self.loadState = loadState
+        self.revision = revision
+    }
+}
+
+public struct TriptychSettingsRecoveryResult: Equatable, Sendable {
+    public let snapshot: TriptychSettingsSnapshot
+    public let preservedSettingsURL: URL?
+
+    public init(snapshot: TriptychSettingsSnapshot, preservedSettingsURL: URL?) {
+        self.snapshot = snapshot
+        self.preservedSettingsURL = preservedSettingsURL
+    }
 }
 
 /// Exact Zotero library identity. User and group libraries remain distinct

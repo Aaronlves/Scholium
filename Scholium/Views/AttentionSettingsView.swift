@@ -7,6 +7,7 @@ struct AttentionSettingsDraft: Equatable {
     let triptychName: String
     let triptychLocation: String?
     let revision: SettingsRevision
+    let needsRepair: Bool
     var savedSettings: TriptychSettings
     var dismissalDays: Int
 
@@ -19,6 +20,11 @@ struct AttentionSettingsDraft: Equatable {
         self.triptychName = assignment?.triptych.name ?? triptychID.uuidString
         self.triptychLocation = assignment?.vault(for: .output)?.canonicalPath
         self.revision = revision
+        if case .needsReview = snapshot.portableSettingsState {
+            self.needsRepair = true
+        } else {
+            self.needsRepair = false
+        }
         self.savedSettings = snapshot.triptychSettings
         self.dismissalDays = snapshot.triptychSettings.attentionDismissalDays
     }
@@ -70,6 +76,11 @@ struct AttentionSettingsView: View {
                         )
                         .textSelection(.enabled)
                     }
+                    if draft.needsRepair {
+                        Label(
+                            "Saved reminder timing is invalid. The default is in use; save this value or choose another timing to repair it.",
+                            systemImage: "exclamationmark.triangle")
+                    }
                     reminderTimingPicker
                     reminderActions
                 } else if settingsModel.isRefreshing || isReloading {
@@ -77,6 +88,9 @@ struct AttentionSettingsView: View {
                 } else {
                     Text("Open a Triptych with readable portable settings to change reminder timing.")
                         .foregroundStyle(.secondary)
+                    Button("Open Portable Settings Recovery") {
+                        SettingsNavigationRequest.select(.workspace)
+                    }
                     Button("Reload Reminder Timing") { reload() }
                         .disabled(isReloading || settingsModel.isRefreshing)
                 }
@@ -91,6 +105,11 @@ struct AttentionSettingsView: View {
                 Text("This Triptych", bundle: .module)
             }.id("notifications.timing")
             Section {
+                if AttentionPreferences.ledgerNeedsRecovery(dismissalLedgerData) {
+                    Label(
+                        "Some dismissed reminders could not be loaded. Available entries are retained; restore dismissed items to repair these settings.",
+                        systemImage: "exclamationmark.triangle")
+                }
                 Button("Restore All Dismissed Items on This Mac") {
                     var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
                     ledger.removeAll()
@@ -122,7 +141,8 @@ struct AttentionSettingsView: View {
     }
 
     private var hasDismissedAttention: Bool {
-        !AttentionPreferences.decodeLedger(dismissalLedgerData).dismissedUntilByItemID.isEmpty
+        AttentionPreferences.ledgerNeedsRecovery(dismissalLedgerData)
+            || !AttentionPreferences.decodeLedger(dismissalLedgerData).dismissedUntilByItemID.isEmpty
     }
 
     private var isCurrentDraft: Bool {
@@ -173,10 +193,10 @@ struct AttentionSettingsView: View {
             Button("Save Reminder Timing") { save() }
                 .disabled(
                     isSaving || isReloading || settingsModel.isRefreshing
-                        || draft?.isDirty != true || !isCurrentDraft
+                        || (draft?.isDirty != true && draft?.needsRepair != true) || !isCurrentDraft
                 )
                 .accessibilityIdentifier("scholium.settings.notifications.save")
-            if draft?.isDirty == true || !isCurrentDraft {
+            if draft?.isDirty == true || draft?.needsRepair == true || !isCurrentDraft {
                 Button("Reload Reminder Timing") {
                     if draft?.isDirty == true { confirmsReload = true } else { reload() }
                 }

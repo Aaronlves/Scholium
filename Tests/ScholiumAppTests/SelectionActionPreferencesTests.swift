@@ -43,4 +43,21 @@ import Testing
         #expect(store.actions.isEmpty && store.loadError != nil)
         #expect(defaults.data(forKey: SelectionActionPreferences.key) == data)
     }
+    @Test("A broken action leaves valid actions and stored bytes available")
+    func partialRecovery() throws {
+        let domain = "selection-actions-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let valid = SelectionActionDefinition(name: "Check", prompt: "Check the passage")
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(valid))
+        let bytes = try JSONSerialization.data(withJSONObject: [object, ["id": "broken", "name": 9]])
+        defaults.set(bytes, forKey: SelectionActionPreferences.key)
+        let store = SelectionActionPreferences(defaults: defaults)
+        #expect(store.actions == [valid])
+        #expect(store.loadError != nil)
+        #expect(defaults.data(forKey: SelectionActionPreferences.key) == bytes)
+        store.restoreDefaults()
+        #expect(store.loadError == nil && store.actions.count == 3)
+    }
+
 }

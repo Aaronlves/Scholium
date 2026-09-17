@@ -16,6 +16,7 @@ enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
 
 enum WorkspacePortableSettingsState: Equatable, Sendable {
     case unavailable
+    case readFailed(String)
     case current(SettingsRevision)
     case needsReview(SettingsRevision, reason: String)
     case missing
@@ -23,10 +24,15 @@ enum WorkspacePortableSettingsState: Equatable, Sendable {
     case futureSchema(Int)
     case corrupted
 
+    var isReadFailure: Bool {
+        if case .readFailed = self { return true }
+        return false
+    }
+
     var editableRevision: SettingsRevision? {
         switch self {
         case .current(let revision), .needsReview(let revision, _): revision
-        case .unavailable, .missing, .oldSchema, .futureSchema, .corrupted: nil
+        case .unavailable, .readFailed, .missing, .oldSchema, .futureSchema, .corrupted: nil
         }
     }
 }
@@ -78,6 +84,17 @@ struct WorkspaceSettingsCommit: Equatable, Sendable {
     let derivedRefreshWarning: String?
 }
 
+struct WorkspaceSettingsRecoveryCommit: Sendable {
+    let triptychID: UUID
+    let recovery: TriptychSettingsRecoveryResult
+    let derivedRefreshWarning: String?
+}
+
+struct WorkspaceSettingsRecoveryRequest: Sendable {
+    let triptychID: UUID
+    let revision: SettingsRevision?
+}
+
 struct WorkspaceSettingsSaveResult: Equatable, Sendable {
     let warning: String?
     let targetIsCurrent: Bool
@@ -87,18 +104,23 @@ enum WorkspaceSettingsMutationError: LocalizedError, Equatable {
     case triptychChanged
     case commitRequiresReview(String)
     case reconciliationRequired
+    case recoveryRequiresReview
 
     var errorDescription: String? {
         switch self {
         case .triptychChanged:
             String(
                 localized:
-                    "The active Triptych changed. The metadata draft was preserved and was not written.",
+                    "The active Triptych changed. Reload the current settings before trying again.",
                 table: "Localizable", bundle: .module)
         case .commitRequiresReview:
             String(
                 localized:
                     "Scholium reread the portable settings after an uncertain save. Review the current saved version before trying again.",
+                table: "Localizable", bundle: .module)
+        case .recoveryRequiresReview:
+            String(
+                localized: "The settings recovery outcome is uncertain. Inspect the saved settings and use portable settings recovery before saving again.",
                 table: "Localizable", bundle: .module)
         case .reconciliationRequired:
             String(
@@ -122,6 +144,8 @@ struct WorkspaceSettingsWorkspaceCapabilities {
         (
             UUID, TriptychSettings, SettingsRevision
         ) async throws -> WorkspaceSettingsCommit
+    let loadSettingsRecovery: (UUID) async throws -> TriptychSettingsRecoverySnapshot
+    let resetTriptychSettings: (UUID, SettingsRevision?) async throws -> WorkspaceSettingsRecoveryCommit
     let portableContainerURL: (URL) async -> URL?
 }
 
@@ -181,9 +205,13 @@ final class WorkspaceSettingsModel: ObservableObject {
     private let activateSnapshot: TriptychActivator?
     private let loadPortableSettingsSnapshot: PortableSettingsLoader?
     private let saveSnapshot: SettingsSaver?
+    private let loadRecoverySnapshot: (@MainActor (UUID) async throws -> TriptychSettingsRecoverySnapshot)?
+    private let resetSnapshot: (@MainActor (UUID, SettingsRevision?) async throws -> WorkspaceSettingsRecoveryCommit)?
+    @Published private(set) var isRestoringSettings = false
     /// The Settings scene root and its visible pane can refresh concurrently.
     /// A newer request must run and win rather than being dropped as "busy."
     private var refreshGeneration: UInt64 = 0
+    private var uncertainSettingsRecoveryTriptychIDs: Set<UUID> = []
 
     /// Production construction borrows the application composition root.
     init(
@@ -203,6 +231,8 @@ final class WorkspaceSettingsModel: ObservableObject {
         self.activateSnapshot = nil
         self.loadPortableSettingsSnapshot = nil
         self.saveSnapshot = nil
+        self.loadRecoverySnapshot = nil
+        self.resetSnapshot = nil
     }
 
     /// Pure construction seam for feature tests and previews.
@@ -212,7 +242,9 @@ final class WorkspaceSettingsModel: ObservableObject {
         loadSnapshot: SnapshotLoader? = nil,
         activateTriptych: TriptychActivator? = nil,
         loadPortableSettings: PortableSettingsLoader? = nil,
-        saveSettings: SettingsSaver? = nil
+        saveSettings: SettingsSaver? = nil,
+        loadSettingsRecovery: (@MainActor (UUID) async throws -> TriptychSettingsRecoverySnapshot)? = nil,
+        resetSettings: (@MainActor (UUID, SettingsRevision?) async throws -> WorkspaceSettingsRecoveryCommit)? = nil
     ) {
         self.selectedPane = selectedPane
         self.snapshot = snapshot
@@ -225,6 +257,8 @@ final class WorkspaceSettingsModel: ObservableObject {
         self.activateSnapshot = activateTriptych
         self.loadPortableSettingsSnapshot = loadPortableSettings
         self.saveSnapshot = saveSettings
+        self.loadRecoverySnapshot = loadSettingsRecovery
+        self.resetSnapshot = resetSettings
         self.activeTriptychServicesID = snapshot.activeTriptychID
     }
 
@@ -250,10 +284,14 @@ final class WorkspaceSettingsModel: ObservableObject {
     }
 
     func replaceSnapshot(_ snapshot: WorkspaceSettingsSnapshot) {
+        refreshGeneration &+= 1
+        isRefreshing = false
         self.snapshot = snapshot
         activeTriptychServicesID = snapshot.activeTriptychID
         if let id = snapshot.activeTriptychID,
-            snapshot.portableSettingsState != .unavailable
+            snapshot.portableSettingsState != .unavailable,
+            !snapshot.portableSettingsState.isReadFailure,
+            !uncertainSettingsRecoveryTriptychIDs.contains(id)
         {
             settingsReconciliationRequiredTriptychIDs.remove(id)
         }
@@ -341,6 +379,9 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard snapshot.activeTriptychID == targetTriptychID else {
             throw WorkspaceSettingsMutationError.triptychChanged
         }
+        guard !uncertainSettingsRecoveryTriptychIDs.contains(targetTriptychID) else {
+            throw WorkspaceSettingsMutationError.recoveryRequiresReview
+        }
         guard !settingsReconciliationRequiredTriptychIDs.contains(targetTriptychID) else {
             throw WorkspaceSettingsMutationError.reconciliationRequired
         }
@@ -378,7 +419,7 @@ final class WorkspaceSettingsModel: ObservableObject {
             if !targetIsCurrent {
                 warning = String(
                     localized:
-                        "The settings were saved to the Triptych where the edit began. Reload Metadata Settings to show the currently active Triptych.",
+                        "The settings were saved to the Triptych where the edit began. Reload settings to show the currently active Triptych.",
                     table: "Localizable", bundle: .module)
             } else if commit.derivedRefreshWarning != nil {
                 warning = String(
@@ -423,7 +464,7 @@ final class WorkspaceSettingsModel: ObservableObject {
                             table: "Localizable", bundle: .module)
                         : String(
                             localized:
-                                "The settings were saved to the Triptych where the edit began. Reload Metadata Settings to show the currently active Triptych.",
+                                "The settings were saved to the Triptych where the edit began. Reload settings to show the currently active Triptych.",
                             table: "Localizable", bundle: .module),
                     targetIsCurrent: targetIsCurrent
                 )
@@ -434,11 +475,73 @@ final class WorkspaceSettingsModel: ObservableObject {
         }
     }
 
+    /// Confirmation is prepared from a fresh authoritative read, never from
+    /// fallback values or a fingerprint belonging to another Triptych.
+    func prepareSettingsRecovery(triptychID: UUID) async throws -> WorkspaceSettingsRecoveryRequest {
+        guard snapshot.activeTriptychID == triptychID else {
+            throw WorkspaceSettingsMutationError.triptychChanged
+        }
+        let read: TriptychSettingsRecoverySnapshot
+        if let loadRecoverySnapshot {
+            read = try await loadRecoverySnapshot(triptychID)
+        } else if let capabilities {
+            read = try await capabilities.workspace.loadSettingsRecovery(triptychID)
+        } else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        try Task.checkCancellation()
+        guard snapshot.activeTriptychID == triptychID else {
+            throw WorkspaceSettingsMutationError.triptychChanged
+        }
+        return WorkspaceSettingsRecoveryRequest(triptychID: triptychID, revision: read.revision)
+    }
+
+    func restoreSettingsDefaults(_ request: WorkspaceSettingsRecoveryRequest) async throws -> WorkspaceSettingsRecoveryCommit {
+        guard snapshot.activeTriptychID == request.triptychID else {
+            throw WorkspaceSettingsMutationError.triptychChanged
+        }
+        guard !isRestoringSettings else {
+            throw WorkspaceSettingsMutationError.reconciliationRequired
+        }
+        isRestoringSettings = true
+        defer { isRestoringSettings = false }
+        do {
+            let commit: WorkspaceSettingsRecoveryCommit
+            if let resetSnapshot {
+                commit = try await resetSnapshot(request.triptychID, request.revision)
+            } else if let capabilities {
+                commit = try await capabilities.workspace.resetTriptychSettings(request.triptychID, request.revision)
+            } else {
+                throw WorkspaceRegistryError.incompleteWorkspace
+            }
+            guard commit.triptychID == request.triptychID else {
+                throw WorkspaceSettingsMutationError.triptychChanged
+            }
+            if snapshot.activeTriptychID == commit.triptychID {
+                installPortableSettings(
+                    WorkspacePortableSettingsRead(
+                        triptychID: commit.triptychID,
+                        settings: commit.recovery.snapshot.settings,
+                        state: .current(commit.recovery.snapshot.revision)))
+            }
+            return commit
+        } catch let error as ScholiumApplicationError where error.mutationRequiresReconciliation {
+            uncertainSettingsRecoveryTriptychIDs.insert(request.triptychID)
+            settingsReconciliationRequiredTriptychIDs.insert(request.triptychID)
+            _ = await refresh()
+            throw error
+        }
+    }
+
     private func installPortableSettings(_ read: WorkspacePortableSettingsRead) {
         guard snapshot.activeTriptychID == read.triptychID else { return }
+        // A refresh started before this durable commit cannot reinstall stale values.
+        refreshGeneration &+= 1
+        isRefreshing = false
         snapshot.triptychSettings = read.settings
         snapshot.settingsRevision = read.state.editableRevision
         snapshot.portableSettingsState = read.state
+        uncertainSettingsRecoveryTriptychIDs.remove(read.triptychID)
         settingsReconciliationRequiredTriptychIDs.remove(read.triptychID)
         errorMessage = nil
     }
@@ -454,15 +557,21 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        replaceSnapshot(
-            try await capabilities.workspace.configureWorkspace(
-                paperAnalysisURL,
-                topicKnowledgeURL,
-                outputURL,
-                portableContainerURL,
-                triptychID ?? snapshot.activeTriptychID,
-                triptychName
-            ))
+        let activeIDAtSubmission = snapshot.activeTriptychID
+        let configured = try await capabilities.workspace.configureWorkspace(
+            paperAnalysisURL,
+            topicKnowledgeURL,
+            outputURL,
+            portableContainerURL,
+            triptychID ?? activeIDAtSubmission,
+            triptychName
+        )
+        if snapshot.activeTriptychID == activeIDAtSubmission {
+            replaceSnapshot(configured)
+        } else {
+            // Saving the original target cannot undo a later scope selection.
+            _ = await refresh()
+        }
         workspaceRecoveryMessage = nil
     }
 
