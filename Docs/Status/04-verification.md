@@ -4,6 +4,26 @@
 
 ## Current verification snapshot
 
+**2026-09-17 — `v0.2.3-beta` packaged artifact:** The exact clean tag
+`v0.2.3-beta` at commit `211cce2dfea6d25a848559311efa2b5386df228f` produced
+`Scholium-v0.2.3-beta-macos-arm64.dmg` with marketing version `0.2.3`, build
+`4`, minimum macOS `26.0`, SDK `27.0`, and an arm64 ad-hoc-signed App plus
+version-matched helper. The package script passed resource, license, private
+path, provenance, nested-signature, read-only DMG layout and SHA-256 checks;
+the recorded checksum is `2e43bafe64616e44a3384faebb6fc8e85e05fc761bbf425a9f9146a4ea11ff1a`.
+The complete repository gate passed its Core (481), Core performance (3),
+Contracts (96), Application (173), architecture measurement (1), and App
+(`1009` across `122` suites) targets; the first App run had one existing flaky
+WebKit layout assertion and its full target recheck passed. The exact packaged
+clean-account Bootstrap smoke was attempted twice but the XCTest runner timed
+out enabling macOS Automation Mode before launching; this is environment
+failure evidence, not a product pass. The public prerelease therefore records
+G9 clean-account smoke as incomplete. Evidence: `.build/package-v0.2.3-beta.log`,
+`.build/package-v0.2.3-first-launch.log`,
+`.build/package-v0.2.3-first-launch-retry.log`,
+`.build/release-0.2.3-preflight.log` and
+`.build/release-0.2.3-app-recheck.log`.
+
 **2026-09-17 — Writing References source identity and opening feedback:**
 Revision-bound source opening now verifies exact source inside the serialized
 navigation transition, preserves an already-open dirty buffer, and carries the

@@ -97,6 +97,10 @@
   package-content/private-path, and clean-account checks passed. Developer ID
   signing and notarization remain a future channel, outside the current
   ad-hoc source-first Beta profile.
+- `v0.2.3-beta` is packaged and published as a prerelease from its exact clean
+  tag. Its package checks and complete repository gate passed, but the exact
+  clean-account Bootstrap smoke was blocked by the host XCTest Automation Mode
+  timeout; G9 remains incomplete until that environment-bound journey runs.
 
 ## Current boundary
 
