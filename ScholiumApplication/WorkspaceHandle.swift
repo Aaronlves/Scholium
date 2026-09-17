@@ -3255,15 +3255,55 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 $0.reference.vaultID == request.seed.noteID.vaultID && $0.reference.relativePath == request.seed.noteID.relativePath
             })
         else { throw CocoaError(.fileReadNoSuchFile) }
+        let capturedSnapshot = currentSnapshot
         let response = try await services.searchIndex.relatedMaterialSourceCandidates(request)
         let indexed = ContinuousClock.now
         try requireActive()
         try Task.checkCancellation()
         guard response.state == .current || response.state == .empty else { return response }
+        guard case .current(let generation) = response.availability,
+            capturedSnapshot.discovery.searchGeneration == generation,
+            response.freshnessToken == .triptych(generation)
+        else {
+            return RelatedContentResponse(
+                requestID: request.id, seedFingerprint: request.seed.fingerprint,
+                freshnessToken: response.freshnessToken, availability: response.availability,
+                state: .stale, identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        }
+        let canUseGraph =
+            !derivedStateRequiresRefresh && pendingSourceCommitRefreshes.isEmpty
+            && sourceCommitRefreshTask == nil && pendingLiveEvents.isEmpty && liveIndexRefreshTask == nil
+        var graphResult: RelatedContentGraphCandidates.Result?
+        if canUseGraph, let graph = capturedSnapshot.discovery.catalog.graph {
+            let authorizedVaults = Set(assignment.vaults.values.map(\.id))
+            let catalog = capturedSnapshot.discovery.catalog.notes.filter { authorizedVaults.contains($0.reference.vaultID) }
+            let notes = capturedSnapshot.vaults.filter { authorizedVaults.contains($0.vault.id) }.flatMap(\.documents)
+            let exactNotes = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            if notes.count == catalog.count,
+                catalog.allSatisfy({ note in
+                    exactNotes[.init(vaultID: note.reference.vaultID, relativePath: note.reference.relativePath)]?.fingerprint == note.fingerprint
+                })
+            {
+                graphResult = try RelatedContentGraphCandidates.build(
+                    request: request, graph: graph, searchGeneration: generation, catalog: catalog,
+                    linkCatalog: notes.map {
+                        LinkCatalogNote(
+                            vaultID: $0.id.vaultID, document: $0.document, profile: $0.schemaProfile,
+                            semantic: $0.cachedSemanticDocument)
+                    }, existingCandidates: response.identityCandidates + response.lexicalCandidates)
+            }
+        }
+        let identityCandidates = response.identityCandidates.map {
+            RelatedContentGraphCandidates.attaching(graphResult?.contexts[$0.note], to: $0)
+        }
+        let lexicalCandidates = response.lexicalCandidates.map {
+            RelatedContentGraphCandidates.attaching(graphResult?.contexts[$0.note], to: $0)
+        }
+        let graphCandidates = graphResult?.candidates ?? []
         var sources: [RelatedContentSource] = []
         var seen = Set<VaultQualifiedNoteID>()
         var omitted = 0
-        for candidate in response.identityCandidates + response.lexicalCandidates where seen.insert(candidate.note).inserted {
+        for candidate in identityCandidates + lexicalCandidates + graphCandidates where seen.insert(candidate.note).inserted {
             try Task.checkCancellation()
             do {
                 let document = try await loadDocument(candidate.note)
@@ -3283,12 +3323,35 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             readDuration: indexed.duration(to: read), passageDuration: read.duration(to: .now))
         try requireActive()
         try Task.checkCancellation()
+        let finalAvailability = await services.searchIndex.availability()
+        try requireActive()
+        try Task.checkCancellation()
+        let graphIsCurrent =
+            graphResult == nil
+            || (currentSnapshot.discovery.catalog.graph?.generation == capturedSnapshot.discovery.catalog.graph?.generation
+                && currentSnapshot.discovery.catalog.graph?.sourceManifestHash == generation.sourceManifestHash
+                && !derivedStateRequiresRefresh && pendingSourceCommitRefreshes.isEmpty
+                && sourceCommitRefreshTask == nil && pendingLiveEvents.isEmpty && liveIndexRefreshTask == nil)
+        guard currentSnapshot.phase.isComplete,
+            currentSnapshot.discovery.searchGeneration == generation,
+            currentSnapshot.discovery.catalog.notes == capturedSnapshot.discovery.catalog.notes,
+            finalAvailability == .current(generation), graphIsCurrent
+        else {
+            // A source read/ranking suspension may straddle refresh. Never publish
+            // an old path boost, locator or candidate with a newer generation.
+            return RelatedContentResponse(
+                requestID: request.id, seedFingerprint: request.seed.fingerprint,
+                freshnessToken: finalAvailability.lastGoodGeneration.map(SearchFreshnessToken.triptych) ?? response.freshnessToken,
+                availability: finalAvailability, state: .stale,
+                identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        }
         return RelatedContentResponse(
             requestID: response.requestID, seedFingerprint: response.seedFingerprint,
             freshnessToken: response.freshnessToken, availability: response.availability,
             state: omitted > 0 ? .partial : (passages.isEmpty ? .empty : .current),
-            identityCandidates: response.identityCandidates, lexicalCandidates: Array(response.lexicalCandidates.prefix(request.lexicalLimit)),
+            identityCandidates: identityCandidates, lexicalCandidates: Array(lexicalCandidates.prefix(request.lexicalLimit)),
             identityHasMore: response.identityHasMore, lexicalHasMore: response.lexicalHasMore,
+            graphCandidates: graphCandidates, graphHasMore: graphResult?.hasMore ?? false,
             passages: passages, omittedSourceCount: omitted)
     }
 

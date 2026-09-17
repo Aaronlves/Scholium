@@ -492,7 +492,8 @@ result. Each recommended Note presents an actual matching paragraph; metadata,
 a title or another paragraph matching cannot substitute for that paragraph.
 Opening preserves Document mode and follows the destination's recommendation lifecycle.
 Cards omit raw Markdown, full paths and internal offsets. Matches are discovery
-leads, never evidential verdicts. Open Source checks the paragraph revision when
+leads, never evidential verdicts; Help/accessibility explains connection paths.
+Open Source checks the paragraph revision when
 queued navigation executes. Changed sources open without old positioning and
 explain the mismatch; unverifiable or unsaved sources receive a distinct
 explanation. Add to Chat stages the captured

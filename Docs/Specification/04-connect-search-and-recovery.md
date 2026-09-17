@@ -30,8 +30,9 @@ Note and **Incoming** at the resolved destination. Connect presents the same
 source occurrence, annotation, and local context in either projection. An
 Incoming annotation is read-only at the destination; editing it navigates to
 the source occurrence. Only the source Note is modified. Scholium never
-combines occurrences, infers argumentative predicates, creates an undirected
-edge, or expands a multi-hop path.
+combines occurrences, infers argumentative predicates, or creates an undirected
+edge. Connect and explicit Search predicates remain direct-link operations;
+Related-Content may traverse the bounded paths specified in §13.
 
 ## 13. Search and Attention
 
@@ -175,10 +176,20 @@ substring verification.
 The versioned **Related-Content Retrieval** contract is an internal,
 nonpersistent discovery operation over exact current Notes and optional passage
 or request focus. It returns bounded Analysis, Topic and Work candidates through separate
-direct-link, exact-identity, and lexical channels, preserving typed
-reasons and source fingerprints. It never synthesizes a relation, score,
-summary, or evidence claim. Search and Graph must share one complete source
-manifest before direct-link candidates are executable.
+one- and two-step connection, exact-identity, and lexical channels, preserving typed
+reasons and source fingerprints. It never synthesizes a relation, summary or
+evidence claim; internal ranking values are not confidence. Search and Graph must share one complete source
+manifest before connection candidates are executable. The exact unsaved seed
+replaces its saved outgoing links for this request only. Paths retain each
+authored occurrence and traversal direction, including incoming traversal;
+unresolved, ambiguous and unauthorized nodes are never traversed.
+Short paths refine locally relevant material with bounded proximity. Distinct
+intermediates may contribute, but high-degree intermediates are discounted and
+repeated or reciprocal links do not multiply a connection's contribution.
+Lexical candidates remain available independently of connectivity. Graph
+context cannot replace paragraph relevance or imply support, opposition or
+evidence; results expose the direct connection or intermediate Note in Help
+and accessibility without displaying scores or creating new source relations.
 Related-Content ranks Notes by authored context and selects paragraphs within
 those Notes. Field-normalized BM25F treats authored annotations and Wikilink
 labels as explicit context. Role-specific field weighting emphasizes source
@@ -261,8 +272,9 @@ writes or reconstructs YAML.
 New providers or fields require a versioned typed clause, discriminated result
 identity, capability entry, source/freshness contract, and App/MCP parity.
 Vector search, embeddings, AI interpretation/ranking, automatic classification
-extraction, multi-hop expansion, arbitrary structured paths, and chat-style
-Search remain outside the target.
+extraction, arbitrary-depth graph expansion, arbitrary structured paths, and
+chat-style Search remain outside the target. Bounded Related-Content paths do
+not change explicit Search predicates or add automatic source links.
 
 Scholium MCP reuses this owner under
 [§8.3](03-agent-collaboration-and-workflows.md#83-tool-contract) and adds no

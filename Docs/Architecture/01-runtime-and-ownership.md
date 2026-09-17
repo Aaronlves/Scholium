@@ -107,6 +107,10 @@ supply witnesses. Paragraph predicates retain their existential boundary.
 Direct-link queries require agreeing Graph/Search manifests and fail closed
 rather than broadening to lexical clauses. Each link predicate resolves within
 its own scope; uncertain candidates remain distinct from confirmed totals.
+Application prepares request-local two-step Related-Content paths over that
+cohort, replacing only the seed's outgoing projection with unsaved source.
+Core admits matching paragraphs and applies bounded graph proximity to their
+Note ranking; delivery explains paths without interpreting them as evidence.
 
 Saved Searches persist raw query, visible scope and contract version only, not
 ASTs, resolved anchors, result bytes or generations. Execution, cancellation and

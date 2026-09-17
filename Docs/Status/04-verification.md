@@ -194,7 +194,15 @@ Evidence: `.build/fullscreen-focus-final-tests.log`,
 
 ## Retrieval quality and useful measurement comparisons
 
-**2026-09-17 — Current lexical retrieval:** Search schema 21 and Related-Content
+**2026-09-17 — Graph retrieval:** Related-Content contract 12/ranking 10 passes
+20 generated graph, ranking, runtime and English/Chinese explanation checks.
+Evidence: `.build/graph-retrieval/graph-final-focused.log`. Two-step paths refine
+matching paragraphs; no real-vault, native interaction or researcher usefulness
+acceptance is established.
+Complete repository gate and Release compilation pass:
+`.build/graph-retrieval/repository-gate.log`.
+
+**2026-09-17 — Lexical baseline:** Search schema 21 and Related-Content
 contract 11/ranking policy 9 have 62 scoped retrieval checks and unchanged outcomes
 for all 36 frozen synthetic cases after native-only normalization/projection reuse.
 The Release App compiles without model/inference-runtime dependencies; this is

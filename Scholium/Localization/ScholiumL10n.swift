@@ -79,6 +79,43 @@ enum ScholiumL10n {
         }
     }
 
+    enum RelatedMaterialGraph {
+        static var directOutgoing: LocalizedStringResource {
+            LocalizedStringResource("Direct outgoing connection.", table: "Interface", bundle: .module)
+        }
+        static var directIncoming: LocalizedStringResource {
+            LocalizedStringResource("Direct incoming connection.", table: "Interface", bundle: .module)
+        }
+        static func via(
+            _ note: String,
+            first: RelatedContentGraphTraversal,
+            second: RelatedContentGraphTraversal
+        ) -> LocalizedStringResource {
+            switch (first, second) {
+            case (.outgoing, .outgoing):
+                LocalizedStringResource(
+                    "related.graph.via.outgoing-outgoing",
+                    defaultValue: "Connected via \(note): outgoing link, then outgoing link.",
+                    table: "Interface", bundle: .module)
+            case (.outgoing, .incoming):
+                LocalizedStringResource(
+                    "related.graph.via.outgoing-incoming",
+                    defaultValue: "Connected via \(note): outgoing link, then incoming link.",
+                    table: "Interface", bundle: .module)
+            case (.incoming, .outgoing):
+                LocalizedStringResource(
+                    "related.graph.via.incoming-outgoing",
+                    defaultValue: "Connected via \(note): incoming link, then outgoing link.",
+                    table: "Interface", bundle: .module)
+            case (.incoming, .incoming):
+                LocalizedStringResource(
+                    "related.graph.via.incoming-incoming",
+                    defaultValue: "Connected via \(note): incoming link, then incoming link.",
+                    table: "Interface", bundle: .module)
+            }
+        }
+    }
+
     enum Settings {
         static var workspace: LocalizedStringResource {
             LocalizedStringResource(

@@ -4,10 +4,11 @@ import Foundation
 /// generation. It does not change visible Search grammar, scopes, or Saved
 /// Search semantics.
 public enum RelatedContentContract {
-    public static let currentVersion = 11
-    public static let rankingPolicyVersion = 9
-    public static let maximumCandidates = 27
-    public static let maximumDirectConnectionCandidates = 4
+    public static let currentVersion = 12
+    public static let rankingPolicyVersion = 10
+    public static let maximumGraphCandidates = 12
+    public static let maximumGraphPathsPerCandidate = 3
+    public static let maximumGraphNeighbors = 256
     public static let maximumIdentityCandidates = 3
     public static let maximumLexicalCandidates = 24
     public static let maximumPassages = 6
@@ -176,6 +177,62 @@ public struct RelatedContentLexicalReason: Codable, Hashable, Sendable {
 public enum RelatedContentSearchReason: Codable, Hashable, Sendable {
     case identityMention(RelatedContentIdentityMentionReason)
     case lexicalOverlap(RelatedContentLexicalReason)
+    case graphConnection(RelatedContentGraphContext)
+}
+
+/// Traversal is relative to the retrieval walk; authored source/destination
+/// remain directed. A reverse walk creates no reverse edge in the Graph.
+public enum RelatedContentGraphTraversal: String, Codable, Hashable, Sendable {
+    case incoming, outgoing
+}
+
+public struct RelatedContentGraphStep: Codable, Hashable, Sendable {
+    public let source: VaultQualifiedNoteID
+    public let destination: VaultQualifiedNoteID
+    public let occurrence: LinkOccurrence
+    public let traversal: RelatedContentGraphTraversal
+
+    public init(
+        source: VaultQualifiedNoteID, destination: VaultQualifiedNoteID,
+        occurrence: LinkOccurrence, traversal: RelatedContentGraphTraversal
+    ) {
+        self.source = source
+        self.destination = destination
+        self.occurrence = occurrence
+        self.traversal = traversal
+    }
+}
+
+/// One source-occurrence path of at most two steps, never an inferred relation.
+public struct RelatedContentGraphPath: Codable, Hashable, Sendable {
+    public let steps: [RelatedContentGraphStep]
+    public init(steps: [RelatedContentGraphStep]) { self.steps = steps }
+
+    /// Admission also checks decoded paths, whose bytes are not authority.
+    public var isValid: Bool {
+        guard (1...2).contains(steps.count) else { return false }
+        var visited = Set<VaultQualifiedNoteID>()
+        var previous: VaultQualifiedNoteID?
+        for step in steps {
+            let from = step.traversal == .outgoing ? step.source : step.destination
+            let to = step.traversal == .outgoing ? step.destination : step.source
+            guard from != to, previous == nil || previous == from else { return false }
+            if previous == nil { visited.insert(from) }
+            guard visited.insert(to).inserted else { return false }
+            previous = to
+        }
+        return true
+    }
+}
+
+public struct RelatedContentGraphContext: Codable, Hashable, Sendable {
+    public let paths: [RelatedContentGraphPath]
+    /// Bounded query-local proximity, not confidence or evidential strength.
+    public let proximity: Double
+    public init(paths: [RelatedContentGraphPath], proximity: Double) {
+        self.paths = Array(paths.filter(\.isValid).prefix(RelatedContentContract.maximumGraphPathsPerCandidate))
+        self.proximity = proximity.isFinite ? min(1, max(0, proximity)) : 0
+    }
 }
 
 public struct RelatedContentCandidate: Codable, Hashable, Sendable {
@@ -184,19 +241,22 @@ public struct RelatedContentCandidate: Codable, Hashable, Sendable {
     public let title: String
     public let fingerprint: DocumentFingerprint
     public let reason: RelatedContentSearchReason
+    public let graphContext: RelatedContentGraphContext?
 
     public init(
         note: VaultQualifiedNoteID,
         vaultRole: VaultRole,
         title: String,
         fingerprint: DocumentFingerprint,
-        reason: RelatedContentSearchReason
+        reason: RelatedContentSearchReason,
+        graphContext: RelatedContentGraphContext? = nil
     ) {
         self.note = note
         self.vaultRole = vaultRole
         self.title = title
         self.fingerprint = fingerprint
         self.reason = reason
+        self.graphContext = graphContext
     }
 }
 
@@ -255,8 +315,10 @@ public struct RelatedContentResponse: Codable, Hashable, Sendable {
     public let state: RelatedContentResultState
     public let identityCandidates: [RelatedContentCandidate]
     public let lexicalCandidates: [RelatedContentCandidate]
+    public let graphCandidates: [RelatedContentCandidate]
     public let identityHasMore: Bool
     public let lexicalHasMore: Bool
+    public let graphHasMore: Bool
     public let passages: [RelatedContentPassage]
     public let omittedSourceCount: Int
 
@@ -272,6 +334,8 @@ public struct RelatedContentResponse: Codable, Hashable, Sendable {
         lexicalCandidates: [RelatedContentCandidate],
         identityHasMore: Bool,
         lexicalHasMore: Bool,
+        graphCandidates: [RelatedContentCandidate] = [],
+        graphHasMore: Bool = false,
         passages: [RelatedContentPassage] = [],
         omittedSourceCount: Int = 0
     ) {
@@ -284,8 +348,10 @@ public struct RelatedContentResponse: Codable, Hashable, Sendable {
         self.state = state
         self.identityCandidates = identityCandidates
         self.lexicalCandidates = lexicalCandidates
+        self.graphCandidates = graphCandidates
         self.identityHasMore = identityHasMore
         self.lexicalHasMore = lexicalHasMore
+        self.graphHasMore = graphHasMore
         self.passages = passages
         self.omittedSourceCount = omittedSourceCount
     }

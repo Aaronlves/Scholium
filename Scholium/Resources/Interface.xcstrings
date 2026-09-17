@@ -1,6 +1,48 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Direct outgoing connection.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Direct outgoing connection." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "直接传出连接。" } }
+      }
+    },
+    "Direct incoming connection.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Direct incoming connection." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "直接传入连接。" } }
+      }
+    },
+    "related.graph.via.outgoing-outgoing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Connected via %1$@: outgoing link, then outgoing link." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "经由“%1$@”连接：先沿传出连接，再沿传出连接。" } }
+      }
+    },
+    "related.graph.via.outgoing-incoming": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Connected via %1$@: outgoing link, then incoming link." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "经由“%1$@”连接：先沿传出连接，再沿传入连接。" } }
+      }
+    },
+    "related.graph.via.incoming-outgoing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Connected via %1$@: incoming link, then outgoing link." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "经由“%1$@”连接：先沿传入连接，再沿传出连接。" } }
+      }
+    },
+    "related.graph.via.incoming-incoming": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Connected via %1$@: incoming link, then incoming link." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "经由“%1$@”连接：先沿传入连接，再沿传入连接。" } }
+      }
+    },
     "Writing Assistance": {
       "extractionState": "manual",
       "localizations": {

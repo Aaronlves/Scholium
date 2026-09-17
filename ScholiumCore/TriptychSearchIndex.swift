@@ -3638,6 +3638,17 @@ extension TriptychSearchIndex {
                 seenSources.insert(source.candidate.note).inserted
             else { continue }
             guard let projection = try project(source) else { continue }
+            if case .graphConnection = source.candidate.reason {
+                let terms = Set(focusedTerms.isEmpty ? material.combinedTerms : focusedTerms)
+                // Graph-only unrelated Notes must not change the lexical
+                // comparison corpus merely because they are connected.
+                guard
+                    projection.paragraphs.contains(where: { unit in
+                        !material.termMatcher.matchingTerms(in: unit.normalizedDisplayText, index: unit.textIndex)
+                            .isDisjoint(with: terms)
+                    })
+                else { continue }
+            }
             noteIndices[source.candidate.note] = noteDocuments.count
             noteDocuments.append(projection.noteScoringDocument)
             noteRoles.append(source.candidate.vaultRole)
@@ -3746,7 +3757,8 @@ extension TriptychSearchIndex {
                 } else {
                     identityFactor = 1
                 }
-                return (note, value * identityFactor)
+                let graphFactor = RelatedContentRecommendationPolicy.graphFactor(grouped[note]![0].candidate.graphContext)
+                return (note, value * identityFactor * graphFactor)
             })
         let rankedNotes = grouped.keys.sorted { lhs, rhs in
             let left = noteUtilities[lhs, default: 0]

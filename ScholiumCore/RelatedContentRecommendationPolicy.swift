@@ -5,6 +5,13 @@ import ScholiumContracts
 /// combine only normalized signals with the same unit, never raw Note and
 /// paragraph BM25 scores.
 enum RelatedContentRecommendationPolicy {
+    /// Connectivity refines an already matching paragraph. It cannot admit
+    /// unrelated prose or turn a path into a support/confidence judgment.
+    static func graphFactor(_ context: RelatedContentGraphContext?) -> Double {
+        guard let context, context.paths.contains(where: \.isValid), context.proximity.isFinite else { return 1 }
+        return 1 + 0.15 * min(1, max(0, context.proximity))
+    }
+
     static func relevance(coverage: Double, score: Double, maximumScore: Double, phraseCoverage: Double) -> Double {
         let normalized = maximumScore > 0 ? score / maximumScore : 0
         return coverage * (0.65 + 0.35 * normalized) + 0.15 * phraseCoverage

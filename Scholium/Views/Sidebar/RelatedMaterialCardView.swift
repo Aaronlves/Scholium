@@ -83,6 +83,7 @@ struct RelatedMaterialNoteGroupView: View {
 }
 
 private struct RelatedMaterialPassageView: View {
+    @Environment(\.locale) private var locale
     let card: RelatedMaterialCard
     let isLoading: Bool
     let entranceProgress: CGFloat
@@ -116,8 +117,8 @@ private struct RelatedMaterialPassageView: View {
             )
         )
         .accessibilityLabel(Text(verbatim: card.sourceIdentity + ", " + card.passage.excerpt))
-        .accessibilityHint(Text("Show this passage"))
-        .help("Show this passage")
+        .accessibilityHint(Text(verbatim: RelatedMaterialGraphExplanation.passageHint(for: card.candidate, locale: locale)))
+        .help(Text(verbatim: RelatedMaterialGraphExplanation.passageHint(for: card.candidate, locale: locale)))
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isLoading {
                 Button(action: addToChat) { Label("Add to Chat", systemImage: "plus.bubble") }
