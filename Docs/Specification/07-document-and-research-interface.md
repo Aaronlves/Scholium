@@ -425,7 +425,7 @@ Pane focus preserves context until a successful query. Note departure, including
 opening a recommendation, synchronously clears results, context and insertion;
 departed requests cannot publish after returning. Results lead without a standing
 context summary, refresh command or caret-confirmation step.
-The pane uses §13's local material retrieval over Analyses and Topics. Results lead
+§13 retrieves Analyses, Topics and other Works; Works remain researcher writing. Results lead
 with the Note title, then a bounded excerpt around a verified wording match, then
 quiet role information and two named icon actions: Link to This Note and Add to Chat.
 Each Note uses the same disclosure-group pattern as Links, with one vault-role symbol and

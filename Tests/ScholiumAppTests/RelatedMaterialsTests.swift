@@ -192,6 +192,81 @@ struct RelatedMaterialsTests {
 
     }
 
+    @Test("Works provenance and exact passages survive cards, grouping, link preparation and Chat staging")
+    func workMaterialProvenance() async throws {
+        let model = RelatedMaterialsSession()
+        let seed = seed()
+        let workVault = UUID()
+        let stableID = UUID()
+        let workReference = VaultNoteReference(
+            vaultID: workVault, vaultName: "Works", vaultRole: .draftProject,
+            relativePath: "Earlier Work.md", stableNoteID: stableID.uuidString)
+        let exact = "**自由**与 autonomy 😀。\r\n第二行保持原样。"
+        let prefix = "\u{FEFF}# Earlier Work\r\n\r\n"
+        let raw = prefix + exact + "\r\n"
+        let workCandidate = RelatedContentCandidate(
+            note: .init(vaultID: workVault, relativePath: workReference.relativePath), vaultRole: .draftProject,
+            title: "Earlier Work", fingerprint: .init(content: raw),
+            reason: .lexicalOverlap(.init(matchedFields: [.body], seedMatches: [.init(seedKind: .selectedPassage, terms: ["自由", "autonomy"])])))
+        let passage = RelatedContentPassage(
+            candidate: workCandidate,
+            range: .init(
+                utf16LowerBound: prefix.utf16.count, utf16UpperBound: prefix.utf16.count + exact.utf16.count,
+                line: 3, column: 1, endLine: 4, endColumn: "第二行保持原样。".utf16.count + 1),
+            source: exact, displayText: "自由与 autonomy 😀。 第二行保持原样。", excerpt: "自由与 autonomy 😀。", excerptMatches: [0..<2],
+            matches: [.init(seedKind: .selectedPassage, terms: ["自由", "autonomy"])])
+        let result = RelatedContentResponse(
+            requestID: seed.request.id, seedFingerprint: seed.request.seed.fingerprint,
+            freshnessToken: .init("fixture"), availability: .unavailable, state: .current,
+            identityCandidates: [], lexicalCandidates: [workCandidate], identityHasMore: false, lexicalHasMore: false,
+            passages: [passage])
+        var preparedLinks: [VaultNoteReference] = []
+        await model.find(
+            capture: { seed }, retrieve: { _ in result }, references: [workReference],
+            linkTarget: { reference in
+                preparedLinks.append(reference)
+                return "[[Earlier Work]]"
+            }
+        ).value
+        #expect(model.presentation == .results && model.omittedCount == 0 && model.issue == nil)
+        #expect(model.cards.count == 1 && model.noteGroups.count == 1)
+        let card = try #require(model.cards.first)
+        #expect(card.reference == workReference)
+        #expect(card.reference.vaultRole == .draftProject && card.candidate.vaultRole == .draftProject)
+        #expect(card.passage == passage && card.text == exact)
+        #expect(preparedLinks == [workReference] && card.linkTarget == "[[Earlier Work]]")
+        let group = try #require(model.noteGroups.first)
+        #expect(group.id == workCandidate.note && group.passages == [card])
+        #expect(group.passages.first?.reference.vaultRole == .draftProject)
+        let attachment = try #require(card.attachment)
+        #expect(attachment.noteID == stableID && attachment.vaultID == workVault)
+        #expect(attachment.relativePath == workReference.relativePath && attachment.vaultRole == .draftProject)
+        #expect(attachment.text == exact && attachment.fingerprint == workCandidate.fingerprint)
+        #expect(attachment.sourceRange == passage.range && attachment.source == .savedSource && attachment.extent == .passage)
+
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = repository.appendingPathComponent(".build/related-materials-chat-staging/\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let chat = fixtureChatController(triptychID: UUID(), root: root) { request in
+            Issue.record("Staging a Work must not invoke an Agent tool")
+            return try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+        while !chat.isLoaded {
+            try #require(ContinuousClock.now < deadline, "Chat staging fixture did not become ready")
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        chat.editDraft("Compare this with my current argument.")
+        let receiver: any AgentChatContextReceiving = chat
+        #expect(receiver.attachContext([seed.attachment, attachment]))
+        let staged = try #require(chat.selected?.attachments.first { $0.noteID == stableID })
+        #expect(staged == attachment && staged.vaultRole == .draftProject)
+        #expect(chat.selected?.draft == "Compare this with my current argument.")
+        #expect(chat.selected?.messages.isEmpty == true && chat.state == .disconnected)
+        try await chat.flushPersistence()
+    }
+
     @Test("Reset or selection departure invalidates an uncooperative late response", arguments: [false, true])
     func cancelledPublication(reset: Bool) async {
         let model = RelatedMaterialsSession()

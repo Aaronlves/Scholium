@@ -146,7 +146,7 @@ pruning use `SecureRecordDirectory`; missing, incompatible, corrupt or unwritabl
 cache records cause recomputation. The store contains no authoritative source,
 file facts, stable identity or dynamic graph state.
 
-Search contract 20 and disposable schema 19 use the existing `property:`
+Search contract 20 and disposable schema 21 use the existing `property:`
 grammar with quoted literal keys and normalized scalar/direct-list equality.
 All property rows and persisted projection-completeness issues come from source.
 `SearchDocumentProjection` also derives top-level paragraph text, exact offset maps and

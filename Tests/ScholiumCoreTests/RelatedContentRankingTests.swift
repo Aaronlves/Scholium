@@ -6,6 +6,50 @@ import Testing
 
 @Suite("Related content field ranking")
 struct RelatedContentRankingTests {
+    @Test("Prepared ranking fields retain tokenizer lengths and fixed BM25F scores")
+    func preparedRankingFields() throws {
+        func document(_ fields: [String: String]) -> RelatedContentBM25F.Document {
+            .init(segments: [
+                .init(
+                    field: .body, ordinal: 0, text: "", normalizedText: "",
+                    sourceRange: nil, offsetMap: [], relatedRankingText: fields)
+            ])
+        }
+        let mixed = document(["body": "CAFÉ agency 自由な行動", "annotation": "alpha中文beta"])
+        #expect(mixed.fields["body"] == "cafe agency 自由な行動")
+        #expect(mixed.fieldLengths["body"] == 6)
+        #expect(mixed.fieldLengths["annotation"] == 3)
+        let scores = try RelatedContentBM25F.scores(
+            documents: [
+                document(["body": "needle freedom"]),
+                document(["annotation": "needle", "body": "freedom"]),
+                document(["summary": "freedom", "body": "ordinary"]),
+            ], terms: ["needle", "freedom"])
+        // Independently calculated for N=3, df(needle)=2, df(freedom)=3,
+        // body average=4/3; annotation and summary each have average=1.
+        let expected = [0.5010479426847427, 1.0478812074464563, 0.20983504555282118]
+        for (actual, expected) in zip(scores, expected) { #expect(abs(actual - expected) < 1e-12) }
+    }
+
+    @Test(
+        "Ranking counts preserve lexical boundaries and Unicode normalization",
+        arguments: [
+            ("needle", "needle needlework workneedle needle", 2),
+            ("自由", "自由自在 自由", 2),
+            ("ana", "banana ana anagram", 1),
+            ("café", "CAFE\u{301} cafe café", 3),
+            ("aa", "aaaa aa", 1),
+            ("missing", "", 0),
+        ])
+    func rankingOccurrenceCounts(_ fixture: (String, String, Int)) {
+        let text = SearchTextNormalization.lexicalNormalize(fixture.1)
+        #expect(relatedContentOccurrenceCount(term: fixture.0, text: text) == fixture.2)
+        #expect(
+            relatedContentOccurrenceCount(
+                term: fixture.0, text: text,
+                normalizedNeedle: SearchTextNormalization.lexicalNormalize(fixture.0)) == fixture.2)
+    }
+
     private func projection(_ source: String) -> SearchDocumentProjection {
         SearchDocumentProjection(document: NoteDocument(relativePath: "Fixture.md", rawContent: source))
     }
@@ -40,11 +84,13 @@ struct RelatedContentRankingTests {
                 reason: .lexicalOverlap(.init(matchedFields: [.body], seedMatches: [])))
             return .init(candidate: candidate, document: document)
         }
+        // Equal query counts and paragraph lengths isolate metadata ranking;
+        // distinct content prevents the duplicate policy from owning this test.
         let sources = [
-            source("A Plain.md", "needle freedom first discussion.\n\nneedle freedom second discussion."),
+            source("A Plain.md", "needle freedom premise discussion.\n\nneedle freedom objection discussion."),
             source(
                 "Z Focused.md",
-                "---\nsummary: needle freedom\nkeywords: [needle, freedom]\n---\n\nUnrelated introduction.\n\nneedle freedom first discussion.\n\nneedle freedom second discussion."
+                "---\nsummary: needle freedom\nkeywords: [needle, freedom]\n---\n\nUnrelated introduction.\n\nneedle freedom inference discussion.\n\nneedle freedom response discussion."
             ),
             source("Metadata Only.md", "---\nsummary: needle freedom\n---\n\nUnrelated introduction."),
         ]

@@ -4,8 +4,8 @@ import Foundation
 /// generation. It does not change visible Search grammar, scopes, or Saved
 /// Search semantics.
 public enum RelatedContentContract {
-    public static let currentVersion = 9
-    public static let rankingPolicyVersion = 7
+    public static let currentVersion = 11
+    public static let rankingPolicyVersion = 9
     public static let maximumCandidates = 27
     public static let maximumDirectConnectionCandidates = 4
     public static let maximumIdentityCandidates = 3
@@ -38,11 +38,13 @@ public enum RelatedContentCandidateRole: String, Codable, CaseIterable, Hashable
 {
     case analysis
     case topic
+    case work
 
     public var vaultRole: VaultRole {
         switch self {
         case .analysis: .sourceCorpus
         case .topic: .topicKnowledge
+        case .work: .draftProject
         }
     }
 }

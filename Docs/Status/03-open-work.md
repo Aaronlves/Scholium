@@ -24,6 +24,23 @@
   the Chat composer and approvals, file navigation, Related Material, native
   sheets, previews and the affected motion/adaptation variants. Offscreen
   renders and Computer Use accessibility snapshots remain development evidence.
+- Complete Writing References native usable-card latency and researcher-judged
+  recommendation quality over the standard and expanded nonprivate Triptych,
+  plus explicitly authorized private copies when supplied by the researcher.
+  Measure debounce, source retrieval, ranking, link-action preparation and native
+  publication separately; backend restart/changed-focus measurements do not
+  establish native end-to-end acceptance. Calibrate role profiles on research
+  tasks and evaluate paraphrases, cross-language recall and same-word ambiguity;
+  synthetic structural cases and agent-judged private-copy pools do not establish
+  philosophical usefulness. Native Apple sentence models have not established a
+  shared multilingual retrieval space; any semantic backend needs a measured
+  multilingual quality, packaging and resource decision before adoption.
+  The separate multilingual prototype is not an App dependency or a shipping
+  backend. Model integration is deferred while native retrieval is optimized.
+  Optional user-configured retrieval models remain a proposed extension;
+  existing Chat model choices do not configure embeddings. Adoption requires an
+  explicit update to the current no-embeddings retrieval contract, model-bound
+  index lifecycle and verified behavior when the optional service is absent.
 
 ## Agent collaboration and integrations
 

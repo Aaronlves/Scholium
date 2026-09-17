@@ -253,13 +253,29 @@ uses `relatedMaterialSourceCandidates` to enumerate every eligible lexical sourc
 reads fingerprint-matched exact Notes without a Note-result cutoff, and delegates
 Note ordering, paragraph selection and bounded match-centered excerpts with checked
 readable-text highlight ranges to Core Search over the shared semantic parser.
-`RelatedContentBM25F` owns the common field weights, per-field length normalization
-and saturating term scoring for both stages. `SearchTextSegment` persists the
-semantic projection's mutually attributed ranking text with the disposable index;
-ordinary Search clauses and exact offset maps remain unchanged. Each comparison
-set owns its statistics. Full-Note metadata affects Note ordering; local paragraph
-scores select excerpts within each eligible Note. One passage per Note is emitted
-before additional passages. YAML never becomes a material result.
+The same `TriptychSearchIndex` prepares recommendation paragraph coordinates,
+readable text, field lengths and exact ASCII word counts during index publication.
+Checksummed paragraph and compact Note lexical projections publish beside exact
+source fingerprints. Opening validates both; a revision change replaces them in
+one transaction. A byte-bounded memo reuses paragraph projections by Note identity,
+exact fingerprint, role and path bytes; synchronization removes changed entries.
+Each synchronous request protects its already resident, revision-matched entries
+from eviction by the same scan. Misses that cannot fit the unchanged memory
+budget remain fully ranked without retention; protection ends with the request.
+Each request still checks all current candidate sources and computes complete
+comparison-set scores. Prepared counts avoid retokenizing unchanged fields;
+CJK, phrases and complex graphemes retain canonical exact matching.
+Within-Note deduplication reuses the prepared normalized readable text.
+`RelatedContentQueryTerms` samples adjacent pairs across the entire focus and
+retains bounded authored quoted phrases. `RelatedContentBM25F` owns role-specific
+field weights, length normalization, saturation and information-weighted local
+coverage. `RelatedContentRecommendationPolicy` combines normalized local signals,
+then applies bounded role diversity and near-copy penalties. Exact readable copies
+across Notes receive one representative with unchanged source provenance. Note
+context refines paragraph relevance; raw Note and paragraph BM25 scores are never
+added. No candidate cutoff changes the statistics or skips source verification.
+Excerpts and highlight maps are built only for selected passages. Ordinary Search
+clauses and offset maps remain unchanged; YAML never becomes a material result.
 Each result carries exact Markdown, its source range and a separate readable-text
 projection. `ResearchExcerptPresentation` is shared with Links and Chat excerpts;
 it hides syntax without changing authoritative source. The session preserves

@@ -713,7 +713,11 @@ struct WorkspaceRuntimeTests {
                 == .opening(
                     availableVault: .paperAnalysis
                 ))
-        #expect(openingMeasurement.readDuration <= openingMeasurement.totalDuration)
+        // Source work can run concurrently and precede snapshot assembly;
+        // aggregate read time is not bounded by the assembly wall clock.
+        #expect(openingMeasurement.readFiles > 0)
+        #expect(openingMeasurement.readDuration > .zero)
+        #expect(openingMeasurement.totalDuration > .zero)
         #expect(openingEvent.snapshot.vaults.map(\.slot) == [.paperAnalysis])
         #expect(openingEvent.snapshot.discovery.searchGeneration == nil)
         #expect(openingEvent.snapshot.discovery.catalog.graph == nil)

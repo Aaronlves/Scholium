@@ -70,6 +70,7 @@ public actor TriptychSearchIndex {
     // Pure derived hashes, keyed by every immutable input to the existing hash.
     // Replaced with each desired inventory; never used as publication authority.
     private var projectionHashes: [String: (input: ProjectionHashInput, hash: String)] = [:]
+    private var relatedPassageMemo = RelatedContentSourceProjectionMemo()
 
     private struct ProjectionHashInput: Equatable {
         // Swift String equality is canonical-equivalence, while JSON hashing is
@@ -282,6 +283,7 @@ public actor TriptychSearchIndex {
 
         let preparationStarted = ContinuousClock.now
         let desired = try Self.validatedDocuments(documents)
+        relatedPassageMemo.retain(Array(desired.values))
         let manifestHash = Self.manifestHash(for: Array(desired.values))
         let previous = try generation()
         let stored = try Self.indexedProjectionState(in: database)
@@ -784,7 +786,8 @@ public actor TriptychSearchIndex {
                 candidateRoles: request.candidateRoles
             )
             let scores = try RelatedContentBM25F.scores(
-                documents: lexicalPool.map { .init(segments: $0.document.segments) }, terms: scoringTerms)
+                documents: lexicalPool.map { $0.document.relatedLexical!.scoringDocument }, terms: scoringTerms,
+                roles: lexicalPool.map { $0.document.vaultRole })
             let lexical = zip(lexicalPool, scores).compactMap { candidate, score -> RelatedLexicalCandidate? in
                 let reason = material.lexicalReason(for: candidate)
                 guard score > 0, !reason.seedMatches.isEmpty else { return nil }
@@ -1015,7 +1018,9 @@ public actor TriptychSearchIndex {
             ]
         ) { row in
             try Task.checkCancellation()
-            guard let document = try self.loadDocument(rowID: row.int(at: 0)),
+            guard
+                let document = try self.loadDocument(
+                    rowID: row.int(at: 0), includingSegments: false, includingSourceEvidence: false),
                 let reason = material.identityMentionReason(for: document)
             else { return }
             matches.append(
@@ -1072,7 +1077,10 @@ public actor TriptychSearchIndex {
                 ]
         ) { row in
             try Task.checkCancellation()
-            guard let document = try self.loadDocument(rowID: row.int(at: 0))
+            guard
+                let document = try self.loadDocument(
+                    rowID: row.int(at: 0), includingAliases: false,
+                    includingSourceEvidence: false, includingRelatedRankingText: true)
             else { return }
             result.append(
                 SearchCandidate(
@@ -1222,8 +1230,20 @@ public actor TriptychSearchIndex {
             let key = Self.rankingKey(clause)
             guard ranks[key] == nil else { continue }
             var values: [Int: Double] = [:]
+            // All roles retain one corpus for statistics and admission. Role
+            // changes field salience only; exact identity is ordered separately.
             try database.query(
-                "SELECT document_id, bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) FROM search_fts WHERE search_fts MATCH ?;",
+                """
+                SELECT search_fts.document_id,
+                       CASE d.role
+                         WHEN 'source_corpus' THEN bm25(search_fts, 0.0, 3.0, 9.0, 7.0, 6.0, 7.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0)
+                         WHEN 'topic_knowledge' THEN bm25(search_fts, 0.0, 3.0, 9.0, 9.0, 7.0, 5.0, 6.0, 4.0, 7.0, 2.0, 2.0, 3.0, 1.0)
+                         WHEN 'draft_project' THEN bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 8.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.5)
+                         ELSE bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0)
+                       END
+                FROM search_fts JOIN search_documents d ON d.id = search_fts.document_id
+                WHERE search_fts MATCH ?;
+                """,
                 bindings: [.text(SearchMatcher.ftsExpression(for: [clause]))]
             ) { row in
                 try Task.checkCancellation()
@@ -1260,7 +1280,8 @@ public actor TriptychSearchIndex {
     private func loadDocument(
         rowID: Int,
         includingProperties: Bool = false, includingParagraphs: Bool = false,
-        includingAliases: Bool = true, includingSegments: Bool = true, includingSourceEvidence: Bool = true
+        includingAliases: Bool = true, includingSegments: Bool = true, includingSourceEvidence: Bool = true,
+        includingRelatedRankingText: Bool = false
     ) throws -> StoredSearchDocument? {
         var document: StoredSearchDocument?
         try database.query(
@@ -1269,7 +1290,8 @@ public actor TriptychSearchIndex {
                    normalized_title, title_key, filename_key, path_key, callout_roles,
                    has_broken_link, fingerprint_sha256, fingerprint_byte_count,
                    evidential_layer, role_order, \(includingSourceEvidence ? "line_starts" : "NULL"), source_utf16_count,
-                   \(includingProperties ? "property_issues" : "NULL"), \(includingParagraphs ? "paragraphs" : "NULL"), paragraphs_complete
+                   \(includingProperties ? "property_issues" : "NULL"), \(includingParagraphs ? "paragraphs" : "NULL"), paragraphs_complete,
+                   \(includingRelatedRankingText ? "related_lexical" : "NULL"), \(includingRelatedRankingText ? "related_lexical_hash" : "NULL")
             FROM search_documents WHERE id = ?;
             """,
             bindings: [.int(rowID)]
@@ -1298,10 +1320,11 @@ public actor TriptychSearchIndex {
             }
             let aliases = includingAliases ? try self.aliases(documentID: rowID) : []
             let segments: [SearchTextSegment]
-            if includingSegments {
+            if includingSegments && !includingRelatedRankingText {
                 segments = try self.segments(
                     documentID: rowID, sourceUTF16Count: sourceUTF16Count,
-                    includingSourceEvidence: includingSourceEvidence)
+                    includingSourceEvidence: includingSourceEvidence,
+                    includingRelatedRankingText: includingRelatedRankingText)
             } else {
                 segments = []
             }
@@ -1334,7 +1357,8 @@ public actor TriptychSearchIndex {
                 paragraphs: includingParagraphs ? try Self.decodeParagraphs(row.text(at: 19), sourceUTF16Count: sourceUTF16Count) : [],
                 paragraphsAreComplete: row.int(at: 20) == 1,
                 properties: properties,
-                propertyIssues: includingProperties ? try Self.decodeGeneratedJSON([SearchPropertyProjection.Issue].self, from: row.text(at: 18)) : []
+                propertyIssues: includingProperties ? try Self.decodeGeneratedJSON([SearchPropertyProjection.Issue].self, from: row.text(at: 18)) : [],
+                relatedLexical: includingRelatedRankingText ? try RelatedContentLexicalProjection.decode(row.data(at: 21), checksum: row.text(at: 22)) : nil
             )
         }
         return document
@@ -1352,14 +1376,15 @@ public actor TriptychSearchIndex {
     private func segments(
         documentID: Int,
         sourceUTF16Count: Int,
-        includingSourceEvidence: Bool = true
+        includingSourceEvidence: Bool = true,
+        includingRelatedRankingText: Bool = false
     ) throws -> [SearchTextSegment] {
         // Predicate evaluation consumes only field and normalized text. Avoid
         // decoding and validating every candidate's source maps for a short page.
         if !includingSourceEvidence {
             var segments: [SearchTextSegment] = []
             try database.query(
-                "SELECT field, ordinal, normalized_text FROM search_segments WHERE document_id = ? ORDER BY ordinal;",
+                "SELECT field, ordinal, normalized_text, \(includingRelatedRankingText ? "related_ranking_text" : "NULL") FROM search_segments WHERE document_id = ? ORDER BY ordinal;",
                 bindings: [.int(documentID)]
             ) { row in
                 guard let fieldText = row.text(at: 0),
@@ -1370,7 +1395,9 @@ public actor TriptychSearchIndex {
                     SearchTextSegment(
                         field: field, ordinal: row.int(at: 1), text: "",
                         normalizedText: normalized, sourceRange: nil, offsetMap: [],
-                        relatedRankingText: [:]))
+                        relatedRankingText: includingRelatedRankingText
+                            ? try Self.decodeGeneratedJSON([String: String].self, from: row.text(at: 3))
+                            : [:]))
             }
             return segments
         }
@@ -1657,6 +1684,11 @@ public actor TriptychSearchIndex {
         into database: SearchSQLiteDatabase
     ) throws {
         let projection = item.projection
+        // Prepared in the same publication transaction as the exact source
+        // fingerprint. Queries never trigger first-use paragraph parsing for
+        // an indexed revision, including after application restart.
+        let relatedProjection = try RelatedContentSourceProjection(document: item.document).encoded()
+        let relatedLexical = try RelatedContentLexicalProjection(projection: projection).encoded()
         let lineStarts =
             String(
                 data: try JSONEncoder.searchIndex.encode(projection.sourceLineStartsUTF16),
@@ -1669,8 +1701,9 @@ public actor TriptychSearchIndex {
                 stable_note_id, title, normalized_title, title_key, filename_key, path_key,
                 fingerprint_sha256, fingerprint_byte_count, evidential_layer,
                 callout_roles, has_broken_link, projection_hash, line_starts,
-                source_utf16_count, property_issues, paragraphs, paragraphs_complete
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                source_utf16_count, property_issues, paragraphs, paragraphs_complete,
+                related_projection, related_projection_hash, related_lexical, related_lexical_hash
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             bindings: [
                 .text(documentKey(vaultID: item.vaultID, path: item.relativePath)),
@@ -1694,6 +1727,9 @@ public actor TriptychSearchIndex {
                 .text(String(decoding: try JSONEncoder.searchIndex.encode(item.propertyProjection.issues), as: UTF8.self)),
                 .text(String(decoding: try encodedParagraphs(projection.paragraphs), as: UTF8.self)),
                 .int(item.document.hasProvableBodyBoundary ? 1 : 0),
+                .blob(relatedProjection),
+                .text(RelatedContentSourceProjection.checksum(relatedProjection)),
+                .blob(relatedLexical), .text(RelatedContentSourceProjection.checksum(relatedLexical)),
             ]
         )
         let documentID = database.lastInsertRowID
@@ -1880,7 +1916,11 @@ public actor TriptychSearchIndex {
                 source_utf16_count INTEGER NOT NULL,
                 property_issues TEXT NOT NULL,
                 paragraphs TEXT NOT NULL,
-                paragraphs_complete INTEGER NOT NULL
+                paragraphs_complete INTEGER NOT NULL,
+                related_projection BLOB NOT NULL,
+                related_projection_hash TEXT NOT NULL,
+                related_lexical BLOB NOT NULL,
+                related_lexical_hash TEXT NOT NULL
             );
             CREATE INDEX search_documents_vault ON search_documents(vault_id);
             CREATE INDEX search_documents_title_key ON search_documents(title_key);
@@ -2026,7 +2066,7 @@ public actor TriptychSearchIndex {
     ) throws {
         try Task.checkCancellation()
         try database.query(
-            "SELECT line_starts, source_utf16_count, paragraphs, paragraphs_complete FROM search_documents;"
+            "SELECT line_starts, source_utf16_count, paragraphs, paragraphs_complete, related_projection, related_projection_hash, related_lexical, related_lexical_hash FROM search_documents;"
         ) { row in
             try Task.checkCancellation()
             let lineStarts = try decodeGeneratedJSON(
@@ -2034,6 +2074,9 @@ public actor TriptychSearchIndex {
                 from: row.text(at: 0)
             )
             let sourceUTF16Count = row.int(at: 1)
+            _ = try RelatedContentSourceProjection.decode(
+                row.data(at: 4), checksum: row.text(at: 5), sourceUTF16Count: sourceUTF16Count)
+            _ = try RelatedContentLexicalProjection.decode(row.data(at: 6), checksum: row.text(at: 7))
             let paragraphs = try decodeGeneratedJSON([StoredParagraph].self, from: row.text(at: 2))
             for paragraph in paragraphs { try paragraph.validate(sourceUTF16Count: sourceUTF16Count) }
             guard [0, 1].contains(row.int(at: 3)) else { throw SearchIndexError.corruptDatabase }
@@ -2214,6 +2257,7 @@ private struct StoredSearchDocument {
     let paragraphsAreComplete: Bool
     let properties: [SearchPropertyProjection.Entry]
     let propertyIssues: [SearchPropertyProjection.Issue]
+    var relatedLexical: RelatedContentLexicalProjection? = nil
 
     var noteID: VaultQualifiedNoteID {
         VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
@@ -2314,6 +2358,7 @@ private struct RelatedContentSeedMaterial {
     let segments: [RelatedContentSeedSegment]
     let termGroups: [RelatedContentSeedTermGroup]
     let combinedTerms: [String]
+    let termMatcher: RelatedContentTermMatcher
 
     init(
         projection: SearchDocumentProjection,
@@ -2358,6 +2403,7 @@ private struct RelatedContentSeedMaterial {
                 )
             ))
         termGroups = groups
+        termMatcher = RelatedContentTermMatcher(terms: Array(Set(groups.flatMap(\.terms))).sorted())
 
         var terms: [String] = []
         var seen = Set<String>()
@@ -2382,11 +2428,12 @@ private struct RelatedContentSeedMaterial {
         var seen = Set<RelatedContentIdentityMention>()
         for (identityKind, identity) in identities {
             let value = SearchLexicalValue.phrase(identity)
+            let needle = SearchTextNormalization.lexicalNormalize(identity)
             for segment in segments
-            where !SearchMatcher.occurrences(
+            where SearchMatcher.containsOccurrence(
                 of: value,
-                in: segment.normalizedText
-            ).isEmpty {
+                in: segment.normalizedText, normalizedNeedle: needle
+            ) {
                 let mention = RelatedContentIdentityMention(
                     seedKind: segment.kind,
                     identityKind: identityKind,
@@ -2422,20 +2469,22 @@ private struct RelatedContentSeedMaterial {
     ) -> RelatedContentLexicalReason {
         var fields: [SearchMatchedField] = []
         var seedMatches: [RelatedContentSeedTermMatch] = []
+        var matchingFieldsByTerm: [String: [SearchMatchedField]] = [:]
+        for segment in candidate.document.relatedLexical?.segments ?? [] {
+            for term in termMatcher.matchingTerms(in: segment.text, index: segment.index) {
+                if !matchingFieldsByTerm[term, default: []].contains(segment.field) {
+                    matchingFieldsByTerm[term, default: []].append(segment.field)
+                }
+            }
+        }
         for group in termGroups {
             var matches: [String] = []
             for term in group.terms {
-                let value = SearchLexicalValue.term(term)
-                let matchingSegments = candidate.document.segments.filter {
-                    !SearchMatcher.occurrences(
-                        of: value,
-                        in: $0.normalizedText
-                    ).isEmpty
-                }
-                guard !matchingSegments.isEmpty else { continue }
+                let matchingFields = matchingFieldsByTerm[term] ?? []
+                guard !matchingFields.isEmpty else { continue }
                 if matches.count < 8 { matches.append(term) }
-                for segment in matchingSegments where !fields.contains(segment.field) {
-                    fields.append(segment.field)
+                for field in matchingFields where !fields.contains(field) {
+                    fields.append(field)
                 }
             }
             if !matches.isEmpty {
@@ -2511,13 +2560,7 @@ private enum RelatedContentSeedTermExtractor {
     }
 
     static func terms(in value: String, limit: Int) -> [String] {
-        guard limit > 0 else { return [] }
-        var result: [String] = []
-        var seen = Set<String>()
-        for token in tokens(in: value) where result.count < limit {
-            if seen.insert(token).inserted { result.append(token) }
-        }
-        return result
+        RelatedContentQueryTerms.terms(in: value, limit: limit)
     }
 
     private static func tokens(in value: String) -> [String] {
@@ -2783,33 +2826,73 @@ private enum SearchMatcher {
         normalizedNeedle: String? = nil,
         firstOnly: Bool = false
     ) -> [Range<Int>] {
-        let needle = normalizedNeedle ?? SearchTextNormalization.lexicalNormalize(value.text)
-        guard !needle.isEmpty, !normalizedText.isEmpty else { return [] }
         var result: [Range<Int>] = []
+        scanOccurrences(of: value, in: normalizedText, normalizedNeedle: normalizedNeedle) { range in
+            let lowerBound = range.lowerBound.utf16Offset(in: normalizedText)
+            let upperBound = range.upperBound.utf16Offset(in: normalizedText)
+            result.append(lowerBound..<upperBound)
+            return !firstOnly
+        }
+        return result
+    }
+
+    static func occurrenceCount(
+        of value: SearchLexicalValue, in normalizedText: String, normalizedNeedle: String? = nil
+    ) -> Int {
+        var count = 0
+        scanOccurrences(of: value, in: normalizedText, normalizedNeedle: normalizedNeedle) { _ in
+            count += 1
+            return true
+        }
+        return count
+    }
+
+    static func containsOccurrence(
+        of value: SearchLexicalValue, in normalizedText: String, normalizedNeedle: String
+    ) -> Bool {
+        var found = false
+        scanOccurrences(of: value, in: normalizedText, normalizedNeedle: normalizedNeedle) { _ in
+            found = true
+            return false
+        }
+        return found
+    }
+
+    private static func scanOccurrences(
+        of value: SearchLexicalValue, in normalizedText: String, normalizedNeedle: String?,
+        visit: (Range<String.Index>) -> Bool
+    ) {
+        let needle = normalizedNeedle ?? SearchTextNormalization.lexicalNormalize(value.text)
+        guard !needle.isEmpty, !normalizedText.isEmpty else { return }
+        let hasCJKStart = beginsWithCJK(value.text)
+        let hasCJKEnd = endsWithCJK(value.text)
+        // Both comparison forms are NFC-normalized before matching. Literal
+        // search avoids repeating Unicode equivalence work for every term and
+        // segment; exact source locations still come from the checked maps.
         var cursor = normalizedText.startIndex
-        while cursor < normalizedText.endIndex,
-            let range = normalizedText.range(of: needle, range: cursor..<normalizedText.endIndex)
-        {
+        while cursor < normalizedText.endIndex {
+            guard var range = normalizedText.range(of: needle, options: .literal, range: cursor..<normalizedText.endIndex) else { return }
+            // Literal lookup can stop inside an extended grapheme such as a
+            // letter plus enclosing mark. Preserve canonical search semantics
+            // for that exceptional case instead of publishing a partial match.
+            if range.lowerBound.samePosition(in: normalizedText) == nil || range.upperBound.samePosition(in: normalizedText) == nil {
+                guard let canonical = normalizedText.range(of: needle, range: cursor..<normalizedText.endIndex) else { return }
+                range = canonical
+            }
             let leadingBoundary =
-                beginsWithCJK(value.text)
+                hasCJKStart
                 || isTokenBoundary(before: range.lowerBound, in: normalizedText)
             let trailingBoundary: Bool
             switch value {
             case .prefix: trailingBoundary = true
             case .phrase, .term:
                 trailingBoundary =
-                    endsWithCJK(value.text)
+                    hasCJKEnd
                     || isTokenBoundary(after: range.upperBound, in: normalizedText)
             }
-            if leadingBoundary && trailingBoundary {
-                let lowerBound = range.lowerBound.utf16Offset(in: normalizedText)
-                let upperBound = range.upperBound.utf16Offset(in: normalizedText)
-                result.append(lowerBound..<upperBound)
-                if firstOnly { return result }
-            }
+            if leadingBoundary && trailingBoundary && !visit(range) { return }
             cursor = range.upperBound
         }
-        return result
     }
 
     static func ftsExpression(for clauses: [SearchLexicalClause]) -> String {
@@ -3480,19 +3563,72 @@ private struct SearchSQLiteStatement {
 private let searchSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 extension TriptychSearchIndex {
+    public func relatedPassages(
+        _ request: RelatedContentRequest, sources: [RelatedContentSource]
+    ) throws -> [RelatedContentPassage] {
+        let protection = relatedPassageMemo.scanProtection(
+            for: sources.filter { source in
+                source.candidate.note != request.seed.noteID
+                    && request.candidateRoles.contains { $0.vaultRole == source.candidate.vaultRole }
+            })
+        return try database.readTransaction {
+            try Self.rankRelatedPassages(request, sources: sources) { source in
+                // Capture the database, not self, while mutating actor-owned memo.
+                let database = self.database
+                return try relatedPassageMemo.projection(for: source, protection: protection) { document in
+                    var projection: RelatedContentSourceProjection?
+                    try database.query(
+                        """
+                        SELECT related_projection, related_projection_hash, source_utf16_count
+                        FROM search_documents WHERE document_key = ?
+                            AND fingerprint_sha256 = ? AND fingerprint_byte_count = ?;
+                        """,
+                        bindings: [
+                            .text(Self.documentKey(vaultID: source.candidate.note.vaultID, path: document.relativePath)),
+                            .text(document.fingerprint.sha256), .int(document.fingerprint.byteCount),
+                        ]
+                    ) { row in
+                        projection = try RelatedContentSourceProjection.decode(
+                            row.data(at: 0), checksum: row.text(at: 1), sourceUTF16Count: row.int(at: 2))
+                    }
+                    // A source read may straddle an index publication. Its exact
+                    // verified bytes still permit preparation; never reuse a
+                    // projection from a different indexed revision.
+                    return try projection ?? RelatedContentSourceProjection(document: document)
+                }
+            }
+        }
+    }
+
     /// Rank Notes using their authored context, then choose locally matching
     /// paragraphs within each Note. Metadata is neither an excerpt nor prose.
-    public nonisolated static func relatedPassages(
+    nonisolated static func relatedPassages(
         _ request: RelatedContentRequest, sources: [RelatedContentSource]
+    ) throws -> [RelatedContentPassage] {
+        try rankRelatedPassages(request, sources: sources) { source in
+            try RelatedContentSourceProjection(document: source.document)
+        }
+    }
+
+    private nonisolated static func rankRelatedPassages(
+        _ request: RelatedContentRequest, sources: [RelatedContentSource],
+        project: (RelatedContentSource) throws -> RelatedContentSourceProjection?
     ) throws -> [RelatedContentPassage] {
         let seedDocument = NoteDocument(relativePath: request.seed.noteID.relativePath, rawContent: request.seed.source)
         let material = RelatedContentSeedMaterial(projection: SearchDocumentProjection(document: seedDocument), focuses: request.seed.focuses)
         let focusedTerms = material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)
-        let requiredFocusMatches = min(2, Set(focusedTerms).count)
-        var ranked: [(passage: RelatedContentPassage, score: Double, documentIndex: Int)] = []
+        let distinctFocusTermCount = Set(focusedTerms).count
+        let requiredFocusMatches = min(2, distinctFocusTermCount)
+        let phrases = Array(Set(request.seed.focuses.flatMap { RelatedContentQueryTerms.quotedPhrases(in: $0.text) })).sorted()
+        let focused = !request.seed.focuses.isEmpty
+        var ranked: [(passage: RelatedContentPassage, normalizedText: String, score: Double, documentIndex: Int, focusCoverage: Int, phraseCoverage: Double)] =
+            []
         var scoringDocuments: [RelatedContentBM25F.Document] = []
+        var scoringRoles: [VaultRole] = []
         var noteDocuments: [RelatedContentBM25F.Document] = []
+        var noteRoles: [VaultRole] = []
         var noteIndices: [VaultQualifiedNoteID: Int] = [:]
+        var noteRelevance: [VaultQualifiedNoteID: Double] = [:]
         var seenSources = Set<VaultQualifiedNoteID>()
         for source in sources {
             try Task.checkCancellation()
@@ -3501,31 +3637,11 @@ extension TriptychSearchIndex {
                 request.candidateRoles.contains(where: { $0.vaultRole == source.candidate.vaultRole }),
                 seenSources.insert(source.candidate.note).inserted
             else { continue }
-            let semantic = MarkdownSemanticDocument(parsing: source.document)
-            let noteProjection = SearchDocumentProjection(document: source.document, semantic: semantic)
+            guard let projection = try project(source) else { continue }
             noteIndices[source.candidate.note] = noteDocuments.count
-            noteDocuments.append(.init(segments: noteProjection.segments))
-            var units: [(range: SearchSourceRange, visible: String, segments: [SearchTextSegment])] = []
-            for block in semantic.blocks where block.kind == .paragraph {
-                try Task.checkCancellation()
-                guard block.span.utf16Range.count <= RelatedContentContract.maximumPassageUTF16Count,
-                    let range = Range(block.span.nsRange, in: source.document.rawContent)
-                else { continue }
-                let exact = String(source.document.rawContent[range])
-                let paragraph = NoteDocument(relativePath: source.document.relativePath, rawContent: exact)
-                units.append(
-                    (
-                        .init(
-                            utf16LowerBound: block.span.utf16LowerBound, utf16UpperBound: block.span.utf16UpperBound,
-                            line: block.span.start.line, column: block.span.start.utf16Column,
-                            endLine: block.span.end.line, endColumn: block.span.end.utf16Column),
-                        ResearchExcerptPresentation.readableText(exact, includingAnnotations: true),
-                        SearchDocumentProjection(document: paragraph).segments.filter {
-                            $0.sourceRange != nil && $0.field != .title && $0.field != .alias
-                        }
-                    ))
-            }
-            for unit in units {
+            noteDocuments.append(projection.noteScoringDocument)
+            noteRoles.append(source.candidate.vaultRole)
+            for unit in projection.paragraphs {
                 try Task.checkCancellation()
                 guard
                     let sourceRange = Range(
@@ -3534,28 +3650,59 @@ extension TriptychSearchIndex {
                             length: unit.range.utf16UpperBound - unit.range.utf16LowerBound), in: source.document.rawContent)
                 else { continue }
                 let documentIndex = scoringDocuments.count
-                scoringDocuments.append(.init(segments: unit.segments))
-                let normalized = SearchTextNormalization.lexicalNormalize(unit.visible)
+                scoringDocuments.append(unit.scoringDocument)
+                scoringRoles.append(source.candidate.vaultRole)
+                let normalized = unit.normalizedDisplayText
+                let matchingTerms = material.termMatcher.matchingTerms(in: normalized, index: unit.textIndex)
                 let matches = material.termGroups.compactMap { group -> RelatedContentSeedTermMatch? in
-                    let terms = group.terms.filter { !SearchMatcher.occurrences(of: .term($0), in: normalized).isEmpty }
+                    let terms = group.terms.filter { matchingTerms.contains($0) }
                     return terms.isEmpty ? nil : .init(seedKind: group.kind, terms: terms)
                 }
-                let focused = !request.seed.focuses.isEmpty
-                guard matches.contains(where: { !focused || $0.seedKind != .sourceNote }),
-                    !focused || Set(matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms)).count >= requiredFocusMatches
-                else { continue }
-                let preview = Self.relatedExcerpt(unit.visible, matches: matches)
+                let focusCoverage = Set(matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms)).count
+                guard matches.contains(where: { !focused || $0.seedKind != .sourceNote }) else { continue }
+                let phraseCoverage: Double
+                if phrases.isEmpty {
+                    phraseCoverage = 0
+                } else {
+                    let phraseText = normalized.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                    phraseCoverage =
+                        Double(
+                            phrases.filter {
+                                relatedContentOccurrenceCount(term: $0, text: phraseText) > 0
+                            }.count) / Double(phrases.count)
+                }
+                // Excerpts and highlight offset maps do not participate in
+                // ranking. Build them only for the bounded displayed passages.
                 let passage = RelatedContentPassage(
                     candidate: source.candidate, range: unit.range,
-                    source: String(source.document.rawContent[sourceRange]), displayText: unit.visible,
-                    excerpt: preview.text, excerptMatches: preview.ranges, matches: matches)
-                ranked.append((passage, 0, documentIndex))
+                    source: String(source.document.rawContent[sourceRange]), displayText: unit.displayText,
+                    excerpt: "", excerptMatches: [], matches: matches)
+                ranked.append((passage, normalized, 0, documentIndex, focusCoverage, phraseCoverage))
             }
         }
-        let scores = try RelatedContentBM25F.scores(
+        let evaluation = try RelatedContentBM25F.evaluate(
             documents: scoringDocuments,
-            terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms)
-        for index in ranked.indices { ranked[index].score = scores[ranked[index].documentIndex] }
+            terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms, roles: scoringRoles)
+        let maximumScore = evaluation.scores.max() ?? 0
+        ranked.removeAll { item in
+            focused && item.focusCoverage < requiredFocusMatches && item.phraseCoverage == 0
+                && !(distinctFocusTermCount >= 3 && evaluation.coverage[item.documentIndex] >= 0.6
+                    && evaluation.hasDistinctiveMatch[item.documentIndex]
+                    && item.passage.matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms).contains {
+                        !["not", "no", "never", "cannot", "only"].contains($0)
+                    })
+        }
+        for index in ranked.indices {
+            let item = ranked[index]
+            ranked[index].score =
+                focused
+                ? RelatedContentRecommendationPolicy.relevance(
+                    coverage: evaluation.coverage[item.documentIndex], score: evaluation.scores[item.documentIndex],
+                    maximumScore: maximumScore, phraseCoverage: item.phraseCoverage)
+                : evaluation.scores[item.documentIndex]
+            let note = item.passage.candidate.note
+            noteRelevance[note] = max(noteRelevance[note, default: 0], ranked[index].score)
+        }
         ranked.sort { lhs, rhs in
             if lhs.score != rhs.score { return lhs.score > rhs.score }
             let l = lhs.passage.candidate
@@ -3569,18 +3716,41 @@ extension TriptychSearchIndex {
         // rankings separate instead of adding incomparable numeric scores.
         let noteScores = try RelatedContentBM25F.scores(
             documents: noteDocuments,
-            terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms)
+            terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms, roles: noteRoles)
+        let passageRelevance = Dictionary(ranked.map { ($0.passage.id, $0.score) }, uniquingKeysWith: max)
         var grouped: [VaultQualifiedNoteID: [RelatedContentPassage]] = [:]
         var seen: [VaultQualifiedNoteID: Set<String>] = [:]
         for item in ranked where item.score > 0 {
             let note = item.passage.candidate.note
-            let key = SearchTextNormalization.lexicalNormalize(item.passage.displayText)
+            let key = item.normalizedText
             guard seen[note, default: []].insert(key).inserted else { continue }
             grouped[note, default: []].append(item.passage)
         }
-        let noteOrder = grouped.keys.sorted { lhs, rhs in
-            let left = noteScores[noteIndices[lhs]!]
-            let right = noteScores[noteIndices[rhs]!]
+        let maximumNoteScore = noteScores.max() ?? 0
+        let noteUtilities = Dictionary(
+            uniqueKeysWithValues: grouped.keys.map { note in
+                let score = noteScores[noteIndices[note]!]
+                // Authored Note context can refine paragraph relevance, but cannot
+                // independently manufacture relevance or dominate the local focus.
+                let value =
+                    focused
+                    ? noteRelevance[note, default: 0] * (0.85 + 0.15 * (maximumNoteScore > 0 ? score / maximumNoteScore : 0))
+                    : score
+                let identityFactor: Double
+                if case .identityMention(let reason) = grouped[note]![0].candidate.reason,
+                    reason.mentions.contains(where: { $0.seedKind != .sourceNote })
+                {
+                    // A researcher explicitly naming this Note is a query-specific
+                    // identity signal, not a universal role or authority bonus.
+                    identityFactor = 1.25
+                } else {
+                    identityFactor = 1
+                }
+                return (note, value * identityFactor)
+            })
+        let rankedNotes = grouped.keys.sorted { lhs, rhs in
+            let left = noteUtilities[lhs, default: 0]
+            let right = noteUtilities[rhs, default: 0]
             if left != right { return left > right }
             let l = grouped[lhs]![0].candidate
             let r = grouped[rhs]![0].candidate
@@ -3589,14 +3759,73 @@ extension TriptychSearchIndex {
             return lhs.relativePath < rhs.relativePath
         }
         var result: [RelatedContentPassage] = []
-        // Show one useful passage from each Note before a second passage from
-        // any Note, so one long source cannot crowd out alternative readings.
-        for position in 0..<RelatedContentContract.maximumPassagesPerNote {
-            for note in noteOrder {
-                guard let passages = grouped[note], position < passages.count else { continue }
-                result.append(passages[position])
-                if result.count == RelatedContentContract.maximumPassages { return result }
+        var representedRoles = Set<VaultRole>()
+        var displayedSignatures: [RelatedContentRecommendationPolicy.TextSignature] = []
+        var signatures: [String: RelatedContentRecommendationPolicy.TextSignature] = [:]
+        var exactDisplayed = Set<String>()
+        let strongest = noteUtilities.values.max() ?? 0
+        // A bounded greedy rerank compares redundancy and role representation
+        // only among already relevant material. All sources participated in
+        // scoring; no retrieval truncation or inferred argumentative role.
+        var cursors: [VaultQualifiedNoteID: Int] = [:]
+        var displayedCounts: [VaultQualifiedNoteID: Int] = [:]
+        while result.count < RelatedContentContract.maximumPassages {
+            try Task.checkCancellation()
+            var available:
+                [(
+                    note: VaultQualifiedNoteID, passage: RelatedContentPassage,
+                    signature: RelatedContentRecommendationPolicy.TextSignature
+                )] = []
+            for note in rankedNotes where displayedCounts[note, default: 0] < RelatedContentContract.maximumPassagesPerNote {
+                let passages = grouped[note]!
+                var cursor = cursors[note, default: 0]
+                while cursor < passages.count {
+                    let passage = passages[cursor]
+                    let signature: RelatedContentRecommendationPolicy.TextSignature
+                    if let cached = signatures[passage.id] {
+                        signature = cached
+                    } else {
+                        signature = .init(passage.displayText)
+                        signatures[passage.id] = signature
+                    }
+                    if exactDisplayed.contains(signature.exact) {
+                        cursor += 1
+                        continue
+                    }
+                    available.append((note, passage, signature))
+                    break
+                }
+                cursors[note] = cursor
             }
+            guard let minimumDisplayed = available.map({ displayedCounts[$0.note, default: 0] }).min() else { break }
+            var best: Int?
+            var bestScore = -Double.infinity
+            for (index, item) in available.enumerated() where displayedCounts[item.note, default: 0] == minimumDisplayed {
+                let similarity = displayedSignatures.map { item.signature.similarity(to: $0) }.max() ?? 0
+                let bestLocal = noteRelevance[item.note, default: 0]
+                let localFactor = focused && bestLocal > 0 ? passageRelevance[item.passage.id, default: 0] / bestLocal : 1
+                let score = RelatedContentRecommendationPolicy.diverseScore(
+                    relevance: noteUtilities[item.note, default: 0] * localFactor, strongest: strongest,
+                    roleAlreadyRepresented: representedRoles.contains(item.passage.candidate.vaultRole), similarity: similarity)
+                if score > bestScore {
+                    bestScore = score
+                    best = index
+                }
+            }
+            guard let best else { break }
+            let item = available[best]
+            let passage = item.passage
+            cursors[item.note, default: 0] += 1
+            displayedCounts[item.note, default: 0] += 1
+            exactDisplayed.insert(item.signature.exact)
+            displayedSignatures.append(item.signature)
+            representedRoles.insert(passage.candidate.vaultRole)
+            let preview = Self.relatedExcerpt(passage.displayText, matches: passage.matches)
+            result.append(
+                .init(
+                    candidate: passage.candidate, range: passage.range,
+                    source: passage.source, displayText: passage.displayText,
+                    excerpt: preview.text, excerptMatches: preview.ranges, matches: passage.matches))
         }
         return result
     }
@@ -3630,6 +3859,6 @@ extension TriptychSearchIndex {
     }
 }
 
-func relatedContentOccurrenceCount(term: String, text: String) -> Int {
-    SearchMatcher.occurrences(of: .term(term), in: text).count
+func relatedContentOccurrenceCount(term: String, text: String, normalizedNeedle: String? = nil) -> Int {
+    SearchMatcher.occurrenceCount(of: .term(term), in: text, normalizedNeedle: normalizedNeedle)
 }

@@ -7,6 +7,87 @@ import Testing
 
 @Suite("Triptych Search index")
 struct TriptychSearchIndexTests {
+    @Test("Memoized passage ranking follows changed writing focus and current annotated source ranges")
+    func memoizedPassageRankingTracksFocusAndSourceRevision() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID,
+            vaults: [fixture.analyses, fixture.topics, fixture.works])
+
+        func source(_ path: String, _ text: String) -> RelatedContentSource {
+            let document = NoteDocument(relativePath: path, rawContent: text)
+            return .init(
+                candidate: .init(
+                    note: .init(vaultID: fixture.analyses.id, relativePath: path),
+                    vaultRole: .sourceCorpus, title: path, fingerprint: document.fingerprint,
+                    reason: .lexicalOverlap(.init(matchedFields: [.body], seedMatches: []))),
+                document: document)
+        }
+        func request(_ focus: String) -> RelatedContentRequest {
+            .init(
+                seed: .init(
+                    noteID: .init(vaultID: fixture.works.id, relativePath: "Draft.md"),
+                    source: "needle freedom justice reasons",
+                    focuses: [.init(kind: .selectedPassage, text: focus)]))
+        }
+
+        let prefix = "# Émotion 😀\r\n\r\n"
+        let oldParagraph = "Émotion 😀 [[Target|行动]]{{needle freedom}}."
+        let newParagraph = "Émotion 😀 [[Target|行动]]{{justice reasons}}."
+        let annotated = source(
+            "Annotated.md", prefix + oldParagraph + "\r\n\r\nOrdinary justice reasons.\r\n")
+        let body = source("Body.md", "needle freedom ordinary.\r\n\r\njustice reasons ordinary.\r\n")
+        let metadata = source(
+            "Metadata.md", "---\r\nsummary: needle freedom justice reasons\r\n---\r\n\r\nUnrelated prose.\r\n")
+        let sources = [annotated, body, metadata]
+        let firstRequest = request("needle freedom")
+        let cold = try await index.relatedPassages(firstRequest, sources: sources)
+        let uncached = try TriptychSearchIndex.relatedPassages(firstRequest, sources: sources)
+        #expect(cold == uncached)
+        #expect(Set(cold.map { $0.candidate.note.relativePath }) == ["Annotated.md", "Body.md"])
+        let oldPassage = try #require(cold.first { $0.candidate.note.relativePath == "Annotated.md" })
+        #expect(oldPassage.source == oldParagraph)
+        #expect(oldPassage.displayText == "Émotion 😀 行动 (needle freedom).")
+        #expect(oldPassage.excerpt == "Émotion 😀 行动 (needle freedom).")
+        #expect(oldPassage.range.utf16LowerBound == prefix.utf16.count)
+        #expect(oldPassage.range.utf16UpperBound == prefix.utf16.count + oldParagraph.utf16.count)
+        #expect(oldPassage.range.line == 3)
+        #expect(oldPassage.range.column == 1)
+        let warm = try await index.relatedPassages(firstRequest, sources: sources.reversed())
+        #expect(warm == cold)
+
+        let nextRequest = request("justice reasons")
+        let changedFocus = try await index.relatedPassages(nextRequest, sources: sources)
+        let uncachedChangedFocus = try TriptychSearchIndex.relatedPassages(nextRequest, sources: sources)
+        #expect(changedFocus == uncachedChangedFocus)
+        #expect(Set(changedFocus.map(\.source)) == ["Ordinary justice reasons.", "justice reasons ordinary."])
+
+        let revised = source(
+            "Annotated.md", prefix + newParagraph + "\r\n\r\nOrdinary justice reasons.\r\n")
+        let revisedSources = [metadata, body, revised]
+        let replaced = try await index.relatedPassages(firstRequest, sources: revisedSources)
+        let uncachedReplaced = try TriptychSearchIndex.relatedPassages(firstRequest, sources: revisedSources)
+        #expect(replaced == uncachedReplaced)
+        #expect(replaced.map { $0.candidate.note.relativePath } == ["Body.md"])
+        #expect(replaced.map(\.source) == ["needle freedom ordinary."])
+
+        let newest = try await index.relatedPassages(nextRequest, sources: revisedSources)
+        let uncachedNewest = try TriptychSearchIndex.relatedPassages(nextRequest, sources: revisedSources)
+        #expect(newest == uncachedNewest)
+        let newPassage = try #require(newest.first { $0.source == newParagraph })
+        #expect(newPassage.candidate.note.relativePath == "Annotated.md")
+        #expect(newPassage.candidate.fingerprint == revised.document.fingerprint)
+        #expect(newPassage.displayText == "Émotion 😀 行动 (justice reasons).")
+        #expect(newPassage.excerpt == "Émotion 😀 行动 (justice reasons).")
+        #expect(newPassage.range.utf16LowerBound == prefix.utf16.count)
+        #expect(newPassage.range.utf16UpperBound == prefix.utf16.count + newParagraph.utf16.count)
+        #expect(newest.allSatisfy { !$0.displayText.contains("needle freedom") })
+        let repeatedNewest = try await index.relatedPassages(nextRequest, sources: revisedSources.reversed())
+        #expect(repeatedNewest == newest)
+    }
+
     @Test("Material retrieval reaches a paragraph beyond the bounded Note results")
     func directMaterialCandidates() async throws {
         let fixture = try Fixture()
@@ -141,7 +222,7 @@ struct TriptychSearchIndexTests {
             ])
         #expect(
             (first.identityCandidates + first.lexicalCandidates).allSatisfy {
-                $0.vaultRole == .sourceCorpus || $0.vaultRole == .topicKnowledge
+                [VaultRole.sourceCorpus, .topicKnowledge, .draftProject].contains($0.vaultRole)
             })
         let fittingnessIdentity = try #require(
             first.identityCandidates.first {

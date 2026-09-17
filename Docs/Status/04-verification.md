@@ -4,6 +4,102 @@
 
 ## Current verification snapshot
 
+**2026-09-17 — Recommendation quality and authorized-copy evaluation:** Search
+schema 21 and Related-Content contract 11/ranking policy 9 add persisted compact
+lexical preparation, full-span focus sampling with minority-script retention,
+information-weighted paragraph coverage, bounded explicit identity context and
+cross-Note duplicate diversification. Thirty-six provisional synthetic cases
+split equally into development and heldout sets improve distinct-material
+nDCG@6 from 0.582/0.598 to 0.601/0.641, with material recall unchanged at 0.625.
+Raw Note recall decreases when duplicate material is represented once; these
+agent-authored cases are neither blind validation nor researcher acceptance.
+An explicitly authorized, byte-verified private copy contains 433 Markdown
+Notes across all three roles. Tests use a second disposable copy and verify
+unchanged source bytes. After native-only performance remediation, initial
+configuration takes 24.963 s; twenty varied backend queries have median 1.840 s
+and sample p95 1.975 s, down from 2.546/2.731 s immediately before those
+performance changes. All sixteen private cases preserve their ordered Note
+results through this speedup. Their aggregate known-useful recall@6 remains
+0.375. The earlier ranking change replaced one formerly sixth-ranked judged
+Note with unjudged results in a mixed-script case; incomplete pooled judgments
+cannot establish whether that case's philosophical usefulness improved or
+worsened. Reports now include opaque Note IDs and exact selected source ranges
+for private passage-level review without logging content or paths.
+Review of twelve selected passages in two changed cases found no source-coordinate
+defect and found relevant material outside the frozen judgment pool. This limited
+agent review does not establish overall precision or researcher acceptance.
+Profiling then identified repeated readable-text normalization and projection
+re-decoding. Native-only remediation reuses prepared normalization and protects
+resident requested projections during over-budget scans without raising the
+64 MiB estimated retention budget. The same 2,000-Note Release fixture now
+configures in 37.274 s; its first query takes 2.883 s, repeats 2.003–2.012 s
+(previously 3.222–3.256 s), varied focuses 1.818–2.377 s and a selected draft
+paragraph 2.327 s. Reopening takes 5.716 s, then a first query 2.786 s. All source
+candidates remain checked and scored. Sixty-two scoped retrieval tests pass;
+all 36 frozen synthetic case outcomes remain identical. These backend timings
+exclude editor debounce, link-action preparation and native publication.
+A separate, ignored Python/ONNX multilingual prototype over the private copy
+raises known-useful recall to 0.479; fixed lexical/semantic RRF reaches 0.500.
+However, 72 of 96 hybrid results are unjudged and Chinese-query recall is only
+0.200. The prototype uses different paragraph preparation and is not wired to
+the App, added to its dependencies, or verified for native distribution.
+It establishes neither full precision nor a shipping model backend. The scoped
+Debug checks pass 479 Core, 96 Contracts, 27 Workspace runtime, 22 Related
+Material/Search-controller and two App-MCP Search tests. Changed Swift files
+pass formatting lint; the updated native `ScholiumApp` Release product compiles
+without added model or inference-runtime dependencies. This is not packaging, signing, installation
+or native interaction acceptance. Private queries, judgments, source paths, vectors and
+downloaded model assets remain
+outside tracked fixtures. Evidence: `.build/recommendation-private-evaluation/`,
+`.build/recommendation-evaluation/`, `.build/semantic-multilingual-prototype/`,
+`.build/recommendation-final-2000.log`,
+`.build/recommendation-final-owning-tests.log` and
+`.build/recommendation-final-mcp-tests.log`,
+`.build/recommendation-native-profile.txt`,
+`.build/recommendation-normalized-reuse-2000.log`,
+`.build/recommendation-scan-protection-tests.log` and
+`.build/recommendation-scan-protection-2000.log` and
+`.build/recommendation-private-native-optimized.log`,
+`.build/recommendation-native-comparison.json` and
+`.build/recommendation-native-release-build.log`.
+
+**2026-09-17 — Earlier three-vault Search and Writing References baseline:** Search contract 20/
+schema 20/ranking policy 5 and Related-Content contract 10/ranking policy 8 use
+role-specific field weights. Recommendations include other Works as researcher
+writing, prioritize explicit local focus coverage, and diversify comparably
+ranked Notes across roles without reserved slots for weaker matches. Index
+publication persists checksummed, revision-bound paragraph preparation; query
+matching batches simple words while retaining canonical Unicode boundaries,
+current source readback and complete comparison-set statistics.
+In an isolated Release Core/Application harness, 2,000 generated multilingual
+Notes (640 Analyses, 880 Topics, 480 Works, 16 paragraphs each, plus one Works
+seed) take 33.162 s to configure initially. The first ready recommendation takes
+3.179 s; repeats take 2.794–2.808 s. Reopening takes 4.379 s separately, followed
+by a 3.188 s first recommendation. Varied short focuses take 2.306–2.924 s;
+a full selected paragraph in a 50-paragraph draft takes 3.336 s. Ordinary
+English/Chinese/annotation Search takes 0.053–0.136 s; one atomic Note edit and
+refresh takes 1.244 s. The subsequent unique-term recommendation takes 0.016 s
+and Search 0.004 s; these selective queries are not broad-query comparisons.
+Sixty-seven selected Release Core tests cover source/rebuild/restart/corruption,
+Unicode and field ranking, Works provenance, scope and relevance-bound role
+diversity. The owning Debug run passes 458 Core, 96 Contracts, 27 Workspace
+runtime and 22 Related Material/Search-controller tests, including Work identity
+through unsent Chat staging. Two App-MCP Search checks also pass for Boolean
+scope/provenance and paragraph pagination. The opening timing assertion checks its source
+work and assembly measurements independently instead of imposing a wall-clock
+bound on summed concurrent read durations. The independent coverage counterexample fails before the ranking
+change and passes afterward; its relevant first result moves from rank two to
+rank one. Synthetic semantic diagnostics still expose paraphrase/cross-language
+misses and same-word ambiguity, so no philosophical-usefulness acceptance is claimed.
+These timings exclude editor capture, debounce, link-action preparation and native
+publication; they are scoped scenarios, not p95 or packaged end-to-end acceptance.
+The harness excludes App targets because their Release test build references
+Debug-only test helpers. Evidence: `.build/writing-references-three-vault-balanced.log`,
+`.build/writing-references-quality-baseline.log`,
+`.build/writing-references-final-owning-tests.log`,
+`.build/writing-references-mcp-search-tests.log`, and
+`.build/writing-references-release-harness/.build/writing-references-performance/`.
+
 **2026-09-17 — Derived refresh performance:** The identical expanded standard
 500-Note Triptych (6,973,820 bytes; exact source bytes and query provenance
 checked) reduces Debug cold configuration from 35.91 s to 13.05 s, reopened
@@ -16,7 +112,7 @@ index opening falls from 4.74–4.83 s to 2.39–2.50 s while retaining complete
 SOM1 validation and corruption recovery. ASCII normalization reduces isolated
 projection work by 43.7%; all 501 complete projections match the baseline
 with unordered Set encoding canonicalized. Scoped Contracts, Application,
-cache, codec and paragraph-recovery checks pass. The current-checkout full
+cache, codec and paragraph-recovery checks pass. That measured checkout's full
 `verify.sh` gate passes 355 Web, 423 Core, three Core performance, 96 Contracts,
 171 Application, one architecture measurement and 1,002 App tests, public-symbol
 guards, Release compilation and bundled-helper isolation. These schema-19 diagnostics

@@ -360,10 +360,18 @@ func sourceAuthorizedFolderNoteMoves(
     return descendants
 }
 
+struct RelatedContentRetrievalMeasurement: Sendable {
+    let candidateCount: Int
+    let indexDuration: Duration
+    let readDuration: Duration
+    let passageDuration: Duration
+}
+
 /// Per-Triptych application boundary shared by every consumer of a runtime.
 /// The actor borrows the runtime's identity-pooled vault authorities and owns
 /// only the Triptych-level composition, snapshots, and publication lifetime.
 public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
+    private(set) var lastRelatedContentMeasurement: RelatedContentRetrievalMeasurement?
     private nonisolated static let refreshLogger = Logger(
         subsystem: "com.scholium.app",
         category: "WorkspaceRefresh"
@@ -3235,6 +3243,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
+        lastRelatedContentMeasurement = nil
+        let started = ContinuousClock.now
         try requireActive()
         guard currentSnapshot.phase.isComplete else {
             throw ScholiumApplicationError.workspaceStillLoading(id)
@@ -3246,6 +3256,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             })
         else { throw CocoaError(.fileReadNoSuchFile) }
         let response = try await services.searchIndex.relatedMaterialSourceCandidates(request)
+        let indexed = ContinuousClock.now
         try requireActive()
         try Task.checkCancellation()
         guard response.state == .current || response.state == .empty else { return response }
@@ -3265,7 +3276,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 sources.append(.init(candidate: candidate, document: document))
             } catch is CancellationError { throw CancellationError() } catch { omitted += 1 }
         }
-        let passages = try TriptychSearchIndex.relatedPassages(request, sources: sources)
+        let read = ContinuousClock.now
+        let passages = try await services.searchIndex.relatedPassages(request, sources: sources)
+        lastRelatedContentMeasurement = RelatedContentRetrievalMeasurement(
+            candidateCount: seen.count, indexDuration: started.duration(to: indexed),
+            readDuration: indexed.duration(to: read), passageDuration: read.duration(to: .now))
         try requireActive()
         try Task.checkCancellation()
         return RelatedContentResponse(

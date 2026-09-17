@@ -161,36 +161,66 @@ lexical matches. An OR expression does not concatenate alternatives into a fake 
 An Analysis academic title remains a weighted `title` lexical match, not Note identity.
 Only predicates from successful alternatives contribute match reasons, highlights and
 lexical rank; duplicate normalized predicates add no boost. Lexical contributions use
-one corpus and are summed before global limiting and pagination. Normalized Note title,
+one corpus and are summed before global limiting and pagination. Role-specific
+field weighting emphasizes source titles and summaries in Analyses, concept
+titles, aliases, tags and headings in Topics, and headings and prose in Works.
+This changes lexical ordering only: exact identity tiers, query truth, scope,
+source locators and explicit field predicates remain authoritative. No whole
+vault receives a universal relevance or evidential-authority bonus.
+Normalized Note title,
 role order, and path provide stable ties. Results explain matched field and rank reason
 without exposing internal scores. Exclusion-only results have no invented source range. CJK uses deterministic projection and
 substring verification.
 
 The versioned **Related-Content Retrieval** contract is an internal,
 nonpersistent discovery operation over exact current Notes and optional passage
-or request focus. It returns bounded Analysis/Topic candidates through separate
+or request focus. It returns bounded Analysis, Topic and Work candidates through separate
 direct-link, exact-identity, and lexical channels, preserving typed
 reasons and source fingerprints. It never synthesizes a relation, score,
 summary, or evidence claim. Search and Graph must share one complete source
 manifest before direct-link candidates are executable.
 Related-Content ranks Notes by authored context and selects paragraphs within
-those Notes. Field-normalized BM25F prefers annotation text over Wikilink display
-text, content YAML, headings and ordinary prose under comparable matches.
+those Notes. Field-normalized BM25F treats authored annotations and Wikilink
+labels as explicit context. Role-specific field weighting emphasizes source
+titles, summaries and annotations in Analyses; concept titles, keywords and
+headings in Topics; and headings and prose in Works. Works remain researcher
+writing and arguments, never external-source evidence by virtue of retrieval.
+The current seed Note is excluded, including its saved revision while its unsaved
+buffer supplies context. Every role still requires a locally matching paragraph.
+Role weighting grants neither philosophical truth nor an inferred dialectical
+role, and cannot substitute for focus coverage.
 `summary`, `keywords`, `title` and `aliases` inform Note ranking; YAML values
 are never standalone recommended material. Author, date, path and unknown
 properties do not contribute to default topic ranking. Explicit Search fields
 retain their existing semantics. Incoming annotation text is never transferred
 to its target, and each authored occurrence contributes once.
 An explicit focus supplies scoring terms rather than unrelated source-Note terms.
+Bounded term selection spans the complete focus, retains adjacent term pairs,
+and gives explicitly quoted wording a bounded share of the query. Quoted phrase
+order and negation remain authored text; extraction invents no synonym or thesis.
+Local relevance combines information-weighted distinct-term coverage, normalized
+paragraph BM25F and explicitly quoted phrase matches. Repetition and metadata
+cannot independently manufacture local relevance. Multi-term focuses normally
+require multiple locally matching terms; a distinctive single term may qualify
+when it supplies most of the focus's lexical information. Negation alone cannot
+qualify through that exception. These are lexical features, not conceptual or
+argumentative judgments. Note context refines this local relevance through
+separately normalized Note scores. Explicitly naming a Note in the focus supplies
+bounded identity context, never a role-wide authority bonus. Raw Note and paragraph
+scores are never added.
 Every eligible lexical source is checked before paragraphs are selected; bounded
 Note channels never truncate this source set. A Note is eligible for display
 only when it contains an actual locally matching paragraph, including authored
 link-annotation wording. Property-only matches do not manufacture a paragraph.
-Within each eligible Note, paragraph-local BM25F chooses the excerpt. Note and
-paragraph scores use distinct statistics and are never numerically added.
-Results first show one paragraph per Note in Note-rank order, then additional
-paragraphs within the per-Note and overall bounds. Repeated visible paragraphs
-in one Note appear once. A multi-term focus requires more than one matching term.
+Without an explicit focus, BM25F supplies relevance. A bounded final rerank favors
+unrepresented research roles and reduces near-duplicate concentration only among
+comparably relevant material. Roles receive no mandatory slots or inferred
+philosophical status. Canonically identical readable passages, ignoring whitespace,
+appear once across Notes; the retained passage keeps one exact source identity.
+Near copies receive a bounded ranking penalty, never rewritten text or a merged
+source identity. Opposing claims remain distinct materials. Results first offer
+one paragraph per Note, then additional paragraphs within per-Note and overall
+bounds. Research diversity is not inferred agreement, opposition or evidence.
 Paragraphs retain exact source ranges and bytes, separate readable text, bounded
 match-centered excerpts and checked UTF-16 highlight ranges. These projections
 never substitute for source locators. Retrieval creates no paragraph identities, embeddings,

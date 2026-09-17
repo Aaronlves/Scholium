@@ -18,7 +18,7 @@
   native system Trash, and recoverable uncertainty.
 - Note creation accepts exact complete Markdown; GUI New Note starts empty.
   Source, stable identity, Settlement and recovery retain their existing owners.
-- Search contract 20/schema 19 indexes user-authored YAML through `property:`
+- Search contract 20/schema 21 indexes user-authored YAML through `property:`
   without a managed catalog. Quoted keys, scalar/direct-list values and block
   summaries retain source locations. Filename owns Note display identity.
   AND/OR/NOT, parentheses, field groups and multiple direct-link predicates share
@@ -29,6 +29,14 @@
   text predicates to complete top-level body paragraphs, preserving successful
   ranges and source annotation fields. A local term-group collection inserts
   literal OR expressions without macros or inferred synonymy.
+  Role-specific field weights retain exact identity and predicate semantics.
+  Writing References includes other Works alongside Analyses and Topics, with
+  whole-focus term sampling, information-weighted local relevance, quoted-phrase
+  matching, explicit Note-identity context and bounded diversity/near-copy ranking.
+  Revision-bound word counts and paragraph preparation are persisted with the
+  disposable index; current source still supplies every displayed passage.
+  Synthetic and provisional copied-corpus judgments do not establish researcher
+  acceptance, philosophical correctness or inferred argumentative roles.
 - Managed Metadata and Zotero Note-binding APIs are absent from the reachable
   surface. Integration checks and targeted rechecks have bounded evidence; the
   Verification chapter records the remaining native acceptance boundary.
