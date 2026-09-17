@@ -85,6 +85,12 @@ public actor TriptychSearchIndex {
         let id: UUID
         let previous: SearchGenerationID?
         let task: Task<TriptychSearchIndexSyncResult, Error>
+        let progress: ProgressDelivery?
+    }
+
+    private struct ProgressDelivery {
+        let continuation: AsyncStream<Int>.Continuation
+        let task: Task<Void, Never>
     }
 
     public init(
@@ -368,12 +374,14 @@ public actor TriptychSearchIndex {
             configuredVaults.map { ($0.key, ($0.value.name, $0.value.role)) },
             uniquingKeysWith: { first, _ in first }
         )
+        let progress: ProgressDelivery?
         let progressReporter: (@Sendable (Int) -> Void)?
         if previous == nil {
             let expectedTotal = desired.count
-            progressReporter = { [weak self] completed -> Void in
-                guard let self else { return }
-                _ = Task {
+            let (stream, continuation) = AsyncStream.makeStream(of: Int.self)
+            let task = Task { [weak self] in
+                for await completed in stream {
+                    guard let self else { return }
                     await self.recordInitialBuildProgress(
                         synchronizationID: identifier,
                         completed: completed,
@@ -381,7 +389,12 @@ public actor TriptychSearchIndex {
                     )
                 }
             }
+            progress = ProgressDelivery(continuation: continuation, task: task)
+            progressReporter = { completed in
+                _ = continuation.yield(completed)
+            }
         } else {
+            progress = nil
             progressReporter = nil
         }
         let task = Task.detached(priority: .utility) {
@@ -400,7 +413,8 @@ public actor TriptychSearchIndex {
         let active = ActiveSynchronization(
             id: identifier,
             previous: previous,
-            task: task
+            task: task,
+            progress: progress
         )
         activeSynchronization = active
         let result = try await finishSynchronization(active)
@@ -454,6 +468,7 @@ public actor TriptychSearchIndex {
             } onCancel: {
                 synchronization.task.cancel()
             }
+            await finishProgress(synchronization)
             if activeSynchronization?.id == synchronization.id {
                 activeSynchronization = nil
                 recoveredGeneratedDatabase = false
@@ -461,6 +476,7 @@ public actor TriptychSearchIndex {
             }
             return result
         } catch is CancellationError {
+            await finishProgress(synchronization)
             if activeSynchronization?.id == synchronization.id {
                 activeSynchronization = nil
                 currentAvailability =
@@ -469,6 +485,7 @@ public actor TriptychSearchIndex {
             }
             throw CancellationError()
         } catch {
+            await finishProgress(synchronization)
             if activeSynchronization?.id == synchronization.id {
                 activeSynchronization = nil
                 if let previous = synchronization.previous {
@@ -485,6 +502,12 @@ public actor TriptychSearchIndex {
             }
             throw error
         }
+    }
+
+    private func finishProgress(_ synchronization: ActiveSynchronization) async {
+        guard let progress = synchronization.progress else { return }
+        progress.continuation.finish()
+        await progress.task.value
     }
 
     private nonisolated static func publish(

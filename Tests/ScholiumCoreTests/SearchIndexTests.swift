@@ -716,24 +716,45 @@ struct SearchIndexTests {
 
     private func execute(_ sql: String, in databaseURL: URL) throws {
         var database: OpaquePointer?
-        guard sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
-            throw FixtureError.couldNotOpenDatabase
+        let openResult = sqlite3_open_v2(
+            databaseURL.path,
+            &database,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX,
+            nil
+        )
+        guard openResult == SQLITE_OK, let database else {
+            let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown SQLite open error"
+            if let database { sqlite3_close(database) }
+            throw FixtureError.couldNotOpenDatabase(
+                code: openResult,
+                message: message
+            )
         }
         defer { sqlite3_close(database) }
-        guard
-            sqlite3_exec(
-                database,
-                sql,
-                nil,
-                nil,
-                nil
-            ) == SQLITE_OK
-        else {
-            throw FixtureError.couldNotExecuteSQL
+        sqlite3_busy_timeout(database, 3_000)
+        var error: UnsafeMutablePointer<CChar>?
+        let result = sqlite3_exec(
+            database,
+            sql,
+            nil,
+            nil,
+            &error
+        )
+        guard result == SQLITE_OK else {
+            let message = error.map { String(cString: $0) } ?? String(cString: sqlite3_errmsg(database))
+            if let error { sqlite3_free(error) }
+            throw FixtureError.couldNotExecuteSQL(
+                code: result,
+                extendedCode: sqlite3_extended_errcode(database),
+                message: message
+            )
         }
     }
 
-    private enum FixtureError: Error { case couldNotOpenDatabase, couldNotExecuteSQL }
+    private enum FixtureError: Error {
+        case couldNotOpenDatabase(code: Int32, message: String)
+        case couldNotExecuteSQL(code: Int32, extendedCode: Int32, message: String)
+    }
 }
 
 private extension SearchExecutionScope {
