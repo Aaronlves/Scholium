@@ -84,9 +84,10 @@
 
 ## Gate and release boundary
 
-- `v0.2.3-beta` G9 clean-account Bootstrap smoke remains incomplete: its exact
-  packaged journey was blocked by host XCTest Automation Mode timeout before
-  launch. Earlier-artifact smoke cannot substitute for this artifact's evidence.
+- The complete repository gate, exact-tag artifact checks, and mounted/copied
+  clean-account Bootstrap smoke for `v0.2.4-beta` passed on 2026-09-17. The
+  first two smoke attempts hit the host XCTest Automation Mode timeout before
+  launch; a third attempt passed with production machine state unchanged.
 - Run the required complete gate and artifact checks for each subsequent release
   candidate; earlier passes are dated proof, not reusable release authorization.
 - Run affected packaged performance series when §21.3's change-trigger rule

@@ -4,24 +4,28 @@
 
 ## Release artifacts and gate provenance
 
-**2026-09-17 — `v0.2.3-beta`:** Exact clean tag at
-`211cce2dfea6d25a848559311efa2b5386df228f` produced
-`Scholium-v0.2.3-beta-macos-arm64.dmg`: marketing version `0.2.3`, build `4`,
+**2026-09-17 — `v0.2.4-beta` packaged artifact:** Exact clean tag at
+`f3d10cf6b4da3411418502d4a48c711c6ef92ed1` produced
+`Scholium-v0.2.4-beta-macos-arm64.dmg`: marketing version `0.2.4`, build `5`,
 minimum macOS `26.0`, SDK `27.0`, arm64 ad-hoc-signed App and version-matched
-helper. Resource, license, private-path, provenance, nested-signature, read-only
-DMG layout and SHA-256 checks passed; checksum:
-`2e43bafe64616e44a3384faebb6fc8e85e05fc761bbf425a9f9146a4ea11ff1a`.
-The complete repository gate passed Core (481), Core performance (3), Contracts
-(96), Application (173), architecture measurement (1), and App (1,009 across
-122 suites). An existing flaky WebKit layout assertion failed the first App
-run; its full target recheck passed. Exact packaged clean-account Bootstrap
-smoke was attempted twice, but XCTest timed out enabling macOS Automation Mode
-before launch. G9 is incomplete: this is environment failure, not a product pass.
-Evidence: `.build/package-v0.2.3-beta.log`,
-`.build/package-v0.2.3-first-launch.log`,
-`.build/package-v0.2.3-first-launch-retry.log`,
-`.build/release-0.2.3-preflight.log`,
-`.build/release-0.2.3-app-recheck.log`.
+helper. Repository gate passed WebEditor (364), Core (499), Core
+performance (3), Contracts (96), Application (201), architecture measurement
+(1), and App (1,043 across 128 suites), plus public-symbol guards, Release
+compilation and helper isolation. Resource, license, private-path, provenance,
+nested-signature, entitlements, architecture, read-only DMG layout and SHA-256
+checks passed; checksum:
+`57948b121745fc28801237cbed3726ba78870c146d944ff8f5f917f2eb5ffa0c`.
+Packaged clean-account Bootstrap smoke was attempted three times; XCTest
+failed before launch on the first two with `Timed out while enabling automation
+mode` (65.761 and 65.222 seconds), then passed on the third attempt in 7.621
+seconds with production state unchanged. G9 passed; the first two remain
+environment evidence, not product failures. Evidence:
+`.build/package-v0.2.4-beta.log`,
+`.build/package-v0.2.4-first-launch.log`,
+`.build/package-v0.2.4-first-launch-retry.log`,
+`.build/package-v0.2.4-first-launch-retry-2.log`,
+`.build/release-0.2.4-preflight.log`, `.build/verification/` and
+`.build/verification-release/release-build.log`.
 
 **2026-09-17 — Earlier clean-account baseline, `v0.2.2-beta`:** Exact clean tag
 at `ea4918ec1958293879786a889108d0b186d33744` produced
@@ -33,7 +37,7 @@ resource reproduction, public-symbol guards, Release compilation and helper
 isolation. Signatures, entitlements, architecture, provenance, package contents,
 read-only mount/copy and checksum checks passed. Packaged first-launch Bootstrap
 passed with production machine state unchanged. This earlier pass is retained
-as a baseline, not substituted for `v0.2.3-beta` G9. Both artifacts are ad-hoc
+as a baseline, not substituted for `v0.2.4-beta` G9. Both artifacts are ad-hoc
 Beta packages, not Developer ID/notarized releases or human acceptance.
 
 ## Current source and native development proof
