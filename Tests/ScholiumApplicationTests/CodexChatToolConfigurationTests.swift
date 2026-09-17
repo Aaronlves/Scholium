@@ -74,6 +74,18 @@ struct CodexChatToolConfigurationTests {
         var destination = try #require(helper.connections.first)
         destination.address = "https://two.example/mcp"
         #expect(helper.requiresAccessConfirmation(destination, originalName: destination.name))
+
+        let provider = AgentChatToolConnection(
+            name: ZoteroMCPTransportDescriptor.providerServerName,
+            kind: .local,
+            address: ZoteroMCPTransportDescriptor.provider.command)
+        let providerParams = try snapshot.writeParameters(provider, originalName: nil)
+        let providerValue = try #require(
+            providerParams["edits"]?.arrayValue?.first?.objectValue?["value"]?.objectValue)
+        #expect(
+            providerValue["env"]?.objectValue
+                == ZoteroMCPTransportDescriptor.provider.clientConfiguration.environment
+                    .mapValues(MCPJSONValue.string))
     }
 
     @Test("Edits target changed fields only and credential reuse requires an explicit choice")

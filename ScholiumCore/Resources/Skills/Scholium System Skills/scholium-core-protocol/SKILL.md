@@ -34,10 +34,14 @@ does not authorize changing the destination's text.
 
 When an attribution conflicts, return to the accessible primary source. State
 partial coverage, inaccessible text, OCR uncertainty or edition differences.
-For Zotero material, use available Zotero tools and distinguish metadata,
-annotations, selected pages and the original text. Never infer full reading from
+For Zotero material, use the available Zotero provider tools and distinguish
+metadata, annotations, selected pages and the original text. Use the provider's
+complete available tool surface when it is connected; do not assume Scholium's
+compatibility helper is an equivalent substitute. Never infer full reading from
 an item title or attachment pointer. Report an unavailable connection without
 database bypass, unrelated configuration scans or a demand for command-line work.
+Zotero/provider writes remain Zotero operations and do not become Scholium Note
+mutations, Agent Changes or evidence of researcher acceptance.
 
 ## Develop the researcher's work
 

@@ -25,10 +25,12 @@ the running App; it is not a standalone/headless workspace product.
 
 Optional in-app Chat reaches retained conversations, materials, runtime settings,
 Skills/tools, questions and approvals, branching, concurrent turns and bounded
-delegated-Agent observation. The bundled read-only Zotero integration and original
-material navigation are reachable. Runtime reports, material access and mutation
-receipts remain distinct from independently verified evidence or researcher
-acceptance. There is no Research Action, Reading Lead, passage Discussion or Review
+delegated-Agent observation. Its default Zotero connection now targets the
+provider-managed external MCP tool surface; the bundled first-party Zotero
+service remains a compatibility path for exact local API and original-material
+contracts. Runtime reports, material access and mutation receipts remain
+distinct from independently verified evidence or researcher acceptance. There
+is no Research Action, Reading Lead, passage Discussion or Review
 Comment lifecycle, external-host conversation handoff, or MCP research-result API.
 
 The public release profile is Core App Beta. External Agent Collaboration and

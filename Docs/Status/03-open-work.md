@@ -44,21 +44,20 @@
 - Complete real-runtime inline continuation latency, quota and researcher-judged
   usefulness with retrieved background. Mock generation does not establish provider
   execution, installed IME or VoiceOver; retain the independent opt-in/model policy.
-- Complete the packaged external-host journey in §21.5: installed App/bundled
-  helper, both user-scope setup commands, production bridge, clean-account smoke
-  and exact artifact provenance. Local helper tests are not packaged proof.
-- Complete real-provider/browser authentication, tool setup and declared dependency
-  availability; search-result provenance, model/input support, source-linked Note
-  selection, actual editor-snapshot capture and picker keyboard/focus; file panel,
+- Complete §21.5 packaged external-host journey: installed App/helper, both setup
+  commands, production bridge, clean-account smoke and exact artifact provenance.
+  Local helper tests are not package proof.
+- Complete provider/browser authentication, setup and dependency availability;
+  search provenance, model/input support, source-linked Note selection,
+  editor-snapshot capture and picker keyboard/focus; file panel,
   file-URL paste/drop, physical cross-app image transfer, system Paste, thumbnail/
   Quick Look, scanned-PDF page-selection sheets and provider image interpretation.
-- Complete Zotero page/annotation navigation and exact original-file opening across
-  the separate local API, read-only MCP and material-report boundaries. No Zotero
-  write scope is implied.
-- Complete real-runtime/native acceptance for branching and Retry in New Branch,
-  concurrent execution, model/reasoning/web-search choices, Context/quota and plans,
+- Complete provider Zotero acceptance: full tool discovery, authorization, writes,
+  failure/restart, page/annotation navigation and exact original opening.
+- Complete runtime/native acceptance for branching and Retry in New Branch,
+  concurrent execution, model/reasoning/web-search choices, Context/quota, plans,
   research questions, Note-update comparisons, command/terminal/network/file
-  approvals, and supported scheduled execution. Deterministic/offscreen checks do
+  approvals, and scheduled execution. Deterministic/offscreen checks do
   not establish provider execution, menu/composer focus, IME or VoiceOver.
 - Complete delegated-Agent roster/detail observation, public-history pagination and
   exact-turn interruption with the real runtime. Child messaging/approval routing

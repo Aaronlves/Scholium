@@ -8,6 +8,21 @@ import ScholiumCore
 public actor ZoteroOperations: ZoteroUseCases {
     typealias RequestLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
+    /// The provider transport is intentionally external to Scholium. These
+    /// values are non-secret defaults: the provider still owns its Zotero
+    /// authorization and all Zotero-side writes.
+    public static let providerDescriptor = ZoteroMCPTransportDescriptor.provider
+    public static let providerEnvironment = providerDescriptor.clientConfiguration.environment
+
+    public static func providerExecutableURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        ZoteroMCPTransportLocator.executableURL(
+            descriptor: providerDescriptor,
+            environment: environment
+        )
+    }
+
     public nonisolated let descriptor: ZoteroMCPTransportDescriptor
 
     private let server: ZoteroMCPServer

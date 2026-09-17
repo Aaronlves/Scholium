@@ -162,6 +162,17 @@ struct ZoteroMetadataTests {
         #expect(descriptor.sourceURL.contains("Scholium"))
     }
 
+    @Test("The provider descriptor preserves the external complete-tool boundary")
+    func providerMCPDescriptorIsExplicit() throws {
+        let descriptor = ZoteroMCPTransportDescriptor.provider
+        #expect(descriptor.identifier == "zotero-mcp-provider")
+        #expect(descriptor.command == "zotero-mcp")
+        #expect(descriptor.clientConfiguration.arguments == ["serve", "--transport", "stdio"])
+        #expect(!descriptor.localReadOnlyByDefault)
+        #expect(descriptor.capabilities == ZoteroMCPCapability.allCases)
+        #expect(descriptor.sourceURL == "https://github.com/54yyyu/zotero-mcp")
+    }
+
     @Test("Transport location reports installation without claiming a handshake")
     func transportLocationDoesNotClaimConnection() throws {
         let report = ZoteroMCPTransportLocator.report(
@@ -171,6 +182,23 @@ struct ZoteroMetadataTests {
         #expect(report.state == .notConfigured)
         #expect(!report.liveHandshakePerformed)
         #expect(report.commandPath == nil)
+    }
+
+    @Test("Provider discovery reports only the executable, not Zotero availability")
+    func providerLocationDoesNotClaimConnection() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let command = root.appendingPathComponent("zotero-mcp")
+        try Self.writeExecutable("#!/bin/zsh\nexit 0\n", to: command)
+
+        let report = ZoteroMCPTransportLocator.report(
+            descriptor: .provider,
+            environment: ["PATH": root.path]
+        )
+        #expect(report.state == .commandAvailable)
+        #expect(report.commandPath == command.path)
+        #expect(!report.liveHandshakePerformed)
+        #expect(report.note.contains("tool surface"))
     }
 
     @Test("An explicit probe completes the stdio initialize lifecycle without reading Zotero")

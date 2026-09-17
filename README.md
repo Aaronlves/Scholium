@@ -283,16 +283,20 @@ actual MCP changes and eligible Undo. A disconnected or uncertain request is
 never automatically resent. Provider authentication, account availability,
 cloud execution and signed-distribution acceptance require their own checks.
 
-### First-party Zotero MCP (optional integration)
+### Provider-managed Zotero MCP (optional integration)
 
 Enable Zotero's local API in Zotero Settings → Advanced → **Allow other
-applications on this computer to communicate with Zotero**. In Scholium Settings
-→ Integrations → Agents & Chat → Skills and Tools, **Set Up Zotero…** uses the
-bundled helper with `zotero mcp serve --read-only`. **Check Connection** reports
-the API and MCP server separately; it does not read a source.
+applications on this computer to communicate with Zotero**. Install and
+configure the external `zotero-mcp` provider according to its
+[installation guide](https://github.com/54yyyu/zotero-mcp/blob/main/docs/getting-started.md).
+Its recommended package install is `uv tool install zotero-mcp-server`.
+In Chat, Scholium passes through the provider's complete configured tool
+surface, using Zotero's local API backend by default; it does not replace it
+with the former seven-tool subset. **Check Connection** reports the API and MCP
+server separately; it does not read a source.
 
-The helper exposes seven bounded read tools and rejects imports. External hosts
-use the helper inside the installed App at
-`Contents/Helpers/ScholiumAgentHelper`; moving the App requires copying the
-setup command again. There is no standalone installation or updater. The
-supported scope and exact reference rules are in [Specification §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration).
+The provider remains an external runtime dependency and owns Zotero-side
+authorization and writes. Scholium's bundled helper remains available for its
+own exact local API and compatibility contracts, but is not a hidden Chat
+fallback. The supported scope and exact reference rules are in
+[Specification §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration).

@@ -28,35 +28,46 @@ Refresh Metadata operation. Deleting a source link removes that relation.
 Opening a link requests Zotero navigation; it proves neither reading nor
 philosophical support. Scholium does not fetch bibliography while projecting
 Links or reading ordinary Note context. An authorized Agent may use the
-separately configured read-only Zotero tools when its task needs source data.
+separately configured Zotero provider tools when its task needs source data.
 Citation generation is deferred. Before adding a future adapter, evaluate
 whether Zotero's existing capabilities already serve the Agent's need.
 
-### 15.3 Optional external-agent Zotero MCP
+### 15.3 Provider-managed external-agent Zotero MCP
 
-The App-bundled helper provides a read-only Zotero MCP service. Its schemas
-own the supported discovery and bounded read operations. Scholium supplies no
-Zotero import or write service; researcher-configured third-party connections
-retain their own runtime and authorization boundaries.
+The external provider owns the Zotero MCP tool surface. Scholium does not
+redeclare that surface as a seven-tool subset and does not present the
+provider as an official Zotero component. The current provider target is
+`zotero-mcp` from the community project documented in its runtime
+configuration; the provider's version, tool schemas, credentials and
+Zotero-side authorization remain provider-owned.
 
-In-app Chat supplies the first-party read-only Zotero MCP through its existing
-helper when the runtime has no explicit Zotero connection. No additional installation or command entry is needed. An existing disabled or custom connection wins;
-Chat never silently replaces it. Configuration edits retain version checks,
-shared-setting confirmation and active-turn guards. No global settings are
-written to provide the default. Disabled tools, failed transport and unavailable
-Zotero local API remain distinct. Checking the API imports no research material.
+In-app Chat supplies the provider under `scholium-zotero` when the runtime has
+no explicit Zotero connection. Its default environment selects Zotero's local
+API backend and exposes the provider's complete tool groups. The bundled
+Scholium helper remains a compatibility/read-only service for Scholium-owned
+contracts; it is not a hidden Chat fallback. An existing disabled or custom
+connection wins; Chat never silently replaces it. Configuration edits retain
+version checks, shared-setting confirmation and active-turn guards. No global
+settings are written to provide the default. Provider installation, failed
+transport, provider authorization and unavailable Zotero local API remain
+distinct observations.
 
-The default launches the configured first-party service with `--read-only`.
-Local transports refuse redirects rather than follow another resource.
-That mode publishes only read tools and rejects import calls before any local
-request, including forged calls to unadvertised tools. Read enablement grants no import authority. An unavailable optional server
-does not disable ordinary Note collaboration. Runtime tool connection status
-and local API availability are separate observations, never proof of reading.
+The default provider exposes all of its configured tool groups rather than
+silently removing write, collection, annotation, PDF or search operations.
+This does not grant an Agent permission to change Scholium Notes. Zotero-side
+writes remain provider/Zotero operations and require the provider's own
+authorization; provider availability and a successful tool call remain
+separate from source evidence. An unavailable optional provider does not
+disable ordinary Note collaboration. The runtime may still show an explicit
+provider configuration failure rather than substituting the compatibility
+service.
 
 Never access Zotero's live SQLite directly, guess ambiguous items or
 destinations, or treat metadata and attachment identity as evidence. If the MCP
 route is unavailable, report that boundary without database bypass or broad
-configuration scans.
+configuration scans. Scholium's default provider configuration selects the
+official local API boundary; a custom provider connection must declare its own
+backend and remains subject to its own trust decision.
 
 ### 15.4 Exact references and selected material
 
@@ -98,6 +109,12 @@ Text returns at most 64 KiB of UTF-8 (16 KiB by default); nonzero offsets requir
 the original fingerprint. Text extraction and a selected-page PNG derivative
 reuse the Note-attachment bounds in §8.3. The result retains original fingerprint,
 filename, exact representation/page/range and library-qualified reference.
+
+Provider-specific tool results may retain provider locators and coverage
+claims, but Scholium promotes them to source navigation or evidence only when
+the result satisfies the corresponding exact identity, representation and
+coverage contract. A provider tool call or successful MCP handshake alone is
+not proof that an original was read.
 
 ## 16. Onboarding
 

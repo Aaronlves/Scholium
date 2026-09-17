@@ -40,7 +40,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
     @Published private(set) var toolConfigurationNotice: String?
     @Published private(set) var toolConfigurationErrorTool: String?
     @Published private(set) var toolConfigurationNoticeTool: String?
-    static let zoteroServerName = "scholium-zotero"
+    static let zoteroServerName = ZoteroMCPTransportDescriptor.providerServerName
     private var toolConfiguration: CodexChatToolConfiguration?
     private(set) var configurationHome: URL?
     private(set) var isShared = false
@@ -207,14 +207,20 @@ final class AgentChatCapabilitiesController: ObservableObject {
     }
 
     var zoteroConnection: AgentChatToolConnection? { toolConnections.first { $0.name == Self.zoteroServerName } }
+    var zoteroProviderAvailable: Bool { ZoteroOperations.providerExecutableURL() != nil }
+    var zoteroProviderAddress: String {
+        ZoteroOperations.providerExecutableURL()?.path ?? ZoteroOperations.providerDescriptor.command
+    }
     var usesDefaultZoteroConnection: Bool { toolConfiguration != nil && zoteroConnection == nil }
 
     func zoteroToolEdit(executable: URL?) -> AgentChatToolEdit? {
         if zoteroConnection != nil { return editTool(named: Self.zoteroServerName) }
-        guard let executable, executable.isFileURL, var edit = editTool() else { return nil }
+        guard var edit = editTool() else { return nil }
         edit.connection = .init(
-            name: Self.zoteroServerName, kind: .local, address: executable.path,
-            arguments: ZoteroMCPTransportDescriptor.supportedLocal.readOnlyArguments, enabled: true)
+            name: Self.zoteroServerName, kind: .local,
+            address: executable?.path ?? ZoteroOperations.providerDescriptor.command,
+            arguments: ZoteroOperations.providerDescriptor.clientConfiguration.arguments,
+            enabled: true)
         return edit
     }
 

@@ -217,19 +217,23 @@ and pending auth state never enter history.
 
 ### Zotero boundary
 
-The read-only preset uses runtime configuration, preserving disabled/custom
-connections on reconnect. Only successfully read configuration without that
-connection permits a default override. Local API availability, MCP connection
-state and material observations remain independent.
+The default Chat connection is a provider-managed Zotero MCP transport, using
+runtime configuration to preserve disabled/custom connections on reconnect. Only
+successfully read configuration without that connection permits a default
+override. The provider's complete tool surface is passed through; Scholium does
+not maintain a second seven-tool projection. Provider installation, local API
+availability, MCP connection state and material observations remain independent.
 
-First-party read-only discovery and dispatch share one Core predicate. Annotation
-reads bind exact PDF/annotation identities and snapshot fingerprints. Original
-reads validate API-resolved path/type/metadata and reuse the descriptor-relative
-attachment reader, rechecking the immutable snapshot before return. No second
-archive or writable source projection is added. One validated Zotero locator
-contract serves source links, MCP, Chat/Sources and native navigation; a locator
-does not itself establish reading. The bounded redirect-aware client is shared
-by Application and MCP delivery.
+The provider is configured to use Zotero's local API rather than direct SQLite
+access. Provider-side authorization and Zotero writes remain provider/Zotero
+responsibilities. The bundled first-party service remains a compatibility
+transport for Scholium's own exact local API, annotation, original-file and
+fingerprint contracts; it is not an automatic Chat fallback and it does not
+become a second archive or writable source projection. One validated Zotero
+locator contract serves source links, recognized MCP reports, Chat/Sources and
+native navigation; a locator does not itself establish reading. Provider
+results are promoted into those contracts only after identity, representation
+and coverage checks.
 
 ### Native presentation boundary
 

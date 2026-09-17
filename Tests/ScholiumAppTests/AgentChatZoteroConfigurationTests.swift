@@ -15,8 +15,8 @@ struct AgentChatZoteroConfigurationTests {
         }
     }
 
-    @Test("The read-only preset persists in runtime configuration and retains custom tool edits")
-    func persistentReadPreset() async throws {
+    @Test("The provider preset exposes the full runtime surface and retains custom tool edits")
+    func persistentProviderPreset() async throws {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = repository.appendingPathComponent(".build/agent-chat-tests/zotero-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -40,15 +40,20 @@ struct AgentChatZoteroConfigurationTests {
         let defaults = try JSONDecoder().decode(MCPJSONValue.self, from: Data(contentsOf: configurationFile))
         let config = try #require(defaults.objectValue?["config"]?.objectValue)
         let builtIn = try #require(config["mcp_servers"]?.objectValue?["scholium-zotero"]?.objectValue)
-        #expect(builtIn["args"] == .array(["zotero", "mcp", "serve", "--read-only"].map(MCPJSONValue.string)))
+        #expect(builtIn["args"] == .array(["serve", "--transport", "stdio"].map(MCPJSONValue.string)))
         #expect(builtIn["required"] == .bool(false))
+        #expect(builtIn["command"]?.stringValue?.hasSuffix("zotero-mcp") == true)
+        #expect(builtIn["env"]?.objectValue?["ZOTERO_LOCAL"] == .string("true"))
+        #expect(builtIn["env"]?.objectValue?["ZOTERO_BACKEND"] == .string("api"))
+        #expect(builtIn["env"]?.objectValue?["ZOTERO_MCP_TOOLSETS"] == .string("all"))
         #expect(config["project_doc_max_bytes"] == .integer(32768))
         #expect(config["project_root_markers"] == .array([]))
         #expect(defaults.objectValue?["developerInstructions"]?.stringValue?.contains(triptych.uuidString) == true)
         #expect(caps.zoteroConnection == nil)  // The app default never writes the user's config.
         let preset = try #require(caps.zoteroToolEdit(executable: first.zoteroToolExecutable))
         #expect(preset.connection.name == "scholium-zotero" && preset.connection.kind == .local)
-        #expect(preset.connection.arguments == ["zotero", "mcp", "serve", "--read-only"])
+        #expect(preset.connection.arguments == ["serve", "--transport", "stdio"])
+        #expect(preset.connection.address.hasSuffix("zotero-mcp"))
         #expect(await caps.saveTool(preset))
         try await wait { caps.canConfigureTools }
         #expect(caps.zoteroConnection?.enabled == true)

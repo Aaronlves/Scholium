@@ -3,7 +3,9 @@ import Foundation
 import ScholiumContracts
 
 public enum ZoteroMCPTransportLocator {
-    /// Locates the configured executable without launching it. The first-party transport is resolved only inside the App bundle.
+    /// Locates a transport executable without launching it. Scholium's
+    /// first-party compatibility transport is resolved only inside the App
+    /// bundle; provider transports are resolved through the supplied PATH.
     public static func report(
         descriptor: ZoteroMCPTransportDescriptor = .supportedLocal,
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -14,15 +16,18 @@ public enum ZoteroMCPTransportLocator {
                 descriptorID: descriptor.identifier,
                 state: .commandAvailable,
                 commandPath: path.path,
-                note:
-                    "The bundled helper is present; connection and source access remain separate observations."
+                note: descriptor.identifier == ZoteroMCPTransportDescriptor.supportedLocal.identifier
+                    ? "The bundled helper is present; connection and source access remain separate observations."
+                    : "The configured provider command is present; connection, tool surface, and source access remain separate observations."
             )
         }
         return ZoteroMCPTransportReport(
             descriptorID: descriptor.identifier,
             state: .notConfigured,
             note:
-                "The bundled connection helper is unavailable. Reinstall Scholium to restore it."
+                descriptor.identifier == ZoteroMCPTransportDescriptor.supportedLocal.identifier
+                    ? "The bundled connection helper is unavailable. Reinstall Scholium to restore it."
+                    : "The configured provider command is unavailable. Install or configure the external Zotero MCP provider."
         )
     }
 
@@ -124,7 +129,9 @@ public enum ZoteroMCPTransportLocator {
         }
     }
 
-    private static func executableURL(
+    /// Returns an executable path when the transport is available. This is a
+    /// discovery operation only; it never starts the provider or reads Zotero.
+    public static func executableURL(
         descriptor: ZoteroMCPTransportDescriptor,
         environment: [String: String]
     ) -> URL? {

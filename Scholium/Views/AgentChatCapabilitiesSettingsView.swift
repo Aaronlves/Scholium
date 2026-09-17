@@ -260,7 +260,10 @@ struct AgentChatCapabilitiesSettingsView: View {
                 } else {
                     Text(
                         capabilities.usesDefaultZoteroConnection
-                            ? "Included in Chat · Read Only" : "Connection Status Unavailable", bundle: .module
+                            ? (capabilities.zoteroProviderAvailable
+                                ? "Included in Chat · Full Provider"
+                                : "Zotero Provider Not Configured")
+                            : "Connection Status Unavailable", bundle: .module
                     )
                     .font(.caption).foregroundStyle(.secondary)
                 }
@@ -284,7 +287,10 @@ struct AgentChatCapabilitiesSettingsView: View {
                         Text("Zotero")
                         Text(
                             capabilities.usesDefaultZoteroConnection
-                                ? "Included in Chat · Read Only" : "Unavailable"
+                                ? (capabilities.zoteroProviderAvailable
+                                    ? "Included in Chat · Full Provider"
+                                    : "Zotero Provider Not Configured")
+                                : "Unavailable", bundle: .module
                         )
                         .font(.caption).foregroundStyle(.secondary)
                     }
@@ -294,18 +300,18 @@ struct AgentChatCapabilitiesSettingsView: View {
                     }
                     .focused($focusedToolAction, equals: "zotero")
                     .disabled(
-                        !capabilities.canConfigureTools || controller.zoteroToolExecutable == nil
-                            || toolEdit != nil)
+                        !capabilities.canConfigureTools || toolEdit != nil)
                 }
             }
             if let connection = capabilities.zoteroConnection,
-                connection.kind != .local || connection.address != controller.zoteroToolExecutable?.path
-                    || connection.arguments != ZoteroMCPTransportDescriptor.supportedLocal.readOnlyArguments
+                connection.kind != .local || connection.address != capabilities.zoteroProviderAddress
+                    || connection.arguments != ZoteroMCPTransportDescriptor.provider.clientConfiguration.arguments
             {
                 Text("Custom Zotero Configuration").font(.caption).foregroundStyle(.secondary)
             } else {
                 Text(
-                    "The Zotero preset provides read-only tools. Saved configuration and local library availability are separate."
+                    "The Zotero provider exposes its complete tool surface. Provider authorization, availability and Zotero-side writes remain separate from Scholium.",
+                    bundle: .module
                 )
                 .font(.caption).foregroundStyle(.secondary)
             }

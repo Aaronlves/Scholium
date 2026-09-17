@@ -87,7 +87,9 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private var quotaTask: Task<Void, Never>?
     private var connectionID: UUID?
     private var helperURL: URL?
-    var zoteroToolExecutable: URL? { helperURL }
+    /// The Chat default is provider-managed. The bundled Scholium helper is
+    /// reserved for the Scholium bridge and is never a hidden Zotero fallback.
+    var zoteroToolExecutable: URL? { ZoteroOperations.providerExecutableURL() }
     private(set) var workingDirectory: URL?
     private var connectionDefaults: UserDefaults
     private var automaticConnection = false
@@ -1588,11 +1590,27 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             server["env"] = .object(["SCHOLIUM_HOME": .string(home)])
         }
         var servers: [String: MCPJSONValue] = ["scholium": .object(server)]
-        // An explicit disabled/custom runtime connection always wins over the app default.
+        // An explicit disabled/custom runtime connection always wins over the
+        // app default. When no connection is saved, expose the provider's
+        // complete tool surface. Use an absolute path when discovery finds
+        // one, otherwise retain the provider command name so the runtime can
+        // resolve its own PATH; either way there is no fallback to
+        // Scholium's seven-tool compatibility service.
         if capabilities.usesDefaultZoteroConnection {
-            var zotero = server
-            zotero["args"] = .array(ZoteroMCPTransportDescriptor.supportedLocal.readOnlyArguments.map(MCPJSONValue.string))
-            zotero["required"] = .bool(false)
+            let providerCommand = ZoteroOperations.providerExecutableURL()?.path
+                ?? ZoteroOperations.providerDescriptor.command
+            let providerEnvironment = ZoteroOperations.providerEnvironment.reduce(
+                into: [String: MCPJSONValue]()
+            ) { result, entry in
+                result[entry.key] = .string(entry.value)
+            }
+            let zotero: [String: MCPJSONValue] = [
+                "command": .string(providerCommand),
+                "args": .array(ZoteroOperations.providerDescriptor.clientConfiguration.arguments.map(MCPJSONValue.string)),
+                "env": .object(providerEnvironment),
+                "required": .bool(false),
+                "tool_timeout_sec": .integer(600),
+            ]
             servers[AgentChatCapabilitiesController.zoteroServerName] = .object(zotero)
         }
         return ["mcp_servers": .object(servers)]

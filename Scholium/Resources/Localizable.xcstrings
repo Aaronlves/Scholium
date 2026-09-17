@@ -15086,21 +15086,21 @@
         }
       }
     },
-    "Included in Chat · Read Only" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Included in Chat · Read Only"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "聊天内置 · 只读"
+    "Included in Chat · Full Provider" : {
+        "localizations" : {
+          "en" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Included in Chat · Full Provider"
+            }
+          },
+          "zh-Hans" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "聊天内置 · 完整 Provider"
+            }
           }
         }
-      }
     },
     "Incoming" : {
       "localizations" : {
@@ -28118,21 +28118,21 @@
         }
       }
     },
-    "The Zotero preset provides read-only tools. Saved configuration and local library availability are separate." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The Zotero preset provides read-only tools. Saved configuration and local library availability are separate."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zotero 预设提供只读工具。保存的配置与本地文献库是否可用是两回事。"
+    "The Zotero provider exposes its complete tool surface. Provider authorization, availability and Zotero-side writes remain separate from Scholium." : {
+        "localizations" : {
+          "en" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "The Zotero provider exposes its complete tool surface. Provider authorization, availability and Zotero-side writes remain separate from Scholium."
+            }
+          },
+          "zh-Hans" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "Zotero provider 暴露其完整工具面。provider 授权、可用性与 Zotero 侧写入均独立于 Scholium。"
+            }
           }
         }
-      }
     },
     "The active Triptych changed. The metadata draft was preserved and was not written." : {
       "localizations" : {
@@ -32155,6 +32155,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "研究结构已配置完成。"
+          }
+        }
+      }
+    },
+    "Zotero Provider Not Configured" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero Provider Not Configured"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero Provider 未配置"
           }
         }
       }

@@ -125,6 +125,10 @@ struct ZoteroOperationsTests {
 
         #expect(first === second)
         #expect(first.descriptor == .supportedLocal)
+        #expect(ZoteroOperations.providerDescriptor == .provider)
+        #expect(ZoteroOperations.providerEnvironment["ZOTERO_LOCAL"] == "true")
+        #expect(ZoteroOperations.providerEnvironment["ZOTERO_BACKEND"] == "api")
+        #expect(ZoteroOperations.providerEnvironment["ZOTERO_MCP_TOOLSETS"] == "all")
 
         let environment = ["PATH": ""]
         let report = first.report(environment: environment)

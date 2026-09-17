@@ -30,10 +30,16 @@ public struct ZoteroMCPClientConfiguration: Codable, Hashable, Sendable {
     }
 }
 
-/// The release-supported installation path for external-agent Zotero access.
-/// This describes Scholium's App-bundled helper; it is not a claim that
-/// the Markdown Skill itself can reach Zotero.
+/// A transport that an external agent can use for Zotero access.
+///
+/// `supportedLocal` describes Scholium's compatibility helper. `provider`
+/// describes the provider-managed Zotero MCP used by Chat when it is
+/// installed. The provider owns its complete tool surface and its own
+/// Zotero-side authorization; this contract does not copy or truncate that
+/// surface into Scholium.
 public struct ZoteroMCPTransportDescriptor: Codable, Hashable, Sendable {
+    public static let providerServerName = "scholium-zotero"
+
     public let identifier: String
     public let displayName: String
     public let command: String
@@ -71,6 +77,28 @@ public struct ZoteroMCPTransportDescriptor: Codable, Hashable, Sendable {
         capabilities: ZoteroMCPCapability.allCases,
         localReadOnlyByDefault: true,
         sourceURL: "https://github.com/Aaronlves/Scholium"
+    )
+
+    /// The provider-managed Zotero MCP. Chat carries this non-secret default
+    /// environment so the provider uses Zotero's local API backend and exposes
+    /// all provider tool groups without giving Scholium a second Zotero
+    /// database authority.
+    public static let provider = Self(
+        identifier: "zotero-mcp-provider",
+        displayName: "Zotero MCP provider",
+        command: "zotero-mcp",
+        clientConfiguration: ZoteroMCPClientConfiguration(
+            command: "zotero-mcp",
+            arguments: ["serve", "--transport", "stdio"],
+            environment: [
+                "ZOTERO_LOCAL": "true",
+                "ZOTERO_BACKEND": "api",
+                "ZOTERO_MCP_TOOLSETS": "all",
+            ]
+        ),
+        capabilities: ZoteroMCPCapability.allCases,
+        localReadOnlyByDefault: false,
+        sourceURL: "https://github.com/54yyyu/zotero-mcp"
     )
 
     public var readOnlyArguments: [String] { clientConfiguration.arguments }
