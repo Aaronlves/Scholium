@@ -184,6 +184,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingLine: (line: Int, focusesEditor: Bool)?
     private var pendingSourceRange: Range<Int>?
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
+    private var pendingWritingContinuationEnabled = false
+    private var pendingWritingContinuationContextKey = ""
     var pendingScrollFraction: Double?
     var pendingScrollAnchor: EditorScrollAnchor?
     @Published private(set) var openingPresentationID = UUID()
@@ -701,6 +703,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard isReady, isLoaded, let webView else { return }
         Task {
             _ = try? await send(.setUserCSS(css), in: webView)
+        }
+    }
+
+    func setWritingContinuation(enabled: Bool, contextKey: String) {
+        pendingWritingContinuationEnabled = enabled
+        pendingWritingContinuationContextKey = String(contextKey.prefix(256))
+        guard isReady, isLoaded, let webView else { return }
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            // Read the latest preference at dispatch, not an obsolete SwiftUI update.
+            _ = try? await send(
+                .setWritingContinuation(
+                    enabled: pendingWritingContinuationEnabled,
+                    contextKey: pendingWritingContinuationContextKey), in: webView)
         }
     }
 
@@ -1995,6 +2011,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             let presentationCSS = pendingPresentationCSS
             let userCSS = pendingUserCSS
             let linkPreviews = pendingLinkPreviews
+            let writingContinuationEnabled = pendingWritingContinuationEnabled
+            let writingContinuationContextKey = pendingWritingContinuationContextKey
             _ = try await send(
                 .setDocumentTitle(documentTitle),
                 in: webView,
@@ -2015,6 +2033,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 in: webView,
                 requiringRequestEpoch: intendedRequestEpoch
             )
+            _ = try await send(
+                .setWritingContinuation(
+                    enabled: writingContinuationEnabled,
+                    contextKey: writingContinuationContextKey), in: webView, requiringRequestEpoch: intendedRequestEpoch)
             guard intendedRequestEpoch == requestEpoch,
                 self.documentID == documentID,
                 self.webView === webView
@@ -2024,7 +2046,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             if documentTitle == pendingDocumentTitle,
                 presentationCSS == pendingPresentationCSS,
                 userCSS == pendingUserCSS,
-                linkPreviews == pendingLinkPreviews
+                linkPreviews == pendingLinkPreviews,
+                writingContinuationEnabled == pendingWritingContinuationEnabled,
+                writingContinuationContextKey == pendingWritingContinuationContextKey
             {
                 return
             }

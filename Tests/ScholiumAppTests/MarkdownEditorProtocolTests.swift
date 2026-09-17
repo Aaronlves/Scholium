@@ -8,6 +8,43 @@ import WebKit
 
 @Suite("Markdown editor protocol")
 struct MarkdownEditorProtocolTests {
+    @Test("Writing continuation configuration is source-neutral and round-trips")
+    func continuationConfiguration() throws {
+        let operation = MarkdownEditorOperation.setWritingContinuation(enabled: true, contextKey: "model-a")
+        let data = try JSONEncoder().encode(operation)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+        #expect(!operation.serializesSourceMutation)
+    }
+
+    @Test("Continuation queries and cancellation require typed bounded identity")
+    func continuationMessageDecoding() throws {
+        var body: [String: Any] = [
+            "type": "writingContinuationQuery", "protocolVersion": markdownEditorProtocolVersion,
+            "sessionID": UUID().uuidString, "documentID": "topics:Scope.md", "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 3, "requestID": UUID().uuidString, "caretUTF16Offset": 12, "editorCaretUTF16Offset": 11,
+        ]
+        guard case .writingContinuationQuery(let query) = EditorBridgeMessageDecoder.decode(body) else {
+            Issue.record("Expected a typed continuation query")
+            return
+        }
+        #expect(query.caretUTF16Offset == 12)
+        #expect(query.editorCaretUTF16Offset == 11)
+        body["caretUTF16Offset"] = -1
+        #expect(EditorBridgeMessageDecoder.decode(body) == nil)
+        body["caretUTF16Offset"] = 12
+        body["extra"] = "unauthorized"
+        #expect(EditorBridgeMessageDecoder.decode(body) == nil)
+        body.removeValue(forKey: "extra")
+        body["type"] = "cancelWritingContinuation"
+        body.removeValue(forKey: "caretUTF16Offset")
+        body.removeValue(forKey: "editorCaretUTF16Offset")
+        guard case .cancelWritingContinuation(let cancelled) = EditorBridgeMessageDecoder.decode(body) else {
+            Issue.record("Expected typed cancellation")
+            return
+        }
+        #expect(cancelled.requestID == query.requestID)
+    }
+
     @Test("Passage replacement requires an explicit selection policy")
     func passageReplacementSelectionPolicy() throws {
         for preserve in [false, true] {
@@ -186,7 +223,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 39,
+              "protocolVersion": 40,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -224,7 +261,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 39,
+            "protocolVersion": 40,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -255,7 +292,7 @@ struct MarkdownEditorProtocolTests {
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 39,
+            "protocolVersion": 40,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -296,7 +333,7 @@ struct MarkdownEditorProtocolTests {
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 39,
+            "protocolVersion": 40,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -323,7 +360,7 @@ struct MarkdownEditorProtocolTests {
     func dropFocusRequestUsesExactEnvelope() throws {
         let object: [String: Any] = [
             "type": "requestEditorFocus",
-            "protocolVersion": 39,
+            "protocolVersion": 40,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -356,7 +393,7 @@ struct MarkdownEditorProtocolTests {
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 39,
+            "protocolVersion": 40,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),

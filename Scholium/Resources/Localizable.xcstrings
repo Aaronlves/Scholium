@@ -2417,6 +2417,7 @@
     }
   }
 },
+    "Accept AI Continuation": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept AI Continuation"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受 AI 续写"}}}},
     "Complete Term": {
   "localizations": {
     "en": {

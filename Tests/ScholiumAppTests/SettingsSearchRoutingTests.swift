@@ -15,6 +15,9 @@ struct SettingsSearchRoutingTests {
         }
         #expect(SettingsInteractionCategory.matchingSearch("回车") == .chat)
         #expect(SettingsInteractionCategory.matchingSearch("选段操作") == .selectionActions)
+        for query in ["Writing Assistance", "AI continuation", "Continuation Model", "autocomplete", "续写模型", "写作辅助", "补全"] {
+            #expect(SettingsInteractionCategory.matchingSearch(query) == .writingAssistance)
+        }
     }
 
     @Test("Search changes and native reattachment retain the original child category")

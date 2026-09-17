@@ -3,14 +3,164 @@ import {
   type CompletionResult,
   type CompletionSource,
 } from "@codemirror/autocomplete";
-import {EditorState, Transaction, type TransactionSpec} from "@codemirror/state";
-import type {EditorView} from "@codemirror/view";
-import {describe, expect, it} from "vitest";
+import {EditorSelection, EditorState, StateEffect, Transaction, type Extension, type TransactionSpec} from "@codemirror/state";
+import {EditorView, type DecorationSet} from "@codemirror/view";
+import {history, undo} from "@codemirror/commands";
+import {describe, expect, it, vi} from "vitest";
 import {
   createEditorInputSuggestions,
   inputSuggestionTesting,
+  safeContinuationSuffix,
 } from "../input-suggestions";
 import type {EditorMode, MarkdownEditingDialect} from "../protocol";
+import {exactSourceHistory, exactSourceState, setExactSource} from "../exact-source-history";
+import {normalizedDocumentText} from "../state";
+
+function inlineContinuationHarness(source = "A claim about res", options: {
+  composing?: boolean; protectedRanges?: readonly {from: number; to: number}[]; multipleSelections?: boolean;
+  mode?: EditorMode; readOnly?: boolean; editable?: boolean;
+} = {}) {
+  const requests: string[] = [], cancelled: string[] = [], terms: string[] = [], labels: string[] = [];
+  let state = EditorState.create({doc: normalizedDocumentText(source),
+    selection: options.multipleSelections ? EditorSelection.create([EditorSelection.cursor(0), EditorSelection.cursor(normalizedDocumentText(source).length)])
+      : {anchor: normalizedDocumentText(source).length},
+    extensions: [history(), exactSourceHistory, EditorState.allowMultipleSelections.of(true),
+      ...(options.readOnly ? [EditorState.readOnly.of(true)] : []),
+      ...(options.editable === false ? [EditorView.editable.of(false)] : [])]})
+    .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
+  const suggestions = createEditorInputSuggestions({
+    nativeFloating: {show: () => 0, hide: () => {}, event: () => true}, mode: () => options.mode ?? "livePreview",
+    dialect: () => dialect, isComposing: () => options.composing ?? false, protectedRanges: () => options.protectedRanges ?? [],
+    requestLinkCompletions: id => { terms.push(id); },
+    requestWritingContinuation: id => { requests.push(id); },
+    cancelWritingContinuation: id => { cancelled.push(id); }, didApply: label => labels.push(label),
+  });
+  const view = {get state() {return state;}, composing: false, hasFocus: true,
+    dispatch(spec: TransactionSpec) { state = state.update(spec).state; }} as unknown as EditorView;
+  // A detached plugin exercises scheduling without pretending to establish WebKit input acceptance.
+  const definition = (suggestions.extension as Extension[])[1] as unknown as {create(view: EditorView): {
+    decorations: DecorationSet; schedule(): void; clear(): void; accept(): boolean;
+  }};
+  const plugin = definition.create(view);
+  suggestions.configureWritingContinuation(true, "model-a");
+  plugin.schedule();
+  return {suggestions, plugin, requests, cancelled, terms, labels, state: () => state, view};
+}
+
+describe("AI-first inline continuation", () => {
+  it("waits for AI without exposing or requesting local terms, and accepts one exact Undo event", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness("\uFEFFFirst 😀.\r\nA claim about res");
+    await vi.advanceTimersByTimeAsync(1_199);
+    expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.requests).toHaveLength(1); expect(h.terms).toEqual([]);
+    h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility needs qualification."});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.plugin.decorations.size).toBe(1);
+    expect(h.plugin.accept()).toBe(true);
+    expect(h.state().field(exactSourceState).text).toBe("\uFEFFFirst 😀.\r\nA claim about responsibility needs qualification.");
+    expect(h.labels).toEqual(["Accept AI Continuation"]);
+    expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+    expect(h.state().field(exactSourceState).text).toBe("\uFEFFFirst 😀.\r\nA claim about res");
+    vi.useRealTimers();
+  });
+
+  it("falls back after timeout and ignores the late AI response", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    await vi.advanceTimersByTimeAsync(9_200);
+    expect(h.cancelled).toEqual(h.requests); expect(h.terms).toHaveLength(1);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "topic.md",
+      isAmbiguous: false, writingAction: "term", replacementUTF16Count: 3}]);
+    await vi.advanceTimersByTimeAsync(0);
+    h.suggestions.resolveWritingContinuation(h.requests[0], {text: "different sentence."});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.plugin.accept()).toBe(true);
+    expect(h.state().doc.toString()).toBe("A claim about responsibility");
+    vi.useRealTimers();
+  });
+
+  it("uses local term fallback in Source after AI failure", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness("A claim about res", {mode: "source"});
+    await vi.advanceTimersByTimeAsync(1_200);
+    expect(h.requests).toHaveLength(1); expect(h.terms).toEqual([]);
+    h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason: "Offline"});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.terms).toHaveLength(1);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "topic.md",
+      isAmbiguous: false, writingAction: "term", replacementUTF16Count: 3}]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.plugin.accept()).toBe(true);
+    expect(h.state().doc.toString()).toBe("A claim about responsibility");
+    vi.useRealTimers();
+  });
+
+  it("does not query or accept inline writing in read-only or noneditable states", async () => {
+    vi.useFakeTimers();
+    for (const options of [{readOnly: true}, {editable: false}]) {
+      const h = inlineContinuationHarness("A claim about res", options);
+      await vi.advanceTimersByTimeAsync(1_200);
+      expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+      expect(h.suggestions.writingCompletionSource(new CompletionContext(h.state(), h.state().doc.length, false))).toBeNull();
+      expect(h.plugin.accept()).toBe(false);
+    }
+    for (const extension of [EditorState.readOnly.of(true), EditorView.editable.of(false)]) {
+      const h = inlineContinuationHarness();
+      await vi.advanceTimersByTimeAsync(1_200);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponse."});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.decorations.size).toBe(1);
+      h.view.dispatch({effects: StateEffect.appendConfig.of(extension)});
+      expect(h.plugin.accept()).toBe(false);
+      expect(h.state().doc.toString()).toBe("A claim about res");
+      h.plugin.clear();
+    }
+    vi.useRealTimers();
+  });
+
+  it("cancels on dismissal and model change without falling back", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    await vi.advanceTimersByTimeAsync(1_200);
+    h.plugin.clear();
+    h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponse."});
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.terms).toEqual([]); expect(h.plugin.decorations.size).toBe(0);
+    h.plugin.schedule(); await vi.advanceTimersByTimeAsync(1_200);
+    h.suggestions.configureWritingContinuation(true, "model-b");
+    h.suggestions.resolveWritingContinuation(h.requests[1], {text: "ponse."});
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.cancelled).toEqual(h.requests); expect(h.terms).toEqual([]);
+    expect(h.plugin.decorations.size).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it("rejects multiline, hidden controls, Markdown structures and malformed UTF16", () => {
+    for (const text of ["", " ", "a\nb", "a\u0085b", "a\u2028b", "a\u2029b", "a\u202eb", "[[note]]", "*claim*", "\ud800", "x".repeat(513)]) {
+      expect(safeContinuationSuffix(text)).toBeNull();
+    }
+    expect(safeContinuationSuffix(" qualifies the claim 😀。" )).toBe(" qualifies the claim 😀。");
+    expect(safeContinuationSuffix(" 👩‍🔬 می‌نویسد।")).toBe(" 👩‍🔬 می‌نویسد।");
+  });
+
+  it("does not request AI in composition, protected constructs, trigger menus or multiple selections", async () => {
+    vi.useFakeTimers();
+    for (const [source, options] of [
+      ["A claim about res", {composing: true}],
+      ["A claim about res", {protectedRanges: [{from: 0, to: 20}]}],
+      ["A claim about res", {multipleSelections: true}],
+      ["[[respons", {}], ["Claim @author", {}], ["Claim /table", {}],
+    ] as const) {
+      const h = inlineContinuationHarness(source, options);
+      await vi.advanceTimersByTimeAsync(1_200);
+      expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+      h.plugin.clear();
+    }
+    vi.useRealTimers();
+  });
+});
 
 const dialect: MarkdownEditingDialect = {
   version: 5,

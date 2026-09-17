@@ -43,6 +43,42 @@ enum ScholiumL10n {
         return String(localized: resource)
     }
 
+    enum WritingAssistance {
+        static var title: LocalizedStringResource {
+            LocalizedStringResource("Writing Assistance", table: "Interface", bundle: .module)
+        }
+        static var enable: LocalizedStringResource {
+            LocalizedStringResource("Enable AI Continuation", table: "Interface", bundle: .module)
+        }
+        static var model: LocalizedStringResource {
+            LocalizedStringResource("Continuation Model", table: "Interface", bundle: .module)
+        }
+        static var openTriptych: LocalizedStringResource {
+            LocalizedStringResource(
+                "Open a Triptych and connect Codex in Integrations → Agents & Chat to choose a continuation model.",
+                table: "Interface", bundle: .module
+            )
+        }
+        static var connect: LocalizedStringResource {
+            LocalizedStringResource(
+                "Connect and sign in to Codex in Integrations → Agents & Chat. Your selected model is retained.",
+                table: "Interface", bundle: .module
+            )
+        }
+        static var unavailableModel: LocalizedStringResource {
+            LocalizedStringResource(
+                "The selected model is unavailable on this connection. Choose an available model; Scholium will not substitute another model automatically.",
+                table: "Interface", bundle: .module
+            )
+        }
+        static var contextAndAllowance: LocalizedStringResource {
+            LocalizedStringResource(
+                "AI continuation uses the connected Codex account and may consume its allowance. Requests use low or lower supported reasoning effort and the standard service tier. Writing context and relevant search excerpts are sent to that connection; processing may be remote. With AI off or unavailable, local terminology completion remains available.",
+                table: "Interface", bundle: .module
+            )
+        }
+    }
+
     enum Settings {
         static var workspace: LocalizedStringResource {
             LocalizedStringResource(

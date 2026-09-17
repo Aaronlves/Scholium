@@ -63,6 +63,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
                 "Interaction", "交互", "快捷键", "Keyboard Shortcuts", "Selection Actions", "Chat", "queue", "steer", "return", "聊天", "回车", "排队", "shortcuts",
                 "commands",
                 "prompt", "instruction", "选段操作",
+                "Writing Assistance", "AI Continuation", "Continuation Model", "completion", "autocomplete", "sentence", "写作辅助", "续写", "续写模型", "补全",
             ]
                 + ScholiumHotkeyCommand.customizableCommands.flatMap {
                     [String(localized: $0.title), String(localized: $0.menuPath)]

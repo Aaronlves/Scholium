@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 39
+let markdownEditorProtocolVersion = 40
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 // Two exact-source strings may each require six JSON bytes per source byte.
@@ -220,6 +220,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setPresentationCSS(String)
     case setUserCSS(String)
     case setLinkPreviews([MarkdownEditorLinkPreview])
+    case setWritingContinuation(enabled: Bool, contextKey: String)
     case showPreview
     case measureVisibleProjection
     case showPreviewAt(x: Double, y: Double)
@@ -257,10 +258,12 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
-        case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID
+        case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
+            enabled, contextKey
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt,
+        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setWritingContinuation, showPreview,
+            measureVisibleProjection, showPreviewAt,
             announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
         case captureRecovery, suspendForDetachment, resumeAfterDetachment, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, insertReference,
@@ -288,6 +291,10 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setPresentationCSS: self = try .setPresentationCSS(container.decode(String.self, forKey: .value))
         case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
         case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))
+        case .setWritingContinuation:
+            self = try .setWritingContinuation(
+                enabled: container.decode(Bool.self, forKey: .enabled),
+                contextKey: container.decode(String.self, forKey: .contextKey))
         case .showPreview: self = .showPreview
         case .measureVisibleProjection: self = .measureVisibleProjection
         case .showPreviewAt:
@@ -365,6 +372,10 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setPresentationCSS(let value): try pair(.setPresentationCSS, value, .value, into: &container)
         case .setUserCSS(let value): try pair(.setUserCSS, value, .value, into: &container)
         case .setLinkPreviews(let value): try pair(.setLinkPreviews, value, .value, into: &container)
+        case .setWritingContinuation(let enabled, let contextKey):
+            try container.encode(Kind.setWritingContinuation, forKey: .type)
+            try container.encode(enabled, forKey: .enabled)
+            try container.encode(contextKey, forKey: .contextKey)
         case .showPreview: try container.encode(Kind.showPreview, forKey: .type)
         case .measureVisibleProjection:
             try container.encode(Kind.measureVisibleProjection, forKey: .type)

@@ -1876,6 +1876,7 @@ final class WindowModel: ObservableObject {
     @Published var triptychSettings = TriptychSettings()
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
+    let writingContinuationContextCache = WritingContinuationContextCache()
     lazy var discoveryController = DiscoveryController(
         shellState: shellState
     ) { [weak self] intent in

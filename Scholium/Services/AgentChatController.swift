@@ -77,6 +77,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private let displayWindow: @MainActor (UUID) -> AgentChatDisplayScope?
     private let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
     private var runtime: CodexAppServer?
+    @Published private var continuationExecution: CodexWritingContinuation?
+    private var continuationID: UUID?
     private var eventTask: Task<Void, Never>?
     private var persistenceTask: Task<Void, Never>?
     private var connectionTask: Task<Void, Never>?
@@ -241,7 +243,46 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var suggestedHelperPath: String? { ScholiumAgentIntegrationResources.chatHelperURL()?.path }
     var selected: AgentChatConversation? { conversations.first { $0.id == selectedID } }
     var isBusy: Bool { selectedID.map(isBusy(in:)) ?? (connectionState == .connecting) }
-    var hasActiveExecutions: Bool { executions.values.contains(where: \.isBusy) }
+    var hasActiveExecutions: Bool { executions.values.contains(where: \.isBusy) || continuationExecution?.isActive == true }
+
+    var writingContinuationModels: [AgentChatModel] {
+        models.filter(CodexWritingContinuation.supports)
+    }
+
+    func canRequestWritingContinuation(model: String) -> Bool {
+        connectionState == .ready && account != nil && !isRenewingSettings && !capabilities.isChanging
+            && models.contains { $0.model == model && CodexWritingContinuation.supports($0) }
+    }
+
+    /// Isolated generation shares the authenticated transport, never Chat drafts,
+    /// retained conversations, materials, Skills or source-mutation admission.
+    func writingContinuation(_ request: CodexWritingContinuationRequest) async throws -> String {
+        guard canRequestWritingContinuation(model: request.model), let runtime, let connectionID,
+            let workingDirectory, let model = models.first(where: { $0.model == request.model })
+        else { throw CodexWritingContinuationError.unavailable }
+        guard continuationExecution == nil else { throw CodexWritingContinuationError.busy }
+        let identity = UUID()
+        continuationID = identity
+        let execution = CodexWritingContinuation(runtime: runtime, skillPaths: capabilities.methods.map { $0.selection.path }) { [weak self] in
+            guard let self, self.continuationID == identity else { return }
+            self.continuationExecution = nil
+            self.continuationID = nil
+        }
+        continuationExecution = execution
+        do {
+            let suffix = try await execution.run(request, model: model, cwd: workingDirectory)
+            try Task.checkCancellation()
+            guard self.connectionID == connectionID else { throw CodexWritingContinuationError.unavailable }
+            return suffix
+        } catch {
+            // Failed preflight starts no task and therefore needs no async teardown.
+            if !execution.isActive, continuationID == identity {
+                continuationExecution = nil
+                continuationID = nil
+            }
+            throw error
+        }
+    }
     var needsInput: Bool {
         executions.values.contains { $0.approvals.contains { !$0.isSubmitting } }
             || conversations.contains { $0.isAvailable == true && $0.messages.contains { $0.asyncQuestion?.isPending == true } }
@@ -1950,6 +1991,9 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             reconnectTask = nil
         }
         capabilities.detach()
+        continuationExecution?.stop(throwing: CodexConnectionError.disconnected)
+        continuationExecution = nil
+        continuationID = nil
         connectionID = nil
         connectionTask?.cancel()
         connectionTask = nil
@@ -2734,6 +2778,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     private func receive(_ event: [String: MCPJSONValue]) async {
+        if await continuationExecution?.receive(event) == true { return }
         guard let method = event["method"]?.stringValue else { return }
         let params = event["params"]?.objectValue ?? [:]
         if method == "mcpServer/oauthLogin/completed" {

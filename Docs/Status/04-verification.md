@@ -44,6 +44,22 @@ are recorded for the 2026-09-16 editor/Settings development runs. QA used
 disposable standard 500-Note Triptych copies and isolated state; recorded QA
 processes, bundles and temporary state were removed.
 
+**2026-09-17 — Inline writing assistance:** Owning mocked-runtime checks cover
+independent model/low effort, isolated ephemeral execution, cancellation, cleanup
+and bounded literal output. Editor typechecking and 364 tests cover AI-first
+preview, unavailable/empty/timeout fallback, late-result rejection, IME suppression
+and exact Undo. Eight native/context checks cover unfocused suppression,
+source-neutral configuration and revision-bound background. A disposable 500-Note
+QA journey verifies Settings search, default off/Luna, retained offline choice and
+disable. Gate components completed: 481 Core plus three performance, 96 Contracts,
+183 Application plus one architecture measurement, 1,022 App tests, public-symbol
+guards, Release compilation and helper isolation. An unrelated Zotero fixture
+timeout passed isolated recheck and full Core rerun before gate continuation.
+No provider generation or private vault was used. SwiftPM's inactive
+WebKit host cannot establish native AI acceptance/Undo; real-runtime quality,
+quota, IME, VoiceOver and full adaptations remain open.
+Evidence: `.build/continuation/`.
+
 **2026-09-17 — Writing References identity/navigation:** Seventeen owning tests
 cover BOM/CRLF, exact revision-bound source opening, changed/unreadable/dirty
 sources, duplicate titles and all three roles. Seventy-three adjacent navigation/

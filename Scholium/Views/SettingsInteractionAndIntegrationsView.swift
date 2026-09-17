@@ -24,6 +24,7 @@ struct SettingsSearchNavigation<Category: Equatable> {
 enum SettingsInteractionCategory: String, CaseIterable, Identifiable {
     case keyboardShortcuts = "keyboard-shortcuts"
     case selectionActions = "selection-actions"
+    case writingAssistance = "writing-assistance"
     case chat = "chat"
 
     var id: String { rawValue }
@@ -36,6 +37,8 @@ enum SettingsInteractionCategory: String, CaseIterable, Identifiable {
             LocalizedStringResource("Chat", table: "Localizable", bundle: .module)
         case .selectionActions:
             LocalizedStringResource("Selection Actions", table: "Localizable", bundle: .module)
+        case .writingAssistance:
+            ScholiumL10n.WritingAssistance.title
         }
     }
 
@@ -49,6 +52,9 @@ enum SettingsInteractionCategory: String, CaseIterable, Identifiable {
             return .keyboardShortcuts
         }
         let normalized = query.localizedLowercase
+        if ["writing", "continuation", "complete", "completion", "autocomplete", "sentence", "写作", "续写", "补全"].contains(where: normalized.contains) {
+            return .writingAssistance
+        }
         if ["chat", "queue", "steer", "return", "聊天", "回车", "排队"].contains(where: normalized.contains) {
             return .chat
         }
@@ -125,6 +131,7 @@ struct SettingsInteractionView: View {
                 switch item {
                 case .keyboardShortcuts: HotkeySettingsView(searchQuery: searchQuery)
                 case .selectionActions: SelectionActionsSettingsView()
+                case .writingAssistance: WritingContinuationSettingsView()
                 case .chat: AgentChatInputSettingsView()
                 }
             }

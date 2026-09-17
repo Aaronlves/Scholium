@@ -41,6 +41,9 @@
 
 ## Agent collaboration and integrations
 
+- Complete real-runtime inline continuation latency, quota and researcher-judged
+  usefulness with retrieved background. Mock generation does not establish provider
+  execution, installed IME or VoiceOver; retain the independent opt-in/model policy.
 - Complete the packaged external-host journey in §21.5: installed App/bundled
   helper, both user-scope setup commands, production bridge, clean-account smoke
   and exact artifact provenance. Local helper tests are not packaged proof.

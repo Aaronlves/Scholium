@@ -2,6 +2,43 @@ import AppKit
 @preconcurrency import XCTest
 
 extension ScholiumUITests {
+    /// The fresh fixture's Codex connection stays disconnected. Enabling this
+    /// machine-local preference must neither replace its model nor initiate a
+    /// connection, and disabling it retains the selection for later use.
+    @MainActor
+    func testWritingContinuationSettingsSearchAndDisconnectedPreferences() throws {
+        let window = openSettingsForTransactionTest()
+        let search = window.searchFields["scholium.settings.search"]
+        typeCommittedText("AI continuation", into: search, in: app)
+
+        let enabled = window.descendants(matching: .any)["scholium.settings.writingContinuation.enabled"].firstMatch
+        let model = window.popUpButtons["scholium.settings.writingContinuation.model"]
+        let repair = window.staticTexts[
+            "Connect and sign in to Codex in Integrations → Agents & Chat. Your selected model is retained."
+        ]
+        XCTAssertTrue(enabled.waitForExistence(timeout: 5), "Search must reveal Writing Assistance")
+        XCTAssertEqual(window.title, "Interaction")
+        XCTAssertFalse(selectionControlIsSelected(enabled), "AI continuation must be opt-in")
+        XCTAssertTrue(model.waitForExistence(timeout: 5))
+        XCTAssertEqual(model.value as? String, "gpt-5.6-luna")
+        XCTAssertFalse(model.isEnabled)
+        XCTAssertTrue(repair.waitForExistence(timeout: 5))
+
+        enabled.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { self.selectionControlIsSelected(enabled) })
+        XCTAssertFalse(model.isEnabled, "A disconnected runtime cannot offer model choices")
+        XCTAssertEqual(model.value as? String, "gpt-5.6-luna", "Enabling must not substitute a model")
+        XCTAssertTrue(repair.exists, "Offline setup remains explained beside the retained choice")
+        captureSettingsTransaction(window, named: "settings-writing-continuation-disconnected")
+
+        enabled.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !self.selectionControlIsSelected(enabled) })
+        XCTAssertEqual(model.value as? String, "gpt-5.6-luna", "Disabling must retain the model")
+        XCTAssertFalse(model.isEnabled)
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 3) { !window.exists })
+    }
+
     /// Reminder edits remain a draft until their scoped Save, and reload has
     /// an explicit discard boundary. All persistence belongs to the QA Triptych.
     @MainActor

@@ -120,6 +120,9 @@ work, repeat a mutation, answer an approval or silently settle uncertain deliver
 
 Chat adds no automatic Settle, philosophical verdict, argument graph or proposal lifecycle. Research-context handoff is provider-neutral; adding
 runtime adapters does not change its Note-snapshot contract.
+Opt-in writing continuation under §18.4 reuses the connection through isolated,
+bounded text-only requests. It neither changes Chat drafts/history/settings nor grants
+MCP, file, tool or Note mutation authority; cancellation interrupts its execution.
 
 ### 8.7.1 Conversation continuity
 

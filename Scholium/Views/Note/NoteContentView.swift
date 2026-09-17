@@ -115,6 +115,7 @@ struct DocumentFeatureState {
 struct DocumentFeatureActions {
     var passageAction: @MainActor (DocumentPassageAction, MarkdownSourceSelectionSnapshot?) -> Void = { _, _ in }
     var askAgent: AgentSelectionInquiryHandler = { _, _ in nil }
+    var writingContinuation: @MainActor (Int) async -> EditorWritingContinuationResult = { _ in .unavailable(nil) }
     let requestIdentityResolution: @MainActor () -> Void
     let retryIdentityRecovery: @MainActor () async -> Void
     let beginSearch: @MainActor (SearchInvocation) -> Void
@@ -220,6 +221,7 @@ struct NoteContentView: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @ObservedObject private var controller: DocumentController
     @ObservedObject private var documentSession: DocumentSessionModel
+    @ObservedObject private var writingContinuationPreferences = WritingContinuationPreferences.shared
     let target: DocumentEditingTarget
     let note: WindowDocumentLocation
     let state: DocumentFeatureState
@@ -704,7 +706,10 @@ struct NoteContentView: View {
                     documentSession.observeScrollAnchor($0)
                 },
                 onAskAgent: actions.askAgent,
-                onPassageAction: { actions.passageAction($0, nil) }
+                onPassageAction: { actions.passageAction($0, nil) },
+                writingContinuationEnabled: writingContinuationPreferences.enabled,
+                writingContinuationContextKey: writingContinuationPreferences.model,
+                writingContinuationQuery: actions.writingContinuation
             )
             .id(editorSession.viewReconstructionID)
             .allowsHitTesting(!returnToReadAfterSave)

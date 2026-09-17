@@ -12,6 +12,7 @@ const policies: Record<EditorOperation["type"], CompositionRequestPolicy> = {
   initialize: "reject", replacePassage: "reject", insertReference: "reject",
   queryText: "defer", querySelection: "defer", captureRecovery: "defer",
   markClean: "defer", setMode: "defer", setDocumentTitle: "defer",
+  setWritingContinuation: "allow",
   setPresentationCSS: "defer", setUserCSS: "defer", setLinkPreviews: "defer",
   goToLine: "defer", revealSourceRange: "defer", restoreRecovery: "defer",
   acknowledgeCommittedSnapshot: "defer", command: "defer", documentFind: "defer",

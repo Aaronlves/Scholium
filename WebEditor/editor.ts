@@ -133,6 +133,7 @@ import {appendMarkdownBlocks} from "./markdown-fragment";
 import {createEditorScrollCoordinator} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
 import {boundedUUID, createEditorInputSuggestions} from "./input-suggestions";
+import {exactOffsetForNormalizedOffset} from "./state";
 import {
   AnimationFrameCoalescer,
   interactionAvailabilitySignature,
@@ -188,6 +189,7 @@ interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
   prepareForReuse(): boolean;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
+  resolveWritingContinuation(requestID: string, value: unknown): void;
   resolveDocumentTitleRename(
     requestID: string,
     accepted: boolean,
@@ -1940,6 +1942,15 @@ const inputSuggestions = createEditorInputSuggestions({
   requestLinkCompletions: (requestID, completionKind, query) => {
     post({type: "linkCompletionQuery", requestID, completionKind, query});
   },
+  requestWritingContinuation: (requestID, state, position) => {
+    const caretUTF16Offset = exactOffsetForNormalizedOffset(state.field(exactSourceState).text, position);
+    if (caretUTF16Offset === null) {
+      inputSuggestions.resolveWritingContinuation(requestID, {text: null});
+      return;
+    }
+    post({type: "writingContinuationQuery", requestID, caretUTF16Offset, editorCaretUTF16Offset: position});
+  },
+  cancelWritingContinuation: requestID => post({type: "cancelWritingContinuation", requestID}),
   didApply: (undoLabel) => {
     lastUndoLabel = undoLabel;
     lastRedoLabel = undoLabel;
@@ -2307,6 +2318,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
+  case "setWritingContinuation": inputSuggestions.configureWritingContinuation(operation.enabled, operation.contextKey); break;
   case "showPreview": previewPopover.showAtSelection(); break;
   case "measureVisibleProjection": {
     const startedAt = performance.now();
@@ -2978,6 +2990,7 @@ webkitWindow.scholiumEditor = {
     return true;
   },
   resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
+  resolveWritingContinuation: inputSuggestions.resolveWritingContinuation,
   resolveDocumentTitleRename,
   refreshMathRuntime() {
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});

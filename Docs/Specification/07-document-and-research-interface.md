@@ -83,16 +83,23 @@ owner. All editing auxiliaries use system text, colors, controls and elevation
 under §19. During composition, menus, candidates and previews yield immediately
 to the input method; application navigation and acceptance resume afterward.
 
-Writing suggestions in Edit and Source appear as quiet inline secondary text
-following the caret, with a fine dotted underline and small ⇥ key hint; they never
-appear in a candidate panel. A committed word prefix can
-complete an explicitly authored alias or YAML keyword as ordinary text. Note
-titles are reserved for retrieval unless also declared as vocabulary.
-Only the missing suffix is offered; acceptance never rewrites existing text.
-Tab or explicit activation accepts; Escape dismisses; Return retains newline
-behavior. The preview is not source, copied text or an Undo entry. Typing, moving
-the caret, losing focus and composition clear it. Literal/code/frontmatter
-contexts, multiple selections and complete terms suppress suggestions.
+Edit/Source share an inline preview with dotted underline and ⇥, never a panel.
+Local completion offers authored alias/keyword suffixes, excluding complete terms
+and undeclared titles. AI continuation defaults off. Writing Assistance selects
+an independent runtime-inventory model with low-cost default and low-or-lower supported effort.
+Unavailable choices never silently switch. Enabling permits bounded writing/retrieved
+context to reach the runtime; remote processing and usage are disclosed.
+AI takes priority, offering the current sentence's remainder. Unsaved writing controls
+direction; bounded Related-Content background keeps roles/revisions distinct, not
+instructions or evidence. Missing retrieval permits generation. AI failure, timeout
+or unusable output permits local fallback; waiting shows no local preview and late
+AI cannot replace fallback. AI previews identify origin.
+Tab/activation appends the visible suffix in one Undo; Return remains newline.
+Escape dismisses without fallback. Preview is not source or copied
+text. Typing, caret movement, focus loss, composition, document/configuration changes
+cancel requests/previews. Literal/code/frontmatter contexts and multiple
+selections suppress both. System spelling/grammar remains separate from prediction.
+
 **Find Writing References…** in Insert (default Shift-Command-J, configurable)
 uses the same Related pane and result session as selection recommendations. It
 captures the selected passage, or the current paragraph when the caret is empty.

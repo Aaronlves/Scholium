@@ -10,6 +10,86 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Unfocused AI continuation sends no requests; configuration preserves exact source and history")
+    func writingContinuationUnfocusedSuppressionAndConfiguration() async throws {
+        let source = "\u{feff}Intro 😀.\r\n\r\n控制 moral re"
+        var requestedCarets: [Int] = []
+        let configurationProbe = WritingContinuationConfigurationProbe()
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: configurationProbe,
+            initialSourceRange: source.utf16.count..<source.utf16.count,
+            laysOutForPointerTesting: true,
+            writingContinuationEnabled: true,
+            writingContinuationQuery: { caret in
+                requestedCarets.append(caret)
+                return .suggestion("ponsibility needs care.")
+            })
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.hideWindowForUnfocusedInputTesting()
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilFocused()
+        // DOM focus in a background/hidden page cannot authorize automatic AI.
+        // This is a suppression/source-preservation check, not a GUI acceptance test.
+        #expect(try await harness.callPageJavaScript("return document.hasFocus();") as? Bool == false)
+        func ghostCount() async throws -> Int {
+            (try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-writing-ghost').length;") as? Int) ?? -1
+        }
+        func waitForConfiguration(enabled: Bool, model: String) async throws {
+            let expected = MarkdownEditorOperation.setWritingContinuation(enabled: enabled, contextKey: model)
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while !configurationProbe.applied.contains(expected) {
+                guard ContinuousClock.now < deadline else {
+                    Issue.record("The continuation configuration did not reach the page.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        try await waitForConfiguration(enabled: true, model: "model-a")
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 's');")
+        let typed = source + "s"
+        #expect(try await harness.session.currentText(for: harness.documentID) == typed)
+        let idleDeadline = ContinuousClock.now.advanced(by: .milliseconds(1_500))
+        repeat {
+            #expect(try await ghostCount() == 0)
+            #expect(requestedCarets.isEmpty)
+            try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < idleDeadline
+
+        let selection = harness.session.context?.selections
+        harness.configureWritingContinuation(enabled: true, model: "model-b")
+        try await waitForConfiguration(enabled: true, model: "model-b")
+        #expect(try await harness.session.currentText(for: harness.documentID) == typed)
+        harness.configureWritingContinuation(enabled: false, model: "model-b")
+        try await waitForConfiguration(enabled: false, model: "model-b")
+        #expect(try await harness.session.currentText(for: harness.documentID) == typed)
+        #expect(harness.session.context?.selections == selection)
+        #expect(requestedCarets.isEmpty)
+        #expect(try await ghostCount() == 0)
+        _ = try await harness.callPageJavaScript(
+            """
+            document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, bubbles: true, cancelable: true
+            }));
+            """)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class WritingContinuationConfigurationProbe: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        var applied: [MarkdownEditorOperation] = []
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if case .setWritingContinuation = request.operation { applied.append(request.operation) }
+            return result
+        }
+    }
+
     @Test("Edit and Source publish section positions while scrolling continues", arguments: [MarkdownEditorMode.livePreview, .source])
     func continuousScrollReports(mode: MarkdownEditorMode) async throws {
         let source = (1...24).map { section in
@@ -7084,6 +7164,13 @@ struct MarkdownEditorWebViewIntegrationTests {
             sourceBox.source = session.checkedSource
         }
 
+        func configureWritingContinuation(enabled: Bool, model: String) {
+            sourceBox.writingContinuationEnabled = enabled
+            sourceBox.writingContinuationModel = model
+        }
+
+        func hideWindowForUnfocusedInputTesting() { window.orderOut(nil) }
+
         init(
             documentID: String = "Argument.md",
             documentTitle: String = "Argument",
@@ -7099,6 +7186,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             initialWindowSize: NSSize = NSSize(width: 720, height: 520),
             fixedLayoutSize: NSSize? = nil,
             laysOutForPointerTesting: Bool = false,
+            writingContinuationEnabled: Bool = false,
+            writingContinuationQuery: @escaping @MainActor (Int) async -> EditorWritingContinuationResult = { _ in .unavailable(nil) },
             onTitleRename: @escaping @MainActor (String, String) async throws -> String = {
                 _, requested in requested
             }
@@ -7125,6 +7214,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 documentTitle: documentTitle
             )
             sourceBox.presentationCSS = initialPresentationCSS
+            sourceBox.writingContinuationEnabled = writingContinuationEnabled
+            sourceBox.writingContinuationQuery = writingContinuationQuery
             window = NSWindow(
                 contentRect: NSRect(
                     origin: .zero,
@@ -7780,6 +7871,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var scrollAnchor: EditorScrollAnchor?
         @Published var presentationCSS = ""
         @Published var userCSS = ""
+        @Published var writingContinuationEnabled = false
+        @Published var writingContinuationModel = "model-a"
+        var writingContinuationQuery: @MainActor (Int) async -> EditorWritingContinuationResult = { _ in .unavailable(nil) }
         var activatedLinks: [String] = []
         let mode: MarkdownEditorMode
         init(_ source: String, mode: MarkdownEditorMode, documentTitle: String) {
@@ -7871,7 +7965,10 @@ struct MarkdownEditorWebViewIntegrationTests {
                 onPasteImage: { _ in false },
                 onLinkActivation: { sourceBox.activatedLinks.append($0) },
                 onScrollFractionChange: { _ in },
-                onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }
+                onScrollAnchorChange: { sourceBox.scrollAnchor = $0 },
+                writingContinuationEnabled: sourceBox.writingContinuationEnabled,
+                writingContinuationContextKey: sourceBox.writingContinuationModel,
+                writingContinuationQuery: sourceBox.writingContinuationQuery
             )
         }
     }

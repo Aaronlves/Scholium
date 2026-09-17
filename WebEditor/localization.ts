@@ -1,6 +1,10 @@
 export const webInterfaceLocalizationKeys = [
   "Tab",
   "Accept suggestion: {text} (Tab)",
+  "AI",
+  "Accept AI continuation: {text} (Tab)",
+  "AI continuation timed out; using library completion.",
+  "AI continuation unavailable; using library completion.",
 
   "The edited Markdown document exceeds the supported editor size.",
   "Finish editing the note title before switching documents.",

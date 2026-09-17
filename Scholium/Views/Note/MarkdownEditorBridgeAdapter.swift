@@ -2,6 +2,23 @@ import Foundation
 import ScholiumContracts
 import WebKit
 
+enum EditorWritingContinuationResult: Equatable, Sendable {
+    case suggestion(String)
+    case unavailable(String?)
+}
+
+struct EditorWritingContinuationQueryMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let requestID: String
+    let caretUTF16Offset: Int
+    let editorCaretUTF16Offset: Int
+}
+
+struct EditorWritingContinuationCancellationMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let requestID: String
+}
+
 enum EditorLinkCompletionKind: String, Codable, Hashable, Sendable {
     case wikilink
     case analysisReference
@@ -126,6 +143,8 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case requestMermaidRuntime(EditorBridgeEnvelope)
     case requestMathRuntime(EditorBridgeEnvelope)
     case linkCompletionQuery(EditorLinkCompletionQueryMessage)
+    case writingContinuationQuery(EditorWritingContinuationQueryMessage)
+    case cancelWritingContinuation(EditorWritingContinuationCancellationMessage)
     case linkActivated(EditorLinkActivationMessage)
     case contextMenuRequested(EditorContextMenuMessage)
     case scrollChanged(EditorScrollMessage)
@@ -147,6 +166,8 @@ enum EditorBridgeMessage: Equatable, Sendable {
         case .requestDocumentTitleRename(let message): message.envelope
         case .requestDocumentFind(let message): message.envelope
         case .linkCompletionQuery(let message): message.envelope
+        case .writingContinuationQuery(let message): message.envelope
+        case .cancelWritingContinuation(let message): message.envelope
         case .linkActivated(let message): message.envelope
         case .contextMenuRequested(let message): message.envelope
         case .scrollChanged(let message): message.envelope
@@ -324,6 +345,25 @@ enum EditorBridgeMessageDecoder {
                     envelope: envelope,
                     action: action
                 ))
+        case "writingContinuationQuery":
+            guard hasOnlyKeys(object, additional: ["type", "requestID", "caretUTF16Offset", "editorCaretUTF16Offset"]),
+                let requestID = boundedString(object["requestID"], maximumUTF8Bytes: 128),
+                UUID(uuidString: requestID) != nil,
+                let caret = integer(object["caretUTF16Offset"]), caret >= 0,
+                caret <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes,
+                let editorCaret = integer(object["editorCaretUTF16Offset"]), editorCaret >= 0,
+                editorCaret <= caret
+            else { return nil }
+            return .writingContinuationQuery(
+                .init(
+                    envelope: envelope, requestID: requestID,
+                    caretUTF16Offset: caret, editorCaretUTF16Offset: editorCaret))
+        case "cancelWritingContinuation":
+            guard hasOnlyKeys(object, additional: ["type", "requestID"]),
+                let requestID = boundedString(object["requestID"], maximumUTF8Bytes: 128),
+                UUID(uuidString: requestID) != nil
+            else { return nil }
+            return .cancelWritingContinuation(.init(envelope: envelope, requestID: requestID))
         case "linkCompletionQuery":
             guard
                 hasOnlyKeys(

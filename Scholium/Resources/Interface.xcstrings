@@ -1,6 +1,55 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Writing Assistance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Writing Assistance" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "写作辅助" } }
+      }
+    },
+    "Enable AI Continuation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Enable AI Continuation" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "启用 AI 续写" } }
+      }
+    },
+    "Continuation Model": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Continuation Model" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "续写模型" } }
+      }
+    },
+    "Open a Triptych and connect Codex in Integrations → Agents & Chat to choose a continuation model.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open a Triptych and connect Codex in Integrations → Agents & Chat to choose a continuation model." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打开一个三联体，并在“集成 → 智能体与聊天”连接 Codex，即可选择续写模型。" } }
+      }
+    },
+    "Connect and sign in to Codex in Integrations → Agents & Chat. Your selected model is retained.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Connect and sign in to Codex in Integrations → Agents & Chat. Your selected model is retained." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请在“集成 → 智能体与聊天”连接并登录 Codex。已选模型会保留。" } }
+      }
+    },
+    "The selected model is unavailable on this connection. Choose an available model; Scholium will not substitute another model automatically.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The selected model is unavailable on this connection. Choose an available model; Scholium will not substitute another model automatically." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前连接不支持已选模型。请选择可用模型；Scholium 不会自动替换为其他模型。" } }
+      }
+    },
+    "AI continuation uses the connected Codex account and may consume its allowance. Requests use low or lower supported reasoning effort and the standard service tier. Writing context and relevant search excerpts are sent to that connection; processing may be remote. With AI off or unavailable, local terminology completion remains available.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "AI continuation uses the connected Codex account and may consume its allowance. Requests use low or lower supported reasoning effort and the standard service tier. Writing context and relevant search excerpts are sent to that connection; processing may be remote. With AI off or unavailable, local terminology completion remains available." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "AI 续写使用已连接的 Codex 账户，可能消耗其额度。请求采用模型支持的低或更低推理强度及标准服务层级。写作上下文及相关检索片段会发送至该连接，处理可能在远程进行。关闭 AI 或服务不可用时，仍可使用本地术语补全。" } }
+      }
+    },
     "settings.tab.document": {
       "comment": "Settings tab for document content presentation and appearance profiles, including typography.",
       "extractionState": "extracted_with_value",

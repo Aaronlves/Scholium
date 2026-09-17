@@ -61,6 +61,8 @@ interface InputSuggestionOptions {
     kind: EditorLinkCompletionKind,
     query: string,
   ): void;
+  requestWritingContinuation?(requestID: string, state: EditorState, position: number): void;
+  cancelWritingContinuation?(requestID: string): void;
   didApply(undoLabel: string): void;
 }
 
@@ -73,6 +75,8 @@ export interface EditorInputSuggestionsController {
   readonly calloutCompletionSource: CompletionSource;
   resetDocument(): void;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
+  configureWritingContinuation(enabled: boolean, contextKey: string): void;
+  resolveWritingContinuation(requestID: string, value: unknown): void;
 }
 
 type SuggestionType =
@@ -109,6 +113,14 @@ function isLiveSuggestionContext(options: InputSuggestionOptions, state: EditorS
     && state.selection.main.empty;
 }
 
+function isWritingSuggestionContext(options: InputSuggestionOptions, state: EditorState) {
+  const mode = options.mode(state);
+  return (mode === "livePreview" || mode === "source")
+    && !state.readOnly && state.facet(EditorView.editable)
+    && !options.isComposing()
+    && state.selection.ranges.length === 1 && state.selection.main.empty;
+}
+
 function positionIsProtected(
   options: InputSuggestionOptions,
   state: EditorState,
@@ -127,6 +139,31 @@ function termSuffix(state: EditorState, position: number, candidate: EditorLinkC
   const suffix = candidate.label.slice(count);
   // A ghost must show exactly the bytes acceptance appends, without hidden Markdown escapes.
   return suffix && !/[\\`*_{}[\]<>!|#+.]/u.test(suffix) ? suffix : null;
+}
+
+/** One visible, literal sentence suffix; never hidden newlines, controls or Markdown structures. */
+export function safeContinuationSuffix(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim() || value.length > 512
+    || /[\u0000-\u001f\u007f\u0085\u2028\u2029\u202a-\u202e\u2066-\u2069\\`*_{}[\]<>|]/u.test(value)) return null;
+  // Reject malformed UTF-16 rather than allowing display/insertion disagreement.
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(++index);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return null;
+    } else if (code >= 0xdc00 && code <= 0xdfff) return null;
+  }
+  return value;
+}
+
+function continuationContextAllowed(options: InputSuggestionOptions, state: EditorState, position: number) {
+  if (!isWritingSuggestionContext(options, state)
+    || positionIsProtected(options, state, position)
+    || positionIsProtected(options, state, Math.max(0, position - 1))) return false;
+  const before = state.sliceDoc(Math.max(0, position - 512), position);
+  return /[\p{L}\p{N}]/u.test(before)
+    && !/\[\[[^\]\n]*$|(?:^|\s)@[^\s]*$|(?:^|\s)\/[^\s]*$/u.test(before)
+    && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
 }
 
 export function boundedUUID() {
@@ -351,13 +388,50 @@ function suggestionSymbol(completion: Completion) {
 export function createEditorInputSuggestions(
   options: InputSuggestionOptions,
 ): EditorInputSuggestionsController {
+  let continuationEnabled = false;
+  let continuationContextKey = "";
+  let clearInlineWriting: (() => void) | undefined;
+  const pendingContinuations = new Map<string, {
+    resolve(value: {text: string | null; reason: string | null}): void;
+    timeout: ReturnType<typeof setTimeout>;
+  }>();
+  function cancelContinuations() {
+    for (const [requestID, pending] of pendingContinuations) {
+      clearTimeout(pending.timeout);
+      options.cancelWritingContinuation?.(requestID);
+      pending.resolve({text: null, reason: null});
+    }
+    pendingContinuations.clear();
+  }
+  function requestContinuation(state: EditorState, position: number) {
+    const requestID = boundedUUID();
+    return new Promise<{text: string | null; reason: string | null}>(resolve => {
+      const timeout = setTimeout(() => {
+        pendingContinuations.delete(requestID);
+        options.cancelWritingContinuation?.(requestID);
+        resolve({text: null, reason: localized("AI continuation timed out; using library completion.")});
+      }, 8_000);
+      pendingContinuations.set(requestID, {resolve, timeout});
+      if (options.requestWritingContinuation) options.requestWritingContinuation(requestID, state, position);
+      else resolveContinuation(requestID, {text: null, reason: null});
+    });
+  }
+  function resolveContinuation(requestID: string, value: unknown) {
+    const pending = pendingContinuations.get(requestID);
+    if (!pending) return;
+    pendingContinuations.delete(requestID);
+    clearTimeout(pending.timeout);
+    const payload = value && typeof value === "object" ? value as {text?: unknown; reason?: unknown} : {};
+    pending.resolve({text: safeContinuationSuffix(payload.text),
+      reason: typeof payload.reason === "string" && payload.reason.trim() ? payload.reason.slice(0, 512) : null});
+  }
   const pendingLinkQueries = new Map<string, {
     resolve(candidates: EditorLinkCompletionCandidate[]): void;
     timeout: ReturnType<typeof setTimeout>;
   }>();
 
   class Ghost extends WidgetType {
-    constructor(readonly text: string, readonly accept: () => void) { super(); }
+    constructor(readonly text: string, readonly accept: () => void, readonly ai = false, readonly reason: string | null = null) { super(); }
     toDOM() {
       const node = document.createElement("span");
       node.className = "scholium-writing-ghost";
@@ -366,11 +440,12 @@ export function createEditorInputSuggestions(
       suffix.textContent = this.text;
       const hint = document.createElement("span");
       hint.className = "scholium-writing-ghost-key";
-      hint.textContent = "⇥";
+      hint.textContent = this.ai ? `${localized("AI")} ⇥` : "⇥";
       hint.setAttribute("aria-hidden", "true");
       node.append(suffix, hint);
       node.setAttribute("role", "button");
-      node.setAttribute("aria-label", localizedTemplate("Accept suggestion: {text} (Tab)", {text: this.text}));
+      node.setAttribute("aria-label", localizedTemplate(this.ai ? "Accept AI continuation: {text} (Tab)" : "Accept suggestion: {text} (Tab)", {text: this.text}));
+      if (this.reason) { node.title = this.reason; node.setAttribute("aria-description", this.reason); }
       node.addEventListener("mousedown", event => { event.preventDefault(); });
       node.addEventListener("click", () => this.accept());
       return node;
@@ -394,7 +469,7 @@ export function createEditorInputSuggestions(
     });
   }
   const writingCompletionSource: CompletionSource = (context) => {
-    if (options.isComposing() || context.state.selection.ranges.length !== 1 || !context.state.selection.main.empty
+    if (!isWritingSuggestionContext(options, context.state)
       || positionIsProtected(options, context.state, context.pos)
       || positionIsProtected(options, context.state, Math.max(0, context.pos - 1))) return null;
     const before = context.state.sliceDoc(Math.max(0, context.pos - 512), context.pos);
@@ -408,7 +483,7 @@ export function createEditorInputSuggestions(
         options: candidates.filter(c => !c.isAmbiguous && termSuffix(context.state, context.pos, c) !== null).map(candidate => ({
           label: candidate.label, ghostText: termSuffix(context.state, context.pos, candidate),
           apply: (view: EditorView) => {
-            if (view.composing || options.isComposing() || view.state.doc !== context.state.doc
+            if (view.composing || !isWritingSuggestionContext(options, view.state) || view.state.doc !== context.state.doc
               || !view.state.selection.eq(context.state.selection)) return;
             const text = termSuffix(context.state, context.pos, candidate)!;
             if (!exactSourceFitsChanges(view.state, [{from: context.pos, to: context.pos, insert: text}])) return;
@@ -426,19 +501,21 @@ export function createEditorInputSuggestions(
     private generation = 0;
     private timer: ReturnType<typeof setTimeout> | undefined;
     private acceptChoice: (() => void) | null = null;
-    constructor(readonly view: EditorView) {}
+    constructor(readonly view: EditorView) { clearInlineWriting = () => { this.clear(); this.view.dispatch({}); }; }
     clear() {
       this.generation++;
       clearTimeout(this.timer);
+      cancelContinuations();
       this.acceptChoice = null;
       this.decorations = Decoration.none;
     }
     accept() {
-      if (!this.acceptChoice || this.view.composing || options.isComposing()) return false;
+      if (!this.acceptChoice || this.view.composing || !isWritingSuggestionContext(options, this.view.state)) return false;
       this.acceptChoice();
       return true;
     }
     update(update: ViewUpdate) {
+      if (!isWritingSuggestionContext(options, update.state)) { this.clear(); return; }
       if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
       this.clear();
       if (!update.docChanged || !this.view.hasFocus
@@ -447,10 +524,35 @@ export function createEditorInputSuggestions(
     }
     schedule() {
       this.clear();
+      if (!isWritingSuggestionContext(options, this.view.state)) return;
       const generation = this.generation;
       const state = this.view.state;
-      this.timer = setTimeout(() => {
-        if (this.view.composing || options.isComposing() || !this.view.hasFocus) return;
+      const valid = () => this.generation === generation && this.view.state.doc === state.doc
+        && this.view.state.selection.eq(state.selection) && this.view.hasFocus
+        && !this.view.composing && isWritingSuggestionContext(options, this.view.state);
+      this.timer = setTimeout(async () => {
+        if (!valid()) return;
+        const position = state.selection.main.head;
+        let fallbackReason: string | null = null;
+        if (continuationEnabled) {
+          if (!continuationContextAllowed(options, state, position)) return;
+          const result = await requestContinuation(state, position);
+          if (!valid()) return;
+          if (result.text) {
+            const text = result.text;
+            this.acceptChoice = () => {
+              if (!valid() || !exactSourceFitsChanges(this.view.state, [{from: position, to: position, insert: text}])) return;
+              this.clear();
+              this.view.dispatch({changes: {from: position, insert: text}, selection: {anchor: position + text.length},
+                annotations: [Transaction.userEvent.of("input.complete.scholium.continuation"), isolateHistory.of("full")]});
+              options.didApply("Accept AI Continuation");
+            };
+            this.decorations = Decoration.set([Decoration.widget({widget: new Ghost(text, () => this.accept(), true), side: 1}).range(position)]);
+            this.view.dispatch({});
+            return;
+          }
+          fallbackReason = result.reason ?? localized("AI continuation unavailable; using library completion.");
+        }
         const context = new CompletionContext(state, state.selection.main.head, false, this.view);
         void Promise.resolve(writingCompletionSource(context)).then(result => {
           if (this.generation !== generation || this.view.state.doc !== state.doc
@@ -465,13 +567,13 @@ export function createEditorInputSuggestions(
             apply(this.view, choice, result.from, state.selection.main.head);
           };
           this.decorations = Decoration.set([Decoration.widget({
-            widget: new Ghost(choice.ghostText, () => this.accept()), side: 1,
+            widget: new Ghost(choice.ghostText, () => this.accept(), false, fallbackReason), side: 1,
           }).range(state.selection.main.head)]);
           this.view.dispatch({});
         });
-      }, 300);
+      }, continuationEnabled ? 1_200 : 300);
     }
-    destroy() { this.clear(); }
+    destroy() { this.clear(); clearInlineWriting = undefined; }
   }, {
     decorations: value => value.decorations,
     eventHandlers: {
@@ -707,12 +809,22 @@ export function createEditorInputSuggestions(
 
   return {
     resetDocument() {
+      clearInlineWriting?.();
+      cancelContinuations();
       for (const pending of pendingLinkQueries.values()) {
         globalThis.clearTimeout(pending.timeout);
         pending.resolve([]);
       }
       pendingLinkQueries.clear();
     },
+    configureWritingContinuation(enabled, contextKey) {
+      if (continuationEnabled === enabled && continuationContextKey === contextKey) return;
+      continuationEnabled = enabled;
+      continuationContextKey = contextKey;
+      clearInlineWriting?.();
+      cancelContinuations();
+    },
+    resolveWritingContinuation: resolveContinuation,
     writingCompletionSource,
     extension: [autocompletion({
       override: [
@@ -731,7 +843,7 @@ export function createEditorInputSuggestions(
       {key: "Escape", run: view => {
         const plugin = view.plugin(inlineWriting);
         if (!plugin) return false;
-        const visible = plugin.decorations.size > 0;
+        const visible = plugin.decorations.size > 0 || pendingContinuations.size > 0;
         plugin.clear(); view.dispatch({}); return visible;
       }},
     ])), nativePresentation, EditorView.baseTheme({

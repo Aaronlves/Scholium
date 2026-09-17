@@ -122,6 +122,14 @@ Review matching is read-only. Completion and reference insertion validate curren
 context, generation, selection and protected ranges before one Undo transaction.
 Insertion receipts are revocable projections, never a second buffer.
 
+Writing continuation shares the retained editor's inline suggestion owner, with
+separate generation-bound request/cancellation messages. Window composition captures
+the checked current paragraph and insertion receipt, packs bounded Related-Content
+background, and rechecks identity, focus, conflict and configuration before generation
+and publication. Its one-result retrieval cache is bound to runtime, Note, complete
+Search generation, exact seed revision and focus; it is neither another index nor query history.
+Machine-local continuation preferences remain independent of conversation settings.
+
 Attachment preparation joins the existing editor insertion and scoped rollback
 in [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).
 Quick Look retains only its scoped URL lease until dismissal/replacement/teardown.

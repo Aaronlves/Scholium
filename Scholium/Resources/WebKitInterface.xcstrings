@@ -1,6 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "AI" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI"}}}},
+    "Accept AI continuation: {text} (Tab)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept AI continuation: {text} (Tab)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受 AI 续写：{text}（Tab）"}}}},
+    "AI continuation timed out; using library completion." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation timed out; using library completion."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写超时，已使用库内补全。"}}}},
+    "AI continuation unavailable; using library completion." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation unavailable; using library completion."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写不可用，已使用库内补全。"}}}},
     "The edited Markdown document exceeds the supported editor size." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The edited Markdown document exceeds the supported editor size."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "编辑后的 Markdown 文档超出了编辑器支持的大小。"}}}},
     "Finish editing the note title before switching documents." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finish editing the note title before switching documents."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请先完成笔记标题编辑，再切换文档。"}}}},
     "The replacement would make the document too large.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The replacement would make the document too large."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "替换后的文档将超出大小限制。"}}}},
