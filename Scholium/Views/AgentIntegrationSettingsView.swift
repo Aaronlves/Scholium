@@ -2,60 +2,163 @@ import AppKit
 import ScholiumApplication
 import SwiftUI
 
+enum AgentSettingsCategory: String, CaseIterable, Identifiable {
+    case connection, capabilities, externalAccess
+    var id: String { rawValue }
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .connection: LocalizedStringResource("Connection and Chat", bundle: .module)
+        case .capabilities: LocalizedStringResource("Skills and Tools", bundle: .module)
+        case .externalAccess: LocalizedStringResource("External Access", bundle: .module)
+        }
+    }
+
+    static func matchingSearch(_ searchQuery: String) -> Self? {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).localizedLowercase
+        guard !query.isEmpty else { return nil }
+        if ["external", "bridge", "host", "claude", "外部", "桥接", "宿主"].contains(where: query.contains) {
+            return .externalAccess
+        }
+        if ["skill", "tool", "protocol", "authentication", "技能", "工具", "协议", "授权"].contains(
+            where: query.contains)
+        {
+            return .capabilities
+        }
+        if [
+            "connection", "chat", "login", "sign", "codex", "path", "return", "queue", "steer", "连接",
+            "聊天", "登录", "路径", "回车", "排队",
+        ].contains(where: query.contains) {
+            return .connection
+        }
+        return nil
+    }
+}
+
 struct AgentIntegrationSettingsView: View {
+    let searchQuery: String
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.agentChatSettingsController) private var chatController
+    @Environment(\.scholiumSettingsSearchTarget) private var searchTarget
+    @Environment(\.scholiumSettingsSearchRevision) private var searchRevision
+    @AppStorage("scholium.settings.agentCategory") private var persistedCategory =
+        AgentSettingsCategory.connection.rawValue
+    @AppStorage("scholium.settings.navigationRevision") private var navigationRevision = ""
+    @State private var navigation = SettingsSearchNavigation<AgentSettingsCategory>(
+        category: .connection)
+    @State private var hasRestoredCategory = false
 
-    @State private var showsExternalAgentHosts = false
+    init(searchQuery: String = "") { self.searchQuery = searchQuery }
 
     var body: some View {
-        Form {
-            if let chatController {
-                AgentChatConnectionSettingsView(
-                    controller: chatController,
-                    onShowExternalAgentHosts: { showsExternalAgentHosts = true }
-                )
-                .id(chatController.triptychID)
-            } else {
-                Section("Chat in Scholium") {
-                    Text("Open a Triptych to manage its Chat connection.")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        VStack(spacing: 0) {
+            Picker(selection: categoryBinding) {
+                ForEach(AgentSettingsCategory.allCases) { category in
+                    Text(category.title).tag(category)
                 }
-                Section("Advanced") {
-                    AgentSettingsNavigationButton("External Agent Hosts…") {
-                        showsExternalAgentHosts = true
+            } label: {
+                Text("Agent settings", bundle: .module)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+
+            ScholiumSettingsPaneHost(
+                selection: navigation.category, identifier: "scholium.settings.agents.pages"
+            ) { category in
+                switch category {
+                case .connection:
+                    Form {
+                        if let chatController {
+                            AgentChatConnectionSettingsView(controller: chatController)
+                        } else {
+                            Section("Chat in Scholium") {
+                                Text("Open a Triptych to manage its Chat connection.", bundle: .module)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Section {
+                            AgentChatInputSettingsControls()
+                        } header: {
+                            Text("Chat Behavior", bundle: .module)
+                        }
+                        .id("agents.behavior")
+                        if let chatController {
+                            AgentChatConnectionAdvancedSettingsView(controller: chatController)
+                        }
                     }
+                    .scholiumSettingsFormStyle()
+                    .scholiumSettingsSearchDestination()
+                case .capabilities:
+                    Form {
+                        if let chatController {
+                            AgentChatCapabilitiesSettingsView(
+                                controller: chatController, capabilities: chatController.capabilities)
+                        } else {
+                            CoreProtocolSettingsSection()
+                            Section("Skills and Tools") {
+                                Text("Open a Triptych to manage its Skills and Tools.", bundle: .module)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .scholiumSettingsFormStyle()
+                    .scholiumSettingsSearchDestination()
+                case .externalAccess:
+                    Form { ExternalAgentHostsSettingsView(settingsModel: settingsModel) }
+                        .scholiumSettingsFormStyle()
+                        .scholiumSettingsSearchDestination()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .formStyle(.grouped)
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.settings.agents")
-        .sheet(isPresented: $showsExternalAgentHosts) {
-            ExternalAgentHostsSettingsView(settingsModel: settingsModel)
+        .onAppear { updateSearchNavigation() }
+        .onChange(of: navigationRevision) { _, _ in
+            navigation = SettingsSearchNavigation(
+                category: AgentSettingsCategory(rawValue: persistedCategory) ?? .connection)
         }
+        .onChange(of: searchQuery) { _, _ in updateSearchNavigation() }
+        .onChange(of: searchTarget) { _, _ in updateSearchNavigation() }
+        .onChange(of: searchRevision) { _, _ in updateSearchNavigation() }
+    }
+
+    private var categoryBinding: Binding<AgentSettingsCategory> {
+        Binding(
+            get: { navigation.category },
+            set: { category in
+                navigation.category = category
+                if !navigation.isSearching { persistedCategory = category.rawValue }
+            })
+    }
+
+    private func updateSearchNavigation() {
+        if !hasRestoredCategory {
+            navigation.category = AgentSettingsCategory(rawValue: persistedCategory) ?? .connection
+            hasRestoredCategory = true
+        }
+        let matching: AgentSettingsCategory?
+        switch searchTarget {
+        case "agents.protocol", "agents.skills", "agents.tools": matching = .capabilities
+        case "agents.external": matching = .externalAccess
+        case "agents.connection", "agents.behavior", "agents.paths": matching = .connection
+        default: matching = AgentSettingsCategory.matchingSearch(searchQuery)
+        }
+        navigation.updateSearch(query: searchQuery, matching: matching)
     }
 }
 
 private struct ExternalAgentHostsSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @ObservedObject var settingsModel: WorkspaceSettingsModel
     @State private var copyStatus: String?
 
     private let helperURL = ScholiumAgentIntegrationResources.chatHelperURL()
-    private let coreProtocolURL =
-        try? ScholiumAgentIntegrationResources
-        .coreProtocolSkillDirectoryURL()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-            settingsTitle(
-                "External Agent Hosts",
-                detail: "Connect an external Agent host to Scholium through the local bridge."
-            )
-
-            settingsFormSection("Status") {
+        Group {
+            Section("Status") {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     statusRow("Scholium App", detail: String(localized: "Available"), available: true)
                     switch settingsModel.agentBridgeAvailability {
@@ -66,13 +169,15 @@ private struct ExternalAgentHostsSettingsView: View {
                     }
                     statusRow(
                         "Connection Helper",
-                        detail: helperURL == nil ? String(localized: "Unavailable") : String(localized: "Available"),
+                        detail: helperURL == nil
+                            ? String(localized: "Unavailable") : String(localized: "Available"),
                         available: helperURL != nil
                     )
                 }
             }
 
-            settingsFormSection("Setup") {
+            .id("agents.external")
+            Section("Setup") {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Text("Copies a setup command. Run it in your Agent host to connect.")
                         .font(.body)
@@ -99,22 +204,15 @@ private struct ExternalAgentHostsSettingsView: View {
                 }
             }
 
-            settingsFormSection("Core Protocol") {
-                Button("Show Core Protocol in Finder…") {
-                    guard let coreProtocolURL else { return }
-                    NSWorkspace.shared.activateFileViewerSelecting([coreProtocolURL])
+            Section("Core Protocol") {
+                Button {
+                    SettingsNavigationRequest.select(.agents, agentCategory: .capabilities)
+                } label: {
+                    Text("Open Skills and Tools", bundle: .module)
                 }
-                .disabled(coreProtocolURL == nil)
             }
 
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
         }
-        .padding(24)
-        .frame(width: 760, height: 360, alignment: .topLeading)
     }
 
     private func statusRow(
@@ -126,7 +224,6 @@ private struct ExternalAgentHostsSettingsView: View {
             Label(title, systemImage: available ? "checkmark.circle" : "exclamationmark.triangle")
                 .font(.body)
                 .foregroundStyle(.primary)
-                .frame(width: 150, alignment: .leading)
             Text(verbatim: detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -147,7 +244,8 @@ private struct ExternalAgentHostsSettingsView: View {
                 host.title
             )
             : String(
-                format: ScholiumL10n.string("%@ setup command could not be copied.", locale: Locale.current),
+                format: ScholiumL10n.string(
+                    "%@ setup command could not be copied.", locale: Locale.current),
                 locale: Locale.current,
                 host.title
             )

@@ -90,7 +90,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 let workspace = try await applicationRuntime.openWorkspace(id: id)
                 return try await workspace.agentChatWorkspaceURL()
             },
-            zotero: applicationRuntime.zotero,
             displayWindow: { [weak self] triptych, conversation in self?.chatDisplayWindow(triptychID: triptych, conversationID: conversation) },
             notificationSink: { route, isCurrent in
                 SystemNotificationService.shared.receive(route, isCurrent: isCurrent)

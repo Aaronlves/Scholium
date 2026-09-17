@@ -30,6 +30,8 @@ struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepre
     @Environment(\.agentChatSettingsController) private var chatController
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @Environment(\.openURL) private var openURL
+    @Environment(\.scholiumSettingsSearchTarget) private var searchTarget
+    @Environment(\.scholiumSettingsSearchRevision) private var searchRevision
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.layoutDirection) private var layoutDirection
@@ -41,7 +43,10 @@ struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepre
     let identifier: String?
     private let content: (Selection) -> Content
 
-    init(selection: Selection, identifier: String? = nil, @ViewBuilder content: @escaping (Selection) -> Content) {
+    init(
+        selection: Selection, identifier: String? = nil,
+        @ViewBuilder content: @escaping (Selection) -> Content
+    ) {
         self.selection = selection
         self.identifier = identifier
         self.content = content
@@ -67,6 +72,8 @@ struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepre
                     .environment(\.agentChatSettingsController, chatController)
                     .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
                     .environment(\.openURL, openURL)
+                    .environment(\.scholiumSettingsSearchTarget, searchTarget)
+                    .environment(\.scholiumSettingsSearchRevision, searchRevision)
                     .environment(\.locale, locale)
                     .environment(\.colorScheme, colorScheme)
                     .environment(\.layoutDirection, layoutDirection)
@@ -111,7 +118,9 @@ struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepre
 
         private var entries: [Selection: Entry] = [:]
 
-        func present(_ selection: Selection, root: AnyView, isActive: Bool, in container: SettingsPaneContainerView) {
+        func present(
+            _ selection: Selection, root: AnyView, isActive: Bool, in container: SettingsPaneContainerView
+        ) {
             let entry: Entry
             if let existing = entries[selection] {
                 entry = existing

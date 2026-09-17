@@ -35,9 +35,11 @@ struct WorkspaceSettingsArchitectureTests {
             WorkspaceSettingsPane.allCases.map(\.rawValue) == [
                 "workspace",
                 "document",
+                "writing",
+                "agents",
+                "shortcuts",
                 "notifications",
-                "interaction",
-                "integrations",
+                "zotero",
             ]
         )
 
@@ -56,8 +58,10 @@ struct WorkspaceSettingsArchitectureTests {
         )
         let topLevel = String(source[..<topLevelEnd.lowerBound])
 
-        #expect(topLevel.contains("SettingsWindowAttachment()"))
-        #expect(topLevel.contains("NavigationSplitView"))
+        #expect(topLevel.contains("ScholiumSettingsNavigationHost(title: destination.title, sidebar: sidebar, page: selectedPage)"))
+        #expect(!topLevel.contains(".navigationTitle("))
+        #expect(!topLevel.contains("NavigationSplitView"))
+        #expect(!topLevel.contains("HSplitView"))
         #expect(topLevel.contains(".listStyle(.sidebar)"))
         #expect(topLevel.contains("ScholiumSettingsDestination.workspace"))
         #expect(!topLevel.contains("SettingsTriptychScopePicker"))
@@ -66,42 +70,15 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!topLevel.contains("Text(\"Settings\")"))
         #expect(!topLevel.contains("ZoteroSettingsView()"))
 
-        let orderedDestinations = [
-            "case workspace",
-            "case document",
-            "case notifications",
-            "case interaction",
-            "case integrations",
-        ]
-        let destinationStart = try #require(
-            topLevel.range(of: "private enum ScholiumSettingsDestination")
-        )
-        let destinationSource = String(topLevel[destinationStart.lowerBound...])
-        let indices = try orderedDestinations.map { destination in
-            try #require(destinationSource.range(of: destination)).lowerBound
-        }
-        #expect(
-            zip(indices, indices.dropFirst()).allSatisfy { pair in
-                pair.0 < pair.1
-            })
-
-        let interactionsAndIntegrations = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/SettingsInteractionAndIntegrationsView.swift"
-            ),
+        #expect(ScholiumSettingsDestination.allCases.map(\.rawValue) == WorkspaceSettingsPane.allCases.map(\.rawValue))
+        let taskPages = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/SettingsTaskPages.swift"),
             encoding: .utf8
         )
-        #expect(
-            interactionsAndIntegrations.contains("SettingsIntegrationsView")
-        )
-        #expect(interactionsAndIntegrations.contains("SettingsIntegrationCategory"))
-        #expect(interactionsAndIntegrations.contains("ZoteroSettingsPageView"))
-        #expect(!interactionsAndIntegrations.contains("ResearchGuidanceCategory"))
-        #expect(
-            interactionsAndIntegrations.components(
-                separatedBy: "ZoteroSettingsView()"
-            ).count == 2
-        )
+        #expect(taskPages.components(separatedBy: "ZoteroSettingsView()").count == 2)
+        #expect(!taskPages.contains("SettingsInteractionCategory"))
+        #expect(!taskPages.contains("SettingsIntegrationCategory"))
+
     }
 
     @Test("Settings keeps scope legible without page-wide banners")
@@ -144,8 +121,10 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("ScholiumL10n.Settings.workspace"))
         #expect(source.contains("ScholiumL10n.Settings.document"))
         #expect(source.contains("ScholiumL10n.Settings.notifications"))
-        #expect(source.contains("ScholiumL10n.Settings.interaction"))
-        #expect(source.contains("ScholiumL10n.Settings.integrations"))
+        #expect(source.contains("ScholiumL10n.WritingAssistance.title"))
+        #expect(source.contains("case agents"))
+        #expect(source.contains("case shortcuts"))
+        #expect(source.contains("case zotero"))
         #expect(!source.contains("SettingsScopeNotice"))
         #expect(!source.contains("Registration and folder access are local to this Mac"))
         #expect(!source.contains("Document content only"))
@@ -155,7 +134,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(attentionSource.contains("Reminder Timing"))
         #expect(attentionSource.contains("Dismissed Items on This Mac"))
         #expect(attentionSource.contains("Restore All Dismissed Items on This Mac"))
-        #expect(source.contains("case integrations"))
+        #expect(!source.contains("case integrations"))
         #expect(source.contains("settingsTriptychLabel("))
         #expect(
             source.contains(
@@ -170,8 +149,9 @@ struct WorkspaceSettingsArchitectureTests {
         )
         #expect(integration.contains("Copy Codex Setup Command"))
         #expect(integration.contains("Copy Claude Setup Command"))
-        #expect(integration.contains("Show Core Protocol in Finder…"))
-        #expect(integration.contains("External Agent Hosts"))
+        #expect(integration.contains("Open Skills and Tools"))
+        #expect(!integration.contains("Show Core Protocol in Finder…"))
+        #expect(integration.contains("External Access"))
         #expect(integration.contains("ExternalAgentHostsSettingsView"))
         #expect(!integration.contains("detail: helperURL?.path"))
         #expect(!integration.contains("Not found at $HOME/.local/bin/scholium"))
@@ -183,10 +163,9 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(connection.contains("Advanced Connection Settings…"))
-        #expect(connection.contains("Skills and Tools…"))
-        #expect(connection.contains("External Agent Hosts…"))
-        #expect(connection.contains("AgentChatCapabilitiesSettingsSheet"))
+        #expect(connection.contains("Custom Connection Paths"))
+        #expect(!connection.contains(".sheet("))
+        #expect(!integration.contains(".sheet("))
     }
 
     @Test("Explicit Settings save keeps the draft's frozen revision")
@@ -574,7 +553,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains("Picker(\"Source Font\", selection: $profile.settings.source.fontFamily)"))
         #expect(appearanceSource.contains("Picker(\"Heading Font\", selection: $profile.settings.headings.fontFamily)"))
         #expect(appearanceSource.contains("Section(\"Text Styles\")"))
-        #expect(appearanceSource.contains(".formStyle(.grouped)"))
+        #expect(appearanceSource.contains(".scholiumSettingsFormStyle()"))
         #expect(appearanceSource.contains("roleFont(\"Body Bold Font\", selection: $profile.settings.body.cjkStrongFontFamily)"))
         #expect(appearanceSource.contains("roleFont(\"Body Italic Font\", selection: $profile.settings.body.cjkEmphasisFontFamily)"))
         #expect(appearanceSource.contains("roleFont(\"Heading Bold Font\", selection: $profile.settings.headings.cjkStrongFontFamily)"))
@@ -590,17 +569,18 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!appearanceSource.contains("showsYAMLFrontmatter"))
         #expect(appearanceSource.contains("Section(\"Heading Hierarchy\")"))
         #expect(appearanceSource.contains("AppearanceHeadingLevelMatrix"))
-        #expect(appearanceSource.contains("Button(\"Edit Heading Levels…\")"))
+        #expect(appearanceSource.contains("AppearanceHeadingLevelDetailRow"))
+        #expect(!appearanceSource.contains("Edit Heading Levels…"))
         #expect(appearanceSource.contains("$headings.level3"))
         #expect(appearanceSource.contains("$headings.level6"))
         #expect(!appearanceSource.contains("H2–H6"))
         #expect(appearanceSource.contains("Picker(\"Heading Style\", selection: $profile.settings.headings.style)"))
-        #expect(appearanceSource.contains("AppearanceIntegerControl(title: \"Heading Weight\", value: $profile.settings.headings.weight"))
+        #expect(appearanceSource.contains("title: \"Heading Weight\", value: $profile.settings.headings.weight"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Scale\")"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Alignment\")"))
         #expect(appearanceSource.contains("\"Paragraph spacing\""))
-        #expect(appearanceSource.contains("Button(\"CSS Snippets…\""))
-        #expect(appearanceSource.contains("Fine typography and document styling can be extended with CSS snippets."))
+        #expect(appearanceSource.contains("Section(\"CSS Snippets\")"))
+        #expect(!appearanceSource.contains("CSS Snippets…"))
         #expect(appearanceSource.contains("Open CSS Folder"))
         #expect(appearanceSource.contains("store.reloadSnippets()"))
         #expect(!appearanceSource.contains("DocumentHyphenation"))
@@ -645,19 +625,20 @@ struct WorkspaceSettingsArchitectureTests {
         let settingsContentStart = try #require(
             settingsSource.range(of: "struct ScholiumSettingsView: View")
         )
-        let windowAttachmentStart = try #require(
+        let settingsContentEnd = try #require(
             settingsSource.range(
-                of: "private struct SettingsWindowAttachment",
+                of: "struct ZoteroSettingsView",
                 range: settingsContentStart.upperBound..<settingsSource.endIndex
             )
         )
         let settingsContent = String(
-            settingsSource[settingsContentStart.lowerBound..<windowAttachmentStart.lowerBound]
+            settingsSource[settingsContentStart.lowerBound..<settingsContentEnd.lowerBound]
         )
         #expect(!settingsContent.contains("Divider()"))
+        #expect(settingsContent.contains("ScholiumSettingsNavigationHost(title: destination.title, sidebar: sidebar, page: selectedPage)"))
 
         let interactionSource = try read(
-            "Scholium/Views/SettingsInteractionAndIntegrationsView.swift"
+            "Scholium/Views/SettingsTaskPages.swift"
         )
         #expect(!interactionSource.contains("Divider()"))
 
@@ -671,8 +652,8 @@ struct WorkspaceSettingsArchitectureTests {
         }
 
         let capabilities = try read("Scholium/Views/AgentChatCapabilitiesSettingsView.swift")
-        #expect(capabilities.contains("settingsEditorSection(\"Skills\")"))
-        #expect(capabilities.contains("settingsEditorSection(\"Core Protocol\")"))
+        #expect(capabilities.contains("Section(\"Skills\")"))
+        #expect(capabilities.contains("Section(\"Core Protocol\")"))
         #expect(capabilities.contains("Always included in Scholium Chat"))
         #expect(capabilities.contains("Open Chat Workspace in Finder"))
         #expect(!capabilities.contains("Text(home.path)"))
@@ -680,7 +661,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!capabilities.contains("Text(configuration.address)"))
         #expect(!capabilities.contains(".help(path)"))
         #expect(!capabilities.contains(".help(coreProtocolURL.path)"))
-        #expect(capabilities.contains("settingsEditorSection(\"Connected Tools\")"))
+        #expect(capabilities.contains("\"Connected Tools\""))
+        #expect(!capabilities.contains(".sheet("))
         #expect(capabilities.contains("methodRow(method)"))
     }
 
@@ -697,10 +679,11 @@ struct WorkspaceSettingsArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(source.contains("Table(draft"))
-        #expect(source.contains("Edit…"))
-        #expect(source.contains("SelectionActionEditorSheet"))
-        #expect(source.contains(".sheet(item: $editingAction)"))
+        #expect(source.contains("Table(state.actions"))
+        #expect(source.contains("Button(\"Edit\")"))
+        #expect(!source.contains(".sheet("))
+        #expect(source.contains("Save Selection Actions"))
+        #expect(source.contains("Cancel Action Changes"))
         #expect(source.contains("SelectionActionBarPreview"))
         #expect(source.contains("Shown when text is selected"))
         #expect(!source.contains(".formStyle(.grouped)"))
@@ -729,7 +712,7 @@ struct WorkspaceSettingsArchitectureTests {
         )
         let guidanceSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/SettingsInteractionAndIntegrationsView.swift"
+                "Scholium/Views/SettingsTaskPages.swift"
             ),
             encoding: .utf8
         )
@@ -752,11 +735,28 @@ struct WorkspaceSettingsArchitectureTests {
             .components(separatedBy: "\n        #if DEBUG")
             .first ?? ""
 
-        #expect(settingsSource.contains(".formStyle(.grouped)"))
+        #expect(settingsSource.contains(".scholiumSettingsFormStyle()"))
         #expect(componentSource.contains("Color(nsColor: .windowBackgroundColor)"))
-        #expect(settingsSource.contains("NavigationSplitView"))
-        #expect(settingsSource.contains("SettingsWindowAttachment"))
+        #expect(!settingsSource.contains("NavigationSplitView"))
+        #expect(!settingsSource.contains("HSplitView"))
+        let navigationSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Foundation/ScholiumSettingsNavigationHost.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(!settingsSource.contains("SettingsWindowAttachment"))
         #expect(!settingsSource.contains("SettingsToolbarAttachment"))
+        #expect(!settingsSource.contains(".navigationTitle("))
+        #expect(navigationSource.contains("NSSplitViewController, NSToolbarDelegate"))
+        #expect(navigationSource.contains("navigation.canCollapse = false"))
+        #expect(navigationSource.contains("navigation.canCollapseFromWindowResize = false"))
+        #expect(navigationSource.contains("navigation.minimumThickness = ScholiumMetrics.Settings.navigationWidth"))
+        #expect(navigationSource.contains("navigation.maximumThickness = ScholiumMetrics.Settings.navigationWidth"))
+        #expect(navigationSource.contains("window.title = pageTitle"))
+        #expect(navigationSource.contains("NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: splitView, dividerIndex: 0)"))
+        #expect(!navigationSource.contains("toggleSidebar"))
+        #expect(!navigationSource.contains("window.animator().setFrame"))
         #expect(!settingsSource.contains("window.animator().setFrame"))
         #expect(!settingsSource.contains("ScholiumWindowTopOverlayHost("))
         #expect(settingsSource.contains("ScholiumSettingsSearchField("))

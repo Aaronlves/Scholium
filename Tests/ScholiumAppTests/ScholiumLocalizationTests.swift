@@ -11,15 +11,15 @@ struct ScholiumLocalizationTests {
     func settingsDestinations() {
         #expect(
             ScholiumL10n.localized(
-                ScholiumL10n.Settings.integrations,
+                ScholiumL10n.Settings.notifications,
                 locale: simplifiedChinese
-            ) == "集成"
+            ) == "通知与提醒"
         )
         #expect(
             ScholiumL10n.localized(
                 ScholiumL10n.Settings.document,
                 locale: simplifiedChinese
-            ) == "外观"
+            ) == "文稿外观"
         )
         #expect(
             ScholiumL10n.string("Agents & Chat", locale: simplifiedChinese)

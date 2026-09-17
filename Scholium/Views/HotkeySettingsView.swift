@@ -6,6 +6,7 @@ struct HotkeySettingsView: View {
     private var preferencesData = ScholiumHotkeyPreferences.defaultData
     @State private var editingCommand: ScholiumHotkeyCommand?
     @State private var pendingResetAll = false
+    @FocusState private var shortcutCommand: ScholiumHotkeyCommand?
 
     let searchQuery: String
 
@@ -21,6 +22,18 @@ struct HotkeySettingsView: View {
                                 Text(command.title).help(Text(command.menuPath))
                             }
                             .contextMenu { hotkeyActions(command) }
+                            .id(command.rawValue)
+                            if editingCommand == command {
+                                HotkeyRecordingEditor(
+                                    command: command,
+                                    preferencesData: $preferencesData,
+                                    finish: {
+                                        editingCommand = nil
+                                        shortcutCommand = command
+                                    }
+                                )
+                                .id(command.rawValue + ".recorder")
+                            }
                         }
                     } header: {
                         Text(category.title)
@@ -34,7 +47,8 @@ struct HotkeySettingsView: View {
                     )
                 }
             }
-            .formStyle(.grouped)
+            .scholiumSettingsFormStyle()
+            .scholiumSettingsSearchDestination()
 
             Divider()
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -55,19 +69,6 @@ struct HotkeySettingsView: View {
         }
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.hotkeys")
-        .sheet(item: $editingCommand) { command in
-            HotkeyRecordingSheet(
-                command: command,
-                preferencesData: preferencesData
-            ) { binding in
-                preferencesData = ScholiumHotkeyPreferences.data(
-                    setting: binding,
-                    for: command,
-                    in: preferencesData
-                )
-            }
-            .buttonStyle(.automatic)
-        }
         .confirmationDialog(
             "Restore Default Shortcuts?",
             isPresented: $pendingResetAll,
@@ -96,7 +97,7 @@ struct HotkeySettingsView: View {
         in category: ScholiumHotkeyCategory
     ) -> [ScholiumHotkeyCommand] {
         ScholiumHotkeyCommand.customizableCommands.filter {
-            $0.category == category && matchesSearch($0)
+            $0.category == category && (matchesSearch($0) || editingCommand == $0)
         }
     }
 
@@ -119,6 +120,7 @@ struct HotkeySettingsView: View {
                 .frame(minWidth: 64)
         }
         .menuStyle(.button)
+        .focused($shortcutCommand, equals: command)
         .controlSize(.small)
         .accessibilityLabel(Text("Shortcut for \(String(localized: command.title))"))
         .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
@@ -162,95 +164,74 @@ struct HotkeySettingsView: View {
     }
 }
 
-private struct HotkeyRecordingSheet: View {
-    @Environment(\.dismiss) private var dismiss
+private struct HotkeyRecordingEditor: View {
+    @Environment(\.scholiumSettingsPaneIsActive) private var paneIsActive
     @State private var draft: ScholiumHotkeyBinding?
     @State private var isRecording = false
+    @Binding private var preferencesData: Data
 
     let command: ScholiumHotkeyCommand
-    let preferencesData: Data
-    let save: (ScholiumHotkeyBinding?) -> Void
+    let finish: () -> Void
 
     init(
         command: ScholiumHotkeyCommand,
-        preferencesData: Data,
-        save: @escaping (ScholiumHotkeyBinding?) -> Void
+        preferencesData: Binding<Data>,
+        finish: @escaping () -> Void
     ) {
         self.command = command
-        self.preferencesData = preferencesData
-        self.save = save
-        _draft = State(
-            initialValue: ScholiumHotkeyPreferences.binding(
-                for: command,
-                data: preferencesData
-            ))
+        _preferencesData = preferencesData
+        self.finish = finish
+        _draft = State(initialValue: ScholiumHotkeyPreferences.binding(for: command, data: preferencesData.wrappedValue))
     }
 
     var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: ScholiumGrid.Spacing.sectionSeparation
-        ) {
-            settingsTitle(
-                "Record Shortcut",
-                detail: "Choose a shortcut for \(String(localized: command.title))."
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.inlineControlGap
-            ) {
-                HotkeyRecorderControl(
-                    binding: $draft,
-                    isRecording: $isRecording
-                )
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            HotkeyRecorderControl(binding: $draft, isRecording: $isRecording, isActive: paneIsActive)
                 .frame(maxWidth: .infinity, minHeight: 52)
-
-                Text("Include ⌘. Press Delete to clear the shortcut or Escape to stop recording.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                .accessibilityIdentifier("scholium.hotkeys.recorder")
+            Text("Include ⌘. Press Delete to clear the shortcut or Escape to stop recording.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let issue = validationIssue {
+                Label(issue.message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
-
-                if let issue = validationIssue {
-                    Label(issue.message, systemImage: "exclamationmark.triangle")
-                        .font(.body)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("scholium.hotkeys.validation")
-                }
+                    .accessibilityIdentifier("scholium.hotkeys.validation")
             }
-
             HStack {
-                Button("Clear") { draft = nil }
+                Button("Clear") { draft = nil; isRecording = false }
                     .disabled(draft == nil)
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Save") {
-                    save(draft)
-                    dismiss()
+                Button("Cancel", role: .cancel) { isRecording = false; finish() }
+                Button("Save Shortcut") {
+                    guard validationIssue == nil else { return }
+                    isRecording = false
+                    preferencesData = ScholiumHotkeyPreferences.data(setting: draft, for: command, in: preferencesData)
+                    finish()
                 }
                 .buttonStyle(.bordered)
                 .disabled(validationIssue != nil)
+                .accessibilityIdentifier("scholium.hotkeys.save")
             }
         }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
-        .frame(width: 440)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Shortcut for \(String(localized: command.title))"))
+        .onChange(of: paneIsActive) { _, active in
+            if !active { isRecording = false }
+        }
         .onDisappear { isRecording = false }
     }
 
     private var validationIssue: ScholiumHotkeyValidationIssue? {
         guard let draft else { return nil }
-        return ScholiumHotkeyPreferences.validationIssue(
-            for: draft,
-            command: command,
-            data: preferencesData
-        )
+        return ScholiumHotkeyPreferences.validationIssue(for: draft, command: command, data: preferencesData)
     }
 }
 
 private struct HotkeyRecorderControl: NSViewRepresentable {
     @Binding var binding: ScholiumHotkeyBinding?
     @Binding var isRecording: Bool
+    let isActive: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -276,7 +257,11 @@ private struct HotkeyRecorderControl: NSViewRepresentable {
             isRecording
             ? String(localized: "Press a Shortcut…")
             : binding?.displayName ?? String(localized: "Record Shortcut")
-        button.isRecording = isRecording
+        button.isRecording = isRecording && isActive
+        button.isEnabled = isActive
+        if !isActive, button.window?.firstResponder === button {
+            button.window?.makeFirstResponder(nil)
+        }
         button.setAccessibilityValue(binding?.displayName ?? String(localized: "No shortcut"))
         button.setAccessibilityHelp(
             "Activate, then press a shortcut that includes the Command key."
@@ -304,6 +289,7 @@ private struct HotkeyRecorderControl: NSViewRepresentable {
         }
 
         @objc func beginRecording() {
+            guard parent.isActive else { return }
             parent.isRecording = true
             button?.isRecording = true
             button?.title = String(localized: "Press a Shortcut…")

@@ -34,14 +34,13 @@ final class AgentChatCapabilitiesController: ObservableObject {
     @Published private(set) var authorizationURL: URL?
     @Published private(set) var authenticationNotice: String?
     @Published private(set) var authenticationError: String?
+    @Published private(set) var authenticationFeedbackTool: String?
     @Published private(set) var toolConnections: [AgentChatToolConnection] = []
     @Published private(set) var toolConfigurationError: String?
     @Published private(set) var toolConfigurationNotice: String?
+    @Published private(set) var toolConfigurationErrorTool: String?
+    @Published private(set) var toolConfigurationNoticeTool: String?
     static let zoteroServerName = "scholium-zotero"
-    @Published private(set) var zoteroLibraryInfo: ZoteroLibraryInfo?
-    @Published private(set) var isCheckingZotero = false
-    private var zoteroStatusTask: Task<Void, Never>?
-    private let zotero: (any ZoteroUseCases)?
     private var toolConfiguration: CodexChatToolConfiguration?
     private(set) var configurationHome: URL?
     private(set) var isShared = false
@@ -57,17 +56,8 @@ final class AgentChatCapabilitiesController: ObservableObject {
     private var agentAuthenticationThreadIDs: [String: String] = [:]
     private var needsRootApplication = false
     var workspaceReady: Bool { workspaceURL != nil && !needsRootApplication }
-    init(zotero: (any ZoteroUseCases)? = nil) {
-        self.zotero = zotero
-    }
     var mayChange: () -> Bool = { false }
     var isConnected: Bool { runtime != nil }
-
-    /// The bundled protocol is a protected application resource, not part of
-    /// the runtime-owned optional Skill inventory.
-    var coreProtocolURL: URL? {
-        try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL()
-    }
 
     func attach(_ runtime: CodexAppServer, cwd: URL, home: URL, isShared: Bool, threadID: String?) async {
         detach()
@@ -84,10 +74,6 @@ final class AgentChatCapabilitiesController: ObservableObject {
 
     func detach() {
         connectionGeneration = UUID()
-        zoteroStatusTask?.cancel()
-        zoteroStatusTask = nil
-        zoteroLibraryInfo = nil
-        isCheckingZotero = false
         authenticationTask?.cancel()
         authenticationTask = nil
         authenticatingTool = nil
@@ -96,10 +82,13 @@ final class AgentChatCapabilitiesController: ObservableObject {
         agentAuthenticationThreadIDs.removeAll()
         authenticationNotice = nil
         authenticationError = nil
+        authenticationFeedbackTool = nil
         toolConfiguration = nil
         toolConnections = []
         toolConfigurationError = nil
         toolConfigurationNotice = nil
+        toolConfigurationErrorTool = nil
+        toolConfigurationNoticeTool = nil
         generation = UUID()
         task?.cancel()
         changeTask?.cancel()
@@ -150,6 +139,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
         toolConfiguration = nil
         toolConnections = []
         toolConfigurationError = nil
+        toolConfigurationErrorTool = nil
         let applyRoots = permitsRootApplication
         if applyRoots { needsRootApplication = true }
         if needsRootApplication && !applyRoots && workspaceError == nil {
@@ -205,6 +195,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
                     toolConnections = configuration.connections
                 } catch {
                     guard generation == request, !Task.isCancelled else { return }
+                    toolConfigurationErrorTool = nil
                     toolConfigurationError = error.localizedDescription
                 }
             }
@@ -217,7 +208,6 @@ final class AgentChatCapabilitiesController: ObservableObject {
 
     var zoteroConnection: AgentChatToolConnection? { toolConnections.first { $0.name == Self.zoteroServerName } }
     var usesDefaultZoteroConnection: Bool { toolConfiguration != nil && zoteroConnection == nil }
-    var canCheckZotero: Bool { isConnected && zotero != nil && !isCheckingZotero }
 
     func zoteroToolEdit(executable: URL?) -> AgentChatToolEdit? {
         if zoteroConnection != nil { return editTool(named: Self.zoteroServerName) }
@@ -226,19 +216,6 @@ final class AgentChatCapabilitiesController: ObservableObject {
             name: Self.zoteroServerName, kind: .local, address: executable.path,
             arguments: ZoteroMCPTransportDescriptor.supportedLocal.readOnlyArguments, enabled: true)
         return edit
-    }
-
-    func checkZotero() {
-        guard canCheckZotero, let zotero else { return }
-        let connection = connectionGeneration
-        isCheckingZotero = true
-        zoteroStatusTask = Task { [weak self] in
-            let info = await zotero.libraryInfo()
-            guard let self, connectionGeneration == connection, !Task.isCancelled else { return }
-            zoteroLibraryInfo = info
-            isCheckingZotero = false
-            zoteroStatusTask = nil
-        }
     }
 
     func editTool(named name: String? = nil) -> AgentChatToolEdit? {
@@ -254,6 +231,8 @@ final class AgentChatCapabilitiesController: ObservableObject {
     func reloadToolEdit(_ edit: AgentChatToolEdit) async -> AgentChatToolEdit? {
         guard isConnected, !isChanging, !isRefreshing, let runtime, configurationHome == edit.home else { return nil }
         let connection = connectionGeneration
+        toolConfigurationError = nil
+        toolConfigurationErrorTool = edit.connection.name
         do {
             let snapshot = try await runtime.chatToolConfiguration(home: edit.home)
             guard connectionGeneration == connection, !Task.isCancelled else { return nil }
@@ -263,12 +242,14 @@ final class AgentChatCapabilitiesController: ObservableObject {
             return editTool(named: edit.originalName)
         } catch {
             guard connectionGeneration == connection, !Task.isCancelled else { return nil }
+            toolConfigurationErrorTool = edit.connection.name
             toolConfigurationError = error.localizedDescription
             return nil
         }
     }
 
     func saveTool(_ edit: AgentChatToolEdit, removing: Bool = false) async -> Bool {
+        toolConfigurationErrorTool = edit.connection.name
         guard canConfigureTools, let runtime, let snapshot = toolConfiguration,
             configurationHome == edit.home, snapshot.version == edit.revision
         else {
@@ -279,18 +260,23 @@ final class AgentChatCapabilitiesController: ObservableObject {
         isChanging = true
         toolConfigurationError = nil
         toolConfigurationNotice = nil
+        toolConfigurationNoticeTool = edit.connection.name
         defer { if connectionGeneration == connection { isChanging = false } }
         do {
             let overridden = try await runtime.writeChatTool(
                 edit.connection, originalName: edit.originalName,
                 snapshot: snapshot, removing: removing, reuseAccessSettings: edit.reuseAccessSettings)
             guard connectionGeneration == connection, !Task.isCancelled else { return false }
-            if overridden { toolConfigurationNotice = String(localized: "Saved. Another configuration overrides this connection.") }
+            if overridden {
+                toolConfigurationNoticeTool = edit.connection.name
+                toolConfigurationNotice = String(localized: "Saved. Another configuration overrides this connection.")
+            }
             isChanging = false
             refresh(threadID: requestedThreadID)
             return true
         } catch {
             guard connectionGeneration == connection, !Task.isCancelled else { return false }
+            toolConfigurationErrorTool = edit.connection.name
             toolConfigurationError = error.localizedDescription
             return false
         }
@@ -306,6 +292,8 @@ final class AgentChatCapabilitiesController: ObservableObject {
     }
 
     func signIn(_ server: AgentChatConnectedTool, threadID: String?, open: @escaping @MainActor (URL) -> Void) {
+        authenticationFeedbackTool = server.name
+        authenticationNotice = nil
         guard canSignIn(server), let runtime else {
             authenticationError = String(localized: "Tool sign-in is unavailable. Refresh the connection status and try again.")
             return
@@ -332,6 +320,8 @@ final class AgentChatCapabilitiesController: ObservableObject {
                 authenticatingTool = nil
                 authenticationThreadID = nil
                 authorizationURL = nil
+                authenticationFeedbackTool = server.name
+                authenticationNotice = nil
                 authenticationError = error.localizedDescription
             }
         }
@@ -346,6 +336,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
             && params["threadId"]?.stringValue == authenticationThreadID
         let agentThread = agentAuthenticationThreadIDs.removeValue(forKey: name)
         guard uiAuthentication || agentThread != nil else { return }
+        authenticationFeedbackTool = name
         if let agentThread {
             authenticationNotice = success ? String(localized: "Signed In: \(name)") : nil
             authenticationError =

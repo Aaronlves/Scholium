@@ -1521,6 +1521,12 @@ enum ScholiumMetrics {
     }
 
     enum Settings {
+        static let navigationWidth: CGFloat = 240
+        static let minimumWindowWidth: CGFloat = 780
+        static let minimumWindowHeight: CGFloat = 560
+        static let headingMatrixMinimumWidth: CGFloat = 650
+        static let matrixColumnSpacing = ScholiumGrid.foundationUnit * 4
+        static let matrixRowSpacing = ScholiumGrid.foundationUnit * 2.5
         static let numberFieldWidth: CGFloat = 64
         static let unitLabelWidth: CGFloat = 24
         static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5

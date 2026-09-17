@@ -59,9 +59,7 @@ struct AgentChatConnectionStatus: View {
                 }
                 if controller.state == .disconnected {
                     Button("Agent Settings…") {
-                        UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
-                        UserDefaults.standard.set(
-                            SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
+                        SettingsNavigationRequest.select(.agents, agentCategory: .connection)
                         openSettings()
                     }
                 }

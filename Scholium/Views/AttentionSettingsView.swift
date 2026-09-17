@@ -51,7 +51,7 @@ struct AttentionSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Reminder Timing") {
+            Section {
                 if let draft {
                     LabeledContent("Triptych") {
                         VStack(alignment: .trailing) {
@@ -65,7 +65,9 @@ struct AttentionSettingsView: View {
                                     .help(location)
                             }
                         }
-                        .frame(maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth, alignment: .trailing)
+                        .frame(
+                            maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth, alignment: .trailing
+                        )
                         .textSelection(.enabled)
                     }
                     reminderTimingPicker
@@ -83,7 +85,11 @@ struct AttentionSettingsView: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-            }
+            } header: {
+                Text("Reminder Timing")
+            } footer: {
+                Text("This Triptych", bundle: .module)
+            }.id("notifications.timing")
             Section {
                 Button("Restore All Dismissed Items on This Mac") {
                     var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
@@ -91,13 +97,15 @@ struct AttentionSettingsView: View {
                     dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
                 }
                 .disabled(!hasDismissedAttention)
+                .id("notifications.dismissed")
             } header: {
                 Text("Dismissed Items on This Mac")
             } footer: {
                 Text("Restores dismissed reminders on this Mac without changing Triptych data.")
             }
         }
-        .formStyle(.grouped)
+        .scholiumSettingsFormStyle()
+        .scholiumSettingsSearchDestination()
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.settings.notifications.form")
         .onAppear { loadInitialDraftIfAvailable() }
@@ -107,7 +115,9 @@ struct AttentionSettingsView: View {
             Button("Discard Draft and Reload", role: .destructive) { reload() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Reload the active Triptych’s saved reminder timing. Your current draft will be replaced only after it loads successfully.")
+            Text(
+                "Reload the active Triptych’s saved reminder timing. Your current draft will be replaced only after it loads successfully."
+            )
         }
     }
 
@@ -146,9 +156,13 @@ struct AttentionSettingsView: View {
         if !isCurrentDraft {
             Label {
                 if draft?.triptychID != settingsModel.snapshot.activeTriptychID {
-                    Text("The active Triptych changed. Your reminder draft is still attached to the Triptych shown above.")
+                    Text(
+                        "The active Triptych changed. Your reminder draft is still attached to the Triptych shown above."
+                    )
                 } else {
-                    Text("Saved settings changed or need to be reread. Your reminder draft is preserved; reload before saving.")
+                    Text(
+                        "Saved settings changed or need to be reread. Your reminder draft is preserved; reload before saving."
+                    )
                 }
             } icon: {
                 Image(systemName: "exclamationmark.triangle")
@@ -215,7 +229,8 @@ struct AttentionSettingsView: View {
                 } else {
                     draft?.savedSettings = settings
                     errorMessage = localizedInterfaceString(
-                        "Reminder timing was saved to the Triptych shown above. Reload to view the active Triptych.")
+                        "Reminder timing was saved to the Triptych shown above. Reload to view the active Triptych."
+                    )
                 }
             } catch {
                 errorMessage = error.localizedDescription

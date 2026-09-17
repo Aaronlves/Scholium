@@ -6,56 +6,98 @@ import Testing
 @Suite("Settings search routing")
 @MainActor
 struct SettingsSearchRoutingTests {
-    @Test("Every customizable command title and menu path reveals Keyboard Shortcuts")
+    @Test("Every customizable command title and menu path reveals its shortcut editor")
     func commandSearchRevealsItsEditingLocation() {
         for command in ScholiumHotkeyCommand.customizableCommands {
             for query in [String(localized: command.title), String(localized: command.menuPath)] {
-                #expect(SettingsInteractionCategory.matchingSearch(query) == .keyboardShortcuts)
+                #expect(SettingsSearchTarget.matches(query).contains {
+                    $0.destination == .shortcuts && $0.sectionID == command.rawValue
+                })
             }
-        }
-        #expect(SettingsInteractionCategory.matchingSearch("回车") == .chat)
-        #expect(SettingsInteractionCategory.matchingSearch("选段操作") == .selectionActions)
-        for query in ["Writing Assistance", "AI continuation", "Continuation Model", "autocomplete", "续写模型", "写作辅助", "补全"] {
-            #expect(SettingsInteractionCategory.matchingSearch(query) == .writingAssistance)
         }
     }
 
-    @Test("Search changes and native reattachment retain the original child category")
+    @Test("Task searches reveal the sole editing location in either interface language")
+    func taskSearchRevealsItsEditingLocation() {
+        let cases: [(String, ScholiumSettingsDestination, String)] = [
+            ("AI Continuation", .writing, "writing.continuation"),
+            ("Body Font", .document, "appearance.reading"),
+            ("正文字体", .document, "appearance.reading"),
+            ("段落间距", .document, "appearance.body"),
+            ("autocomplete", .writing, "writing.continuation"),
+            ("续写模型", .writing, "writing.continuation"),
+            ("选段操作", .writing, "writing.selection"),
+            ("选区操作", .writing, "writing.selection"),
+            ("回车", .agents, "agents.behavior"),
+            ("Core Protocol", .agents, "agents.protocol"),
+            ("工具授权", .agents, "agents.tools"),
+            ("Claude", .agents, "agents.external"),
+            ("H3 spacing", .document, "appearance.h3"),
+            ("H6 间距", .document, "appearance.h6"),
+            ("Zotero MCP", .zotero, "zotero.chat"),
+            ("Triptych name", .workspace, "workspace.name"),
+            ("Source font size", .document, "appearance.source"),
+            ("Body Bold Font", .document, "appearance.styles"),
+            ("正文斜体字体", .document, "appearance.styles"),
+            ("Heading Italic Font", .document, "appearance.styles"),
+            ("Writing Continuation", .writing, "writing.continuation"),
+            ("Return dismissed items after", .notifications, "notifications.timing"),
+            ("Server Address", .agents, "agents.tools"),
+            ("Scholium Connection Helper", .agents, "agents.paths"),
+            ("Copy Claude Setup Command", .agents, "agents.external"),
+        ]
+        for (query, destination, section) in cases {
+            #expect(SettingsSearchTarget.matches(query).contains {
+                $0.destination == destination && $0.sectionID == section
+            }, "Query: \(query); target: \(section)")
+        }
+        #expect(SettingsSearchTarget.matches("no-such-setting-qa").isEmpty)
+        #expect(SettingsSearchTarget.matches("  ").isEmpty)
+    }
+
+    @Test("Every static visible alias is discoverable in English and Chinese")
+    func bilingualAliases() {
+        for target in SettingsSearchTarget.all {
+            for alias in target.aliases {
+                for language in ["en", "zh-Hans"] {
+                    var resource = alias
+                    resource.locale = Locale(identifier: language)
+                    let query = String(localized: resource)
+                    #expect(SettingsSearchTarget.matches(query).contains { $0.id == target.id })
+                }
+            }
+        }
+    }
+
+    @Test("Search changes and native reattachment retain the original Agent task")
     func searchRestoresBrowsingCategory() {
-        var navigation = SettingsSearchNavigation<SettingsInteractionCategory>(category: .chat)
-        let commandQuery = String(localized: ScholiumHotkeyCommand.insertFootnote.title)
-        navigation.updateSearch(query: commandQuery, matching: SettingsInteractionCategory.matchingSearch(commandQuery))
-        #expect(navigation.category == .keyboardShortcuts)
+        var navigation = SettingsSearchNavigation<AgentSettingsCategory>(category: .connection)
+        navigation.updateSearch(query: "Core Protocol", matching: .capabilities)
+        #expect(navigation.category == .capabilities)
         #expect(navigation.isSearching)
-
-        // Reattaching a retained native pane reconciles the same query again.
-        navigation.updateSearch(query: commandQuery, matching: SettingsInteractionCategory.matchingSearch(commandQuery))
-        navigation.updateSearch(query: "selection actions", matching: .selectionActions)
+        navigation.updateSearch(query: "Core Protocol", matching: .capabilities)
+        navigation.updateSearch(query: "Claude", matching: .externalAccess)
         navigation.updateSearch(query: "unmatched", matching: nil)
-        #expect(navigation.categoryBeforeSearch == .chat)
-
+        #expect(navigation.categoryBeforeSearch == .connection)
         navigation.updateSearch(query: "  ", matching: nil)
-        #expect(navigation.category == .chat)
+        #expect(navigation.category == .connection)
         #expect(!navigation.isSearching)
         #expect(navigation.categoryBeforeSearch == nil)
     }
 
-    @Test("Temporary child choices during search do not replace browsing history")
+    @Test("Temporary Agent task choices during search do not replace browsing history")
     func explicitSearchChoiceRemainsTemporary() {
-        var navigation = SettingsSearchNavigation<SettingsIntegrationCategory>(category: .zotero)
-        navigation.updateSearch(query: "Codex", matching: SettingsIntegrationCategory.matchingSearch("Codex"))
-        #expect(navigation.category == .agents)
-        #expect(navigation.isSearching)
-        navigation.category = .zotero
-        navigation.updateSearch(query: "Claude", matching: SettingsIntegrationCategory.matchingSearch("Claude"))
+        var navigation = SettingsSearchNavigation<AgentSettingsCategory>(category: .externalAccess)
+        navigation.updateSearch(query: "Codex", matching: AgentSettingsCategory.matchingSearch("Codex"))
+        #expect(navigation.category == .connection)
+        navigation.category = .capabilities
+        navigation.updateSearch(query: "Skills", matching: AgentSettingsCategory.matchingSearch("Skills"))
         navigation.updateSearch(query: "", matching: nil)
-        #expect(navigation.category == .zotero)
+        #expect(navigation.category == .externalAccess)
         #expect(!navigation.isSearching)
-
-        // A later search starts from the next ordinary browsing selection.
-        navigation.category = .agents
-        navigation.updateSearch(query: "Zotero", matching: SettingsIntegrationCategory.matchingSearch("Zotero"))
+        navigation.category = .capabilities
+        navigation.updateSearch(query: "Claude", matching: AgentSettingsCategory.matchingSearch("Claude"))
         navigation.updateSearch(query: "", matching: nil)
-        #expect(navigation.category == .agents)
+        #expect(navigation.category == .capabilities)
     }
 }

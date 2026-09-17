@@ -220,8 +220,8 @@ scrolling suspends automatic following. Copy and Expand retain the same SF
 Symbols, size and semantic color across native and embedded content.
 ### Chat capability presentation
 
-Agents & Chat settings contains native Skills and Connected Tools
-groups with Refresh, per-Skill enablement, descriptions and discovery
+Agents & Chat settings contains a retained Skills and Tools task segment
+with native Skills and Connected Tools groups with Refresh, per-Skill enablement, descriptions and discovery
 errors. The connected configuration scope is visible before applying a setting;
 a shared configuration change requires explicit confirmation. The protected
 Core Protocol is identified separately from optional Skills and shown as always
@@ -244,14 +244,16 @@ confirmation binds to the configuration that was shown; switching connections
 cannot redirect a pending approval to another configuration.
 
 Connected Tools offers Add Tool and per-connection Edit, enable/disable and
-Remove controls. The native form distinguishes Remote and Local, with name,
+Remove controls. One inline selected-tool editor distinguishes Remote and Local, with name,
 address or program, and arguments where applicable. Authentication uses
 runtime-managed sign-in or visible named environment-variable fields in the
 native tool editor.
 Remote connections expose a bearer-token variable name; local programs expose
 inherited variable names. Brief supporting text distinguishes names from values.
 The form does not become a second credential store. Shared scope and removal require confirmation
-of the named connection. Failed saves preserve the form; Reload is explicit.
+of the named connection. Zotero's tool editor lives in the dedicated Zotero
+Settings page beside its separate Desktop Local API diagnosis; the generic
+tool list links there without duplicating configuration controls. Failed saves preserve the form; Reload is explicit.
 
 Add Material offers Choose Note and Add Selection as distinct actions. Choose
 Note opens a native searchable list with title, vault role and path, followed by

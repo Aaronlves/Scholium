@@ -101,7 +101,6 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         workspaceDirectory: @escaping @MainActor () async throws -> URL,
         methodDefaults: UserDefaults = .standard,
         saveHistory: (@MainActor ([AgentChatConversation]) async throws -> Void)? = nil,
-        zotero: (any ZoteroUseCases)? = nil,
         displayWindow: @escaping @MainActor (UUID) -> AgentChatDisplayScope? = { _ in nil },
         notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
         previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview = { _ in
@@ -116,7 +115,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         self.previewUpdate = previewUpdate
         self.notificationSink = notificationSink
         connectionDefaults = methodDefaults
-        capabilities = AgentChatCapabilitiesController(zotero: zotero)
+        capabilities = AgentChatCapabilitiesController()
         runtimeHome = root.appendingPathComponent("Codex", isDirectory: true)
         let storage = AgentChatStorage(
             root: root.appendingPathComponent(triptychID.uuidString, isDirectory: true))
@@ -3160,7 +3159,6 @@ final class AgentChatRegistry {
     private var controllers: [UUID: AgentChatController] = [:]
     private let root: URL
     private let workspaceDirectory: @MainActor (UUID) async throws -> URL
-    private let zotero: (any ZoteroUseCases)?
     private let displayWindow: @MainActor (UUID, UUID) -> AgentChatDisplayScope?
     private let handler: @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
     private let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
@@ -3168,7 +3166,6 @@ final class AgentChatRegistry {
     init(
         root: URL,
         workspaceDirectory: @escaping @MainActor (UUID) async throws -> URL,
-        zotero: (any ZoteroUseCases)? = nil,
         displayWindow: @escaping @MainActor (UUID, UUID) -> AgentChatDisplayScope? = { _, _ in nil },
         notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
         previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview,
@@ -3176,7 +3173,6 @@ final class AgentChatRegistry {
     ) {
         self.root = root
         self.workspaceDirectory = workspaceDirectory
-        self.zotero = zotero
         self.displayWindow = displayWindow
         self.handler = handler
         self.previewUpdate = previewUpdate
@@ -3186,7 +3182,7 @@ final class AgentChatRegistry {
         if let current = controllers[triptychID] { return current }
         let displayWindow = self.displayWindow
         let controller = AgentChatController(
-            triptychID: triptychID, root: root, workspaceDirectory: { [workspaceDirectory] in try await workspaceDirectory(triptychID) }, zotero: zotero,
+            triptychID: triptychID, root: root, workspaceDirectory: { [workspaceDirectory] in try await workspaceDirectory(triptychID) },
             displayWindow: { displayWindow(triptychID, $0) }, notificationSink: notificationSink,
             previewUpdate: previewUpdate, toolHandler: handler)
         controllers[triptychID] = controller

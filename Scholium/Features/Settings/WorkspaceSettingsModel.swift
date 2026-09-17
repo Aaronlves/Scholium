@@ -5,9 +5,11 @@ import ScholiumContracts
 enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
     case workspace
     case document
+    case writing
+    case agents
+    case shortcuts
     case notifications
-    case interaction
-    case integrations
+    case zotero
 
     var id: String { rawValue }
 }
@@ -89,13 +91,20 @@ enum WorkspaceSettingsMutationError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .triptychChanged:
-            String(localized: "The active Triptych changed. The metadata draft was preserved and was not written.", table: "Localizable", bundle: .module)
+            String(
+                localized:
+                    "The active Triptych changed. The metadata draft was preserved and was not written.",
+                table: "Localizable", bundle: .module)
         case .commitRequiresReview:
             String(
-                localized: "Scholium reread the portable settings after an uncertain save. Review the current saved version before trying again.",
+                localized:
+                    "Scholium reread the portable settings after an uncertain save. Review the current saved version before trying again.",
                 table: "Localizable", bundle: .module)
         case .reconciliationRequired:
-            String(localized: "Portable settings must be reread successfully before another save can be attempted.", table: "Localizable", bundle: .module)
+            String(
+                localized:
+                    "Portable settings must be reread successfully before another save can be attempted.",
+                table: "Localizable", bundle: .module)
         }
     }
 }
@@ -122,7 +131,7 @@ struct WorkspaceSettingsMachineCapabilities {
     let openExternal: (URL) -> Bool
 }
 
-/// Zotero operations used by the Integrations settings pane.
+/// Zotero operations used by its dedicated settings page.
 @MainActor
 struct WorkspaceSettingsZoteroCapabilities {
     let zoteroConnectionInfo: () async -> ZoteroLibraryInfo
@@ -368,11 +377,14 @@ final class WorkspaceSettingsModel: ObservableObject {
             let warning: String?
             if !targetIsCurrent {
                 warning = String(
-                    localized: "The settings were saved to the Triptych where the edit began. Reload Metadata Settings to show the currently active Triptych.",
+                    localized:
+                        "The settings were saved to the Triptych where the edit began. Reload Metadata Settings to show the currently active Triptych.",
                     table: "Localizable", bundle: .module)
             } else if commit.derivedRefreshWarning != nil {
                 warning = String(
-                    localized: "Portable settings were saved. Research views will refresh when the workspace is available.", table: "Localizable",
+                    localized:
+                        "Portable settings were saved. Research views will refresh when the workspace is available.",
+                    table: "Localizable",
                     bundle: .module)
             } else {
                 warning = nil
@@ -406,7 +418,9 @@ final class WorkspaceSettingsModel: ObservableObject {
             if case .current = reread.state, reread.settings == settings {
                 return WorkspaceSettingsSaveResult(
                     warning: targetIsCurrent
-                        ? String(localized: "Portable settings were reread and the requested save is present.", table: "Localizable", bundle: .module)
+                        ? String(
+                            localized: "Portable settings were reread and the requested save is present.",
+                            table: "Localizable", bundle: .module)
                         : String(
                             localized:
                                 "The settings were saved to the Triptych where the edit began. Reload Metadata Settings to show the currently active Triptych.",

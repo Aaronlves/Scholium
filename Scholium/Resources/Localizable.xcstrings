@@ -1,6 +1,28 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Open Skills and Tools": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Skills and Tools"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开技能与工具"}}}},
+    "The connection changed. Your tool draft is retained. Reconnect to its configuration folder to continue.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The connection changed. Your tool draft is retained. Reconnect to its configuration folder to continue."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "连接已更改。工具草稿已保留，请重新连接其配置文件夹以继续。"}}}},
+    "Agent settings": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Agent settings"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "智能体设置"}}}},
+    "Cancel Action Changes": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Cancel Action Changes"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "取消此操作的修改"}}}},
+    "Chat Behavior": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Chat Behavior"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "聊天行为"}}}},
+    "Configure Zotero in Zotero Settings.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Configure Zotero in Zotero Settings."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请在 Zotero 设置中配置 Zotero。"}}}},
+    "Connect Codex in Connection and Chat to configure Skills and Tools.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connect Codex in Connection and Chat to configure Skills and Tools."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请在“连接与聊天”中连接 Codex，以配置技能与工具。"}}}},
+    "Connection and Chat": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connection and Chat"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "连接与聊天"}}}},
+    "Custom Connection Paths": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Custom Connection Paths"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "自定义连接路径"}}}},
+    "Disconnect Codex to change connection paths.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Disconnect Codex to change connection paths."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "断开 Codex 后可以修改连接路径。"}}}},
+    "External Access": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "External Access"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "外部接入"}}}},
+    "Open Zotero Settings": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Zotero Settings"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开 Zotero 设置"}}}},
+    "Open a Triptych to configure Zotero in Chat.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open a Triptych to configure Zotero in Chat."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开三联体，以配置聊天中的 Zotero 工具。"}}}},
+    "Open a Triptych to manage its Skills and Tools.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open a Triptych to manage its Skills and Tools."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开三联体，以管理其技能与工具。"}}}},
+    "Reload Saved Actions": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reload Saved Actions"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重新载入已保存的操作"}}}},
+    "Save Selection Actions": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Save Selection Actions"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "保存选区操作"}}}},
+    "Save Shortcut": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Save Shortcut"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "保存快捷键"}}}},
+    "Selection actions changed elsewhere. Your draft has been retained. Reload saved actions before editing again.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Selection actions changed elsewhere. Your draft has been retained. Reload saved actions before editing again."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "选区操作已在其他位置更改。草稿已保留，请重新载入已保存的操作后再编辑。"}}}},
+    "Wait for the Agent to finish before changing Skills or Tools.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Wait for the Agent to finish before changing Skills or Tools."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请等待智能体完成当前任务后再修改技能或工具。"}}}},
+    "Writing Continuation": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Writing Continuation"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "写作续写"}}}},
+    "Zotero in Chat": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Zotero in Chat"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "聊天中的 Zotero"}}}},
+
     "Finish Setup and Open": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finish Setup and Open"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "完成设置并打开"}}}},
     "The folders have been created. Retry to finish setting up this Triptych.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The folders have been created. Retry to finish setting up this Triptych."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文件夹已创建。请重试以完成此脉络的设置。"}}}},
 

@@ -1,36 +1,36 @@
 import ScholiumContracts
 import SwiftUI
 
-struct WritingContinuationSettingsView: View {
+struct WritingContinuationSettingsContent: View {
     @Environment(\.agentChatSettingsController) private var controller
     @ObservedObject private var preferences = WritingContinuationPreferences.shared
 
     var body: some View {
-        Form {
-            Section {
-                Toggle(isOn: $preferences.enabled) {
-                    Text(ScholiumL10n.WritingAssistance.enable)
-                }
-                .accessibilityIdentifier("scholium.settings.writingContinuation.enabled")
+        Section {
+            Toggle(isOn: $preferences.enabled) {
+                Text(ScholiumL10n.WritingAssistance.enable)
+            }
+            .accessibilityIdentifier("scholium.settings.writingContinuation.enabled")
 
-                if let controller {
-                    WritingContinuationModelSettings(controller: controller, preferences: preferences)
-                        .id(controller.triptychID)
-                } else {
-                    WritingContinuationModelPicker(preferences: preferences, models: [], connected: false)
-                    Text(ScholiumL10n.WritingAssistance.openTriptych)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } header: {
+            if let controller {
+                WritingContinuationModelSettings(controller: controller, preferences: preferences)
+                    .id(controller.triptychID)
+            } else {
+                WritingContinuationModelPicker(preferences: preferences, models: [], connected: false)
+                Text(ScholiumL10n.WritingAssistance.openTriptych)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Writing Continuation")
+        } footer: {
+            VStack(alignment: .leading) {
                 Text("This Mac", bundle: .module)
-            } footer: {
                 Text(ScholiumL10n.WritingAssistance.contextAndAllowance)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .formStyle(.grouped)
-        .accessibilityIdentifier("scholium.settings.writingContinuation")
+        .id("writing.continuation")
     }
 }
 

@@ -22,25 +22,30 @@ requirements; implementation evidence remains in the Status set.
 ### Navigation, discovery and scope
 
 One native preferences window opens through the App menu and Command-Comma.
-A native icon-and-label sidebar identifies the selected category; the window
-title reflects that pane. Reopening restores the last category. The window
-retains its size while switching categories; the researcher can resize it.
+A fixed native icon-and-label navigation column remains visible and identifies
+the selected category; it has no collapse action or draggable split divider.
+The sidebar and content retain their separate native titlebar regions, with
+sidebar material continuing to the window’s top edge.
+The window title reflects that pane. Reopening restores the last category. The
+window retains its size while switching categories; the researcher can resize it.
 Category changes do not animate window geometry or discard unsaved drafts,
 selection or scroll position in pages already opened in the settings session.
 Inactive pages have no keyboard, pointer or accessibility interaction.
 
-The sidebar presents five top-level panes: Workspace, Appearance,
-Notifications, Interaction and Integrations. Workspace contains local
-Triptych registration and folder access. Appearance contains the complete
-document-content appearance profile, including reading and typography controls.
-Notifications contains reminder
-timing and the local dismissal ledger.
-Interaction groups machine-local Keyboard Shortcuts, Selection Actions, Writing
-Assistance and Chat. Writing Assistance owns the opt-in continuation switch and
-independent runtime-inventory model choice under §18.4; disabling preserves the choice.
-Chat owns the running-turn Return behavior; the composer reflects that preference.
-Integrations groups Agents & Chat and Zotero because both are connection or
-external-tool configuration; each child retains its own owner and scope.
+The navigation column presents seven task categories: Workspace, Document
+Appearance, Writing Assistance, Agents & Chat, Keyboard Shortcuts,
+Notifications & Reminders and Zotero. Workspace owns Triptych registration,
+folder access and portable-data location. Document Appearance presents the
+complete content profile and CSS snippets in one scrolling page. Writing
+Assistance groups opt-in continuation and its independent model choice with
+Selection Actions. Keyboard Shortcuts is directly reachable.
+Agents & Chat uses three native segments: Connection and Chat, Skills and Tools,
+and External Access. Each segment is a complete scrolling task page; manual
+paths and external-host setup remain inline. Core Protocol, optional Skills and
+connected tools belong to the same Agent configuration area. Zotero owns both
+Desktop Local API diagnosis and its Chat tool configuration as distinct groups;
+the generic tool list links to that sole editing location. Notifications &
+Reminders separates Triptych dismissal-return timing from the Mac-local ledger.
 Category grouping does not imply storage or sharing scope. Pages identify This
 Mac, This Triptych or mixed scope as applicable through their category, group
 and adjacent state labels; exact Triptych identity is shown before a portable
@@ -57,8 +62,12 @@ Each setting has one editing location. Contextual links and Settings search
 lead to that location rather than maintaining duplicate controls. Search indexes
 static page/control metadata, including English and Simplified Chinese labels
 and common user-facing synonyms, never research or Skill content.
-Results name the setting and category; choosing a
-result reveals its control, page or sheet without changing its value.
+Results name the setting and category; choosing a result selects the owning
+category and Agent segment, then reveals the named
+control or group in the existing scroll plane without changing its value.
+Search navigation preserves the prior browsing category and segment; clearing
+the query restores them. Configuration links select their explicit destination
+rather than restoring a prior search destination.
 No matches preserves the query; clearing search restores the browsing context.
 
 ### Page composition
@@ -67,25 +76,31 @@ The selected pane makes its scope and any necessary target identity legible
 through its category, group and adjacent state labels before or beside the
 editable control. Group headings name related tasks or preferences, with common
 choices before optional detail. Reuse the window's category title instead of
-adding a duplicate large heading. Short panes remain compact; longer forms and
-collections scroll without losing access to their actions.
+adding a duplicate large heading. Short panes remain compact; each longer page
+has one primary vertical scroll plane without losing access to its scoped
+actions. Content reflows at narrow
+widths; a wide matrix becomes named rows instead of hiding its fields. Native
+text editors may retain local text scrolling.
 
 Related preferences use native grouped surfaces, with a heading above each
 group and labels beside their controls. Groups use the available content width;
 a wide, fixed label column must not compress the controls. Supporting copy stays
-beside its owner. Native
-collections hold field/shortcut rows and adjacent actions. Shared relationships
+beside its owner. Native collections hold field/shortcut rows and adjacent
+actions. Shared relationships
 use consistent alignment and spacing without forcing every pane into identical
 height or containers. Status and validation fit beside the affected control
 without replacing the active form or needlessly shifting its controls.
 
 Native group surfaces distinguish related preferences; individual peer rows
-share that surface rather than each receiving a card. Separators remain for a native collection or menu, or for a
-genuine structural boundary such as a persistent action area. A peer preference
-is not hidden in a nested disclosure merely to shorten a pane. When detail has a
-different scope or workflow, use a child pane or native sheet; reserve a
-disclosure for one genuinely secondary detail group that is not needed to
-understand current state or repair.
+share that surface rather than each receiving a card. Separators remain for a
+native collection or menu, or for a genuine structural boundary such as a
+persistent action area. A peer preference
+is not hidden in a nested disclosure merely to shorten a pane. Ordinary
+configuration groups and single-object editors remain inline in their owning
+page; one selected-object editor retains its target, draft, validation,
+Save and Cancel. Segmented controls may switch a small set of coherent task
+views or express mutually exclusive choices. Native file/folder selection,
+provider sign-in and required confirmations retain their task presentations.
 
 An ordinary setting row pairs a label with its current value or control;
 explanation and field feedback follow that control. A collection keeps selection
@@ -128,10 +143,9 @@ is explained at its field rather than silently replaced with a valid value.
 Dependent controls stay near their prerequisite. Keep them visible but disabled
 when knowing they exist helps explain availability, with a reason when needed;
 hide detail that has no meaning in the current choice. Disabling a parent
-preserves subordinate choices for reuse. Low-frequency detail may live behind
-one clearly labelled Advanced Options action that opens a native child sheet; it
-must not hide current failures or required repair. Default, Automatic and Follow
-System identify their actual source; show the effective value when needed to
+preserves subordinate choices for reuse. Low-frequency detail follows common
+choices in a specifically named inline group. It must not hide current failures
+or required repair. Default, Automatic and Follow System identify their actual source; show the effective value when needed to
 understand inherited behavior, without inventing configuration layers.
 
 ### Changes and feedback
@@ -159,9 +173,12 @@ form and Advanced CSS entry share the Document Appearance owner;
 profile changes never reset CSS snippets. [Source Properties Appendix A](02-notes-and-file-operations.md#appendix-a-authored-source-properties)
 owns authored YAML; [Agent Chat §8.7](12-agent-chat.md) owns Selection
 Actions and runtime configuration. Agents & Chat keeps connection state and
-primary connect or sign-in actions in the main pane; custom connection paths,
-runtime Skills and Tools, and External Agent Hosts open in explicit native
-child sheets because they are distinct or low-frequency workflows. [Agent Collaboration §8](03-agent-collaboration-and-workflows.md)
+primary connect or sign-in actions in Connection and Chat, with custom paths
+inline. Skills and Tools and External Access are its retained task segments.
+Selection Action edits belong to one page draft and have one scoped Save;
+inline shortcut capture stops when its page becomes inactive. Tool edits remain
+independent transactions; moving them inline does not alter configuration
+version checks, shared-scope confirmation, credentials or sign-in. [Agent Collaboration §8](03-agent-collaboration-and-workflows.md)
 and [Zotero §15](05-integrations-onboarding-and-boundaries.md) own integration
 behavior. [Chat capability presentation](14-chat-interface.md#chat-capability-presentation)
 owns the Agent pane's feature-specific controls. [Triptych §§3–4](01-foundation-and-triptych.md)

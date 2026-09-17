@@ -22,20 +22,6 @@
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "续写模型" } }
       }
     },
-    "Open a Triptych and connect Codex in Integrations → Agents & Chat to choose a continuation model.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Open a Triptych and connect Codex in Integrations → Agents & Chat to choose a continuation model." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打开一个三联体，并在“集成 → 智能体与聊天”连接 Codex，即可选择续写模型。" } }
-      }
-    },
-    "Connect and sign in to Codex in Integrations → Agents & Chat. Your selected model is retained.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Connect and sign in to Codex in Integrations → Agents & Chat. Your selected model is retained." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请在“集成 → 智能体与聊天”连接并登录 Codex。已选模型会保留。" } }
-      }
-    },
     "The selected model is unavailable on this connection. Choose an available model; Scholium will not substitute another model automatically.": {
       "extractionState": "manual",
       "localizations": {
@@ -50,78 +36,8 @@
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "AI 续写使用已连接的 Codex 账户，可能消耗其额度。请求采用模型支持的低或更低推理强度及标准服务层级。写作上下文及相关检索片段会发送至该连接，处理可能在远程进行。关闭 AI 或服务不可用时，仍可使用本地术语补全。" } }
       }
     },
-    "settings.tab.document": {
-      "comment": "Settings tab for document content presentation and appearance profiles, including typography.",
-      "extractionState": "extracted_with_value",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Appearance"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "外观"
-          }
-        }
-      }
-    },
-    "settings.tab.integrations": {
-      "comment": "Settings tab for Agents, Chat and Zotero integrations.",
-      "extractionState": "extracted_with_value",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Integrations"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "集成"
-          }
-        }
-      }
-    },
-    "settings.tab.interaction": {
-      "comment": "Settings tab for keyboard shortcuts and selection actions.",
-      "extractionState": "extracted_with_value",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Interaction"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "交互"
-          }
-        }
-      }
-    },
-    "settings.tab.notifications": {
-      "comment": "Settings tab for notification reminders and dismissed items.",
-      "extractionState": "extracted_with_value",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Notifications"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "通知"
-          }
-        }
-      }
-    },
+    "settings.tab.document": {"comment": "Settings tab for document content presentation and appearance profiles, including typography.", "extractionState": "extracted_with_value", "localizations": {"en": {"stringUnit": {"state": "new", "value": "Document Appearance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文稿外观"}}}},
+    "settings.tab.notifications": {"comment": "Settings tab for notification reminders and dismissed items.", "extractionState": "extracted_with_value", "localizations": {"en": {"stringUnit": {"state": "new", "value": "Notifications & Reminders"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "通知与提醒"}}}},
     "settings.tab.workspace": {
       "comment": "Settings tab for local Triptych registration and folder access.",
       "extractionState": "extracted_with_value",
@@ -139,7 +55,9 @@
           }
         }
       }
-    }
+    },
+    "Connect and sign in to Codex in Agents & Chat. Your selected model is retained.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connect and sign in to Codex in Agents & Chat. Your selected model is retained."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请在“智能体与聊天”中连接并登录 Codex。已选模型会保留。"}}}},
+    "Open a Triptych and connect Codex in Agents & Chat to choose a continuation model.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open a Triptych and connect Codex in Agents & Chat to choose a continuation model."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开三联体，并在“智能体与聊天”中连接 Codex，以选择续写模型。"}}}}
   },
   "version": "1.3"
 }

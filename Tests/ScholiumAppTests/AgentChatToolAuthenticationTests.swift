@@ -47,12 +47,14 @@ struct AgentChatToolAuthenticationTests {
         try await wait { capabilities.authorizationURL != nil }
         #expect(opened.count == 1 && capabilities.authenticationNotice == nil)
         #expect(capabilities.authenticatingTool == server.name && !capabilities.canSignIn(server))
+        #expect(capabilities.authenticationFeedbackTool == server.name)
         capabilities.authenticationCompleted(["name": .string(server.name), "threadId": .string("another"), "success": .bool(true)], visibleThreadID: nil)
         #expect(capabilities.authenticatingTool == server.name)
         try "failure".write(to: controller.runtimeHome.appendingPathComponent("finish-tool-auth"), atomically: true, encoding: .utf8)
         capabilities.refresh(threadID: nil)
         try await wait { capabilities.authenticatingTool == nil && capabilities.hasTools && !capabilities.isRefreshing }
         #expect(capabilities.authenticationError != nil && capabilities.authenticationNotice == nil && capabilities.authorizationURL == nil)
+        #expect(capabilities.authenticationFeedbackTool == server.name)
         capabilities.signIn(server, threadID: authThread) { opened.append($0) }
         try await wait { capabilities.authorizationURL != nil }
         #expect(opened.count == 2)
@@ -89,6 +91,7 @@ struct AgentChatToolAuthenticationTests {
         #expect(controller.capabilities.authenticatingTool == server.name)
         await controller.disconnect()
         #expect(opened == 0 && controller.capabilities.authenticatingTool == nil)
+        #expect(controller.capabilities.authenticationFeedbackTool == nil)
         controller.capabilities.authenticationCompleted(["name": .string(server.name), "success": .bool(true)], visibleThreadID: nil)
         #expect(controller.capabilities.authenticationNotice == nil)
     }

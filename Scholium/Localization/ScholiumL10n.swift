@@ -55,13 +55,13 @@ enum ScholiumL10n {
         }
         static var openTriptych: LocalizedStringResource {
             LocalizedStringResource(
-                "Open a Triptych and connect Codex in Integrations → Agents & Chat to choose a continuation model.",
+                "Open a Triptych and connect Codex in Agents & Chat to choose a continuation model.",
                 table: "Interface", bundle: .module
             )
         }
         static var connect: LocalizedStringResource {
             LocalizedStringResource(
-                "Connect and sign in to Codex in Integrations → Agents & Chat. Your selected model is retained.",
+                "Connect and sign in to Codex in Agents & Chat. Your selected model is retained.",
                 table: "Interface", bundle: .module
             )
         }
@@ -93,42 +93,24 @@ enum ScholiumL10n {
         static var document: LocalizedStringResource {
             LocalizedStringResource(
                 "settings.tab.document",
-                defaultValue: "Appearance",
+                defaultValue: "Document Appearance",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for document content presentation and appearance profiles, including typography."
+                comment:
+                    "Settings tab for document content presentation and appearance profiles, including typography."
             )
         }
 
         static var notifications: LocalizedStringResource {
             LocalizedStringResource(
                 "settings.tab.notifications",
-                defaultValue: "Notifications",
+                defaultValue: "Notifications & Reminders",
                 table: "Interface",
                 bundle: .module,
                 comment: "Settings tab for notification reminders and dismissed items."
             )
         }
 
-        static var interaction: LocalizedStringResource {
-            LocalizedStringResource(
-                "settings.tab.interaction",
-                defaultValue: "Interaction",
-                table: "Interface",
-                bundle: .module,
-                comment: "Settings tab for keyboard shortcuts and selection actions."
-            )
-        }
-
-        static var integrations: LocalizedStringResource {
-            LocalizedStringResource(
-                "settings.tab.integrations",
-                defaultValue: "Integrations",
-                table: "Interface",
-                bundle: .module,
-                comment: "Settings tab for Agents, Chat and Zotero integrations."
-            )
-        }
     }
 
 }

@@ -16,7 +16,6 @@ func agentChatFixtureWorkspace(root: URL, triptychID: UUID) throws -> URL {
 func fixtureChatController(
     triptychID: UUID, root: URL,
     methodDefaults: UserDefaults = .standard,
-    zotero: (any ZoteroUseCases)? = nil,
     displayWindow: @escaping @MainActor (UUID) -> AgentChatDisplayScope? = { _ in nil },
     notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
     previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview = { _ in
@@ -27,6 +26,6 @@ func fixtureChatController(
     AgentChatController(
         triptychID: triptychID, root: root,
         workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptychID) },
-        methodDefaults: methodDefaults, zotero: zotero, displayWindow: displayWindow,
+        methodDefaults: methodDefaults, displayWindow: displayWindow,
         notificationSink: notificationSink, previewUpdate: previewUpdate, toolHandler: toolHandler)
 }

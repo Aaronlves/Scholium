@@ -13,9 +13,6 @@ extension EnvironmentValues {
 
 struct AgentChatConnectionSettingsView: View {
     @ObservedObject var controller: AgentChatController
-    var onShowExternalAgentHosts: (() -> Void)? = nil
-    @State private var showsAdvancedConnectionSettings = false
-    @State private var showsSkillsAndTools = false
 
     var body: some View {
         Group {
@@ -39,26 +36,7 @@ struct AgentChatConnectionSettingsView: View {
                     "Scholium finds Codex and prepares the connection automatically. Connection settings and saved chat history are managed on this Mac."
                 )
             }
-            Section("Advanced") {
-                AgentSettingsNavigationButton("Advanced Connection Settings…") {
-                    showsAdvancedConnectionSettings = true
-                }
-                AgentSettingsNavigationButton("Skills and Tools…") {
-                    showsSkillsAndTools = true
-                }
-                if let onShowExternalAgentHosts {
-                    AgentSettingsNavigationButton("External Agent Hosts…", action: onShowExternalAgentHosts)
-                }
-            }
-        }
-        .sheet(isPresented: $showsAdvancedConnectionSettings) {
-            AgentChatConnectionAdvancedSettingsView(controller: controller)
-        }
-        .sheet(isPresented: $showsSkillsAndTools) {
-            AgentChatCapabilitiesSettingsSheet(
-                controller: controller,
-                capabilities: controller.capabilities
-            )
+            .id("agents.connection")
         }
     }
 
@@ -90,34 +68,7 @@ struct AgentChatConnectionSettingsView: View {
     }
 }
 
-/// A secondary Settings workflow opens from a full-width native action row.
-struct AgentSettingsNavigationButton: View {
-    let title: LocalizedStringKey
-    let action: () -> Void
-
-    init(_ title: LocalizedStringKey, action: @escaping () -> Void) {
-        self.title = title
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                Text(title)
-                    .foregroundStyle(.primary)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-    }
-}
-
-private struct AgentChatConnectionAdvancedSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
+struct AgentChatConnectionAdvancedSettingsView: View {
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject var controller: AgentChatController
     @AppStorage("agent.codex.executable") private var executable = ""
@@ -127,13 +78,18 @@ private struct AgentChatConnectionAdvancedSettingsView: View {
     @State private var fileSelectionError: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-            settingsTitle(
-                "Advanced Connection Settings",
-                detail: "Override automatic locations only when using a custom Codex installation."
-            )
+        Group {
+            Section {
+                Text(
+                    "Override automatic locations only when using a custom Codex installation.",
+                    bundle: .module
+                )
+                .foregroundStyle(.secondary)
+                if controller.state != .disconnected {
+                    Text("Disconnect Codex to change connection paths.", bundle: .module)
+                        .foregroundStyle(.secondary)
+                }
 
-            VStack(alignment: .leading, spacing: 12) {
                 pathRow("Codex Application", value: $executable, directory: false)
                 pathRow("Scholium Connection Helper", value: $cli, directory: false)
                 pathRow("Existing Codex Settings Folder", value: $home, directory: true)
@@ -155,24 +111,20 @@ private struct AgentChatConnectionAdvancedSettingsView: View {
                     home = ""
                 }
                 .disabled(controller.state != .disconnected)
+            } header: {
+                Text("Custom Connection Paths", bundle: .module)
             }
+            .id("agents.paths")
 
             if let version = controller.runtimeVersion {
-                settingsEditorSection("Runtime") {
+                Section("Runtime") {
                     Text(version)
                         .font(.caption)
                         .textSelection(.enabled)
                 }
             }
 
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
         }
-        .padding(24)
-        .frame(width: 680, height: 380, alignment: .topLeading)
         .onDisappear { fileSelectionTask?.cancel() }
     }
 
@@ -201,6 +153,10 @@ private struct AgentChatConnectionAdvancedSettingsView: View {
                                     .requiredForFileSelection().selectURL(request)
                             else { return }
                             try Task.checkCancellation()
+                            guard controller.state == .disconnected else {
+                                fileSelectionError = ScholiumL10n.string("Disconnect Codex to change connection paths.")
+                                return
+                            }
                             value.wrappedValue = url.path
                         } catch is CancellationError {
                             return
@@ -213,33 +169,4 @@ private struct AgentChatConnectionAdvancedSettingsView: View {
         }.disabled(controller.state != .disconnected || fileSelectionTask != nil)
     }
 
-}
-
-private struct AgentChatCapabilitiesSettingsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject var controller: AgentChatController
-    @ObservedObject var capabilities: AgentChatCapabilitiesController
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ScrollView {
-                AgentChatCapabilitiesSettingsView(
-                    controller: controller,
-                    capabilities: capabilities
-                )
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 760, height: 360)
-        .task(id: controller.selected?.threadID) {
-            capabilities.refresh(threadID: controller.selected?.threadID)
-        }
-    }
 }

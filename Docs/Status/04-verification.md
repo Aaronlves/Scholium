@@ -93,21 +93,30 @@ disclosure, Light/Dark and mode switching with byte-identical Undo; it does not
 establish installed IME, minimum width, full adaptation or human perception.
 Evidence: `.build/editor-presentation-*.log`.
 
-**2026-09-16 — Bootstrap and Settings:** Bootstrap's 102 scoped lifecycle tests
+**2026-09-16 — Bootstrap:** Bootstrap's 102 scoped lifecycle tests
 and two QA journeys cover connect/restore/create, non-replacing destination
 conflict, picker cancellation, retained Back input, parent authorization,
 480-point width, immediate handoff, relaunch and registration editing.
 Evidence: `.build/bootstrap-verification/RESULTS.md`.
-Settings' three separate scoped XCTest journeys cover five categories, drafts,
-rename/cancel, empty search/recovery, hidden default actions, sidebar arrows,
-native 780-point resizing, Chinese presentation, Notifications reload/discard/save/
-relaunch and Selection Actions validation/cancel/save/reopen/relaunch. Native
-containment checks retain resize and field-editor ownership; earlier representative
-QA includes English/Dark, inactive-page AX and disabled Save.
-Evidence: `.build/settings-ui-audit/`, `.build/settings-redesign/`,
-`.build/settings-performance-fix/`.
-These are staged development journeys, not the complete UI suite or human
-VoiceOver/Full Keyboard Access/IME/adaptation acceptance.
+
+**2026-09-17 — Settings:** 61 scoped checks in 14 suites cover bilingual static
+search routing, scoped drafts, native fixed-sidebar/toolbar association,
+resizing/field-editor ownership, preferences and tool revision/authentication
+boundaries, including tool-specific feedback targets. Native normalization QA
+covers one system form background, protocol owner navigation and restoration of
+the resize mask. Four distinct QA journeys cover seven task categories, retained
+drafts, rename/cancel, hidden default actions and accessibility, sidebar arrows,
+empty-search recovery, repeated Agent-result and explicit Zotero routing,
+automatic H6 reveal, native 780-point resizing, inspected English/Dark and
+Chinese/Light titlebar regions, Notifications reload/discard/save/relaunch,
+inline Selection Actions validation/cancel/save/reopen/relaunch and disconnected
+continuation/model retention. Transactions use the App menu; a separate Computer
+Use observation opens Settings with Command-Comma from the focused QA editor.
+The beta XCTest literal-comma attempts remain failures, not keyboard proof.
+Evidence: `.build/settings-normalization-evidence/RESULTS.md`;
+unchanged transaction journeys: `.build/settings-redesign-evidence/RESULTS.md`.
+These are scoped development results, not the complete UI suite or human
+VoiceOver/Full Keyboard Access/installed-IME/system-adaptation acceptance.
 
 **2026-09-16 — Chat delivery/composer:** Owning renderer/Chat checks cover Stop/
 failed-delivery queue revocation, completion/acknowledgement ordering, ordered

@@ -105,10 +105,44 @@ extension ScholiumUITests {
         select("notifications")
         XCTAssertFalse(window.buttons["Save Appearance"].exists, "Inactive pane must leave the accessibility tree")
         capture("settings-notifications")
-        select("interaction")
-        capture("settings-interaction")
-        select("integrations")
-        capture("settings-integrations")
+        select("writing")
+        capture("settings-writing")
+        select("agents")
+        capture("settings-agents")
+        let taskSearch = window.searchFields["scholium.settings.search"]
+        typeCommittedText("Core Protocol", into: taskSearch, in: app)
+        let protectedSkill = window.staticTexts["Protected Skill"]
+        XCTAssertTrue(protectedSkill.waitForExistence(timeout: 5))
+        window.radioButtons["External Access"].click()
+        let protocolResult = window.buttons["scholium.settings.result.agents.protocol"]
+        XCTAssertTrue(protocolResult.waitForExistence(timeout: 5))
+        protocolResult.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { protectedSkill.isHittable }, "Repeating a result must reveal its owning Agent segment")
+        capture("settings-agent-skills")
+        taskSearch.buttons["cancel"].click()
+        window.radioButtons["External Access"].click()
+        capture("settings-external-access")
+        XCTAssertFalse(window.buttons["Show Core Protocol in Finder…"].exists,
+            "External access must lead to the sole protocol viewing location")
+        let skillsLink = window.buttons["Open Skills and Tools"]
+        scrollUntilHittable(skillsLink, in: settingsContentScrollView(in: window))
+        skillsLink.click()
+        XCTAssertTrue(protectedSkill.waitForExistence(timeout: 5))
+        XCTAssertEqual(window.buttons.matching(identifier: "Show Core Protocol in Finder…").count, 1)
+        window.radioButtons["Connection and Chat"].click()
+        select("zotero")
+        typeCommittedText("Connected Tools", into: taskSearch, in: app)
+        let zoteroLink = window.buttons["Open Zotero Settings"]
+        XCTAssertTrue(zoteroLink.waitForExistence(timeout: 5))
+        scrollUntilHittable(zoteroLink, in: settingsContentScrollView(in: window))
+        zoteroLink.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { window.title == "Zotero" && taskSearch.value as? String == "" },
+            "An explicit settings link must work when its remembered category is already equal")
+        select("shortcuts")
+        capture("settings-shortcuts")
+        select("zotero")
+        capture("settings-zotero")
         select("document")
         XCTAssertEqual(size.value as? String, "17", "Category navigation discarded an unsaved appearance draft")
         XCTAssertTrue(window.buttons["Save Appearance"].isEnabled)
@@ -140,7 +174,7 @@ extension ScholiumUITests {
         app.typeKey(.downArrow, modifierFlags: [])
         XCTAssertTrue(size.waitForExistence(timeout: 5))
         app.typeKey(.downArrow, modifierFlags: [])
-        XCTAssertTrue(window.buttons["Save Reminder Timing"].waitForExistence(timeout: 5))
+        XCTAssertTrue(window.descendants(matching: .any)["scholium.settings.writing"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(window.frame.size, originalFrame.size)
 
         select("document")
@@ -153,6 +187,13 @@ extension ScholiumUITests {
         XCTAssertTrue(window.buttons["Save Appearance"].isHittable)
         XCTAssertTrue(window.popUpButtons["scholium.appearance.bodyFont"].isHittable)
         capture("settings-appearance-minimum-width")
+        let searchForDetails = window.searchFields["scholium.settings.search"]
+        typeCommittedText("H6 spacing", into: searchForDetails, in: app)
+        let h6Spacing = window.textFields["H6 space after"]
+        XCTAssertTrue(h6Spacing.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) { h6Spacing.isHittable }, "Search must reveal the specific heading controls without manual scrolling")
+        XCTAssertEqual(window.sheets.count, 0, "Heading details are edited in the appearance page")
+        searchForDetails.buttons["cancel"].click()
 
         app.terminate()
         app = configuredApplication(sessionID: sessionID, appearance: .light)
@@ -171,6 +212,12 @@ extension ScholiumUITests {
         localizedAttachment.name = "settings-appearance-chinese-light"
         localizedAttachment.lifetime = .keepAlways
         add(localizedAttachment)
+        localizedWindow.descendants(matching: .any)["scholium.settings.category.agents"].firstMatch.click()
+        XCTAssertTrue(localizedWindow.radioButtons["连接与聊天"].waitForExistence(timeout: 5))
+        let agentAttachment = XCTAttachment(screenshot: localizedWindow.screenshot())
+        agentAttachment.name = "settings-agents-chinese-light-normalized"
+        agentAttachment.lifetime = .keepAlways
+        add(agentAttachment)
     }
 
     @MainActor

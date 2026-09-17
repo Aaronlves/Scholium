@@ -972,8 +972,7 @@ struct AgentChatConversationDetailView: View {
         case .refreshMethods:
             controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true)
         case .manageMethods:
-            UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
-            UserDefaults.standard.set(SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
+            SettingsNavigationRequest.select(.agents, agentCategory: .capabilities)
             openSettings()
         case .context: presentation.contextAnchor = .composer
         case .usage: openAccountUsage()

@@ -14,10 +14,10 @@ extension ScholiumUITests {
         let enabled = window.descendants(matching: .any)["scholium.settings.writingContinuation.enabled"].firstMatch
         let model = window.popUpButtons["scholium.settings.writingContinuation.model"]
         let repair = window.staticTexts[
-            "Connect and sign in to Codex in Integrations → Agents & Chat. Your selected model is retained."
+            "Connect and sign in to Codex in Agents & Chat. Your selected model is retained."
         ]
         XCTAssertTrue(enabled.waitForExistence(timeout: 5), "Search must reveal Writing Assistance")
-        XCTAssertEqual(window.title, "Interaction")
+        XCTAssertEqual(window.title, "Writing Assistance")
         XCTAssertFalse(selectionControlIsSelected(enabled), "AI continuation must be opt-in")
         XCTAssertTrue(model.waitForExistence(timeout: 5))
         XCTAssertEqual(model.value as? String, "gpt-5.6-luna")
@@ -98,98 +98,103 @@ extension ScholiumUITests {
         XCTAssertFalse(reopened.buttons["scholium.settings.notifications.save"].isEnabled)
     }
 
-    /// The retained nested page may keep its draft, but hidden default actions
-    /// must never commit it through either level of Settings navigation.
+    /// Inline edits remain one unapplied draft through navigation and search.
+    /// Return in another page must never commit that hidden draft.
     @MainActor
-    func testSelectionActionsSettingsRetainsDraftAcrossNestedNavigation() throws {
+    func testSelectionActionsSettingsRetainsDraftAcrossNavigation() throws {
         let window = openSettingsForTransactionTest()
-        selectSettingsCategory("interaction", in: window)
-        selectInteractionCategory("Selection Actions", in: window)
+        selectSettingsCategory("writing", in: window)
         let table = window.outlines["scholium.selectionActions.table"]
-        let pageSave = window.buttons["Save"].firstMatch
+        let pageSave = window.buttons["scholium.selectionActions.save"]
+        let name = window.textFields["scholium.selectionActions.name"]
+        let instruction = window.textViews["scholium.selectionActions.prompt"]
         XCTAssertTrue(table.waitForExistence(timeout: 5))
-        XCTAssertFalse(pageSave.isEnabled)
-        // Machine-local QA preferences can survive a failed earlier run even
-        // though this journey has a fresh Triptych. Establish a saved baseline
-        // through the same scoped UI before testing cancellation and persistence.
-        window.buttons["Restore Defaults"].click()
-        pageSave.click()
+        XCTAssertTrue(pageSave.waitForExistence(timeout: 5))
+        let form = settingsContentScrollView(in: window)
+        func click(_ button: XCUIElement) {
+            scrollUntilHittable(button, in: form)
+            button.click()
+        }
+
+        // Establish a saved baseline in this disposable machine-preference scope.
+        click(window.buttons["Restore Defaults"])
+        if pageSave.isEnabled { click(pageSave) }
         XCTAssertTrue(waitUntil(timeout: 3) { !pageSave.isEnabled })
         XCTAssertFalse(table.staticTexts["QA"].exists)
 
-        window.buttons["Add Action"].click()
-        let sheet = window.sheets.firstMatch
-        XCTAssertTrue(sheet.waitForExistence(timeout: 3))
-        XCTAssertFalse(sheet.buttons["Save"].isEnabled)
-        XCTAssertTrue(sheet.descendants(matching: .any)["scholium.selectionActions.editor.validation"].exists)
+        click(window.buttons["Add Action"])
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        XCTAssertEqual(window.sheets.count, 0, "Ordinary action editing stays in the page")
+        XCTAssertFalse(pageSave.isEnabled)
+        XCTAssertTrue(window.descendants(matching: .any)["scholium.selectionActions.validation"].exists)
         app.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(sheet.exists, "Return must not accept an invalid action")
-        typeCommittedText("QA", into: sheet.textFields["scholium.selectionActions.name"], in: app)
-        XCTAssertFalse(sheet.buttons["Save"].isEnabled, "An instruction is required as well as a name")
-        sheet.buttons["Cancel"].click()
-        XCTAssertTrue(waitUntil(timeout: 3) { !sheet.exists })
+        XCTAssertTrue(name.exists, "Return must not accept an invalid action")
+        scrollUntilHittable(name, in: form)
+        typeCommittedText("QA", into: name, in: app)
+        XCTAssertFalse(pageSave.isEnabled, "An instruction is required as well as a name")
+        click(window.buttons["Cancel Action Changes"])
+        XCTAssertFalse(name.exists)
         XCTAssertFalse(table.staticTexts["QA"].exists)
-        XCTAssertFalse(pageSave.isEnabled, "Cancelling an editor must not change the page draft")
+        XCTAssertFalse(pageSave.isEnabled, "Cancelling must restore the saved collection")
 
-        window.buttons["Add Action"].click()
-        XCTAssertTrue(sheet.waitForExistence(timeout: 3))
-        typeCommittedText("QA", into: sheet.textFields["scholium.selectionActions.name"], in: app)
-        typeCommittedText(
-            "Explain the selected passage without editing it.",
-            into: sheet.textViews["scholium.selectionActions.prompt"],
-            in: app
-        )
-        XCTAssertTrue(sheet.buttons["Save"].isEnabled)
-        sheet.buttons["Save"].click()
-        XCTAssertTrue(waitUntil(timeout: 3) { !sheet.exists })
-        XCTAssertTrue(table.staticTexts["QA"].waitForExistence(timeout: 3))
-        XCTAssertTrue(pageSave.isEnabled, "Saving the child editor must leave an unapplied page draft")
+        click(window.buttons["Add Action"])
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        scrollUntilHittable(name, in: form)
+        typeCommittedText("QA", into: name, in: app)
+        scrollUntilHittable(instruction, in: form)
+        typeCommittedText("Explain the selected passage without editing it.", into: instruction, in: app)
+        XCTAssertTrue(pageSave.isEnabled)
 
-        selectInteractionCategory("Keyboard Shortcuts", in: window)
-        XCTAssertFalse(table.exists, "Inactive nested content must leave the accessibility tree")
+        selectSettingsCategory("shortcuts", in: window)
+        XCTAssertFalse(table.exists, "Inactive content must leave the accessibility tree")
         app.typeKey(.return, modifierFlags: [])
-        selectInteractionCategory("Selection Actions", in: window)
-        XCTAssertTrue(table.staticTexts["QA"].waitForExistence(timeout: 3))
-        XCTAssertTrue(pageSave.isEnabled, "Return saved a hidden child-page draft")
+        selectSettingsCategory("writing", in: window)
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        XCTAssertEqual(name.value as? String, "QA")
+        XCTAssertTrue(pageSave.isEnabled, "Return saved a hidden writing draft")
 
         selectSettingsCategory("notifications", in: window)
         XCTAssertFalse(table.exists)
         app.typeKey(.return, modifierFlags: [])
-        selectSettingsCategory("interaction", in: window)
-        XCTAssertTrue(table.waitForExistence(timeout: 3), "Returning must restore the selected child page")
-        XCTAssertTrue(table.staticTexts["QA"].exists)
-        XCTAssertTrue(pageSave.isEnabled, "Return saved a draft beneath an inactive root page")
+        selectSettingsCategory("writing", in: window)
+        XCTAssertEqual(name.value as? String, "QA")
+        XCTAssertTrue(pageSave.isEnabled)
 
         let search = window.searchFields["scholium.settings.search"]
         typeCommittedText("shortcut", into: search, in: app)
         XCTAssertTrue(window.descendants(matching: .any)["scholium.hotkeys"].firstMatch.waitForExistence(timeout: 5))
-        XCTAssertFalse(table.exists, "A matching search must reveal the child editing location")
+        XCTAssertFalse(table.exists)
         search.buttons["cancel"].click()
-        XCTAssertTrue(table.waitForExistence(timeout: 5), "Clearing search must restore the prior child page")
-        XCTAssertTrue(table.staticTexts["QA"].exists)
-        XCTAssertTrue(pageSave.isEnabled, "Search navigation must retain the unsaved action")
+        XCTAssertTrue(name.waitForExistence(timeout: 5), "Clearing search must restore the editing page")
+        XCTAssertEqual(name.value as? String, "QA")
+        XCTAssertTrue(pageSave.isEnabled)
         captureSettingsTransaction(window, named: "settings-selection-actions-retained-draft")
 
-        pageSave.click()
+        click(pageSave)
         XCTAssertTrue(waitUntil(timeout: 3) { !pageSave.isEnabled })
+        XCTAssertFalse(name.exists)
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(waitUntil(timeout: 3) { !window.exists })
         let restored = openSettingsForTransactionTest()
-        XCTAssertEqual(restored.title, "Interaction", "Reopening must restore the selected root category")
+        XCTAssertEqual(restored.title, "Writing Assistance", "Reopening must restore the selected category")
         XCTAssertTrue(restored.outlines["scholium.selectionActions.table"].waitForExistence(timeout: 5))
 
         relaunchSettingsTransactionApplication()
         let reopened = openSettingsForTransactionTest()
-        selectSettingsCategory("interaction", in: reopened)
-        selectInteractionCategory("Selection Actions", in: reopened)
-        let persisted = reopened.outlines["scholium.selectionActions.table"]
-        XCTAssertTrue(persisted.staticTexts["QA"].waitForExistence(timeout: 5))
-        XCTAssertFalse(reopened.buttons["Save"].firstMatch.isEnabled)
+        selectSettingsCategory("writing", in: reopened)
+        XCTAssertTrue(reopened.outlines["scholium.selectionActions.table"].staticTexts["QA"].waitForExistence(timeout: 5))
+        XCTAssertFalse(reopened.buttons["scholium.selectionActions.save"].isEnabled)
+    }
+
+    @MainActor
+    func settingsContentScrollView(in window: XCUIElement) -> XCUIElement {
+        window.descendants(matching: .any)["scholium.settings.pages"].firstMatch.scrollViews.firstMatch
     }
 
     @MainActor
     private func openSettingsForTransactionTest() -> XCUIElement {
-        app.typeKey(",", modifierFlags: .command)
+        app.menuBars.menuBarItems["Scholium QA"].click()
+        app.menuItems["Settings…"].click()
         let window = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         return window
@@ -198,13 +203,6 @@ extension ScholiumUITests {
     @MainActor
     private func selectSettingsCategory(_ key: String, in window: XCUIElement) {
         let category = window.descendants(matching: .any)["scholium.settings.category.\(key)"].firstMatch
-        XCTAssertTrue(category.waitForExistence(timeout: 5))
-        category.click()
-    }
-
-    @MainActor
-    private func selectInteractionCategory(_ title: String, in window: XCUIElement) {
-        let category = window.radioButtons[title]
         XCTAssertTrue(category.waitForExistence(timeout: 5))
         category.click()
     }

@@ -43,6 +43,7 @@ struct AgentChatToolConfigurationTests {
         try await wait { caps.canConfigureTools }
         #expect(!((await caps.saveTool(stale, removing: true))))
         #expect(caps.toolConfigurationError != nil && caps.toolConnections.count == 1)
+        #expect(caps.toolConfigurationErrorTool == "research")
         let fresh = try #require(await caps.reloadToolEdit(stale))
         #expect(fresh.connection.enabled)
         #expect(fresh.connection.bearerTokenVariable.isEmpty)

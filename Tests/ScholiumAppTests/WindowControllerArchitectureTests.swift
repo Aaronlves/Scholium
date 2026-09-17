@@ -1460,8 +1460,8 @@ struct WindowControllerArchitectureTests {
         #expect(model.selectedPane == .workspace)
         #expect(model.snapshot.registeredVaults.isEmpty)
         #expect(model.snapshot.registeredTriptychs.isEmpty)
-        model.selectPane(.integrations)
-        #expect(model.selectedPane == .integrations)
+        model.selectPane(.agents)
+        #expect(model.selectedPane == .agents)
     }
 
     @Test("Window model routes application operations through feature controllers")

@@ -257,14 +257,16 @@ Exact passages and readable projections remain distinct.
 
 ### Settings authority
 
-Settings composes existing workspace, document, notification, interaction,
-integration and Chat owners; it creates no workspace runtime. Immutable snapshots
+Settings composes existing workspace, document, notification, shortcut, writing,
+Zotero and Chat owners; it creates no workspace runtime. Immutable snapshots
 carry exact settings revisions and writes return replacements. Captured scope or
 revision mismatch requires explicit reload, not last-writer-wins. Native retained
 page hosts preserve drafts while inactive hosts lose input/accessibility/default
 actions. Background font discovery publishes names only, coalesces invalidation
 and rejects stale completion. Search uses static interface metadata, never research
-content or permission.
+content or permission. The AppKit fixed sidebar container owns native material,
+titlebar/toolbar section association and divider geometry; SwiftUI owns selection
+and discovery.
 
 Shortcuts have one command catalog/validated preference writer; menus consume it.
 Document shortcuts are offered to native menus only for the exact focused visible

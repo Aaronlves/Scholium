@@ -190,8 +190,8 @@ named sections in one scrollable page, with aligned property matrices that
 collapse before the form becomes cramped. Bold and Italic choices are
 independent for Body and Headings and remain stable when the base role font
 changes. Heading hierarchy settings address H1 through H6 independently; the
-main page shows their compact scale and alignment summary, while a native child
-sheet reveals each level's spacing controls on demand.
+main page shows each level's scale, alignment and before/after spacing in
+the appearance draft, adapting to rows at narrow widths.
 Low-frequency letter spacing, word spacing, hyphenation, kerning, and ligatures
 are not structured appearance fields or native controls. Advanced CSS is their
 single explicit configuration surface and is applied after generated appearance
