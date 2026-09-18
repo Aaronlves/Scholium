@@ -24,20 +24,19 @@ retain the Application's source, revision and recovery owners. The helper requir
 the running App; it is not a standalone/headless workspace product.
 
 Optional in-app Chat reaches retained conversations, materials, runtime settings,
-Skills/tools, questions and approvals, branching, concurrent turns and bounded
-delegated-Agent observation. Its default Zotero connection now targets the
-provider-managed external MCP tool surface; the bundled first-party Zotero
-service remains a compatibility path for exact local API and original-material
-contracts. Runtime reports, material access and mutation receipts remain
-distinct from independently verified evidence or researcher acceptance. There
-is no Research Action, Reading Lead, passage Discussion or Review
-Comment lifecycle, external-host conversation handoff, or MCP research-result API.
+Skills/tools, questions/approvals, branching, concurrent turns and delegated-Agent
+observation. Its Zotero route uses the Codex host's read-only capability for
+library/indexed attachment text; the native Zotero service remains the
+Application owner for local connection status and library search. Runtime
+reports, material access and mutation receipts remain distinct from evidence or
+acceptance. There is no Research Action, Reading Lead, passage Discussion or
+Review Comment lifecycle or MCP research-result API.
 
 The public release profile is Core App Beta. External Agent Collaboration and
 optional in-app Chat remain Preview; reachability is not implicit acceptance.
 The distribution is an App with bundled helpers. The latest artifact's exact proof
 and incomplete clean-account smoke are recorded below; source reachability does
-not establish packaged external-host, provider, physical-input or release acceptance.
+not establish packaged external-host, host-Zotero, physical-input or release acceptance.
 
 ## Status chapters
 

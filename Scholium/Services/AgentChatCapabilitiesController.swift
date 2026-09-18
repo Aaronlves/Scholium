@@ -40,7 +40,6 @@ final class AgentChatCapabilitiesController: ObservableObject {
     @Published private(set) var toolConfigurationNotice: String?
     @Published private(set) var toolConfigurationErrorTool: String?
     @Published private(set) var toolConfigurationNoticeTool: String?
-    static let zoteroServerName = ZoteroMCPTransportDescriptor.providerServerName
     private var toolConfiguration: CodexChatToolConfiguration?
     private(set) var configurationHome: URL?
     private(set) var isShared = false
@@ -206,22 +205,17 @@ final class AgentChatCapabilitiesController: ObservableObject {
         isConnected && mayChange() && !isChanging && !isRefreshing && authenticatingTool == nil && toolConfiguration != nil
     }
 
-    var zoteroConnection: AgentChatToolConnection? { toolConnections.first { $0.name == Self.zoteroServerName } }
-    var zoteroProviderAvailable: Bool { ZoteroOperations.providerExecutableURL() != nil }
-    var zoteroProviderAddress: String {
-        ZoteroOperations.providerExecutableURL()?.path ?? ZoteroOperations.providerDescriptor.command
+    /// Codex exposes the OpenAI-curated Zotero capability as a Skill. It is
+    /// intentionally not represented as a user-configurable connection.
+    var zoteroSkillAvailable: Bool {
+        methods.contains(where: Self.isZoteroSkill)
     }
-    var usesDefaultZoteroConnection: Bool { toolConfiguration != nil && zoteroConnection == nil }
 
-    func zoteroToolEdit(executable: URL?) -> AgentChatToolEdit? {
-        if zoteroConnection != nil { return editTool(named: Self.zoteroServerName) }
-        guard var edit = editTool() else { return nil }
-        edit.connection = .init(
-            name: Self.zoteroServerName, kind: .local,
-            address: executable?.path ?? ZoteroOperations.providerDescriptor.command,
-            arguments: ZoteroOperations.providerDescriptor.clientConfiguration.arguments,
-            enabled: true)
-        return edit
+    static func isZoteroSkill(_ method: AgentChatMethod) -> Bool {
+        method.enabled && (
+            method.selection.name.caseInsensitiveCompare("zotero") == .orderedSame
+                || method.selection.title.caseInsensitiveCompare("zotero") == .orderedSame
+        )
     }
 
     func editTool(named name: String? = nil) -> AgentChatToolEdit? {

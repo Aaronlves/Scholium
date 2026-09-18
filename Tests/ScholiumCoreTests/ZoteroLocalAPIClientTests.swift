@@ -4,8 +4,8 @@ import Testing
 
 @testable import ScholiumCore
 
-@Suite("Bounded Zotero HTTP responses")
-struct ZoteroMCPHTTPClientTests {
+@Suite("Bounded Zotero local API responses")
+struct ZoteroLocalAPIClientTests {
     @Test("Declared and undeclared oversized bodies are refused; ordinary bytes remain exact")
     func boundedResponses() async throws {
         for mode in [HTTPFixtureProtocol.Mode.small, .declaredOversize, .streamOversize] {
@@ -18,7 +18,7 @@ struct ZoteroMCPHTTPClientTests {
                 do {
                     _ = try await fixture.transport.send(fixture.request)
                     Issue.record("An oversized response was accepted")
-                } catch ZoteroMCPServiceError.responseTooLarge {
+                } catch ZoteroLocalAPIError.responseTooLarge {
                     // The declared-size case sends one chunk but no EOF, so this also
                     // proves refusal occurs before waiting for the download.
                 }
@@ -47,7 +47,7 @@ struct ZoteroMCPHTTPClientTests {
 private struct HTTPFixture {
     let id: String
     let session: URLSession
-    let transport: ZoteroMCPURLSessionClient
+    let transport: ZoteroURLSessionClient
     let request: URLRequest
     let started: AsyncStream<Void>
 
@@ -61,7 +61,7 @@ private struct HTTPFixture {
         configuration.protocolClasses = [HTTPFixtureProtocol.self]
         configuration.timeoutIntervalForResource = 5
         session = URLSession(configuration: configuration, delegate: ZoteroNoRedirectDelegate(), delegateQueue: nil)
-        transport = ZoteroMCPURLSessionClient(session: session)
+        transport = ZoteroURLSessionClient(session: session)
         request = URLRequest(url: URL(string: "http://127.0.0.1:23119/fixture/\(id)")!)
     }
 
@@ -111,7 +111,7 @@ private final class HTTPFixtureProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
-extension ZoteroMCPHTTPClientTests {
+extension ZoteroLocalAPIClientTests {
     @Test("The default Zotero transport declines redirects before following them")
     func redirectDelegateDeclinesRedirect() async throws {
         let original = try #require(URL(string: "http://127.0.0.1:23119/api/users/0/items"))

@@ -15,8 +15,8 @@ struct AgentChatZoteroConfigurationTests {
         }
     }
 
-    @Test("The provider preset exposes the full runtime surface and retains custom tool edits")
-    func persistentProviderPreset() async throws {
+    @Test("Chat does not inject a separate Zotero provider")
+    func hostZoteroCapabilityDoesNotAddProvider() async throws {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = repository.appendingPathComponent(".build/agent-chat-tests/zotero-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -39,52 +39,29 @@ struct AgentChatZoteroConfigurationTests {
         try await wait { FileManager.default.fileExists(atPath: configurationFile.path) && first.state == .ready }
         let defaults = try JSONDecoder().decode(MCPJSONValue.self, from: Data(contentsOf: configurationFile))
         let config = try #require(defaults.objectValue?["config"]?.objectValue)
-        let builtIn = try #require(config["mcp_servers"]?.objectValue?["scholium-zotero"]?.objectValue)
-        #expect(builtIn["args"] == .array(["serve", "--transport", "stdio"].map(MCPJSONValue.string)))
-        #expect(builtIn["required"] == .bool(false))
-        #expect(builtIn["command"]?.stringValue?.hasSuffix("zotero-mcp") == true)
-        #expect(builtIn["env"]?.objectValue?["ZOTERO_LOCAL"] == .string("true"))
-        #expect(builtIn["env"]?.objectValue?["ZOTERO_BACKEND"] == .string("api"))
-        #expect(builtIn["env"]?.objectValue?["ZOTERO_MCP_TOOLSETS"] == .string("all"))
+        let builtIn = try #require(config["mcp_servers"]?.objectValue)
+        #expect(builtIn["scholium"] != nil)
+        #expect(builtIn["scholium-zotero"] == nil)
         #expect(config["project_doc_max_bytes"] == .integer(32768))
         #expect(config["project_root_markers"] == .array([]))
         #expect(defaults.objectValue?["developerInstructions"]?.stringValue?.contains(triptych.uuidString) == true)
-        #expect(caps.zoteroConnection == nil)  // The app default never writes the user's config.
-        let preset = try #require(caps.zoteroToolEdit(executable: first.zoteroToolExecutable))
-        #expect(preset.connection.name == "scholium-zotero" && preset.connection.kind == .local)
-        #expect(preset.connection.arguments == ["serve", "--transport", "stdio"])
-        #expect(preset.connection.address.hasSuffix("zotero-mcp"))
-        #expect(await caps.saveTool(preset))
-        try await wait { caps.canConfigureTools }
-        #expect(caps.zoteroConnection?.enabled == true)
-        #expect(caps.tools.first { $0.name == "scholium-zotero" }?.connectionStatus == "notStarted")
-        var disabled = try #require(caps.zoteroToolEdit(executable: first.zoteroToolExecutable))
-        disabled.connection.enabled = false
-        #expect(await caps.saveTool(disabled))
-        try await wait { caps.canConfigureTools }
+        #expect(!caps.zoteroSkillAvailable)
         await first.disconnect()
-        let second = try await make()
-        #expect(second.capabilities.zoteroConnection?.enabled == false)
-        #expect(second.capabilities.zoteroConnection?.arguments == preset.connection.arguments)
-        let retained = try #require(second.capabilities.zoteroToolEdit(executable: second.zoteroToolExecutable))
-        second.editDraft("hold")
-        second.send()
-        try await wait { second.state == .working && second.selected?.pendingMessageID == nil }
-        let disabledParameters = try JSONDecoder().decode(MCPJSONValue.self, from: Data(contentsOf: configurationFile))
-        #expect(disabledParameters.objectValue?["config"]?.objectValue?["mcp_servers"]?.objectValue?["scholium-zotero"] == nil)
-        #expect(second.capabilities.zoteroToolEdit(executable: second.zoteroToolExecutable) == nil)
-        #expect(!(await second.capabilities.saveTool(retained)))
-        #expect(second.capabilities.zoteroConnection?.enabled == false)
-        second.stop()
-        try await wait { second.state == .ready && !second.isBusy }
-        #expect(await second.capabilities.saveTool(retained, removing: true))
-        try await wait { second.capabilities.canConfigureTools }
-        var custom = try #require(second.capabilities.editTool())
-        custom.connection = .init(name: "scholium-zotero", address: "https://example.invalid/custom", enabled: false)
-        #expect(await second.capabilities.saveTool(custom))
-        try await wait { second.capabilities.canConfigureTools }
-        let existing = try #require(second.capabilities.zoteroToolEdit(executable: second.zoteroToolExecutable))
-        #expect(existing.connection.address == custom.connection.address && existing.connection.kind == .remote)
-        await second.disconnect()
+    }
+
+    @Test("The host Zotero Skill is recognized as a read capability")
+    func recognizesHostZoteroSkill() {
+        let enabled = AgentChatMethod(
+            selection: .init(name: "zotero", title: "Zotero", path: "/fixture/zotero/SKILL.md"),
+            description: "Read Zotero", enabled: true, scope: "user")
+        let disabled = AgentChatMethod(
+            selection: .init(name: "zotero", title: "Zotero", path: "/fixture/zotero/SKILL.md"),
+            description: "Read Zotero", enabled: false, scope: "user")
+        let unrelated = AgentChatMethod(
+            selection: .init(name: "other", title: "Other", path: "/fixture/other/SKILL.md"),
+            description: "Other", enabled: true, scope: "user")
+        #expect(AgentChatCapabilitiesController.isZoteroSkill(enabled))
+        #expect(!AgentChatCapabilitiesController.isZoteroSkill(disabled))
+        #expect(!AgentChatCapabilitiesController.isZoteroSkill(unrelated))
     }
 }

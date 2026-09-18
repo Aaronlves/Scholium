@@ -4,119 +4,10 @@ import Testing
 
 @testable import ScholiumApplication
 
-private actor MaterialFixtureClient {
-    private(set) var requests: [URLRequest] = []
-    private let originalURL: URL?
-    init(originalURL: URL? = nil) { self.originalURL = originalURL }
-    func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        guard let url = request.url, let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil) else {
-            throw URLError(.badURL)
-        }
-        requests.append(request)
-        let json: String
-        switch request.url?.path {
-        case "/api/users/0/items/ATTACH01":
-            if let originalURL {
-                return (
-                    try JSONSerialization.data(withJSONObject: [
-                        "key": "ATTACH01",
-                        "data": [
-                            "key": "ATTACH01",
-                            "itemType": "attachment", "contentType": "text/plain", "linkMode": "imported_file", "filename": originalURL.lastPathComponent,
-                        ],
-                    ]), response
-                )
-            }
-            json = #"{"key":"ATTACH01","data":{"key":"ATTACH01","itemType":"attachment","contentType":"application/pdf","linkMode":"imported_file"}}"#
-        case "/api/users/0/items/ATTACH01/file/view/url":
-            guard let originalURL else { throw URLError(.badURL) }
-            return (Data(originalURL.absoluteString.utf8), response)
-        case "/api/users/0/items/ANNO0001":
-            json =
-                #"{"key":"ANNO0001","data":{"key":"ANNO0001","itemType":"annotation","parentItem":"ATTACH01","annotationText":"Exact selected text","annotationComment":"Separate comment","annotationPosition":"{\"pageIndex\":1}"}}"#
-        default:
-            throw URLError(.badURL)
-        }
-        return (Data(json.utf8), response)
-    }
-}
-
 @Suite("Runtime-owned Zotero operations")
 struct ZoteroOperationsTests {
-    @Test("Original selection uses the same runtime capability and returns exact bounded material")
-    func originalReadThroughApplication() async throws {
-        let fixture = try Fixture.make()
-        defer { fixture.remove() }
-        let file = fixture.rootURL.appendingPathComponent("Selected.txt")
-        let bytes = Data("Exact original\r\nExcluded tail".utf8)
-        try bytes.write(to: file)
-        let client = MaterialFixtureClient(originalURL: file)
-        let operations = ZoteroOperations(requestLoader: { try await client.send($0) })
-        let request = Data(
-            #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zotero_read_original","arguments":{"library":"user","attachment_key":"ATTACH01","mode":"text","maximum_utf8":14}}}"#
-                .utf8)
-        let data = try #require(await operations.handle(requestData: request, access: .readOnly))
-        let rpc = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let result = try #require(rpc["result"] as? [String: Any])
-        let content = try #require(result["structuredContent"] as? [String: Any])
-        try #require(result["isError"] as? Bool == false, "\(content)")
-        #expect(content["text"] as? String == "Exact original")
-        #expect(content["original_fingerprint"] as? String == DocumentFingerprint(data: bytes).sha256)
-        #expect(content["next_start_utf8"] as? Int == 14)
-        #expect(await client.requests.count == 4)
-        #expect(try Data(contentsOf: file) == bytes)
-        let observed = try reportedRead(response: data, request: request)
-        #expect(observed.representation == .text && observed.range?.end == 14)
-        #expect(observed.excerpt == "Exact original" && observed.fingerprint == DocumentFingerprint(data: bytes).sha256)
-    }
-
-    @Test("Selected annotation content passes through the runtime-owned read-only service")
-    func annotationReadThroughApplication() async throws {
-        let client = MaterialFixtureClient()
-        let operations = ZoteroOperations(requestLoader: { try await client.send($0) })
-        let request = Data(
-            #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zotero_read_annotation","arguments":{"library":"user","attachment_key":"ATTACH01","annotation_key":"ANNO0001"}}}"#
-                .utf8)
-        let data = try #require(await operations.handle(requestData: request, access: .readOnly))
-        let rpc = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let result = try #require(rpc["result"] as? [String: Any])
-        #expect(result["isError"] as? Bool == false)
-        let content = try #require(result["structuredContent"] as? [String: Any])
-        #expect(content["selected_text"] as? String == "Exact selected text")
-        #expect(content["comment"] as? String == "Separate comment")
-        #expect(content["original_file_read"] as? Bool == false)
-        let reference = try #require(content["reference"] as? [String: Any])
-        #expect(reference["url"] as? String == "zotero://open-pdf/library/items/ATTACH01?page=2&annotation=ANNO0001")
-        let requests = await client.requests
-        #expect(requests.map { $0.url?.path } == ["/api/users/0/items/ATTACH01", "/api/users/0/items/ANNO0001", "/api/users/0/items/ATTACH01"])
-        #expect(requests.allSatisfy { $0.httpMethod == "GET" && $0.httpBody == nil })
-        let observed = try reportedRead(response: data, request: request)
-        #expect(observed.representation == .annotation && observed.reference.page == 2)
-        #expect(observed.excerpt == "Exact selected text" && observed.comment == "Separate comment")
-    }
-
-    private func reportedRead(response: Data, request: Data) throws -> ZoteroReadReport {
-        let rpc = try JSONDecoder().decode(MCPJSONValue.self, from: response)
-        let call = try JSONDecoder().decode(MCPJSONValue.self, from: request)
-        let params = try #require(call.objectValue?["params"]?.objectValue)
-        var result = try #require(rpc.objectValue?["result"]?.objectValue)
-        // Codex 0.153.4 retains content/structuredContent; it has no result.isError field.
-        result["isError"] = nil
-        let item: [String: MCPJSONValue] = [
-            "id": .string("call"), "type": .string("mcpToolCall"), "server": .string("scholium-zotero"),
-            "tool": try #require(params["name"]), "arguments": try #require(params["arguments"]), "status": .string("completed"), "result": .object(result),
-        ]
-        let activity = try #require(CodexChatActivity.parse(item, completed: true))
-        guard case .zoteroReadReport(let report) = activity.sourceObservation else {
-            Issue.record("Missing public tool report")
-            throw URLError(.cannotParseResponse)
-        }
-        #expect(activity.source == .runtime && report.isValid)
-        return report
-    }
-
-    @Test("Snapshot runtime owns one delivery-neutral Zotero capability")
-    func runtimeOwnershipAndTransportReports() async throws {
+    @Test("Snapshot runtime owns one native Zotero capability")
+    func runtimeOwnership() async throws {
         let fixture = try Fixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -124,53 +15,6 @@ struct ZoteroOperationsTests {
         let second = runtime.zotero
 
         #expect(first === second)
-        #expect(first.descriptor == .supportedLocal)
-        #expect(ZoteroOperations.providerDescriptor == .provider)
-        #expect(ZoteroOperations.providerEnvironment["ZOTERO_LOCAL"] == "true")
-        #expect(ZoteroOperations.providerEnvironment["ZOTERO_BACKEND"] == "api")
-        #expect(ZoteroOperations.providerEnvironment["ZOTERO_MCP_TOOLSETS"] == "all")
-
-        let environment = ["PATH": ""]
-        let report = first.report(environment: environment)
-        #expect(report.descriptorID == first.descriptor.identifier)
-        #expect(report.state == .notConfigured)
-        #expect(!report.liveHandshakePerformed)
-        #expect(report.commandPath == nil)
-
-        let probed = await first.probe(environment: environment, timeout: 0.01)
-        #expect(probed == report)
-        await runtime.shutdown()
-    }
-
-    @Test("Application request handling preserves the MCP delivery contract")
-    func requestHandling() async throws {
-        let fixture = try Fixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let operations = runtime.zotero
-        let request = Data(
-            #"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#
-                .utf8
-        )
-        let response = try #require(await operations.handle(requestData: request, access: .readOnly))
-        let object = try #require(
-            JSONSerialization.jsonObject(with: response) as? [String: Any]
-        )
-        #expect(object["jsonrpc"] as? String == "2.0")
-        #expect(object["id"] as? Int == 7)
-        let result = try #require(object["result"] as? [String: Any])
-        #expect(result["protocolVersion"] as? String == "2024-11-05")
-        let server = try #require(result["serverInfo"] as? [String: Any])
-        #expect(server["name"] as? String == "scholium-zotero")
-        #expect(
-            server["version"] as? String
-                == ScholiumProductIdentity.marketingVersion
-        )
-
-        let notification = Data(
-            #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.utf8
-        )
-        #expect(await operations.handle(requestData: notification, access: .readOnly) == nil)
         await runtime.shutdown()
     }
 

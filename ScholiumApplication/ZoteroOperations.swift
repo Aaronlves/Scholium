@@ -2,36 +2,17 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
-/// Runtime-owned, delivery-neutral access to Scholium's first-party Zotero
-/// transport. Delivery targets may parse frames and format reports, but Core
-/// locator and server authorities are composed only behind this boundary.
+/// Runtime-owned, read-only access to Zotero Desktop's local API for native
+/// settings and library-link behavior. Chat uses the Codex host capability
+/// instead of this Application service.
 public actor ZoteroOperations: ZoteroUseCases {
     typealias RequestLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-    /// The provider transport is intentionally external to Scholium. These
-    /// values are non-secret defaults: the provider still owns its Zotero
-    /// authorization and all Zotero-side writes.
-    public static let providerDescriptor = ZoteroMCPTransportDescriptor.provider
-    public static let providerEnvironment = providerDescriptor.clientConfiguration.environment
-
-    public static func providerExecutableURL(
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> URL? {
-        ZoteroMCPTransportLocator.executableURL(
-            descriptor: providerDescriptor,
-            environment: environment
-        )
-    }
-
-    public nonisolated let descriptor: ZoteroMCPTransportDescriptor
-
-    private let server: ZoteroMCPServer
     private let loadRequest: RequestLoader
     private var lastSuccessfulConnection: Date?
 
     private struct LocalReadResponse: Sendable {
         let data: Data
-        let serverID: String?
     }
 
     private struct GroupEnvelope: Decodable {
@@ -70,17 +51,11 @@ public actor ZoteroOperations: ZoteroUseCases {
         }
     }
 
-    init(
-        descriptor: ZoteroMCPTransportDescriptor = .supportedLocal,
-        requestLoader: RequestLoader? = nil
-    ) {
-        self.descriptor = descriptor
+    init(requestLoader: RequestLoader? = nil) {
         if let requestLoader {
             loadRequest = requestLoader
-            server = ZoteroMCPServer(client: ZoteroRequestLoaderClient(load: requestLoader))
         } else {
-            let client = ZoteroMCPURLSessionClient()
-            server = ZoteroMCPServer(client: client)
+            let client = ZoteroURLSessionClient()
             loadRequest = { request in
                 let result = try await client.send(request)
                 guard let url = request.url,
@@ -91,35 +66,6 @@ public actor ZoteroOperations: ZoteroUseCases {
                 return (result.body, response)
             }
         }
-    }
-
-    /// Locates the configured transport without launching it or reading
-    /// Zotero data.
-    public nonisolated func report(
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> ZoteroMCPTransportReport {
-        ZoteroMCPTransportLocator.report(
-            descriptor: descriptor,
-            environment: environment
-        )
-    }
-
-    /// Performs only the bounded initialize lifecycle probe defined by Core.
-    public func probe(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        timeout: TimeInterval = 5
-    ) async -> ZoteroMCPTransportReport {
-        await ZoteroMCPTransportLocator.probe(
-            descriptor: descriptor,
-            environment: environment,
-            timeout: timeout
-        )
-    }
-
-    /// Handles one unframed JSON-RPC body. Notifications intentionally return
-    /// nil; framing remains a delivery concern for stdio callers.
-    public func handle(requestData: Data, access: ZoteroMCPAccess) async -> Data? {
-        await server.handle(requestData: requestData, access: access)
     }
 
     public func libraryInfo() async -> ZoteroLibraryInfo {
@@ -310,10 +256,7 @@ public actor ZoteroOperations: ZoteroUseCases {
         case 200..<300:
             lastSuccessfulConnection = Date()
             return LocalReadResponse(
-                data: data,
-                serverID: normalizedServerID(
-                    http.value(forHTTPHeaderField: "Zotero-Server-ID")
-                )
+                data: data
             )
         case 401, 403:
             throw ZoteroUseCaseError.apiDisabled
@@ -346,35 +289,10 @@ public actor ZoteroOperations: ZoteroUseCases {
         return key
     }
 
-    private func normalizedServerID(_ value: String?) -> String? {
-        guard let value = nonempty(value), value.utf8.count <= 256,
-            value.unicodeScalars.allSatisfy({
-                !CharacterSet.controlCharacters.contains($0)
-            })
-        else { return nil }
-        return value
-    }
-
     private func nonempty(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
             !value.isEmpty
         else { return nil }
         return value
-    }
-}
-
-/// Foundation-only injection stays at Application; Core transport types never
-/// cross into delivery or boundary-test construction.
-private struct ZoteroRequestLoaderClient: ZoteroMCPHTTPClient {
-    let load: ZoteroOperations.RequestLoader
-    func send(_ request: URLRequest) async throws -> ZoteroMCPHTTPResponse {
-        let (body, response) = try await load(request)
-        guard let expectedURL = request.url, let response = response as? HTTPURLResponse,
-            response.url == expectedURL
-        else { throw ZoteroUseCaseError.invalidResponse }
-        let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, entry in
-            result[String(describing: entry.key)] = String(describing: entry.value)
-        }
-        return .init(statusCode: response.statusCode, headers: headers, body: body)
     }
 }

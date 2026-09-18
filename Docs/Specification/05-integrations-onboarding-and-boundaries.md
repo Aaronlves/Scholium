@@ -27,47 +27,33 @@ Refresh Metadata operation. Deleting a source link removes that relation.
 
 Opening a link requests Zotero navigation; it proves neither reading nor
 philosophical support. Scholium does not fetch bibliography while projecting
-Links or reading ordinary Note context. An authorized Agent may use the
-separately configured Zotero provider tools when its task needs source data.
+Links or reading ordinary Note context. An authorized Agent may use the Codex
+host's Zotero capability when its task needs source data.
 Citation generation is deferred. Before adding a future adapter, evaluate
 whether Zotero's existing capabilities already serve the Agent's need.
 
-### 15.3 Provider-managed external-agent Zotero MCP
+### 15.3 Codex-hosted Zotero reading in Chat
 
-The external provider owns the Zotero MCP tool surface. Scholium does not
-redeclare that surface as a seven-tool subset and does not present the
-provider as an official Zotero component. The current provider target is
-`zotero-mcp` from the community project documented in its runtime
-configuration; the provider's version, tool schemas, credentials and
-Zotero-side authorization remain provider-owned.
+In-app Chat uses the host Codex Zotero capability when it is available. This
+route is read-only: the Agent may search the library, inspect metadata and
+read indexed attachment text when the host reports that material as available.
+Scholium does not require users to install a community Zotero server, Python
+runtime or separate dependency set, and it does not expose a separate
+user-configurable Zotero connection.
 
-In-app Chat supplies the provider under `scholium-zotero` when the runtime has
-no explicit Zotero connection. Its default environment selects Zotero's local
-API backend and exposes the provider's complete tool groups. The bundled
-Scholium helper remains a compatibility/read-only service for Scholium-owned
-contracts; it is not a hidden Chat fallback. An existing disabled or custom
-connection wins; Chat never silently replaces it. Configuration edits retain
-version checks, shared-setting confirmation and active-turn guards. No global
-settings are written to provide the default. Provider installation, failed
-transport, provider authorization and unavailable Zotero local API remain
-distinct observations.
-
-The default provider exposes all of its configured tool groups rather than
-silently removing write, collection, annotation, PDF or search operations.
-This does not grant an Agent permission to change Scholium Notes. Zotero-side
-writes remain provider/Zotero operations and require the provider's own
-authorization; provider availability and a successful tool call remain
-separate from source evidence. An unavailable optional provider does not
-disable ordinary Note collaboration. The runtime may still show an explicit
-provider configuration failure rather than substituting the compatibility
-service.
+The host capability, Zotero Desktop local API availability and material
+observations remain independent. If the host capability is unavailable, Chat
+reports that boundary and ordinary Note collaboration remains available.
+Scholium never bypasses the host through direct SQLite access or an unrelated
+configuration scan. Chat does not import or modify Zotero records. The native
+Zotero integration remains limited to the local API connection status and
+library search used by App settings and links; it is not a Chat fallback or a
+second Chat source projection.
 
 Never access Zotero's live SQLite directly, guess ambiguous items or
-destinations, or treat metadata and attachment identity as evidence. If the MCP
-route is unavailable, report that boundary without database bypass or broad
-configuration scans. Scholium's default provider configuration selects the
-official local API boundary; a custom provider connection must declare its own
-backend and remains subject to its own trust decision.
+destinations, or treat metadata and attachment identity as evidence. If the
+host capability is unavailable, report that boundary without database bypass
+or broad configuration scans.
 
 ### 15.4 Exact references and selected material
 
@@ -79,42 +65,11 @@ the physical page; a reference proves neither successful arrival nor reading.
 Unsupported routes, malformed keys, duplicate parameters, and nonpositive
 pages or group IDs are rejected rather than guessed or downgraded.
 
-`zotero_list_annotations` requires an exact library and PDF attachment key.
-It returns at most 50 annotation pointers per page from a bounded snapshot
-(at most 1,000 records and 4 MiB); continuation requires that snapshot's
-fingerprint. Oversized or changed snapshots fail explicitly. Listing includes
-locators and record fingerprints, not selected text or comments.
-`zotero_read_annotation` requires the library, attachment and annotation keys;
-an optional expected record fingerprint pins a prior selection. It checks the
-attachment type and exact parent relationship, returns the selected text and
-comment separately with the record fingerprint and locator, and never presents
-either as independently verified PDF text. Missing or invalid positions remain
-unlocated rather than deriving a physical page from the printed label.
-
-Original-file reads must resolve the exact attachment through the local API,
-verify bounded local bytes and return only the requested representation and
-range/page with its fingerprint. Metadata, annotation text and indexed full
-text are distinct from those bytes. No selection silently stages a whole paper,
-loads related records into Chat, follows network redirects, or grants writes.
-
-`zotero_read_original` takes an explicit library, attachment key and text/image
-mode, with one physical page required for PDFs. It accepts no caller-supplied
-file path or URL. The attachment record and local file-URL response must agree
-on identity, file type and filename; linked-URL attachments are not local files.
-Every path component is opened without following symlinks. Reads are capped at
-20 MiB and recheck the attachment record, resolved URL and exact bytes before
-returning. A missing, changed, unsafe, locked or unsupported original fails
-without database access, file-access prompts, or full-text-index substitution.
-Text returns at most 64 KiB of UTF-8 (16 KiB by default); nonzero offsets require
-the original fingerprint. Text extraction and a selected-page PNG derivative
-reuse the Note-attachment bounds in §8.3. The result retains original fingerprint,
-filename, exact representation/page/range and library-qualified reference.
-
-Provider-specific tool results may retain provider locators and coverage
-claims, but Scholium promotes them to source navigation or evidence only when
-the result satisfies the corresponding exact identity, representation and
-coverage contract. A provider tool call or successful MCP handshake alone is
-not proof that an original was read.
+Host Zotero results may retain host locators and coverage claims, but Scholium
+does not manufacture an App-side read report or promote them to source
+evidence. Indexed attachment text, metadata, annotations and original local
+file bytes remain distinct; a successful capability lookup alone is not proof
+that an original was read.
 
 ## 16. Onboarding
 

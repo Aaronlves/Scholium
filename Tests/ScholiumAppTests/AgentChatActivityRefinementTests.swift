@@ -32,15 +32,6 @@ struct AgentChatActivityRefinementTests {
         command.commandAction = .init(kind: .read, target: "/guidance/SKILL.md")
         #expect(AgentChatActivityProjection.subject(command) == "SKILL.md")
 
-        var zotero = AgentChatActivity(kind: .tool, source: .runtime)
-        zotero.sourceObservation = .zoteroReadReport(
-            .init(
-                server: "fixture", tool: "zotero_read_original",
-                reference: try! ZoteroReference(library: .user, itemKey: "ITEM01"), representation: .text,
-                fingerprint: String(repeating: "a", count: 64)))
-        #expect(AgentChatActivityProjection.title(zotero, locale: Locale(identifier: "en")) == "Reading a Zotero source")
-        zotero.status = .completed
-        #expect(AgentChatActivityProjection.title(zotero, locale: Locale(identifier: "en")) == "Read a Zotero source")
     }
 
     @Test("Reply actions keep supplied materials separate from explicit sources")

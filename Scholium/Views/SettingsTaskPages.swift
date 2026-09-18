@@ -41,7 +41,7 @@ struct ZoteroSettingsPageView: View {
         Form {
             ZoteroSettingsView().id("zotero.desktop")
             if let controller {
-                AgentZoteroToolSettingsView(controller: controller, capabilities: controller.capabilities)
+                AgentZoteroCapabilitySettingsView(controller: controller, capabilities: controller.capabilities)
                     .id(controller.triptychID)
                     .id("zotero.chat")
             } else {

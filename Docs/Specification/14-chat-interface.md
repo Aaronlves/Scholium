@@ -251,9 +251,10 @@ native tool editor.
 Remote connections expose a bearer-token variable name; local programs expose
 inherited variable names. Brief supporting text distinguishes names from values.
 The form does not become a second credential store. Shared scope and removal require confirmation
-of the named connection. Zotero's tool editor lives in the dedicated Zotero
-Settings page beside its separate Desktop Local API diagnosis; the generic
-tool list links there without duplicating configuration controls. Failed saves preserve the form; Reload is explicit.
+of the named connection. Zotero's read-only host capability status lives in the
+dedicated Zotero Settings page beside its separate Desktop Local API diagnosis;
+it has no user-configurable Zotero connection. Failed saves preserve the form;
+Reload is explicit.
 
 Add Material offers Choose Note and Add Selection as distinct actions. Choose
 Note opens a native searchable list with title, vault role and path, followed by

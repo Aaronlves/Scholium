@@ -4,8 +4,8 @@
 
 > 面向哲学与人文研究、本地优先、以文档为权威的研究环境。
 
-**当前 Core App Beta：**[v0.2.4-beta](https://github.com/Aaronlves/Scholium/releases/tag/v0.2.4-beta) ·
-[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.2.4-beta/Scholium-v0.2.4-beta-macos-arm64.dmg)
+**当前 Core App Beta：**[v0.2.5-beta](https://github.com/Aaronlves/Scholium/releases/tag/v0.2.5-beta) ·
+[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.2.5-beta/Scholium-v0.2.5-beta-macos-arm64.dmg)
 
 这是当前的 App 单一发行 Beta。UI 与辅助功能验收由发布负责人另行完成；本次发布准备
 不将这些检查声明为自动化证据。
@@ -178,19 +178,16 @@ bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明�
 链接出现的方向、注释、局部上下文与来源位置；它们只公开作者写下的
 链接出现，不为其指定关系类别。
 
-## Provider 管理的 Zotero MCP（可选集成）
+## Chat 中读取 Zotero（可选集成）
 
-在 Zotero“设置 → 高级”中启用“允许本机其他应用与 Zotero 通信”。在 Scholium
-中按照其[安装说明](https://github.com/54yyyu/zotero-mcp/blob/main/docs/getting-started.md)
-安装并配置外部 `zotero-mcp` provider；推荐命令是 `uv tool install zotero-mcp-server`。
-在 Chat 中，Scholium 使用 provider
-完整的工具面，并默认通过 Zotero 本机 API 访问；不再替换成原来的七个工具子集。
-“Check Connection”分别报告本机 API 与 MCP 服务状态；检查连接不会读取来源。
+在 Zotero“设置 → 高级”中启用“允许本机其他应用与 Zotero 通信”。Chat 在可用时
+使用 Codex 宿主的 Zotero 能力搜索文献库并读取已建立索引的附件文本。不需要安装
+社区 Zotero 服务、Python 运行时或单独的依赖包。
 
-provider 仍是外部运行时依赖，Zotero 侧授权与写入由 provider 自己负责。应用内
-helper 仍可用于 Scholium 自己的精确本机 API 与兼容性契约，但不再作为隐藏的 Chat
-fallback。完整范围与引用规则见
-[规范 §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)。
+Chat 中的 Zotero 路径是只读的。Scholium 原生 Zotero 集成只负责应用设置和链接所需的
+本机连接状态与文献库搜索，不再作为第二个 Chat Zotero 连接。如果宿主能力不可用，
+Chat 会明确报告边界，不绕过 Zotero 本机 API，也不直接访问数据库。完整范围与引用
+规则见[规范 §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)。
 
 ## 存储与安全
 

@@ -259,10 +259,6 @@ public struct ObsidianAppearanceSnapshot: Codable, Hashable, Sendable {
 }
 
 public protocol ZoteroUseCases: Sendable {
-    var descriptor: ZoteroMCPTransportDescriptor { get }
-    func report(environment: [String: String]) -> ZoteroMCPTransportReport
-    func probe(environment: [String: String], timeout: TimeInterval) async -> ZoteroMCPTransportReport
-    func handle(requestData: Data, access: ZoteroMCPAccess) async -> Data?
     func libraryInfo() async -> ZoteroLibraryInfo
     func refreshLibraryInfo() async throws -> ZoteroLibraryInfo
     func clearConnectionHistory() async throws

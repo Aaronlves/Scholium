@@ -47,13 +47,14 @@
 - Complete §21.5 packaged external-host journey: installed App/helper, both setup
   commands, production bridge, clean-account smoke and exact artifact provenance.
   Local helper tests are not package proof.
-- Complete provider/browser authentication, setup and dependency availability;
+- Complete browser authentication, setup and dependency availability;
   search provenance, model/input support, source-linked Note selection,
   editor-snapshot capture and picker keyboard/focus; file panel,
   file-URL paste/drop, physical cross-app image transfer, system Paste, thumbnail/
   Quick Look, scanned-PDF page-selection sheets and provider image interpretation.
-- Complete provider Zotero acceptance: full tool discovery, authorization, writes,
-  failure/restart, page/annotation navigation and exact original opening.
+- Complete Codex-hosted Zotero read acceptance: Skill discovery, local API,
+  indexed-text reading, failure/restart and unavailable behavior. Zotero writes
+  and imports are out of scope.
 - Complete runtime/native acceptance for branching and Retry in New Branch,
   concurrent execution, model/reasoning/web-search choices, Context/quota, plans,
   research questions, Note-update comparisons, command/terminal/network/file

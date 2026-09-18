@@ -7,9 +7,7 @@ enum AgentChatActivityProjection {
         let running = activity.status == .running
         let completed = activity.status == .completed
         let key: String.LocalizationValue
-        if activity.kind == .tool, case .zoteroReadReport = activity.sourceObservation {
-            key = running ? "Reading a Zotero source" : completed ? "Read a Zotero source" : "Zotero source reading"
-        } else if activity.kind == .tool, case .webAccess = activity.sourceObservation {
+        if activity.kind == .tool, case .webAccess = activity.sourceObservation {
             key = running ? "Checking a web source" : completed ? "Checked a web source" : "Web source check"
         } else if let action = activity.commandAction {
             switch action.kind {

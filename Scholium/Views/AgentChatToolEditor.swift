@@ -5,7 +5,6 @@ struct AgentChatToolEditor: View {
     @ObservedObject var capabilities: AgentChatCapabilitiesController
     @State var edit: AgentChatToolEdit
     @State private var sharedTarget: Bool
-    var isZoteroTool = false
     var onClose: () -> Void
     @FocusState private var focusedField: Field?
     private enum Field: Hashable { case name, address }
@@ -16,11 +15,10 @@ struct AgentChatToolEditor: View {
     @State private var confirmsRemoval = false
     @State private var isChoosingProgram = false
 
-    init(capabilities: AgentChatCapabilitiesController, edit: AgentChatToolEdit, isZoteroTool: Bool = false, onClose: @escaping () -> Void) {
+    init(capabilities: AgentChatCapabilitiesController, edit: AgentChatToolEdit, onClose: @escaping () -> Void) {
         self.capabilities = capabilities
         self._edit = State(initialValue: edit)
         self._sharedTarget = State(initialValue: capabilities.isShared)
-        self.isZoteroTool = isZoteroTool
         self.onClose = onClose
     }
 
@@ -32,11 +30,7 @@ struct AgentChatToolEditor: View {
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 toolField("Name", text: $edit.connection.name, field: .name)
-                    .disabled(edit.originalName != nil || isZoteroTool)
-                if reservesZoteroName {
-                    Text("Configure Zotero in Zotero Settings.", bundle: .module)
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                    .disabled(edit.originalName != nil)
                 Picker("Connection", selection: $edit.connection.kind) {
                     Text("Remote").tag(AgentChatToolConnection.Kind.remote)
                     Text("Local").tag(AgentChatToolConnection.Kind.local)
@@ -134,13 +128,12 @@ struct AgentChatToolEditor: View {
                 .disabled(
                     operation != nil || !targetIsCurrent || !capabilities.canConfigureTools
                         || edit.connection.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || reservesZoteroName
                         || edit.connection.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || (edit.requiresAccessConfirmation && !edit.reuseAccessSettings))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { focusedField = edit.originalName == nil && !isZoteroTool ? .name : .address }
+        .onAppear { focusedField = edit.originalName == nil ? .name : .address }
         .disabled(isChoosingProgram)
         .confirmationDialog("Save Shared Tool Settings?", isPresented: $confirmsSave) {
             Button("Save") { save() }
@@ -154,12 +147,6 @@ struct AgentChatToolEditor: View {
                 "Remove the configuration for \(edit.connection.name)? Its program and sign-in credentials will be kept."
             )
         }
-    }
-
-    private var reservesZoteroName: Bool {
-        !isZoteroTool && edit.originalName == nil
-            && edit.connection.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                == AgentChatCapabilitiesController.zoteroServerName
     }
 
     private func toolField(_ title: LocalizedStringKey, text: Binding<String>, field: Field? = nil) -> some View {

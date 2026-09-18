@@ -213,7 +213,6 @@ struct ArchitectureBoundaryTests {
             ("move coordinator", #"\bTriptychMoveCoordinator\s*\("#),
             ("system-Trash coordinator", #"\bNoteSystemTrashDeletionCoordinator\s*\("#),
             ("FSEvents watcher", #"\bFSEventStreamCreate\s*\("#),
-            ("Zotero MCP server", #"\bZoteroMCPServer\s*\("#),
             ("Triptych storage path", "appendingPathComponent\\s*\\(\\s*\\\"Triptychs\\\""),
         ]
         let prohibitedAuthorityReferences: [(label: String, pattern: String)] = [
@@ -229,7 +228,6 @@ struct ArchitectureBoundaryTests {
             ("Dialogue store authority", #"\bDialogueStore\b"#),
             ("transaction-recovery store authority", #"\bTriptychMutationRecoveryStore\b"#),
             ("identity-recovery authority", #"\bNoteIdentityRecoveryCoordinator\b"#),
-            ("Zotero transport locator", #"\bZoteroMCPTransportLocator\b"#),
         ]
 
         var violations: [String] = []

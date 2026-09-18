@@ -103,24 +103,6 @@ public struct CodexChatToolConfiguration: Sendable {
                 fields["args"] = .array(connection.arguments.map(MCPJSONValue.string))
             }
             fields["enabled"] = .bool(connection.enabled)
-            if connection.kind == .local, name == ZoteroMCPTransportDescriptor.providerServerName {
-                let commandName = URL(fileURLWithPath: address).lastPathComponent
-                if commandName == ZoteroMCPTransportDescriptor.provider.command {
-                    fields["env"] = rawConnections[originalName ?? ""]?.objectValue?["env"]
-                        ?? .object(
-                            ZoteroMCPTransportDescriptor.provider.clientConfiguration.environment.reduce(
-                                into: [String: MCPJSONValue]()
-                            ) { result, entry in
-                                result[entry.key] = .string(entry.value)
-                            })
-                } else if let originalName,
-                    rawConnections[originalName]?.objectValue?["env"] != nil
-                {
-                    // Do not leave provider defaults attached after the user
-                    // changes this reserved connection to another command.
-                    fields["env"] = .null
-                }
-            }
             if let originalName {
                 guard let original = connections.first(where: { $0.name == originalName }), original.kind == connection.kind
                 else { throw CodexConnectionError.invalidMessage }

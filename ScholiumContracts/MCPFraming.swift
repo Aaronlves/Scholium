@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ZoteroMCPFrame: Sendable, Equatable {
+public struct MCPFrame: Sendable, Equatable {
     public enum Mode: Sendable, Equatable {
         case line
         case contentLength
@@ -16,55 +16,55 @@ public struct ZoteroMCPFrame: Sendable, Equatable {
 }
 
 /// Incremental parser for the two stdio frame forms used by MCP clients.
-public struct ZoteroMCPFrameParser: Sendable {
+public struct MCPFrameParser: Sendable {
     private static let maximumFrameSize = 2 * 1_024 * 1_024
     private var buffer = Data()
 
     public init() {}
 
-    public mutating func append(_ byte: UInt8) throws -> [ZoteroMCPFrame] {
+    public mutating func append(_ byte: UInt8) throws -> [MCPFrame] {
         buffer.append(byte)
-        var frames: [ZoteroMCPFrame] = []
+        var frames: [MCPFrame] = []
         while let frame = try nextFrame() { frames.append(frame) }
         return frames
     }
 
-    public mutating func finish() throws -> [ZoteroMCPFrame] {
-        var frames: [ZoteroMCPFrame] = []
+    public mutating func finish() throws -> [MCPFrame] {
+        var frames: [MCPFrame] = []
         while let frame = try nextFrame() { frames.append(frame) }
         let remaining = buffer.trimmingASCIIWhitespace
         if !remaining.isEmpty {
             if String(decoding: remaining.prefix(15), as: UTF8.self)
                 .lowercased().hasPrefix("content-length:")
             {
-                throw ZoteroMCPFrameError.invalidHeader
+                throw MCPFrameError.invalidHeader
             }
             guard remaining.count <= Self.maximumFrameSize else {
-                throw ZoteroMCPFrameError.frameTooLarge
+                throw MCPFrameError.frameTooLarge
             }
-            frames.append(ZoteroMCPFrame(body: remaining, mode: .line))
+            frames.append(MCPFrame(body: remaining, mode: .line))
         }
         buffer.removeAll()
         return frames
     }
 
-    private mutating func nextFrame() throws -> ZoteroMCPFrame? {
+    private mutating func nextFrame() throws -> MCPFrame? {
         while buffer.first == 0x0A || buffer.first == 0x0D { buffer.removeFirst() }
         guard !buffer.isEmpty else { return nil }
         guard buffer.count <= Self.maximumFrameSize + 8_192 else {
-            throw ZoteroMCPFrameError.frameTooLarge
+            throw MCPFrameError.frameTooLarge
         }
         guard let newline = buffer.firstIndex(of: 0x0A) else { return nil }
         let firstLineData = buffer[..<newline].dropLastIfCarriageReturn
         guard let firstLine = String(data: firstLineData, encoding: .utf8) else {
-            throw ZoteroMCPFrameError.invalidHeader
+            throw MCPFrameError.invalidHeader
         }
 
         if firstLine.lowercased().hasPrefix("content-length:") {
             guard let headerBoundary = buffer.headerBoundary else { return nil }
             let headerData = buffer[..<headerBoundary.start]
             guard let headers = String(data: headerData, encoding: .utf8) else {
-                throw ZoteroMCPFrameError.invalidHeader
+                throw MCPFrameError.invalidHeader
             }
             let lengthLine = headers.split(whereSeparator: \Character.isNewline).first {
                 $0.lowercased().hasPrefix("content-length:")
@@ -74,24 +74,24 @@ public struct ZoteroMCPFrameParser: Sendable {
                 let length = Int(lengthLine[lengthLine.index(after: separator)...].trimmingCharacters(in: .whitespaces)),
                 (0...Self.maximumFrameSize).contains(length)
             else {
-                throw ZoteroMCPFrameError.invalidHeader
+                throw MCPFrameError.invalidHeader
             }
             let bodyStart = headerBoundary.end
             guard buffer.count >= bodyStart + length else { return nil }
             let body = buffer.subdata(in: bodyStart..<(bodyStart + length))
             buffer.removeSubrange(0..<(bodyStart + length))
-            return ZoteroMCPFrame(body: body, mode: .contentLength)
+            return MCPFrame(body: body, mode: .contentLength)
         }
 
-        guard newline <= Self.maximumFrameSize else { throw ZoteroMCPFrameError.frameTooLarge }
+        guard newline <= Self.maximumFrameSize else { throw MCPFrameError.frameTooLarge }
         let body = Data(firstLineData)
         buffer.removeSubrange(0...newline)
         if body.isEmpty { return try nextFrame() }
-        return ZoteroMCPFrame(body: body, mode: .line)
+        return MCPFrame(body: body, mode: .line)
     }
 }
 
-public enum ZoteroMCPFrameError: LocalizedError, Sendable {
+public enum MCPFrameError: LocalizedError, Sendable {
     case frameTooLarge
     case invalidHeader
 

@@ -23,14 +23,8 @@ struct AgentChatReplySourceContext {
 
     func evidence(for url: URL) -> AgentChatSourceEvidence {
         let completed = messages.compactMap(\.activity).filter { $0.status == .completed }
-        if let citation = try? ZoteroReference(url: url) {
-            let reports: [ZoteroReadReport] = completed.compactMap { activity in
-                guard activity.source == .runtime, activity.kind == .tool,
-                    case .zoteroReadReport(let report) = activity.sourceObservation, report.matches(citation)
-                else { return nil }
-                return report
-            }
-            return reports.isEmpty ? .unrecorded : .zotero(reports)
+        if (try? ZoteroReference(url: url)) != nil {
+            return .unrecorded
         }
         if let reference = AgentChatReference.parse(url) {
             let observed: [AgentChatSourceObservation.NoteRead] = completed.compactMap { activity in
@@ -68,7 +62,6 @@ enum AgentChatSourceEvidence {
     case differentRevision
     case note(AgentChatNoteReadCoverage)
     case web([AgentChatSourceObservation.WebAccess])
-    case zotero([ZoteroReadReport])
 }
 
 struct AgentChatNoteReadCoverage {

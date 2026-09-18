@@ -40,7 +40,7 @@ state the accepted profile; an unaccepted optional profile is labelled
 Guidance and Settings, Core Protocol discovery, user-scope Codex and Claude
 configuration, the knowledge-base MCP tools, multi-Triptych selection, App-unavailable
 behavior, source/Search/graph currentness, exact paging, role filtering, fingerprinted Note create/update/system-Trash, Agent Changes, direct Undo, outcome-unknown recovery,
-incoming/outgoing authored link occurrences and annotations, Attention, provider-managed Zotero tool-surface/unavailable behavior, and
+incoming/outgoing authored link occurrences and annotations, Attention, Codex-hosted Zotero read/unavailable behavior, and
 App/MCP parity. Exact initial frames and coordinates remain implementation
 defaults rather than release thresholds.
 
@@ -53,7 +53,7 @@ acceptance.
 §21.5 owns the packaged external-host journey. Deterministic Agent evidence
 covers both setup commands, tool schemas, scope/currentness, body update and
 create/Trash, stale/conflict/uncertain recovery, comparison, Undo and App absence.
-An embedded provider runtime is not required for external-host acceptance.
+A separate Zotero runtime is not required for external-host acceptance.
 
 These are functional evidence categories, not one serial clean-account or human
 script. Deterministic fixtures own protocol variants and failure branches;
@@ -196,9 +196,9 @@ Each source-first Core App Beta release requires:
 - a checksum for the App artifact.
 
 Scholium.app is the sole supported installation. Its signed, version-matched
-connection helper supplies external-host and token-scoped in-app MCP. Zotero's
-provider-managed MCP is an external runtime dependency configured for Chat; it
-is not copied into the App or reduced to a bundled read-only substitute. No
+connection helper supplies external-host and token-scoped in-app MCP. Chat uses
+the Codex host's Zotero reading capability; no separate Zotero runtime is
+copied into or required by the App. No
 standalone Scholium CLI, installer, terminal research commands or self-updater
 is distributed or supported. Helper and Core Protocol resources update
 atomically with the App. The helper never becomes a headless workspace or a

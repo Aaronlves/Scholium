@@ -15086,18 +15086,18 @@
         }
       }
     },
-    "Included in Chat · Full Provider" : {
+    "Available in Chat" : {
         "localizations" : {
           "en" : {
             "stringUnit" : {
               "state" : "translated",
-              "value" : "Included in Chat · Full Provider"
+              "value" : "Available in Chat"
             }
           },
           "zh-Hans" : {
             "stringUnit" : {
               "state" : "translated",
-              "value" : "聊天内置 · 完整 Provider"
+              "value" : "聊天中可用"
             }
           }
         }
@@ -21808,22 +21808,6 @@
         }
       }
     },
-    "Read a Zotero source" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Read a Zotero source"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已读取 Zotero 来源"
-          }
-        }
-      }
-    },
     "Read attachment" : {
       "localizations" : {
         "en" : {
@@ -21934,22 +21918,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在读取附件"
-          }
-        }
-      }
-    },
-    "Reading a Zotero source" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Reading a Zotero source"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在阅读 Zotero 来源"
           }
         }
       }
@@ -28118,18 +28086,18 @@
         }
       }
     },
-    "The Zotero provider exposes its complete tool surface. Provider authorization, availability and Zotero-side writes remain separate from Scholium." : {
+    "Chat uses the Codex Zotero capability for read-only library and indexed attachment text. No separate runtime installation is required." : {
         "localizations" : {
           "en" : {
             "stringUnit" : {
               "state" : "translated",
-              "value" : "The Zotero provider exposes its complete tool surface. Provider authorization, availability and Zotero-side writes remain separate from Scholium."
+              "value" : "Chat uses the Codex Zotero capability for read-only library and indexed attachment text. No separate runtime installation is required."
             }
           },
           "zh-Hans" : {
             "stringUnit" : {
               "state" : "translated",
-              "value" : "Zotero provider 暴露其完整工具面。provider 授权、可用性与 Zotero 侧写入均独立于 Scholium。"
+              "value" : "Chat 使用 Codex 的 Zotero 能力进行只读文献库和索引附件文本读取。不需要额外安装运行时。"
             }
           }
         }
@@ -32159,18 +32127,18 @@
         }
       }
     },
-    "Zotero Provider Not Configured" : {
+    "Zotero capability unavailable" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zotero Provider Not Configured"
+            "value" : "Zotero capability unavailable"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zotero Provider 未配置"
+            "value" : "Zotero 能力不可用"
           }
         }
       }
@@ -32245,32 +32213,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zotero 不可用"
-          }
-        }
-      }
-    },
-    "Zotero Read Reported" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zotero 材料读取报告"
-          }
-        }
-      }
-    },
-    "Zotero source reading" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Zotero source reading"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zotero 来源阅读"
           }
         }
       }

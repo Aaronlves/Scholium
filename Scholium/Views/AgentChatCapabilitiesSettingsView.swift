@@ -62,7 +62,7 @@ struct AgentChatCapabilitiesSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     if zoteroOnly {
-                        zoteroConnection
+                        zoteroCapability
                     } else {
                         zoteroSummary
                         Button("Add Tool…") { toolEdit = capabilities.editTool() }
@@ -109,9 +109,7 @@ struct AgentChatCapabilitiesSettingsView: View {
                     if !zoteroOnly {
                         ForEach(
                             Array(Set(capabilities.tools.map(\.name) + capabilities.toolConnections.map(\.name)))
-                                .filter {
-                                    $0 != AgentChatCapabilitiesController.zoteroServerName
-                                }.sorted(), id: \.self
+                                .sorted(), id: \.self
                         ) { name in
                             toolRow(name)
                         }
@@ -123,7 +121,7 @@ struct AgentChatCapabilitiesSettingsView: View {
             .id(zoteroOnly ? "zotero.chat" : "agents.tools")
             if let toolEdit {
                 Section {
-                    AgentChatToolEditor(capabilities: capabilities, edit: toolEdit, isZoteroTool: zoteroOnly) {
+                    AgentChatToolEditor(capabilities: capabilities, edit: toolEdit) {
                         focusedToolAction = toolEdit.originalName ?? (zoteroOnly ? "zotero" : "add")
                         self.toolEdit = nil
                     }
@@ -134,14 +132,14 @@ struct AgentChatCapabilitiesSettingsView: View {
     }
 
     private func ownsTool(_ name: String?) -> Bool {
-        guard let name else { return true }  // A shared configuration failure affects both pages.
-        return (name == AgentChatCapabilitiesController.zoteroServerName) == zoteroOnly
+        guard name != nil else { return true }  // A shared configuration failure affects both pages.
+        return !zoteroOnly
     }
 
     private var statusSection: some View {
         Section {
             HStack {
-                Text(zoteroOnly ? "Chat Tool Configuration" : "Skills and Tools", bundle: .module).font(
+                Text(zoteroOnly ? "Chat Zotero Capability" : "Skills and Tools", bundle: .module).font(
                     .headline)
                 Spacer()
                 if capabilities.isRefreshing || capabilities.isChanging {
@@ -253,20 +251,8 @@ struct AgentChatCapabilitiesSettingsView: View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Zotero", bundle: .module)
-                if let server = capabilities.tools.first(where: {
-                    $0.name == AgentChatCapabilitiesController.zoteroServerName
-                }) {
-                    Text(AgentChatToolLabels.state(server)).font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text(
-                        capabilities.usesDefaultZoteroConnection
-                            ? (capabilities.zoteroProviderAvailable
-                                ? "Included in Chat · Full Provider"
-                                : "Zotero Provider Not Configured")
-                            : "Connection Status Unavailable", bundle: .module
-                    )
+                Text(zoteroStatusText, bundle: .module)
                     .font(.caption).foregroundStyle(.secondary)
-                }
             }
             Spacer()
             Button {
@@ -277,45 +263,24 @@ struct AgentChatCapabilitiesSettingsView: View {
         }
     }
 
-    private var zoteroConnection: some View {
+    private var zoteroCapability: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if capabilities.zoteroConnection != nil {
-                toolRow(AgentChatCapabilitiesController.zoteroServerName)
-            } else {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Zotero")
-                        Text(
-                            capabilities.usesDefaultZoteroConnection
-                                ? (capabilities.zoteroProviderAvailable
-                                    ? "Included in Chat · Full Provider"
-                                    : "Zotero Provider Not Configured")
-                                : "Unavailable", bundle: .module
-                        )
-                        .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Configure…") {
-                        toolEdit = capabilities.zoteroToolEdit(executable: controller.zoteroToolExecutable)
-                    }
-                    .focused($focusedToolAction, equals: "zotero")
-                    .disabled(
-                        !capabilities.canConfigureTools || toolEdit != nil)
-                }
-            }
-            if let connection = capabilities.zoteroConnection,
-                connection.kind != .local || connection.address != capabilities.zoteroProviderAddress
-                    || connection.arguments != ZoteroMCPTransportDescriptor.provider.clientConfiguration.arguments
-            {
-                Text("Custom Zotero Configuration").font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text(
-                    "The Zotero provider exposes its complete tool surface. Provider authorization, availability and Zotero-side writes remain separate from Scholium.",
-                    bundle: .module
-                )
+            Text("Zotero", bundle: .module)
+            Text(zoteroStatusText, bundle: .module)
                 .font(.caption).foregroundStyle(.secondary)
-            }
+            Text(
+                "Chat uses the Codex Zotero capability for read-only library and indexed attachment text. No separate runtime installation is required.",
+                bundle: .module
+            )
+            .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private var zoteroStatusText: LocalizedStringKey {
+        if !capabilities.hasMethods {
+            return capabilities.isRefreshing ? "Checking…" : "Unavailable"
+        }
+        return capabilities.zoteroSkillAvailable ? "Available in Chat" : "Zotero capability unavailable"
     }
 
     private func toolRow(_ name: String) -> some View {
@@ -324,10 +289,7 @@ struct AgentChatCapabilitiesSettingsView: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(
-                        name == AgentChatCapabilitiesController.zoteroServerName
-                            ? String(localized: "Zotero") : (server?.title ?? name)
-                    ).lineLimit(1)
+                    Text(server?.title ?? name).lineLimit(1)
                     if let server {
                         Text(AgentChatToolLabels.state(server)).font(.caption).foregroundStyle(.secondary)
                     } else {
@@ -409,7 +371,7 @@ struct CoreProtocolSettingsSection: View {
     }
 }
 
-struct AgentZoteroToolSettingsView: View {
+struct AgentZoteroCapabilitySettingsView: View {
     @ObservedObject var controller: AgentChatController
     @ObservedObject var capabilities: AgentChatCapabilitiesController
 

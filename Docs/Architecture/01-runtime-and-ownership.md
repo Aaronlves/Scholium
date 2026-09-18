@@ -131,7 +131,8 @@ publication; windows accept one atomic capability generation and increasing
 immutable event generations. Commands call capabilities directly, not an event
 bus. One exact-window flush coordinator owns current/aggregate registration,
 rebinding and teardown; the window composition root holds no second registry.
-Application contains CSS/App Support I/O, Obsidian reads and Zotero transport.
+Application contains CSS/App Support I/O, Obsidian reads and the native Zotero
+local-API integration.
 
 The process-global authenticated App bridge serves only currently open workspace
 capabilities. It owns neither workspace nor Agent lifecycle. Request and token

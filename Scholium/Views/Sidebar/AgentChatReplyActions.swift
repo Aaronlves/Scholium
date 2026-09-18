@@ -114,7 +114,6 @@ struct AgentChatSourcesView: View {
             switch context?.evidence(for: source.url) {
             case .note: return height + 200
             case .web(let access): return height + 48 + CGFloat(access.count) * 24
-            case .zotero(let reports): return height + 80 + CGFloat(reports.count) * 120
             default: return height
             }
         }

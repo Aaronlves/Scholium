@@ -217,23 +217,17 @@ and pending auth state never enter history.
 
 ### Zotero boundary
 
-The default Chat connection is a provider-managed Zotero MCP transport, using
-runtime configuration to preserve disabled/custom connections on reconnect. Only
-successfully read configuration without that connection permits a default
-override. The provider's complete tool surface is passed through; Scholium does
-not maintain a second seven-tool projection. Provider installation, local API
-availability, MCP connection state and material observations remain independent.
+Chat uses the Codex host's Zotero capability for read-only library search,
+metadata and indexed attachment text. Scholium does not add a separate
+community provider, Python runtime, user-configurable Zotero connection or
+hidden fallback for this route. The host capability, Zotero local API
+availability and material observations remain independent.
 
-The provider is configured to use Zotero's local API rather than direct SQLite
-access. Provider-side authorization and Zotero writes remain provider/Zotero
-responsibilities. The bundled first-party service remains a compatibility
-transport for Scholium's own exact local API, annotation, original-file and
-fingerprint contracts; it is not an automatic Chat fallback and it does not
-become a second archive or writable source projection. One validated Zotero
-locator contract serves source links, recognized MCP reports, Chat/Sources and
-native navigation; a locator does not itself establish reading. Provider
-results are promoted into those contracts only after identity, representation
-and coverage checks.
+The native Zotero service remains the Application owner for the local API
+connection status and library search used by App settings and links. It is not
+a Chat transport. A Zotero host result is not promoted to Scholium source
+evidence; a successful host lookup does not itself establish original-file
+reading. Chat does not import or modify Zotero records.
 
 ### Native presentation boundary
 

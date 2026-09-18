@@ -5,8 +5,8 @@
 > A local-first, document-authoritative research environment for philosophy
 > and the humanities.
 
-**Current Core App Beta:** [v0.2.4-beta](https://github.com/Aaronlves/Scholium/releases/tag/v0.2.4-beta) ·
-[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.2.4-beta/Scholium-v0.2.4-beta-macos-arm64.dmg)
+**Current Core App Beta:** [v0.2.5-beta](https://github.com/Aaronlves/Scholium/releases/tag/v0.2.5-beta) ·
+[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.2.5-beta/Scholium-v0.2.5-beta-macos-arm64.dmg)
 
 This is the current App-only Beta distribution. The release owner performs UI
 and accessibility acceptance separately; this release preparation does not
@@ -283,20 +283,17 @@ actual MCP changes and eligible Undo. A disconnected or uncertain request is
 never automatically resent. Provider authentication, account availability,
 cloud execution and signed-distribution acceptance require their own checks.
 
-### Provider-managed Zotero MCP (optional integration)
+### Zotero reading in Chat (optional integration)
 
 Enable Zotero's local API in Zotero Settings → Advanced → **Allow other
-applications on this computer to communicate with Zotero**. Install and
-configure the external `zotero-mcp` provider according to its
-[installation guide](https://github.com/54yyyu/zotero-mcp/blob/main/docs/getting-started.md).
-Its recommended package install is `uv tool install zotero-mcp-server`.
-In Chat, Scholium passes through the provider's complete configured tool
-surface, using Zotero's local API backend by default; it does not replace it
-with the former seven-tool subset. **Check Connection** reports the API and MCP
-server separately; it does not read a source.
+applications on this computer to communicate with Zotero**. Chat uses the
+Codex host's Zotero capability to search the library and read indexed
+attachment text when available. No community Zotero server, Python runtime or
+separate dependency installation is required.
 
-The provider remains an external runtime dependency and owns Zotero-side
-authorization and writes. Scholium's bundled helper remains available for its
-own exact local API and compatibility contracts, but is not a hidden Chat
-fallback. The supported scope and exact reference rules are in
-[Specification §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration).
+The Chat route is read-only for Zotero. Scholium's native Zotero integration
+only owns local connection status and library search for App settings and
+links; it is not a second Chat Zotero connection. If the host
+capability is unavailable, Chat reports that boundary without bypassing
+Zotero's local API or accessing its database directly. The supported scope and
+exact reference rules are in [Specification §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration).
