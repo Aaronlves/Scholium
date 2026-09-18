@@ -30,16 +30,14 @@ def check(executable, root):
     assert external[2].get("error") or external[2]["result"].get("isError") is True
     scoped = call(["mcp", "serve", "--conversation-token", str(uuid.uuid4())], [listing])
     assert len(scoped[0]["result"]["tools"]) == 20
-    zotero = call(["zotero", "mcp", "serve", "--read-only"], [listing])
-    tools = zotero[0]["result"]["tools"]
-    assert len(tools) == 7 and all(t["annotations"]["readOnlyHint"] for t in tools)
-    for args in [["version"], ["update"], ["search", "test"], ["zotero", "mcp", "serve"],
+    for args in [["version"], ["update"], ["search", "test"],
+                 ["zotero", "mcp", "serve", "--read-only"],
                  ["mcp", "serve", "--conversation-token", "invalid"]]:
         result = subprocess.run([str(executable), *args], capture_output=True, timeout=15,
                                 cwd=root, env=environment)
         assert result.returncode != 0 and not result.stdout
     assert not (root / "Workspace").exists()
-    print("Bundled helper: external/scoped tool isolation, read-only Zotero, absent-App refusal and closed entry points passed")
+    print("Bundled helper: external/scoped tool isolation, retired Zotero route rejection, absent-App refusal and closed entry points passed")
 
 
 if __name__ == "__main__":
