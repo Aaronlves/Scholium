@@ -23,20 +23,20 @@ operations, attachment reads, display, move previews and Agent Change review/Und
 retain the Application's source, revision and recovery owners. The helper requires
 the running App; it is not a standalone/headless workspace product.
 
-Optional in-app Chat reaches retained conversations, materials, runtime settings,
+Optional in-app Chat reaches conversations, materials, runtime settings,
 Skills/tools, questions/approvals, branching, concurrent turns and delegated-Agent
-observation. Its Zotero route uses the Codex host's read-only capability for
-library/indexed attachment text; the native Zotero service remains the
-Application owner for local connection status and library search. Runtime
-reports, material access and mutation receipts remain distinct from evidence or
-acceptance. There is no Research Action, Reading Lead, passage Discussion or
+observation. Its managed `scholium-zotero` route uses Zotero's localhost API and
+Connector for access, exports, confirmed imports and version-checked updates;
+native service remains Application owner for status. Reports,
+access and receipts remain distinct from evidence. There is no Research Action,
+Reading Lead, passage Discussion or
 Review Comment lifecycle or MCP research-result API.
 
 The public release profile is Core App Beta. External Agent Collaboration and
 optional in-app Chat remain Preview; reachability is not implicit acceptance.
 The distribution is an App with bundled helpers. The latest artifact's exact proof
 and incomplete clean-account smoke are recorded below; source reachability does
-not establish packaged external-host, host-Zotero, physical-input or release acceptance.
+not establish packaged external-host, managed-Zotero, physical-input or release acceptance.
 
 ## Status chapters
 

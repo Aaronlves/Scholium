@@ -269,7 +269,7 @@ struct AgentChatCapabilitiesSettingsView: View {
             Text(zoteroStatusText, bundle: .module)
                 .font(.caption).foregroundStyle(.secondary)
             Text(
-                "Chat uses the Codex Zotero capability for read-only library and indexed attachment text. No separate runtime installation is required.",
+                "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text, imports and confirmed item changes. No separate runtime installation is required.",
                 bundle: .module
             )
             .font(.caption).foregroundStyle(.secondary)
@@ -280,7 +280,7 @@ struct AgentChatCapabilitiesSettingsView: View {
         if !capabilities.hasMethods {
             return capabilities.isRefreshing ? "Checking…" : "Unavailable"
         }
-        return capabilities.zoteroSkillAvailable ? "Available in Chat" : "Zotero capability unavailable"
+        return capabilities.zoteroConnectionAvailable ? "Available in Chat" : "Zotero connection unavailable"
     }
 
     private func toolRow(_ name: String) -> some View {

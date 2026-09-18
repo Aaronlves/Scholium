@@ -205,17 +205,17 @@ final class AgentChatCapabilitiesController: ObservableObject {
         isConnected && mayChange() && !isChanging && !isRefreshing && authenticatingTool == nil && toolConfiguration != nil
     }
 
-    /// Codex exposes the OpenAI-curated Zotero capability as a Skill. It is
-    /// intentionally not represented as a user-configurable connection.
-    var zoteroSkillAvailable: Bool {
-        methods.contains(where: Self.isZoteroSkill)
-    }
-
-    static func isZoteroSkill(_ method: AgentChatMethod) -> Bool {
-        method.enabled && (
-            method.selection.name.caseInsensitiveCompare("zotero") == .orderedSame
-                || method.selection.title.caseInsensitiveCompare("zotero") == .orderedSame
-        )
+    /// Chat uses Scholium's bundled Zotero MCP connection. It is managed by
+    /// the application and is intentionally not a user-editable connection.
+    var zoteroConnectionAvailable: Bool {
+        if toolConnections.contains(where: {
+            $0.name.caseInsensitiveCompare("scholium-zotero") == .orderedSame && $0.enabled
+        }) { return true }
+        if tools.contains(where: { $0.name.caseInsensitiveCompare("scholium-zotero") == .orderedSame }) { return true }
+        // The connection is injected into each Chat thread rather than the
+        // user's global Codex config. Once this runtime has loaded its tool
+        // configuration, the managed helper is available for the next turn.
+        return toolConfiguration != nil && isConnected
     }
 
     func editTool(named name: String? = nil) -> AgentChatToolEdit? {

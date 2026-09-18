@@ -436,10 +436,10 @@ page coverage and preview owner; supplying a material is not proof it was used.
 Sources neither fetches content nor creates citations on opening, and never executes
 an arbitrary locator. Public observations remain nonauthorizing conversation data.
 Reply, child-reply and Sources links open the validated item/PDF/annotation
-references owned by §15.4 through the system. An unobserved Zotero host lookup
-remains unknown even when its locator opens successfully. Host capability
-results do not become Scholium source evidence, and Chat does not manufacture
-a local Zotero read report. Metadata, indexed attachment text, annotations and
+references owned by §15.4 through the system. An unobserved Zotero lookup remains
+unknown even when its locator opens successfully. Zotero results do not become
+Scholium source evidence, and Chat does not manufacture a local Zotero read
+report. Metadata, indexed attachment text, annotations and
 original-file access remain distinct; missing or unsupported coverage stays
 unknown.
 

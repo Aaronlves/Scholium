@@ -43,8 +43,8 @@ Agents & Chat uses three native segments: Connection and Chat, Skills and Tools,
 and External Access. Each segment is a complete scrolling task page; manual
 paths and external-host setup remain inline. Core Protocol, optional Skills and
 connected tools belong to the same Agent configuration area. Zotero owns its
-Desktop Local API diagnosis and a read-only Chat capability status; no separate
-Zotero connection editor is presented. Notifications &
+Desktop Local API diagnosis and the managed `scholium-zotero` Chat connection;
+there is no separate user-editable Zotero connection editor. Notifications &
 Reminders separates Triptych dismissal-return timing from the Mac-local ledger.
 Category grouping does not imply storage or sharing scope. Pages identify This
 Mac, This Triptych or mixed scope as applicable through their category, group

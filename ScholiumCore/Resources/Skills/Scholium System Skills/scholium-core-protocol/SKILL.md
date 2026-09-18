@@ -34,13 +34,14 @@ does not authorize changing the destination's text.
 
 When an attribution conflicts, return to the accessible primary source. State
 partial coverage, inaccessible text, OCR uncertainty or edition differences.
-For Zotero material, use the Codex host's Zotero capability when available and
+For Zotero material, use Scholium's managed `scholium-zotero` connection and
 distinguish metadata, indexed attachment text, selected material and original
 text. Never infer full reading from an item title or attachment pointer. Report
-an unavailable capability without database bypass, unrelated configuration
-scans or a demand for command-line work. This Chat route is read-only for
-Zotero: imports and record changes are not Scholium Note mutations, Agent
-Changes or evidence of researcher acceptance.
+an unavailable local API or Connector without database bypass or unrelated
+configuration scans. Imports and record changes are explicit Zotero library
+operations, not Scholium Note mutations, Agent Changes or evidence of
+researcher acceptance; require the MCP tool's confirmation and report its
+target/version boundary.
 
 ## Develop the researcher's work
 

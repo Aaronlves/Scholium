@@ -178,16 +178,16 @@ bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明�
 链接出现的方向、注释、局部上下文与来源位置；它们只公开作者写下的
 链接出现，不为其指定关系类别。
 
-## Chat 中读取 Zotero（可选集成）
+## Chat 中使用 Zotero（可选集成）
 
-在 Zotero“设置 → 高级”中启用“允许本机其他应用与 Zotero 通信”。Chat 在可用时
-使用 Codex 宿主的 Zotero 能力搜索文献库并读取已建立索引的附件文本。不需要安装
-社区 Zotero 服务、Python 运行时或单独的依赖包。
+在 Zotero“设置 → 高级”中启用“允许本机其他应用与 Zotero 通信”。Chat 使用随
+Scholium 提供的 `scholium-zotero` 连接搜索、读取和导出 Zotero 内容；在明确确认后，
+也可以通过 Zotero 自己的 API/Connector 导入记录和修改条目。不需要安装社区 Zotero
+服务、Python 运行时或单独的依赖包。
 
-Chat 中的 Zotero 路径是只读的。Scholium 原生 Zotero 集成只负责应用设置和链接所需的
-本机连接状态与文献库搜索，不再作为第二个 Chat Zotero 连接。如果宿主能力不可用，
-Chat 会明确报告边界，不绕过 Zotero 本机 API，也不直接访问数据库。完整范围与引用
-规则见[规范 §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)。
+Zotero 仍是文献库的唯一权威。导入会绑定当前可编辑的库或集合；条目修改必须指定
+准确的文献库并提供当前 Zotero 版本。Scholium 不直接访问 Zotero 私有数据库。完整范围
+与引用规则见[规范 §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)。
 
 ## 存储与安全
 

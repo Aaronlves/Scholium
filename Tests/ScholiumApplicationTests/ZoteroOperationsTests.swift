@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Runtime-owned Zotero operations")
 struct ZoteroOperationsTests {
-    @Test("Snapshot runtime owns one native Zotero capability")
+    @Test("Snapshot runtime owns one native Zotero connection")
     func runtimeOwnership() async throws {
         let fixture = try Fixture.make()
         defer { fixture.remove() }

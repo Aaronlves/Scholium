@@ -1586,7 +1586,15 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         if let home = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"] {
             server["env"] = .object(["SCHOLIUM_HOME": .string(home)])
         }
-        let servers: [String: MCPJSONValue] = ["scholium": .object(server)]
+        let zoteroServer: [String: MCPJSONValue] = [
+            "command": .string(helperURL.path),
+            "args": .array([.string("zotero"), .string("mcp"), .string("serve")]),
+            "required": .bool(true), "tool_timeout_sec": .integer(600),
+        ]
+        let servers: [String: MCPJSONValue] = [
+            "scholium": .object(server),
+            "scholium-zotero": .object(zoteroServer),
+        ]
         return ["mcp_servers": .object(servers)]
     }
 

@@ -239,7 +239,7 @@ struct ZoteroSettingsView: View {
                 }
             }
             Text(
-                "Scholium connects only to Zotero Desktop on localhost and never modifies its data. No account or API key is required."
+                "Scholium connects only to Zotero Desktop on localhost and never accesses its private database. Chat imports and item changes require explicit confirmation. No account or API key is required."
             )
             .font(.body)
             .foregroundStyle(.secondary)

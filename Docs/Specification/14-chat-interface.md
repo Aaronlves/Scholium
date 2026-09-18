@@ -251,9 +251,9 @@ native tool editor.
 Remote connections expose a bearer-token variable name; local programs expose
 inherited variable names. Brief supporting text distinguishes names from values.
 The form does not become a second credential store. Shared scope and removal require confirmation
-of the named connection. Zotero's read-only host capability status lives in the
-dedicated Zotero Settings page beside its separate Desktop Local API diagnosis;
-it has no user-configurable Zotero connection. Failed saves preserve the form;
+of the named connection. The managed Zotero connection status lives in the
+dedicated Zotero Settings page beside its Desktop Local API diagnosis; it has
+no user-configurable Zotero connection. Failed saves preserve the form;
 Reload is explicit.
 
 Add Material offers Choose Note and Add Selection as distinct actions. Choose

@@ -5,7 +5,7 @@ import ScholiumContracts
     import AppKit
 #endif
 
-/// macOS presentation adapter over the Application-owned Zotero capability.
+/// macOS presentation adapter over the Application-owned Zotero connection.
 /// HTTP, decoding, matching, and connection history remain behind `ZoteroUseCases`;
 /// this adapter owns only external-app presentation.
 actor ZoteroBridge {

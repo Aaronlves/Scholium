@@ -99,7 +99,7 @@ struct CodexChatToolConfigurationTests {
     @Test("New connections cannot replace an existing name or the application bridge")
     func namesAndAddresses() throws {
         let snapshot = try snapshot()
-        for name in ["", "scholium", "Scholium", "fixture.other"] {
+        for name in ["", "scholium", "Scholium", "scholium-zotero", "Scholium-Zotero", "fixture.other"] {
             #expect(throws: CodexChatToolConfigurationError.self) {
                 try snapshot.writeParameters(.init(name: name, address: "https://example.invalid"), originalName: nil)
             }

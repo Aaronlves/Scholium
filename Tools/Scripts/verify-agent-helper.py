@@ -30,14 +30,21 @@ def check(executable, root):
     assert external[2].get("error") or external[2]["result"].get("isError") is True
     scoped = call(["mcp", "serve", "--conversation-token", str(uuid.uuid4())], [listing])
     assert len(scoped[0]["result"]["tools"]) == 20
+    zotero = call(["zotero", "mcp", "serve"], [initialize, listing])
+    assert zotero[0]["result"]["serverInfo"]["name"] == "scholium-zotero"
+    zotero_names = {tool["name"] for tool in zotero[1]["result"]["tools"]}
+    assert {"zotero_search", "zotero_fulltext", "zotero_import_bibtex", "zotero_update_item"} <= zotero_names
+    read_only = call(["zotero", "mcp", "serve", "--read-only"], [listing])
+    read_only_names = {tool["name"] for tool in read_only[0]["result"]["tools"]}
+    assert "zotero_import_bibtex" not in read_only_names and "zotero_update_item" not in read_only_names
     for args in [["version"], ["update"], ["search", "test"],
-                 ["zotero", "mcp", "serve", "--read-only"],
+                 ["zotero", "mcp", "serve", "--unsupported"],
                  ["mcp", "serve", "--conversation-token", "invalid"]]:
         result = subprocess.run([str(executable), *args], capture_output=True, timeout=15,
                                 cwd=root, env=environment)
         assert result.returncode != 0 and not result.stdout
     assert not (root / "Workspace").exists()
-    print("Bundled helper: external/scoped tool isolation, retired Zotero route rejection, absent-App refusal and closed entry points passed")
+    print("Bundled helper: Scholium isolation, independent Zotero read/write surface, absent-App refusal and closed entry points passed")
 
 
 if __name__ == "__main__":

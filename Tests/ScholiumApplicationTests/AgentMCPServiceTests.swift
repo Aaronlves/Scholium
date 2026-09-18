@@ -7,10 +7,32 @@ import Testing
 struct AgentMCPServiceTests {
     @Test func helperRejectsStandaloneAndImportEntrypoints() {
         for args in [
-            ["update"], ["version"], ["zotero", "mcp", "serve"], ["zotero", "mcp", "serve", "--read-only"],
+            ["update"], ["version"], ["zotero"], ["zotero", "mcp"], ["zotero", "mcp", "serve", "--unsupported"],
             ["mcp", "serve", "--conversation-token", "invalid"],
         ] {
             #expect(throws: (any Error).self) { try AgentMCPService.helperHandler(arguments: args, environment: [:]) }
+        }
+    }
+
+    @Test func independentZoteroHelperExposesReadWriteSurface() async throws {
+        let full = try AgentMCPService.helperHandler(arguments: ["zotero", "mcp", "serve"], environment: [:])
+        let readOnly = try AgentMCPService.helperHandler(arguments: ["zotero", "mcp", "serve", "--read-only"], environment: [:])
+        for (handler, expectsWrites) in [(full, true), (readOnly, false)] {
+            let data = try #require(await handler(Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#.utf8)))
+            let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let result = try #require(object["result"] as? [String: Any])
+            let tools = try #require(result["tools"] as? [[String: Any]])
+            let names = Set(tools.compactMap { $0["name"] as? String })
+            #expect(names.contains("zotero_search"))
+            #expect(names.contains("zotero_fulltext"))
+            #expect(names.contains("zotero_import_bibtex") == expectsWrites)
+            #expect(names.contains("zotero_update_item") == expectsWrites)
+            if expectsWrites {
+                let update = try #require(tools.first { $0["name"] as? String == "zotero_update_item" })
+                let annotations = try #require(update["annotations"] as? [String: Any])
+                #expect(annotations["readOnlyHint"] as? Bool == false)
+                #expect(annotations["destructiveHint"] as? Bool == true)
+            }
         }
     }
     @Test func externalHelperExposesOnlyResearchToolsAndRefusesMissingApp() async throws {

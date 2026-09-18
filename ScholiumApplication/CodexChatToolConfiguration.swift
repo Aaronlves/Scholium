@@ -30,7 +30,7 @@ public struct CodexChatToolConfiguration: Sendable {
             let arguments = value["args"]?.arrayValue?.compactMap(\.stringValue) ?? []
             let base = own[name]?.objectValue
             let editable =
-                name.lowercased() != "scholium" && base != nil
+                !Self.managedConnectionName(name) && base != nil
                 && base?[local ? "command" : "url"]?.stringValue == address
                 && (base?["args"]?.arrayValue?.compactMap(\.stringValue) ?? []) == arguments
                 && (base?["enabled"]?.boolValue ?? true) == (value["enabled"]?.boolValue ?? true)
@@ -71,7 +71,7 @@ public struct CodexChatToolConfiguration: Sendable {
         let name = originalName ?? connection.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !name.contains(where: { $0.isNewline || $0.isASCII && $0.asciiValue.map { $0 < 32 } == true })
         else { throw CodexChatToolConfigurationError.invalidName }
-        guard name.lowercased() != "scholium" else { throw CodexChatToolConfigurationError.managedConnection }
+        guard !Self.managedConnectionName(name) else { throw CodexChatToolConfigurationError.managedConnection }
         if originalName == nil {
             guard connections.allSatisfy({ $0.name != name }) else { throw CodexChatToolConfigurationError.duplicateName }
         } else {
@@ -151,6 +151,10 @@ public struct CodexChatToolConfiguration: Sendable {
                     || $0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
             })
         else { throw CodexChatToolConfigurationError.invalidVariable }
+    }
+
+    static func managedConnectionName(_ name: String) -> Bool {
+        ["scholium", "scholium-zotero"].contains(name.lowercased())
     }
 }
 

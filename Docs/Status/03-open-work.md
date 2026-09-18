@@ -52,9 +52,10 @@
   editor-snapshot capture and picker keyboard/focus; file panel,
   file-URL paste/drop, physical cross-app image transfer, system Paste, thumbnail/
   Quick Look, scanned-PDF page-selection sheets and provider image interpretation.
-- Complete Codex-hosted Zotero read acceptance: Skill discovery, local API,
-  indexed-text reading, failure/restart and unavailable behavior. Zotero writes
-  and imports are out of scope.
+- Complete packaged independent Zotero acceptance: managed Chat connection,
+  local API/Connector availability, indexed-text and original reads, import
+  confirmation, version-checked item updates, failure/restart and unavailable
+  behavior. Deterministic MCP fixtures do not establish human acceptance.
 - Complete runtime/native acceptance for branching and Retry in New Branch,
   concurrent execution, model/reasoning/web-search choices, Context/quota, plans,
   research questions, Note-update comparisons, command/terminal/network/file

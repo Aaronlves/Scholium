@@ -35,7 +35,7 @@ struct SettingsSearchRoutingTests {
             ("Claude", .agents, "agents.external"),
             ("H3 spacing", .document, "appearance.h3"),
             ("H6 间距", .document, "appearance.h6"),
-            ("Zotero capability", .zotero, "zotero.chat"),
+            ("Zotero connection", .zotero, "zotero.chat"),
             ("Triptych name", .workspace, "workspace.name"),
             ("Source font size", .document, "appearance.source"),
             ("Body Bold Font", .document, "appearance.styles"),

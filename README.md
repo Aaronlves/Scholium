@@ -283,17 +283,16 @@ actual MCP changes and eligible Undo. A disconnected or uncertain request is
 never automatically resent. Provider authentication, account availability,
 cloud execution and signed-distribution acceptance require their own checks.
 
-### Zotero reading in Chat (optional integration)
+### Zotero in Chat (optional integration)
 
 Enable Zotero's local API in Zotero Settings → Advanced → **Allow other
 applications on this computer to communicate with Zotero**. Chat uses the
-Codex host's Zotero capability to search the library and read indexed
-attachment text when available. No community Zotero server, Python runtime or
-separate dependency installation is required.
+bundled `scholium-zotero` connection to search, inspect and read Zotero
+material, export citations, and—when explicitly confirmed—import records or
+modify an item through Zotero's own API/Connector. No community Zotero server,
+Python runtime or separate dependency installation is required.
 
-The Chat route is read-only for Zotero. Scholium's native Zotero integration
-only owns local connection status and library search for App settings and
-links; it is not a second Chat Zotero connection. If the host
-capability is unavailable, Chat reports that boundary without bypassing
-Zotero's local API or accessing its database directly. The supported scope and
-exact reference rules are in [Specification §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration).
+Zotero remains the library authority. Imports bind to the selected editable
+target; item updates require the exact library and current Zotero version.
+Scholium never accesses Zotero's private database directly. The supported
+scope and exact reference rules are in [Specification §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration).

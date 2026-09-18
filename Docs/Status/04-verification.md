@@ -166,8 +166,8 @@ Evidence: `.build/chat-sidebar-audit/`, `.build/agent-roster/`.
 **2026-09-08 — Bounded signed-in Chat loop:** Official-runtime QA completed one
 multi-turn read, native approval, exact Note update, comparison, eligible Undo,
 restart restoration and Stop; source returned to its starting bytes.
-CHAT-LIVE-01/02 close only for this route. Host Zotero read breadth, concurrency,
-packaging, prolonged offline/material recovery and human accessibility remain open.
+CHAT-LIVE-01/02 close only for this route. Managed Zotero breadth, write-path
+acceptance, packaging, prolonged offline/material recovery and human accessibility remain open.
 Evidence: `.build/agent-chat-evolution/real-loop-retest-*.json`.
 
 **2026-09-13–15 — Files, reorganization and source safety:** Late-writer

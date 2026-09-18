@@ -157,7 +157,7 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 ["Zotero", "citation", "library", "local API", "文献", "引用", "本地 API"]),
             Self(
                 "zotero.chat", .zotero, "Zotero in Chat",
-                ["Zotero capability", "Zotero capability in Chat", "聊天 Zotero"]),
+                ["Zotero connection", "Zotero in Chat", "聊天 Zotero"]),
         ]
             + (1...6).map { level in
                 Self(

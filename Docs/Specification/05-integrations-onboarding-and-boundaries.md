@@ -4,14 +4,17 @@
 
 ## 15. Zotero integration
 
-### 15.1 Local read-only API
+### 15.1 Local API and Connector
 
-The optional built-in integration reads Zotero through its localhost API. It
-uses no online Web API credential or researcher-deployed server, writes no
-Zotero data, and blocks no core workflow.
+The built-in integration connects to Zotero Desktop through its localhost API
+and Connector. It uses no online Web API credential, researcher-deployed
+server, community MCP, Python runtime or private SQLite access. Zotero remains
+the sole library authority. Reads and confirmed imports/item modifications are
+available to the independent `scholium-zotero` MCP connection; the local API
+preference remains a Zotero-owned prerequisite.
 
 Settings shows connection status, **Open Zotero**, **Check Connection**, clear
-history, last successful time, and a concise local/read-only privacy statement.
+history, last successful time, and a concise local privacy statement.
 When disabled, it names the exact Zotero setting required to allow local
 applications.
 
@@ -27,33 +30,29 @@ Refresh Metadata operation. Deleting a source link removes that relation.
 
 Opening a link requests Zotero navigation; it proves neither reading nor
 philosophical support. Scholium does not fetch bibliography while projecting
-Links or reading ordinary Note context. An authorized Agent may use the Codex
-host's Zotero capability when its task needs source data.
-Citation generation is deferred. Before adding a future adapter, evaluate
-whether Zotero's existing capabilities already serve the Agent's need.
+Links or reading ordinary Note context. An authorized Agent may use Scholium's
+independent Zotero connection when its task needs source data or an explicitly
+requested Zotero library change.
 
-### 15.3 Codex-hosted Zotero reading in Chat
+### 15.3 Independent Zotero connection in Chat
 
-In-app Chat uses the host Codex Zotero capability when it is available. This
-route is read-only: the Agent may search the library, inspect metadata and
-read indexed attachment text when the host reports that material as available.
-Scholium does not require users to install a community Zotero server, Python
-runtime or separate dependency set, and it does not expose a separate
-user-configurable Zotero connection.
+In-app Chat injects the managed `scholium-zotero` local MCP server alongside
+the Scholium workspace server. The Agent may use its bounded Zotero surface:
+search, item/collection/tag/group/child inspection, indexed full text,
+originals, annotations, file URLs, BibTeX/citation export, and Connector
+imports or local-API item updates. Import and update tools are destructive MCP
+operations: they require explicit confirmation, and updates additionally
+require the exact library and current Zotero item version.
 
-The host capability, Zotero Desktop local API availability and material
-observations remain independent. If the host capability is unavailable, Chat
-reports that boundary and ordinary Note collaboration remains available.
-Scholium never bypasses the host through direct SQLite access or an unrelated
-configuration scan. Chat does not import or modify Zotero records. The native
-Zotero integration remains limited to the local API connection status and
-library search used by App settings and links; it is not a Chat fallback or a
-second Chat source projection.
+No separate runtime installation or user-configurable Zotero connection is
+required. If Zotero is closed or its local API/Connector is disabled, Chat
+reports that exact local boundary. Scholium never bypasses Zotero through
+SQLite or unrelated configuration scans. Metadata, indexed attachment text,
+annotations and original local bytes remain distinct and do not by themselves
+constitute source evidence.
 
 Never access Zotero's live SQLite directly, guess ambiguous items or
-destinations, or treat metadata and attachment identity as evidence. If the
-host capability is unavailable, report that boundary without database bypass
-or broad configuration scans.
+destinations, or treat metadata and attachment identity as evidence.
 
 ### 15.4 Exact references and selected material
 
@@ -65,11 +64,11 @@ the physical page; a reference proves neither successful arrival nor reading.
 Unsupported routes, malformed keys, duplicate parameters, and nonpositive
 pages or group IDs are rejected rather than guessed or downgraded.
 
-Host Zotero results may retain host locators and coverage claims, but Scholium
-does not manufacture an App-side read report or promote them to source
-evidence. Indexed attachment text, metadata, annotations and original local
-file bytes remain distinct; a successful capability lookup alone is not proof
-that an original was read.
+Zotero results may retain locators and coverage claims, but Scholium does not
+manufacture an App-side read report or promote them to source evidence. Indexed
+attachment text, metadata, annotations and original local file bytes remain
+distinct; a successful capability lookup alone is not proof that an original
+was read.
 
 ## 16. Onboarding
 

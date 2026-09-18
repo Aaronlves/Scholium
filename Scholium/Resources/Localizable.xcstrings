@@ -25107,12 +25107,12 @@
         }
       }
     },
-    "Scholium connects only to Zotero Desktop on localhost and never modifies its data. No account or API key is required." : {
+    "Scholium connects only to Zotero Desktop on localhost and never accesses its private database. Chat imports and item changes require explicit confirmation. No account or API key is required." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 仅通过 localhost 连接 Zotero Desktop，且绝不修改其数据。无需账户或 API 密钥。"
+            "value" : "Scholium 仅通过 localhost 连接 Zotero Desktop，且不访问其私有数据库。Chat 导入和条目修改需要明确确认。无需账户或 API 密钥。"
           }
         }
       }
@@ -28086,18 +28086,18 @@
         }
       }
     },
-    "Chat uses the Codex Zotero capability for read-only library and indexed attachment text. No separate runtime installation is required." : {
+    "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text, imports and confirmed item changes. No separate runtime installation is required." : {
         "localizations" : {
           "en" : {
             "stringUnit" : {
               "state" : "translated",
-              "value" : "Chat uses the Codex Zotero capability for read-only library and indexed attachment text. No separate runtime installation is required."
+              "value" : "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text, imports and confirmed item changes. No separate runtime installation is required."
             }
           },
           "zh-Hans" : {
             "stringUnit" : {
               "state" : "translated",
-              "value" : "Chat 使用 Codex 的 Zotero 能力进行只读文献库和索引附件文本读取。不需要额外安装运行时。"
+              "value" : "Chat 使用 Scholium 随附的 Zotero 连接读取文献库和索引附件文本，并在确认后导入和修改条目。不需要额外安装运行时。"
             }
           }
         }
@@ -32127,18 +32127,18 @@
         }
       }
     },
-    "Zotero capability unavailable" : {
+    "Zotero connection unavailable" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zotero capability unavailable"
+            "value" : "Zotero connection unavailable"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zotero 能力不可用"
+            "value" : "Zotero 连接不可用"
           }
         }
       }

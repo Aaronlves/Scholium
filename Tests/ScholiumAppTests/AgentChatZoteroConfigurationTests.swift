@@ -15,8 +15,8 @@ struct AgentChatZoteroConfigurationTests {
         }
     }
 
-    @Test("Chat does not inject a separate Zotero provider")
-    func hostZoteroCapabilityDoesNotAddProvider() async throws {
+    @Test("Chat injects Scholium's independent Zotero connection")
+    func injectsIndependentZoteroConnection() async throws {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = repository.appendingPathComponent(".build/agent-chat-tests/zotero-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -41,27 +41,12 @@ struct AgentChatZoteroConfigurationTests {
         let config = try #require(defaults.objectValue?["config"]?.objectValue)
         let builtIn = try #require(config["mcp_servers"]?.objectValue)
         #expect(builtIn["scholium"] != nil)
-        #expect(builtIn["scholium-zotero"] == nil)
+        let zotero = try #require(builtIn["scholium-zotero"]?.objectValue)
+        #expect(zotero["args"]?.arrayValue?.compactMap(\.stringValue) == ["zotero", "mcp", "serve"])
         #expect(config["project_doc_max_bytes"] == .integer(32768))
         #expect(config["project_root_markers"] == .array([]))
         #expect(defaults.objectValue?["developerInstructions"]?.stringValue?.contains(triptych.uuidString) == true)
-        #expect(!caps.zoteroSkillAvailable)
+        #expect(caps.zoteroConnectionAvailable)
         await first.disconnect()
-    }
-
-    @Test("The host Zotero Skill is recognized as a read capability")
-    func recognizesHostZoteroSkill() {
-        let enabled = AgentChatMethod(
-            selection: .init(name: "zotero", title: "Zotero", path: "/fixture/zotero/SKILL.md"),
-            description: "Read Zotero", enabled: true, scope: "user")
-        let disabled = AgentChatMethod(
-            selection: .init(name: "zotero", title: "Zotero", path: "/fixture/zotero/SKILL.md"),
-            description: "Read Zotero", enabled: false, scope: "user")
-        let unrelated = AgentChatMethod(
-            selection: .init(name: "other", title: "Other", path: "/fixture/other/SKILL.md"),
-            description: "Other", enabled: true, scope: "user")
-        #expect(AgentChatCapabilitiesController.isZoteroSkill(enabled))
-        #expect(!AgentChatCapabilitiesController.isZoteroSkill(disabled))
-        #expect(!AgentChatCapabilitiesController.isZoteroSkill(unrelated))
     }
 }

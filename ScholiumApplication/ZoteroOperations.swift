@@ -2,13 +2,13 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
-/// Runtime-owned, read-only access to Zotero Desktop's local API for native
-/// settings and library-link behavior. Chat uses the Codex host capability
-/// instead of this Application service.
+/// Runtime-owned access to Zotero Desktop's local API for native settings,
+/// library-link behavior and the bundled independent Zotero MCP service.
 public actor ZoteroOperations: ZoteroUseCases {
     typealias RequestLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     private let loadRequest: RequestLoader
+    private let mcpServer: ZoteroMCPServer
     private var lastSuccessfulConnection: Date?
 
     private struct LocalReadResponse: Sendable {
@@ -54,8 +54,10 @@ public actor ZoteroOperations: ZoteroUseCases {
     init(requestLoader: RequestLoader? = nil) {
         if let requestLoader {
             loadRequest = requestLoader
+            mcpServer = ZoteroMCPServer()
         } else {
             let client = ZoteroURLSessionClient()
+            mcpServer = ZoteroMCPServer(client: ZoteroMCPURLSessionClient())
             loadRequest = { request in
                 let result = try await client.send(request)
                 guard let url = request.url,
@@ -66,6 +68,12 @@ public actor ZoteroOperations: ZoteroUseCases {
                 return (result.body, response)
             }
         }
+    }
+
+    /// Handles the independent stdio-facing Zotero MCP without giving the
+    /// helper direct access to the App's workspace or SQLite database.
+    public func handle(requestData: Data, access: ZoteroMCPAccess) async -> Data? {
+        await mcpServer.handle(requestData: requestData, access: access)
     }
 
     public func libraryInfo() async -> ZoteroLibraryInfo {

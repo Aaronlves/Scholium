@@ -217,17 +217,20 @@ and pending auth state never enter history.
 
 ### Zotero boundary
 
-Chat uses the Codex host's Zotero capability for read-only library search,
-metadata and indexed attachment text. Scholium does not add a separate
-community provider, Python runtime, user-configurable Zotero connection or
-hidden fallback for this route. The host capability, Zotero local API
-availability and material observations remain independent.
+Chat uses Scholium's bundled `scholium-zotero` MCP connection for Zotero
+library access. The connection uses only Zotero Desktop's localhost API and
+Connector, never a community server, Python runtime, private SQLite database,
+or a second Scholium-side library authority. Its read surface includes search,
+metadata, collections, tags, groups, children, indexed full text, attachment
+URLs, annotations, originals, exports and citations. Its write surface is
+explicitly confirmed Connector import and version-checked item modification.
 
-The native Zotero service remains the Application owner for the local API
-connection status and library search used by App settings and links. It is not
-a Chat transport. A Zotero host result is not promoted to Scholium source
-evidence; a successful host lookup does not itself establish original-file
-reading. Chat does not import or modify Zotero records.
+The native Zotero service remains the Application owner for settings and links;
+the same Application boundary composes the independent MCP server for Chat and
+external hosts. A Zotero result is not promoted to Scholium source evidence;
+metadata, indexed text, annotations and original-file bytes remain distinct.
+Write tools report the selected target or expected item version and never
+silently guess an ambiguous library.
 
 ### Native presentation boundary
 

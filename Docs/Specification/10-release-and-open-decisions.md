@@ -40,7 +40,7 @@ state the accepted profile; an unaccepted optional profile is labelled
 Guidance and Settings, Core Protocol discovery, user-scope Codex and Claude
 configuration, the knowledge-base MCP tools, multi-Triptych selection, App-unavailable
 behavior, source/Search/graph currentness, exact paging, role filtering, fingerprinted Note create/update/system-Trash, Agent Changes, direct Undo, outcome-unknown recovery,
-incoming/outgoing authored link occurrences and annotations, Attention, Codex-hosted Zotero read/unavailable behavior, and
+incoming/outgoing authored link occurrences and annotations, managed Zotero MCP read/write/unavailable behavior, and
 App/MCP parity. Exact initial frames and coordinates remain implementation
 defaults rather than release thresholds.
 
@@ -196,8 +196,8 @@ Each source-first Core App Beta release requires:
 - a checksum for the App artifact.
 
 Scholium.app is the sole supported installation. Its signed, version-matched
-connection helper supplies external-host and token-scoped in-app MCP. Chat uses
-the Codex host's Zotero reading capability; no separate Zotero runtime is
+connection helper supplies external-host and token-scoped in-app MCP, including
+the independent `scholium-zotero` service. No separate Zotero runtime is
 copied into or required by the App. No
 standalone Scholium CLI, installer, terminal research commands or self-updater
 is distributed or supported. Helper and Core Protocol resources update

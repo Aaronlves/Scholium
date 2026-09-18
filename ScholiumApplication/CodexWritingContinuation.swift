@@ -287,6 +287,7 @@ public final class CodexWritingContinuation {
             overrides["mcp_servers.\(quotedName).enabled"] = .bool(false)
         }
         overrides["mcp_servers.scholium.enabled"] = .bool(false)
+        overrides["mcp_servers.scholium-zotero.enabled"] = .bool(false)
         for feature in [
             "shell_tool", "unified_exec", "apply_patch_freeform", "js_repl", "code_mode", "code_mode_only",
             "multi_agent", "multi_agent_v2", "enable_fanout", "enable_mcp_apps", "apps", "plugins", "plugin_hooks",
