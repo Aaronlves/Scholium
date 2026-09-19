@@ -46,10 +46,14 @@ jobs:
 
   verify:
     name: Full verification
-    # Pinned rather than macos-latest so the image cannot change the toolchain
-    # underneath a byte-comparison of the committed editor bundles. The package
-    # declares .macOS(.v26), so the SDK has to be at least that recent.
-    runs-on: macos-26
+    # Scholium is built for the machine it is written on, and reaches for macOS
+    # 27 controls where they exist. #available guards those calls at runtime but
+    # the symbols still have to be in the SDK to compile, so the runner needs
+    # Xcode 27's. This label is a public preview image; if it is withdrawn the
+    # gate has to follow the toolchain rather than retreat to an older SDK.
+    # Pinned rather than macos-latest either way, so the image cannot change
+    # underneath a byte-comparison of the committed editor bundles.
+    runs-on: xcode-27
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
