@@ -912,7 +912,8 @@ struct AppCompositionRootTests {
         #expect(await replacementHandle.ownedBackgroundTaskCount == 0)
     }
 
-    @Test("Two live windows converge safely while retaining independent sessions")
+    // Needs a window server that brings two live windows to order.
+    @Test("Two live windows converge safely while retaining independent sessions", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
     func twoLiveWindowsConvergeSafely() async throws {
         let fileManager = FileManager.default
         let isolatedHome = fileManager.temporaryDirectory

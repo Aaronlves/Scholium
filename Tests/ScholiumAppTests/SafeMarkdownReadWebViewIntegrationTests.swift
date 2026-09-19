@@ -814,7 +814,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Review suppresses only overlay scroll bars during viewport reflow")
+    // Needs scroll bars configured as a Mac with a pointing device configures them.
+    @Test("Review suppresses only overlay scroll bars during viewport reflow", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
     func reviewSuppressesOverlayScrollBarDuringViewportReflow() async throws {
         let fixture = Self.longDocumentFixture()
         let harness = ReadHarness(

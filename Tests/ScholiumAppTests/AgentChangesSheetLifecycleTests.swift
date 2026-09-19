@@ -9,7 +9,8 @@ import Testing
 @Suite("Agent Changes sheet lifecycle", .serialized)
 @MainActor
 struct AgentChangesSheetLifecycleTests {
-    @Test("Loading, displaying, and dismissing a real sheet preserve the document window frame")
+    // Needs a document window and sheet at a workable size.
+    @Test("Loading, displaying, and dismissing a real sheet preserve the document window frame", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
     func parentFrameSurvivesPresentation() async throws {
         _ = NSApplication.shared
         let screen = try #require(NSScreen.main)

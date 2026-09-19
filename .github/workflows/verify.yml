@@ -84,8 +84,15 @@ jobs:
         # development Mac. This runner has three cores and 7 GB, so it would
         # report its own size rather than a regression. That evidence stays a
         # local step; everything else about correctness runs here.
+        #
+        # Five tests in ScholiumAppTests likewise need a display of a working
+        # size, the bundled typefaces registered with the font server, and
+        # scroll bars set the way a Mac with a pointing device sets them. They
+        # are reported as skipped rather than loosened; the other 1,052 in that
+        # target still run.
         env:
           SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE: "1"
+          SCHOLIUM_SKIP_DISPLAY_EVIDENCE: "1"
         run: Tools/Scripts/verify.sh
 
       # verify.sh writes each failing step's full log under .build; the console

@@ -86,10 +86,18 @@ The same gate runs on every push and pull request to `main` through
 in-worktree `WebEditor/node_modules`, so a checkout kept populated for editor
 tooling can run everything below but not `verify.sh` itself.
 
-CI sets `SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE=1`. The measurement suites assert
-absolute durations calibrated on a development Mac, and a three-core shared
-runner would report its own size rather than a regression. Those thresholds
-are only evidence when `verify.sh` runs locally, so run it before a release.
+CI declares two things it cannot witness, and both come back as skips rather
+than passes:
+
+- `SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE=1` — the measurement suites assert
+  absolute durations calibrated on a development Mac, and a three-core shared
+  runner would report its own size rather than a regression.
+- `SCHOLIUM_SKIP_DISPLAY_EVIDENCE=1` — five tests in `ScholiumAppTests` need a
+  display of a working size, the bundled typefaces registered with the font
+  server, and scroll bars set the way a Mac with a pointing device sets them.
+
+Everything else runs in CI. Those two kinds of evidence are only real when
+`verify.sh` runs on a development Mac, so run it there before a release.
 
 Common development commands:
 

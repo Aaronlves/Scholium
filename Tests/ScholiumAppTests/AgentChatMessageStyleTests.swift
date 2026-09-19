@@ -118,7 +118,8 @@ struct AgentChatMessageStyleTests {
         func makeNSView(context: Context) -> NSTextField { NSTextField(labelWithString: "Used tool 2") }
         func updateNSView(_ view: NSTextField, context: Context) {}
     }
-    @Test("One reader keeps streamed prose and rich content inside its allocated row")
+    // Needs the bundled typefaces, so measured row heights are real.
+    @Test("One reader keeps streamed prose and rich content inside its allocated row", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
     @MainActor
     func unifiedReplyLayout() async throws {
         var contentReady = false

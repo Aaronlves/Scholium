@@ -2691,7 +2691,8 @@ struct FrontendArchitectureTests {
         )
     }
 
-    @Test("Bundled native typefaces register with AppKit")
+    // Needs a font server the bundled typefaces can register with.
+    @Test("Bundled native typefaces register with AppKit", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
     func bundledNativeTypefacesRegister() {
         ScholiumFontRegistry.registerBundledFonts()
 
