@@ -86,6 +86,11 @@ The same gate runs on every push and pull request to `main` through
 in-worktree `WebEditor/node_modules`, so a checkout kept populated for editor
 tooling can run everything below but not `verify.sh` itself.
 
+CI sets `SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE=1`. The measurement suites assert
+absolute durations calibrated on a development Mac, and a three-core shared
+runner would report its own size rather than a regression. Those thresholds
+are only evidence when `verify.sh` runs locally, so run it before a release.
+
 Common development commands:
 
 ```bash

@@ -324,6 +324,22 @@ run_swift_test_once() {
   return "${command_status}"
 }
 
+# The measurement suites assert absolute durations, so they report the machine
+# as much as the code. A shared runner with a fraction of a development Mac's
+# cores fails them while saying nothing about Scholium. Rather than loosen
+# thresholds that state what Search has to feel like, a caller that cannot
+# measure says so, and the omission is printed rather than hidden.
+run_measurement_test() {
+  local label="$1"
+  if [[ "${SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE:-0}" == "1" ]]; then
+    echo "Skipping ${label}: SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE=1." >&2
+    echo "  Timing thresholds are unmet on this machine by construction, not by regression." >&2
+    echo "  This evidence has to come from a development Mac before a release." >&2
+    return 0
+  fi
+  run_swift_test_once "$@"
+}
+
 run_swift_test_product() {
   local test_product="$1"
   local attempt log command_status
@@ -380,13 +396,13 @@ for test_product in \
   ScholiumAppTests; do
   run_swift_test_product "${test_product}"
   if [[ "${test_product}" == "ScholiumCoreTests" ]]; then
-    run_swift_test_once \
+    run_measurement_test \
       "ScholiumCoreTests performance" \
       "ScholiumCoreTests-performance" \
       --no-parallel \
       --filter 'ScholiumCoreTests.PerformanceRegressionMicrobenchmarkTests'
   elif [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
-    run_swift_test_once \
+    run_measurement_test \
       "ScholiumApplicationTests architecture measurement" \
       "ScholiumApplicationTests-architecture" \
       --no-parallel \

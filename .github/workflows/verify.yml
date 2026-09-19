@@ -80,6 +80,12 @@ jobs:
           python3 --version
 
       - name: Verify
+        # The measurement suites assert absolute durations calibrated on a
+        # development Mac. This runner has three cores and 7 GB, so it would
+        # report its own size rather than a regression. That evidence stays a
+        # local step; everything else about correctness runs here.
+        env:
+          SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE: "1"
         run: Tools/Scripts/verify.sh
 
       # verify.sh writes each failing step's full log under .build; the console
