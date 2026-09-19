@@ -148,67 +148,6 @@ public enum FrontmatterPatchPlanner {
         )
     }
 
-    public static func authoredScalarToken(
-        frontmatter: String,
-        key: String,
-        newline: String
-    ) throws -> String? {
-        let analysis = try analyze(frontmatter)
-        guard let entry = analysis.entries[key],
-            isOrdinaryScalar(analysis.mapping[key])
-        else { return nil }
-        let range = try scalarTokenRange(
-            in: frontmatter,
-            key: key,
-            entry: entry
-        )
-        return String(frontmatter[range])
-    }
-
-    public static func isTimestampScalarToken(_ scalarToken: String) -> Bool {
-        guard let node = try? compose(yaml: scalarToken) else { return false }
-        return node.tag == Tag(.timestamp)
-    }
-
-    /// Serializes an already validated ordered set of plain top-level fields.
-    /// Delivery adapters never call this with YAML fragments; managed creation
-    /// first resolves every value through the canonical property catalog.
-    public static func serializeTopLevelMapping(
-        _ entries: [(key: String, value: FrontmatterEditValue)]
-    ) throws -> String {
-        guard !entries.isEmpty,
-            Set(entries.map(\.key)).count == entries.count,
-            entries.allSatisfy({ entry in
-                !entry.key.isEmpty
-                    && !entry.key.contains(":")
-                    && !entry.key.contains("#")
-                    && !entry.key.unicodeScalars.contains(where: {
-                        CharacterSet.controlCharacters.contains($0)
-                    })
-            })
-        else {
-            throw FrontmatterPatchRefusal.ambiguousStructure(
-                "Managed creation requires unique plain top-level YAML keys."
-            )
-        }
-        let source =
-            entries.flatMap {
-                serialize(key: $0.key, value: $0.value, indent: "")
-            }.joined(separator: "\n") + "\n"
-        // `analyze` now scopes defects to individual keys, so managed creation
-        // asserts the stronger property it has always required: every key it
-        // serialized is present and uniquely bounded.
-        let analysis = try analyze(source)
-        guard analysis.unpatchableKeys.isEmpty,
-            analysis.entries.count == entries.count
-        else {
-            throw FrontmatterPatchRefusal.ambiguousStructure(
-                "Managed creation requires unique plain top-level YAML keys."
-            )
-        }
-        return source
-    }
-
     private static func analyze(_ frontmatter: String) throws -> Analysis {
         let loaded: Any?
         do {

@@ -1007,27 +1007,6 @@ public actor VaultRepository {
         )
     }
 
-    /// Completes retained transaction evidence only after Core rechecks that
-    /// the canonical source is still the exact pre-write revision. This is the
-    /// no-write branch of recovery reconciliation; it never applies candidate
-    /// bytes or accepts a third-party revision.
-    public func abandonInterruptedSaveRecovery(
-        _ recovery: InterruptedSaveRecovery
-    ) throws {
-        let transaction = try retainedMutation(matching: recovery)
-        let current = DocumentFingerprint(
-            data: try readSource(
-                relativePath: transaction.relativePath
-            ))
-        guard current == transaction.recoveryExpected else {
-            throw VaultRepositoryError.conflict(
-                expected: transaction.recoveryExpected,
-                current: current
-            )
-        }
-        try recoveryLedger.completeMutation(transaction, sourceAccess: descriptorAccess)
-    }
-
     /// Remaps machine-local pre-write evidence after a stable-identity move.
     public func migrateRecoveryLedger(
         from sourceRelativePath: String,

@@ -138,11 +138,6 @@ final class PerformanceProbe {
     var measuresEditorRetainedMemory: Bool {
         configuration?.metric == .editorRetainedMemory
     }
-    var measuresEditorVisibility: Bool {
-        configuration?.metric == .editorModeTransition
-            || configuration?.metric == .warmEditActivation
-            || configuration?.metric == .firstEditActivation
-    }
     var requiresInitialReviewPresentation: Bool {
         configuration?.metric == .warmReadActivation
             || configuration?.metric == .firstReadActivation

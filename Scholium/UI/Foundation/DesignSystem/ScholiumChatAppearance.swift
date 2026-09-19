@@ -8,10 +8,8 @@ enum ScholiumChatAppearance {
     /// authorship, but never change the message's type or ink.
     static var messageFont: Font { .body }
     static var messageNSFont: NSFont { NSFont.preferredFont(forTextStyle: .body) }
-    static var messageHeadingNSFont: NSFont { NSFont.preferredFont(forTextStyle: .headline) }
     static var messageForeground: Color { ScholiumColorRole.primaryText.color }
     static var messageNSForeground: NSColor { ScholiumColorRole.primaryText.nsColor }
-    static var messageLinkNSForeground: NSColor { ScholiumColorRole.accent.nsColor }
     static let messageLineHeight: CGFloat = 1.55
     static var messageLoadingHeight: CGFloat { ceil(messageNSFont.pointSize * messageLineHeight) }
     static let messageSpacing: CGFloat = 20

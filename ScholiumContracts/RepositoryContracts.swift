@@ -211,13 +211,3 @@ public struct FolderRepositoryMoveResult: Sendable {
         self.documents = documents
     }
 }
-
-public struct NoteDeletionResult: Sendable {
-    public let relativePath: String
-    public let fingerprint: DocumentFingerprint
-
-    public init(relativePath: String, fingerprint: DocumentFingerprint) {
-        self.relativePath = relativePath
-        self.fingerprint = fingerprint
-    }
-}

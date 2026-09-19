@@ -3,7 +3,6 @@ import Foundation
 enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     case inlineStatus
     case editorialControl
-    case segmentedControl
     case workspaceNavigation
     case editorialPanel
     case loadingSurface
@@ -23,7 +22,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
             .boundedPanel,
             .documentCalloutSurface, .documentEmbeddedNote:
             8
-        case .editorialPanel, .segmentedControl, .loadingSurface, .documentCodeBlock:
+        case .editorialPanel, .loadingSurface, .documentCodeBlock:
             10
         case .editorialTextEditor:
             6
@@ -58,8 +57,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
             "--scholium-corner-document-control"
         case .calloutDisclosureFocus:
             "--scholium-corner-callout-disclosure-focus"
-        case .editorialControl, .segmentedControl, .workspaceNavigation, .editorialPanel,
-            .loadingSurface:
+        case .editorialControl, .workspaceNavigation, .editorialPanel, .loadingSurface:
             nil
         }
     }
@@ -68,7 +66,6 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
 enum ScholiumShape {
     static let inlineStatusCornerRadius = ScholiumCornerRole.inlineStatus.radius
     static let editorialControlCornerRadius = ScholiumCornerRole.editorialControl.radius
-    static let segmentedControlCornerRadius = ScholiumCornerRole.segmentedControl.radius
     static let workspaceNavigationCornerRadius = ScholiumCornerRole.workspaceNavigation.radius
     static let editorialPanelCornerRadius = ScholiumCornerRole.editorialPanel.radius
     static let loadingSurfaceCornerRadius = ScholiumCornerRole.loadingSurface.radius

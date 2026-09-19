@@ -5,37 +5,6 @@
 
     @MainActor
     extension MarkdownEditorSession {
-        func testingScrollEditor(by delta: Double) async throws -> Double {
-            guard let webView else { throw SessionError.unavailable }
-            let result = try await webView.callAsyncJavaScript(
-                """
-                const scroller = document.querySelector('.cm-scroller');
-                if (!scroller) return null;
-                const before = scroller.scrollTop;
-                scroller.scrollTop = before + delta;
-                scroller.dispatchEvent(new Event('scroll'));
-                await new Promise(resolve => {
-                  let settled = false;
-                  const finish = () => {
-                    if (settled) return;
-                    settled = true;
-                    resolve();
-                  };
-                  requestAnimationFrame(() => requestAnimationFrame(finish));
-                  setTimeout(finish, 100);
-                });
-                return scroller.scrollTop - before;
-                """,
-                arguments: ["delta": delta],
-                in: nil,
-                contentWorld: .page
-            )
-            guard let applied = (result as? NSNumber)?.doubleValue else {
-                throw SessionError.invalidResult
-            }
-            return applied
-        }
-
         func testingClickFirstFootnoteReference() async throws {
             guard let webView else { throw SessionError.unavailable }
             let result = try await webView.callAsyncJavaScript(
@@ -239,97 +208,6 @@
                 y: position.y,
                 in: webView,
                 clickCount: 3
-            )
-        }
-
-        func testingDragSelectionProjection(
-            from startText: String,
-            to endText: String,
-            lineContaining lineText: String
-        ) async throws -> TestingPointerProjectionResult {
-            guard let webView else { throw SessionError.unavailable }
-            let rawResult = try await webView.callAsyncJavaScript(
-                """
-                const locate = requested => {
-                    for (const root of document.querySelectorAll('.cm-line')) {
-                        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                        let node;
-                        while ((node = walker.nextNode())) {
-                            const index = node.textContent?.indexOf(requested) ?? -1;
-                            if (index < 0) continue;
-                            const range = document.createRange();
-                            range.setStart(node, index);
-                            range.setEnd(node, Math.min(node.length, index + Math.max(1, requested.length)));
-                            const rect = range.getBoundingClientRect();
-                            return {
-                                target: node.parentElement || root,
-                                x: (rect.left + rect.right) / 2,
-                                y: (rect.top + rect.bottom) / 2
-                            };
-                        }
-                    }
-                    return null;
-                };
-                const lineTextValue = () => Array.from(document.querySelectorAll('.cm-line'))
-                    .find(line => line.textContent?.includes(lineText))?.textContent || '';
-                const start = locate(startText);
-                const end = locate(endText);
-                if (!start || !end) return null;
-                start.target.dispatchEvent(new MouseEvent('mousedown', {
-                    view: window,
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: start.x,
-                    clientY: start.y,
-                    button: 0,
-                    buttons: 1,
-                    detail: 1
-                }));
-                document.dispatchEvent(new MouseEvent('mousemove', {
-                    view: window,
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: end.x,
-                    clientY: end.y,
-                    button: 0,
-                    buttons: 1,
-                    detail: 1
-                }));
-                const duringDragLineText = lineTextValue();
-                document.dispatchEvent(new MouseEvent('mouseup', {
-                    view: window,
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: end.x,
-                    clientY: end.y,
-                    button: 0,
-                    buttons: 0,
-                    detail: 1
-                }));
-                await Promise.resolve();
-                const afterMouseUpLineText = lineTextValue();
-                return {
-                    duringDragLineText,
-                    afterMouseUpLineText
-                };
-                """,
-                arguments: [
-                    "startText": startText,
-                    "endText": endText,
-                    "lineText": lineText,
-                ],
-                in: nil,
-                contentWorld: .page
-            )
-            guard let payload = rawResult as? [String: Any],
-                let during = payload["duringDragLineText"] as? String,
-                let after = payload["afterMouseUpLineText"] as? String
-            else {
-                throw SessionError.invalidResult
-            }
-            return TestingPointerProjectionResult(
-                duringDragLineText: during,
-                afterMouseUpLineText: after
             )
         }
 

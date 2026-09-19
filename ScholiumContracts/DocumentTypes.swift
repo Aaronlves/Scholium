@@ -37,16 +37,6 @@ public indirect enum YAMLValue: Codable, Hashable, Sendable {
     case array([YAMLValue])
     case object([String: YAMLValue])
 
-    public var scalarString: String? {
-        switch self {
-        case .string(let value): value
-        case .integer(let value): String(value)
-        case .double(let value): String(value)
-        case .boolean(let value): value ? "true" : "false"
-        case .null, .array, .object: nil
-        }
-    }
-
     static func convert(_ value: Any) -> YAMLValue {
         switch value {
         case let value as String: return .string(value)

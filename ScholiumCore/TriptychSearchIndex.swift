@@ -1006,14 +1006,6 @@ public actor TriptychSearchIndex {
             : probedUpperBound.partialValue
     }
 
-    private nonisolated static func isIncluded(
-        _ document: StoredSearchDocument,
-        in includedVaultIDs: [UUID]?
-    ) -> Bool {
-        guard let includedVaultIDs else { return true }
-        return includedVaultIDs.contains(document.vaultID)
-    }
-
     private func relatedIdentityCandidates(
         material: RelatedContentSeedMaterial,
         excluding seed: VaultQualifiedNoteID,

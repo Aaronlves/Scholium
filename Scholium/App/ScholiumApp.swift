@@ -2240,11 +2240,6 @@ final class WindowModel: ObservableObject {
 
     // MARK: Window Presentation
 
-    var researchInspectorMode: ResearchInspectorMode {
-        get { researchController.inspector.mode }
-        set { researchController.selectInspectorMode(newValue) }
-    }
-
     func registerNoteDisplayWindow(_ window: AgentNoteDisplayWindow) {
         workspaceStore.registerNoteDisplayWindow(id: nativeWindowID, window: window)
     }
@@ -3481,20 +3476,6 @@ final class WindowModel: ObservableObject {
         return result.sorted(by: notesAreOrdered)
     }
 
-    var activeResearchFilterCount: Int {
-        [
-            isNeedsAttentionFilter,
-            isLinkAnnotationsFilter,
-            isMalformedMetadataFilter,
-        ].count(where: { $0 })
-    }
-
-    func clearResearchFilters() {
-        isNeedsAttentionFilter = false
-        isLinkAnnotationsFilter = false
-        isMalformedMetadataFilter = false
-    }
-
     private var currentAttentionPaths: Set<String>? {
         guard let vaultID = currentRegisteredVault?.id,
             let workspaceCatalog
@@ -3553,13 +3534,6 @@ final class WindowModel: ObservableObject {
 
     var availableAuthors: [String] {
         workspaceProjectionController.authors
-    }
-
-    var activeMetadataFilterCount: Int {
-        [
-            selectedAuthor != nil,
-            selectedPropertyKey != nil && selectedPropertyValue != nil,
-        ].count(where: { $0 })
     }
 
     func clearMetadataFilters() {
@@ -4676,10 +4650,6 @@ final class WindowModel: ObservableObject {
 
     private func scheduleWorkspaceCatalogRefresh() {
         workspaceProjectionController.scheduleCatalogRefresh()
-    }
-
-    func rescanVault() async throws {
-        try await refreshLibrarySourceScope()
     }
 
     func selectLibrarySourceScope(_ scope: LibrarySourceScope) async {

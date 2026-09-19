@@ -468,32 +468,4 @@ private extension SourceSpan {
 }
 
 private extension YAMLValue {
-    var catalogScalar: String? {
-        switch self {
-        case .string(let value): value
-        case .integer(let value): String(value)
-        case .double(let value): String(value)
-        case .boolean(let value): value ? "true" : "false"
-        default: nil
-        }
-    }
-
-    var catalogStrings: [String]? {
-        switch self {
-        case .array(let values):
-            return values.compactMap(\.catalogScalar)
-        case .string(let value):
-            return [value]
-        default:
-            return nil
-        }
-    }
-
-    var catalogInteger: Int? {
-        switch self {
-        case .integer(let value): value
-        case .string(let value): Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
-        default: nil
-        }
-    }
 }

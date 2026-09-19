@@ -618,11 +618,6 @@ public actor WorkspaceRuntime {
         return canonical
     }
 
-    public func portableManifestID(forWorksURL worksURL: URL) async -> UUID? {
-        guard !isShutDown else { return nil }
-        return try? await existingPortableManifest(forWorksURL: worksURL)?.id
-    }
-
     private func existingPortableManifest(
         forWorksURL worksURL: URL
     ) async throws -> TriptychManifest? {

@@ -991,17 +991,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         return responder === webView || responder.isDescendant(of: webView)
     }
 
-    func currentInsertionPoint() async throws -> MarkdownEditorInsertionPoint {
-        guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
-        let epoch = requestEpoch
-        let result = try await send(.querySelection, in: webView)
-        guard epoch == requestEpoch, self.webView === webView, !isComposing,
-            result.resultingGeneration == generation, result.selections.count == 1,
-            let selection = result.selections.first, !selection.isNonempty
-        else { throw RelatedMaterialsError.selectionRequired }
-        return .init(sessionID: sessionID, documentID: documentID, generation: generation, selection: selection)
-    }
-
     func acceptsInsertionPoint(_ point: MarkdownEditorInsertionPoint) -> Bool {
         !isComposing && isReady && isLoaded && point.sessionID == sessionID && point.documentID == documentID
             && point.generation == generation && lastKnownSelectionSnapshot?.ranges == [point.selection]
@@ -1533,19 +1522,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         case .title: .focus
         case .editor: .focus
         }
-    }
-
-    /// Removes keyboard focus before the retained editor is hidden by Read.
-    /// The WebView remains attached so selection, undo, and CodeMirror state
-    /// survive, but it must not continue accepting invisible input.
-    func resignFocus() {
-        focusRequestRevision &+= 1
-        let revision = focusRequestRevision
-        automaticFocusIsAuthorized = false
-        let task = Task {
-            await resignFocusAndWait(revision: revision)
-        }
-        focusHandoffTask = task
     }
 
     func resignFocusAndWait() async {

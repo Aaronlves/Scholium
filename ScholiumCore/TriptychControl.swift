@@ -1742,10 +1742,4 @@ public actor TriptychControlStore {
         return try operation()
     }
 
-    private func persistentlyEquivalent<T: Encodable>(_ lhs: T, _ rhs: T) throws -> Bool {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(lhs) == encoder.encode(rhs)
-    }
 }

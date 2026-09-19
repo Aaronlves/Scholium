@@ -375,15 +375,6 @@ public actor WorkspaceRegistry {
         return assignment(for: selected, in: registry)
     }
 
-    public func setDefaultTriptych(id: UUID) throws {
-        var registry = try writableRegistry()
-        guard registry.triptychs.contains(where: { $0.id == id }) else {
-            throw WorkspaceRegistryError.triptychNotFound(id)
-        }
-        registry.defaultTriptychID = id
-        try persist(registry)
-    }
-
     /// Removes only one machine-local Triptych registration. Research folders
     /// and portable `.scholium` data remain untouched, and vault registrations
     /// still referenced by another Triptych remain available.

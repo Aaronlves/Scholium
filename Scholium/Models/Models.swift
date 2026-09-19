@@ -185,24 +185,6 @@ extension WindowDocumentLocation {
         return fields.textValues(forExactKey: "authors") + fields.textValues(forExactKey: "author")
     }
 
-    func authoredYAMLValue(named key: String) -> YAMLValue? {
-        return frontmatter[key]
-    }
-
-    func authoredTopLevelScalarToken(named key: String) -> String? {
-        guard let frontmatter = document.rawFrontmatter else { return nil }
-        return try? FrontmatterPatchPlanner.authoredScalarToken(
-            frontmatter: frontmatter,
-            key: key,
-            newline: document.newlineStyle.sequence
-        )
-    }
-
-    func semanticProperty(at key: String) -> YAMLValue? {
-        guard document.validationWarnings.isEmpty else { return nil }
-        return frontmatter[key]
-    }
-
     func filterableProperties() -> [String: [String]] {
         Dictionary(
             uniqueKeysWithValues: SearchPropertyProjection(document: document).entries.map {
@@ -222,46 +204,6 @@ extension WindowDocumentLocation {
 }
 
 extension YAMLValue {
-    var appArrayValue: [String] {
-        switch self {
-        case .array(let values):
-            values.map(\.displayScalar)
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-        case .string(let value):
-            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [value]
-        default:
-            scalarString.map { [$0] } ?? []
-        }
-    }
-
-    var appIntValue: Int? {
-        switch self {
-        case .integer(let value): value
-        case .double(let value) where value.rounded() == value: Int(value)
-        case .string(let value): Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
-        default: nil
-        }
-    }
-
-    var appDateValue: Date? {
-        guard let value = scalarString else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
-        return formatter.date(from: value)
-    }
-
-    var appFilterValues: [String] {
-        switch self {
-        case .string(let value): [value]
-        case .integer(let value): [String(value)]
-        case .double(let value): [String(value)]
-        case .boolean(let value): [value ? "true" : "false"]
-        case .null: []
-        case .array(let values): values.map(\.displayScalar)
-        case .object: []
-        }
-    }
 }
 extension Array where Element == WindowDocumentLocation {
     /// Stable tag projection derived from the exact Core document.

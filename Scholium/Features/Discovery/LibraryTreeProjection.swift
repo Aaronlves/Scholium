@@ -202,18 +202,6 @@ struct LibraryTreeProjection {
         #endif
     }
 
-    func visibleNodes(expandedFolders: Set<String>) -> [TreeNode] {
-        sidebarVisibleTreeNodes(
-            from: roots,
-            expandedFolders: expandedFolders
-        )
-    }
-
-    func visibleNotePaths(expandedFolders: Set<String>) -> [String] {
-        visibleNodes(expandedFolders: expandedFolders)
-            .compactMap { $0.note?.relativePath }
-    }
-
     func visibleExpandedFolderIDs(
         expandedFolders: Set<String>
     ) -> Set<String> {

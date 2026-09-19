@@ -148,7 +148,6 @@ final class DocumentSessionModel: ObservableObject {
 
     var readScrollFraction: Double { readScrollPosition.fraction }
     var editorScrollFraction: Double { editorScrollPosition.fraction }
-    var readScrollAnchor: EditorScrollAnchor? { readScrollPosition.anchor }
     var editorScrollAnchor: EditorScrollAnchor? { editorScrollPosition.anchor }
 
     func presentConflictComparison() {

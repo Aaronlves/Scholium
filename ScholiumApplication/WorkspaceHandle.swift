@@ -1945,13 +1945,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     /// Shared Metadata writer; callers hold the workspace source-mutation lease.
 
-    func noteRecordDidChange(vaultID: UUID) {
-        scheduleCommittedMutationRefresh(
-            WorkspaceRefreshPayload(
-                publication: .explicit,
-                failureDisposition: .staleAfterCommittedMutation(affectedVaultIDs: [vaultID]), sourceCatalogPreparation: .none))
-    }
-
     func commitDocument(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
@@ -2888,13 +2881,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    /// Research Method, Profile, Skill, and standing-policy writes share the
-    /// Agent decision gate so an exact-current check and its non-authorizing
-    /// durable decision cannot be separated by an in-App configuration edit.
-    func beginResearchConfigurationMutation() async throws -> WorkspaceSourceOperationLease {
-        try await beginSourceMutation()
-    }
-
     func beginResearchControlledSourceObservation() async throws
         -> WorkspaceSourceOperationLease
     {
@@ -2904,15 +2890,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func endSourceMutation(_ lease: WorkspaceSourceOperationLease) {
         releaseWorkspaceSourceOperation(lease)
         startLiveIndexRefreshIfNeeded()
-    }
-
-    func endResearchConfigurationMutation(_ lease: WorkspaceSourceOperationLease) {
-        endSourceMutation(lease)
-        let snapshot = currentSnapshot
-        let events = events
-        Task {
-            await events.publishResearchConfigurationInvalidated(snapshot: snapshot)
-        }
     }
 
     func endResearchControlledSourceObservation(
@@ -3017,49 +2994,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 // retryable source mutation.
             }
         }
-    }
-
-    /// Waits for the Workspace-owned projection task that follows an already
-    /// committed source mutation. If that disposable task failed, one explicit
-    /// refresh may repair it; the caller receives a typed committed-but-stale
-    /// outcome and must never repeat the source creation.
-    func awaitCommittedSourceProjection(
-        id: VaultQualifiedNoteID,
-        stableIdentity: UUID,
-        fingerprint: DocumentFingerprint
-    ) async throws -> WorkspaceNoteSnapshot {
-        if let sourceCommitRefreshTask {
-            await sourceCommitRefreshTask.value
-        }
-        if let note = currentSnapshot.document(id: id),
-            note.stableIdentity.resolvedID == stableIdentity,
-            note.fingerprint == fingerprint
-        {
-            return note
-        }
-        do {
-            _ = try await refresh(
-                publication: .explicit,
-                failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: [id.vaultID]
-                )
-            )
-        } catch {
-            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
-                operation: "Agent Analysis creation",
-                reason: error.localizedDescription
-            )
-        }
-        guard let note = currentSnapshot.document(id: id),
-            note.stableIdentity.resolvedID == stableIdentity,
-            note.fingerprint == fingerprint
-        else {
-            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
-                operation: "Agent Analysis creation",
-                reason: "The complete Workspace projection does not yet contain the committed Note identity and revision."
-            )
-        }
-        return note
     }
 
     private func runLiveIndexRefresh(token: UUID) async {
@@ -4427,14 +4361,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     (vaultID, $0.canonicalPath)
                 }
             })
-    }
-
-    func requireCompleteWorkspace() throws {
-        try requireActive()
-        try requireRootAuthoritiesAvailable()
-        guard currentSnapshot.phase.isComplete else {
-            throw ScholiumApplicationError.workspaceStillLoading(id)
-        }
     }
 
     private static func resolvePortableControlAccess(

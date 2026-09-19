@@ -1133,17 +1133,6 @@ public enum SearchTextNormalization {
         normalize(value, options: [.caseInsensitive, .diacriticInsensitive])
     }
 
-    public static func originalUTF16Range(
-        in value: String,
-        forNormalizedUTF16Range requestedRange: Range<Int>
-    ) -> Range<Int>? {
-        mappedOriginalUTF16Range(
-            in: value,
-            requestedRange: requestedRange,
-            normalizer: normalize
-        )
-    }
-
     public static func originalUTF16RangeForLexicalNormalization(
         in value: String,
         requestedRange: Range<Int>

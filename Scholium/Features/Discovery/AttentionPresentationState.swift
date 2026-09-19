@@ -49,16 +49,6 @@ enum AttentionNotificationFilter: Hashable, Sendable {
 }
 
 extension AttentionQueueKind {
-    var localizedDisplayNameResource: LocalizedStringResource {
-        switch self {
-        case .possibleOrphan: "Possible Orphan"
-        case .malformedMetadata: "Malformed Metadata"
-        case .brokenConnection: "Broken Connection"
-        case .ambiguousConnection: "Ambiguous Connection"
-        case .unresolvedIdentity: "Unresolved Identity"
-        }
-    }
-
     func localizedDisplayName(locale: Locale = .current) -> String {
         switch self {
         case .possibleOrphan:

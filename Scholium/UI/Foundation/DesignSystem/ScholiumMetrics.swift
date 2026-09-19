@@ -43,16 +43,6 @@ enum ScholiumGrid {
         static let iconToTextGap = foundationUnit * 2
         static let connectionOccurrenceVerticalInset = foundationUnit
         static let actionCopyGap = foundationUnit
-        static let longTextLabelGap = foundationUnit
-    }
-
-    enum SegmentedControl {
-        static let trackInset = Spacing.opticalAlignmentAdjustment
-        static let segmentGap = Spacing.opticalAlignmentAdjustment
-        static let regularSegmentMinimumHeight = Dimension.preferredCustomTarget
-        static let compactSegmentMinimumHeight = Dimension.compactHierarchyRowHeight
-        static let regularHorizontalInset = Spacing.nestedContentInset
-        static let compactHorizontalInset = Spacing.inlineControlGap
     }
 
     /// Page- and pane-level state copy shares one readable measure. Placement
@@ -83,19 +73,6 @@ enum ScholiumMetrics {
     enum Accessibility {
         static let preferredCustomTarget = ScholiumGrid.Dimension.preferredCustomTarget
         static let minimumCustomTarget = ScholiumGrid.Dimension.minimumCustomTarget
-    }
-
-    enum SegmentedControl {
-        static let trackInset = ScholiumGrid.SegmentedControl.trackInset
-        static let segmentSpacing = ScholiumGrid.SegmentedControl.segmentGap
-        static let regularSegmentMinimumHeight =
-            ScholiumGrid.SegmentedControl.regularSegmentMinimumHeight
-        static let compactSegmentMinimumHeight =
-            ScholiumGrid.SegmentedControl.compactSegmentMinimumHeight
-        static let regularHorizontalInset =
-            ScholiumGrid.SegmentedControl.regularHorizontalInset
-        static let compactHorizontalInset =
-            ScholiumGrid.SegmentedControl.compactHorizontalInset
     }
 
     enum Onboarding {
@@ -182,9 +159,6 @@ enum ScholiumMetrics {
         static let headerMaximumWidth = ScholiumGrid.foundationUnit * 155
         static let formExplanationMaximumWidth = ScholiumGrid.foundationUnit * 105
         static let appearancePickerWidth = ScholiumGrid.foundationUnit * 42
-        static let listRowSpacing = ScholiumGrid.foundationUnit * 1.25
-        static let rowControlSpacing = ScholiumGrid.foundationUnit * 1.5
-        static let labelActionMinimumSpacing = ScholiumGrid.foundationUnit * 1.5
         static let fieldSpacing = ScholiumGrid.foundationUnit * 1.5
         static let rootSpacing = ScholiumGrid.foundationUnit * 2.5
         static let rowDetailSpacing = ScholiumGrid.foundationUnit * 0.5
@@ -196,9 +170,7 @@ enum ScholiumMetrics {
 
     enum DocumentWorkflow {
         static let sectionSpacing = ScholiumGrid.foundationUnit * 4.5
-        static let sheetContentInset = ScholiumGrid.foundationUnit * 5.5
         static let identityContentInset = ScholiumGrid.foundationUnit * 6
-        static let compactFieldSpacing = ScholiumGrid.foundationUnit * 1.5
         static let conflictDiffRowVerticalInset = ScholiumGrid.Spacing.opticalAlignmentAdjustment
         static let exactDiffColumnSpacing = ScholiumGrid.Spacing.inlineControlGap
         static let exactDiffLineNumberWidth: CGFloat = 38
@@ -301,7 +273,6 @@ enum ScholiumMetrics {
         static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
         static let bodyLineSpacing = ScholiumGrid.Apparatus.contentLineSpacing
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
-        static let longTextLabelSpacing = ScholiumGrid.Apparatus.longTextLabelGap
         /// A fixed symbol track keeps every row's text on the same scan line,
         /// regardless of the optical width of its SF Symbol.
         static let iconColumnWidth = ScholiumGrid.Apparatus.iconColumnWidth

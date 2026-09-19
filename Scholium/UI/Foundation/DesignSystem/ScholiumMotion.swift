@@ -39,11 +39,6 @@ enum ScholiumMotion {
         reduceMotion ? nil : .easeOut(duration: 0.12)
     }
 
-    static func symbolReplacementTransition(reduceMotion: Bool) -> AnyTransition {
-        guard !reduceMotion else { return .identity }
-        return .opacity
-    }
-
     static func symbolReplacementContentTransition(
         reduceMotion: Bool
     ) -> ContentTransition {

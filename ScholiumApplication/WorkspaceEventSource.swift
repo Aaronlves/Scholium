@@ -111,16 +111,6 @@ public actor WorkspaceEventSource {
                 )), snapshot: snapshot)
     }
 
-    func publishResearchConfigurationInvalidated(snapshot: WorkspaceSnapshot) {
-        publish(
-            .researchConfigurationInvalidated(
-                WorkspaceResearchConfigurationInvalidatedEvent(
-                    generation: nextGeneration(),
-                    snapshot: snapshot
-                )
-            ), snapshot: snapshot)
-    }
-
     func publishVaultAccessInvalidated(
         snapshot: WorkspaceSnapshot,
         unavailableVaultPaths: [UUID: String]

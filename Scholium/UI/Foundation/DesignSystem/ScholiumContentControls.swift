@@ -448,46 +448,6 @@ private struct ScholiumValueActivationFocusModifier<Value: Hashable>: ViewModifi
     }
 }
 
-/// Keeps short floating surfaces at their natural width while still wrapping
-/// long content inside the window's available width and a semantic upper cap.
-private struct ScholiumContentFittingWidthLayout: Layout {
-    let maximumWidth: CGFloat
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        guard let subview = subviews.first else { return .zero }
-        let availableWidth = min(proposal.width ?? maximumWidth, maximumWidth)
-        let ideal = subview.sizeThatFits(
-            ProposedViewSize(width: availableWidth, height: nil)
-        )
-        let width = min(ideal.width, availableWidth)
-        let fitted = subview.sizeThatFits(
-            ProposedViewSize(width: width, height: nil)
-        )
-        return CGSize(width: width, height: fitted.height)
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        guard let subview = subviews.first else { return }
-        subview.place(
-            at: bounds.origin,
-            anchor: .topLeading,
-            proposal: ProposedViewSize(
-                width: bounds.width,
-                height: bounds.height
-            )
-        )
-    }
-}
-
 /// A native Liquid Glass icon control for permanent commands in content-owned
 /// chrome. The label keeps Scholium's semantic ink while the system owns shape,
 /// hover, press, focus, active-window, and transparency adaptation. The outer
@@ -542,14 +502,6 @@ private struct ScholiumInkIconFocusModifier: ViewModifier {
 }
 
 extension View {
-    /// Fits compact overlays and banners to their content without allowing
-    /// authored or diagnostic text to escape the containing window.
-    func scholiumContentFittingWidth(maximumWidth: CGFloat) -> some View {
-        ScholiumContentFittingWidthLayout(maximumWidth: maximumWidth) {
-            self
-        }
-    }
-
     /// Reports SwiftUI pointer presence through the Design System's single
     /// hover adapter. Feature views may retain semantic reveal state, but do
     /// not own a second platform presentation path.

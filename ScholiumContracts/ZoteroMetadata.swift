@@ -228,17 +228,6 @@ public struct ZoteroItemMetadata: Codable, Hashable, Sendable, Identifiable {
         self.dateModified = dateModified
     }
 
-    public var formattedAuthors: String {
-        guard !authors.isEmpty else { return "" }
-        if authors.count == 1 { return authors[0] }
-        if authors.count == 2 { return "\(authors[0]) & \(authors[1])" }
-        return "\(authors[0]) et al."
-    }
-
-    public var inlineCitation: String {
-        year.map { "\(formattedAuthors) (\($0))" } ?? formattedAuthors
-    }
-
 }
 
 /// One local Zotero library available to the first-party read-only adapter.
