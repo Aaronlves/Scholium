@@ -295,7 +295,14 @@ struct AgentChatMessageStyleTests {
                     (value["text"] as? String)?.contains(
                         source == "好的。" ? "好的。" : source == long ? "原始含义" : "阅读方向") == true,
                     source != "好的。" || reader.frame.width < 60,
-                    source != long || width != 480 || (height < narrowHeight && reader.frame.width > 300)
+                    source != long || width != 480 || (height < narrowHeight && reader.frame.width > 300),
+                    // An Agent paragraph fills the pane, so only a sample taken
+                    // after the page has reflowed to the new width says anything
+                    // about the rhythm; a slower machine needs more than a frame.
+                    user
+                        || abs(
+                            (value["viewportWidth"] as? Double ?? 0)
+                                - (width - 2 * ScholiumSidebarLayout.textInset)) <= 1
                 {
                     result = value
                     if source == "好的。" { #expect(reader.frame.width > 20 && reader.frame.width < 60) }
