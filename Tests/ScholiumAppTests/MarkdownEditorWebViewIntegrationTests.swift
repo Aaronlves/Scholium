@@ -1583,6 +1583,15 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'tab');")
         try await waitForList(["Table"])
         #expect(currentList() === list)
+        // Filtering must leave the popover's width where it started, so the
+        // candidates do not make the surface jitter as they narrow. AppKit
+        // settles that frame in a later layout pass than the one that changes
+        // the items, so sample it until it holds rather than once: a width
+        // that is genuinely wrong still fails, at the deadline.
+        let widthDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while list.superview?.frame.width != initialWidth, ContinuousClock.now < widthDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         #expect(list.superview?.frame.width == initialWidth)
         try await verifyEditing("/tab\n")
         for remaining in ["/ta", "/t", "/", ""] {
