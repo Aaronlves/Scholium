@@ -80,6 +80,9 @@ public enum FrontmatterPatchPlanner {
     private struct Analysis {
         let mapping: [String: Any]
         let entries: [String: Entry]
+        /// Keys whose authored bytes cannot be bounded. Each one withdraws
+        /// only itself; every other key in the same envelope stays patchable.
+        let unpatchableKeys: [String: FrontmatterPatchRefusal]
     }
 
     public static func plan(
@@ -88,9 +91,13 @@ public enum FrontmatterPatchPlanner {
         newline: String
     ) throws -> FrontmatterPatchPlan {
         var patched = frontmatter
+        let original = try analyze(frontmatter)
         for key in edits.keys.sorted() {
             guard let edit = edits[key] else { continue }
-            let analysis = try analyze(patched, newline: newline)
+            let analysis = try analyze(patched)
+            if let refusal = analysis.unpatchableKeys[key] {
+                throw refusal
+            }
             if let entry = analysis.entries[key] {
                 patched = try patchExisting(
                     patched,
@@ -108,18 +115,30 @@ public enum FrontmatterPatchPlanner {
                 guard !serialized.isEmpty else { continue }
                 if patched.isEmpty {
                     patched = serialized + newline
-                } else if patched.hasSuffix(newline) {
-                    patched += serialized + newline
-                } else {
+                } else if trailingLineTerminator(of: patched).isEmpty {
                     patched += newline + serialized
+                } else {
+                    patched += serialized + newline
                 }
             }
         }
 
-        let finalAnalysis = try analyze(patched, newline: newline)
+        let finalAnalysis = try analyze(patched)
         for (key, edit) in edits {
             let actual = finalAnalysis.mapping[key].flatMap(projectedYAMLValue)
             guard semanticValue(for: edit) == actual else {
+                throw FrontmatterPatchRefusal.semanticMismatch(key)
+            }
+        }
+        // Withdrawing one key rather than the whole envelope is only sound if
+        // the bytes written for that key left every other property exactly as
+        // authored. Prove that against the same complete parse instead of
+        // assuming it from the lexical bounds.
+        for key in Set(original.mapping.keys).union(finalAnalysis.mapping.keys)
+        where edits[key] == nil {
+            let before = original.mapping[key].flatMap(projectedYAMLValue)
+            let after = finalAnalysis.mapping[key].flatMap(projectedYAMLValue)
+            guard before == after else {
                 throw FrontmatterPatchRefusal.semanticMismatch(key)
             }
         }
@@ -134,7 +153,7 @@ public enum FrontmatterPatchPlanner {
         key: String,
         newline: String
     ) throws -> String? {
-        let analysis = try analyze(frontmatter, newline: newline)
+        let analysis = try analyze(frontmatter)
         guard let entry = analysis.entries[key],
             isOrdinaryScalar(analysis.mapping[key])
         else { return nil }
@@ -176,11 +195,21 @@ public enum FrontmatterPatchPlanner {
             entries.flatMap {
                 serialize(key: $0.key, value: $0.value, indent: "")
             }.joined(separator: "\n") + "\n"
-        _ = try analyze(source, newline: "\n")
+        // `analyze` now scopes defects to individual keys, so managed creation
+        // asserts the stronger property it has always required: every key it
+        // serialized is present and uniquely bounded.
+        let analysis = try analyze(source)
+        guard analysis.unpatchableKeys.isEmpty,
+            analysis.entries.count == entries.count
+        else {
+            throw FrontmatterPatchRefusal.ambiguousStructure(
+                "Managed creation requires unique plain top-level YAML keys."
+            )
+        }
         return source
     }
 
-    private static func analyze(_ frontmatter: String, newline: String) throws -> Analysis {
+    private static func analyze(_ frontmatter: String) throws -> Analysis {
         let loaded: Any?
         do {
             loaded = try Yams.load(yaml: frontmatter)
@@ -194,14 +223,14 @@ public enum FrontmatterPatchPlanner {
             throw FrontmatterPatchRefusal.nonBlockMappingRoot
         }
         let mapping = loaded as? [String: Any] ?? [:]
-        let lines = splitLines(frontmatter, newline: newline)
+        let lines = splitLines(frontmatter)
         guard
             let firstSignificant = lines.first(where: { line in
                 let trimmed = line.content.trimmingCharacters(in: .whitespaces)
                 return !trimmed.isEmpty && !trimmed.hasPrefix("#")
             })
         else {
-            return Analysis(mapping: mapping, entries: [:])
+            return Analysis(mapping: mapping, entries: [:], unpatchableKeys: [:])
         }
         let rootPrefix = firstSignificant.content.trimmingCharacters(in: .whitespaces)
         guard !rootPrefix.hasPrefix("{") else {
@@ -216,80 +245,132 @@ public enum FrontmatterPatchPlanner {
 
         var candidates: [Candidate] = []
         var seenKeys: Set<String> = []
+        // Every top-level line opens a region covering itself and the lines
+        // indented beneath it. A defect is recorded against the region that
+        // contains it rather than thrown, so one quoted key, one tab or one
+        // anchor withdraws only its own property and leaves the rest of the
+        // note's properties readable and writable.
+        var regionIndex = -1
+        var regionKeys: [Int: String] = [:]
+        var regionRefusals: [Int: FrontmatterPatchRefusal] = [:]
+
+        func record(_ refusal: FrontmatterPatchRefusal) throws {
+            // A defect above the first top-level line belongs to no property,
+            // so it can only withdraw the envelope.
+            guard regionIndex >= 0 else { throw refusal }
+            if regionRefusals[regionIndex] == nil {
+                regionRefusals[regionIndex] = refusal
+            }
+        }
+
         for (lineIndex, line) in lines.enumerated() {
             let text = line.content
             let trimmed = text.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
-            if containsAliasOrAnchorSyntax(text) {
-                throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "anchors and aliases are not patchable",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
-                )
-            }
-            if text.first == "\t" {
-                throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "tab-indented YAML cannot be bounded reliably",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
-                )
-            }
-            guard text.first?.isWhitespace != true else { continue }
-            guard !trimmed.hasPrefix("?"), !trimmed.hasPrefix("---"),
-                !trimmed.hasPrefix("...")
-            else {
+            let position = FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
+            let isTopLevel = text.first?.isWhitespace != true
+            if isTopLevel { regionIndex += 1 }
+
+            // A nested document marker divides the envelope itself, so no one
+            // region can bound it.
+            guard !trimmed.hasPrefix("---"), !trimmed.hasPrefix("...") else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
                     "complex keys and nested YAML documents are not patchable",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
+                    position: position
                 )
             }
-            guard let colonOffset = firstMappingColon(in: text) else {
-                throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "a top-level line is not a bounded mapping entry",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
+
+            var defect: FrontmatterPatchRefusal?
+            if containsAliasOrAnchorSyntax(text) {
+                defect = .ambiguousStructure(
+                    "anchors and aliases are not patchable",
+                    position: position
+                )
+            } else if text.first == "\t" {
+                defect = .ambiguousStructure(
+                    "tab-indented YAML cannot be bounded reliably",
+                    position: position
                 )
             }
-            let colon = text.index(text.startIndex, offsetBy: colonOffset)
-            let rawKey = text[..<colon].trimmingCharacters(in: .whitespaces)
-            guard !rawKey.isEmpty else {
-                throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "an empty key is present",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
-                )
+
+            guard isTopLevel else {
+                if let defect { try record(defect) }
+                continue
             }
-            guard rawKey.first != "\"", rawKey.first != "'" else {
-                throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "quoted keys can be semantically equivalent to plain keys",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
-                )
+
+            var colonOffset: Int?
+            if let offset = firstMappingColon(in: text) {
+                colonOffset = offset
+                let colon = text.index(text.startIndex, offsetBy: offset)
+                let rawKey = text[..<colon].trimmingCharacters(in: .whitespaces)
+                // A quoted key names the same property as its plain spelling,
+                // so its defect has to withdraw the decoded name.
+                regionKeys[regionIndex] = decodedKeyName(rawKey)
+                let keyDefect: FrontmatterPatchRefusal? =
+                    if rawKey.isEmpty {
+                        .ambiguousStructure("an empty key is present", position: position)
+                    } else if rawKey.first == "\"" || rawKey.first == "'" {
+                        .ambiguousStructure(
+                            "quoted keys can be semantically equivalent to plain keys",
+                            position: position
+                        )
+                    } else if rawKey == "<<" {
+                        .ambiguousStructure(
+                            "a YAML merge key can change the root mapping",
+                            position: position
+                        )
+                    } else if trimmed.hasPrefix("?") {
+                        .ambiguousStructure(
+                            "complex keys and nested YAML documents are not patchable",
+                            position: position
+                        )
+                    } else if !isPlainBoundedKey(rawKey) {
+                        .ambiguousStructure(
+                            "the key ‘\(rawKey)’ is not a bounded plain key",
+                            position: position
+                        )
+                    } else if !seenKeys.insert(rawKey).inserted {
+                        .ambiguousStructure(
+                            "the key ‘\(rawKey)’ occurs more than once",
+                            position: position
+                        )
+                    } else {
+                        nil
+                    }
+                defect = defect ?? keyDefect
+            } else {
+                defect = defect
+                    ?? .ambiguousStructure(
+                        "a top-level line is not a bounded mapping entry",
+                        position: position
+                    )
             }
-            guard rawKey != "<<" else {
-                throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "a YAML merge key can change the root mapping",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
-                )
+
+            if let defect {
+                try record(defect)
+                continue
             }
-            guard isPlainBoundedKey(rawKey) else {
-                throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "the key ‘\(rawKey)’ is not a bounded plain key",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
-                )
-            }
-            guard seenKeys.insert(rawKey).inserted else {
-                throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "the key ‘\(rawKey)’ occurs more than once",
-                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
-                )
-            }
+            guard let colonOffset, let key = regionKeys[regionIndex] else { continue }
             let absoluteColon = frontmatter.index(
                 line.contentRange.lowerBound,
                 offsetBy: colonOffset
             )
             candidates.append(
                 Candidate(
-                    key: rawKey,
+                    key: key,
                     lineIndex: lineIndex,
                     colon: absoluteColon
                 ))
         }
+
+        var unpatchableKeys: [String: FrontmatterPatchRefusal] = [:]
+        for (index, refusal) in regionRefusals {
+            guard let key = regionKeys[index] else { continue }
+            unpatchableKeys[key] = refusal
+        }
+        // A key that is clean on one line and defective on another — a
+        // duplicate, or a quoted restatement — is not uniquely bounded either.
+        candidates.removeAll { unpatchableKeys[$0.key] != nil }
 
         var entries: [String: Entry] = [:]
         for candidate in candidates {
@@ -307,7 +388,19 @@ public enum FrontmatterPatchPlanner {
                 indentation: ""
             )
         }
-        return Analysis(mapping: mapping, entries: entries)
+        return Analysis(
+            mapping: mapping,
+            entries: entries,
+            unpatchableKeys: unpatchableKeys
+        )
+    }
+
+    /// A quoted key names the same property as its plain spelling, so a
+    /// defect on `"title": …` has to withdraw `title`, not the literal quotes.
+    private static func decodedKeyName(_ rawKey: String) -> String {
+        guard rawKey.first == "\"" || rawKey.first == "'" else { return rawKey }
+        guard let decoded = try? Yams.load(yaml: rawKey) as? String else { return rawKey }
+        return decoded
     }
 
     private static func sourcePosition(
@@ -399,7 +492,7 @@ public enum FrontmatterPatchPlanner {
                     value: edit,
                     indent: entry.indentation
                 ).joined(separator: newline)
-                + (String(frontmatter[entry.fullRange]).hasSuffix(newline) ? newline : "")
+                + trailingLineTerminator(of: String(frontmatter[entry.fullRange]))
             var result = frontmatter
             result.replaceSubrange(entry.fullRange, with: replacement)
             return result
@@ -527,7 +620,7 @@ public enum FrontmatterPatchPlanner {
                         value: requested,
                         indent: childEntry.indentation
                     ).joined(separator: newline)
-                    + (String(frontmatter[childEntry.fullRange]).hasSuffix(newline) ? newline : "")
+                    + trailingLineTerminator(of: String(frontmatter[childEntry.fullRange]))
                 operations.append(
                     PatchOperation(
                         range: childEntry.fullRange,
@@ -552,12 +645,13 @@ public enum FrontmatterPatchPlanner {
                 throw FrontmatterPatchRefusal.unsupportedExistingValue(key)
             }
             let parentText = String(frontmatter[entry.fullRange])
+            let parentTerminator = trailingLineTerminator(of: parentText)
             operations.append(
                 PatchOperation(
                     range: entry.fullRange.upperBound..<entry.fullRange.upperBound,
-                    replacement: (parentText.hasSuffix(newline) ? "" : newline)
+                    replacement: (parentTerminator.isEmpty ? newline : "")
                         + serialized
-                        + (parentText.hasSuffix(newline) ? newline : "")
+                        + parentTerminator
                 ))
         }
 
@@ -570,7 +664,7 @@ public enum FrontmatterPatchPlanner {
         semanticKeys: Set<String>,
         newline: String
     ) throws -> [String: Entry] {
-        let lines = splitLines(frontmatter, newline: newline)
+        let lines = splitLines(frontmatter)
         guard
             let parentLineIndex = lines.firstIndex(where: {
                 $0.fullRange.lowerBound == parent.line.fullRange.lowerBound
@@ -757,29 +851,55 @@ public enum FrontmatterPatchPlanner {
         text.prefix(while: { $0 == " " }).count
     }
 
-    private static func splitLines(_ text: String, newline: String) -> [Line] {
+    /// Splits on every authored line terminator rather than on the document’s
+    /// dominant one. A note that mixes CRLF and LF is still a note, and a YAML
+    /// parser reads both; splitting on the dominant terminator alone would fold
+    /// a whole LF region into one apparently unbounded line and withdraw every
+    /// key inside it.
+    private static func splitLines(_ text: String) -> [Line] {
         var result: [Line] = []
         var start = text.startIndex
-        while start < text.endIndex {
-            if let delimiter = text.range(of: newline, range: start..<text.endIndex) {
-                result.append(
-                    Line(
-                        content: String(text[start..<delimiter.lowerBound]),
-                        contentRange: start..<delimiter.lowerBound,
-                        fullRange: start..<delimiter.upperBound
-                    ))
-                start = delimiter.upperBound
-            } else {
-                result.append(
-                    Line(
-                        content: String(text[start..<text.endIndex]),
-                        contentRange: start..<text.endIndex,
-                        fullRange: start..<text.endIndex
-                    ))
-                break
+        var cursor = text.startIndex
+        while cursor < text.endIndex {
+            // Swift reads CRLF as one grapheme, so advancing past the cluster
+            // consumes the whole terminator.
+            guard isLineTerminator(text[cursor]) else {
+                cursor = text.index(after: cursor)
+                continue
             }
+            let terminatorEnd = text.index(after: cursor)
+            result.append(
+                Line(
+                    content: String(text[start..<cursor]),
+                    contentRange: start..<cursor,
+                    fullRange: start..<terminatorEnd
+                ))
+            start = terminatorEnd
+            cursor = terminatorEnd
+        }
+        if start < text.endIndex {
+            result.append(
+                Line(
+                    content: String(text[start..<text.endIndex]),
+                    contentRange: start..<text.endIndex,
+                    fullRange: start..<text.endIndex
+                ))
         }
         return result
+    }
+
+    /// YAML 1.2 breaks lines on LF and CR only; Unicode’s other separators are
+    /// ordinary content inside a scalar.
+    private static func isLineTerminator(_ character: Character) -> Bool {
+        character == "\n" || character == "\r" || character == "\r\n"
+    }
+
+    /// The terminator a stretch of authored bytes actually ends with, which is
+    /// not always the document’s dominant one. Returns an empty string when the
+    /// text ends without a terminator, so it can be concatenated unconditionally.
+    private static func trailingLineTerminator(of text: String) -> String {
+        guard let last = text.last, isLineTerminator(last) else { return "" }
+        return String(last)
     }
 
     private static func firstMappingColon(in line: String) -> Int? {
@@ -833,15 +953,22 @@ public enum FrontmatterPatchPlanner {
         return nil
     }
 
+    /// Anchors and aliases only occur where a YAML node may begin: line start,
+    /// after a mapping colon, after a block sequence indicator, or after a flow
+    /// collection separator. A `&` or `*` in any other position belongs to a
+    /// plain scalar, so `authors: Smith & Jones` and `summary: see *this*` are
+    /// ordinary text and must not refuse the envelope.
     private static func containsAliasOrAnchorSyntax(_ line: String) -> Bool {
         var singleQuoted = false
         var doubleQuoted = false
         var escaped = false
-        var previousWasBoundary = true
+        var atNodeStart = true
+        var previousWasSpace = true
         for character in line {
             if escaped {
                 escaped = false
-                previousWasBoundary = character.isWhitespace
+                atNodeStart = false
+                previousWasSpace = false
                 continue
             }
             if character == "\\", doubleQuoted {
@@ -850,19 +977,42 @@ public enum FrontmatterPatchPlanner {
             }
             if character == "'", !doubleQuoted {
                 singleQuoted.toggle()
+                atNodeStart = false
+                previousWasSpace = false
                 continue
             }
             if character == "\"", !singleQuoted {
                 doubleQuoted.toggle()
+                atNodeStart = false
+                previousWasSpace = false
                 continue
             }
-            if character == "#", !singleQuoted, !doubleQuoted { return false }
-            if character == "&" || character == "*",
-                !singleQuoted, !doubleQuoted, previousWasBoundary
-            {
-                return true
+            if !singleQuoted, !doubleQuoted {
+                // A `#` only opens a comment at a whitespace boundary; the rest
+                // of the line is then commentary and cannot anchor a node.
+                if character == "#", previousWasSpace { return false }
+                if character == "&" || character == "*", atNodeStart { return true }
             }
-            previousWasBoundary = character.isWhitespace || character == ":" || character == "["
+            if character.isWhitespace {
+                // Whitespace separates tokens without ending a node position.
+                previousWasSpace = true
+                continue
+            }
+            previousWasSpace = false
+            if singleQuoted || doubleQuoted {
+                atNodeStart = false
+                continue
+            }
+            switch character {
+            case ":", ",", "[", "{":
+                atNodeStart = true
+            case "-":
+                // A leading `-` is a sequence indicator and keeps the node
+                // position open; inside a scalar it is already closed.
+                break
+            default:
+                atNodeStart = false
+            }
         }
         return false
     }

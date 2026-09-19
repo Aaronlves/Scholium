@@ -133,6 +133,8 @@ enum AttentionIssueCopy {
             ScholiumL10n.string("Missing heading", locale: locale)
         case "Missing block":
             ScholiumL10n.string("Missing block", locale: locale)
+        case "Wikilink in property":
+            ScholiumL10n.string("Wikilink in property", locale: locale)
         default:
             // Unknown projection copy remains visible rather than being
             // replaced with a misleading generic condition.

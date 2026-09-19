@@ -31686,6 +31686,22 @@
         }
       }
     },
+    "Wikilink in property" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Wikilink in property"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "属性中的维基链接"
+          }
+        }
+      }
+    },
     "Will Fill" : {
       "localizations" : {
         "zh-Hans" : {

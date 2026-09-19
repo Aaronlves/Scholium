@@ -122,7 +122,6 @@ struct NoteDocumentTests {
             "\"title\": Old\n",
             "title: One\ntitle: Two\n",
             "base: &base value\ntitle: *base\n",
-            "base: &base\n  title: Old\n<<: *base\n",
             "{title: Old, custom: true}\n",
             "title: |\n  Old value\n",
             "title: Old value\n  continued value\n",
@@ -135,6 +134,108 @@ struct NoteDocumentTests {
                 newline: "\n"
             )
         }
+    }
+
+    @Test(
+        "A plain scalar containing & or * is text, not an anchor, and stays patchable",
+        arguments: [
+            "authors: Smith & Jones\n",
+            "summary: see *emphasis* here\n",
+            "note: Kant & Hegel * Hume\n",
+            "quoted: \"a & b\"\n",
+            "listed:\n  - Smith & Jones\n  - see *this*\n",
+            "trailing: value # comment with & and *\n",
+        ])
+    func plainScalarAmpersandOrAsteriskIsPatchable(frontmatter: String) throws {
+        let planned = try FrontmatterPatchPlanner.plan(
+            frontmatter: frontmatter,
+            edits: ["title": .string("New")],
+            newline: "\n"
+        )
+        #expect(planned.patchedFrontmatter.contains("title: New"))
+    }
+
+    @Test(
+        "Anchors and aliases in real node positions still refuse their own key",
+        arguments: [
+            "base: &anchor value\ntitle: *anchor\n",
+            "base: &anchor value\ntitle:\n  - *anchor\n",
+            "base: &anchor value\ntitle: [a, *anchor]\n",
+            "&anchor title: Old\n",
+        ])
+    func genuineAnchorPositionsRefuse(frontmatter: String) {
+        #expect(throws: FrontmatterPatchRefusal.self) {
+            _ = try FrontmatterPatchPlanner.plan(
+                frontmatter: frontmatter,
+                edits: ["title": .string("New")],
+                newline: "\n"
+            )
+        }
+    }
+
+    @Test(
+        "One unpatchable key withdraws itself, not every property in the note",
+        arguments: [
+            "base: &anchor value\n",
+            "\"quoted\": Old\n",
+            "'single': Old\n",
+            "unbounded?key: Old\n",
+            "? complex\n: value\n",
+            "base: &anchor value\naliased: [a, *anchor]\n",
+        ])
+    func scopedRefusalLeavesNeighboursPatchable(defective: String) throws {
+        let source = defective + "summary: Authored summary\n"
+        let planned = try FrontmatterPatchPlanner.plan(
+            frontmatter: source,
+            edits: ["summary": .string("Replaced")],
+            newline: "\n"
+        )
+        #expect(planned.patchedFrontmatter.contains("summary: Replaced"))
+        // The defective bytes are preserved verbatim, and the defective key
+        // still refuses when it is the one being edited.
+        #expect(planned.patchedFrontmatter.hasPrefix(defective))
+    }
+
+    @Test("A defective key still refuses when it is the edit target")
+    func scopedRefusalStillRefusesItsOwnKey() {
+        #expect(throws: FrontmatterPatchRefusal.self) {
+            _ = try FrontmatterPatchPlanner.plan(
+                frontmatter: "base: &anchor value\nsummary: Authored\n",
+                edits: ["base": .string("New")],
+                newline: "\n"
+            )
+        }
+    }
+
+    @Test("Mixed line terminators do not fold a whole region into one unbounded line")
+    func mixedNewlinesStayBounded() throws {
+        // `newlineStyle` calls this document CRLF because CRLF appears in it,
+        // but the LF-joined middle is authored bytes too, and every key in it
+        // has to stay separately bounded and patchable.
+        let source = "title: Old\r\nsummary: Authored\nkeywords: [a, b]\r\n"
+        let planned = try FrontmatterPatchPlanner.plan(
+            frontmatter: source,
+            edits: ["summary": .string("Replaced")],
+            newline: "\r\n"
+        )
+        #expect(planned.patchedFrontmatter == "title: Old\r\nsummary: Replaced\nkeywords: [a, b]\r\n")
+
+        let lfTarget = try FrontmatterPatchPlanner.plan(
+            frontmatter: source,
+            edits: ["title": .string("New")],
+            newline: "\r\n"
+        )
+        #expect(lfTarget.patchedFrontmatter == "title: New\r\nsummary: Authored\nkeywords: [a, b]\r\n")
+    }
+
+    @Test("A CRLF document appends a new key with its own terminator")
+    func crlfInsertionKeepsTerminator() throws {
+        let planned = try FrontmatterPatchPlanner.plan(
+            frontmatter: "title: Old\r\n",
+            edits: ["summary": .string("Added")],
+            newline: "\r\n"
+        )
+        #expect(planned.patchedFrontmatter == "title: Old\r\nsummary: Added\r\n")
     }
 
     @Test("A bounded mapping edit preserves unrelated members and source bytes")

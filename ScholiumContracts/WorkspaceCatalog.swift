@@ -278,6 +278,26 @@ public enum WorkspaceCatalogBuilder {
                             locator: SourceLocator(file: document.relativePath, line: 1, column: 1)
                         ))
                 }
+
+                // Link resolution reads the body only, so `[[…]]` authored
+                // inside a property makes no link and no backlink. The bytes
+                // look like a connection and are silently none; report the
+                // exact occurrence instead of leaving the author to discover
+                // the absence from a missing backlink.
+                for occurrence in inertPropertyWikilinks(in: yaml) {
+                    attention.append(
+                        AttentionQueueItem(
+                            kind: .brokenConnection,
+                            severity: .warning,
+                            note: reference,
+                            message: "Wikilink in property",
+                            locator: SourceLocator(
+                                file: document.relativePath,
+                                line: occurrence.line,
+                                column: occurrence.column
+                            )
+                        ))
+                }
             }
         }
 
@@ -394,6 +414,31 @@ public enum WorkspaceCatalogBuilder {
         case .information: 0
         case .warning: 1
         }
+    }
+
+    /// Wikilink bytes authored inside a YAML property value.
+    ///
+    /// Only decoded string members are examined, so `matrix: [[1, 2], [3, 4]]`
+    /// stays the nested flow sequence it parses as rather than being misread as
+    /// two links. Nested mappings carry no string projection and are therefore
+    /// not covered here.
+    private static func inertPropertyWikilinks(
+        in projection: SearchPropertyProjection
+    ) -> [SearchSourceRange] {
+        projection.entries.flatMap { entry in
+            entry.stringMembers.compactMap { member in
+                containsWikilink(member.value) ? member.sourceRange : nil
+            }
+        }
+    }
+
+    private static func containsWikilink(_ value: String) -> Bool {
+        guard let open = value.range(of: "[["),
+            let close = value.range(of: "]]", range: open.upperBound..<value.endIndex)
+        else { return false }
+        let target = value[open.upperBound..<close.lowerBound]
+        return !target.trimmingCharacters(in: .whitespaces).isEmpty
+            && !target.contains(where: \.isNewline)
     }
 
     private static func attentionReason(for diagnostic: LinkGraphDiagnostic) -> String {

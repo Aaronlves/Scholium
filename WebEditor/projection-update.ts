@@ -113,6 +113,28 @@ export function transactionChangedSyntaxTree(transaction: Transaction) {
   return syntaxTree(transaction.startState) !== syntaxTree(transaction.state);
 }
 
+/**
+ * The YAML envelope's appearance depends on exactly two things: where it ends
+ * and whether the selection sits inside it. Rebuilding it walks the document
+ * three times — boundary search, per-line decoration, whole-tree iteration —
+ * and an unclosed envelope makes each of those walks cover the entire note.
+ * Ordinary caret movement must therefore reuse the mounted decorations, and
+ * parse progress beyond the envelope cannot change how the envelope renders.
+ */
+export function frontmatterPresentationNeedsRebuild(
+  transaction: Transaction,
+  envelopeEnd: number,
+  signature: string,
+  previousSignature: string,
+) {
+  if (transaction.docChanged) return true;
+  if (transactionChangedSyntaxTree(transaction)
+      && syntaxTree(transaction.startState).length < envelopeEnd) {
+    return true;
+  }
+  return signature !== previousSignature;
+}
+
 function changedContextContainsMarker(
   transaction: Transaction,
   from: number,

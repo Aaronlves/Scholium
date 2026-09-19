@@ -11,6 +11,8 @@ struct SearchRoleRankingTests {
         arguments: [
             ("---\nsummary: needle\n---\n\nordinary", "summary:needle", VaultRole.sourceCorpus),
             ("---\nkeywords: [needle]\n---\n\nordinary", "keyword:needle", VaultRole.topicKnowledge),
+            // A lone scalar is the one-member case of the string-list projection.
+            ("---\nkeywords: needle\n---\n\nordinary", "keyword:needle", VaultRole.topicKnowledge),
             ("---\naliases: [needle phrase]\n---\n\nordinary", "alias:needle", VaultRole.topicKnowledge),
             ("## needle\n\nordinary", "heading:needle", VaultRole.draftProject),
             ("needle ordinary", "body:needle", VaultRole.draftProject),

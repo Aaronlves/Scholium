@@ -150,6 +150,20 @@ public struct SearchPropertyProjection: Hashable, Sendable {
         entry(forExactKey: key)?.stringMembers.map(\.value) ?? []
     }
 
+    /// The string-list lexical projection. A lone string scalar is the
+    /// one-member case of that list, so `keywords: philosophy` and
+    /// `keywords: [philosophy]` project identically. Non-string scalars carry
+    /// no lexical projection and yield no members.
+    public func stringListMembers(forExactKey key: String) -> [StringMember] {
+        guard let entry = entry(forExactKey: key) else { return [] }
+        switch entry.valueKind {
+        case .string, .stringSequence:
+            return entry.stringMembers
+        case .null, .scalar, .sequence, .mapping, .alias:
+            return []
+        }
+    }
+
     private static func project(
         _ node: Node,
         key: String,

@@ -1138,6 +1138,8 @@ public actor TriptychSearchIndex {
             profile: profile,
             hasBrokenLink: exactIndexedRevision ? (indexed?.hasBrokenLink ?? false) : false
         )
+        // One Yams compose per note; entries and issues come from the same parse.
+        let noteProperties = SearchPropertyProjection(document: note, profile: profile)
         let document = StoredSearchDocument(
             rowID: indexed?.rowID ?? -1,
             vaultID: source.noteID.vaultID,
@@ -1163,11 +1165,8 @@ public actor TriptychSearchIndex {
             segments: projection.segments,
             paragraphs: projection.paragraphs,
             paragraphsAreComplete: note.hasProvableBodyBoundary,
-            properties: SearchPropertyProjection(
-                document: note,
-                profile: profile
-            ).entries,
-            propertyIssues: SearchPropertyProjection(document: note, profile: profile).issues
+            properties: noteProperties.entries,
+            propertyIssues: noteProperties.issues
         )
         let evaluation = SearchMatcher.evaluate(ast, document: document, linkMatches: linkMatches)
         guard evaluation.truth == .yes else {
