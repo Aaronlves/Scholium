@@ -32,7 +32,6 @@ private struct SecurityScopeLease: Sendable {
     let started: Bool
 }
 
-
 /// Per-Triptych application boundary shared by every consumer of a runtime.
 /// The actor borrows the runtime's identity-pooled vault authorities and owns
 /// only the Triptych-level composition, snapshots, and publication lifetime.

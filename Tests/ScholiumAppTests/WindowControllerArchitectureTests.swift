@@ -1274,11 +1274,12 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let relativePaths = WindowCompositionSource.relativePaths + [
-            "Scholium/Views/ContentView.swift",
-            "Scholium/Views/SearchWorkspaceView.swift",
-            "Scholium/Views/Sidebar/SidebarView.swift",
-        ]
+        let relativePaths =
+            WindowCompositionSource.relativePaths + [
+                "Scholium/Views/ContentView.swift",
+                "Scholium/Views/SearchWorkspaceView.swift",
+                "Scholium/Views/Sidebar/SidebarView.swift",
+            ]
         let source = try relativePaths.map {
             try String(
                 contentsOf: repositoryRoot.appendingPathComponent($0),
