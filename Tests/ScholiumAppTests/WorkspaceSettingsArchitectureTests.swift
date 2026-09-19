@@ -467,9 +467,8 @@ struct WorkspaceSettingsArchitectureTests {
         let modelURL = repositoryRoot.appendingPathComponent(
             "Scholium/Features/Settings/WorkspaceSettingsModel.swift"
         )
-        let appURL = repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift")
         let modelSource = try String(contentsOf: modelURL, encoding: .utf8)
-        let appSource = try String(contentsOf: appURL, encoding: .utf8)
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let rootStart = try #require(appSource.range(of: "private struct ScholiumSettingsRoot"))
         let rootEnd = try #require(
             appSource.range(of: "struct ScholiumSearchActions", range: rootStart.upperBound..<appSource.endIndex)
@@ -719,12 +718,7 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let settingsRootSource =
             appSource
             .components(separatedBy: "private struct ScholiumSettingsRoot: View")

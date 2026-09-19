@@ -50,6 +50,7 @@ struct ArchitectureBoundaryTests {
         let allowedApplicationImports: Set<String> = [
             "Scholium/App/ApplicationBootstrapController.swift",
             "Scholium/App/ScholiumApp.swift",
+            "Scholium/App/ScholiumWindowScenes.swift",
             "Scholium/App/Window/WindowWorkspaceController.swift",
             "Scholium/Services/MCPAppBridgeRequestRouter.swift",
             "Scholium/Services/AgentChatController.swift",

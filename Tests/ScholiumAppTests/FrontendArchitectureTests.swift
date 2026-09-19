@@ -69,10 +69,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let source = try WindowCompositionSource.text(at: repository)
         let restore = try #require(source.range(of: "func restoreWorkspaceIfNeeded() async"))
         let fixtureEnd = try #require(
             source.range(
@@ -98,10 +95,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let source = try WindowCompositionSource.text(at: repository)
         let loadVault = try #require(source.range(of: "private func loadVault("))
         let restore = try #require(
             source.range(
@@ -125,7 +119,7 @@ struct FrontendArchitectureTests {
 
         let adoptionStart = try #require(
             source.range(
-                of: "private func adoptWorkspaceActivation("
+                of: "func adoptWorkspaceActivation("
             ))
         let adoptionEnd = try #require(
             source.range(
@@ -216,12 +210,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let app = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let app = try WindowCompositionSource.text(at: repository)
         let hotkeys = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Features/Settings/HotkeyPreferences.swift"
@@ -250,12 +239,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let source = try WindowCompositionSource.text(at: repository)
         let tokenOwner = try #require(
             source.range(of: "private var performanceModeNotificationTokens")
         )
@@ -279,7 +263,7 @@ struct FrontendArchitectureTests {
         )
         let requestEnd = try #require(
             source.range(
-                of: "private func handlePerformanceEditorRequest(",
+                of: "func handlePerformanceEditorRequest(",
                 range: requestOwner.lowerBound..<source.endIndex
             )
         )
@@ -735,10 +719,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let contentSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
             encoding: .utf8
@@ -797,10 +778,7 @@ struct FrontendArchitectureTests {
             contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
             encoding: .utf8
         )
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let sidebarSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Views/Sidebar/SidebarView.swift"
@@ -1221,12 +1199,7 @@ struct FrontendArchitectureTests {
         )
         #expect(compactModeItemSource.contains("possibleLabels=Set(NotePresentationMode.allCases.map"))
 
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repository)
         let menuStart = try #require(appSource.range(of: "Menu(\"Document Mode\")"))
         let menuEnd = try #require(
             appSource.range(
@@ -1272,10 +1245,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repository)
         let editorSource = try String(
             contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
             encoding: .utf8
@@ -1878,12 +1848,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let app = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let app = try WindowCompositionSource.text(at: repository)
         #expect(confirmation.contains("You can restore them in Finder"))
         #expect(!confirmation.contains("preview.records"))
         #expect(!confirmation.contains("unaffectedParticipants"))
@@ -1904,10 +1869,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repository)
         let settlementRowStart = try #require(
             attentionSource.range(
                 of: "struct SettlementRequirementNotificationRow: View"
@@ -2515,12 +2477,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repository)
 
         #expect(splitSource.contains("private let tabViewController = ScholiumNativeDocumentTabController()"))
         #expect(splitSource.contains("tabViewController.tabStyle = .unspecified"))
@@ -2551,12 +2508,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repository)
         let windowManagementSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumWindowManagement.swift"
@@ -2872,10 +2824,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let app = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let app = try WindowCompositionSource.text(at: repository)
         let viewCommandsStart = try #require(
             app.range(of: "private struct ScholiumViewCommandContent")
         )
@@ -3322,12 +3271,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(controllerSource.contains("await documentDidCommit(result)"))
 
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repository)
         let documentBinding = try sourceSection(
             appSource,
             from: "documentController.bind(",

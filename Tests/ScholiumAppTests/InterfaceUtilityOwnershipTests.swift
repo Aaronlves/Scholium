@@ -33,7 +33,7 @@ struct InterfaceUtilityOwnershipTests {
         #expect(writer.contains("pasteboard.setString(text, forType: .string)"))
 
         for path in [
-            "Scholium/App/ScholiumApp.swift",
+            "Scholium/App/Window/WindowOperationReporting.swift",
             "Scholium/Views/AgentIntegrationSettingsView.swift",
             "Scholium/Views/Note/TransactionRecoveryView.swift",
         ] {

@@ -20,12 +20,7 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         #expect(ownerSource.contains("func prepareNoteSystemTrash("))
         #expect(ownerSource.contains("dependencies.flushEditors"))
         #expect(ownerSource.contains("dependencies.presentSystemTrash("))
@@ -236,12 +231,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let app = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let app = try WindowCompositionSource.text(at: repositoryRoot)
         let controller = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/App/Window/WindowSearchController.swift"
@@ -293,12 +283,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let app = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let app = try WindowCompositionSource.text(at: repositoryRoot)
         let controller = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/App/Window/WindowWorkspaceProjectionController.swift"
@@ -611,10 +596,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let windowSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let windowSource = try WindowCompositionSource.text(at: repositoryRoot)
         let controllerSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Features/Document/DocumentController.swift"
@@ -1122,12 +1104,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let source = try WindowCompositionSource.text(at: repository)
 
         // Workspace browsing, Library browsing, and automatic current-Note reveal
         // all stage from the last accepted Workspace snapshot.
@@ -1297,8 +1274,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let relativePaths = [
-            "Scholium/App/ScholiumApp.swift",
+        let relativePaths = WindowCompositionSource.relativePaths + [
             "Scholium/Views/ContentView.swift",
             "Scholium/Views/SearchWorkspaceView.swift",
             "Scholium/Views/Sidebar/SidebarView.swift",
@@ -1470,10 +1446,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let source = try WindowCompositionSource.text(at: repositoryRoot)
         let searchControllerSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/App/Window/WindowSearchController.swift"
@@ -1487,12 +1460,9 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         let start = try #require(source.range(of: "final class WindowModel: ObservableObject"))
-        let end = try #require(
-            source.range(
-                of: "private enum ClipboardWorkflowError",
-                range: start.upperBound..<source.endIndex
-            ))
-        let windowModelSource = String(source[start.lowerBound..<end.lowerBound])
+        // The class and every extension of it follow the declaration in the
+        // composition root's reading order, so the model is the rest of it.
+        let windowModelSource = String(source[start.lowerBound...])
 
         for prohibited in [
             "activeWorkspaceHandle?.documents",
@@ -1541,13 +1511,13 @@ struct WindowControllerArchitectureTests {
             libraryMutationSource.contains(
                 "mutationTaskCancellations.values.forEach { $0() }"
             ))
-        #expect(windowModelSource.contains("private func publishCommittedNoteCreation("))
+        #expect(windowModelSource.contains("func publishCommittedNoteCreation("))
         #expect(windowModelSource.contains("guard isCurrent() else"))
         #expect(windowModelSource.contains("managedCreationBodyStartUTF16:"))
 
         let searchSelectionStart = try #require(
             windowModelSource.range(
-                of: "private func openSearchSelection("
+                of: "func openSearchSelection("
             ))
         let searchSelectionEnd = try #require(
             windowModelSource.range(
@@ -1567,7 +1537,7 @@ struct WindowControllerArchitectureTests {
             ))
         let selectedActivationEnd = try #require(
             windowModelSource.range(
-                of: "private func synchronizeDocumentTabs(",
+                of: "func showInFinder(",
                 range: selectedActivationStart.upperBound..<windowModelSource.endIndex
             ))
         let selectedActivationSource = windowModelSource[
@@ -1589,7 +1559,7 @@ struct WindowControllerArchitectureTests {
             windowModelSource.contains(
                 "workspaceProjectionController.recordCommittedNoteMove("
             ))
-        #expect(windowModelSource.contains("private func publishCommittedNoteMove("))
+        #expect(windowModelSource.contains("func publishCommittedNoteMove("))
         #expect(windowModelSource.contains("if outcome.identityRecoveryWarning == nil"))
         #expect(windowModelSource.contains("documentController.recordCommittedSnapshot("))
         #expect(windowModelSource.contains("revealCreatedNoteInLibrary("))
@@ -1685,10 +1655,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let controllerSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Features/Document/DocumentController.swift"
@@ -1814,10 +1781,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let contentSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
             encoding: .utf8
@@ -1840,7 +1804,7 @@ struct WindowControllerArchitectureTests {
             ))
         let restoreEnd = try #require(
             appSource.range(
-                of: "private func migrateAppOwnedState(",
+                of: "func migrateAppOwnedState(",
                 range: restoreStart.upperBound..<appSource.endIndex
             ))
         let restoreSource = String(
@@ -1897,12 +1861,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let coordinatorSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/App/Window/WindowEditorFlushCoordinator.swift"
@@ -1931,7 +1890,7 @@ struct WindowControllerArchitectureTests {
 
         #expect(
             windowModelSource.contains(
-                "private let editorFlushCoordinator: WindowEditorFlushCoordinator"
+                "let editorFlushCoordinator: WindowEditorFlushCoordinator"
             ))
         for retiredRootResponsibility in [
             "private struct EditorFlushRegistration",
@@ -1983,12 +1942,7 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
+        let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let windowSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumWindowManagement.swift"
