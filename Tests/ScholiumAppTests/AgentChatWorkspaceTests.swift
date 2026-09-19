@@ -22,7 +22,11 @@ struct AgentChatWorkspaceTests {
         try await wait { controller.isLoaded }
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
-        try await wait { controller.connectionState == .ready && !controller.capabilities.isRefreshing }
+        try await wait {
+            controller.connectionState == .ready
+                && !controller.capabilities.isRefreshing
+                && !controller.isRefreshingHistory
+        }
     }
     private func controller(_ root: URL, id: UUID = UUID()) -> AgentChatController {
         fixtureChatController(triptychID: id, root: root) { try! .init(requestID: $0.requestID, result: .object([:])) }
@@ -87,7 +91,11 @@ struct AgentChatWorkspaceTests {
         chat.toggleMethod(method.selection)
         chat.editDraft("retained request")
         chat.setWebSearch(.live)
-        try await wait { !chat.isRenewingSettings && !chat.capabilities.isRefreshing }
+        try await wait {
+            !chat.isRenewingSettings
+                && !chat.capabilities.isRefreshing
+                && !chat.isRefreshingHistory
+        }
         #expect(chat.workingDirectory?.path == workspace.path && chat.selected?.threadID == thread)
         #expect(chat.selected?.draft == "retained request" && chat.capabilities.contains(method.selection))
         #expect(chat.canSend)

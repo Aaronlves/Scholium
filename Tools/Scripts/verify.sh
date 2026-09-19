@@ -160,9 +160,15 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/Services/ScholiumAppBridgeRequestRouter.swift"|\
     "${ROOT}/Scholium/Services/WindowSession.swift"|\
     "${ROOT}/Scholium/Services/AgentChatController.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatController+Bridge.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatController+Connection.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatController+Conversation.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatController+Execution.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatController+Materials.swift"|\
     "${ROOT}/Scholium/Services/AgentChatExecutionState.swift"|\
     "${ROOT}/Scholium/Services/AgentChatCapabilitiesController.swift"|\
     "${ROOT}/Scholium/Services/AgentChatChildController.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatRegistry.swift"|\
     "${ROOT}/Scholium/Views/AgentIntegrationSettingsView.swift"|\
     "${ROOT}/ScholiumAgentHelper/ScholiumAgentHelper.swift") ;;
     *)

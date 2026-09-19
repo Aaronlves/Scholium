@@ -3182,12 +3182,20 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let handleSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "ScholiumApplication/WorkspaceHandle.swift"
-            ),
-            encoding: .utf8
-        )
+        let handleSource = try [
+            "WorkspaceHandle.swift",
+            "WorkspaceHandle+DocumentCreation.swift",
+            "WorkspaceHandle+DocumentMutations.swift",
+            "WorkspaceHandle+MoveAndIdentity.swift",
+            "WorkspaceHandle+Refresh.swift",
+        ].map {
+            try String(
+                contentsOf: repository.appendingPathComponent(
+                    "ScholiumApplication/\($0)"
+                ),
+                encoding: .utf8
+            )
+        }.joined(separator: "\n")
         func sourceSection(
             _ source: String,
             from start: String,
@@ -3224,7 +3232,7 @@ struct FrontendArchitectureTests {
         let documentMove = try sourceSection(
             handleSource,
             from: "func coordinatedMoveDocument(",
-            to: "private func coordinatedMoveFolder("
+            to: "func coordinatedMoveFolder("
         )
         #expect(documentMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))
         #expect(!documentMove.contains("cleanupWarnings"))
@@ -3232,7 +3240,7 @@ struct FrontendArchitectureTests {
 
         let folderMove = try sourceSection(
             handleSource,
-            from: "private func coordinatedMoveFolder(",
+            from: "func coordinatedMoveFolder(",
             to: "private func workspaceFolderMovePlan("
         )
         #expect(folderMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))

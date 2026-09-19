@@ -163,8 +163,8 @@ plutil -insert sdk_version -string "${SDK_VERSION}" "${PROVENANCE}"
 cp "${PROVENANCE}" \
   "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/ScholiumBuildProvenance.plist"
 
-[[ "${MARKETING_VERSION}" == "0.2.6" ]]
-[[ "${BUILD_NUMBER}" == "7" ]]
+[[ "${MARKETING_VERSION}" == "0.2.7" ]]
+[[ "${BUILD_NUMBER}" == "8" ]]
 [[ "$(plutil -extract LSMinimumSystemVersion raw "${STAGING_APP}/Contents/Info.plist")" == "26.0" ]]
 
 # The beta SwiftPM linker may record the deployment target as both minOS and SDK
