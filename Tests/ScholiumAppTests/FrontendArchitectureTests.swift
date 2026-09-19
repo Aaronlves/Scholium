@@ -3783,6 +3783,8 @@ struct FrontendArchitectureTests {
         #expect(sharedCSS.contains("--scholium-document-half-line-width: 33ch"))
         #expect(sharedCSS.contains("text-autospace: normal;"))
         #expect(sharedCSS.contains("text-spacing-trim: trim-both;"))
+        #expect(sharedCSS.contains("hyphens: none;"))
+        #expect(sharedCSS.contains("text-wrap-style: auto;"))
         #expect(sharedCSS.contains(".scholium-document {\n  text-wrap-style: pretty;"))
         #expect(sharedCSS.contains(".cm-editor.scholium-live-mode .cm-content {\n  text-wrap-style: stable;"))
         #expect(!sharedCSS.contains("text-wrap: balance"))
@@ -4187,6 +4189,7 @@ struct FrontendArchitectureTests {
         customized.settings.headings.cjkStrongFontFamily = "Songti SC"
         customized.settings.headings.cjkEmphasisFontFamily = "STKaiti"
         customized.settings.headings.style = .italic
+        customized.settings.hyphenation = .automatic
         let customizedCSS = DocumentAppearanceStyles.css(for: customized)
         #expect(customizedCSS.contains("--scholium-document-h3-size: 130%"))
         #expect(customizedCSS.contains("font-family: \"Noto Sans CJK SC\""))
@@ -4194,6 +4197,8 @@ struct FrontendArchitectureTests {
         #expect(customizedCSS.contains("font-family: \"Songti SC\""))
         #expect(customizedCSS.contains("font-family: \"STKaiti\""))
         #expect(customizedCSS.contains(".cm-editor.scholium-live-mode .cm-line.cm-live-heading .cm-live-cjk"))
+        #expect(customizedCSS.contains("hyphens: auto;"))
+        #expect(customizedCSS.contains("text-wrap-style: auto;"))
     }
 
     @Test("Read and Live Preview share semantic table presentation")

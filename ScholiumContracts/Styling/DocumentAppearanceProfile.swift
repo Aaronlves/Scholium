@@ -46,6 +46,20 @@ public enum DocumentTextAlignment: String, Codable, CaseIterable, Sendable {
     case justify
 }
 
+/// Controls automatic language-aware hyphenation in readable document prose.
+/// The source buffer is never changed by this presentation-only setting.
+public enum DocumentHyphenation: String, Codable, CaseIterable, Hashable, Sendable {
+    case none
+    case automatic
+
+    public var cssValue: String {
+        switch self {
+        case .none: "none"
+        case .automatic: "auto"
+        }
+    }
+}
+
 public enum DocumentCalloutAppearanceRole: String, Codable, CaseIterable, Sendable {
     case orientation
     case connections
@@ -262,19 +276,53 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
     public var source: DocumentSourceAppearance
     public var headings: DocumentHeadingAppearance
     public var callouts: [DocumentCalloutAppearance]
+    public var hyphenation: DocumentHyphenation
 
     public init(
         lineWidthCharacterUnits: Double = Self.defaultLineWidthCharacterUnits,
         body: DocumentBodyAppearance = .init(),
         source: DocumentSourceAppearance = .init(),
         headings: DocumentHeadingAppearance = .init(),
-        callouts: [DocumentCalloutAppearance] = Self.defaultCallouts
+        callouts: [DocumentCalloutAppearance] = Self.defaultCallouts,
+        hyphenation: DocumentHyphenation = .none
     ) {
         self.lineWidthCharacterUnits = lineWidthCharacterUnits
         self.body = body
         self.source = source
         self.headings = headings
         self.callouts = callouts
+        self.hyphenation = hyphenation
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case lineWidthCharacterUnits
+        case body
+        case source
+        case headings
+        case callouts
+        case hyphenation
+    }
+
+    /// Older appearance files do not contain the hyphenation field; they
+    /// retain the conservative no-automatic-hyphenation default when decoded.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        lineWidthCharacterUnits = try container.decode(Double.self, forKey: .lineWidthCharacterUnits)
+        body = try container.decode(DocumentBodyAppearance.self, forKey: .body)
+        source = try container.decode(DocumentSourceAppearance.self, forKey: .source)
+        headings = try container.decode(DocumentHeadingAppearance.self, forKey: .headings)
+        callouts = try container.decode([DocumentCalloutAppearance].self, forKey: .callouts)
+        hyphenation = try container.decodeIfPresent(DocumentHyphenation.self, forKey: .hyphenation) ?? .none
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(lineWidthCharacterUnits, forKey: .lineWidthCharacterUnits)
+        try container.encode(body, forKey: .body)
+        try container.encode(source, forKey: .source)
+        try container.encode(headings, forKey: .headings)
+        try container.encode(callouts, forKey: .callouts)
+        try container.encode(hyphenation, forKey: .hyphenation)
     }
 
     /// The sole source for Scholium's built-in document Appearance. WebKit

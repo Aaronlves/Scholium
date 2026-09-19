@@ -79,6 +79,7 @@ struct StyleOperationsTests {
         #expect(original.settings.lineWidthCharacterUnits == 66)
         #expect(original.settings.body.fontSizePoints == 12)
         #expect(original.settings.body.lineHeight == 1.7)
+        #expect(original.settings.hyphenation == .none)
 
         var edited = original
         edited.settings.lineWidthCharacterUnits = 84
@@ -91,6 +92,7 @@ struct StyleOperationsTests {
         edited.settings.headings.cjkStrongFontFamily = "Songti SC"
         edited.settings.headings.cjkEmphasisFontFamily = "STKaiti"
         edited.settings.headings.weight = 600
+        edited.settings.hyphenation = .automatic
         let orientationIndex = try #require(
             edited.settings.callouts.firstIndex(where: { $0.role == .orientation })
         )
@@ -122,11 +124,45 @@ struct StyleOperationsTests {
         #expect(persistedCopy.settings.headings.cjkStrongFontFamily == "Songti SC")
         #expect(persistedCopy.settings.headings.cjkEmphasisFontFamily == "STKaiti")
         #expect(persistedCopy.settings.headings.weight == 600)
+        #expect(persistedCopy.settings.hyphenation == .automatic)
         #expect(persistedCopy.settings.callout(.orientation).startInsetEm == 4.25)
 
         let removed = try await reloaded.removeAppearanceProfile(copyID)
         #expect(removed.appearanceProfiles.count == 1)
         #expect(removed.selectedAppearanceProfileID == original.id)
+    }
+
+    @Test("Legacy appearance files default missing hyphenation to Never")
+    func legacyAppearanceDefaultsHyphenation() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumLegacyAppearance-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let setup = StyleOperations(applicationSupportURL: support)
+        let initial = try await setup.styleSnapshot()
+        let url = try await setup.appearanceConfigurationURL()
+        var manifest = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        )
+        var profiles = try #require(manifest["profiles"] as? [[String: Any]])
+        var settings = try #require(profiles[0]["settings"] as? [String: Any])
+        settings.removeValue(forKey: "hyphenation")
+        profiles[0]["settings"] = settings
+        manifest["profiles"] = profiles
+        let legacyBytes = try JSONSerialization.data(
+            withJSONObject: manifest,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try legacyBytes.write(to: url, options: .atomic)
+
+        let reloaded = StyleOperations(applicationSupportURL: support)
+        let snapshot = try await reloaded.reloadAppearanceConfiguration()
+        #expect(snapshot.appearanceProfiles.first?.settings.hyphenation == DocumentHyphenation.none)
+        #expect(snapshot.canModifyAppearance)
+        #expect(try Data(contentsOf: url) == legacyBytes)
+        #expect(initial.appearanceProfiles.first?.settings.hyphenation == DocumentHyphenation.none)
     }
 
     @Test("Appearance line width normalizes to the supported finite range")

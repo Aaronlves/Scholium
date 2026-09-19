@@ -183,7 +183,7 @@ logical lines. Native app chrome is not themeable; Advanced CSS is additive and
 optional.
 
 Appearance exposes one settings pane for body font/size, line width/spacing,
-Source font/size, alignment, paragraph spacing, first-line indentation,
+hyphenation, Source font/size, alignment, paragraph spacing, first-line indentation,
 body/heading Bold and Italic fonts, heading type, and heading-level values
 against the same appearance draft. Body and heading controls remain grouped as
 named sections in one scrollable page, with aligned property matrices that
@@ -192,10 +192,11 @@ independent for Body and Headings and remain stable when the base role font
 changes. Heading hierarchy settings address H1 through H6 independently; the
 main page shows each level's scale, alignment and before/after spacing in
 the appearance draft, adapting to rows at narrow widths.
-Low-frequency letter spacing, word spacing, hyphenation, kerning, and ligatures
-are not structured appearance fields or native controls. Advanced CSS is their
-single explicit configuration surface and is applied after generated appearance
-CSS in both Review and Edit. Frontmatter remains at its authored beginning in
+Hyphenation is a Never/Automatic reading setting. Automatic uses WebKit for
+tagged supported prose; Chinese, Source and technical regions remain
+unhyphenated. Advanced CSS remains for letter spacing, word spacing, kerning and
+ligatures after generated CSS.
+Frontmatter remains at its authored beginning in
 the source, while the shared scrolling document plane projects the app-owned
 filename title first, then the quiet source-located YAML, then the authored
 body (including its first H1). Review and Edit use the same YAML presentation;

@@ -4308,6 +4308,22 @@
         }
       }
     },
+    "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Source and technical regions remain unchanged." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Source and technical regions remain unchanged."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动断词使用适用于支持文本的语言词典。中文不会按音节断开；Source 和技术区域保持不自动断词。"
+          }
+        }
+      }
+    },
     "A Search clause cannot be empty." : {
       "localizations" : {
         "en" : {

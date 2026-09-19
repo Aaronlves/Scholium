@@ -921,6 +921,17 @@ private struct AppearanceReadingEditor: View {
             Picker("Alignment", selection: $profile.settings.body.alignment) {
                 ForEach(DocumentTextAlignment.allCases, id: \.self) { Text($0.label).tag($0) }
             }
+            Picker("Hyphenation", selection: $profile.settings.hyphenation) {
+                ForEach(DocumentHyphenation.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .accessibilityIdentifier("scholium.appearance.hyphenation")
+            .id("appearance.hyphenation")
+            Text(
+                "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Source and technical regions remain unchanged."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }.id("appearance.reading")
         Section("Source Font") {
             Picker("Source Font", selection: $profile.settings.source.fontFamily) {
@@ -1377,6 +1388,15 @@ extension DocumentTextAlignment {
         case .start: "Start"
         case .center: "Center"
         case .justify: "Justify"
+        }
+    }
+}
+
+extension DocumentHyphenation {
+    fileprivate var label: LocalizedStringResource {
+        switch self {
+        case .none: "Never"
+        case .automatic: "Automatic"
         }
     }
 }

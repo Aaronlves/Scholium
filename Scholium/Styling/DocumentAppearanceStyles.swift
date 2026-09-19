@@ -12,6 +12,7 @@ enum DocumentAppearanceStyles {
         let headings = settings.headings
         let fontStyle = headings.style == .italic ? "italic" : "normal"
         let fontVariantCaps = headings.style == .smallCaps ? "small-caps" : "normal"
+        let hyphenation = settings.hyphenation.cssValue
         let bodyFont = cssFontFamily(body.fontFamily)
         let headingFont =
             headings.fontFamily == .body
@@ -57,6 +58,7 @@ enum DocumentAppearanceStyles {
               line-height: var(--scholium-rhythm-prose-line-height);
               text-align: \(body.alignment.rawValue);
               font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor));
+              hyphens: \(hyphenation);
             }
             .scholium-document p {
               margin: 0;
@@ -78,6 +80,15 @@ enum DocumentAppearanceStyles {
               font-variant-caps: \(fontVariantCaps);
               font-weight: \(headings.weight);
               line-height: var(--scholium-rhythm-heading-line-height);
+            }
+            .scholium-document h1,
+            .scholium-document h2,
+            .scholium-document h3,
+            .scholium-document h4,
+            .scholium-document h5,
+            .scholium-document h6,
+            .scholium-live-mode .cm-live-heading {
+              text-wrap-style: auto;
             }
             \(headingLevelRules)
             """

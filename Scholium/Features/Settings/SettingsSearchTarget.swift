@@ -70,6 +70,10 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 section: "appearance.reading"),
             Self("appearance.alignment", .document, "Alignment", ["对齐"], section: "appearance.reading"),
             Self(
+                "appearance.hyphenation", .document, "Hyphenation",
+                ["hyphenation", "hyphens", "syllables", "断词", "音节"],
+                section: "appearance.hyphenation"),
+            Self(
                 "appearance.paragraphSpacing", .document, "Paragraph spacing", ["paragraph", "段间距"],
                 section: "appearance.body"),
             Self(
@@ -102,8 +106,8 @@ struct SettingsSearchTarget: Identifiable, Equatable {
             Self(
                 "appearance.css", .document, "CSS Snippets",
                 [
-                    "Advanced CSS", "letter spacing", "word spacing", "hyphenation", "kerning", "ligatures",
-                    "Open CSS Folder", "CSS", "高级排版", "字距", "词距", "断词", "字偶距", "连字",
+                    "Advanced CSS", "letter spacing", "word spacing", "kerning", "ligatures",
+                    "Open CSS Folder", "CSS", "高级排版", "字距", "词距", "字偶距", "连字",
                 ], aliases: ["Import CSS Snippet…", "Open CSS Folder"]),
             Self(
                 "appearance.file", .document, "Configuration File",

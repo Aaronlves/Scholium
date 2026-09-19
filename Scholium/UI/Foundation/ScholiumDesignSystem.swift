@@ -755,6 +755,7 @@ enum ScholiumWebDesignTokens {
           line-break: strict;
           word-break: normal;
           overflow-wrap: break-word;
+          hyphens: none;
           text-autospace: normal;
           text-spacing-trim: trim-both;
         }
@@ -782,6 +783,7 @@ enum ScholiumWebDesignTokens {
           .cm-editor.scholium-live-mode .scholium-frontmatter-line,
           .cm-editor.scholium-source-mode .cm-content
         ) {
+          hyphens: none;
           text-autospace: no-autospace;
           text-spacing-trim: space-all;
           text-wrap-style: stable;
@@ -1277,10 +1279,12 @@ enum ScholiumWebDesignTokens {
           text-align: start;
           text-decoration-line: none;
           text-decoration: none;
-          /* Review inherits the document's readable `pretty` wrapping and
+          /* Review headings use the predictable first-fit algorithm while
+             body prose may use the document's readable `pretty` wrapping.
              Edit inherits CodeMirror's stable wrapping. Do not balance
              headings: balancing can move a heading to a new line while the
              current line still has available measure. */
+          text-wrap-style: auto;
           box-sizing: border-box;
           margin: 0;
           padding-block: 0;
