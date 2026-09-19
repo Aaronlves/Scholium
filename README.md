@@ -81,6 +81,11 @@ developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
 ```
 
+The same gate runs on every push and pull request to `main` through
+`.github/workflows/verify.yml`. `run-editor-toolchain.sh` refuses an
+in-worktree `WebEditor/node_modules`, so a checkout kept populated for editor
+tooling can run everything below but not `verify.sh` itself.
+
 Common development commands:
 
 ```bash

@@ -1,0 +1,88 @@
+name: Verify
+
+# Tools/Scripts/verify.sh is already the repository's whole gate: documentation
+# authority, interface localization, swift-format, the architecture and I/O wall
+# guards, every Swift test product, the reproducible editor bundle comparison,
+# the public symbol graph wall, and a release build. It only ever ran when
+# someone remembered to type it. This runs it on every change instead.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same ref. Pushes to main are
+# kept, so the history of what passed on the default branch stays complete.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Fast feedback on the TypeScript surface. verify.sh covers this too, by way
+  # of run-editor-toolchain.sh --test, but it reports roughly twenty minutes
+  # later; a type error should not cost that long to learn about.
+  editor:
+    name: Editor typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: WebEditor
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: WebEditor/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm test
+
+  verify:
+    name: Full verification
+    # Pinned rather than macos-latest so the image cannot change the toolchain
+    # underneath a byte-comparison of the committed editor bundles. The package
+    # declares .macOS(.v26), so the SDK has to be at least that recent.
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # run-editor-toolchain.sh installs npm dependencies in temporary storage
+      # and refuses an in-worktree WebEditor/node_modules, so there is nothing
+      # here for actions/setup-node to cache.
+      - name: Install ripgrep
+        run: command -v rg >/dev/null 2>&1 || brew install ripgrep
+
+      - name: Report the toolchain
+        run: |
+          echo "DEVELOPER_DIR=$(Tools/Scripts/resolve-xcode-developer-dir.sh)"
+          swift --version
+          node --version
+          python3 --version
+
+      - name: Verify
+        run: Tools/Scripts/verify.sh
+
+      # verify.sh writes each failing step's full log under .build; the console
+      # only carries the tail of it.
+      - name: Collect verification logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: verification-logs
+          path: |
+            .build/verification/**/*.log
+            .build/verification-release/**/*.log
+          if-no-files-found: ignore
+          retention-days: 14
