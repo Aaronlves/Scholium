@@ -164,11 +164,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         summary = summaryMember?.value
         authors = []
         publicationDate = nil
-        let keywordMembers: [SearchPropertyProjection.StringMember] =
-            propertyProjection.entry(forExactKey: "keywords")
-            .flatMap { entry in
-                entry.valueKind == .stringSequence ? entry.stringMembers : nil
-            } ?? []
+        let keywordMembers = propertyProjection.stringListMembers(forExactKey: "keywords")
         tags = keywordMembers.map(\.value)
         path = document.relativePath
         self.hasBrokenLink = hasBrokenLink

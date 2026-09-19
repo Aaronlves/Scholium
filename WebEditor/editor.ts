@@ -101,6 +101,7 @@ import {
   selectionAffectedProjectionRanges,
   selectionActivatesSyntax,
   selectionProjectionSignature,
+  frontmatterPresentationNeedsRebuild,
   transactionChangedSyntaxTree,
   type ProjectionSelectionRange,
   type ProjectionSourceRange,
@@ -1465,6 +1466,23 @@ const frontmatterTokenClassByNodeName: Record<string, string> = {
   Comment: "cm-live-yaml-comment",
 };
 
+/**
+ * Derives the envelope's whole visible identity — where it ends, and whether
+ * the selection is inside it — without scanning, so
+ * `frontmatterPresentationNeedsRebuild` can spare ordinary caret movement the
+ * full rebuild.
+ */
+function frontmatterPresentationIdentity(state: EditorState) {
+  const index = liveProjectionIndex.index(state);
+  const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
+  if (end === 0) return {end, signature: "0"};
+  const active = lastDocumentFocusTarget !== "title"
+    && state.selection.ranges.some((range) => range.empty
+      ? range.head < end
+      : range.from < end && range.to > 0);
+  return {end, signature: `${end}:${active ? "1" : "0"}`};
+}
+
 function buildFrontmatterPresentation(state: EditorState): DecorationSet {
   const index = liveProjectionIndex.index(state);
   const lines: Range<Decoration>[] = [];
@@ -1525,13 +1543,28 @@ function buildFrontmatterPresentation(state: EditorState): DecorationSet {
   return Decoration.set(lines, true);
 }
 
-const liveFrontmatterLines = StateField.define<DecorationSet>({
-  create: buildFrontmatterPresentation,
+interface FrontmatterPresentation {
+  readonly signature: string;
+  readonly decorations: DecorationSet;
+}
+
+const liveFrontmatterLines = StateField.define<FrontmatterPresentation>({
+  create: state => ({
+    signature: frontmatterPresentationIdentity(state).signature,
+    decorations: buildFrontmatterPresentation(state),
+  }),
   update(previous, transaction) {
-    return transaction.docChanged || transaction.selection || transactionChangedSyntaxTree(transaction)
-      ? buildFrontmatterPresentation(transaction.state) : previous;
+    if (!transaction.docChanged && !transaction.selection
+        && !transactionChangedSyntaxTree(transaction)) {
+      return previous;
+    }
+    const {end, signature} = frontmatterPresentationIdentity(transaction.state);
+    if (!frontmatterPresentationNeedsRebuild(transaction, end, signature, previous.signature)) {
+      return previous;
+    }
+    return {signature, decorations: buildFrontmatterPresentation(transaction.state)};
   },
-  provide: field => EditorView.decorations.from(field),
+  provide: field => EditorView.decorations.from(field, value => value.decorations),
 });
 
 let dirty = false;

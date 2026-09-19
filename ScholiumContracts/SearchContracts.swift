@@ -322,7 +322,7 @@ public struct SearchIndexDocument: Sendable {
         aliases = yaml.textValues(forExactKey: "aliases")
         authors = yaml.textValues(forExactKey: "authors") + yaml.textValues(forExactKey: "author")
         publicationDate = yaml.textValues(forExactKey: "publication_date").first
-        tags = yaml.textValues(forExactKey: "keywords")
+        tags = yaml.stringListMembers(forExactKey: "keywords").map(\.value)
         self.hasBrokenLink = hasBrokenLink
         let sourceProjection =
             (cachedSourceProjection
@@ -334,10 +334,9 @@ public struct SearchIndexDocument: Sendable {
         projection = sourceProjection.applyingDynamicState(
             hasBrokenLink: hasBrokenLink
         )
-        propertyProjection = SearchPropertyProjection(
-            document: document,
-            profile: profile
-        )
+        // One Yams compose per note. `SearchPropertyProjection` does not vary
+        // by profile, so re-deriving it here only repeated the parse.
+        propertyProjection = yaml
         evidentialLayer =
             switch vaultRole {
             case .sourceCorpus: .paperAnalysis

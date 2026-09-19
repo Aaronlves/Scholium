@@ -47,6 +47,41 @@ struct WorkspaceCatalogTests {
         #expect(try #require(stale.notes.first).title == "Topic")
     }
 
+    @Test("A wikilink authored in a property is reported at its exact bytes")
+    func propertyWikilinkIsReported() throws {
+        let topics = vault("Topics", .topicKnowledge)
+        let document = note(
+            "Topic.md",
+            "---\ntitle: Topic\nrelated:\n  - \"[[Kant]]\"\n  - Plain entry\n---\nBody\n"
+        )
+        let attention = WorkspaceCatalogBuilder.build(
+            vaults: [topics],
+            documents: [topics.id: [document]]
+        ).attention.filter { $0.message == "Wikilink in property" }
+
+        let item = try #require(attention.first)
+        #expect(attention.count == 1)
+        #expect(item.kind == .brokenConnection)
+        #expect(item.severity == .warning)
+        // Line 4 is the authored member, not the envelope's first line.
+        #expect(item.locator?.line == 4)
+    }
+
+    @Test("Nested flow sequences are the YAML they parse as, not property wikilinks")
+    func nestedFlowSequenceIsNotAWikilink() {
+        let topics = vault("Topics", .topicKnowledge)
+        let document = note(
+            "Topic.md",
+            "---\ntitle: Topic\nmatrix: [[1, 2], [3, 4]]\nbody_link: fine\n---\nSee [[Kant]].\n"
+        )
+        let attention = WorkspaceCatalogBuilder.build(
+            vaults: [topics],
+            documents: [topics.id: [document]]
+        ).attention.filter { $0.message == "Wikilink in property" }
+
+        #expect(attention.isEmpty)
+    }
+
     @Test("Incomplete retired catalog projections are rejected")
     func incompleteCatalogNoteIsRejected() throws {
         let topics = vault("Topics", .topicKnowledge)

@@ -31422,6 +31422,13 @@ ${fence}
   function transactionChangedSyntaxTree(transaction) {
     return syntaxTree(transaction.startState) !== syntaxTree(transaction.state);
   }
+  function frontmatterPresentationNeedsRebuild(transaction, envelopeEnd, signature, previousSignature) {
+    if (transaction.docChanged) return true;
+    if (transactionChangedSyntaxTree(transaction) && syntaxTree(transaction.startState).length < envelopeEnd) {
+      return true;
+    }
+    return signature !== previousSignature;
+  }
   function changedContextContainsMarker(transaction, from, to, marker) {
     const doc2 = transaction.state.doc;
     const boundedFrom = Math.max(0, Math.min(from, doc2.length));
@@ -38753,6 +38760,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     FlowMapping: "cm-live-yaml-collection",
     Comment: "cm-live-yaml-comment"
   };
+  function frontmatterPresentationIdentity(state) {
+    const index = liveProjectionIndex.index(state);
+    const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
+    if (end === 0) return { end, signature: "0" };
+    const active = lastDocumentFocusTarget !== "title" && state.selection.ranges.some((range) => range.empty ? range.head < end : range.from < end && range.to > 0);
+    return { end, signature: `${end}:${active ? "1" : "0"}` };
+  }
   function buildFrontmatterPresentation(state) {
     const index = liveProjectionIndex.index(state);
     const lines = [];
@@ -38801,11 +38815,21 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return Decoration.set(lines, true);
   }
   var liveFrontmatterLines = StateField.define({
-    create: buildFrontmatterPresentation,
+    create: (state) => ({
+      signature: frontmatterPresentationIdentity(state).signature,
+      decorations: buildFrontmatterPresentation(state)
+    }),
     update(previous, transaction) {
-      return transaction.docChanged || transaction.selection || transactionChangedSyntaxTree(transaction) ? buildFrontmatterPresentation(transaction.state) : previous;
+      if (!transaction.docChanged && !transaction.selection && !transactionChangedSyntaxTree(transaction)) {
+        return previous;
+      }
+      const { end, signature } = frontmatterPresentationIdentity(transaction.state);
+      if (!frontmatterPresentationNeedsRebuild(transaction, end, signature, previous.signature)) {
+        return previous;
+      }
+      return { signature, decorations: buildFrontmatterPresentation(transaction.state) };
     },
-    provide: (field) => EditorView.decorations.from(field)
+    provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
   });
   var dirty = false;
   var pendingKeyDownStartedAt = null;

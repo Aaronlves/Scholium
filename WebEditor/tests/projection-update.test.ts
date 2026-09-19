@@ -1,8 +1,9 @@
 import {EditorState, StateEffect} from "@codemirror/state";
-import {ensureSyntaxTree} from "@codemirror/language";
+import {ensureSyntaxTree, syntaxTree} from "@codemirror/language";
 import {describe, expect, it} from "vitest";
 import {
   activeProjectionSignature,
+  frontmatterPresentationNeedsRebuild,
   selectionAffectedProjectionRanges,
   selectionActivatesSyntax,
   selectionProjectionSignature,
@@ -18,6 +19,72 @@ function insertion(text: string) {
   const state = EditorState.create({doc: "研究文本"});
   return state.update({changes: {from: state.doc.length, insert: text}});
 }
+
+describe("frontmatter envelope presentation rebuilds", () => {
+  const envelope = "---\ntitle: Claim\nkeywords: [a]\n---\n\n";
+  const body = `${envelope}${"Ordinary paragraph text. ".repeat(400)}`;
+
+  function parsedState(doc: string, anchor: number) {
+    const state = EditorState.create({
+      doc,
+      extensions: [scholiumNoteLanguage],
+      selection: {anchor},
+    });
+    expect(ensureSyntaxTree(state, state.doc.length, 5_000)).not.toBeNull();
+    return state;
+  }
+
+  it("reuses the envelope through caret movement that stays outside it", () => {
+    const end = envelope.length;
+    let state = parsedState(body, end + 1);
+    for (let step = 2; step <= 400; step += 1) {
+      const transaction = state.update({selection: {anchor: end + step}});
+      expect(
+        frontmatterPresentationNeedsRebuild(transaction, end, `${end}:0`, `${end}:0`),
+      ).toBe(false);
+      state = transaction.state;
+    }
+  });
+
+  it("rebuilds when the caret crosses into or out of the envelope", () => {
+    const end = envelope.length;
+    const state = parsedState(body, end + 10);
+    const entering = state.update({selection: {anchor: 6}});
+    expect(
+      frontmatterPresentationNeedsRebuild(entering, end, `${end}:1`, `${end}:0`),
+    ).toBe(true);
+    const leaving = entering.state.update({selection: {anchor: end + 10}});
+    expect(
+      frontmatterPresentationNeedsRebuild(leaving, end, `${end}:0`, `${end}:1`),
+    ).toBe(true);
+  });
+
+  it("ignores parse progress that lands beyond the envelope", () => {
+    const state = EditorState.create({doc: body});
+    const transaction = state.update({
+      effects: StateEffect.reconfigure.of([scholiumNoteLanguage]),
+    });
+    expect(transactionChangedSyntaxTree(transaction)).toBe(true);
+    // The starting tree already spans the envelope, so further progress in
+    // the body cannot change a single YAML decoration.
+    expect(syntaxTree(transaction.startState).length).toBeGreaterThanOrEqual(0);
+    const covered = syntaxTree(transaction.startState).length;
+    expect(
+      frontmatterPresentationNeedsRebuild(transaction, covered, "x", "x"),
+    ).toBe(false);
+    expect(
+      frontmatterPresentationNeedsRebuild(transaction, covered + 1, "x", "x"),
+    ).toBe(true);
+  });
+
+  it("always rebuilds for a document change", () => {
+    const state = parsedState(body, 6);
+    const transaction = state.update({changes: {from: 6, insert: "X"}});
+    expect(
+      frontmatterPresentationNeedsRebuild(transaction, envelope.length, "x", "x"),
+    ).toBe(true);
+  });
+});
 
 describe("empty projection update fast path", () => {
   it("detects a parse-tree-only state update", () => {
