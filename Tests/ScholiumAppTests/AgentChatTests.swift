@@ -363,7 +363,10 @@ struct AgentChatTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
     }
-    private func eventually(timeout: Duration = .seconds(8), _ predicate: () -> Bool) async throws {
+    // Every wait here is for a fixture runtime to reach a state, never for it
+    // to reach one quickly: the budget only has to outlast the slowest machine
+    // in the gate, which runs this target's suites in parallel on three cores.
+    private func eventually(timeout: Duration = .seconds(30), _ predicate: () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while !predicate() {
             guard ContinuousClock.now < deadline else { throw TestFailure.timeout }
