@@ -172,8 +172,10 @@ public actor ZoteroMCPServer {
                 execution = .success(try await listAnnotations(arguments))
             case "zotero_read_annotation":
                 execution = .success(try await readAnnotation(arguments))
-            case "zotero_read_original":
-                execution = .success(try await readOriginal(arguments))
+            case "zotero_read_original_file":
+                execution = .success(try await readOriginalFile(arguments))
+            case "zotero_read_original_page":
+                execution = .success(try await readOriginalPage(arguments))
             case "zotero_selected_target":
                 execution = .success(try await selectedTarget().value)
             case "zotero_inventory":
@@ -208,17 +210,21 @@ public actor ZoteroMCPServer {
             default:
                 throw ZoteroMCPServiceError.unknownTool
             }
-            return toolResult(execution.value, isError: execution.isError, includesImage: name == "zotero_read_original")
+            let includesImage = (name == "zotero_read_original_file" || name == "zotero_read_original_page")
+                && arguments["mode"]?.stringValue == "image"
+            return toolResult(execution.value, isError: execution.isError, includesImage: includesImage)
         } catch let error as ZoteroMCPServiceError {
             return toolResult(
                 .object([
                     "status": .string("failed"),
+                    "error_code": .string(error.failureCode),
                     "error": .string(error.errorDescription ?? "Zotero operation failed."),
                 ]), isError: true)
         } catch {
             return toolResult(
                 .object([
                     "status": .string("failed"),
+                    "error_code": .string("local_transport_failure"),
                     "error": .string("Zotero operation failed at the local transport boundary."),
                 ]), isError: true)
         }
@@ -689,6 +695,7 @@ public actor ZoteroMCPServer {
         annotationListTool,
         annotationReadTool,
         originalReadTool,
+        originalReadPageTool,
     ] + additionalToolDefinitions
 
     static func tool(
@@ -737,6 +744,13 @@ enum ZoteroMCPServiceError: LocalizedError, Sendable {
     case unsafePath
     case fileMissing
     case originalUnavailable
+    case originalKindMismatch
+    case originalPathRejected
+    case originalMetadataMismatch
+    case originalMissing
+    case originalPermissionDenied
+    case originalTooLarge
+    case originalUnsupported
     case originalReadFailed(String)
 
     var errorDescription: String? {
@@ -759,8 +773,53 @@ enum ZoteroMCPServiceError: LocalizedError, Sendable {
         case .unsafePath: "Scholium refused a path outside the current Chat workspace or containing a symlink."
         case .fileMissing: "The requested workspace file does not exist."
         case .originalUnavailable:
-            "The selected local original is missing, unsafe, unsupported or exceeds 20 MiB. Restore the attachment in Zotero and select it again."
+            "Zotero did not provide a safe local file URL for this attachment."
+        case .originalKindMismatch:
+            "This attachment does not match the selected original-reading tool. Use zotero_read_original_page for PDFs and zotero_read_original_file for non-PDF files."
+        case .originalPathRejected:
+            "Zotero returned a local path that Scholium rejected as unsafe; no file was read."
+        case .originalMetadataMismatch:
+            "Zotero's attachment metadata does not match the resolved local file; no file was read."
+        case .originalMissing:
+            "The local original resolved by Zotero does not exist. Restore the attachment in Zotero and try again."
+        case .originalPermissionDenied:
+            "macOS denied access to the local original resolved by Zotero."
+        case .originalTooLarge:
+            "The local original exceeds Scholium's 20 MiB read limit."
+        case .originalUnsupported:
+            "The resolved local original is not a supported regular text, image or PDF file."
         case .originalReadFailed(let message): message
+        }
+    }
+
+    var failureCode: String {
+        switch self {
+        case .invalidArguments: "invalid_arguments"
+        case .invalidRequest: "invalid_request"
+        case .invalidResponse: "invalid_response"
+        case .responseTooLarge: "response_too_large"
+        case .unknownTool: "unknown_tool"
+        case .zoteroUnavailable: "zotero_unavailable"
+        case .localAPIDisabled: "local_api_disabled"
+        case .connectorUnavailable: "connector_unavailable"
+        case .connectorRejected: "connector_rejected"
+        case .itemMissing: "item_missing"
+        case .ambiguousItem: "ambiguous_item"
+        case .materialChanged: "material_changed"
+        case .writeNotAuthorized: "write_not_authorized"
+        case .confirmationRequired: "confirmation_required"
+        case .targetNotWritable: "target_not_writable"
+        case .unsafePath: "unsafe_path"
+        case .fileMissing: "file_missing"
+        case .originalUnavailable: "original_unavailable"
+        case .originalKindMismatch: "original_kind_mismatch"
+        case .originalPathRejected: "original_path_rejected"
+        case .originalMetadataMismatch: "original_metadata_mismatch"
+        case .originalMissing: "original_missing"
+        case .originalPermissionDenied: "original_permission_denied"
+        case .originalTooLarge: "original_too_large"
+        case .originalUnsupported: "original_unsupported"
+        case .originalReadFailed: "original_read_failed"
         }
     }
 }

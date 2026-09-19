@@ -15,7 +15,7 @@ struct ZoteroMCPServerTests {
         #expect(
             Set(tools.compactMap { $0["name"] as? String }) == [
                 "zotero_status", "zotero_search", "zotero_item", "zotero_selected_target", "zotero_list_annotations", "zotero_read_annotation",
-                "zotero_read_original", "zotero_inventory", "zotero_collections", "zotero_tags", "zotero_groups",
+                "zotero_read_original_file", "zotero_read_original_page", "zotero_inventory", "zotero_collections", "zotero_tags", "zotero_groups",
                 "zotero_children", "zotero_fulltext", "zotero_file_url", "zotero_export_bibtex", "zotero_citations", "zotero_probe",
             ])
         for name in ["zotero_import_bibtex", "zotero_import_ris"] {
@@ -60,10 +60,29 @@ struct ZoteroMCPServerTests {
                 "zotero_status", "zotero_search", "zotero_item",
                 "zotero_selected_target",
                 "zotero_list_annotations", "zotero_read_annotation",
-                "zotero_read_original", "zotero_inventory", "zotero_collections", "zotero_tags", "zotero_groups",
+                "zotero_read_original_file", "zotero_read_original_page", "zotero_inventory", "zotero_collections", "zotero_tags", "zotero_groups",
                 "zotero_children", "zotero_fulltext", "zotero_file_url", "zotero_export_bibtex", "zotero_citations", "zotero_probe",
             ])
         #expect(await client.recordedRequests().isEmpty)
+    }
+
+    @Test("Original file and PDF-page tools expose non-ambiguous input contracts")
+    func originalReadSchemasSeparatePageRequirement() async throws {
+        let server = ZoteroMCPServer(client: MockZoteroMCPHTTPClient())
+        let response = try await rpc(server, id: 1, method: "tools/list", params: [:])
+        let tools = try #require(object(response["result"])["tools"] as? [[String: Any]])
+        let byName = Dictionary(uniqueKeysWithValues: tools.compactMap { tool -> (String, [String: Any])? in
+            guard let name = tool["name"] as? String, let schema = try? object(tool["inputSchema"]) else { return nil }
+            return (name, schema)
+        })
+        let fileSchema = try #require(byName["zotero_read_original_file"])
+        let pageSchema = try #require(byName["zotero_read_original_page"])
+        let fileRequired = try #require(fileSchema["required"] as? [String])
+        let pageRequired = try #require(pageSchema["required"] as? [String])
+        #expect(fileRequired.contains("page") == false)
+        #expect(pageRequired.contains("page"))
+        #expect(try object(fileSchema["properties"])["page"] == nil)
+        #expect(try object(pageSchema["properties"])["page"] != nil)
     }
 
     @Test("Status distinguishes a disabled local API from an available Connector")

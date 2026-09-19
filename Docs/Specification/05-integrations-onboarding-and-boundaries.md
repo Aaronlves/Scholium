@@ -40,7 +40,9 @@ In-app Chat injects the managed `scholium-zotero` local MCP server alongside
 the Scholium workspace server. The Agent may use its bounded Zotero surface:
 search, item/collection/tag/group/child inspection, indexed full text,
 originals, annotations, file URLs, BibTeX/citation export, and Connector
-imports or local-API item updates. Import and update tools are destructive MCP
+imports or local-API item updates. PDF originals use a page-specific read with
+an exact one-based physical page; non-PDF text and image originals use the
+separate bounded file read. Import and update tools are destructive MCP
 operations: they require explicit confirmation, and updates additionally
 require the exact library and current Zotero item version.
 

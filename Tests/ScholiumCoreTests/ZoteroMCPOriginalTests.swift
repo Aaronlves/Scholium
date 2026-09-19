@@ -62,16 +62,16 @@ struct ZoteroMCPOriginalTests {
         defer { fixture.remove() }
         let bytes = try Self.pdf(["First page excluded", "Second page selected", ""])
         try bytes.write(to: fixture.file)
-        let text = try await fixture.call(["page": 2])
+        let text = try await fixture.call(["page": 2], tool: "zotero_read_original_page")
         #expect(!text.failed)
         #expect((text.value["text"] as? String)?.contains("Second page selected") == true)
         #expect((text.value["text"] as? String)?.contains("First page excluded") == false)
         #expect(text.value["total_pages"] as? Int == 3 && text.value["page"] as? Int == 2)
         let reference = try #require(text.value["reference"] as? [String: Any])
         #expect(reference["url"] as? String == "zotero://open-pdf/groups/42/items/ATTACH01?page=2")
-        let blank = try await fixture.call(["page": 3])
+        let blank = try await fixture.call(["page": 3], tool: "zotero_read_original_page")
         #expect(!blank.failed && blank.value["text_available"] as? Bool == false)
-        let image = try await fixture.call(["mode": "image", "page": 2])
+        let image = try await fixture.call(["mode": "image", "page": 2], tool: "zotero_read_original_page")
         #expect(!image.failed && image.value["text"] == nil && image.value["kind"] as? String == "pdf_page_image")
         let blocks = try #require(image.result["content"] as? [[String: Any]])
         let native = try #require(blocks.first { $0["type"] as? String == "image" })
@@ -85,8 +85,9 @@ struct ZoteroMCPOriginalTests {
         let textBlock = try #require(blocks.first?["text"] as? String)
         #expect(textBlock.contains(base64) == false)
         #expect(image.value["original_fingerprint"] as? String == DocumentFingerprint(data: bytes).sha256)
-        #expect(try await fixture.call(["page": 4]).failed)
-        #expect(try await fixture.call([:]).failed)
+        #expect(try await fixture.call(["page": 4], tool: "zotero_read_original_page").failed)
+        let missingPage = try await fixture.call([:], tool: "zotero_read_original_page")
+        #expect(missingPage.failed && missingPage.value["error_code"] as? String == "invalid_arguments")
         let document = try #require(PDFDocument(data: bytes))
         let locked = try #require(
             document.dataRepresentation(options: [
@@ -94,7 +95,7 @@ struct ZoteroMCPOriginalTests {
                 PDFDocumentWriteOption.userPasswordOption: "fixture-reader",
             ]))
         try locked.write(to: fixture.file)
-        let refused = try await fixture.call(["page": 1])
+        let refused = try await fixture.call(["page": 1], tool: "zotero_read_original_page")
         #expect(refused.failed && (refused.value["error"] as? String)?.contains("locked") == true)
         let standalone = try OriginalFixture(filename: "Figure.png", mime: "image/png")
         defer { standalone.remove() }
@@ -170,6 +171,12 @@ struct ZoteroMCPOriginalTests {
     func originalBoundsAndUnavailable() async throws {
         let fixture = try OriginalFixture(filename: "Source.txt", mime: "text/plain")
         defer { fixture.remove() }
+        try Data("Present".utf8).write(to: fixture.file)
+        try FileManager.default.removeItem(at: fixture.file)
+        let missing = try await fixture.call([:])
+        #expect(missing.failed && missing.value["error_code"] as? String == "original_missing")
+        try Data("Restored".utf8).write(to: fixture.file)
+        await fixture.client.reset()
         for args: [String: Any] in [
             ["mode": "ocr"], ["page": 0], ["page": 1e100], ["maximum_utf8": 65_537],
             ["start_utf8": 1], ["mode": "image", "maximum_utf8": 100], ["path": fixture.file.path], ["url": fixture.file.absoluteString],
@@ -177,13 +184,14 @@ struct ZoteroMCPOriginalTests {
             #expect(try await fixture.call(args).failed)
         }
         #expect(await fixture.client.requests.isEmpty)
-        #expect(try await fixture.call([:]).failed)
+        #expect(try await fixture.call([:]).failed == false)
         try Data([0xFF]).write(to: fixture.file)
         #expect(try await fixture.call([:]).failed)
         try Data("α研究".utf8).write(to: fixture.file)
         #expect(try await fixture.call(["maximum_utf8": 1]).failed)
         try Data(repeating: 65, count: 20 * 1_024 * 1_024 + 1).write(to: fixture.file)
-        #expect(try await fixture.call([:]).failed)
+        let oversized = try await fixture.call([:])
+        #expect(oversized.failed && oversized.value["error_code"] as? String == "original_too_large")
         #expect(await fixture.client.requests.allSatisfy { $0.url?.path.contains("fulltext") == false })
     }
 
@@ -254,11 +262,11 @@ private struct OriginalFixture: Sendable {
         let value: [String: Any]
         var failed: Bool { result["isError"] as? Bool == true }
     }
-    func call(_ extra: [String: Any]) async throws -> Response {
+    func call(_ extra: [String: Any], tool: String = "zotero_read_original_file") async throws -> Response {
         let defaults: [String: Any] = ["library": "group:42", "attachment_key": "ATTACH01", "mode": "text"]
         let data = try JSONSerialization.data(withJSONObject: [
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": ["name": "zotero_read_original", "arguments": defaults.merging(extra, uniquingKeysWith: { _, new in new })],
+            "params": ["name": tool, "arguments": defaults.merging(extra, uniquingKeysWith: { _, new in new })],
         ])
         let response = try #require(await server.handle(requestData: data, access: .readOnly))
         let rpc = try #require(JSONSerialization.jsonObject(with: response) as? [String: Any])

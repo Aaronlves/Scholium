@@ -33,7 +33,8 @@ def check(executable, root):
     zotero = call(["zotero", "mcp", "serve"], [initialize, listing])
     assert zotero[0]["result"]["serverInfo"]["name"] == "scholium-zotero"
     zotero_names = {tool["name"] for tool in zotero[1]["result"]["tools"]}
-    assert {"zotero_search", "zotero_fulltext", "zotero_import_bibtex", "zotero_update_item"} <= zotero_names
+    assert {"zotero_search", "zotero_fulltext", "zotero_read_original_page", "zotero_read_original_file"} <= zotero_names
+    assert {"zotero_import_bibtex", "zotero_update_item"} <= zotero_names
     read_only = call(["zotero", "mcp", "serve", "--read-only"], [listing])
     read_only_names = {tool["name"] for tool in read_only[0]["result"]["tools"]}
     assert "zotero_import_bibtex" not in read_only_names and "zotero_update_item" not in read_only_names

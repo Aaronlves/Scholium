@@ -1,9 +1,26 @@
+import Darwin
 import Foundation
 import ScholiumContracts
 import UniformTypeIdentifiers
 
 extension ZoteroMCPServer {
-    func readOriginal(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
+    private enum OriginalReadKind {
+        case nonPDFFile
+        case pdfPage
+    }
+
+    func readOriginalFile(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
+        try await readOriginal(arguments, kind: .nonPDFFile)
+    }
+
+    func readOriginalPage(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
+        try await readOriginal(arguments, kind: .pdfPage)
+    }
+
+    private func readOriginal(
+        _ arguments: [String: ZoteroMCPJSONValue],
+        kind: OriginalReadKind
+    ) async throws -> ZoteroMCPJSONValue {
         guard Set(arguments.keys).isSubset(of: ["library", "attachment_key", "mode", "page", "start_utf8", "maximum_utf8", "expected_fingerprint"]),
             let mode = arguments["mode"]?.stringValue.flatMap(AgentAttachmentRead.Mode.init(rawValue:))
         else {
@@ -25,13 +42,24 @@ extension ZoteroMCPServer {
         else {
             throw ZoteroMCPServiceError.invalidArguments
         }
+        switch kind {
+        case .nonPDFFile:
+            guard page == nil else { throw ZoteroMCPServiceError.invalidArguments }
+        case .pdfPage:
+            guard page != nil else { throw ZoteroMCPServiceError.invalidArguments }
+        }
         let attachment = try await fileAttachment(key, route: route)
         let url = try await originalURL(key: key, route: route, attachment: attachment)
         let filename = url.lastPathComponent
         let type = try originalType(filename: filename, attachment: attachment)
-        guard (type == .pdf) == (page != nil) else { throw ZoteroMCPServiceError.invalidArguments }
+        switch kind {
+        case .nonPDFFile:
+            guard type != .pdf else { throw ZoteroMCPServiceError.originalKindMismatch }
+        case .pdfPage:
+            guard type == .pdf else { throw ZoteroMCPServiceError.originalKindMismatch }
+        }
         guard type == .pdf || (mode == .text ? type.conforms(to: .text) : type.conforms(to: .image)) else {
-            throw ZoteroMCPServiceError.originalUnavailable
+            throw ZoteroMCPServiceError.originalUnsupported
         }
 
         let bytes = try await originalBytes(url)
@@ -102,9 +130,7 @@ extension ZoteroMCPServer {
             let url = parts.url, url.isFileURL, url.path.hasPrefix("/"), !url.path.utf8.contains(0),
             url.path == url.standardizedFileURL.path,
             (try? AttachmentRelativePath(String(url.path.dropFirst()))) != nil
-        else {
-            throw ZoteroMCPServiceError.originalUnavailable
-        }
+        else { throw ZoteroMCPServiceError.originalPathRejected }
         return url
     }
 
@@ -117,9 +143,7 @@ extension ZoteroMCPServer {
             (type == .pdf && declaredType == .pdf)
                 || (type.conforms(to: .text) && declaredType.conforms(to: .text))
                 || (type.conforms(to: .image) && declaredType.conforms(to: .image))
-        else {
-            throw ZoteroMCPServiceError.originalUnavailable
-        }
+        else { throw ZoteroMCPServiceError.originalMetadataMismatch }
         let namedFile: String?
         if data["linkMode"]?.stringValue == "linked_file" {
             namedFile = data["path"]?.stringValue.map { path in
@@ -131,7 +155,7 @@ extension ZoteroMCPServer {
         } else {
             namedFile = data["filename"]?.stringValue
         }
-        guard namedFile == filename else { throw ZoteroMCPServiceError.originalUnavailable }
+        guard namedFile == filename else { throw ZoteroMCPServiceError.originalMetadataMismatch }
         return type
     }
 
@@ -142,31 +166,58 @@ extension ZoteroMCPServer {
                 relativePath: AttachmentRelativePath(String(url.path.dropFirst())), maximumByteCount: 20 * 1_024 * 1_024)
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as POSIXError {
+            switch error.code {
+            case .ENOENT, .ENOTDIR: throw ZoteroMCPServiceError.originalMissing
+            case .EACCES, .EPERM: throw ZoteroMCPServiceError.originalPermissionDenied
+            case .ELOOP: throw ZoteroMCPServiceError.originalPathRejected
+            case .EFBIG: throw ZoteroMCPServiceError.originalTooLarge
+            default: throw ZoteroMCPServiceError.originalReadFailed("The selected local original could not be read at the filesystem boundary.")
+            }
+        } catch let error as CocoaError {
+            switch error.code {
+            case .fileNoSuchFile: throw ZoteroMCPServiceError.originalMissing
+            case .fileReadNoPermission: throw ZoteroMCPServiceError.originalPermissionDenied
+            case .fileReadTooLarge: throw ZoteroMCPServiceError.originalTooLarge
+            case .fileReadUnsupportedScheme: throw ZoteroMCPServiceError.originalUnsupported
+            default: throw ZoteroMCPServiceError.originalReadFailed("The selected local original could not be read at the filesystem boundary.")
+            }
         } catch {
-            throw ZoteroMCPServiceError.originalUnavailable
+            throw ZoteroMCPServiceError.originalReadFailed("The selected local original could not be read at the filesystem boundary.")
         }
     }
 
+    private static let originalReadProperties: [String: ZoteroMCPJSONValue] = [
+        "library": .object(["type": .string("string"), "pattern": .string("^(user|group:[1-9][0-9]*)$")]),
+        "attachment_key": .object(["type": .string("string"), "maxLength": .integer(128)]),
+        "mode": .object(["type": .string("string"), "enum": .array([.string("text"), .string("image")])]),
+        "start_utf8": .object(["type": .string("integer"), "minimum": .integer(0), "maximum": .integer(20 * 1_024 * 1_024), "default": .integer(0)]),
+        "maximum_utf8": .object([
+            "type": .string("integer"), "minimum": .integer(1), "maximum": .integer(65_536), "default": .integer(16_384),
+            "description": .string("Text mode only."),
+        ]),
+        "expected_fingerprint": .object([
+            "type": .string("string"), "pattern": .string("^[0-9a-f]{64}$"),
+            "description": .string("Original file fingerprint; required for nonzero text offsets."),
+        ]),
+    ]
+
+    private static let originalReadPageProperties: [String: ZoteroMCPJSONValue] = originalReadProperties.merging([
+        "page": .object([
+            "type": .string("integer"), "minimum": .integer(1),
+            "description": .string("One-based physical PDF page."),
+        ]),
+    ], uniquingKeysWith: { _, new in new })
+
     static let originalReadTool = tool(
-        name: "zotero_read_original",
+        name: "zotero_read_original_file",
         description:
-            "Read an exact local attachment snapshot (at most 20 MiB): one physical PDF page, a bounded UTF-8 slice, or a bounded PNG. No arbitrary file path, index substitution, OCR or Zotero writes.",
-        properties: [
-            "library": .object(["type": .string("string"), "pattern": .string("^(user|group:[1-9][0-9]*)$")]),
-            "attachment_key": .object(["type": .string("string"), "maxLength": .integer(128)]),
-            "mode": .object(["type": .string("string"), "enum": .array([.string("text"), .string("image")])]),
-            "page": .object([
-                "type": .string("integer"), "minimum": .integer(1),
-                "description": .string("Required one-based physical page for PDF; absent for text/image files."),
-            ]),
-            "start_utf8": .object(["type": .string("integer"), "minimum": .integer(0), "maximum": .integer(20 * 1_024 * 1_024), "default": .integer(0)]),
-            "maximum_utf8": .object([
-                "type": .string("integer"), "minimum": .integer(1), "maximum": .integer(65_536), "default": .integer(16_384),
-                "description": .string("Text mode only."),
-            ]),
-            "expected_fingerprint": .object([
-                "type": .string("string"), "pattern": .string("^[0-9a-f]{64}$"),
-                "description": .string("Original file fingerprint; required for nonzero text offsets."),
-            ]),
-        ], required: ["library", "attachment_key", "mode"])
+            "Read an exact local non-PDF attachment (at most 20 MiB): a bounded UTF-8 slice or bounded PNG. For a PDF, use zotero_read_original_page. No arbitrary file path, OCR or Zotero writes.",
+        properties: originalReadProperties, required: ["library", "attachment_key", "mode"])
+
+    static let originalReadPageTool = tool(
+        name: "zotero_read_original_page",
+        description:
+            "Read one exact physical page from a local PDF attachment (at most 20 MiB) as bounded text or a native PNG image. Page is one-based. No OCR, arbitrary file path or Zotero writes.",
+        properties: originalReadPageProperties, required: ["library", "attachment_key", "mode", "page"])
 }
