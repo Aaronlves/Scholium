@@ -9,7 +9,8 @@ table_styles="$repo_root/Scholium/Resources/Editor/tables.css"
 footnote_styles="$repo_root/Scholium/Resources/Editor/footnotes.css"
 editor_styles="$repo_root/Scholium/Resources/Editor/editor.css"
 read_styles="$repo_root/Scholium/Views/Note/SafeMarkdownReadWebView.swift"
-design_system="$repo_root/Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+color_system="$repo_root/Scholium/UI/Foundation/DesignSystem/ScholiumColorSystem.swift"
+web_tokens="$repo_root/Scholium/UI/Foundation/DesignSystem/ScholiumWebDesignTokens.swift"
 renderer="$repo_root/ScholiumContracts/SafeMarkdownRenderer.swift"
 live_callouts="$repo_root/WebEditor/live-structured-block-projections.ts"
 committed_math="$repo_root/Scholium/Resources/Editor/math.bundle.js"
@@ -78,16 +79,16 @@ if ! rg -q '^\.scholium-callout-fold-mark' "$callout_styles" || \
 fi
 
 if ! rg -q -- '--scholium-callout-title-ink' "$callout_styles" || \
-   ! rg -q 'calloutTitleColor' "$design_system" || \
+   ! rg -q 'calloutTitleColor' "$color_system" || \
    rg -q 'orientationTitleBecomesBody' "$renderer"; then
   print -u2 "Shared semantic Callout color or authored-title precedence is missing."
   exit 1
 fi
 
-if ! rg -q -- '--scholium-document-prose-font-size:.*body\.fontSizePoints' "$design_system" || \
+if ! rg -q -- '--scholium-document-prose-font-size:.*body\.fontSizePoints' "$web_tokens" || \
    ! rg -q 'font-size: var\(--scholium-document-prose-font-size\)' "$editor_styles" || \
    ! rg -q 'font-size: var\(--scholium-document-prose-font-size\)' "$read_styles" || \
-   ! rg -U -q '^[[:space:]]*\.scholium-document h1,\n[[:space:]]*\.scholium-live-mode \.cm-live-h1 \{[^}]*font-size:' "$design_system" || \
+   ! rg -U -q '^[[:space:]]*\.scholium-document h1,\n[[:space:]]*\.scholium-live-mode \.cm-live-h1 \{[^}]*font-size:' "$web_tokens" || \
    rg -U -q '^\.cm-live-h[1-6].*\{[^}]*font-(size|weight):' "$editor_styles" || \
    ! rg -q '\.scholium-callout-body' "$callout_styles" || \
    ! rg -q 'font-size: 100%' "$callout_styles"; then

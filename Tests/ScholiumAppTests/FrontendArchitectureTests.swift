@@ -1477,12 +1477,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let designSystemSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
-            ),
-            encoding: .utf8
-        )
+        let designSystemSource = try scholiumDesignSystemSource(in: repository)
 
         #expect(typographySource.contains("case body"))
         #expect(typographySource.contains("case compact"))
@@ -2789,12 +2784,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let designSystem = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
-            ),
-            encoding: .utf8
-        )
+        let designSystem = try scholiumDesignSystemSource(in: repository)
         let search = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/SearchWorkspaceView.swift"
@@ -2863,12 +2853,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let foundation = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
-            ),
-            encoding: .utf8
-        )
+        let foundation = try scholiumDesignSystemSource(in: repository)
         let tabs = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
@@ -4400,4 +4385,23 @@ struct FrontendArchitectureTests {
             ? component / 12.92
             : pow((component + 0.055) / 1.055, 2.4)
     }
+}
+
+/// The Design System's whole source, as one string.
+///
+/// These tests read the Design System as text because what they assert is that
+/// one authority states a role and every consumer names it rather than restating
+/// the value. That authority is a directory rather than a single file, and which
+/// file within it holds a given role is an organizing decision the tests have no
+/// stake in. Reading the directory keeps them indifferent to it.
+func scholiumDesignSystemSource(in repository: URL) throws -> String {
+    let directory = repository.appendingPathComponent("Scholium/UI/Foundation/DesignSystem")
+    let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        .filter { $0.hasSuffix(".swift") }
+        .sorted()
+    #expect(!names.isEmpty, "The Design System directory holds no Swift sources")
+    return
+        try names
+        .map { try String(contentsOf: directory.appendingPathComponent($0), encoding: .utf8) }
+        .joined(separator: "\n")
 }
