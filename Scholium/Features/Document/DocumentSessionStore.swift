@@ -47,6 +47,11 @@ enum ScrollRestoreReason: String, Equatable, Sendable {
     case explicitNavigation
 }
 
+enum DocumentScrollSurface: Hashable, Sendable {
+    case read
+    case editor
+}
+
 struct ScrollRestoreRequest: Equatable, Sendable {
     let id: UInt64
     let fingerprint: String
@@ -68,9 +73,11 @@ final class DocumentSessionModel: ObservableObject {
     @Published var editingRevision: DocumentFingerprint?
     @Published var editError: String?
     @Published var isSavingEdit = false
-    /// Ordinary WebView scroll reports update this non-published observation.
-    /// They must not invalidate the document tree or become restoration input.
-    private(set) var observedScrollPosition = ObservedScrollPosition()
+    /// Review and the retained editor have independent viewport observations.
+    /// A mode handoff copies one position explicitly; an ordinary report from
+    /// one surface can never overwrite the other surface's viewport.
+    private(set) var readScrollPosition = ObservedScrollPosition()
+    private(set) var editorScrollPosition = ObservedScrollPosition()
     /// Only an explicit lifecycle or navigation transition creates a request.
     /// Coordinators consume each monotonically increasing ID at most once.
     @Published private(set) var scrollRestoreRequest: ScrollRestoreRequest?
@@ -128,6 +135,22 @@ final class DocumentSessionModel: ObservableObject {
         managedCreationBodyStartUTF16 != nil
     }
 
+    var activeScrollSurface: DocumentScrollSurface {
+        isEditing ? .editor : .read
+    }
+
+    var activeScrollPosition: ObservedScrollPosition {
+        switch activeScrollSurface {
+        case .read: readScrollPosition
+        case .editor: editorScrollPosition
+        }
+    }
+
+    var readScrollFraction: Double { readScrollPosition.fraction }
+    var editorScrollFraction: Double { editorScrollPosition.fraction }
+    var readScrollAnchor: EditorScrollAnchor? { readScrollPosition.anchor }
+    var editorScrollAnchor: EditorScrollAnchor? { editorScrollPosition.anchor }
+
     func presentConflictComparison() {
         guard let conflict else { return }
         conflictComparison = conflict
@@ -169,7 +192,8 @@ final class DocumentSessionModel: ObservableObject {
         _ presentation: WindowDocumentPresentationSnapshot,
         source: String
     ) {
-        observedScrollPosition.updateFraction(presentation.scrollFraction)
+        readScrollPosition.updateFraction(presentation.scrollFraction)
+        editorScrollPosition.updateFraction(presentation.scrollFraction)
         hasBeenActivated = true
         _ = editorSession.restoreWindowPresentation(
             presentation,
@@ -179,7 +203,7 @@ final class DocumentSessionModel: ObservableObject {
 
     var windowPresentationSnapshot: WindowDocumentPresentationSnapshot {
         editorSession.windowPresentationSnapshot(
-            scrollFraction: observedScrollPosition.fraction
+            scrollFraction: activeScrollPosition.fraction
         )
     }
 
@@ -197,6 +221,13 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func beginEditing(in mode: MarkdownEditorMode) {
+        // Entering Edit is an explicit projection handoff from the active
+        // Review viewport. The editor keeps its own subsequent position.
+        editorScrollPosition = readScrollPosition
+        editorSession.setScrollPosition(
+            anchor: editorScrollPosition.anchor,
+            fallbackFraction: editorScrollPosition.fraction
+        )
         updatePresentation { $0.beginEditing(mode) }
     }
 
@@ -205,6 +236,9 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func finishEditing() {
+        // Returning to Review is the opposite explicit handoff. This is not a
+        // shared live state: later hidden-editor reports cannot change Read.
+        readScrollPosition = editorScrollPosition
         completeManagedCreationEntry()
         updatePresentation { $0.finishEditing() }
     }
@@ -292,21 +326,55 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     var scrollFraction: Double {
-        get { observedScrollPosition.fraction }
-        set { observedScrollPosition.updateFraction(newValue) }
+        get { activeScrollPosition.fraction }
+        set {
+            switch activeScrollSurface {
+            case .read: readScrollPosition.updateFraction(newValue)
+            case .editor: editorScrollPosition.updateFraction(newValue)
+            }
+        }
     }
 
     var scrollAnchor: EditorScrollAnchor? {
-        get { observedScrollPosition.anchor }
-        set { observedScrollPosition.anchor = newValue }
+        get { activeScrollPosition.anchor }
+        set {
+            switch activeScrollSurface {
+            case .read: readScrollPosition.anchor = newValue
+            case .editor: editorScrollPosition.anchor = newValue
+            }
+        }
     }
 
+    /// Observes the active presentation surface. New surface callbacks should
+    /// use the overload that names the surface explicitly.
     func observeScrollFraction(_ fraction: Double) {
-        observedScrollPosition.updateFraction(fraction)
+        observeScrollFraction(fraction, on: activeScrollSurface)
     }
 
     func observeScrollAnchor(_ anchor: EditorScrollAnchor?) {
-        observedScrollPosition.anchor = anchor
+        observeScrollAnchor(anchor, on: activeScrollSurface)
+    }
+
+    func observeScrollFraction(_ fraction: Double, on surface: DocumentScrollSurface) {
+        switch surface {
+        case .read: readScrollPosition.updateFraction(fraction)
+        case .editor: editorScrollPosition.updateFraction(fraction)
+        }
+    }
+
+    func observeScrollAnchor(_ anchor: EditorScrollAnchor?, on surface: DocumentScrollSurface) {
+        switch surface {
+        case .read: readScrollPosition.anchor = anchor
+        case .editor: editorScrollPosition.anchor = anchor
+        }
+    }
+
+    func adoptEditorScrollPositionForReview(anchor: EditorScrollAnchor?) {
+        if let anchor {
+            editorScrollPosition.updateFraction(anchor.fallbackFraction)
+            editorScrollPosition.anchor = anchor
+        }
+        readScrollPosition = editorScrollPosition
     }
 
     @discardableResult
@@ -315,8 +383,21 @@ final class DocumentSessionModel: ObservableObject {
         reason: ScrollRestoreReason,
         position: ObservedScrollPosition? = nil
     ) -> ScrollRestoreRequest {
+        requestReadScrollRestore(
+            fingerprint: fingerprint,
+            reason: reason,
+            position: position ?? activeScrollPosition
+        )
+    }
+
+    @discardableResult
+    func requestReadScrollRestore(
+        fingerprint: String,
+        reason: ScrollRestoreReason,
+        position: ObservedScrollPosition? = nil
+    ) -> ScrollRestoreRequest {
         nextScrollRestoreRequestID &+= 1
-        let observed = position ?? observedScrollPosition
+        let observed = position ?? readScrollPosition
         let matchingAnchor = observed.anchor.flatMap { anchor in
             anchor.sourceFingerprint == fingerprint ? anchor : nil
         }
@@ -334,7 +415,8 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func resetScrollPosition() {
-        observedScrollPosition = ObservedScrollPosition()
+        readScrollPosition = ObservedScrollPosition()
+        editorScrollPosition = ObservedScrollPosition()
         scrollRestoreRequest = nil
     }
 
@@ -455,7 +537,7 @@ final class DocumentSessionStore {
             else { return nil }
             return ReapedPresentation(
                 target: target,
-                scrollPosition: entry.session.observedScrollPosition
+                scrollPosition: entry.session.activeScrollPosition
             )
         }
         for presentation in eligible {

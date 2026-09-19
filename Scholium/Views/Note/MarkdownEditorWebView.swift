@@ -4,6 +4,8 @@ import SwiftUI
 import WebKit
 
 struct MarkdownEditorWebView: NSViewRepresentable {
+    @Environment(\.scholiumDocumentSurfaceVisibility)
+    private var surfaceVisibility
     @ObservedObject var session: MarkdownEditorSession
     let documentID: String
     let documentTitle: String
@@ -203,17 +205,22 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 webView?.loadHTMLString(editorHTML, baseURL: nil)
             }
         }
-        return DocumentWebViewContainer(
+        let container = DocumentWebViewContainer(
             webView: webView,
             keyEquivalentRoute: { event in
                 ScholiumCommandKeyEquivalentRouter.route(event)
             }
         )
+        container.setSurfaceVisibility(surfaceVisibility)
+        context.coordinator.surfaceVisibility = surfaceVisibility
+        return container
     }
 
     func updateNSView(_ container: DocumentWebViewContainer, context: Context) {
         let webView = container.webView
+        container.setSurfaceVisibility(surfaceVisibility)
         context.coordinator.activeWebView = webView
+        context.coordinator.surfaceVisibility = surfaceVisibility
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
             webView.onPasteImage = onPasteImage
@@ -363,6 +370,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onLinkActivation: (String) -> Void
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
+        var surfaceVisibility: DocumentSurfaceVisibility = .active
         var documentID = ""
         var documentTitle = ""
         var performanceDocumentID: String
@@ -445,7 +453,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
             switch payload {
             case .floatingSurface(let request):
-                guard validEnvelope(request.envelope), let webView = message.webView,
+                guard surfaceVisibility.isActive,
+                    validEnvelope(request.envelope), let webView = message.webView,
                     request.surface.kind != .selection || onAskAgent != nil
                 else { return }
                 session.floatingSurfaces.present(request.surface, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
@@ -480,7 +489,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         .string("The Markdown editor could not start.")
                 )
             case .interactionChanged(let interaction):
-                guard validEnvelope(interaction.envelope) else { return }
+                guard surfaceVisibility.isActive,
+                    validEnvelope(interaction.envelope)
+                else { return }
                 if interaction.context?.composing == true || interaction.focusTarget == .title
                     || (writingContinuationEditorCaret.map { caret in
                         interaction.selections != [.init(anchor: caret, head: caret)]
@@ -498,7 +509,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     context: interaction.context
                 )
             case .documentChanged(let change):
-                guard validEnvelope(change.envelope, allowingFutureGeneration: true) else {
+                guard surfaceVisibility.isActive,
+                    validEnvelope(change.envelope, allowingFutureGeneration: true)
+                else {
                     return
                 }
                 cancelWritingContinuation()
@@ -532,18 +545,20 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     return
                 }
             case .requestSave(let envelope):
-                guard validEnvelope(envelope) else { return }
+                guard surfaceVisibility.isActive, validEnvelope(envelope) else { return }
                 onRequestSave()
             case .requestEditorFocus(let envelope):
-                guard validEnvelope(envelope), let webView = message.webView,
+                guard surfaceVisibility.isActive,
+                    validEnvelope(envelope), let webView = message.webView,
                     activeWebView === webView
                 else { return }
                 session.acceptNativeFocusAfterDrop(from: webView)
             case .requestDocumentFind(let request):
-                guard validEnvelope(request.envelope) else { return }
+                guard surfaceVisibility.isActive, validEnvelope(request.envelope) else { return }
                 onRequestFind(request.action)
             case .requestDocumentTitleRename(let request):
-                guard validEnvelope(request.envelope),
+                guard surfaceVisibility.isActive,
+                    validEnvelope(request.envelope),
                     let webView = message.webView ?? activeWebView
                 else { return }
                 guard request.expectedTitle == documentTitle else {
@@ -552,7 +567,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 }
                 beginDocumentTitleRename(request, in: webView)
             case .requestImagePaste(let envelope):
-                guard validEnvelope(envelope),
+                guard surfaceVisibility.isActive,
+                    validEnvelope(envelope),
                     let webView = message.webView as? WindowAttachedWebView
                 else { return }
                 _ = webView.consumePastedImage()
@@ -566,13 +582,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 requestMathRuntime(in: webView)
             case .cancelWritingContinuation(let request):
                 // Cancellation remains valid after the same session has advanced a generation.
-                guard request.envelope.sessionID == session.sessionID.uuidString,
+                guard surfaceVisibility.isActive,
+                    request.envelope.sessionID == session.sessionID.uuidString,
                     request.envelope.documentID == documentID,
                     request.requestID == writingContinuationRequestID
                 else { return }
                 cancelWritingContinuation()
             case .writingContinuationQuery(let request):
-                guard validEnvelope(request.envelope), writingContinuationEnabled,
+                guard surfaceVisibility.isActive,
+                    validEnvelope(request.envelope), writingContinuationEnabled,
                     let webView = message.webView, activeWebView === webView,
                     session.acceptsInteractionRanges(
                         [.init(anchor: request.editorCaretUTF16Offset, head: request.editorCaretUTF16Offset)],
@@ -608,7 +626,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         arguments: ["requestID": request.requestID, "value": value], in: nil, contentWorld: .page)
                 }
             case .linkCompletionQuery(let request):
-                guard validEnvelope(request.envelope) else { return }
+                guard surfaceVisibility.isActive, validEnvelope(request.envelope) else { return }
                 let requestID = request.requestID
                 let requestedDocumentID = documentID
                 let requestedFingerprint = startingFingerprint
@@ -661,10 +679,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     )
                 }
             case .linkActivated(let activation):
-                guard validEnvelope(activation.envelope) else { return }
+                guard surfaceVisibility.isActive, validEnvelope(activation.envelope) else { return }
                 onLinkActivation(activation.target)
             case .contextMenuRequested(let request):
-                guard validEnvelope(request.envelope),
+                guard surfaceVisibility.isActive,
+                    validEnvelope(request.envelope),
                     session.acceptsInteractionRanges(
                         request.context.selections,
                         documentVersion: request.envelope.documentVersion
@@ -679,7 +698,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     mode: request.mode
                 )
             case .scrollChanged(let scroll):
-                guard validEnvelope(scroll.envelope),
+                guard surfaceVisibility.isActive,
+                    validEnvelope(scroll.envelope),
                     (0...1).contains(scroll.fraction)
                 else { return }
                 if let anchor = session.recordScrollPosition(

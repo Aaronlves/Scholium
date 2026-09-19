@@ -1277,7 +1277,10 @@ enum ScholiumWebDesignTokens {
           text-align: start;
           text-decoration-line: none;
           text-decoration: none;
-          text-wrap: balance;
+          /* Review inherits the document's readable `pretty` wrapping and
+             Edit inherits CodeMirror's stable wrapping. Do not balance
+             headings: balancing can move a heading to a new line while the
+             current line still has available measure. */
           box-sizing: border-box;
           margin: 0;
           padding-block: 0;

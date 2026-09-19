@@ -19,6 +19,13 @@ retry/comparison state. Review and allocated editor hosts retain identity across
 mode/layout/theme changes; hidden hosts cannot receive input or accessibility
 focus. Requested mode is not presented fact until matching acknowledgment.
 
+The document host owns one visible native surface at a time. A retained Review
+or editor WebView may remain allocated for identity, recovery and readiness, but
+its native container is explicitly hidden from compositing and accessibility
+when inactive; SwiftUI z-order and hit-testing are not the visibility authority.
+Review and editor keep separate viewport observations. Mode handoff is the only
+route that copies an anchor or fallback fraction between them.
+
 Detachment atomically freezes input and captures exact source, selection and
 history. Detached saves require unchanged document/revision/generation proof;
 cancelled transitions resume only their matching suspension. Committed snapshots
@@ -99,8 +106,10 @@ writer. Failed rename retains its draft error.
 ### Source locations and transient interaction
 
 The document session owns fingerprint-bound semantic scroll continuity and fallback
-fraction. Only lifecycle edges create restoration requests; ordinary reports do
-not publish a second scroll state. One tokenized claim is acknowledged only after
+fraction for each document surface. Only lifecycle edges create restoration
+requests; ordinary reports update only the active surface and do not publish a
+second scroll state. A mode handoff explicitly transfers the current source
+anchor before Review restoration. One tokenized claim is acknowledged only after
 successful current-load restoration. Cancellation/failure/report echoes cannot
 consume or recreate requests. Review and editor map the same exact source contract
 to native geometry; invalid mappings fall back, never guess textual matches.
@@ -214,6 +223,11 @@ dated results belong to Status. A focused series cannot pass the complete gate.
 ## Source entry points
 
 - `Scholium/Features/Document/DocumentController.swift`: retained document workflows.
+- `Scholium/Features/Document/DocumentSessionStore.swift`: document presentation,
+  native-surface ownership and per-surface scroll handoff.
+- `Scholium/Views/Note/DocumentEditorHost.swift` and
+  `Scholium/Views/Note/DocumentWebViewContainer.swift`: one-visible-surface
+  native composition boundary.
 - `Scholium/Views/Note/MarkdownEditorSession.swift`: checked native bridge/recovery.
 - `WebEditor/editor.ts` and `WebEditor/reader.ts`: controlled Web composition.
 - `ScholiumContracts/MarkdownSemanticDocument.swift`: committed source semantics.

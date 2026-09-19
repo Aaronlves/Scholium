@@ -8,6 +8,26 @@ import Testing
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
+    @Test("Read and editor viewport observations remain isolated until an explicit handoff")
+    func readAndEditorScrollPositionsDoNotInterfere() {
+        let session = DocumentSessionModel(key: nil)
+        session.observeScrollFraction(0.2, on: .read)
+        session.observeScrollFraction(0.8, on: .editor)
+
+        #expect(session.readScrollFraction == 0.2)
+        #expect(session.editorScrollFraction == 0.8)
+
+        session.preparePresentationMode(.livePreview)
+        session.beginEditing(in: .livePreview)
+        session.observeScrollFraction(0.9, on: .editor)
+        #expect(session.readScrollFraction == 0.2)
+        #expect(session.editorScrollFraction == 0.9)
+
+        session.adoptEditorScrollPositionForReview(anchor: nil)
+        #expect(session.readScrollFraction == 0.9)
+        #expect(session.editorScrollFraction == 0.9)
+    }
+
     @Test("Document top presents persistent feedback, Actions, then permission education")
     func documentTopSurfacePriority() {
         #expect(

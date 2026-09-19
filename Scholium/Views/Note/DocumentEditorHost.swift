@@ -1,5 +1,25 @@
 import SwiftUI
 
+enum DocumentSurfaceVisibility: Equatable {
+    case active
+    case retained
+
+    var isActive: Bool {
+        self == .active
+    }
+}
+
+private struct ScholiumDocumentSurfaceVisibilityKey: EnvironmentKey {
+    static let defaultValue = DocumentSurfaceVisibility.active
+}
+
+extension EnvironmentValues {
+    var scholiumDocumentSurfaceVisibility: DocumentSurfaceVisibility {
+        get { self[ScholiumDocumentSurfaceVisibilityKey.self] }
+        set { self[ScholiumDocumentSurfaceVisibilityKey.self] = newValue }
+    }
+}
+
 /// Owns only the native visibility handoff between two retained surfaces.
 /// Initial Review -> editor entry waits for the requested bridge mode, while
 /// an already presented CodeMirror surface stays visible during its atomic
@@ -48,8 +68,8 @@ struct DocumentEditorPresentationGate: Equatable {
 
 /// Owns the presentation boundary between the committed Read projection and
 /// the exact-source editor. Once the editor has been created, ordinary mode
-/// switches change visibility and focus only; they do not remove either WebKit
-/// surface from the hierarchy.
+/// switches change native visibility and focus only; they do not remove either
+/// WebKit surface from the hierarchy.
 struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     let documentID: String
     let presentsEditor: Bool
@@ -90,12 +110,16 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     var body: some View {
         ZStack {
             readSurface
-                // Keep a retained Review WebView composited behind the active
-                // editor. A zero-opacity WKWebView can be suspended by WebKit
-                // and fail to repaint when Review becomes visible again.
-                // During the initial editor handoff the clear cover still
-                // hides the stale projection until CodeMirror is ready.
-                .opacity(presentsEditor && !showsEditor && !allowsPendingReadRecovery ? 0 : 1)
+                // SwiftUI modifiers are not a sufficient occlusion boundary
+                // for an embedded NSView/WKWebView. The representable applies
+                // this state to its native container as well, so a retained
+                // surface cannot paint through the active document plane.
+                .environment(
+                    \.scholiumDocumentSurfaceVisibility,
+                    presentsEditor && !allowsPendingReadRecovery
+                        ? .retained
+                        : .active
+                )
                 .allowsHitTesting(
                     presentationGate.allowsReadHitTesting(
                         documentID: documentID,
@@ -109,11 +133,10 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
 
             if retainsEditor {
                 editorSurface
-                    // Retain both document planes at full opacity and let
-                    // z-order, hit testing, and accessibility own visibility.
-                    // This avoids treating opacity as a WebKit lifecycle
-                    // signal while preserving one visible surface.
-                    .opacity(1)
+                    .environment(
+                        \.scholiumDocumentSurfaceVisibility,
+                        showsEditor ? .active : .retained
+                    )
                     .allowsHitTesting(showsEditor)
                     .accessibilityHidden(!showsEditor)
                     .zIndex(showsEditor ? 1 : 0)

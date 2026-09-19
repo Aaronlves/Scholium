@@ -14,6 +14,7 @@ final class DocumentWebViewContainer: NSView {
     let webView: WKWebView
     private let keyEquivalentRoute: ScholiumDocumentKeyEquivalentRoute
     private var loadingObservation: NSKeyValueObservation?
+    private(set) var surfaceVisibility: DocumentSurfaceVisibility = .active
     override var isFlipped: Bool { true }
 
     init(
@@ -44,6 +45,18 @@ final class DocumentWebViewContainer: NSView {
             name: NSColor.systemColorsDidChangeNotification,
             object: nil
         )
+    }
+
+    /// Native WebKit views remain allocated for editor identity and recovery,
+    /// but only the active document surface may participate in compositing or
+    /// accessibility. SwiftUI hit-testing and z-order are not sufficient for
+    /// NSView-backed WebKit content.
+    func setSurfaceVisibility(_ visibility: DocumentSurfaceVisibility) {
+        guard surfaceVisibility != visibility else { return }
+        surfaceVisibility = visibility
+        let isRetained = !visibility.isActive
+        isHidden = isRetained
+        webView.isHidden = isRetained
     }
 
     required init?(coder: NSCoder) { nil }
@@ -101,6 +114,6 @@ final class DocumentWebViewContainer: NSView {
     override func accessibilityChildren() -> [Any]? {
         // WKWebView's own AX tree does not include arbitrary native subviews.
         // The native parent exposes both owners without mirroring their content.
-        subviews
+        isHidden ? [] : subviews
     }
 }

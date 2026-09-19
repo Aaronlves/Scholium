@@ -462,6 +462,8 @@ struct NoteContentView: View {
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
             documentFind.refresh()
+            outlineScrollFraction = documentSession.scrollFraction
+            outlineScrollAnchor = documentSession.scrollAnchor
             focusEditorIfPresented()
             if !isEditing,
                 documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
@@ -515,7 +517,7 @@ struct NoteContentView: View {
             let fingerprint = noteFingerprint
             if !isEditing {
                 documentSession.readSelection = nil
-                documentSession.requestScrollRestore(
+                documentSession.requestReadScrollRestore(
                     fingerprint: fingerprint.sha256,
                     reason: .documentLoad
                 )
@@ -674,7 +676,7 @@ struct NoteContentView: View {
                 ),
                 linkCompletionQuery: queryEditorLinkCompletions,
                 linkPreviews: documentSession.previewCatalog?.links ?? [],
-                initialScrollFraction: state.initialScrollFraction,
+                initialScrollFraction: documentSession.editorScrollFraction,
                 initialScrollAnchor: editorScrollAnchor,
                 onDocumentActivity: {
                     controller.editorSourceDidChange(
@@ -697,13 +699,15 @@ struct NoteContentView: View {
                 onPasteImage: handlePastedImage,
                 onLinkActivation: openAuthoredLink,
                 onScrollFractionChange: {
+                    guard isEditing else { return }
                     rememberOutlineScrollFraction($0)
-                    documentSession.observeScrollFraction($0)
+                    documentSession.observeScrollFraction($0, on: .editor)
                     actions.rememberScrollPosition($0)
                 },
                 onScrollAnchorChange: {
+                    guard isEditing else { return }
                     rememberOutlineScrollAnchor($0)
-                    documentSession.observeScrollAnchor($0)
+                    documentSession.observeScrollAnchor($0, on: .editor)
                 },
                 onAskAgent: actions.askAgent,
                 onPassageAction: { actions.passageAction($0, nil) },
@@ -991,7 +995,7 @@ struct NoteContentView: View {
                     documentFind.fail(error, for: requestID)
                 }
             },
-            observedScrollPosition: documentSession.observedScrollPosition,
+            observedScrollPosition: documentSession.readScrollPosition,
             scrollRestoreRequest: documentSession.scrollRestoreRequest,
             onScrollRestoreConsumed: { id, fingerprint in
                 documentSession.acknowledgeScrollRestoreRequest(
@@ -1000,15 +1004,15 @@ struct NoteContentView: View {
                 )
             },
             onScrollFractionChange: {
-                rememberOutlineScrollFraction($0)
                 guard !isEditing else { return }
-                documentSession.observeScrollFraction($0)
+                rememberOutlineScrollFraction($0)
+                documentSession.observeScrollFraction($0, on: .read)
                 actions.rememberScrollPosition($0)
             },
             onScrollAnchorChange: {
-                rememberOutlineScrollAnchor($0)
                 guard !isEditing else { return }
-                documentSession.observeScrollAnchor($0)
+                rememberOutlineScrollAnchor($0)
+                documentSession.observeScrollAnchor($0, on: .read)
             },
             sourceLocationRequest: isEditing ? nil : currentSourceLocationRequest,
             onSourceRangeUnavailable: { id in
@@ -1045,8 +1049,8 @@ struct NoteContentView: View {
             return retained
         }
         let fingerprint = DocumentFingerprint(content: editorSession.checkedSource).sha256
-        guard documentSession.scrollAnchor?.sourceFingerprint == fingerprint else { return nil }
-        return documentSession.scrollAnchor
+        guard documentSession.editorScrollAnchor?.sourceFingerprint == fingerprint else { return nil }
+        return documentSession.editorScrollAnchor
     }
 
     private var documentPresentation: ScholiumDocumentPresentationConfiguration {
@@ -1456,8 +1460,11 @@ struct NoteContentView: View {
                     guard documentSession.reviewHandoffID == handoffID,
                         controller.selectedDocument?.editingTarget == target, !Task.isCancelled
                     else { return }
-                    documentSession.observeScrollAnchor(handoffAnchor)
-                    documentSession.requestScrollRestore(
+                    documentSession.adoptEditorScrollPositionForReview(anchor: handoffAnchor)
+                    actions.rememberScrollPosition(
+                        handoffAnchor?.fallbackFraction ?? documentSession.readScrollFraction
+                    )
+                    documentSession.requestReadScrollRestore(
                         fingerprint: handoffAnchor?.sourceFingerprint
                             ?? DocumentFingerprint(content: editingSource).sha256,
                         reason: .modeHandoff

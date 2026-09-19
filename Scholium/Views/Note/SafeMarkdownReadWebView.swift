@@ -4,6 +4,8 @@ import SwiftUI
 import WebKit
 
 struct SafeMarkdownReadWebView: NSViewRepresentable {
+    @Environment(\.scholiumDocumentSurfaceVisibility)
+    private var surfaceVisibility
     /// App-owned bridge scripts and the native message handler live in a
     /// named content world. Research-authored CSS and Markdown never enter
     /// that world, and the page world exposes no native handler or script.
@@ -132,16 +134,21 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             linkPreviewRevision: linkPreviewRevision,
             in: webView
         )
-        return DocumentWebViewContainer(
+        let container = DocumentWebViewContainer(
             webView: webView,
             keyEquivalentRoute: { event in
                 ScholiumCommandKeyEquivalentRouter.route(event)
             }
         )
+        container.setSurfaceVisibility(surfaceVisibility)
+        context.coordinator.surfaceVisibility = surfaceVisibility
+        return container
     }
 
     func updateNSView(_ container: DocumentWebViewContainer, context: Context) {
         let webView = container.webView
+        container.setSurfaceVisibility(surfaceVisibility)
+        context.coordinator.surfaceVisibility = surfaceVisibility
         #if DEBUG
             context.coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
             context.coordinator.testingScrollRestoreDelayMilliseconds =
@@ -267,6 +274,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var finalizedSignature: String?
         private var pageIsReady = false
         weak var activeWebView: WKWebView?
+        var surfaceVisibility: DocumentSurfaceVisibility = .active
         #if DEBUG
             var testingForcesFinalizationFailure = false
             var testingScrollRestoreDelayMilliseconds = 0
@@ -824,7 +832,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     onReplyEvent?(.quote(text))
                 }
             case "floatingSurface":
-                guard let surface = DocumentFloatingSurface.decode(payload["surface"]),
+                guard surfaceVisibility.isActive,
+                    let surface = DocumentFloatingSurface.decode(payload["surface"]),
                     surface.kind != .suggestions, let webView = message.webView,
                     surface.kind != .selection || onAskAgent != nil
                 else { return }
@@ -845,15 +854,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 guard let webView = message.webView else { return }
                 requestMermaidRuntime(in: webView)
             case "internalLink":
-                guard let target = payload["target"] as? String,
+                guard surfaceVisibility.isActive,
+                    let target = payload["target"] as? String,
                     !target.isEmpty,
                     target.utf8.count <= 8_192
                 else { return }
                 onLinkClick(target)
 
             case "passageContextMenu":
+                guard surfaceVisibility.isActive else { return }
                 if let webView = message.webView { presentPassageMenu(payload, in: webView) }
             case "selectionChanged":
+                guard surfaceVisibility.isActive else { return }
                 guard payload["text"] != nil else {
                     onSelectionChange?(nil)
                     return
@@ -1398,7 +1410,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fractionValue: Any?,
             anchorValue: Any?
         ) {
-            guard let fraction = (fractionValue as? NSNumber)?.doubleValue,
+            guard surfaceVisibility.isActive,
+                let fraction = (fractionValue as? NSNumber)?.doubleValue,
                 fraction.isFinite,
                 (0...1).contains(fraction)
             else { return }

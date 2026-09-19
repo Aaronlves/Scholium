@@ -3,6 +3,7 @@ import Foundation
 import ScholiumContracts
 import SwiftUI
 import Testing
+import WebKit
 
 @testable import ScholiumApp
 
@@ -319,6 +320,7 @@ struct FrontendArchitectureTests {
         #expect(hostSource.contains("if presentsEditor && !showsEditor && !allowsPendingReadRecovery"))
         #expect(hostSource.contains("allowsPendingReadRecovery"))
         #expect(hostSource.contains("presentedDocumentID == documentID || editorIsReady"))
+        #expect(hostSource.contains("scholiumDocumentSurfaceVisibility"))
         #expect(hostSource.contains(".accessibilityHidden(!showsEditor)"))
         #expect(
             noteSource.contains("@ObservedObject private var documentSession: DocumentSessionModel")
@@ -374,11 +376,30 @@ struct FrontendArchitectureTests {
         )
         #expect(webViewSource.contains("var lastModeInput: MarkdownEditorMode"))
         #expect(!webViewSource.contains("var mode: MarkdownEditorMode"))
+        #expect(webViewSource.contains("case .documentChanged(let change):\n                guard surfaceVisibility.isActive"))
+        #expect(webViewSource.contains("case .requestEditorFocus(let envelope):\n                guard surfaceVisibility.isActive"))
+        #expect(webViewSource.contains("case .requestImagePaste(let envelope):\n                guard surfaceVisibility.isActive"))
         let readyStart = try #require(webViewSource.range(of: "private func signalReady()"))
         let readySuffix = webViewSource[readyStart.lowerBound...]
         let readyEnd = try #require(readySuffix.range(of: "private func validEnvelope"))
         let readyBody = readySuffix[..<readyEnd.lowerBound]
         #expect(!readyBody.contains("loadDocument("))
+    }
+
+    @Test("Retained document surfaces are hidden at the native WebKit boundary")
+    func retainedDocumentSurfaceIsNotCompositedOrQueryable() {
+        let webView = WKWebView(frame: .zero)
+        let container = DocumentWebViewContainer(webView: webView)
+
+        container.setSurfaceVisibility(.retained)
+        #expect(container.isHidden)
+        #expect(webView.isHidden)
+        #expect(container.accessibilityChildren()?.isEmpty == true)
+
+        container.setSurfaceVisibility(.active)
+        #expect(!container.isHidden)
+        #expect(!webView.isHidden)
+        #expect(container.accessibilityChildren()?.isEmpty == false)
     }
 
     @Test("Read readiness preserves the native per-document accessibility identity")
@@ -411,6 +432,9 @@ struct FrontendArchitectureTests {
             webViewSource.contains(
                 #"scholium.renderedDocument.\(expectedDocumentID)"#
             ))
+        #expect(webViewSource.contains("case \"floatingSurface\":\n                guard surfaceVisibility.isActive"))
+        #expect(webViewSource.contains("case \"internalLink\":\n                guard surfaceVisibility.isActive"))
+        #expect(webViewSource.contains("case \"passageContextMenu\":\n                guard surfaceVisibility.isActive"))
         #expect(noteSource.contains("if !webProjectionIsReady"))
         #expect(!noteSource.contains(".accessibilityHidden(webProjectionIsReady)"))
         #expect(uiSupport.contains("identifier BEGINSWITH %@"))
@@ -3761,6 +3785,7 @@ struct FrontendArchitectureTests {
         #expect(sharedCSS.contains("text-spacing-trim: trim-both;"))
         #expect(sharedCSS.contains(".scholium-document {\n  text-wrap-style: pretty;"))
         #expect(sharedCSS.contains(".cm-editor.scholium-live-mode .cm-content {\n  text-wrap-style: stable;"))
+        #expect(!sharedCSS.contains("text-wrap: balance"))
         #expect(sharedCSS.contains("text-autospace: no-autospace;"))
         let sharedDocumentRoot = try #require(
             sharedCSS.components(
