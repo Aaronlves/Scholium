@@ -80,7 +80,8 @@ extension ZoteroMCPServer {
         ),
         tool(
             name: "zotero_import_bibtex",
-            description: "Import BibTeX text through Zotero Connector into the currently selected editable library or collection. Requires explicit confirmation.",
+            description:
+                "Import BibTeX text through Zotero Connector into the currently selected editable library or collection. Requires explicit confirmation.",
             properties: importProperties,
             required: ["text", "confirm", "target_fingerprint"],
             readOnly: false
@@ -94,7 +95,8 @@ extension ZoteroMCPServer {
         ),
         tool(
             name: "zotero_update_item",
-            description: "Modify one Zotero item through the local API. Requires explicit confirmation, the exact library and the item's current version; omitted fields are preserved.",
+            description:
+                "Modify one Zotero item through the local API. Requires explicit confirmation, the exact library and the item's current version; omitted fields are preserved.",
             properties: [
                 "library": libraryProperty,
                 "item_key": keyProperty,
@@ -155,16 +157,18 @@ extension ZoteroMCPServer {
                 URLQueryItem(name: "sort", value: "title"),
                 URLQueryItem(name: "direction", value: "asc"),
             ]
-            guard let request = ZoteroMCPRequestFactory.api(
-                route: route, resource: includeChildren ? .items(query: query) : .topItems(query: query))
+            guard
+                let request = ZoteroMCPRequestFactory.api(
+                    route: route, resource: includeChildren ? .items(query: query) : .topItems(query: query))
             else { throw ZoteroMCPServiceError.invalidRequest }
             let response = try await sendAPI(request)
             let items = try decodeArray(response.body, maximum: 100)
-            libraries.append(.object([
-                "library": route.value,
-                "count": .integer(items.count),
-                "items": .array(items),
-            ]))
+            libraries.append(
+                .object([
+                    "library": route.value,
+                    "count": .integer(items.count),
+                    "items": .array(items),
+                ]))
         }
         return .object(["start": .integer(start), "limit": .integer(limit), "libraries": .array(libraries)])
     }
@@ -177,7 +181,8 @@ extension ZoteroMCPServer {
         let topOnly = try boolean(arguments["top_level_only"], default: false)
         let limit = try integer(arguments["limit"], default: 25, range: 1...100)
         let start = try integer(arguments["start"], default: 0, range: 0...10_000)
-        let resource: ZoteroMCPRequestFactory.APIResource = topOnly
+        let resource: ZoteroMCPRequestFactory.APIResource =
+            topOnly
             ? .topCollections(query: [
                 URLQueryItem(name: "limit", value: String(limit)),
                 URLQueryItem(name: "start", value: String(start)),
@@ -204,12 +209,13 @@ extension ZoteroMCPServer {
         let route = try await singleLibraryRoute(arguments["library"]?.stringValue)
         let limit = try integer(arguments["limit"], default: 25, range: 1...100)
         let start = try integer(arguments["start"], default: 0, range: 0...10_000)
-        guard let request = ZoteroMCPRequestFactory.api(
-            route: route,
-            resource: .tags(query: [
-                URLQueryItem(name: "limit", value: String(limit)),
-                URLQueryItem(name: "start", value: String(start)),
-            ]))
+        guard
+            let request = ZoteroMCPRequestFactory.api(
+                route: route,
+                resource: .tags(query: [
+                    URLQueryItem(name: "limit", value: String(limit)),
+                    URLQueryItem(name: "start", value: String(start)),
+                ]))
         else {
             throw ZoteroMCPServiceError.invalidRequest
         }
@@ -226,14 +232,15 @@ extension ZoteroMCPServer {
         let routes = try await libraryRoutes()
         return .object([
             "count": .integer(routes.count - 1),
-            "libraries": .array(routes.map { route in
-                switch route {
-                case .user:
-                    return .object(["type": .string("user"), "id": .integer(0), "name": .string("My Library")])
-                case .group(let id, let name):
-                    return .object(["type": .string("group"), "id": .integer(id), "name": .string(name)])
-                }
-            }),
+            "libraries": .array(
+                routes.map { route in
+                    switch route {
+                    case .user:
+                        return .object(["type": .string("user"), "id": .integer(0), "name": .string("My Library")])
+                    case .group(let id, let name):
+                        return .object(["type": .string("group"), "id": .integer(id), "name": .string(name)])
+                    }
+                }),
         ])
     }
 
@@ -311,7 +318,8 @@ extension ZoteroMCPServer {
                 query.append(URLQueryItem(name: "direction", value: "asc"))
                 query.append(URLQueryItem(name: "start", value: String(start)))
             }
-            let resource: ZoteroMCPRequestFactory.APIResource = includeChildren
+            let resource: ZoteroMCPRequestFactory.APIResource =
+                includeChildren
                 ? .items(query: query) : .topItems(query: query)
             guard let request = ZoteroMCPRequestFactory.api(route: route, resource: resource) else {
                 throw ZoteroMCPServiceError.invalidRequest
@@ -345,14 +353,15 @@ extension ZoteroMCPServer {
         else { throw ZoteroMCPServiceError.invalidArguments }
         let route = try await singleLibraryRoute(arguments["library"]?.stringValue)
         let limit = try integer(arguments["limit"], default: 25, range: 1...100)
-        guard let request = ZoteroMCPRequestFactory.api(
-            route: route,
-            resource: .topItems(query: [
-                URLQueryItem(name: "format", value: "json"),
-                URLQueryItem(name: "include", value: "data,citation"),
-                URLQueryItem(name: "style", value: style),
-                URLQueryItem(name: "limit", value: String(limit)),
-            ]))
+        guard
+            let request = ZoteroMCPRequestFactory.api(
+                route: route,
+                resource: .topItems(query: [
+                    URLQueryItem(name: "format", value: "json"),
+                    URLQueryItem(name: "include", value: "data,citation"),
+                    URLQueryItem(name: "style", value: style),
+                    URLQueryItem(name: "limit", value: String(limit)),
+                ]))
         else { throw ZoteroMCPServiceError.invalidRequest }
         let values = try decodeArray((try await sendAPI(request)).body, maximum: 100)
         return .object(["library": route.value, "style": .string(style), "count": .integer(values.count), "items": .array(values)])
@@ -367,7 +376,7 @@ extension ZoteroMCPServer {
             ("creator_fields", ZoteroMCPRequestFactory.globalAPI(path: .creatorFields)),
             ("collections", ZoteroMCPRequestFactory.api(route: .user, resource: .collections(query: []))),
             ("top_collections", ZoteroMCPRequestFactory.api(route: .user, resource: .topCollections(query: []))),
-            ("top_items", ZoteroMCPRequestFactory.api(route: .user, resource: .topItems(query: [URLQueryItem(name: "limit", value: "1")]))) ,
+            ("top_items", ZoteroMCPRequestFactory.api(route: .user, resource: .topItems(query: [URLQueryItem(name: "limit", value: "1")]))),
             ("tags", ZoteroMCPRequestFactory.api(route: .user, resource: .tags(query: []))),
             ("searches", ZoteroMCPRequestFactory.api(route: .user, resource: .searches)),
             ("fulltext_versions", ZoteroMCPRequestFactory.api(route: .user, resource: .fullTextVersions)),
@@ -377,12 +386,16 @@ extension ZoteroMCPServer {
         for (label, request) in endpoints {
             guard let request else { throw ZoteroMCPServiceError.invalidRequest }
             let response: ZoteroMCPHTTPResponse
-            do { response = try await clientSend(request) } catch { rows.append(.object(["label": .string(label), "status": .string("unavailable")])) ; continue }
+            do { response = try await clientSend(request) } catch {
+                rows.append(.object(["label": .string(label), "status": .string("unavailable")]))
+                continue
+            }
             var row: [String: ZoteroMCPJSONValue] = ["label": .string(label), "status": .integer(response.statusCode)]
             if let value = try? decodeJSON(response.body) {
                 switch value {
                 case .array(let values): row["shape"] = .object(["type": .string("array"), "count": .integer(values.count)])
-                case .object(let object): row["shape"] = .object(["type": .string("object"), "keys": .array(object.keys.sorted().prefix(12).map(ZoteroMCPJSONValue.string))])
+                case .object(let object):
+                    row["shape"] = .object(["type": .string("object"), "keys": .array(object.keys.sorted().prefix(12).map(ZoteroMCPJSONValue.string))])
                 default: row["shape"] = .object(["type": .string("scalar")])
                 }
             }
@@ -484,8 +497,7 @@ extension ZoteroMCPServer {
 
     private func decodeJSON(_ data: Data) throws -> ZoteroMCPJSONValue {
         guard data.count <= 4 * 1_024 * 1_024 else { throw ZoteroMCPServiceError.responseTooLarge }
-        do { return try JSONDecoder().decode(ZoteroMCPJSONValue.self, from: data) }
-        catch { throw ZoteroMCPServiceError.invalidResponse }
+        do { return try JSONDecoder().decode(ZoteroMCPJSONValue.self, from: data) } catch { throw ZoteroMCPServiceError.invalidResponse }
     }
 
     private func decodeObject(_ data: Data) throws -> [String: ZoteroMCPJSONValue] {

@@ -339,7 +339,8 @@ public enum FrontmatterPatchPlanner {
                     }
                 defect = defect ?? keyDefect
             } else {
-                defect = defect
+                defect =
+                    defect
                     ?? .ambiguousStructure(
                         "a top-level line is not a bounded mapping entry",
                         position: position

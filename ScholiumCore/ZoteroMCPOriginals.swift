@@ -202,12 +202,13 @@ extension ZoteroMCPServer {
         ]),
     ]
 
-    private static let originalReadPageProperties: [String: ZoteroMCPJSONValue] = originalReadProperties.merging([
-        "page": .object([
-            "type": .string("integer"), "minimum": .integer(1),
-            "description": .string("One-based physical PDF page."),
-        ]),
-    ], uniquingKeysWith: { _, new in new })
+    private static let originalReadPageProperties: [String: ZoteroMCPJSONValue] = originalReadProperties.merging(
+        [
+            "page": .object([
+                "type": .string("integer"), "minimum": .integer(1),
+                "description": .string("One-based physical PDF page."),
+            ])
+        ], uniquingKeysWith: { _, new in new })
 
     static let originalReadTool = tool(
         name: "zotero_read_original_file",

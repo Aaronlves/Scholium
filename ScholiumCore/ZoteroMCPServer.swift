@@ -210,7 +210,8 @@ public actor ZoteroMCPServer {
             default:
                 throw ZoteroMCPServiceError.unknownTool
             }
-            let includesImage = (name == "zotero_read_original_file" || name == "zotero_read_original_page")
+            let includesImage =
+                (name == "zotero_read_original_file" || name == "zotero_read_original_page")
                 && arguments["mode"]?.stringValue == "image"
             return toolResult(execution.value, isError: execution.isError, includesImage: includesImage)
         } catch let error as ZoteroMCPServiceError {
@@ -654,49 +655,50 @@ public actor ZoteroMCPServer {
         }
     }
 
-    private static let toolDefinitions: [ZoteroMCPJSONValue] = [
-        tool(
-            name: "zotero_status",
-            description: "Report Zotero localhost API and Connector readiness without reading the Zotero database.",
-            properties: [:]
-        ),
-        tool(
-            name: "zotero_search",
-            description: "Search parent bibliographic records in local user and group libraries while preserving ambiguity.",
-            properties: [
-                "query": .object(["type": .string("string"), "maxLength": .integer(512)]),
-                "limit": .object([
-                    "type": .string("integer"), "minimum": .integer(1),
-                    "maximum": .integer(25), "default": .integer(10),
-                ]),
-            ],
-            required: ["query"]
-        ),
-        tool(
-            name: "zotero_item",
-            description: "Inspect one exact item key; attachment pointers are returned only when explicitly requested.",
-            properties: [
-                "item_key": .object(["type": .string("string")]),
-                "library": .object([
-                    "type": .string("string"),
-                    "description": .string("Optional user or group:<numeric-group-id> selector."),
-                ]),
-                "include_attachments": .object([
-                    "type": .string("boolean"), "default": .bool(false),
-                ]),
-            ],
-            required: ["item_key"]
-        ),
-        tool(
-            name: "zotero_selected_target",
-            description: "Report only the currently selected library or collection and its editability.",
-            properties: [:]
-        ),
-        annotationListTool,
-        annotationReadTool,
-        originalReadTool,
-        originalReadPageTool,
-    ] + additionalToolDefinitions
+    private static let toolDefinitions: [ZoteroMCPJSONValue] =
+        [
+            tool(
+                name: "zotero_status",
+                description: "Report Zotero localhost API and Connector readiness without reading the Zotero database.",
+                properties: [:]
+            ),
+            tool(
+                name: "zotero_search",
+                description: "Search parent bibliographic records in local user and group libraries while preserving ambiguity.",
+                properties: [
+                    "query": .object(["type": .string("string"), "maxLength": .integer(512)]),
+                    "limit": .object([
+                        "type": .string("integer"), "minimum": .integer(1),
+                        "maximum": .integer(25), "default": .integer(10),
+                    ]),
+                ],
+                required: ["query"]
+            ),
+            tool(
+                name: "zotero_item",
+                description: "Inspect one exact item key; attachment pointers are returned only when explicitly requested.",
+                properties: [
+                    "item_key": .object(["type": .string("string")]),
+                    "library": .object([
+                        "type": .string("string"),
+                        "description": .string("Optional user or group:<numeric-group-id> selector."),
+                    ]),
+                    "include_attachments": .object([
+                        "type": .string("boolean"), "default": .bool(false),
+                    ]),
+                ],
+                required: ["item_key"]
+            ),
+            tool(
+                name: "zotero_selected_target",
+                description: "Report only the currently selected library or collection and its editability.",
+                properties: [:]
+            ),
+            annotationListTool,
+            annotationReadTool,
+            originalReadTool,
+            originalReadPageTool,
+        ] + additionalToolDefinitions
 
     static func tool(
         name: String,

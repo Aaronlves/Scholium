@@ -71,10 +71,11 @@ struct ZoteroMCPServerTests {
         let server = ZoteroMCPServer(client: MockZoteroMCPHTTPClient())
         let response = try await rpc(server, id: 1, method: "tools/list", params: [:])
         let tools = try #require(object(response["result"])["tools"] as? [[String: Any]])
-        let byName = Dictionary(uniqueKeysWithValues: tools.compactMap { tool -> (String, [String: Any])? in
-            guard let name = tool["name"] as? String, let schema = try? object(tool["inputSchema"]) else { return nil }
-            return (name, schema)
-        })
+        let byName = Dictionary(
+            uniqueKeysWithValues: tools.compactMap { tool -> (String, [String: Any])? in
+                guard let name = tool["name"] as? String, let schema = try? object(tool["inputSchema"]) else { return nil }
+                return (name, schema)
+            })
         let fileSchema = try #require(byName["zotero_read_original_file"])
         let pageSchema = try #require(byName["zotero_read_original_page"])
         let fileRequired = try #require(fileSchema["required"] as? [String])
@@ -188,7 +189,10 @@ struct ZoteroMCPServerTests {
         let importRequest = try #require(requests.last)
         #expect(importRequest.httpMethod == "POST")
         #expect(importRequest.url?.path == "/connector/import")
-        #expect(URLComponents(url: try #require(importRequest.url), resolvingAgainstBaseURL: false)?.queryItems == [URLQueryItem(name: "session", value: "test-session")])
+        #expect(
+            URLComponents(url: try #require(importRequest.url), resolvingAgainstBaseURL: false)?.queryItems == [
+                URLQueryItem(name: "session", value: "test-session")
+            ])
         #expect(String(decoding: try #require(importRequest.httpBody), as: UTF8.self) == "@book{key, title={A}}")
     }
 

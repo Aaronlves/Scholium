@@ -210,7 +210,9 @@ final class AgentChatCapabilitiesController: ObservableObject {
     var zoteroConnectionAvailable: Bool {
         if toolConnections.contains(where: {
             $0.name.caseInsensitiveCompare("scholium-zotero") == .orderedSame && $0.enabled
-        }) { return true }
+        }) {
+            return true
+        }
         if tools.contains(where: { $0.name.caseInsensitiveCompare("scholium-zotero") == .orderedSame }) { return true }
         // The connection is injected into each Chat thread rather than the
         // user's global Codex config. Once this runtime has loaded its tool
