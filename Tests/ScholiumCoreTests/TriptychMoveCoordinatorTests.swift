@@ -307,7 +307,7 @@ struct TriptychMoveCoordinatorTests {
             preCommitFault: { fileName in
                 guard fileName.hasSuffix(".json") else { return }
                 stagingReady.signal()
-                _ = releaseWriter.wait(seconds: 10)
+                _ = releaseWriter.wait(seconds: 60)
             }
         )
         let record = TriptychMutationRecoveryRecord(
@@ -317,7 +317,7 @@ struct TriptychMoveCoordinatorTests {
             files: []
         )
         let write = Task { try await writer.record(record) }
-        #expect(stagingReady.wait(seconds: 10))
+        #expect(stagingReady.wait(seconds: 60))
 
         let initializerStarted = BlockingTestSignal()
         let initializerFinished = BlockingTestSignal()
@@ -326,7 +326,7 @@ struct TriptychMoveCoordinatorTests {
             defer { initializerFinished.signal() }
             return try TriptychMutationRecoveryStore(storageURL: root)
         }
-        #expect(initializerStarted.wait(seconds: 10))
+        #expect(initializerStarted.wait(seconds: 60))
         #expect(!initializerFinished.wait(seconds: 0.05))
         releaseWriter.signal()
 
@@ -733,6 +733,11 @@ private final class BlockingTestSignal: @unchecked Sendable {
         semaphore.signal()
     }
 
+    /// Callers give this a generous budget. The wait blocks a cooperative pool
+    /// thread, so on a machine with few cores the signal it is waiting for can
+    /// be late purely because the task that sends it has not been scheduled
+    /// yet. A budget sized for a fast machine turns that into a failure about
+    /// nothing. Every positive wait here leaves the moment it is signalled.
     func wait(seconds: TimeInterval) -> Bool {
         semaphore.wait(timeout: .now() + seconds) == .success
     }

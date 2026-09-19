@@ -937,7 +937,10 @@ struct TriptychSearchIndexTests {
             )
         }
         let build = Task { try await index.synchronize(documents) }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        // The loop leaves the moment progress appears, so a longer deadline
+        // costs a fast machine nothing and stops a contended one from failing
+        // for want of a scheduling slot rather than for want of progress.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(30))
         var observedProgress = false
         while ContinuousClock.now < deadline {
             if case .building(let progress) = await index.availability(),

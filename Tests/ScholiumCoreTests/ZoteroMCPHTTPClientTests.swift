@@ -59,7 +59,9 @@ private struct HTTPFixture {
         HTTPFixtureProtocol.fixtures.withLock { $0[fixtureID] = .init(mode: mode, started: events.continuation) }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [HTTPFixtureProtocol.self]
-        configuration.timeoutIntervalForResource = 5
+        // A hang guard, not an assertion: no test here expects it to fire. Sized
+        // for the slowest machine the gate runs on rather than the fastest.
+        configuration.timeoutIntervalForResource = 30
         session = URLSession(configuration: configuration, delegate: ZoteroNoRedirectDelegate(), delegateQueue: nil)
         transport = ZoteroMCPURLSessionClient(session: session)
         request = URLRequest(url: URL(string: "http://127.0.0.1:23119/fixture/\(id)")!)

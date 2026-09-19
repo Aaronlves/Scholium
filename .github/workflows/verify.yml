@@ -68,9 +68,13 @@ jobs:
       - name: Install ripgrep
         run: command -v rg >/dev/null 2>&1 || brew install ripgrep
 
+      # Core count is part of the toolchain here: Swift's cooperative pool is
+      # sized to it, and several suites coordinate across concurrent tasks.
       - name: Report the toolchain
         run: |
           echo "DEVELOPER_DIR=$(Tools/Scripts/resolve-xcode-developer-dir.sh)"
+          echo "cores=$(sysctl -n hw.ncpu) memory=$(sysctl -n hw.memsize)"
+          sw_vers
           swift --version
           node --version
           python3 --version
