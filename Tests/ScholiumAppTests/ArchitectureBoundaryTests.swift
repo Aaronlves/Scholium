@@ -6,7 +6,17 @@ struct ArchitectureBoundaryTests {
     @Test("Public Chat wire interpretation stays in Application")
     func chatTranscriptBoundary() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        for path in ["Scholium/Services/AgentChatController.swift", "Scholium/Services/AgentChatChildController.swift"] {
+        let serviceRoot = root.appendingPathComponent("Scholium/Services", isDirectory: true)
+        let controllerPaths = try swiftFiles(beneath: serviceRoot)
+            .filter { file in
+                let name = file.lastPathComponent
+                return name == "AgentChatController.swift" || name.hasPrefix("AgentChatController+")
+            }
+            .map { file in
+                file.path.replacingOccurrences(of: root.path + "/", with: "")
+            }
+            .sorted()
+        for path in controllerPaths + ["Scholium/Services/AgentChatChildController.swift"] {
             let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
             for token in [
                 "CodexChatActivity.parse", "CodexChatCapabilities.plan(", "CodexChatCapabilities.contextUsage(", "Phase.init(rawValue:", "item[\"type\"]",
@@ -54,7 +64,13 @@ struct ArchitectureBoundaryTests {
             "Scholium/App/Window/WindowWorkspaceController.swift",
             "Scholium/Services/MCPAppBridgeRequestRouter.swift",
             "Scholium/Services/AgentChatController.swift",
+            "Scholium/Services/AgentChatController+Bridge.swift",
+            "Scholium/Services/AgentChatController+Connection.swift",
+            "Scholium/Services/AgentChatController+Conversation.swift",
+            "Scholium/Services/AgentChatController+Execution.swift",
+            "Scholium/Services/AgentChatController+Materials.swift",
             "Scholium/Services/AgentChatExecutionState.swift",
+            "Scholium/Services/AgentChatRegistry.swift",
             // Feature composition roots; presentation leaves still consume Contracts only.
             "Scholium/Services/AgentChatCapabilitiesController.swift",
             "Scholium/Services/AgentChatChildController.swift",
