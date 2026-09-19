@@ -1706,7 +1706,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 content = ""
             } else if trimmed.hasPrefix("#") {
                 content = "<span class=\"cm-live-yaml-comment\">\(escapedHTMLText(line))</span>"
-            } else if let colon = line.firstIndex(of: ":"), colon > line.startIndex {
+            } else if let colon = frontmatterKeyColon(in: line) {
                 let key = String(line[..<colon])
                 let valueStart = line.index(after: colon)
                 let value = String(line[valueStart...])
@@ -1720,13 +1720,109 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 "<div class=\"scholium-frontmatter-line\" data-scholium-yaml-rendered=\"true\" dir=\"auto\">\(content)</div>"
         }
 
+        /// The colon that actually opens a block mapping value on this line.
+        ///
+        /// Edit reads the same bytes through a real YAML grammar, so Review has
+        /// to apply YAML's own rule rather than taking the first colon it sees:
+        /// a colon separates a key only when a space or the line end follows it,
+        /// and a colon inside a quoted scalar never separates at all. Without
+        /// that, `- https://example.com` renders `https` as a key in Review and
+        /// as a plain value in Edit, and the two surfaces disagree about the
+        /// same Note.
+        private static func frontmatterKeyColon(in line: String) -> String.Index? {
+            var index = frontmatterScalarStart(in: line)
+            let keyStart = index
+            guard index < line.endIndex else { return nil }
+
+            if line[index] == "\"" || line[index] == "'" {
+                guard let afterScalar = endOfQuotedScalar(in: line, from: index) else {
+                    return nil
+                }
+                index = afterScalar
+                // YAML allows separating space between a quoted key and its colon.
+                while index < line.endIndex, line[index] == " " || line[index] == "\t" {
+                    index = line.index(after: index)
+                }
+                guard index < line.endIndex, line[index] == ":",
+                    isKeySeparator(line, at: index)
+                else { return nil }
+                return index
+            }
+
+            while index < line.endIndex {
+                if line[index] == ":", isKeySeparator(line, at: index) {
+                    return index > keyStart ? index : nil
+                }
+                index = line.index(after: index)
+            }
+            return nil
+        }
+
+        /// Position of the scalar a line carries, past its indentation and any
+        /// block sequence indicators, which can nest as `- - key: value`.
+        private static func frontmatterScalarStart(in line: String) -> String.Index {
+            var index = line.startIndex
+            func skipSpacing() {
+                while index < line.endIndex, line[index] == " " || line[index] == "\t" {
+                    index = line.index(after: index)
+                }
+            }
+            skipSpacing()
+            while index < line.endIndex, line[index] == "-" {
+                let next = line.index(after: index)
+                guard next == line.endIndex || line[next] == " " || line[next] == "\t" else {
+                    // A plain scalar may begin with a dash, as in `-5`.
+                    break
+                }
+                index = next
+                skipSpacing()
+            }
+            return index
+        }
+
+        private static func isKeySeparator(_ line: String, at colon: String.Index) -> Bool {
+            let next = line.index(after: colon)
+            return next == line.endIndex || line[next] == " " || line[next] == "\t"
+        }
+
+        /// The index just past a quoted scalar's closing quote, or nil when the
+        /// quote stays open to the end of the line.
+        private static func endOfQuotedScalar(
+            in line: String,
+            from start: String.Index
+        ) -> String.Index? {
+            let quote = line[start]
+            var index = line.index(after: start)
+            while index < line.endIndex {
+                if quote == "\"", line[index] == "\\" {
+                    let escaped = line.index(after: index)
+                    guard escaped < line.endIndex else { return nil }
+                    index = line.index(after: escaped)
+                    continue
+                }
+                if line[index] == quote {
+                    let next = line.index(after: index)
+                    // A doubled quote inside a single-quoted scalar is one
+                    // literal quote, not the end of the scalar.
+                    if quote == "'", next < line.endIndex, line[next] == "'" {
+                        index = line.index(after: next)
+                        continue
+                    }
+                    return next
+                }
+                index = line.index(after: index)
+            }
+            return nil
+        }
+
         private static func frontmatterValueClass(_ value: String) -> String {
-            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            // Classify what the sequence indicator introduces, not the
+            // indicator, so `- "a: b"` reads as the quoted string Edit shows.
+            let scalar = value[frontmatterScalarStart(in: value)...]
+            let trimmed = scalar.trimmingCharacters(in: .whitespaces)
             guard let first = trimmed.first else { return "cm-live-yaml-value" }
             if first == "\"" || first == "'" { return "cm-live-yaml-string" }
-            if first == "[" || first == "{" || trimmed.hasPrefix("- ") {
-                return "cm-live-yaml-collection"
-            }
+            if first == "[" || first == "{" { return "cm-live-yaml-collection" }
             if first == "|" || first == ">" { return "cm-live-yaml-scalar" }
             return "cm-live-yaml-value"
         }
