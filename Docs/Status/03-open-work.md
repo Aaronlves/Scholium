@@ -86,9 +86,9 @@
 ## Gate and release boundary
 
 - The complete repository gate, exact-tag artifact checks, and mounted/copied
-  clean-account Bootstrap smoke for `v0.2.4-beta` passed on 2026-09-17. The
-  first two smoke attempts hit the host XCTest Automation Mode timeout before
-  launch; a third attempt passed with production machine state unchanged.
+  clean-account Bootstrap smoke for `v0.2.7-beta` passed on 2026-09-20. The
+  first smoke attempt hit the host XCTest Automation Mode timeout before
+  launch; a second attempt passed with production machine state unchanged.
 - Run the required complete gate and artifact checks for each subsequent release
   candidate; earlier passes are dated proof, not reusable release authorization.
 - Run affected packaged performance series when §21.3's change-trigger rule

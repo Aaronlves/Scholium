@@ -4,28 +4,24 @@
 
 ## Release artifacts and gate provenance
 
-**2026-09-17 — `v0.2.4-beta` packaged artifact:** Exact clean tag at
-`f3d10cf6b4da3411418502d4a48c711c6ef92ed1` produced
-`Scholium-v0.2.4-beta-macos-arm64.dmg`: marketing version `0.2.4`, build `5`,
+**2026-09-20 — `v0.2.7-beta` packaged artifact:** Exact clean tag at
+`63568b4ce8547278adec1e48c8a719b662df9111` produced
+`Scholium-v0.2.7-beta-macos-arm64.dmg`: marketing version `0.2.7`, build `8`,
 minimum macOS `26.0`, SDK `27.0`, arm64 ad-hoc-signed App and version-matched
-helper. Repository gate passed WebEditor (364), Core (499), Core
-performance (3), Contracts (96), Application (201), architecture measurement
-(1), and App (1,043 across 128 suites), plus public-symbol guards, Release
-compilation and helper isolation. Resource, license, private-path, provenance,
-nested-signature, entitlements, architecture, read-only DMG layout and SHA-256
-checks passed; checksum:
-`57948b121745fc28801237cbed3726ba78870c146d944ff8f5f917f2eb5ffa0c`.
-Packaged clean-account Bootstrap smoke was attempted three times; XCTest
-failed before launch on the first two with `Timed out while enabling automation
-mode` (65.761 and 65.222 seconds), then passed on the third attempt in 7.621
-seconds with production state unchanged. G9 passed; the first two remain
-environment evidence, not product failures. Evidence:
-`.build/package-v0.2.4-beta.log`,
-`.build/package-v0.2.4-first-launch.log`,
-`.build/package-v0.2.4-first-launch-retry.log`,
-`.build/package-v0.2.4-first-launch-retry-2.log`,
-`.build/release-0.2.4-preflight.log`, `.build/verification/` and
-`.build/verification-release/release-build.log`.
+helper. Repository gate passed WebEditor (368), Core (510), Core performance
+(3), Contracts (96), Application (195), architecture measurement (1), and App
+(1,057 across 131 suites), plus public-symbol guards, Release compilation and
+helper isolation. Resource, license, private-path, provenance, nested-signature,
+entitlements, architecture, read-only DMG layout and SHA-256 checks passed;
+checksum:
+`193c36e1bc996e35f48ba8cbb39a4cd03bee2b6a494bd0e9a71f945841c39748`.
+Packaged clean-account Bootstrap smoke was attempted twice; XCTest failed
+before launch on the first attempt with `Timed out while enabling automation
+mode`, then passed on the second attempt with production state unchanged. G9
+passed; the first attempt remains environment evidence, not a product failure.
+Evidence: `.build/verification/`, `.build/verification-release/`, tag
+provenance embedded in the App, and the retained first-attempt diagnostics
+under `.build/packaged-first-launch.YJwPDV/`.
 
 **2026-09-17 — Earlier clean-account baseline, `v0.2.2-beta`:** Exact clean tag
 at `ea4918ec1958293879786a889108d0b186d33744` produced
