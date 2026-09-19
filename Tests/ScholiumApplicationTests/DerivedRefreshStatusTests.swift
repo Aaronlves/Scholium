@@ -14,7 +14,7 @@ struct DerivedRefreshStatusTests {
             .deletingLastPathComponent()
         let source = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumApplication/WorkspaceHandle.swift"
+                "ScholiumApplication/WorkspaceHandle+DocumentCreation.swift"
             ),
             encoding: .utf8
         )
