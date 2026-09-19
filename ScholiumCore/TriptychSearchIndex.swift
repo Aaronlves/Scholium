@@ -3025,13 +3025,17 @@ private enum NoteSearchResultBuilder {
         let lexicalSourceRange = matched.flatMap {
             sourceRange(for: $0.range, segment: $0.segment, lineStarts: document.sourceLineStarts)
         }
-        let sourceRange =
+        // Named apart from sourceRange(for:segment:lineStarts:) above: a local
+        // constant sharing that name is in scope inside the closure that calls
+        // the method, and older compilers than this file was written against
+        // read the pair as a circular reference rather than a shadow.
+        let matchSourceRange =
             lexicalSourceRange
             ?? property?.valueSourceRanges.first
             ?? property?.keySourceRange
         let reason = rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly)
         return NoteSearchResult(
-            resultID: "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(sourceRange?.utf16LowerBound ?? -1)",
+            resultID: "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(matchSourceRange?.utf16LowerBound ?? -1)",
             vaultID: document.vaultID,
             vaultName: document.vaultName,
             vaultRole: document.vaultRole,
@@ -3040,7 +3044,7 @@ private enum NoteSearchResultBuilder {
             title: document.title,
             matchedField: primary,
             context: context(for: primary),
-            sourceLine: sourceRange?.line ?? 1,
+            sourceLine: matchSourceRange?.line ?? 1,
             snippet: presentation.text,
             highlights: presentation.highlights,
             matchedFields: matchedFields,
@@ -3048,7 +3052,7 @@ private enum NoteSearchResultBuilder {
             primaryMatchReason: reasons.first ?? .lexical,
             additionalMatchReasons: Array(reasons.dropFirst()),
             paragraphRanges: Array(Set(paragraphs.map(\.range))).sorted { $0.utf16LowerBound < $1.utf16LowerBound },
-            sourceRange: sourceRange,
+            sourceRange: matchSourceRange,
             freshnessToken: freshness,
             fingerprint: document.fingerprint,
             evidentialLayer: document.evidentialLayer,
