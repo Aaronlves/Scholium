@@ -1460,6 +1460,12 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
+        let documentOpeningSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowDocumentOpeningActions.swift"
+            ),
+            encoding: .utf8
+        )
         let start = try #require(source.range(of: "final class WindowModel: ObservableObject"))
         // The class and every extension of it follow the declaration in the
         // composition root's reading order, so the model is the rest of it.
@@ -1531,6 +1537,21 @@ struct WindowControllerArchitectureTests {
         #expect(searchSelectionSource.contains("openWorkspaceReference("))
         #expect(!searchSelectionSource.contains("isCurrentDocument"))
         #expect(!searchSelectionSource.contains("requestPresentationMode = .source"))
+
+        let searchOpeningStart = try #require(
+            documentOpeningSource.range(
+                of: "func openWorkspaceReference(\n        _ reference: VaultNoteReference,\n        sourceRange:"
+            ))
+        let searchOpeningEnd = try #require(
+            documentOpeningSource.range(
+                of: "func openInternalLink(",
+                range: searchOpeningStart.upperBound..<documentOpeningSource.endIndex
+            ))
+        let searchOpeningSource = documentOpeningSource[
+            searchOpeningStart.lowerBound..<searchOpeningEnd.lowerBound
+        ]
+        #expect(searchOpeningSource.contains("let navigationMode = mode ?? presentedDocumentMode"))
+        #expect(!searchOpeningSource.contains("requestPresentationMode = .source"))
 
         let selectedActivationStart = try #require(
             windowModelSource.range(

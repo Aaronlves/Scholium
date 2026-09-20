@@ -700,6 +700,133 @@ public actor TriptychSearchIndex {
         }
     }
 
+    /// Returns lexical completion terms from the same committed FTS
+    /// generation used by Search. The caller supplies already-authorized scope
+    /// and, during progressive opening, the exact source/fingerprint subset.
+    /// No source document is reopened and no completion state is persisted.
+    public func completionTerms(
+        for lookup: SearchCompletionLookup,
+        vaultID: UUID? = nil,
+        eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]? = nil,
+        limit: Int = SearchContract.maximumCompletionTerms
+    ) throws -> [SearchCompletionTerm] {
+        let normalizedPartial = lookup.normalizedPartial
+        let boundedLimit = min(max(0, limit), SearchContract.maximumCompletionTerms)
+        guard !normalizedPartial.isEmpty, boundedLimit > 0 else { return [] }
+        let clause = SearchLexicalClause(
+            field: lookup.field,
+            value: .prefix(lookup.partial),
+            sourceRange: 0..<0
+        )
+        let expression = SearchMatcher.ftsExpression(for: [clause])
+        struct Accumulator {
+            var text: String
+            var fields: Set<SearchLexicalField>
+            var occurrenceCount: Int
+        }
+
+        return try database.readTransaction {
+            var predicates = ["search_fts MATCH ?"]
+            var bindings: [SearchSQLiteBinding] = [.text(expression)]
+            if let vaultID {
+                predicates.append("d.vault_id = ?")
+                bindings.append(.text(vaultID.uuidString.lowercased()))
+            }
+            if let eligibleDocuments {
+                guard !eligibleDocuments.isEmpty else { return [] }
+                let ordered = eligibleDocuments.sorted {
+                    if $0.key.vaultID != $1.key.vaultID {
+                        return $0.key.vaultID.uuidString < $1.key.vaultID.uuidString
+                    }
+                    return $0.key.relativePath < $1.key.relativePath
+                }
+                let eligibility = ordered.map { entry -> String in
+                    bindings.append(.text(entry.key.vaultID.uuidString.lowercased()))
+                    bindings.append(.text(entry.key.relativePath))
+                    bindings.append(.text(entry.value.fingerprint.sha256))
+                    bindings.append(.int(entry.value.fingerprint.byteCount))
+                    return "(d.vault_id = ? AND d.relative_path = ? AND d.fingerprint_sha256 = ? AND d.fingerprint_byte_count = ?)"
+                }
+                predicates.append("(" + eligibility.joined(separator: " OR ") + ")")
+            }
+
+            let columns: [(SearchLexicalField, Int32)] = [
+                (.path, 0),
+                (.title, 1),
+                (.alias, 2),
+                (.heading, 3),
+                (.summary, 4),
+                (.author, 5),
+                (.publicationDate, 6),
+                (.tag, 7),
+                (.footnote, 8),
+                (.linkAnnotation, 9),
+                (.body, 10),
+            ]
+            var terms: [String: Accumulator] = [:]
+            try database.query(
+                """
+                SELECT search_fts.path, search_fts.title, search_fts.aliases,
+                       search_fts.headings, search_fts.summary, search_fts.authors,
+                       search_fts.publication_date, search_fts.tags, search_fts.footnotes,
+                       search_fts.link_annotations, search_fts.body
+                FROM search_fts
+                JOIN search_documents d ON d.id = search_fts.document_id
+                WHERE \(predicates.joined(separator: " AND "))
+                ORDER BY d.path_key, d.relative_path;
+                """,
+                bindings: bindings
+            ) { row in
+                try Task.checkCancellation()
+                for (field, column) in columns where lookup.field == nil || lookup.field == field {
+                    guard let value = row.text(at: column) else { continue }
+                    for term in SearchTokenization.vocabularyTerms(in: value) {
+                        let key = SearchTextNormalization.lexicalNormalize(term)
+                        guard !key.isEmpty,
+                            key.hasPrefix(normalizedPartial),
+                            !["and", "or", "not"].contains(key)
+                        else { continue }
+                        if var existing = terms[key] {
+                            existing.fields.insert(field)
+                            existing.occurrenceCount += 1
+                            terms[key] = existing
+                        } else {
+                            terms[key] = Accumulator(
+                                text: term,
+                                fields: [field],
+                                occurrenceCount: 1
+                            )
+                        }
+                    }
+                }
+            }
+            return terms.values
+                .map {
+                    SearchCompletionTerm(
+                        text: $0.text,
+                        fields: Array($0.fields),
+                        occurrenceCount: $0.occurrenceCount
+                    )
+                }
+                .sorted { lhs, rhs in
+                    let lhsNormalized = SearchTextNormalization.lexicalNormalize(lhs.text)
+                    let rhsNormalized = SearchTextNormalization.lexicalNormalize(rhs.text)
+                    let lhsExact = lhsNormalized == normalizedPartial
+                    let rhsExact = rhsNormalized == normalizedPartial
+                    if lhsExact != rhsExact { return lhsExact }
+                    if lhs.occurrenceCount != rhs.occurrenceCount {
+                        return lhs.occurrenceCount > rhs.occurrenceCount
+                    }
+                    if lhsNormalized.utf16.count != rhsNormalized.utf16.count {
+                        return lhsNormalized.utf16.count < rhsNormalized.utf16.count
+                    }
+                    return lhsNormalized < rhsNormalized
+                }
+                .prefix(boundedLimit)
+                .map { $0 }
+        }
+    }
+
     /// Enumerates every eligible lexical source from one complete generation.
     /// Workspace verifies current bytes before material scoring and limiting.
     public func relatedMaterialSourceCandidates(

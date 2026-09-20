@@ -102,4 +102,49 @@ struct SearchExpressionTests {
         #expect(SearchCapabilities.current.completions(for: "alpha O", scope: .triptych).contains { $0.replacementText == "alpha OR " })
         #expect(SearchCapabilities.current.completions(for: "(alpha ", scope: .triptych).contains { $0.displayText == ")" })
     }
+
+    @Test("Lexical completion lookup respects fields, groups, and explicit prefixes")
+    func lexicalCompletionLookup() throws {
+        #expect(
+            SearchCapabilities.current.lexicalCompletionLookup(
+                for: "mit", scope: .triptych
+            ) == SearchCompletionLookup(partial: "mit")
+        )
+        #expect(
+            SearchCapabilities.current.lexicalCompletionLookup(
+                for: "body:mit", scope: .triptych
+            ) == SearchCompletionLookup(partial: "mit", field: .body)
+        )
+        #expect(
+            SearchCapabilities.current.lexicalCompletionLookup(
+                for: "body:(mit", scope: .triptych
+            ) == SearchCompletionLookup(partial: "mit", field: .body)
+        )
+        #expect(
+            SearchCapabilities.current.lexicalCompletionLookup(
+                for: "mit*", scope: .triptych
+            ) == nil
+        )
+        #expect(
+            SearchCapabilities.current.lexicalCompletionLookup(
+                for: "property:mit", scope: .triptych
+            ) == nil
+        )
+        let context = SearchCompletionContext(
+            lexicalTerms: [
+                SearchCompletionTerm(text: "mitchell", fields: [.body], occurrenceCount: 4),
+                SearchCompletionTerm(text: "method", fields: [.heading]),
+            ]
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "mit", scope: .triptych, context: context
+            ).first?.replacementText == "mitchell"
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "title:mit", scope: .triptych, context: context
+            ).isEmpty
+        )
+    }
 }

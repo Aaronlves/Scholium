@@ -18,6 +18,8 @@ struct AgentChatObjectActionTests {
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
+        host.frame = NSRect(origin: .zero, size: NSSize(width: 320, height: 650))
+        host.autoresizingMask = [.width, .height]
         window.makeKeyAndOrderFront(nil)
         defer {
             window.contentView = nil

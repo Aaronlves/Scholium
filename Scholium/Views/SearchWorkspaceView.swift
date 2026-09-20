@@ -7,6 +7,7 @@ import SwiftUI
 /// presentation routing stay explicit at the `ContentView` composition root.
 struct ResearchSearchContext {
     let completionContext: SearchCompletionContext
+    let lexicalCompletionTerms: (SearchCompletionLookup) async -> [SearchCompletionTerm]
     let savedSearches: [SavedSearch]
     let savedSearchLoadFailure: String?
     let recoverSavedSearches: () async -> Void
@@ -189,6 +190,8 @@ struct ResearchSearchView<Library: View>: View {
     let library: Library
     @State private var searchFocused = false
     @State private var searchTask: Task<Void, Never>?
+    @State private var completionTask: Task<Void, Never>?
+    @State private var lexicalCompletionTerms: [SearchCompletionTerm] = []
     private var queryDraft: String {
         get { controller.search.criteria.query }
         nonmutating set {
@@ -197,9 +200,11 @@ struct ResearchSearchView<Library: View>: View {
                 if isAdvanced { searchController.beginAdvanced() } else { searchController.begin(.general) }
             }
             suppressedCompletionQuery = nil
+            lexicalCompletionTerms = []
             controller.updateSearchQuery(newValue)
             PerformanceProbe.shared.beginSearch(query: newValue.trimmingCharacters(in: .whitespacesAndNewlines))
             scheduleSearch()
+            scheduleCompletions()
         }
     }
     @State private var showSaveSearch = false
@@ -274,10 +279,26 @@ struct ResearchSearchView<Library: View>: View {
         .onAppear {
             normalizeSelection()
             if isActive, !queryDraft.isEmpty { scheduleSearch() }
+            if isActive, searchFocused { scheduleCompletions() }
         }
         .onChange(of: controller.search.criteria.query) { _, _ in
             paragraphNote = nil
             completionSelection = nil
+            scheduleCompletions()
+        }
+        .onChange(of: controller.search.criteria.scope) { _, _ in
+            scheduleCompletions()
+        }
+        .onChange(of: searchFocused) { _, focused in
+            if focused {
+                scheduleCompletions()
+            } else {
+                completionTask?.cancel()
+                lexicalCompletionTerms = []
+            }
+        }
+        .onChange(of: queryCaretUTF16) { _, _ in
+            scheduleCompletions()
         }
         .onChange(of: searchController.inputReplacementID) { _, replacementID in
             if replacementID != completionReplacementID { queryCaretUTF16 = nil }
@@ -312,6 +333,7 @@ struct ResearchSearchView<Library: View>: View {
         .onMoveCommand { if isActive { moveSelection($0) } }
         .onDisappear {
             searchTask?.cancel()
+            completionTask?.cancel()
         }
         .onExitCommand {
             guard isActive else { return }
@@ -476,7 +498,7 @@ struct ResearchSearchView<Library: View>: View {
     }
 
     private var visibleCompletions: [SearchCompletion] {
-        guard isAdvanced, searchFocused,
+        guard searchFocused,
             suppressedCompletionQuery != queryDraft,
             !searchFieldHasMarkedText
         else { return [] }
@@ -484,7 +506,13 @@ struct ResearchSearchView<Library: View>: View {
             for: queryDraft,
             scope: controller.search.criteria.scope,
             provider: .note,
-            context: context.completionContext, caretUTF16: queryCaretUTF16
+            context: SearchCompletionContext(
+                propertyKeys: context.completionContext.propertyKeys,
+                propertyValues: context.completionContext.propertyValues,
+                noteIdentities: context.completionContext.noteIdentities,
+                lexicalTerms: lexicalCompletionTerms
+            ),
+            caretUTF16: queryCaretUTF16
         )
     }
 
@@ -823,6 +851,7 @@ struct ResearchSearchView<Library: View>: View {
             set: { value in
                 controller.selectSearchScope(value)
                 if isActive { scheduleSearch() }
+                scheduleCompletions()
             }
         )
     }
@@ -947,6 +976,34 @@ struct ResearchSearchView<Library: View>: View {
             do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
             guard !Task.isCancelled, isActive else { return }
             await context.refresh()
+        }
+    }
+
+    private func scheduleCompletions() {
+        completionTask?.cancel()
+        lexicalCompletionTerms = []
+        guard isActive,
+            searchFocused,
+            let lookup = SearchCapabilities.current.lexicalCompletionLookup(
+                for: queryDraft,
+                scope: controller.search.criteria.scope,
+                provider: .note,
+                caretUTF16: queryCaretUTF16
+            )
+        else { return }
+        let query = queryDraft
+        let scope = controller.search.criteria.scope
+        let caret = queryCaretUTF16
+        completionTask = Task {
+            do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+            guard !Task.isCancelled else { return }
+            let terms = await context.lexicalCompletionTerms(lookup)
+            guard !Task.isCancelled,
+                queryDraft == query,
+                controller.search.criteria.scope == scope,
+                queryCaretUTF16 == caret
+            else { return }
+            lexicalCompletionTerms = terms
         }
     }
 

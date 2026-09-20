@@ -27,6 +27,12 @@ final class WindowSearchController: ObservableObject {
             @MainActor (
                 SearchWorkspaceState
             ) async throws -> DiscoverySearchExecutionContext
+        var searchCompletions:
+            @MainActor (
+                SearchCompletionRequest
+            ) async throws -> SearchCompletionResponse = { _ in
+                throw CancellationError()
+            }
         let resultEvidence:
             @MainActor (
                 SearchResult,
@@ -225,6 +231,40 @@ final class WindowSearchController: ObservableObject {
 
     func resetExecution() {
         cancelExecution()
+    }
+
+    func lexicalCompletionTerms(
+        for lookup: SearchCompletionLookup
+    ) async -> [SearchCompletionTerm] {
+        let state = criteria
+        guard !state.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            let context = try? await dependencies.executionContext(state),
+            context.workspaceIsAvailable
+        else { return [] }
+        let executionScope: SearchExecutionScope?
+        switch state.scope {
+        case .thisNote:
+            executionScope = context.currentNoteSnapshot.map(SearchExecutionScope.currentNote)
+        case .currentVault:
+            executionScope = context.currentVaultID.map(SearchExecutionScope.currentVault)
+        case .triptych:
+            executionScope = .triptych
+        }
+        guard let executionScope else { return [] }
+        let request = SearchCompletionRequest(
+            lookup: lookup,
+            presentationScope: state.scope,
+            executionScope: executionScope
+        )
+        do {
+            let response = try await dependencies.searchCompletions(request)
+            guard criteria == state, response.requestID == request.id else { return [] }
+            return response.terms
+        } catch is CancellationError {
+            return []
+        } catch {
+            return []
+        }
     }
 
     #if DEBUG

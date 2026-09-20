@@ -205,6 +205,12 @@ final class DiscoveryController: ObservableObject {
         try await requireOperations().search(request)
     }
 
+    func searchCompletions(
+        _ request: SearchCompletionRequest
+    ) async throws -> SearchCompletionResponse {
+        try await requireOperations().searchCompletions(request)
+    }
+
     /// Owns the complete Search use case for one window. The window shell
     /// supplies only current navigation identities and handles presentation
     /// of a reported failure.

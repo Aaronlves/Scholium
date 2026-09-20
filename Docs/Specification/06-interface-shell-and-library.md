@@ -342,6 +342,9 @@ provider-specific results, typed completion, Explain Query, exact freshness,
 and distinct invalid, ambiguous, unavailable, partial, stale, and empty states.
 Completion edits the token at the native caret, preserves following query text,
 respects inherited fields and grouping, and leaves the caret after the replacement.
+Quick and Advanced Search use the same bounded lexical vocabulary from the
+authorized Search provider; it appears only while the field is focused and never
+changes a query until the researcher accepts a suggestion.
 It shares one keyboard selection with results and yields to native marked text.
 Advanced Search provides Insert Term Group and a scoped native management sheet with
 name, one-term-per-line editing, New, Save, Delete, Cancel and reload after failure.
@@ -382,7 +385,8 @@ content-state views, preserving the actual reason and any valid retry. Saved Sea
 remains directly available. Explain Query opens a compact transient explanation of the
 actual conditions; tokenizer, normalization, ranking recipes, and repeated result titles
 do not occupy the search workspace. Opening a result returns to the originating Document
-while keeping the advanced window and query available for continued search. Ordinary
+at the matching location while preserving its current Review, Edit, or Source mode,
+and keeps the advanced window and query available for continued search. Ordinary
 input never opens an advanced window automatically.
 
 Both presentations use one Search session and one result-validation contract.

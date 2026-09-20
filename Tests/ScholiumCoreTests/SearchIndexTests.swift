@@ -52,6 +52,48 @@ struct SearchIndexTests {
         #expect(SearchQueryParser.parse("callout:argument Guidance").diagnostics.first?.code == .unknownStructuredValue)
     }
 
+    @Test("Index-backed lexical completion follows fields and vault scope")
+    func lexicalCompletionTerms() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        _ = try await index.synchronize([
+            fixture.item(
+                fixture.analyses,
+                "Papers/Mitchell.md",
+                "# Mitchell\n\nThe mitchell term appears twice: mitchell."
+            ),
+            fixture.item(
+                fixture.topics,
+                "Topics/Method.md",
+                "# Method\n\nA methodological note."
+            ),
+        ])
+
+        let unfielded = try await index.completionTerms(
+            for: SearchCompletionLookup(partial: "mit"),
+            limit: 8
+        )
+        let mitchell = try #require(unfielded.first { $0.id == "mitchell" })
+        #expect(mitchell.fields.contains(.heading))
+        #expect(mitchell.fields.contains(.body))
+        #expect(mitchell.occurrenceCount >= 2)
+
+        let bodyOnly = try await index.completionTerms(
+            for: SearchCompletionLookup(partial: "mit", field: .body),
+            vaultID: fixture.analyses.id,
+            limit: 8
+        )
+        #expect(bodyOnly.map(\.id) == ["mitchell"])
+        #expect(
+            try await index.completionTerms(
+                for: SearchCompletionLookup(partial: "meth"),
+                vaultID: fixture.analyses.id,
+                limit: 8
+            ).isEmpty
+        )
+    }
+
     @Test("Multi-term conceptual queries retain AND semantics, including zero hits")
     func multiTermConceptualQueries() async throws {
         let fixture = try Fixture()

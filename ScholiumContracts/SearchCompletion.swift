@@ -16,28 +16,140 @@ public struct SearchCompletion: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// The lexical fragment currently being completed. It is deliberately smaller
+/// than a Search query: the parser remains the authority for the full query,
+/// while an index may answer only for this one visible token.
+public struct SearchCompletionLookup: Codable, Hashable, Sendable {
+    public let partial: String
+    public let field: SearchLexicalField?
+
+    public init(partial: String, field: SearchLexicalField? = nil) {
+        self.partial = partial
+        self.field = field
+    }
+
+    public var normalizedPartial: String {
+        SearchTextNormalization.lexicalNormalize(partial)
+    }
+}
+
+/// One authorized lexical value supplied by the active Search generation.
+/// It is a disposable retrieval projection, not a second source or query
+/// authority.
+public struct SearchCompletionTerm: Codable, Hashable, Sendable, Identifiable {
+    public let text: String
+    public let fields: [SearchLexicalField]
+    public let occurrenceCount: Int
+
+    public var id: String { SearchTextNormalization.lexicalNormalize(text) }
+
+    public init(
+        text: String,
+        fields: [SearchLexicalField] = [],
+        occurrenceCount: Int = 1
+    ) {
+        self.text = text
+        self.fields = fields.sorted { $0.rawValue < $1.rawValue }
+        self.occurrenceCount = max(1, occurrenceCount)
+    }
+}
+
 /// Optional scope-first candidates supplied by Application. The static
 /// capability table remains the grammar authority; this context can only
-/// provide values for fields already typed as Property or Note identity.
+/// provide values for fields already typed as Property or Note identity, plus
+/// lexical terms returned by the authorized Search index.
 public struct SearchCompletionContext: Codable, Hashable, Sendable {
     public let propertyKeys: [String]
     public let propertyValues: [String: [String]]
     public let noteIdentities: [String]
+    public let lexicalTerms: [SearchCompletionTerm]
 
     public init(
         propertyKeys: [String] = [],
         propertyValues: [String: [String]] = [:],
-        noteIdentities: [String] = []
+        noteIdentities: [String] = [],
+        lexicalTerms: [SearchCompletionTerm] = []
     ) {
         self.propertyKeys = propertyKeys
         self.propertyValues = propertyValues
         self.noteIdentities = noteIdentities
+        self.lexicalTerms = lexicalTerms
     }
 
     public static let empty = SearchCompletionContext()
 }
 
 public extension SearchCapabilities {
+    /// Returns the lexical lookup owned by the active token, if the token is
+    /// eligible for corpus-backed completion. Operators, properties,
+    /// structured fields and an already explicit prefix do not request a
+    /// lexical vocabulary scan.
+    func lexicalCompletionLookup(
+        for rawQuery: String,
+        scope: SearchPresentationScope,
+        provider: SearchProvider = .note,
+        caretUTF16: Int? = nil
+    ) -> SearchCompletionLookup? {
+        let caret = caretUTF16 ?? rawQuery.utf16.count
+        guard !rawQuery.isEmpty, caret >= 0, caret <= rawQuery.utf16.count
+        else { return nil }
+        let tokens = SearchQueryParser.completionTokens(rawQuery)
+        let active = tokens.first {
+            $0.range.lowerBound < caret
+                && $0.range.upperBound >= caret
+                && !["(", ")", "-"].contains($0.raw)
+        }
+        let start = active?.range.lowerBound ?? caret
+        let previous = tokens.filter { $0.range.upperBound <= start }
+        var groups: [String?] = []
+        for (index, item) in previous.enumerated() {
+            if item.raw == "(" {
+                let field =
+                    index > 0 && previous[index - 1].raw.hasSuffix(":")
+                    ? String(previous[index - 1].raw.dropLast()).lowercased()
+                    : nil
+                groups.append(field ?? groups.last.flatMap { $0 })
+            } else if item.raw == ")", !groups.isEmpty {
+                groups.removeLast()
+            }
+        }
+        let inParagraph = groups.contains { $0 == "paragraph" }
+        let inherited = inParagraph ? nil : groups.last.flatMap { $0 }
+        if let inherited {
+            guard let capability = fields(for: provider, scope: scope).first(where: { $0.name == inherited }),
+                capability.valueKind == .lexical
+            else { return nil }
+        }
+
+        guard let tokenPrefixRange = Range(NSRange(location: start, length: caret - start), in: rawQuery)
+        else { return nil }
+        let token = String(rawQuery[tokenPrefixRange])
+        let partial: String
+        let field: SearchLexicalField?
+        if let colon = token.firstIndex(of: ":") {
+            let rawField = String(token[..<colon]).lowercased()
+            guard let lexicalField = SearchLexicalField(rawValue: rawField),
+                fields(for: provider, scope: scope).contains(where: {
+                    $0.name == rawField && $0.valueKind == .lexical
+                })
+            else { return nil }
+            partial = String(token[token.index(after: colon)...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            field = lexicalField
+        } else {
+            partial = token
+            field = inherited.flatMap(SearchLexicalField.init(rawValue:))
+        }
+
+        let normalized = SearchTextNormalization.lexicalNormalize(partial)
+        guard !normalized.isEmpty, !partial.hasSuffix("*"),
+            !["AND", "OR", "NOT"].contains(partial)
+        else { return nil }
+        let containsCJK = partial.unicodeScalars.contains(where: SearchTokenization.isCJK)
+        guard containsCJK || normalized.utf8.count >= 2 else { return nil }
+        return SearchCompletionLookup(partial: partial, field: field)
+    }
+
     /// Completion shares the parser's lexer and replaces only the active token (or field/key),
     /// preserving all following query source and returning the resulting native caret position.
     func completions(
@@ -126,7 +238,7 @@ public extension SearchCapabilities {
         let fields = fields(for: provider, scope: scope)
         guard !fields.isEmpty else { return [] }
 
-        let candidates: [(replacement: String, display: String, detail: String)]
+        var candidates: [(replacement: String, display: String, detail: String)]
         if let colon = token.firstIndex(of: ":") {
             let rawField = String(token[..<colon]).lowercased()
             let rawPartialValue = String(token[token.index(after: colon)...])
@@ -176,6 +288,16 @@ public extension SearchCapabilities {
                     }
                 return ("\(field.name):\(value)", "\(field.name):\(value)", detail)
             }
+            if field.valueKind == .lexical,
+                let lexicalField = SearchLexicalField(rawValue: field.name)
+            {
+                candidates.append(
+                    contentsOf: Self.lexicalTermCandidates(
+                        matching: partialValue,
+                        field: lexicalField,
+                        context: context
+                    ))
+            }
         } else {
             let partial = token.lowercased()
             candidates = fields.filter {
@@ -183,6 +305,12 @@ public extension SearchCapabilities {
             }.map {
                 ("\($0.name):" + ($0.name == "paragraph" ? "(" : ""), "\($0.name):", Self.detail(for: $0))
             }
+            candidates.append(
+                contentsOf: Self.lexicalTermCandidates(
+                    matching: partial,
+                    field: nil,
+                    context: context
+                ))
         }
         return candidates.prefix(limit).map { candidate in
             SearchCompletion(
@@ -200,6 +328,42 @@ public extension SearchCapabilities {
         case .property: "Find a top-level property or exact scalar/list-member text"
         case .noteIdentity: "Resolve one exact Note identity"
         }
+    }
+
+    private static func lexicalTermCandidates(
+        matching partial: String,
+        field: SearchLexicalField?,
+        context: SearchCompletionContext
+    ) -> [(replacement: String, display: String, detail: String)] {
+        let normalizedPartial = SearchTextNormalization.lexicalNormalize(partial)
+        guard !normalizedPartial.isEmpty else { return [] }
+        return context.lexicalTerms
+            .filter { term in
+                let matchesField =
+                    field.map {
+                        term.fields.isEmpty || term.fields.contains($0)
+                    } ?? true
+                return matchesField
+                    && SearchTextNormalization.lexicalNormalize(term.text).hasPrefix(normalizedPartial)
+            }
+            .sorted { lhs, rhs in
+                let lhsNormalized = SearchTextNormalization.lexicalNormalize(lhs.text)
+                let rhsNormalized = SearchTextNormalization.lexicalNormalize(rhs.text)
+                let lhsExact = lhsNormalized == normalizedPartial
+                let rhsExact = rhsNormalized == normalizedPartial
+                if lhsExact != rhsExact { return lhsExact }
+                if lhs.occurrenceCount != rhs.occurrenceCount {
+                    return lhs.occurrenceCount > rhs.occurrenceCount
+                }
+                if lhsNormalized.utf16.count != rhsNormalized.utf16.count {
+                    return lhsNormalized.utf16.count < rhsNormalized.utf16.count
+                }
+                return lhsNormalized < rhsNormalized
+            }
+            .map { term in
+                let replacement = field.map { "\($0.rawValue):\(queryValue(term.text))" } ?? queryValue(term.text)
+                return (replacement, replacement, "Search term")
+            }
     }
 
     private static func uniqueSorted(_ values: [String]) -> [String] {

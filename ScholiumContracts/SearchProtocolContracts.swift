@@ -13,6 +13,7 @@ public enum SearchContract {
     public static let maximumQueryUTF16Count = 16_384
     public static let maximumQueryTokenCount = 64
     public static let maximumQueryGroupDepth = 8
+    public static let maximumCompletionTerms = 32
 
 }
 
@@ -163,6 +164,67 @@ public struct SearchRequest: Codable, Hashable, Sendable {
         default:
             false
         }
+    }
+}
+
+/// A bounded lookup for one visible lexical completion token. It carries the
+/// same explicit scope boundary as Search but never stores a result or source
+/// projection.
+public struct SearchCompletionRequest: Codable, Hashable, Sendable {
+    public let id: UUID
+    public let lookup: SearchCompletionLookup
+    public let presentationScope: SearchPresentationScope
+    public let executionScope: SearchExecutionScope
+    public let limit: Int
+
+    public init(
+        id: UUID = UUID(),
+        lookup: SearchCompletionLookup,
+        presentationScope: SearchPresentationScope,
+        executionScope: SearchExecutionScope,
+        limit: Int = 32
+    ) {
+        self.id = id
+        self.lookup = lookup
+        self.presentationScope = presentationScope
+        self.executionScope = executionScope
+        self.limit = max(0, min(limit, SearchContract.maximumCompletionTerms))
+    }
+
+    public var hasConsistentScopes: Bool {
+        switch (presentationScope, executionScope) {
+        case (.thisNote, .currentNote),
+            (.currentVault, .currentVault),
+            (.triptych, .triptych):
+            true
+        default:
+            false
+        }
+    }
+}
+
+public struct SearchCompletionResponse: Codable, Hashable, Sendable {
+    public let contractVersion: Int
+    public let requestID: UUID
+    public let scope: SearchPresentationScope
+    public let freshnessToken: SearchFreshnessToken
+    public let availability: SearchAvailability
+    public let terms: [SearchCompletionTerm]
+
+    public init(
+        contractVersion: Int = SearchContract.currentVersion,
+        requestID: UUID,
+        scope: SearchPresentationScope,
+        freshnessToken: SearchFreshnessToken,
+        availability: SearchAvailability,
+        terms: [SearchCompletionTerm]
+    ) {
+        self.contractVersion = contractVersion
+        self.requestID = requestID
+        self.scope = scope
+        self.freshnessToken = freshnessToken
+        self.availability = availability
+        self.terms = terms
     }
 }
 

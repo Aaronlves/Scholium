@@ -341,13 +341,20 @@ extension WindowModel {
     func openWorkspaceReference(
         _ reference: VaultNoteReference,
         sourceRange: SearchSourceRange?,
-        fallbackLine: Int
+        fallbackLine: Int,
+        mode: NotePresentationMode? = nil
     ) {
         if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
-            owner.openWorkspaceReference(reference, sourceRange: sourceRange, fallbackLine: fallbackLine)
+            owner.openWorkspaceReference(
+                reference,
+                sourceRange: sourceRange,
+                fallbackLine: fallbackLine,
+                mode: mode
+            )
             return
         }
+        let navigationMode = mode ?? presentedDocumentMode
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
@@ -355,7 +362,12 @@ extension WindowModel {
                 tabActivation: .place(.replaceSelected)
             )
             self.documentController.requestSourceLocation(line: sourceRange?.line ?? max(1, fallbackLine), range: sourceRange)
-            self.requestPresentationMode = .source
+            // Search locates a result; it does not choose a new Document mode.
+            // Read-only destinations still enter Review through activation.
+            self.requestPresentationMode =
+                mode == nil
+                    && self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == false
+                ? nil : navigationMode
         }
     }
 

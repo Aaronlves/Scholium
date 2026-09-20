@@ -251,6 +251,12 @@ generation. Derived indexes remain disposable and never writable authority.
 
 The parser exposes one typed capability description used by completion, **Explain
 Query** and the MCP tool schema. Completion edits only visible query text.
+For an active lexical token, the authorized Search provider may supply a bounded
+list of terms from its current compatible generation (or the exact current Note
+buffer), using the same normalized field projection as retrieval. These terms are
+suggestions only: accepting one edits the active token, never changes scope or
+silently broadens a predicate, and a bare term retains exact-term semantics;
+explicit prefix retrieval still requires the trailing `*`.
 Saved Searches store only raw query, visible scope, and contract version; they store no
 AST, resolved identity, result, or generation. Only the current definition format is
 accepted; there is no compatibility, migration, or version-review workflow. Saved

@@ -325,6 +325,59 @@ struct WindowSearchControllerTests {
         controller.dismiss()
     }
 
+    @Test("Lexical completion uses the current Search scope")
+    func lexicalCompletionUsesCurrentScope() async {
+        let generation = SearchGenerationID(
+            triptychID: UUID(),
+            sequence: 4,
+            sourceManifestHash: "completion-manifest"
+        )
+        var requests: [SearchCompletionRequest] = []
+        let discovery = DiscoveryController()
+        let controller = WindowSearchController(
+            discoveryController: discovery,
+            dependencies: dependencies(
+                executionContext: { _ in
+                    DiscoverySearchExecutionContext(
+                        workspaceIsAvailable: true,
+                        currentNoteSnapshot: nil,
+                        currentVaultID: nil
+                    )
+                },
+                searchCompletions: { request in
+                    requests.append(request)
+                    return SearchCompletionResponse(
+                        requestID: request.id,
+                        scope: request.presentationScope,
+                        freshnessToken: .triptych(generation),
+                        availability: .current(generation),
+                        terms: [
+                            SearchCompletionTerm(
+                                text: "mitchell",
+                                fields: [.body],
+                                occurrenceCount: 3
+                            )
+                        ]
+                    )
+                }
+            )
+        )
+        controller.criteria = SearchWorkspaceState(query: "mit", scope: .triptych)
+
+        let terms = await controller.lexicalCompletionTerms(
+            for: SearchCompletionLookup(partial: "mit")
+        )
+
+        #expect(terms.map(\.text) == ["mitchell"])
+        #expect(requests.count == 1)
+        #expect(requests.first?.presentationScope == .triptych)
+        if case .triptych = requests.first?.executionScope {
+            // The query's explicit presentation scope must remain the execution scope.
+        } else {
+            Issue.record("Lexical completion escaped the Triptych execution scope.")
+        }
+    }
+
     @Test("Search completion replaces only plain query text and follows Note capabilities")
     func completionContract() throws {
         let capabilities = SearchCapabilities.current
@@ -361,6 +414,12 @@ struct WindowSearchControllerTests {
                     currentVaultID: nil
                 )
             },
+        searchCompletions:
+            @escaping @MainActor (
+                SearchCompletionRequest
+            ) async throws -> SearchCompletionResponse = { _ in
+                throw CancellationError()
+            },
         resultEvidence:
             @escaping @MainActor (
                 SearchResult,
@@ -381,6 +440,7 @@ struct WindowSearchControllerTests {
             saveSavedSearches: saveSavedSearches,
             recoverSavedSearches: recoverSavedSearches,
             executionContext: executionContext,
+            searchCompletions: searchCompletions,
             resultEvidence: resultEvidence,
             open: open,
             hasCurrentNote: hasCurrentNote,

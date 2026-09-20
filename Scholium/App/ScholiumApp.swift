@@ -91,6 +91,12 @@ final class WindowModel: ObservableObject {
                     currentVaultID: self.currentRegisteredVault?.id
                 )
             },
+            searchCompletions: { [weak self] request in
+                guard let self else {
+                    throw DiscoverySearchExecutionError.workspaceUnavailable
+                }
+                return try await self.discoveryController.searchCompletions(request)
+            },
             resultEvidence: { [weak self] result, scope in
                 guard let self else {
                     return WindowSearchResultEvidence(

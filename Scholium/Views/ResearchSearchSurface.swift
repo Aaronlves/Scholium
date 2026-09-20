@@ -38,6 +38,9 @@ struct ResearchSearchSurface<Library: View>: View {
     private var searchContext: ResearchSearchContext {
         ResearchSearchContext(
             completionContext: searchCompletionContext,
+            lexicalCompletionTerms: { lookup in
+                await searchController.lexicalCompletionTerms(for: lookup)
+            },
             savedSearches: searchController.savedSearches,
             savedSearchLoadFailure: searchController.savedSearchLoadFailure,
             recoverSavedSearches: {

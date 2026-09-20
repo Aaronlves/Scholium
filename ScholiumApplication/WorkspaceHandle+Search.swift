@@ -10,6 +10,79 @@ struct RelatedContentRetrievalMeasurement: Sendable {
     let passageDuration: Duration
 }
 
+private func currentNoteCompletionTerms(
+    _ projection: SearchDocumentProjection,
+    lookup: SearchCompletionLookup,
+    limit: Int
+) -> [SearchCompletionTerm] {
+    struct Accumulator {
+        var text: String
+        var fields: Set<SearchLexicalField>
+        var occurrenceCount: Int
+    }
+
+    let values: [(SearchLexicalField, String)] = [
+        (.title, projection.title),
+        (.alias, projection.aliases.joined(separator: "\n")),
+        (.heading, projection.headings.joined(separator: "\n")),
+        (.summary, projection.summary ?? ""),
+        (.body, projection.body),
+        (.author, projection.authors.joined(separator: "\n")),
+        (.publicationDate, projection.publicationDate ?? ""),
+        (.tag, projection.tags.joined(separator: "\n")),
+        (.footnote, projection.footnotes),
+        (.linkAnnotation, projection.linkAnnotations),
+        (.path, projection.path),
+    ]
+    let normalizedPartial = lookup.normalizedPartial
+    guard !normalizedPartial.isEmpty, limit > 0 else { return [] }
+    var terms: [String: Accumulator] = [:]
+    for (field, value) in values where lookup.field == nil || lookup.field == field {
+        for term in SearchTokenization.vocabularyTerms(in: value) {
+            let key = SearchTextNormalization.lexicalNormalize(term)
+            guard !key.isEmpty,
+                key.hasPrefix(normalizedPartial),
+                !["and", "or", "not"].contains(key)
+            else { continue }
+            if var existing = terms[key] {
+                existing.fields.insert(field)
+                existing.occurrenceCount += 1
+                terms[key] = existing
+            } else {
+                terms[key] = Accumulator(
+                    text: term,
+                    fields: [field],
+                    occurrenceCount: 1
+                )
+            }
+        }
+    }
+    return terms.values
+        .map {
+            SearchCompletionTerm(
+                text: $0.text,
+                fields: Array($0.fields),
+                occurrenceCount: $0.occurrenceCount
+            )
+        }
+        .sorted { lhs, rhs in
+            let lhsNormalized = SearchTextNormalization.lexicalNormalize(lhs.text)
+            let rhsNormalized = SearchTextNormalization.lexicalNormalize(rhs.text)
+            let lhsExact = lhsNormalized == normalizedPartial
+            let rhsExact = rhsNormalized == normalizedPartial
+            if lhsExact != rhsExact { return lhsExact }
+            if lhs.occurrenceCount != rhs.occurrenceCount {
+                return lhs.occurrenceCount > rhs.occurrenceCount
+            }
+            if lhsNormalized.utf16.count != rhsNormalized.utf16.count {
+                return lhsNormalized.utf16.count < rhsNormalized.utf16.count
+            }
+            return lhsNormalized < rhsNormalized
+        }
+        .prefix(limit)
+        .map { $0 }
+}
+
 extension WorkspaceHandle {
     func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
         lastRelatedContentMeasurement = nil
@@ -205,6 +278,92 @@ extension WorkspaceHandle {
             eligibleDocuments: openingSearchEligibility(for: request)
         )
         return openingVaultSearchResponse(response, request: request)
+    }
+
+    func searchCompletions(
+        _ request: SearchCompletionRequest
+    ) async throws -> SearchCompletionResponse {
+        try requireActive()
+        let availability = await services.searchIndex.availability()
+        let generation = try await services.searchIndex.generation()
+        let freshness: SearchFreshnessToken =
+            switch request.executionScope {
+            case .currentNote(let source):
+                .currentNote(source)
+            case .currentVault, .triptych:
+                generation.map(SearchFreshnessToken.triptych)
+                    ?? SearchFreshnessToken(
+                        "triptych:\(id.uuidString.lowercased()):unavailable"
+                    )
+            }
+        guard request.hasConsistentScopes,
+            request.limit > 0,
+            searchScopeDiagnostic(
+                SearchRequest(
+                    id: request.id,
+                    query: "completion",
+                    presentationScope: request.presentationScope,
+                    executionScope: request.executionScope,
+                    limit: 1
+                )
+            ) == nil
+        else {
+            return SearchCompletionResponse(
+                requestID: request.id,
+                scope: request.presentationScope,
+                freshnessToken: freshness,
+                availability: availability,
+                terms: []
+            )
+        }
+
+        let terms: [SearchCompletionTerm]
+        switch request.executionScope {
+        case .currentNote(let source):
+            let descriptor = assignment.vaults.values.first { $0.id == source.noteID.vaultID }
+            let document = NoteDocument(
+                relativePath: source.noteID.relativePath,
+                rawContent: source.source
+            )
+            let projection = SearchDocumentProjection(
+                document: document,
+                profile: WorkflowProfileResolver.resolve(
+                    vaultRole: descriptor?.role ?? .other
+                )
+            )
+            terms = currentNoteCompletionTerms(
+                projection,
+                lookup: request.lookup,
+                limit: request.limit
+            )
+        case .currentVault(let vaultID):
+            terms = try await services.searchIndex.completionTerms(
+                for: request.lookup,
+                vaultID: vaultID,
+                eligibleDocuments: openingSearchEligibility(
+                    for: SearchRequest(
+                        id: request.id,
+                        query: "completion",
+                        presentationScope: request.presentationScope,
+                        executionScope: request.executionScope,
+                        limit: 1
+                    )
+                ),
+                limit: request.limit
+            )
+        case .triptych:
+            terms = try await services.searchIndex.completionTerms(
+                for: request.lookup,
+                limit: request.limit
+            )
+        }
+        return SearchCompletionResponse(
+            requestID: request.id,
+            scope: request.presentationScope,
+            freshnessToken: freshness,
+            availability: availability,
+            terms: terms
+        )
     }
 
     private func searchScopeDiagnostic(

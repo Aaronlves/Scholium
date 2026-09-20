@@ -771,6 +771,7 @@ extension ScholiumUITests {
     @MainActor
     func testSearchOpensTheSelectedResultFromTheKeyboard() throws {
         waitForCurrentDocumentSurface()
+        selectDocumentMode("Review")
 
         app.typeKey("f", modifierFlags: [.command, .shift])
         let advanced = app.windows["scholium.advancedSearchWindow"]
@@ -793,13 +794,43 @@ extension ScholiumUITests {
 
         XCTAssertTrue(advanced.exists, "Opening a result retains the advanced search window.")
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
-        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
+        let renderedDocument = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.renderedDocument.")
+        ).firstMatch
         XCTAssertTrue(
-            sourceEditor.waitForExistence(timeout: 10),
-            "The selected Search result did not finish revealing its source range."
+            renderedDocument.waitForExistence(timeout: 10),
+            "The selected Search result did not finish revealing its rendered match."
         )
         let mode = documentModeControl()
-        XCTAssertEqual(documentModeState(mode), "Source")
+        XCTAssertEqual(documentModeState(mode), "Review")
+        XCTAssertFalse(app.descendants(matching: .any)["Markdown source editor"].exists)
+    }
+
+    @MainActor
+    func testSearchOffersAnIndexBackedLexicalCompletionWhileTyping() throws {
+        waitForCurrentDocumentSurface()
+
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        let advanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        let field = advanced.searchFields["scholium.searchField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+
+        typeCommittedText("syn", into: field, in: app)
+        let suggestion = advanced.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "synthetic,")
+        ).firstMatch
+        XCTAssertTrue(
+            suggestion.waitForExistence(timeout: 20),
+            "Search completion must use the committed index vocabulary while typing a partial term."
+        )
+        suggestion.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                (field.value as? String) == "synthetic"
+            },
+            "Accepting a lexical completion must replace only the active query token."
+        )
     }
 
     @MainActor

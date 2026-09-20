@@ -1263,6 +1263,45 @@ public enum SearchTokenization {
         return result
     }
 
+    /// Returns the bounded word units represented by the active Search
+    /// tokenizer. This is used only for disposable completion vocabulary; it
+    /// carries no source locations and never reconstructs authored Markdown.
+    public static func vocabularyTerms(in value: String) -> [String] {
+        let normalized = SearchTextNormalization.normalize(value)
+        var result: [String] = []
+        var nonCJK = ""
+        var cjk = ""
+
+        func finishNonCJK() {
+            guard !nonCJK.isEmpty else { return }
+            result.append(nonCJK)
+            nonCJK = ""
+        }
+
+        func finishCJK() {
+            guard !cjk.isEmpty else { return }
+            result.append(contentsOf: indexTokens(forCJKRun: cjk))
+            cjk = ""
+        }
+
+        for scalar in normalized.unicodeScalars {
+            if isCJK(scalar) {
+                finishNonCJK()
+                cjk.unicodeScalars.append(scalar)
+            } else {
+                finishCJK()
+                if CharacterSet.alphanumerics.contains(scalar) || scalar == "_" {
+                    nonCJK.unicodeScalars.append(scalar)
+                } else {
+                    finishNonCJK()
+                }
+            }
+        }
+        finishCJK()
+        finishNonCJK()
+        return result
+    }
+
     public static func containsCJK(_ value: String) -> Bool {
         value.unicodeScalars.contains(where: isCJK)
     }
