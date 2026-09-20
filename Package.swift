@@ -66,6 +66,15 @@ let package = Package(
             path: "Tests/ScholiumCoreTests"
         ),
         .testTarget(
+            name: "ScholiumPerformanceTests",
+            dependencies: [
+                "ScholiumContracts",
+                "ScholiumCore",
+                .product(name: "Yams", package: "Yams"),
+            ],
+            path: "Tests/ScholiumPerformanceTests"
+        ),
+        .testTarget(
             name: "ScholiumApplicationTests",
             dependencies: ["ScholiumContracts", "ScholiumApplication"],
             path: "Tests/ScholiumApplicationTests"

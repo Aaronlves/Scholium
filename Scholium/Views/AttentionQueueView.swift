@@ -420,7 +420,8 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
             accessibilityDescription: nil
         )
         let query = presentation.filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        stateTitle.stringValue = query.isEmpty && presentation.notificationFilter == .all
+        stateTitle.stringValue =
+            query.isEmpty && presentation.notificationFilter == .all
             ? ScholiumL10n.string("No Notifications")
             : ScholiumL10n.string("No Matching Notifications")
         stateDetail.stringValue = ""
@@ -578,7 +579,8 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        let id = rows.indices.contains(tableView.selectedRow) && rows[tableView.selectedRow].isSelectable
+        let id =
+            rows.indices.contains(tableView.selectedRow) && rows[tableView.selectedRow].isSelectable
             ? rows[tableView.selectedRow].id
             : nil
         presentation.select(id)
@@ -589,7 +591,8 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         switch rows[row] {
         case .category(let title):
             let identifier = NSUserInterfaceItemIdentifier("attention.category")
-            let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? AttentionCategoryCell
+            let cell =
+                tableView.makeView(withIdentifier: identifier, owner: self) as? AttentionCategoryCell
                 ?? AttentionCategoryCell(identifier: identifier)
             cell.configure(title: title)
             return cell

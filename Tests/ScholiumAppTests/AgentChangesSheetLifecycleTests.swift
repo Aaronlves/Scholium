@@ -15,8 +15,9 @@ struct AgentChangesSheetLifecycleTests {
         _ = NSApplication.shared
         let screen = try #require(NSScreen.main)
         let visible = screen.visibleFrame
-        // This fixture deliberately leaves room for the sheet. Screen-edge
-        // accommodation is native behavior, not the invariant under test.
+        // Center the disposable parent so the native sheet never needs to
+        // move it merely to fit inside the visible screen. The invariant under
+        // test is the parent frame across the sheet's own lifecycle.
         try #require(visible.width >= 800 && visible.height >= 680)
         let suite = "Scholium-SheetLifecycle-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -31,7 +32,7 @@ struct AgentChangesSheetLifecycleTests {
         let size = NSSize(width: min(1000, visible.width - 40), height: min(740, visible.height - 80))
         let parent = NSWindow(
             contentRect: NSRect(
-                x: visible.midX - size.width / 2, y: visible.maxY - size.height - 40,
+                x: visible.midX - size.width / 2, y: visible.midY - size.height / 2,
                 width: size.width, height: size.height),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         parent.title = "Scholium synthetic sheet lifecycle test"

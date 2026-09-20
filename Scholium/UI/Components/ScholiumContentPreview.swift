@@ -15,6 +15,7 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
     private var sourceRect: NSRect = .zero
     private var openingFrame: NSRect = .zero
     private var isDismissing = false
+    private var dismissalFallbackTask: Task<Void, Never>?
     private let animates: Bool
 
     init(animates: Bool = true) { self.animates = animates }
@@ -111,6 +112,27 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
             guard let self, self.panel === panel else { return }
             self.close(restoringFocus: restoringFocus)
         }
+        // AppKit normally delivers the animation completion on the next run
+        // loop. A busy WebKit/AppKit process can defer that callback after the
+        // visual duration, leaving a child window that is already transparent
+        // but still owns focus and the parent relationship. Keep one bounded
+        // lifecycle fallback tied to this exact panel; the normal completion
+        // cancels it through `tearDown()`.
+        if animates {
+            let duration = ScholiumMotion.contentPreviewDuration(
+                closing: true,
+                reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            )
+            dismissalFallbackTask = Task { @MainActor [weak self, weak panel] in
+                do {
+                    try await Task.sleep(for: .seconds(duration + 0.05))
+                } catch {
+                    return
+                }
+                guard let self, self.panel === panel, self.isDismissing else { return }
+                self.close(restoringFocus: restoringFocus)
+            }
+        }
     }
 
     private func compactFrame(relativeTo frame: NSRect) -> NSRect {
@@ -178,6 +200,8 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
     }
 
     private func tearDown() {
+        dismissalFallbackTask?.cancel()
+        dismissalFallbackTask = nil
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         observations.forEach(NotificationCenter.default.removeObserver)

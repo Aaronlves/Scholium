@@ -234,13 +234,36 @@ extension WindowModel {
         else { return false }
         do {
             if !inChat {
-                guard
-                    let current = workspaceCatalog?.notes.first(where: {
-                        $0.reference.vaultID == card.reference.vaultID && $0.reference.relativePath == card.reference.relativePath
-                    })
-                else { throw RelatedMaterialsError.changedSource }
+                // The catalog is a derived presentation snapshot and may be
+                // one watcher publication behind the user's action. Verify
+                // the reference against the document authority first; a
+                // missing source is a handled, source-location failure, not
+                // an unhandled navigation failure.
+                do {
+                    _ = try await capabilities.documents.load(card.candidate.note)
+                } catch {
+                    guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                        materials.seed?.request.id == seed.request.id
+                    else { return false }
+                    reportOperationIssue(
+                        String(
+                            localized: "This reference location could not be verified. The Note was opened without selecting a passage.",
+                            bundle: .module
+                        ),
+                        kind: .information
+                    )
+                    return true
+                }
+                guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                    materials.seed?.request.id == seed.request.id
+                else { return false }
+                // The card already carries the immutable reference that came
+                // from the candidate. Once the authoritative load above has
+                // succeeded, do not require the derived catalog to publish the
+                // same Note again before opening it; that publication can lag
+                // the action by one watcher event.
                 await openWorkspaceReference(
-                    current.reference,
+                    card.reference,
                     line: card.passage.range.line, inspectorMode: .related,
                     sourceFingerprint: card.candidate.fingerprint)
                 return true

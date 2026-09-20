@@ -24,11 +24,11 @@ struct MCPAppBridgeRequestRouterTests {
                 try await Task.sleep(for: .milliseconds(10))
             }
         }
-        try await wait { controller.isLoaded }
+        try #require(await controller.waitUntilLoaded(), "Chat history did not finish loading")
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let runtime = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: runtime, home: controller.runtimeHome, helper: runtime)
-        try await wait { controller.state == .ready && controller.account != nil }
+        try #require(await controller.waitUntilReady(), "Chat runtime did not finish its initial conversation read")
         controller.editDraft("hold source comparison")
         controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
@@ -313,11 +313,11 @@ struct MCPAppBridgeRequestRouterTests {
                 try await Task.sleep(for: .milliseconds(10))
             }
         }
-        try await wait { controller.isLoaded }
+        try #require(await controller.waitUntilLoaded(), "Chat history did not finish loading")
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let runtime = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: runtime, home: controller.runtimeHome, helper: runtime)
-        try await wait { controller.state == .ready && controller.account != nil }
+        try #require(await controller.waitUntilReady(), "Chat runtime did not finish its initial conversation read")
         controller.editDraft("hold source comparison")
         controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
@@ -614,11 +614,11 @@ struct MCPAppBridgeRequestRouterTests {
                 try await Task.sleep(for: .milliseconds(10))
             }
         }
-        try await wait { controller.isLoaded }
+        try #require(await controller.waitUntilLoaded(), "Chat history did not finish loading")
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
-        try await wait { controller.account != nil && controller.state == .ready }
+        try #require(await controller.waitUntilReady(), "Chat runtime did not finish its initial conversation read")
         controller.editDraft("hold source comparison")
         controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }

@@ -26,9 +26,9 @@ struct AgentChatZoteroConfigurationTests {
             let controller = fixtureChatController(triptychID: triptych, root: root) { request in
                 try! .init(requestID: request.requestID, result: .object([:]))
             }
-            try await wait { controller.isLoaded }
+            try #require(await controller.waitUntilLoaded(), "Chat history did not finish loading")
             controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
-            try await wait { controller.capabilities.canConfigureTools }
+            try #require(await controller.waitUntilConnectionReady(), "Chat runtime configuration did not finish loading")
             return controller
         }
         let first = try await make()

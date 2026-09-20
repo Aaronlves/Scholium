@@ -291,8 +291,8 @@ report_swift_test_success() {
     print "${label}: passed"
   fi
 
-  if rg -q 'SEARCH_V6_PERFORMANCE_REPORT' "${log}"; then
-    rg 'SEARCH_V6_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
+  if rg -q 'SEARCH_V9_PERFORMANCE_REPORT|SEARCH_V6_PERFORMANCE_REPORT' "${log}"; then
+    rg 'SEARCH_V9_PERFORMANCE_REPORT|SEARCH_V6_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
       "${log}" || true
   fi
 }
@@ -398,10 +398,19 @@ run_swift_test_product() {
 
 for test_product in \
   ScholiumCoreTests \
+  ScholiumPerformanceTests \
   ScholiumContractsTests \
   ScholiumApplicationTests \
   ScholiumAppTests; do
-  run_swift_test_product "${test_product}"
+  if [[ "${test_product}" == "ScholiumPerformanceTests" ]]; then
+    run_measurement_test \
+      "ScholiumPerformanceTests performance" \
+      "ScholiumPerformanceTests-performance" \
+      --no-parallel \
+      --filter 'ScholiumPerformanceTests'
+  else
+    run_swift_test_product "${test_product}"
+  fi
   if [[ "${test_product}" == "ScholiumCoreTests" ]]; then
     run_measurement_test \
       "ScholiumCoreTests performance" \

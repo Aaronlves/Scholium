@@ -25,9 +25,9 @@ extension MCPAppBridgeRequestRouterTests {
         }
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        try await wait { controller.isLoaded }
+        try #require(await controller.waitUntilLoaded(), "Chat history did not finish loading")
         controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
-        try await wait { controller.state == .ready && controller.account != nil }
+        try #require(await controller.waitUntilReady(), "Chat runtime did not finish its initial conversation read")
         controller.editDraft("hold")
         controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }

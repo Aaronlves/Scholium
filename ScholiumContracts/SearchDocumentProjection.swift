@@ -428,15 +428,32 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         segments: [SearchTextSegment],
         hasBrokenLink: Bool
     ) -> String {
-        let stableMaterial =
-            segments.map { segment in
-                "\(segment.field.rawValue)\u{1F}\(segment.ordinal)\u{1F}\(segment.normalizedText)"
-                    + segment.relatedRankingText.keys.sorted().map { key in
-                        "\u{1F}\(key)\u{1F}\(segment.relatedRankingText[key] ?? "")"
-                    }.joined()
-            }.joined(separator: "\u{1E}")
-            + "\u{1D}\(hasBrokenLink)"
-        return SHA256.hash(data: Data(stableMaterial.utf8))
+        var hasher = SHA256()
+        let fieldSeparator = Data("\u{1F}".utf8)
+        let segmentSeparator = Data("\u{1E}".utf8)
+        let stateSeparator = Data("\u{1D}".utf8)
+
+        func update(_ value: String) {
+            hasher.update(data: Data(value.utf8))
+        }
+
+        for (index, segment) in segments.enumerated() {
+            if index > 0 { hasher.update(data: segmentSeparator) }
+            update(segment.field.rawValue)
+            hasher.update(data: fieldSeparator)
+            update(String(segment.ordinal))
+            hasher.update(data: fieldSeparator)
+            update(segment.normalizedText)
+            for key in segment.relatedRankingText.keys.sorted() {
+                hasher.update(data: fieldSeparator)
+                update(key)
+                hasher.update(data: fieldSeparator)
+                update(segment.relatedRankingText[key] ?? "")
+            }
+        }
+        hasher.update(data: stateSeparator)
+        update(String(hasBrokenLink))
+        return hasher.finalize()
             .map { String(format: "%02x", $0) }
             .joined()
     }
@@ -535,8 +552,10 @@ private enum SearchProjectionBuilder {
         explicitMap: [SearchVisibleFragment]?
     ) -> (text: String, map: [SearchSegmentOffset]) {
         var normalized = ""
+        normalized.reserveCapacity(text.utf16.count)
         var normalizedUTF16Count = 0
         var map: [SearchSegmentOffset] = []
+        map.reserveCapacity(text.utf16.count)
         var hasPendingWhitespace = false
         var pendingWhitespaceSource: Range<Int>?
         let fragments =
@@ -558,6 +577,43 @@ private enum SearchProjectionBuilder {
                     location: fragment.textRange.lowerBound,
                     length: fragment.textRange.count
                 ))
+
+            // Most visible prose is already in the lexical comparison form.
+            // Normalize that fragment once, then retain the per-grapheme map
+            // without paying Foundation folding cost once per Character. The
+            // exact source mapping remains one entry per grapheme, including
+            // non-exact projected fragments whose source range is intentionally
+            // broad.
+            if !hasPendingWhitespace,
+                !fragmentText.contains(where: { $0.isWhitespace }),
+                SearchTextNormalization.lexicalNormalize(fragmentText) == fragmentText
+            {
+                let lower = normalizedUTF16Count
+                normalized.append(contentsOf: fragmentText)
+                normalizedUTF16Count += fragmentText.utf16.count
+                if let sourceRange = fragment.sourceRange {
+                    var localUTF16 = 0
+                    for character in fragmentText {
+                        let characterLength = String(character).utf16.count
+                        let originalLower = localUTF16
+                        let originalUpper = localUTF16 + characterLength
+                        localUTF16 = originalUpper
+                        let mappedSource =
+                            fragment.exact
+                            ? (sourceRange.lowerBound + originalLower)..<(sourceRange.lowerBound + originalUpper)
+                            : sourceRange
+                        map.append(
+                            SearchSegmentOffset(
+                                normalizedUTF16LowerBound: lower + originalLower,
+                                normalizedUTF16UpperBound: lower + originalUpper,
+                                sourceUTF16LowerBound: mappedSource.lowerBound,
+                                sourceUTF16UpperBound: mappedSource.upperBound
+                            ))
+                    }
+                }
+                continue
+            }
+
             var localUTF16 = 0
             for character in fragmentText {
                 let characterLength = String(character).utf16.count

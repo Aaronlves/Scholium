@@ -160,7 +160,7 @@ struct TriptychControlTests {
 
         #expect(
             Set(object.keys) == [
-                "schemaVersion",
+                "schemaVersion"
             ])
         #expect((object["schemaVersion"] as? NSNumber)?.intValue == 10)
     }

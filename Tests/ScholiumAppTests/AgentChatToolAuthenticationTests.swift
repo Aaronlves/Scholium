@@ -19,12 +19,12 @@ struct AgentChatToolAuthenticationTests {
         }
     }
     private func connect(_ controller: AgentChatController) async throws {
-        try await wait { controller.isLoaded }
+        try #require(await controller.waitUntilLoaded(), "Chat history did not finish loading")
         try FileManager.default.createDirectory(at: controller.runtimeHome, withIntermediateDirectories: true)
         try Data().write(to: controller.runtimeHome.appendingPathComponent("oauth-fixture"))
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
-        try await wait { controller.capabilities.hasTools && !controller.capabilities.isRefreshing }
+        try #require(await controller.waitUntilConnectionReady(), "Chat runtime did not finish capability initialization")
     }
 
     @Test("Opening a page does not confirm sign-in; only the matching runtime event does")

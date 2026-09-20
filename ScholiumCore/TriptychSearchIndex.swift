@@ -71,6 +71,10 @@ public actor TriptychSearchIndex {
     // Replaced with each desired inventory; never used as publication authority.
     private var projectionHashes: [String: (input: ProjectionHashInput, hash: String)] = [:]
     private var relatedPassageMemo = RelatedContentSourceProjectionMemo()
+    /// Query-local derived state is valid only for one complete Search
+    /// generation. It is intentionally bounded to the maximum public result
+    /// window plus one `hasMore` probe; larger offsets use the canonical scan.
+    private var rankedSearchCache: [RankedSearchCacheKey: RankedSearchCacheValue] = [:]
 
     private struct ProjectionHashInput: Equatable {
         // Swift String equality is canonical-equivalence, while JSON hashing is
@@ -87,6 +91,28 @@ public actor TriptychSearchIndex {
         let task: Task<TriptychSearchIndexSyncResult, Error>
         let progress: ProgressDelivery?
     }
+
+    private struct RankedSearchCacheKey: Hashable {
+        let generation: SearchGenerationID
+        let ast: SearchQueryAST
+        let vaultID: UUID?
+        let includedVaultIDs: [UUID]
+    }
+
+    private struct RankedSearchItem {
+        let rowID: Int
+        let identityPriority: Int
+        let lexicalRank: Double
+        let evaluation: SearchEvaluation
+    }
+
+    private struct RankedSearchCacheValue {
+        let items: [RankedSearchItem]
+        let total: Int
+        let indeterminate: Int
+    }
+
+    private static let maximumCachedRankedResults = SearchContract.maximumNoteResults + 1
 
     private struct ProgressDelivery {
         let continuation: AsyncStream<Int>.Continuation
@@ -473,6 +499,7 @@ public actor TriptychSearchIndex {
                 activeSynchronization = nil
                 recoveredGeneratedDatabase = false
                 currentAvailability = .current(result.generation)
+                rankedSearchCache.removeAll(keepingCapacity: true)
             }
             return result
         } catch is CancellationError {
@@ -1024,76 +1051,114 @@ public actor TriptychSearchIndex {
             if case .lexical = $0 { true } else { false }
         }
         let includesProperties = ast.hasPropertyClause
-        var accepted: [(candidate: SearchCandidate, evaluation: SearchEvaluation)] = []
-        var total = 0
-        var indeterminate = 0
-        for rowID in rowIDs {
-            try Task.checkCancellation()
-            guard
-                let document = try loadDocument(
-                    rowID: rowID, includingProperties: includesProperties,
-                    includingParagraphs: includesParagraphs,
-                    includingAliases: ast.identityNeedle != nil,
-                    includingSegments: includesLexicalSegments || includesParagraphs,
-                    includingSourceEvidence: includesParagraphs),
-                Self.isEligible(document, in: eligibleDocuments)
-            else { continue }
-            let evaluation = SearchMatcher.evaluate(
-                ast, document: document, linkMatches: linkMatches,
-                normalizedNeedles: normalizedNeedles)
-            if evaluation.truth == .unknown { indeterminate += 1 }
-            guard evaluation.truth == .yes else { continue }
-            total += 1
-            var keys = Set(
-                evaluation.matches.compactMap { predicate -> SearchLexicalClause? in
-                    guard !predicate.excluded, case .lexical(let clause) = predicate.clause else { return nil }
-                    return Self.rankingKey(clause)
-                })
-            if includesParagraphs {
-                let matched = ast.matched(by: evaluation)
-                keys.formUnion(
-                    SearchMatcher.paragraphWitnesses(matched, document: document)
-                        .flatMap { $0.ast.positiveLexicalClauses }.map(Self.rankingKey))
-            }
-            let rank = keys.reduce(0.0) { $0 + (ranks[$1]?[rowID] ?? 0) }
-            let candidate = SearchCandidate(
-                document: document,
-                identityPriority: SearchMatcher.identityPriority(identityNeedle: ast.identityNeedle, document: document), lexicalRank: rank)
-            if accepted.count == required, let last = accepted.last,
-                !SearchCandidate.precedes(candidate, last.candidate)
-            {
-                continue
-            }
-            var lower = 0
-            var upper = accepted.count
-            while lower < upper {
-                let middle = lower + (upper - lower) / 2
-                if SearchCandidate.precedes(candidate, accepted[middle].candidate) {
-                    upper = middle
-                } else {
-                    lower = middle + 1
+        let cacheKey: RankedSearchCacheKey? = {
+            guard eligibleDocuments == nil,
+                linkMatches.isEmpty,
+                ast.linkQueries.isEmpty,
+                required <= Self.maximumCachedRankedResults
+            else { return nil }
+            return RankedSearchCacheKey(
+                generation: generation,
+                ast: ast,
+                vaultID: vaultID,
+                includedVaultIDs: request.includedVaultIDs ?? [])
+        }()
+
+        let rankedItems: [RankedSearchItem]
+        let total: Int
+        let indeterminate: Int
+        if let cacheKey, let cached = rankedSearchCache[cacheKey], required <= cached.items.count {
+            rankedItems = cached.items
+            total = cached.total
+            indeterminate = cached.indeterminate
+        } else {
+            let rankingLimit = cacheKey == nil ? required : Self.maximumCachedRankedResults
+            var accepted: [(candidate: SearchCandidate, evaluation: SearchEvaluation)] = []
+            var evaluatedTotal = 0
+            var evaluatedIndeterminate = 0
+            for rowID in rowIDs {
+                try Task.checkCancellation()
+                guard
+                    let document = try loadDocument(
+                        rowID: rowID, includingProperties: includesProperties,
+                        includingParagraphs: includesParagraphs,
+                        includingAliases: ast.identityNeedle != nil,
+                        includingSegments: includesLexicalSegments || includesParagraphs,
+                        includingSourceEvidence: includesParagraphs),
+                    Self.isEligible(document, in: eligibleDocuments)
+                else { continue }
+                let evaluation = SearchMatcher.evaluate(
+                    ast, document: document, linkMatches: linkMatches,
+                    normalizedNeedles: normalizedNeedles)
+                if evaluation.truth == .unknown { evaluatedIndeterminate += 1 }
+                guard evaluation.truth == .yes else { continue }
+                evaluatedTotal += 1
+                var keys = Set(
+                    evaluation.matches.compactMap { predicate -> SearchLexicalClause? in
+                        guard !predicate.excluded, case .lexical(let clause) = predicate.clause else { return nil }
+                        return Self.rankingKey(clause)
+                    })
+                if includesParagraphs {
+                    let matched = ast.matched(by: evaluation)
+                    keys.formUnion(
+                        SearchMatcher.paragraphWitnesses(matched, document: document)
+                            .flatMap { $0.ast.positiveLexicalClauses }.map(Self.rankingKey))
+                }
+                let rank = keys.reduce(0.0) { $0 + (ranks[$1]?[rowID] ?? 0) }
+                let candidate = SearchCandidate(
+                    document: document,
+                    identityPriority: SearchMatcher.identityPriority(identityNeedle: ast.identityNeedle, document: document), lexicalRank: rank)
+                if accepted.count == rankingLimit, let last = accepted.last,
+                    !SearchCandidate.precedes(candidate, last.candidate)
+                {
+                    continue
+                }
+                var lower = 0
+                var upper = accepted.count
+                while lower < upper {
+                    let middle = lower + (upper - lower) / 2
+                    if SearchCandidate.precedes(candidate, accepted[middle].candidate) {
+                        upper = middle
+                    } else {
+                        lower = middle + 1
+                    }
+                }
+                if lower < rankingLimit {
+                    accepted.insert((candidate, evaluation), at: lower)
+                    if accepted.count > rankingLimit { accepted.removeLast() }
                 }
             }
-            if lower < required {
-                accepted.insert((candidate, evaluation), at: lower)
-                if accepted.count > required { accepted.removeLast() }
+            rankedItems = accepted.map { item in
+                RankedSearchItem(
+                    rowID: item.candidate.document.rowID,
+                    identityPriority: item.candidate.identityPriority,
+                    lexicalRank: item.candidate.lexicalRank,
+                    evaluation: item.evaluation)
+            }
+            total = evaluatedTotal
+            indeterminate = evaluatedIndeterminate
+            if let cacheKey {
+                rankedSearchCache[cacheKey] = RankedSearchCacheValue(
+                    items: rankedItems,
+                    total: total,
+                    indeterminate: indeterminate)
             }
         }
         // Counting and ranking need exact predicate values, but only this page needs
         // source offset maps and snippet material. Hydrate within the same read
         // transaction so the match, fingerprint and source locator cannot diverge.
-        let hits = try accepted.dropFirst(min(request.resultOffset, accepted.count)).prefix(limit).map { item in
+        let hits = try rankedItems.dropFirst(min(request.resultOffset, rankedItems.count)).prefix(limit).map { item in
             try Task.checkCancellation()
             guard
                 let document = try loadDocument(
-                    rowID: item.candidate.document.rowID,
+                    rowID: item.rowID,
                     includingProperties: includesProperties,
                     includingParagraphs: includesParagraphs
                 )
             else { throw SearchIndexError.corruptDatabase }
             let candidate = SearchCandidate(
-                document: document, identityPriority: item.candidate.identityPriority,
-                lexicalRank: item.candidate.lexicalRank)
+                document: document, identityPriority: item.identityPriority,
+                lexicalRank: item.lexicalRank)
             return NoteSearchResultBuilder.hit(
                 candidate: candidate, ast: ast.matched(by: item.evaluation), freshness: freshness, linkMatches: linkMatches)
         }

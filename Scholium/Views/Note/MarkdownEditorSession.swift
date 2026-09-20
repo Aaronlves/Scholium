@@ -1031,6 +1031,19 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         maximumWait: Duration = .seconds(6)
     ) async throws -> Bool {
         if isReady, isLoaded, webView != nil { return true }
+        // Document loading already has one authoritative lifecycle task. Join
+        // that task instead of polling the published projection and racing the
+        // WebKit bridge under main-actor contention. The bounded fallback is
+        // only for a reattachment gap before `editorBecameReady()` has had a
+        // chance to install the task.
+        let expectedDocumentID = documentID
+        let expectedWebView = webView
+        if let documentLoadTask {
+            await documentLoadTask.value
+            try Task.checkCancellation()
+            guard documentID == expectedDocumentID, webView === expectedWebView else { return false }
+            return isReady && isLoaded && webView != nil
+        }
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: maximumWait)
         while clock.now < deadline {

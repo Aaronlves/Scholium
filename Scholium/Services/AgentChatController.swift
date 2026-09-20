@@ -136,11 +136,42 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     func selectNotification(_ route: AgentChatNotificationRoute) async -> Bool {
         guard route.triptychID == triptychID else { return false }
-        await initialLoadTask?.value
-        guard !Task.isCancelled, isLoaded, conversation(route.conversationID) != nil else { return false }
+        guard await waitUntilLoaded(), !Task.isCancelled,
+            conversation(route.conversationID) != nil
+        else { return false }
         select(route.conversationID)
         contextPresentationID = UUID()
         return true
+    }
+
+    /// Joins the one initial history load instead of making callers poll the
+    /// published projection. This is also the lifecycle barrier used by
+    /// notification routing and native integration tests.
+    @discardableResult
+    func waitUntilLoaded() async -> Bool {
+        await initialLoadTask?.value
+        return isLoaded
+    }
+
+    /// Connection setup includes the initial capability snapshot. Awaiting the
+    /// task gives callers a phase boundary that is stronger than observing a
+    /// transient `connecting`/`refreshing` combination.
+    @discardableResult
+    func waitUntilConnectionReady() async -> Bool {
+        await connectionTask?.value
+        return connectionState == .ready && capabilities.hasTools && !capabilities.isRefreshing
+    }
+
+    /// Joins the connection's first history read as well as transport setup.
+    /// A ready transport is not yet a ready conversation while retained
+    /// history is being hydrated.
+    @discardableResult
+    func waitUntilReady() async -> Bool {
+        guard await waitUntilLoaded(), await waitUntilConnectionReady() else { return false }
+        if let selectedID, let historyTask = executions[selectedID]?.historyTask {
+            await historyTask.value
+        }
+        return connectionState == .ready && state == .ready
     }
 
     func childController(targetID: String, messageID: String, in conversationID: UUID) -> AgentChatChildController? {
