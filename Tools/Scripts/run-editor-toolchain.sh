@@ -103,10 +103,11 @@ else
   }
 fi
 
-if [[ -e "$source_dir/node_modules" ]]; then
-  print -u2 "Refusing to use in-worktree WebEditor/node_modules. Remove it and rerun the repository editor script; dependencies are installed in temporary storage."
-  exit 65
-fi
+# A developer may keep a project-local installation for direct WebEditor work.
+# Never copy or use it for repository verification: the staged source below
+# excludes node_modules and `npm ci` installs the lockfile-pinned tree in the
+# temporary toolchain. Keeping this boundary here removes any need to move a
+# 200+ MB directory just to run verification.
 
 stage_root="${repo_root}/.build/editor-toolchain-$$"
 stage="$stage_root/WebEditor"
