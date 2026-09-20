@@ -142,6 +142,7 @@ import {
 import {
   immutableProjectionRanges,
   projectionRangeContaining,
+  projectionRangeDifference,
   projectionRangesIntersecting as rangesIntersecting,
   projectionSelectionOverlaps,
 } from "./projection-index";
@@ -807,6 +808,7 @@ function coversVisibleRanges(
 function buildLiveDecorations(
   view: EditorView,
   requestedRanges?: readonly ProjectionSourceRange[],
+  scope: "selection" | "viewport" = requestedRanges ? "selection" : "viewport",
 ): LiveInlineProjectionState {
   const projectionStartedAt = performance.now();
   const decorations: Range<Decoration>[] = [];
@@ -1349,7 +1351,8 @@ function buildLiveDecorations(
     visibleRangeCount: view.visibleRanges.length,
     decorationCount: decorations.length,
     projectionWindowUTF16Count,
-    selectionScoped: requestedRanges ? 1 : 0,
+    selectionScoped: scope === "selection" ? 1 : 0,
+    viewportIncremental: scope === "viewport" && requestedRanges ? 1 : 0,
     widgetReuseCount: liveWidgetReuseCounts.table
       + liveWidgetReuseCounts.footnote,
   });
@@ -1376,6 +1379,37 @@ function replacingDecorationsInRanges(
   });
 }
 
+function decorationTouchesRanges(
+  from: number,
+  to: number,
+  ranges: readonly ProjectionSourceRange[],
+) {
+  return ranges.some((range) => from === to
+    ? from >= range.from && from <= range.to
+    : from < range.to && to > range.from);
+}
+
+function retainDecorationsInRanges(
+  existing: DecorationSet,
+  ranges: readonly ProjectionSourceRange[],
+) {
+  return existing.update({
+    filter: (from, to) => decorationTouchesRanges(from, to, ranges),
+  });
+}
+
+function updateViewportDecorations(
+  existing: DecorationSet,
+  replacement: DecorationSet,
+  requested: readonly ProjectionSourceRange[],
+  covered: readonly ProjectionSourceRange[],
+) {
+  return retainDecorationsInRanges(
+    replacingDecorationsInRanges(existing, replacement, requested),
+    covered,
+  );
+}
+
 class LivePreviewPlugin {
   decorations: DecorationSet;
   atomicRanges: DecorationSet;
@@ -1398,12 +1432,35 @@ class LivePreviewPlugin {
     // refreshes this field when it takes or yields document focus; generic
     // WebKit/window focus changes do not. Rebuilding on window focus loss can
     // observe temporarily empty visible ranges and erase valid decorations.
-    if (update.docChanged || viewportNeedsProjection
-        || explicitlyRefreshed || syntaxTreeChanged) {
+    if (update.docChanged || explicitlyRefreshed || syntaxTreeChanged) {
       const projection = buildLiveDecorations(update.view);
       this.decorations = projection.decorations;
       this.atomicRanges = projection.atomicRanges;
       this.coveredRanges = projection.coveredRanges;
+    } else if (viewportNeedsProjection) {
+      const coveredRanges = bufferedVisibleRanges(update.view);
+      const requestedRanges = projectionRangeDifference(coveredRanges, this.coveredRanges);
+      if (requestedRanges.length > 0) {
+        const projection = buildLiveDecorations(update.view, requestedRanges, "viewport");
+        this.decorations = updateViewportDecorations(
+          this.decorations,
+          projection.decorations,
+          requestedRanges,
+          coveredRanges,
+        );
+        this.atomicRanges = updateViewportDecorations(
+          this.atomicRanges,
+          projection.atomicRanges,
+          requestedRanges,
+          coveredRanges,
+        );
+      } else {
+        // The visible window moved inside an already projected region. Drop
+        // decorations outside the new buffer without rebuilding its source.
+        this.decorations = retainDecorationsInRanges(this.decorations, coveredRanges);
+        this.atomicRanges = retainDecorationsInRanges(this.atomicRanges, coveredRanges);
+      }
+      this.coveredRanges = coveredRanges;
     } else if (liveSelection.changed(update.startState, update.state)) {
       const projectionIndex = liveProjectionIndex.index(update.state);
       const inlineRanges = projectionIndex.inlineRanges;

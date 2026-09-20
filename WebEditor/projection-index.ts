@@ -35,6 +35,41 @@ export function immutableProjectionRanges<T extends ImmutableProjectionRange>(
   return immutable;
 }
 
+/**
+ * Returns the parts of `requested` that are not already covered by the
+ * sorted `covered` ranges. Both inputs are source-coordinate ranges; the
+ * result is immutable and remains sorted. This lets viewport projection
+ * reuse decorations that are still on screen while filling only the newly
+ * entered edge of a Live buffer.
+ */
+export function projectionRangeDifference(
+  requested: readonly ImmutableProjectionRange[],
+  covered: readonly ImmutableProjectionRange[],
+): readonly Readonly<ImmutableProjectionRange>[] {
+  const missing: ImmutableProjectionRange[] = [];
+  let coveredIndex = 0;
+  for (const target of requested) {
+    if (target.to <= target.from) continue;
+    while (coveredIndex < covered.length && covered[coveredIndex].to <= target.from) {
+      coveredIndex += 1;
+    }
+    let cursor = target.from;
+    let index = coveredIndex;
+    while (index < covered.length && covered[index].from < target.to) {
+      const existing = covered[index];
+      if (existing.from > cursor) {
+        missing.push({from: cursor, to: Math.min(existing.from, target.to)});
+      }
+      cursor = Math.max(cursor, existing.to);
+      if (cursor >= target.to) break;
+      index += 1;
+    }
+    if (cursor < target.to) missing.push({from: cursor, to: target.to});
+    coveredIndex = index;
+  }
+  return immutableProjectionRanges(missing);
+}
+
 export function commandProtectionRanges(
   literalRanges: readonly ImmutableProjectionRange[],
   frontmatterRange?: ImmutableProjectionRange,

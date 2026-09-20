@@ -42,7 +42,8 @@ describe("source selection action", () => {
     vi.advanceTimersByTime(15);
     expect(post).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1);
-    expect(post).toHaveBeenCalledTimes(2);
+    // A repeated native scroll event with the same source anchor is a no-op.
+    expect(post).toHaveBeenCalledTimes(1);
     expect(editor.state).toBe(state);
     actions.update();
     expect(sent.at(-1)!.kind).toBe("hidden");

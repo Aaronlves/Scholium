@@ -31333,6 +31333,30 @@ ${fence}
     maximumEndsFor(immutable);
     return immutable;
   }
+  function projectionRangeDifference(requested, covered) {
+    const missing = [];
+    let coveredIndex = 0;
+    for (const target of requested) {
+      if (target.to <= target.from) continue;
+      while (coveredIndex < covered.length && covered[coveredIndex].to <= target.from) {
+        coveredIndex += 1;
+      }
+      let cursor = target.from;
+      let index = coveredIndex;
+      while (index < covered.length && covered[index].from < target.to) {
+        const existing = covered[index];
+        if (existing.from > cursor) {
+          missing.push({ from: cursor, to: Math.min(existing.from, target.to) });
+        }
+        cursor = Math.max(cursor, existing.to);
+        if (cursor >= target.to) break;
+        index += 1;
+      }
+      if (cursor < target.to) missing.push({ from: cursor, to: target.to });
+      coveredIndex = index;
+    }
+    return immutableProjectionRanges(missing);
+  }
   function commandProtectionRanges(literalRanges, frontmatterRange) {
     return immutableProjectionRanges(frontmatterRange ? [...literalRanges, frontmatterRange] : literalRanges);
   }
@@ -33325,6 +33349,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   // scroll-coordinator.ts
   function createEditorScrollCoordinator(editor2, options) {
     let scrollRevision = 0;
+    let lastPostedAnchor = null;
+    function sameAnchor(left, right) {
+      return left.sourceUTF16Offset === right.sourceUTF16Offset && left.blockUTF16LowerBound === right.blockUTF16LowerBound && left.blockUTF16UpperBound === right.blockUTF16UpperBound && left.relativeBlockPosition === right.relativeBlockPosition && left.fallbackFraction === right.fallbackFraction;
+    }
     function currentAnchor() {
       const extent = Math.max(0, editor2.scrollDOM.scrollHeight - editor2.scrollDOM.clientHeight);
       const fallbackFraction = extent > 0 ? Math.max(0, Math.min(1, editor2.scrollDOM.scrollTop / extent)) : 0;
@@ -33347,7 +33375,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       return { anchor: currentAnchor(), document: editor2.state.doc, revision: scrollRevision };
     }
     function postCurrent() {
-      options.post(currentAnchor());
+      const anchor = currentAnchor();
+      if (lastPostedAnchor && sameAnchor(lastPostedAnchor, anchor)) return;
+      lastPostedAnchor = anchor;
+      options.post(anchor);
     }
     const scrollReports = new AnimationFrameCoalescer(
       (callback) => window.requestAnimationFrame(callback),
@@ -33451,6 +33482,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     function setFraction(requestedFraction) {
       options.flushPresentationGeometry();
+      lastPostedAnchor = null;
       const fraction = Number.isFinite(requestedFraction) ? Math.max(0, Math.min(1, requestedFraction)) : 0;
       const extent = Math.max(0, editor2.scrollDOM.scrollHeight - editor2.scrollDOM.clientHeight);
       setTop(extent * fraction);
@@ -33458,6 +33490,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     function setAnchor(anchor) {
       const revision = ++scrollRevision;
       options.flushPresentationGeometry();
+      lastPostedAnchor = null;
       if (!validAnchor(anchor)) {
         setFraction(anchor.fallbackFraction);
         return;
@@ -33519,6 +33552,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         geometryReportScheduled = false;
         pendingGeometrySnapshot = void 0;
         scrollReports.cancel();
+        lastPostedAnchor = null;
         window.clearTimeout(sessionTimer);
         sessionTimer = void 0;
         if (measurementFrame !== null) window.cancelAnimationFrame(measurementFrame);
@@ -38228,7 +38262,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function coversVisibleRanges(covered, visible) {
     return visible.every((range) => covered.some((candidate) => candidate.from <= range.from && candidate.to >= range.to));
   }
-  function buildLiveDecorations(view, requestedRanges) {
+  function buildLiveDecorations(view, requestedRanges, scope = requestedRanges ? "selection" : "viewport") {
     const projectionStartedAt = performance.now();
     const decorations2 = [];
     const atomicRanges2 = [];
@@ -38666,7 +38700,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       visibleRangeCount: view.visibleRanges.length,
       decorationCount: decorations2.length,
       projectionWindowUTF16Count,
-      selectionScoped: requestedRanges ? 1 : 0,
+      selectionScoped: scope === "selection" ? 1 : 0,
+      viewportIncremental: scope === "viewport" && requestedRanges ? 1 : 0,
       widgetReuseCount: liveWidgetReuseCounts.table + liveWidgetReuseCounts.footnote
     });
     return { decorations: result, atomicRanges: atoms, coveredRanges };
@@ -38682,6 +38717,20 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       add: add2,
       sort: true
     });
+  }
+  function decorationTouchesRanges(from, to, ranges) {
+    return ranges.some((range) => from === to ? from >= range.from && from <= range.to : from < range.to && to > range.from);
+  }
+  function retainDecorationsInRanges(existing, ranges) {
+    return existing.update({
+      filter: (from, to) => decorationTouchesRanges(from, to, ranges)
+    });
+  }
+  function updateViewportDecorations(existing, replacement, requested, covered) {
+    return retainDecorationsInRanges(
+      replacingDecorationsInRanges(existing, replacement, requested),
+      covered
+    );
   }
   var LivePreviewPlugin = class {
     decorations;
@@ -38699,11 +38748,33 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       );
       const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
       const viewportNeedsProjection = update.viewportChanged && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
-      if (update.docChanged || viewportNeedsProjection || explicitlyRefreshed || syntaxTreeChanged) {
+      if (update.docChanged || explicitlyRefreshed || syntaxTreeChanged) {
         const projection = buildLiveDecorations(update.view);
         this.decorations = projection.decorations;
         this.atomicRanges = projection.atomicRanges;
         this.coveredRanges = projection.coveredRanges;
+      } else if (viewportNeedsProjection) {
+        const coveredRanges = bufferedVisibleRanges(update.view);
+        const requestedRanges = projectionRangeDifference(coveredRanges, this.coveredRanges);
+        if (requestedRanges.length > 0) {
+          const projection = buildLiveDecorations(update.view, requestedRanges, "viewport");
+          this.decorations = updateViewportDecorations(
+            this.decorations,
+            projection.decorations,
+            requestedRanges,
+            coveredRanges
+          );
+          this.atomicRanges = updateViewportDecorations(
+            this.atomicRanges,
+            projection.atomicRanges,
+            requestedRanges,
+            coveredRanges
+          );
+        } else {
+          this.decorations = retainDecorationsInRanges(this.decorations, coveredRanges);
+          this.atomicRanges = retainDecorationsInRanges(this.atomicRanges, coveredRanges);
+        }
+        this.coveredRanges = coveredRanges;
       } else if (liveSelection.changed(update.startState, update.state)) {
         const projectionIndex = liveProjectionIndex.index(update.state);
         const inlineRanges = projectionIndex.inlineRanges;

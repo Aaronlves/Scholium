@@ -5,6 +5,7 @@ import {
   projectionBoundaryTouches,
   projectionRangeAtBoundary,
   projectionRangeContaining,
+  projectionRangeDifference,
   projectionRangesIntersecting,
   projectionSelectionOverlaps,
 } from "../projection-index";
@@ -44,6 +45,16 @@ describe("immutable live projection range index", () => {
     ]);
     expect(projectionRangesIntersecting(ranges, 80, 81)).toEqual([{from: 0, to: 100}]);
     expect(projectionRangeContaining(ranges, 100)).toBeNull();
+  });
+
+  it("returns only the newly exposed viewport edges", () => {
+    const missing = projectionRangeDifference(
+      immutableProjectionRanges([{from: 100, to: 500}, {from: 900, to: 1_300}]),
+      immutableProjectionRanges([{from: 200, to: 1_000}]),
+    );
+    expect(missing).toEqual([{from: 100, to: 200}, {from: 1_000, to: 1_300}]);
+    expect(Object.isFrozen(missing)).toBe(true);
+    expect(missing.every(Object.isFrozen)).toBe(true);
   });
 
   it("reuses one immutable block index across 1,000 arrow-neighbor queries", () => {

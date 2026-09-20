@@ -31,6 +31,14 @@ export function createEditorScrollCoordinator(
   },
 ): EditorScrollCoordinator {
   let scrollRevision = 0;
+  let lastPostedAnchor: EditorScrollAnchor | null = null;
+  function sameAnchor(left: EditorScrollAnchor, right: EditorScrollAnchor) {
+    return left.sourceUTF16Offset === right.sourceUTF16Offset
+      && left.blockUTF16LowerBound === right.blockUTF16LowerBound
+      && left.blockUTF16UpperBound === right.blockUTF16UpperBound
+      && left.relativeBlockPosition === right.relativeBlockPosition
+      && left.fallbackFraction === right.fallbackFraction;
+  }
   function currentAnchor(): EditorScrollAnchor {
     const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
     const fallbackFraction = extent > 0
@@ -62,7 +70,10 @@ export function createEditorScrollCoordinator(
   }
 
   function postCurrent() {
-    options.post(currentAnchor());
+    const anchor = currentAnchor();
+    if (lastPostedAnchor && sameAnchor(lastPostedAnchor, anchor)) return;
+    lastPostedAnchor = anchor;
+    options.post(anchor);
   }
 
   const scrollReports = new AnimationFrameCoalescer(
@@ -189,6 +200,7 @@ export function createEditorScrollCoordinator(
 
   function setFraction(requestedFraction: number) {
     options.flushPresentationGeometry();
+    lastPostedAnchor = null;
     const fraction = Number.isFinite(requestedFraction)
       ? Math.max(0, Math.min(1, requestedFraction))
       : 0;
@@ -199,6 +211,7 @@ export function createEditorScrollCoordinator(
   function setAnchor(anchor: EditorScrollAnchor) {
     const revision = ++scrollRevision;
     options.flushPresentationGeometry();
+    lastPostedAnchor = null;
     if (!validAnchor(anchor)) {
       setFraction(anchor.fallbackFraction);
       return;
@@ -266,6 +279,7 @@ export function createEditorScrollCoordinator(
       geometryReportScheduled = false;
       pendingGeometrySnapshot = undefined;
       scrollReports.cancel();
+      lastPostedAnchor = null;
       window.clearTimeout(sessionTimer);
       sessionTimer = undefined;
       if (measurementFrame !== null) window.cancelAnimationFrame(measurementFrame);

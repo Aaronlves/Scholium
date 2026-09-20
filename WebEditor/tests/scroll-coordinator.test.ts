@@ -6,6 +6,37 @@ import {createEditorScrollCoordinator} from "../scroll-coordinator";
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("scroll coordination across runtime reuse", () => {
+  it("does not repost an unchanged source anchor", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", {
+      setTimeout, clearTimeout,
+      requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16),
+      cancelAnimationFrame: clearTimeout,
+    });
+    let scroll = () => {};
+    const scrollDOM = {
+      scrollTop: 0, scrollHeight: 2_000, clientHeight: 100,
+      getBoundingClientRect: () => ({top: 0}),
+      addEventListener: (_event: string, callback: () => void) => { scroll = callback; },
+    };
+    const editor = {
+      state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM,
+      documentTop: 0,
+      lineBlockAtHeight: () => ({from: 0, to: 1, top: 0, height: 20}),
+    } as unknown as EditorView;
+    const post = vi.fn();
+    createEditorScrollCoordinator(editor, {
+      onScroll: () => {}, post, flushPresentationGeometry: () => {},
+    });
+
+    scroll();
+    vi.advanceTimersByTime(16);
+    scroll();
+    vi.advanceTimersByTime(16);
+
+    expect(post).toHaveBeenCalledOnce();
+  });
+
   it.each([16, 1_000])("reports the latest viewport during uninterrupted scroll with %i ms frames", (frameDelay) => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {

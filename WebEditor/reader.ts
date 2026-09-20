@@ -1003,6 +1003,7 @@ async function initializeReader(value: unknown): Promise<void> {
       sourcePrefixMaximumUpper
     };
   })();
+  let lastScrollEntry: ReaderScrollEntry | null = null;
 
   function scrollEntryForNode(node: Node | null | undefined): ReaderScrollEntry | null {
     const root = scrollBlockRegistry.root;
@@ -1020,6 +1021,12 @@ async function initializeReader(value: unknown): Promise<void> {
   function scrollEntryAtProbe(probe: number): ReaderScrollEntry | null {
     const registry = scrollBlockRegistry;
     if (!registry.root || !registry.entries.length) return null;
+    if (lastScrollEntry) {
+      const cachedRect = lastScrollEntry.element.getBoundingClientRect();
+      if (cachedRect.height > 0 && probe >= cachedRect.top && probe < cachedRect.bottom) {
+        return lastScrollEntry;
+      }
+    }
     const rootRect = registry.root.getBoundingClientRect();
     const probeX = Math.max(1, Math.min(window.innerWidth - 1,
       rootRect.left + Math.max(1, rootRect.width / 2)));
@@ -1030,7 +1037,10 @@ async function initializeReader(value: unknown): Promise<void> {
     if (!entry && document.caretRangeFromPoint) {
       entry = scrollEntryForNode(document.caretRangeFromPoint(probeX, probe)?.startContainer);
     }
-    if (entry) return entry;
+    if (entry) {
+      lastScrollEntry = entry;
+      return entry;
+    }
 
     // Margins can leave the probe over the document background.
     // A logarithmic fallback reads only a bounded set of blocks.
@@ -1051,7 +1061,10 @@ async function initializeReader(value: unknown): Promise<void> {
       }
       if (rect.bottom <= probe) low = index + 1;
       else if (rect.top > probe) high = index - 1;
-      else return candidate;
+      else {
+        lastScrollEntry = candidate;
+        return candidate;
+      }
     }
     const start = Math.max(0, nearestIndex - 2);
     const end = Math.min(registry.entries.length, nearestIndex + 3);
@@ -1067,6 +1080,7 @@ async function initializeReader(value: unknown): Promise<void> {
         nearest = candidate;
       }
     }
+    lastScrollEntry = nearest;
     return nearest;
   }
 
@@ -1144,6 +1158,9 @@ async function initializeReader(value: unknown): Promise<void> {
     const upper = Number(anchor.blockUTF16UpperBound);
     const relative = Number(anchor.relativeBlockPosition);
     if (![offset, lower, upper, relative].every(Number.isFinite)) return false;
+    // A restore is an explicit native handoff. Allow its next scroll event to
+    // publish even when it lands on the same source anchor as the prior view.
+    lastPostedScroll = null;
     const fallback = Number(anchor.fallbackFraction);
     if (Number.isFinite(fallback) && fallback <= 0) {
       window.scrollTo({top: Math.max(0, window.scrollY + (documentRoot.querySelector('.scholium-note-title')?.getBoundingClientRect().top ?? 32) - 32), behavior: 'auto'});
@@ -1151,6 +1168,7 @@ async function initializeReader(value: unknown): Promise<void> {
     }
     const target = visibleScrollEntry(scrollEntryForAnchor(anchor));
     if (!target) return false;
+    lastScrollEntry = target;
     const rect = target.element.getBoundingClientRect();
     const height = Math.max(1, rect.height);
     const requestedOffset = Math.max(0, Math.min(1, relative)) * height;
@@ -1197,12 +1215,29 @@ async function initializeReader(value: unknown): Promise<void> {
     (callback, delay) => window.setTimeout(callback, delay),
     (identifier) => window.clearTimeout(identifier),
   );
+  let lastPostedScroll: {
+    fraction: number;
+    anchor: ReaderScrollAnchor | null;
+  } | null = null;
+  const sameAnchor = (left: ReaderScrollAnchor | null, right: ReaderScrollAnchor | null) =>
+    left === right || Boolean(left && right
+      && left.sourceUTF16Offset === right.sourceUTF16Offset
+      && left.blockUTF16LowerBound === right.blockUTF16LowerBound
+      && left.blockUTF16UpperBound === right.blockUTF16UpperBound
+      && left.relativeBlockPosition === right.relativeBlockPosition
+      && left.fallbackFraction === right.fallbackFraction);
+  const postCurrentScroll = () => {
+    const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
+    const anchor = currentReadScrollAnchor(fraction);
+    if (lastPostedScroll
+        && lastPostedScroll.fraction === fraction
+        && sameAnchor(lastPostedScroll.anchor, anchor)) return;
+    lastPostedScroll = {fraction, anchor};
+    post('scrollChanged', {fraction, anchor});
+  };
   window.addEventListener('scroll', () => {
-    scrollReports.schedule(() => {
-      const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
-      post('scrollChanged', {fraction, anchor: currentReadScrollAnchor(fraction)});
-    });
+    scrollReports.schedule(postCurrentScroll);
   }, {passive: true});
   // Install only after the rendered document and its event
   // handlers exist. The native side also probes this API from

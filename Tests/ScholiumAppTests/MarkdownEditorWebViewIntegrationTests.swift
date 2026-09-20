@@ -130,6 +130,45 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(!harness.session.isDirty)
     }
 
+    @Test("Live scrolling fills only newly exposed projection ranges")
+    func liveScrollUsesIncrementalProjection() async throws {
+        let source = (1...180).map { section in
+            "## Stress section \(section)\r\n\r\n"
+                + String(repeating: "projection selection anchor viewport 中文 😀.\r\n\r\n", count: 8)
+                + (section % 3 == 0
+                    ? "> [!NOTE] **Stress callout \(section)**\r\n> preserved source range.\r\n\r\n"
+                    : "")
+                + (section % 5 == 0 ? "![[RDF-1 Work Note 003]]\r\n\r\n" : "")
+        }.joined()
+        let harness = EditorHarness(source: source, initialMode: .livePreview)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        for step in 1...12 {
+            _ = try await harness.callPageJavaScript(
+                """
+                const scroller = document.querySelector('.cm-scroller');
+                scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * fraction;
+                scroller.dispatchEvent(new Event('scroll'));
+                """,
+                arguments: ["fraction": Double(step) / 13.0]
+            )
+            try await Task.sleep(for: .milliseconds(30))
+        }
+
+        let samples = try await harness.session.queryPerformanceSamples()
+        let incremental = samples.filter {
+            $0.name == "projection" && $0.observed["viewportIncremental"] == 1
+        }
+        #expect(!incremental.isEmpty)
+        #expect(incremental.allSatisfy { $0.observed["selectionScoped"] == 0 })
+        #expect(incremental.contains {
+            ($0.observed["projectionWindowUTF16Count"] ?? .infinity) < Double(source.utf16.count)
+        })
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+    }
+
     @Test("A lost commit acknowledgement can be replayed without replacing later input", arguments: [false, true])
     func lostCommitAcknowledgementCanBeReplayed(withLaterInput: Bool) async throws {
         let source = "Original.\r\n"

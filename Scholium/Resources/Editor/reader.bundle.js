@@ -1708,6 +1708,7 @@
         sourcePrefixMaximumUpper
       };
     })();
+    let lastScrollEntry = null;
     function scrollEntryForNode(node) {
       const root = scrollBlockRegistry.root;
       let element = node instanceof HTMLElement ? node : node?.parentElement ?? null;
@@ -1721,6 +1722,12 @@
     function scrollEntryAtProbe(probe) {
       const registry = scrollBlockRegistry;
       if (!registry.root || !registry.entries.length) return null;
+      if (lastScrollEntry) {
+        const cachedRect = lastScrollEntry.element.getBoundingClientRect();
+        if (cachedRect.height > 0 && probe >= cachedRect.top && probe < cachedRect.bottom) {
+          return lastScrollEntry;
+        }
+      }
       const rootRect = registry.root.getBoundingClientRect();
       const probeX = Math.max(1, Math.min(
         window.innerWidth - 1,
@@ -1733,7 +1740,10 @@
       if (!entry && document.caretRangeFromPoint) {
         entry = scrollEntryForNode(document.caretRangeFromPoint(probeX, probe)?.startContainer);
       }
-      if (entry) return entry;
+      if (entry) {
+        lastScrollEntry = entry;
+        return entry;
+      }
       let low = 0;
       let high = registry.entries.length - 1;
       let nearestIndex = 0;
@@ -1749,7 +1759,10 @@
         }
         if (rect.bottom <= probe) low = index + 1;
         else if (rect.top > probe) high = index - 1;
-        else return candidate;
+        else {
+          lastScrollEntry = candidate;
+          return candidate;
+        }
       }
       const start = Math.max(0, nearestIndex - 2);
       const end = Math.min(registry.entries.length, nearestIndex + 3);
@@ -1763,6 +1776,7 @@
           nearest = candidate;
         }
       }
+      lastScrollEntry = nearest;
       return nearest;
     }
     function scrollEntryForAnchor(anchor) {
@@ -1837,6 +1851,7 @@
       const upper = Number(anchor.blockUTF16UpperBound);
       const relative = Number(anchor.relativeBlockPosition);
       if (![offset, lower, upper, relative].every(Number.isFinite)) return false;
+      lastPostedScroll = null;
       const fallback = Number(anchor.fallbackFraction);
       if (Number.isFinite(fallback) && fallback <= 0) {
         window.scrollTo({ top: Math.max(0, window.scrollY + (documentRoot.querySelector(".scholium-note-title")?.getBoundingClientRect().top ?? 32) - 32), behavior: "auto" });
@@ -1844,6 +1859,7 @@
       }
       const target = visibleScrollEntry(scrollEntryForAnchor(anchor));
       if (!target) return false;
+      lastScrollEntry = target;
       const rect = target.element.getBoundingClientRect();
       const height = Math.max(1, rect.height);
       const requestedOffset = Math.max(0, Math.min(1, relative)) * height;
@@ -1883,12 +1899,18 @@
       (callback, delay) => window.setTimeout(callback, delay),
       (identifier) => window.clearTimeout(identifier)
     );
+    let lastPostedScroll = null;
+    const sameAnchor = (left, right) => left === right || Boolean(left && right && left.sourceUTF16Offset === right.sourceUTF16Offset && left.blockUTF16LowerBound === right.blockUTF16LowerBound && left.blockUTF16UpperBound === right.blockUTF16UpperBound && left.relativeBlockPosition === right.relativeBlockPosition && left.fallbackFraction === right.fallbackFraction);
+    const postCurrentScroll = () => {
+      const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
+      const anchor = currentReadScrollAnchor(fraction);
+      if (lastPostedScroll && lastPostedScroll.fraction === fraction && sameAnchor(lastPostedScroll.anchor, anchor)) return;
+      lastPostedScroll = { fraction, anchor };
+      post("scrollChanged", { fraction, anchor });
+    };
     window.addEventListener("scroll", () => {
-      scrollReports.schedule(() => {
-        const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-        const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
-        post("scrollChanged", { fraction, anchor: currentReadScrollAnchor(fraction) });
-      });
+      scrollReports.schedule(postCurrentScroll);
     }, { passive: true });
   }
   readerWindow.scholiumRead = {
