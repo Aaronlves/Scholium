@@ -286,9 +286,11 @@ Scholium MCP reuses this owner under
 [§8.3](03-agent-collaboration-and-workflows.md#83-tool-contract) and adds no
 second parser, resolver, index, or confidence score.
 
-**Notifications** combines Agent Changes, derived Settlement reminders, and
-Triptych-wide structural Attention. These remain separate owners and dismissal
-semantics. Structural Attention may report:
+**Notifications** combines Agent Changes and derived Settlement reminders.
+Triptych-wide structural Attention remains an immutable Workspace Catalog
+projection consumed by the Library's Integrity filters, including **Needs
+Attention** and **Malformed Metadata**. It is not a notification category and
+has no notification dismissal or expiry state. Structural Attention may report:
 
 - **Possible Orphan** only when a Note has no resolved incoming or outgoing
   link occurrence;
@@ -298,12 +300,13 @@ semantics. Structural Attention may report:
   repair.
 
 Attention never declares a Note wrong, outdated, Superseded, accepted, or
-philosophically deficient. Warnings are dismissible against their exact
-identity/revision and may recur after a later change.
+philosophically deficient. The Library exposes the exact mechanical reason and
+Note/path locator while the underlying projection remains derived and
+read-only.
 
-Changed Since Settle reminders are not structural Attention. Dismiss hides the
-reminder without changing Settlement; a later source change may produce a new
-reminder under §7.
+Changed Since Settle reminders are not structural Attention. They remain
+Settlement reminders in Notifications and do not change Settlement state when
+opened; a later source change may produce a new reminder under §7.
 
 ## 14. Save, Agent changes, and recovery
 

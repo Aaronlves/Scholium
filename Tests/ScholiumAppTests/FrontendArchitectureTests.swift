@@ -1870,80 +1870,38 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         let appSource = try WindowCompositionSource.text(at: repository)
-        let settlementRowStart = try #require(
-            attentionSource.range(
-                of: "struct SettlementRequirementNotificationRow: View"
-            )
+        let toolbarSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
+            ),
+            encoding: .utf8
         )
-        let settlementRowEnd = try #require(
-            attentionSource.range(
-                of: "struct AttentionQueueRow: View",
-                range: settlementRowStart.upperBound..<attentionSource.endIndex
-            )
-        )
-        let settlementRowSource = attentionSource[
-            settlementRowStart.lowerBound..<settlementRowEnd.lowerBound
-        ]
-        let notificationRowsSource = String(
-            attentionSource[settlementRowStart.lowerBound..<attentionSource.endIndex]
-        )
-        #expect(attentionSource.contains("ContextSearchField("))
-        #expect(attentionSource.contains(".init(title: \"All Notifications\""))
+        #expect(attentionSource.contains("final class AttentionQueueViewController"))
+        #expect(attentionSource.contains("NSSearchField"))
+        #expect(attentionSource.contains("NSTableViewDataSource"))
+        #expect(attentionSource.contains("tableViewSelectionDidChange"))
+        #expect(attentionSource.contains("override func mouseDown(with event: NSEvent)"))
+        #expect(attentionSource.contains("window.makeFirstResponder(self.tableView)"))
         #expect(attentionSource.contains("scholium.attentionSearch"))
-        #expect(attentionSource.contains(".popover("))
-        #expect(
-            attentionSource.contains(
-                "\\.scholiumAttentionPopoverIsPresented"
-            ))
-        #expect(attentionSource.contains("AttentionQueueView("))
-        #expect(attentionSource.contains("session.dismiss()"))
-        #expect(
-            attentionSource.contains(
-                ".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)"
-            ))
-        #expect(!attentionSource.contains(".searchable("))
-        #expect(!attentionSource.contains("placement: .toolbar"))
-        #expect(attentionSource.contains("notificationCategory(\"Agent Changes\")"))
-        #expect(attentionSource.contains("AgentChangeNotificationRow("))
-        #expect(attentionSource.contains("notificationCategory(group.titleResource)"))
-        #expect(attentionSource.contains(".scholiumForeground(.secondaryText)"))
-        #expect(attentionSource.contains(".listRowBackground(Color.clear)"))
-        #expect(attentionSource.contains(".listRowSeparator(.hidden)"))
-        #expect(!attentionSource.contains(".scholiumSurface(.denseEvidence)"))
-        #expect(attentionSource.contains(".scrollContentBackground(.hidden)"))
-        #expect(!attentionSource.contains("in: Capsule(style: .continuous)"))
-        #expect(!attentionSource.contains("Text(\"/\")"))
-        #expect(attentionSource.contains(".buttonStyle(.plain)"))
-        #expect(attentionSource.contains("title: session.noteTitle(for: change)"))
-        #expect(attentionSource.contains("title: session.noteTitle(for: item)"))
-        #expect(!notificationRowsSource.contains("ScholiumTypography.exact"))
-        #expect(
-            notificationRowsSource.components(
-                separatedBy: "ScholiumQuietRowButtonStyle("
-            ).count - 1 == 2
-        )
-        #expect(notificationRowsSource.contains(".scholiumActivationFocus($isFocused)"))
-        #expect(
-            notificationRowsSource.contains(
-                ".scholiumContentControlPointerFeedback("
-            )
-        )
-        #expect(notificationRowsSource.contains("in: notificationRowShape"))
-        #expect(!notificationRowsSource.contains("in: Circle()"))
-        #expect(!notificationRowsSource.contains(".tint("))
-        #expect(!attentionSource.contains("case .changeAttributionNeeded"))
+        #expect(attentionSource.contains("searchMenuTemplate"))
+        #expect(attentionSource.contains("tableView.activate"))
+        #expect(!attentionSource.contains("import SwiftUI"))
+        #expect(!attentionSource.contains("@FocusState"))
+        #expect(!attentionSource.contains("ContextSearchField("))
+        #expect(!attentionSource.contains(".popover("))
+        #expect(!attentionSource.contains("ScholiumQuietRowButtonStyle"))
+        #expect(!attentionSource.contains("scholiumActivationFocus"))
+        #expect(!attentionSource.contains("AgentChangeNotificationRow"))
+        #expect(toolbarSource.contains("AttentionQueueViewController("))
+        #expect(toolbarSource.contains("content.focusInitialContentIfNeeded()"))
+        #expect(toolbarSource.contains("notificationsPopover.show(relativeTo: item)"))
         #expect(appSource.contains("lazy var attentionPopoverSession"))
         #expect(!appSource.contains("Window(\"Attention\", id: \"scholium-attention\")"))
         #expect(!appSource.contains("AttentionWindowSession"))
         #expect(!attentionSource.contains("Button(\"Close\""))
-
-        #expect(
-            !attentionSource.contains(
-                "ActionActivityNotificationPopoverContent"
-            ))
+        #expect(!attentionSource.contains("ActionActivityNotificationPopoverContent"))
         #expect(!attentionSource.contains("presentedActivityRunID"))
         #expect(!attentionSource.contains("notification.actionDetail"))
-        #expect(!settlementRowSource.contains("Button(\"Settle\""))
     }
 
     @Test("Document appearance stays in the shared production renderer")

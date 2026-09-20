@@ -464,6 +464,8 @@ extension WindowModel {
                 reportOperationIssue(String(localized: "This Agent Change is no longer available."), kind: .warning)
                 return
             }
+            // This is an evidence destination, not a document route. Preserve
+            // the current Note and mode; never request Source or a locator here.
             presentationRouter.present(.agentChanges(scope: .exact(route.changeID)))
         } catch {
             reportOperationIssue(error.localizedDescription, kind: .error)

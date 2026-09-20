@@ -280,8 +280,8 @@ source commit, the UI offers Retry Edit/Source without duplicate creation.
 Triptych Notifications has one stable native bell in the toolbar. It aligns
 with the Sidebar's upper trailing edge when expanded; native toolbar layout
 reflows it beside the sidebar selector when collapsed. It opens the complete
-Agent Change/Settlement/Attention queue without changing the selected workspace
-or Document. Zero is quiet; nonzero uses the native badged bell
+Agent Change/Settlement queue without changing the selected workspace or
+Document. Zero is quiet; nonzero uses the native badged bell
 with a small dot, without a visible number, unread model, animation, or
 auto-open. Bell shape, dot shape, accessible state, and the popover's exact
 contents preserve meaning without relying on color.
@@ -302,8 +302,10 @@ unchanged. Missing or stale targets
 never silently select another change or authorize a source operation. Delivery
 failure, denied permission, and Focus never suppress necessary in-app state.
 
-Changed Since Settle and structural Attention stay in the bell and their local
-context. Save, Conflict, and Recovery failures remain persistent beside their
+Changed Since Settle stays in the bell and its local context. Structural
+Attention stays in the Library's Integrity filters, where **Needs Attention**
+and **Malformed Metadata** expose the derived reason and exact Note/path
+locator. Save, Conflict, and Recovery failures remain persistent beside their
 owners with valid repair actions. Other failed or partially committed operations
 remain in the originating window's Document region; Settings validation and
 copy acknowledgement stay beside their controls. Ordinary successful save,
@@ -313,9 +315,8 @@ overlay, priority stack, expiry timer, or duplicate delivery of the same event.
 The complete Notifications queue is a window-owned native popover. The toolbar
 opens Triptych scope; Inspector may open a current-Note subset. Popover closure
 does not dismiss an Agent Change or alter Settlement. The queue
-presents Agent Changes, then Settlement reminders, then grouped structural
-issues with exact reason, Note/path location, and only valid actions.
-Rows separate Note identity from the event or issue description; Agent Changes
+presents Agent Changes, then Settlement reminders, with only valid actions.
+Rows separate Note identity from the event description; Agent Changes
 also show time and the current/earlier/unavailable revision state.
 Search/filter changes only this presentation. Notification-type filters live in
 the native search-field magnifying-glass menu rather than a separate filter

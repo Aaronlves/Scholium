@@ -317,15 +317,18 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let session = appState.attentionPopoverSession
         if session.isPresented(from: .toolbar) {
             if !notificationsPopover.isShown {
-                notificationsPopover.contentViewController = NSHostingController(
-                    rootView:
-                        AttentionQueueView(presentation: session.presentation, session: session)
-                        .buttonStyle(.automatic)
-                        .frame(
-                            width: ScholiumMetrics.Attention.popoverWidth,
-                            height: ScholiumMetrics.Attention.popoverHeight))
+                let content = AttentionQueueViewController(
+                    presentation: session.presentation,
+                    session: session
+                )
+                content.preferredContentSize = NSSize(
+                    width: ScholiumMetrics.Attention.popoverWidth,
+                    height: ScholiumMetrics.Attention.popoverHeight
+                )
+                notificationsPopover.contentViewController = content
                 responderBeforeNotifications = window?.firstResponder
                 notificationsPopover.show(relativeTo: item)
+                content.focusInitialContentIfNeeded()
             }
         } else if notificationsPopover.isShown {
             notificationsPopover.close()
@@ -335,18 +338,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     private var notificationTotal: Int? {
         let settlementCount = appState.researchController.researchSnapshot?
             .settlementRequirements.count
-        let issueCount = AttentionPreferences.visibleTotalCount(
-            catalog: appState.workspaceCatalog,
-            assignment: appState.workspaceAssignment,
-            dismissalLedgerData: UserDefaults.standard.data(forKey: AttentionPreferences.dismissalLedgerKey) ?? Data()
-        )
         let agentChangeCount = appState.researchController.agentChanges?.count
         let knownTotal =
             (settlementCount ?? 0)
-            + (issueCount ?? 0)
             + (agentChangeCount ?? 0)
         if knownTotal > 0 { return knownTotal }
-        guard settlementCount != nil, issueCount != nil, agentChangeCount != nil else {
+        guard settlementCount != nil, agentChangeCount != nil else {
             return nil
         }
         return 0

@@ -138,16 +138,6 @@ enum ScholiumL10n {
             )
         }
 
-        static var notifications: LocalizedStringResource {
-            LocalizedStringResource(
-                "settings.tab.notifications",
-                defaultValue: "Notifications & Reminders",
-                table: "Interface",
-                bundle: .module,
-                comment: "Settings tab for notification reminders and dismissed items."
-            )
-        }
-
     }
 
 }

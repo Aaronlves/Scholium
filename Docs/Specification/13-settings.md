@@ -32,9 +32,9 @@ Category changes do not animate window geometry or discard unsaved drafts,
 selection or scroll position in pages already opened in the settings session.
 Inactive pages have no keyboard, pointer or accessibility interaction.
 
-The navigation column presents seven task categories: Workspace, Document
-Appearance, Writing Assistance, Agents & Chat, Keyboard Shortcuts,
-Notifications & Reminders and Zotero. Workspace owns Triptych registration,
+The navigation column presents six task categories: Workspace, Document
+Appearance, Writing Assistance, Agents & Chat, Keyboard Shortcuts and Zotero.
+Workspace owns Triptych registration,
 folder access and portable-data location. Document Appearance presents the
 complete content profile and CSS snippets in one scrolling page. Writing
 Assistance groups opt-in continuation and its independent model choice with
@@ -44,8 +44,9 @@ and External Access. Each segment is a complete scrolling task page; manual
 paths and external-host setup remain inline. Core Protocol, optional Skills and
 connected tools belong to the same Agent configuration area. Zotero owns its
 Desktop Local API diagnosis and the managed `scholium-zotero` Chat connection;
-there is no separate user-editable Zotero connection editor. Notifications &
-Reminders separates Triptych dismissal-return timing from the Mac-local ledger.
+there is no separate user-editable Zotero connection editor. Notifications are
+task-local to the toolbar queue; structural Attention is exposed through the
+Library's Integrity filters rather than Settings.
 Category grouping does not imply storage or sharing scope. Pages identify This
 Mac, This Triptych or mixed scope as applicable through their category, group
 and adjacent state labels; exact Triptych identity is shown before a portable

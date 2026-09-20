@@ -584,11 +584,6 @@ public actor TriptychControlStore {
         _ settings: TriptychSettings,
         expectedRevision: SettingsRevision
     ) throws -> TriptychSettingsSnapshot {
-        do {
-            try TriptychSettingsValidator.validate(settings)
-        } catch {
-            throw TriptychControlError.settingsNeedsReview(error.localizedDescription)
-        }
         try ensureControlDirectory()
         guard fileManager.fileExists(atPath: settingsURL.path) else {
             throw TriptychControlError.settingsMissing
@@ -605,10 +600,9 @@ public actor TriptychControlStore {
         case .futureSchema(let version): throw TriptychControlError.settingsFutureSchema(version)
         case .corrupted, .missing: throw TriptychControlError.settingsCorrupted
         }
-        // Saving the owned field does not discard unrelated future keys.
-        guard var envelope = try JSONSerialization.jsonObject(with: current) as? [String: Any]
+        // Saving settings does not discard unrelated future keys.
+        guard let envelope = try JSONSerialization.jsonObject(with: current) as? [String: Any]
         else { throw TriptychControlError.settingsCorrupted }
-        envelope["attentionDismissalDays"] = settings.attentionDismissalDays
         let candidate = try JSONSerialization.data(withJSONObject: envelope, options: [.prettyPrinted, .sortedKeys])
         let readback = try replaceExactFile(
             at: settingsURL,
@@ -1698,14 +1692,12 @@ public actor TriptychControlStore {
         }
         let revision = SettingsRevision(fingerprint: DocumentFingerprint(data: data))
         let settings: TriptychSettings
-        if let decoded = try? decoder().decode(TriptychSettings.self, from: data),
-            (try? TriptychSettingsValidator.validate(decoded)) != nil
-        {
+        if let decoded = try? decoder().decode(TriptychSettings.self, from: data) {
             settings = decoded
         } else {
             return .needsReview(
                 settings: TriptychSettings(), revision: revision,
-                reason: "Attention dismissal days must be a positive whole number. The default is used until this setting is repaired."
+                reason: "Portable settings could not be decoded. The default is used until this setting is repaired."
             )
         }
         return .current(

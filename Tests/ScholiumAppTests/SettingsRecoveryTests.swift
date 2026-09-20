@@ -99,17 +99,6 @@ struct SettingsRecoveryTests {
         #expect(!model.isRestoringSettings)
     }
 
-    @Test("A damaged dismissal entry keeps valid peers and the local repair route")
-    func dismissalLedgerIsolatesBadEntry() throws {
-        let bytes = Data(#"{"dismissedUntilByItemID":{"good":5000,"bad":"unreadable"}}"#.utf8)
-        let recovered = AttentionPreferences.decodeLedger(bytes)
-        #expect(recovered.dismissedUntilByItemID == ["good": Date(timeIntervalSinceReferenceDate: 5000)])
-        #expect(AttentionPreferences.ledgerNeedsRecovery(bytes))
-        #expect(!AttentionPreferences.ledgerNeedsRecovery(Data()))
-        #expect(!AttentionPreferences.ledgerNeedsRecovery(AttentionPreferences.encodeLedger(AttentionDismissalLedger())))
-        #expect(AttentionPreferences.ledgerNeedsRecovery(Data("broken".utf8)))
-    }
-
     @Test("Read failure does not clear the uncertain-write barrier")
     func failedReadKeepsReconciliationBarrier() async throws {
         let id = UUID()

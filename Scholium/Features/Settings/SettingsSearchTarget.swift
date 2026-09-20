@@ -149,14 +149,6 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                     "配置命令",
                 ], aliases: ["Copy Codex Setup Command", "Copy Claude Setup Command"]),
             Self(
-                "notifications.timing", .notifications, "Reminder Timing",
-                ["notifications", "reminders", "timing", "通知", "提醒", "间隔"]),
-            Self("notifications.return", .notifications, "Return dismissed items after", ["提醒恢复时间"], section: "notifications.timing"),
-            Self(
-                "notifications.dismissed", .notifications, "Dismissed Items on This Mac",
-                ["restore dismissed", "已忽略", "恢复提醒"],
-                aliases: ["Restore All Dismissed Items on This Mac"]),
-            Self(
                 "zotero.desktop", .zotero, "Local Zotero API",
                 ["Zotero", "citation", "library", "local API", "文献", "引用", "本地 API"]),
             Self(

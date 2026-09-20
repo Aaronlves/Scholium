@@ -72,6 +72,10 @@ extension ScholiumUITests {
             })
         XCTAssertTrue(settle.label.contains("Settle Again"))
 
+        let documentMode = documentModeControl()
+        XCTAssertTrue(documentMode.waitForExistence(timeout: 5))
+        let modeBeforeAgentChange = try XCTUnwrap(documentModeState(documentMode))
+
         let notifications = app.toolbars.buttons["Open Triptych Notifications"].firstMatch
         XCTAssertTrue(notifications.waitForExistence(timeout: 5))
         notifications.click()
@@ -91,6 +95,12 @@ extension ScholiumUITests {
         let comparison = app.descendants(matching: .any)["scholium.agentChanges"]
             .firstMatch
         XCTAssertTrue(comparison.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                self.documentModeState(self.documentModeControl()) == modeBeforeAgentChange
+            },
+            "Opening Agent Change evidence must preserve the current Document mode."
+        )
         for text in [
             "Current Revision",
             "Before",
@@ -113,7 +123,12 @@ extension ScholiumUITests {
         beforeUndo.lifetime = .keepAlways
         add(beforeUndo)
 
-        let undo = comparison.buttons["Undo"].firstMatch
+        let undo = comparison.buttons.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.agentChanges.undo."
+            )
+        ).firstMatch
         XCTAssertTrue(undo.waitForExistence(timeout: 5))
         XCTAssertTrue(undo.isEnabled)
         undo.click()

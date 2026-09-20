@@ -28,16 +28,14 @@ public struct TriptychManifest: Codable, Hashable, Sendable {
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 9
+    public static let currentSchemaVersion = 10
     public let schemaVersion: Int
-    public var attentionDismissalDays: Int
 
-    public init(attentionDismissalDays: Int = 7) {
+    public init() {
         schemaVersion = Self.currentSchemaVersion
-        self.attentionDismissalDays = max(1, attentionDismissalDays)
     }
 
-    private enum CodingKeys: String, CodingKey { case schemaVersion, attentionDismissalDays }
+    private enum CodingKeys: String, CodingKey { case schemaVersion }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -47,7 +45,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
                 forKey: .schemaVersion, in: container,
                 debugDescription: "Unsupported Triptych settings schema.")
         }
-        attentionDismissalDays = try container.decode(Int.self, forKey: .attentionDismissalDays)
     }
 }
 

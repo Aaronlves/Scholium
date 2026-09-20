@@ -82,7 +82,7 @@ extension ScholiumUITests {
         app.typeKey(.tab, modifierFlags: [])
         XCTAssertTrue(window.buttons["Save Appearance"].isEnabled)
         capture("settings-appearance-draft")
-        select("notifications")
+        select("shortcuts")
         app.typeKey(.return, modifierFlags: [])
         select("document")
         XCTAssertEqual(size.value as? String, "17")
@@ -102,9 +102,8 @@ extension ScholiumUITests {
         let profilePicker = window.popUpButtons.matching(NSPredicate(format: "label BEGINSWITH %@", "Configuration")).firstMatch
         XCTAssertTrue(waitUntil(timeout: 5) { profilePicker.exists && profilePicker.value as? String == "QA Settings Profile" })
         XCTAssertEqual(size.value as? String, "17", "Renaming the profile discarded unsaved formatting")
-        select("notifications")
+        select("shortcuts")
         XCTAssertFalse(window.buttons["Save Appearance"].exists, "Inactive pane must leave the accessibility tree")
-        capture("settings-notifications")
         select("writing")
         capture("settings-writing")
         select("agents")
@@ -164,7 +163,7 @@ extension ScholiumUITests {
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         let savedName = name.value as? String
         typeCommittedText("Unsaved QA name", into: name, in: app)
-        select("notifications")
+        select("shortcuts")
         select("workspace")
         XCTAssertEqual(name.value as? String, "Unsaved QA name")
         if let savedName { typeCommittedText(savedName, into: name, in: app) }

@@ -107,23 +107,17 @@ extension WindowModel {
     private func loadTriptychSettingsProjection() async throws -> String? {
         let state = try await researchController.settingsLoadState()
         switch state {
-        case .current(let snapshot):
-            triptychSettings = snapshot.settings
+        case .current:
             return nil
-        case .needsReview(let settings, _, let reason):
-            triptychSettings = settings
+        case .needsReview(_, _, let reason):
             return TriptychControlError.settingsNeedsReview(reason).localizedDescription
         case .missing:
-            triptychSettings = TriptychSettings()
             return TriptychControlError.settingsMissing.localizedDescription
         case .oldSchema(let version):
-            triptychSettings = TriptychSettings()
             return TriptychControlError.settingsOldSchema(version).localizedDescription
         case .futureSchema(let version):
-            triptychSettings = TriptychSettings()
             return TriptychControlError.settingsFutureSchema(version).localizedDescription
         case .corrupted:
-            triptychSettings = TriptychSettings()
             return TriptychControlError.settingsCorrupted.localizedDescription
         }
     }

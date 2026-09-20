@@ -85,7 +85,6 @@ struct WindowControllerArchitectureTests {
         let projectionController = WindowWorkspaceProjectionController {
             throw DiscoverySearchExecutionError.workspaceUnavailable
         }
-        let dismissalDays = PassthroughSubject<Int, Never>()
         let agentChanges = PassthroughSubject<[AgentChange]?, Never>()
         let agentChangeErrors = PassthroughSubject<String?, Never>()
         var openedAgentChangeID: UUID?
@@ -94,9 +93,7 @@ struct WindowControllerArchitectureTests {
             discoveryController: discoveryController,
             workspaceController: workspaceController,
             projectionController: projectionController,
-            dismissalDays: 7,
             dependencies: .init(
-                dismissalDaysChanges: dismissalDays.eraseToAnyPublisher(),
                 settlementRequirementChanges:
                     Just<[WorkspaceSettlementRequirement]>([])
                     .eraseToAnyPublisher(),
@@ -122,15 +119,12 @@ struct WindowControllerArchitectureTests {
         projectionController.reportCatalogError("Fixture catalog failure")
         #expect(invalidations == 1)
 
-        dismissalDays.send(14)
-        #expect(session.dismissalDays == 14)
-        #expect(invalidations == 2)
         agentChanges.send([])
         #expect(session.agentChanges == [])
-        #expect(invalidations == 3)
+        #expect(invalidations == 2)
         agentChangeErrors.send("Fixture Agent Change failure")
         #expect(session.agentChangesError == "Fixture Agent Change failure")
-        #expect(invalidations == 4)
+        #expect(invalidations == 3)
 
         let change = AgentChange(
             id: UUID(),
@@ -154,20 +148,8 @@ struct WindowControllerArchitectureTests {
         session.presentation.notificationFilter = .agentChanges
         session.presentation.filter.query = "Reasons"
         #expect(session.visibleAgentChanges(for: session.presentation) == [change])
-        let vault = RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: "/fixtures/Topics")
-        let note = VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Drafts/Reasons.md")
-        let catalog = WorkspaceCatalogBuilder.build(
-            vaults: [vault], documents: [vault.id: [NoteDocument(relativePath: note.relativePath, rawContent: "# Reasons\n")]],
-            stableNoteIDs: [note: change.noteID])
-        projectionController.replaceCatalog(catalog)
-        agentChangeErrors.send(nil)
-        var ledger = AttentionDismissalLedger()
-        for item in catalog.attention { ledger.dismiss(item, forDays: 7) }
-        let summary = try #require(session.noteSummary(for: note, ledger: ledger, locale: Locale(identifier: "en")))
-        #expect(summary.count == 1)
-        #expect(summary.message == "Note Notifications")
-        #expect(session.noteSummary(for: .init(vaultID: vault.id, relativePath: "Other.md"), ledger: ledger) == nil)
         #expect(session.presentation.filter.query == "Reasons")
+        let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Drafts/Reasons.md")
         session.presentQueue(anchor: .inspector, workspaceSlot: nil, noteScope: note)
         #expect(session.presentation.filter.query.isEmpty)
         #expect(session.presentation.notificationFilter == .all)
@@ -1333,12 +1315,14 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(attentionSource.contains("@ObservedObject private var session: AttentionPopoverSession"))
-        #expect(attentionSource.contains("session.inspect(item)"))
+        #expect(attentionSource.contains("private let session: AttentionPopoverSession"))
+        #expect(attentionSource.contains("session.inspect(change)"))
+        #expect(!attentionSource.contains("session.inspect(item)"))
+        #expect(attentionSource.contains("NSTableViewDataSource"))
         #expect(!attentionSource.contains("WindowModel"))
         #expect(!attentionSource.contains("@EnvironmentObject"))
         #expect(!attentionSource.contains("NSApp.windows"))
-        #expect(!attentionSource.contains("NotificationCenter"))
+        #expect(attentionSource.contains("session.objectWillChange"))
 
         let contentView = try String(
             contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
@@ -1552,6 +1536,23 @@ struct WindowControllerArchitectureTests {
         ]
         #expect(searchOpeningSource.contains("let navigationMode = mode ?? presentedDocumentMode"))
         #expect(!searchOpeningSource.contains("requestPresentationMode = .source"))
+
+        let notificationStart = try #require(
+            documentOpeningSource.range(of: "func openNotifiedAgentChange(")
+        )
+        let notificationEnd = try #require(
+            documentOpeningSource.range(
+                of: "    }\n}",
+                range: notificationStart.upperBound..<documentOpeningSource.endIndex
+            )
+        )
+        let notificationSource = documentOpeningSource[
+            notificationStart.lowerBound..<notificationEnd.lowerBound
+        ]
+        #expect(notificationSource.contains("presentationRouter.present(.agentChanges"))
+        #expect(!notificationSource.contains("requestPresentationMode"))
+        #expect(!notificationSource.contains("openWorkspaceReference"))
+        #expect(!notificationSource.contains("requestSourceLocation"))
 
         let selectedActivationStart = try #require(
             windowModelSource.range(

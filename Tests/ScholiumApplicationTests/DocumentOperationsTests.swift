@@ -505,8 +505,8 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Fixed managed creation does not use invalid optional Settings as authority")
-    func managedCreationIgnoresInvalidOptionalSettings() async throws {
+    @Test("Fixed managed creation does not use unavailable optional Settings as authority")
+    func managedCreationIgnoresUnavailableOptionalSettings() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -515,11 +515,7 @@ struct DocumentOperationsTests {
         let settingsURL = URL(fileURLWithPath: works.canonicalPath)
             .deletingLastPathComponent()
             .appendingPathComponent(".scholium/settings.json")
-        var invalidSettings = try await handle.research.settings().settings
-        invalidSettings.attentionDismissalDays = 0
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(invalidSettings).write(
+        try Data(#"{"schemaVersion":9,"obsolete":0}"#.utf8).write(
             to: settingsURL,
             options: .atomic
         )
@@ -534,49 +530,6 @@ struct DocumentOperationsTests {
         #expect(
             created.document.rawContent
                 == "")
-        await runtime.shutdown()
-    }
-
-    @Test("Optional Settings changes cannot invalidate MCP creation")
-    func managedCreationSurvivesChangedSettingsBeforeClaim() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let topic = try #require(fixture.assignment.vault(for: .topicKnowledge))
-        let saved = try await handle.research.settings()
-        let reservedID = UUID()
-        let request = try ManagedNoteCreationRequest(
-            vaultID: topic.id,
-            destination: .exact(relativePath: "Stale Settings.md"),
-            source: "# Must not commit\n",
-            authority: .mcp(reservedIdentity: reservedID)
-        )
-        let gate = ManagedCreationTestGate()
-        await handle.setManagedCreationPreLeaseBarrierForTesting {
-            await gate.wait()
-        }
-        let creation = Task {
-            try await handle.documents.createManagedNote(request)
-        }
-        #expect(await gate.waitUntilArrived())
-
-        var changed = saved.settings
-        changed.attentionDismissalDays = 9
-        _ = try await handle.research.saveSettings(
-            changed,
-            expectedRevision: saved.revision
-        )
-        await gate.release()
-        let committed = try await creation.value.committedValue
-        await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
-        #expect(
-            committed.document.rawContent
-                == "# Must not commit\n")
-        #expect(
-            try await handle.services.controlStore.identityRecord(
-                id: reservedID
-            )?.relativePath == "Stale Settings.md")
         await runtime.shutdown()
     }
 

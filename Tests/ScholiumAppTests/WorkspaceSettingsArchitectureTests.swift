@@ -38,7 +38,6 @@ struct WorkspaceSettingsArchitectureTests {
                 "writing",
                 "agents",
                 "shortcuts",
-                "notifications",
                 "zotero",
             ]
         )
@@ -93,14 +92,6 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let attentionSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/AttentionSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        let allSettingsSource = source + attentionSource
-
         #expect(!source.contains("TriptychScopedSettingsView"))
         #expect(!source.contains("SettingsTriptychScopePicker"))
         #expect(!source.contains("var usesTriptychScope: Bool"))
@@ -120,7 +111,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(workspaceSource.contains("scholium.settings.triptychScope"))
         #expect(source.contains("ScholiumL10n.Settings.workspace"))
         #expect(source.contains("ScholiumL10n.Settings.document"))
-        #expect(source.contains("ScholiumL10n.Settings.notifications"))
         #expect(source.contains("ScholiumL10n.WritingAssistance.title"))
         #expect(source.contains("case agents"))
         #expect(source.contains("case shortcuts"))
@@ -129,11 +119,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("Registration and folder access are local to this Mac"))
         #expect(!source.contains("Document content only"))
         #expect(!source.contains("These profiles change how Markdown is presented"))
-        #expect(allSettingsSource.contains("This Triptych"))
-        #expect(allSettingsSource.contains("This Mac"))
-        #expect(attentionSource.contains("Reminder Timing"))
-        #expect(attentionSource.contains("Dismissed Items on This Mac"))
-        #expect(attentionSource.contains("Restore All Dismissed Items on This Mac"))
+        #expect(!source.contains("Notifications & Reminders"))
+        #expect(!source.contains("case notifications"))
         #expect(!source.contains("case integrations"))
         #expect(source.contains("settingsTriptychLabel("))
         #expect(
@@ -205,8 +192,7 @@ struct WorkspaceSettingsArchitectureTests {
                 settingsRevision: second
             ))
 
-        var candidate = TriptychSettings()
-        candidate.attentionDismissalDays = 14
+        let candidate = TriptychSettings()
         try await model.saveTriptychSettings(
             candidate,
             targetTriptychID: triptychID,
@@ -215,7 +201,7 @@ struct WorkspaceSettingsArchitectureTests {
 
         #expect(observedRevision == first)
         #expect(model.settingsRevision == committed)
-        #expect(model.triptychSettings.attentionDismissalDays == 14)
+        #expect(model.triptychSettings == candidate)
     }
 
     @Test("A Metadata draft cannot cross into another Triptych with identical bytes")
@@ -269,8 +255,7 @@ struct WorkspaceSettingsArchitectureTests {
         let committed = SettingsRevision(
             fingerprint: DocumentFingerprint(content: "reread-committed")
         )
-        var candidate = TriptychSettings()
-        candidate.attentionDismissalDays = 30
+        let candidate = TriptychSettings()
         let model = WorkspaceSettingsModel(
             snapshot: WorkspaceSettingsSnapshot(
                 activeTriptychID: triptychID,
@@ -312,8 +297,7 @@ struct WorkspaceSettingsArchitectureTests {
         let committed = SettingsRevision(
             fingerprint: DocumentFingerprint(content: "after")
         )
-        var candidate = TriptychSettings()
-        candidate.attentionDismissalDays = 14
+        let candidate = TriptychSettings()
         let model = WorkspaceSettingsModel(
             snapshot: WorkspaceSettingsSnapshot(
                 activeTriptychID: triptychID,
@@ -355,8 +339,7 @@ struct WorkspaceSettingsArchitectureTests {
         let committed = SettingsRevision(
             fingerprint: DocumentFingerprint(content: "first-committed")
         )
-        var candidate = TriptychSettings()
-        candidate.attentionDismissalDays = 30
+        let candidate = TriptychSettings()
         let model = WorkspaceSettingsModel(
             snapshot: WorkspaceSettingsSnapshot(
                 activeTriptychID: firstID,
@@ -442,8 +425,7 @@ struct WorkspaceSettingsArchitectureTests {
         let revision = SettingsRevision(
             fingerprint: DocumentFingerprint(content: "confirmed")
         )
-        var confirmed = TriptychSettings()
-        confirmed.attentionDismissalDays = 14
+        let confirmed = TriptychSettings()
         let snapshot = WorkspaceSettingsSnapshot(
             triptychSettings: confirmed,
             settingsRevision: revision

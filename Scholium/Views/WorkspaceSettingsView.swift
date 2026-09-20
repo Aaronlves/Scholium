@@ -10,7 +10,6 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
     case writing
     case agents
     case shortcuts
-    case notifications
     case zotero
 
     var id: String { rawValue }
@@ -23,7 +22,6 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
         case .writing: ScholiumL10n.WritingAssistance.title
         case .agents: LocalizedStringResource("Agents & Chat", bundle: .module)
         case .shortcuts: LocalizedStringResource("Keyboard Shortcuts", bundle: .module)
-        case .notifications: ScholiumL10n.Settings.notifications
         case .zotero: LocalizedStringResource("Zotero", bundle: .module)
         }
     }
@@ -35,7 +33,6 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
         case .writing: "pencil.line"
         case .agents: "point.3.connected.trianglepath.dotted"
         case .shortcuts: "keyboard"
-        case .notifications: "bell"
         case .zotero: "books.vertical"
         }
     }
@@ -203,7 +200,6 @@ struct ScholiumSettingsView: View {
         case .writing: WritingSettingsView()
         case .agents: AgentIntegrationSettingsView(searchQuery: searchQuery)
         case .shortcuts: HotkeySettingsView(searchQuery: "")
-        case .notifications: AttentionSettingsView()
         case .zotero: ZoteroSettingsPageView()
         }
     }

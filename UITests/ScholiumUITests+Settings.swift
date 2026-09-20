@@ -39,65 +39,6 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 3) { !window.exists })
     }
 
-    /// Reminder edits remain a draft until their scoped Save, and reload has
-    /// an explicit discard boundary. All persistence belongs to the QA Triptych.
-    @MainActor
-    func testNotificationSettingsSavesAndSafelyReloadsDraft() throws {
-        let window = openSettingsForTransactionTest()
-        selectSettingsCategory("notifications", in: window)
-        let duration = window.popUpButtons["scholium.settings.notifications.duration"]
-        let save = window.buttons["scholium.settings.notifications.save"]
-        XCTAssertTrue(duration.waitForExistence(timeout: 5))
-        XCTAssertTrue(waitUntil(timeout: 5) { save.exists && !save.isEnabled })
-        let original = try XCTUnwrap(duration.value as? String)
-        let changed = original == "3 days" ? "7 days" : "3 days"
-
-        func chooseChangedDuration() {
-            duration.click()
-            let option = app.menuItems[changed].firstMatch
-            XCTAssertTrue(option.waitForExistence(timeout: 3))
-            option.click()
-            XCTAssertEqual(duration.value as? String, changed)
-            XCTAssertTrue(waitUntil(timeout: 5) { save.isEnabled })
-        }
-
-        chooseChangedDuration()
-        selectSettingsCategory("workspace", in: window)
-        XCTAssertFalse(save.exists, "Inactive reminder controls must leave the accessibility tree")
-        selectSettingsCategory("notifications", in: window)
-        XCTAssertEqual(duration.value as? String, changed)
-        XCTAssertTrue(save.isEnabled, "Navigation must not save the reminder draft")
-
-        window.buttons["Reload Reminder Timing"].click()
-        let discard = window.buttons["Discard Draft and Reload"].firstMatch
-        XCTAssertTrue(discard.waitForExistence(timeout: 3))
-        window.buttons["Cancel"].firstMatch.click()
-        XCTAssertTrue(waitUntil(timeout: 3) { !discard.exists })
-        XCTAssertEqual(duration.value as? String, changed)
-        XCTAssertTrue(save.isEnabled)
-
-        window.buttons["Reload Reminder Timing"].click()
-        XCTAssertTrue(discard.waitForExistence(timeout: 3))
-        discard.click()
-        XCTAssertTrue(
-            waitUntil(timeout: 5) {
-                duration.value as? String == original && !save.isEnabled
-            }, "Confirmed reload must restore the saved reminder timing")
-
-        chooseChangedDuration()
-        save.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !save.isEnabled })
-        captureSettingsTransaction(window, named: "settings-reminder-saved")
-
-        relaunchSettingsTransactionApplication()
-        let reopened = openSettingsForTransactionTest()
-        selectSettingsCategory("notifications", in: reopened)
-        let persisted = reopened.popUpButtons["scholium.settings.notifications.duration"]
-        XCTAssertTrue(persisted.waitForExistence(timeout: 5))
-        XCTAssertEqual(persisted.value as? String, changed)
-        XCTAssertFalse(reopened.buttons["scholium.settings.notifications.save"].isEnabled)
-    }
-
     /// Inline edits remain one unapplied draft through navigation and search.
     /// Return in another page must never commit that hidden draft.
     @MainActor
@@ -152,13 +93,6 @@ extension ScholiumUITests {
         XCTAssertTrue(name.waitForExistence(timeout: 3))
         XCTAssertEqual(name.value as? String, "QA")
         XCTAssertTrue(pageSave.isEnabled, "Return saved a hidden writing draft")
-
-        selectSettingsCategory("notifications", in: window)
-        XCTAssertFalse(table.exists)
-        app.typeKey(.return, modifierFlags: [])
-        selectSettingsCategory("writing", in: window)
-        XCTAssertEqual(name.value as? String, "QA")
-        XCTAssertTrue(pageSave.isEnabled)
 
         let search = window.searchFields["scholium.settings.search"]
         typeCommittedText("shortcut", into: search, in: app)
@@ -222,8 +156,6 @@ extension ScholiumUITests {
         XCTAssertEqual(copies.count, 1)
         XCTAssertEqual(try Data(contentsOf: XCTUnwrap(copies.first)), damaged)
         XCTAssertEqual(try Data(contentsOf: note), originalNote)
-        selectSettingsCategory("notifications", in: window)
-        XCTAssertTrue(window.popUpButtons["scholium.settings.notifications.duration"].waitForExistence(timeout: 5))
         captureSettingsTransaction(window, named: "settings-portable-recovered")
     }
 
@@ -275,32 +207,6 @@ extension ScholiumUITests {
         XCTAssertEqual(try Data(contentsOf: backup), damaged)
         XCTAssertEqual(try? Data(contentsOf: snippetsURL), snippetsBefore)
         captureSettingsTransaction(window, named: "settings-appearance-repaired")
-    }
-
-    /// An invalid field has an effective default, but still needs an explicit
-    /// save even when the researcher accepts that value without editing it.
-    @MainActor
-    func testInvalidReminderTimingSupportsDefaultFieldRepair() throws {
-        let settings = triptychDirectory.appendingPathComponent(".scholium/settings.json")
-        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any])
-        let expectedDefault = try XCTUnwrap(envelope["attentionDismissalDays"] as? Int)
-        envelope["attentionDismissalDays"] = "unavailable-value"
-        envelope["retainedFuturePreference"] = "kept"
-        try JSONSerialization.data(withJSONObject: envelope).write(to: settings, options: .atomic)
-        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
-        let originalNote = try Data(contentsOf: note)
-        let window = openSettingsForTransactionTest()
-        selectSettingsCategory("notifications", in: window)
-        let save = window.buttons["scholium.settings.notifications.save"]
-        XCTAssertTrue(save.waitForExistence(timeout: 5))
-        XCTAssertTrue(waitUntil(timeout: 5) { save.isEnabled })
-        save.click()
-        XCTAssertTrue(waitUntil(timeout: 10) { !save.isEnabled })
-        let repaired = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any])
-        XCTAssertEqual(repaired["attentionDismissalDays"] as? Int, expectedDefault)
-        XCTAssertEqual(repaired["retainedFuturePreference"] as? String, "kept")
-        XCTAssertEqual(try Data(contentsOf: note), originalNote)
-        captureSettingsTransaction(window, named: "settings-reminder-field-repaired")
     }
 
     @MainActor

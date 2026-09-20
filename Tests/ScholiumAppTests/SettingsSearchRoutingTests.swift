@@ -42,7 +42,6 @@ struct SettingsSearchRoutingTests {
             ("正文斜体字体", .document, "appearance.styles"),
             ("Heading Italic Font", .document, "appearance.styles"),
             ("Writing Continuation", .writing, "writing.continuation"),
-            ("Return dismissed items after", .notifications, "notifications.timing"),
             ("Server Address", .agents, "agents.tools"),
             ("Scholium Connection Helper", .agents, "agents.paths"),
             ("Copy Claude Setup Command", .agents, "agents.external"),

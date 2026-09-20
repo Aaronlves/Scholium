@@ -124,66 +124,6 @@ public struct AttentionQueueFilter: Codable, Hashable, Sendable {
     }
 }
 
-/// Persistent, machine-local dismissal state. The caller chooses the duration;
-/// every warning is dismissible and automatically returns after its deadline.
-public struct AttentionDismissalLedger: Codable, Hashable, Sendable {
-    public private(set) var dismissedUntilByItemID: [String: Date]
-
-    public init(
-        dismissedUntilByItemID: [String: Date] = [:]
-    ) {
-        self.dismissedUntilByItemID = dismissedUntilByItemID
-    }
-
-    public func isDismissed(_ item: AttentionQueueItem, at date: Date = Date()) -> Bool {
-        guard let deadline = dismissedUntilByItemID[item.id] else { return false }
-        return deadline > date
-    }
-
-    public func visible(_ items: [AttentionQueueItem], at date: Date = Date()) -> [AttentionQueueItem] {
-        items.filter { !isDismissed($0, at: date) }
-    }
-
-    public mutating func dismiss(
-        _ item: AttentionQueueItem,
-        forDays days: Int,
-        at date: Date = Date(),
-        calendar: Calendar = .current
-    ) {
-        let clampedDays = min(max(days, 1), 365)
-        dismissedUntilByItemID[item.id] =
-            calendar.date(byAdding: .day, value: clampedDays, to: date)
-            ?? date.addingTimeInterval(TimeInterval(clampedDays * 86_400))
-    }
-
-    public mutating func removeExpired(at date: Date = Date()) {
-        dismissedUntilByItemID = dismissedUntilByItemID.filter { $0.value > date }
-    }
-
-    public mutating func removeAll() {
-        dismissedUntilByItemID.removeAll()
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case dismissedUntilByItemID
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            dismissedUntilByItemID: try container.decodeIfPresent(
-                [String: Date].self,
-                forKey: .dismissedUntilByItemID
-            ) ?? [:]
-        )
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(dismissedUntilByItemID, forKey: .dismissedUntilByItemID)
-    }
-}
-
 public struct WorkspaceCatalogSnapshot: Codable, Sendable {
     public let generatedAt: Date
     public let notes: [WorkspaceCatalogNote]

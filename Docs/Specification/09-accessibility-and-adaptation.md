@@ -85,9 +85,12 @@ Library/Search/Notifications interaction. Their accessibility obligations are:
 - Back/Forward, Search, Notifications, filters, Add, file actions and Inspector
   remain discoverable without hover. The bell's nonzero state has a distinct
   shape and an exact accessible count in Help, without an unread implication.
-- Notifications expose category, issue, Note/locator, revision freshness and
-  valid actions in reading order. Background delivery follows system settings;
-  denial or timeout cannot hide a necessary local error or recovery action.
+- Notifications expose Agent Change or Settlement category, Note identity or
+  locator, revision freshness where applicable, and valid actions in reading
+  order. Library Integrity filters expose structural Attention's exact reason
+  and Note/path locator as derived read-only state. Background delivery follows
+  system settings; denial or timeout cannot hide a necessary local error or
+  recovery action.
 - File and Window menus retain named Triptych/window routes. The window subtitle
   disambiguates multiple Triptychs only when needed; complete identity remains
   accessible without a repeated Sidebar heading.

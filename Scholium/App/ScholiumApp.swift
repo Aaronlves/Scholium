@@ -58,7 +58,6 @@ final class WindowModel: ObservableObject {
     @Published var currentRegisteredVault: RegisteredVault?
     @Published var currentVaultRole: VaultRole = .other
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
-    @Published var triptychSettings = TriptychSettings()
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
     let writingContinuationContextCache = WritingContinuationContextCache()
@@ -271,12 +270,7 @@ final class WindowModel: ObservableObject {
         discoveryController: discoveryController,
         workspaceController: windowWorkspaceController,
         projectionController: workspaceProjectionController,
-        dismissalDays: triptychSettings.attentionDismissalDays,
         dependencies: .init(
-            dismissalDaysChanges:
-                $triptychSettings
-                .map(\.attentionDismissalDays)
-                .eraseToAnyPublisher(),
             settlementRequirementChanges: researchController.$researchSnapshot
                 .map { $0?.settlementRequirements ?? [] }
                 .eraseToAnyPublisher(),

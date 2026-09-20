@@ -211,8 +211,8 @@ struct WorkspaceCatalogTests {
         #expect(item?.message == "Multiple matching Notes")
     }
 
-    @Test("Attention filtering and timed dismissal share one deterministic contract")
-    func attentionFilterAndDismissal() {
+    @Test("Attention filtering remains deterministic for exact structural reasons")
+    func attentionFilter() {
         let vault = vault("Topics", .topicKnowledge)
         let reference = VaultNoteReference(
             vaultID: vault.id,
@@ -238,13 +238,6 @@ struct WorkspaceCatalogTests {
             AttentionQueueFilter(query: "line 12")
                 .apply(to: [item, other]) == [item])
 
-        let now = Date(timeIntervalSince1970: 1_000_000)
-        var ledger = AttentionDismissalLedger()
-        ledger.dismiss(item, forDays: 7, at: now)
-        #expect(ledger.visible([item, other], at: now) == [other])
-        #expect(ledger.visible([item, other], at: now.addingTimeInterval(8 * 86_400)) == [item, other])
-        ledger.removeExpired(at: now.addingTimeInterval(8 * 86_400))
-        #expect(ledger.dismissedUntilByItemID.isEmpty)
     }
 
     @Test("Folder spellings never suppress ordinary Attention")
@@ -267,7 +260,7 @@ struct WorkspaceCatalogTests {
             })
     }
 
-    @Test("Unresolved stable identity appears as dismissible derived Attention")
+    @Test("Unresolved stable identity appears as derived Attention")
     func unresolvedIdentityAttention() {
         let works = vault("Works", .draftProject)
         let document = note("Drafts/Renamed.md", "A duplicated external file.")

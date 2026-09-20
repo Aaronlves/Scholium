@@ -79,7 +79,6 @@
       }
     },
     "settings.tab.document": {"comment": "Settings tab for document content presentation and appearance profiles, including typography.", "extractionState": "extracted_with_value", "localizations": {"en": {"stringUnit": {"state": "new", "value": "Document Appearance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文稿外观"}}}},
-    "settings.tab.notifications": {"comment": "Settings tab for notification reminders and dismissed items.", "extractionState": "extracted_with_value", "localizations": {"en": {"stringUnit": {"state": "new", "value": "Notifications & Reminders"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "通知与提醒"}}}},
     "settings.tab.workspace": {
       "comment": "Settings tab for local Triptych registration and folder access.",
       "extractionState": "extracted_with_value",

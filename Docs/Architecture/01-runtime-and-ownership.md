@@ -238,8 +238,9 @@ composition/focus. Auxiliary windows, native previews and transient surfaces
 belong to their originating window and close/detach with it. Preview geometry and
 read-only content grant no source authority.
 
-Attention is an immutable workspace projection with presentation-only dismissal.
-The notification popover is window-local. One App-level system notification owner
+Attention is an immutable workspace-derived diagnostic projection consumed by
+Library Integrity filters; it has no notification dismissal owner. The
+notification popover is window-local. One App-level system notification owner
 handles authorization, coalescing and exact opaque routes. Confirmed mutation and
 live Chat execution owners submit events; refresh, restored history and expired
 turns cannot manufacture them. Validity is checked before prompting and delivery;
@@ -262,8 +263,8 @@ Exact passages and readable projections remain distinct.
 
 ### Settings authority
 
-Settings composes existing workspace, document, notification, shortcut, writing,
-Zotero and Chat owners; it creates no workspace runtime. Immutable snapshots
+Settings composes existing workspace, document, shortcut, writing, Zotero and
+Chat owners; it creates no workspace runtime. Immutable snapshots
 carry exact settings revisions and writes return replacements. Captured scope or
 revision mismatch requires explicit reload, not last-writer-wins. Native retained
 page hosts preserve drafts while inactive hosts lose input/accessibility/default

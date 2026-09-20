@@ -8,7 +8,6 @@ enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
     case writing
     case agents
     case shortcuts
-    case notifications
     case zotero
 
     var id: String { rawValue }

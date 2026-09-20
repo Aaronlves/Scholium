@@ -2,45 +2,13 @@ import Combine
 import Foundation
 import ScholiumContracts
 
-enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
-    case identityAndMetadata
-    case structureAndConnections
-
-    var id: String { rawValue }
-
-    var titleResource: LocalizedStringResource {
-        switch self {
-        case .identityAndMetadata: "Identity & Metadata"
-        case .structureAndConnections: "Structure & Connections"
-        }
-    }
-
-    var kinds: [AttentionQueueKind] {
-        switch self {
-        case .identityAndMetadata:
-            [.malformedMetadata, .unresolvedIdentity]
-        case .structureAndConnections:
-            [.possibleOrphan, .brokenConnection, .ambiguousConnection]
-        }
-    }
-
-    func contains(_ item: AttentionQueueItem) -> Bool {
-        kinds.contains(item.kind)
-    }
-}
-
 enum AttentionNotificationFilter: Hashable, Sendable {
     case all
     case agentChanges
     case settlements
-    case issues
 
     var showsAgentChanges: Bool {
         self == .all || self == .agentChanges
-    }
-
-    var showsIssues: Bool {
-        self == .all || self == .issues
     }
 
     var showsSettlements: Bool {
@@ -48,107 +16,7 @@ enum AttentionNotificationFilter: Hashable, Sendable {
     }
 }
 
-extension AttentionQueueKind {
-    func localizedDisplayName(locale: Locale = .current) -> String {
-        switch self {
-        case .possibleOrphan:
-            ScholiumL10n.string("Possible Orphan", locale: locale)
-        case .malformedMetadata:
-            ScholiumL10n.string("Malformed Metadata", locale: locale)
-        case .brokenConnection:
-            ScholiumL10n.string("Broken Connection", locale: locale)
-        case .ambiguousConnection:
-            ScholiumL10n.string("Ambiguous Connection", locale: locale)
-        case .unresolvedIdentity:
-            ScholiumL10n.string("Unresolved Identity", locale: locale)
-        }
-    }
-}
-
-enum AttentionStructuralNotificationSearch {
-    static func apply(
-        to items: [AttentionQueueItem],
-        filter: AttentionQueueFilter,
-        locale: Locale = .current
-    ) -> [AttentionQueueItem] {
-        let query = normalized(filter.query, locale: locale)
-        guard !query.isEmpty else { return items }
-        return items.filter { item in
-            let searchable = [
-                item.kind.displayName,
-                item.kind.localizedDisplayName(locale: locale),
-                item.message,
-                AttentionIssueCopy.message(for: item, locale: locale),
-                item.note.vaultName,
-                item.note.relativePath,
-                item.locator.map { "line \($0.line)" } ?? "",
-            ].joined(separator: " ")
-            return normalized(searchable, locale: locale).contains(query)
-        }
-    }
-
-    private static func normalized(_ value: String, locale: Locale) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: locale
-            )
-    }
-}
-
-enum AttentionIssueCopy {
-    static func message(
-        for item: AttentionQueueItem,
-        locale: Locale = .current
-    ) -> String {
-        switch item.message {
-        case "Invalid YAML":
-            ScholiumL10n.string("Invalid YAML", locale: locale)
-        case "No incoming or outgoing links":
-            ScholiumL10n.string(
-                "No incoming or outgoing links",
-                locale: locale
-            )
-        case "Identity not confirmed":
-            ScholiumL10n.string("Identity not confirmed", locale: locale)
-        case "Multiple candidates":
-            ScholiumL10n.string("Multiple candidates", locale: locale)
-        case "Multiple matching Notes":
-            ScholiumL10n.string("Multiple matching Notes", locale: locale)
-        case "Multiple matching headings":
-            ScholiumL10n.string("Multiple matching headings", locale: locale)
-        case "Missing Note":
-            ScholiumL10n.string("Missing Note", locale: locale)
-        case "Missing heading":
-            ScholiumL10n.string("Missing heading", locale: locale)
-        case "Missing block":
-            ScholiumL10n.string("Missing block", locale: locale)
-        case "Wikilink in property":
-            ScholiumL10n.string("Wikilink in property", locale: locale)
-        default:
-            // Unknown projection copy remains visible rather than being
-            // replaced with a misleading generic condition.
-            item.message
-        }
-    }
-}
-
 enum AttentionNotificationCopy {
-    static func emptyDescription(
-        noteScoped: Bool,
-        locale: Locale = .current
-    ) -> String {
-        noteScoped
-            ? ScholiumL10n.string(
-                "No Agent Change, Settlement reminder, or visible derived issue needs attention for this Note.",
-                locale: locale
-            )
-            : ScholiumL10n.string(
-                "No Agent Change, Settlement reminder, or visible derived issue needs attention in this Scope.",
-                locale: locale
-            )
-    }
-
     static func refreshing(locale: Locale = .current) -> String {
         ScholiumL10n.string(
             "Refreshing — showing the last available results.",
@@ -217,9 +85,9 @@ final class AttentionPresentationState: ObservableObject {
         selectedItemID = itemID
     }
 
-    /// A Workspace-window change starts a fresh Attention visit. Machine-local
-    /// dismissals remain intact, but transient query, kind, Note scope, and row
-    /// focus never leak from the previously active window.
+    /// A Workspace-window change starts a fresh Notifications visit. Transient
+    /// query, kind, Note scope, and row focus never leak from the previously
+    /// active window.
     func resetForWorkspaceSwitch() {
         filter = AttentionQueueFilter()
         notificationFilter = .all
@@ -228,9 +96,9 @@ final class AttentionPresentationState: ObservableObject {
         previousVisibleItemIDs = []
     }
 
-    /// Reconciles selection after refresh, dismissal, or resolution. The old
-    /// ordered list supplies deterministic next/previous behavior; when no row
-    /// remains, the native filter/search control becomes the restoration target.
+    /// Reconciles selection after refresh or resolution. The old ordered list
+    /// supplies deterministic next/previous behavior; when no row remains, the
+    /// native filter/search control becomes the restoration target.
     func reconcileVisibleItems(_ itemIDs: [String]) {
         defer { previousVisibleItemIDs = itemIDs }
         guard let selectedItemID else {
