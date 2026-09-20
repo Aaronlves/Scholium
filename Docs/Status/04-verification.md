@@ -4,24 +4,24 @@
 
 ## Release artifacts and gate provenance
 
-**2026-09-20 — `v0.2.7-beta` packaged artifact:** Exact clean tag at
-`63568b4ce8547278adec1e48c8a719b662df9111` produced
-`Scholium-v0.2.7-beta-macos-arm64.dmg`: marketing version `0.2.7`, build `8`,
+**2026-09-21 — `v0.2.8-beta` packaged artifact:** Exact clean tag at
+`d103a0c8d895005ede79a5ba306f38bea0df6731` produced
+`Scholium-v0.2.8-beta-macos-arm64.dmg`: marketing version `0.2.8`, build `9`,
 minimum macOS `26.0`, SDK `27.0`, arm64 ad-hoc-signed App and version-matched
-helper. Repository gate passed WebEditor (368), Core (510), Core performance
-(3), Contracts (96), Application (195), architecture measurement (1), and App
-(1,057 across 131 suites), plus public-symbol guards, Release compilation and
+helper. Repository gate passed WebEditor (370), Core (510), Core performance
+(3), Contracts (97), Application (194), architecture measurement (1), and App
+(1,052 across 131 suites), plus public-symbol guards, Release compilation and
 helper isolation. Resource, license, private-path, provenance, nested-signature,
 entitlements, architecture, read-only DMG layout and SHA-256 checks passed;
 checksum:
-`193c36e1bc996e35f48ba8cbb39a4cd03bee2b6a494bd0e9a71f945841c39748`.
-Packaged clean-account Bootstrap smoke was attempted twice; XCTest failed
-before launch on the first attempt with `Timed out while enabling automation
-mode`, then passed on the second attempt with production state unchanged. G9
-passed; the first attempt remains environment evidence, not a product failure.
-Evidence: `.build/verification/`, `.build/verification-release/`, tag
-provenance embedded in the App, and the retained first-attempt diagnostics
-under `.build/packaged-first-launch.YJwPDV/`.
+`940acbe3c8705e5d8be583dc328082ac71ffaac84b3b0ed7eb33dd30dec8f34a`.
+Packaged clean-account Bootstrap smoke ran twice; XCTest first failed with
+`Timed out while enabling automation mode`, then the second passed with
+production state unchanged. The first is environment evidence, not a product
+failure. This covers Bootstrap only; the §21.5 packaged Triptych/edit/readback/
+relaunch journey remains open. Evidence: `.build/verification/`,
+`.build/verification-release/`, tag provenance embedded in the App, and the
+retained first-attempt diagnostics under `.build/packaged-first-launch.8IsyPk/`.
 
 **2026-09-17 — Earlier clean-account baseline, `v0.2.2-beta`:** Exact clean tag
 at `ea4918ec1958293879786a889108d0b186d33744` produced
