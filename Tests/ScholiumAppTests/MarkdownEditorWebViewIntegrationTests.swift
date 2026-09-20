@@ -162,9 +162,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(!incremental.isEmpty)
         #expect(incremental.allSatisfy { $0.observed["selectionScoped"] == 0 })
-        #expect(incremental.contains {
-            ($0.observed["projectionWindowUTF16Count"] ?? .infinity) < Double(source.utf16.count)
-        })
+        #expect(
+            incremental.contains {
+                ($0.observed["projectionWindowUTF16Count"] ?? .infinity) < Double(source.utf16.count)
+            })
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
     }
