@@ -13940,14 +13940,7 @@
         if (target.key === key || target.key === dismissed) return;
         hide();
         key = target.key;
-        id2 = floating.show({
-          kind: "selection",
-          ...target.anchor,
-          html: "",
-          css: "",
-          items: [],
-          selected: -1
-        }, {
+        id2 = floating.show({ ...target.anchor }, {
           dismiss,
           choose: () => {
             const valid = current()?.key === target.key;
@@ -14332,51 +14325,83 @@
   var editorArrivalHighlight = [editorArrivalState, lifetime];
 
   // native-floating.ts
-  function createNativeFloatingBridge(post2) {
+  function createNativeFloatingPorts(post2) {
     let serial = 0;
-    let current = null;
-    const bridge = {
+    let active = null;
+    function activate(kind, callbacks, event2) {
+      if (active && active.kind !== kind) active.dismiss();
+      const id2 = ++serial;
+      active = { kind, id: id2, dismiss: callbacks.dismiss, event: event2 };
+      return id2;
+    }
+    function hide(kind, id2) {
+      if (active?.kind !== kind || active.id !== id2) return;
+      post2({ type: "dismissSurface", kind, id: id2 });
+      active = null;
+    }
+    const preview = {
       show(surface, callbacks) {
-        if (current && current.surface.kind !== surface.kind) current.callbacks.dismiss();
-        const id2 = ++serial;
-        current = { surface: { ...surface, id: id2 }, callbacks };
-        post2(current.surface);
+        const id2 = activate("preview", callbacks, (currentID, action, _index) => {
+          if (currentID !== id2) return false;
+          if (action === "enter") callbacks.enter?.();
+          else if (action === "leave") callbacks.leave?.();
+          else if (action === "dismiss") callbacks.dismiss();
+          else return false;
+          return true;
+        });
+        post2({ type: "previewSurface", surface: { ...surface, id: id2 } });
         return id2;
       },
       hide(id2) {
-        if (current?.surface.id !== id2) return;
-        post2({ ...current.surface, kind: "hidden", html: "", css: "", items: [], selected: -1 });
-        current = null;
-      },
-      event(id2, action, index) {
-        if (current?.surface.id !== id2) return false;
-        const callbacks = current.callbacks;
-        if (action === "enter") callbacks.enter?.();
-        else if (action === "leave") callbacks.leave?.();
-        else if (action === "dismiss") callbacks.dismiss();
-        else if (action === "choose" && current.surface.kind === "selection" && Number.isInteger(index) && index === 0) {
-          return callbacks.choose?.(index) !== false;
-        } else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
-          if (action === "select") callbacks.select?.(index);
-          else return callbacks.choose?.(index) !== false;
-        } else return false;
-        return true;
+        hide("preview", id2);
       }
     };
-    window.scholiumNativeFloatingEvent = bridge.event;
-    return bridge;
+    const suggestions = {
+      show(surface, callbacks) {
+        const id2 = activate("suggestions", callbacks, (currentID, action, index) => {
+          if (currentID !== id2 || !Number.isInteger(index)) return false;
+          if (action === "dismiss") callbacks.dismiss();
+          else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
+          else if (action === "choose" && index >= 0 && index < surface.items.length) {
+            return callbacks.choose?.(index) !== false;
+          } else return false;
+          return true;
+        });
+        post2({ type: "suggestionSurface", surface: { ...surface, id: id2 } });
+        return id2;
+      },
+      hide(id2) {
+        hide("suggestions", id2);
+      }
+    };
+    const selection = {
+      show(surface, callbacks) {
+        const id2 = activate("selection", callbacks, (currentID, action, index) => {
+          if (currentID !== id2) return false;
+          if (action === "dismiss") callbacks.dismiss();
+          else if (action === "choose" && index === 0) return callbacks.choose?.(index) !== false;
+          else return false;
+          return true;
+        });
+        post2({ type: "selectionSurface", surface: { ...surface, id: id2 } });
+        return id2;
+      },
+      hide(id2) {
+        hide("selection", id2);
+      }
+    };
+    const event = (id2, action, index) => active?.id === id2 ? active.event(id2, action, index) : false;
+    window.scholiumNativeFloatingEvent = event;
+    return { preview, suggestions, selection };
   }
   function previewSurface(anchor, root) {
     const css2 = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
     return {
-      kind: "preview",
       left: anchor.left,
       top: anchor.top,
       bottom: anchor.bottom,
       html: root.innerHTML,
-      css: css2,
-      items: [],
-      selected: -1
+      css: css2
     };
   }
 
@@ -34228,12 +34253,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (signature === this.signature) return;
         this.signature = signature;
         nativeID = options.nativeFloating.show({
-          kind: "suggestions",
           left: anchor.left,
           top: anchor.top,
           bottom: anchor.bottom,
-          html: "",
-          css: "",
           items,
           selected
         }, {
@@ -39302,7 +39324,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     projections: liveProjectionIndex,
     mermaidPresentations: (state) => liveMermaidProjection.presentations(state)
   });
-  var nativeFloating = createNativeFloatingBridge((surface) => post({ type: "floatingSurface", surface }));
+  var nativeFloating = createNativeFloatingPorts((event) => post({ type: "floatingSurface", event }));
   var selectingForAgent = false;
   function selectionActionTarget() {
     if (selectingForAgent || editor.composing || lastDocumentFocusTarget === "title") return null;
@@ -39316,7 +39338,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       anchor: { left: (first.left + last.left) / 2, top: first.top, bottom: last.bottom }
     };
   }
-  var selectionActions = createSelectionActions(nativeFloating, selectionActionTarget);
+  var selectionActions = createSelectionActions(nativeFloating.selection, selectionActionTarget);
   function measureSelectionAction(view) {
     const attachment = documentAttachment;
     view.requestMeasure({
@@ -39328,7 +39350,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     });
   }
   var previewPopover = createPreviewPopoverController({
-    nativeFloating,
+    nativeFloating: nativeFloating.preview,
     previews: () => linkPreviews,
     footnotes: () => liveProjectionIndex.index(editor.state).footnotes,
     renderFootnoteContent: (content2, parent) => appendMarkdownBlocks(content2, parent, {
@@ -39354,7 +39376,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     ))
   ];
   var inputSuggestions = createEditorInputSuggestions({
-    nativeFloating,
+    nativeFloating: nativeFloating.suggestions,
     mode: configuredEditorMode,
     dialect: () => editingDialect,
     isComposing: () => editor.composing,

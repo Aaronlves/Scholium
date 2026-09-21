@@ -9,19 +9,43 @@ import WebKit
 @MainActor
 struct DocumentFloatingSurfaceTests {
     private func payload(id: Int = 1, kind: String = "preview") -> [String: Any] {
-        [
-            "id": id, "kind": kind, "left": 290, "top": 240, "bottom": 260,
-            "html": kind == "preview"
-                ? "<h2 class='scholium-preview-title'>Synthetic preview</h2><div class='scholium-preview-body scholium-document'><p>Source stays unchanged.</p></div>"
-                : "",
-            "css": "", "items": [], "selected": -1,
-        ]
+        let html = "<h2 class='scholium-preview-title'>Synthetic preview</h2><div class='scholium-preview-body scholium-document'><p>Source stays unchanged.</p></div>"
+        if kind == "hidden" {
+            return ["type": "dismissSurface", "kind": "preview", "id": id]
+        }
+        if kind == "selection" {
+            return ["type": "selectionSurface", "surface": [
+                "id": id, "left": 290, "top": 240, "bottom": 260,
+            ]]
+        }
+        if kind == "suggestions" {
+            return ["type": "suggestionSurface", "surface": [
+                "id": id, "left": 290, "top": 240, "bottom": 260,
+                "items": [["label": "Date", "detail": ""]], "selected": 0,
+            ]]
+        }
+        return ["type": "previewSurface", "surface": [
+            "id": id, "left": 290, "top": 240, "bottom": 260,
+            "html": html, "css": "",
+        ]]
+    }
+
+    private func setPreviewHTML(_ value: inout [String: Any], _ html: String) {
+        var surface = value["surface"] as! [String: Any]
+        surface["html"] = html
+        value["surface"] = surface
+    }
+
+    private func setID(_ value: inout [String: Any], _ id: Int) {
+        var surface = value["surface"] as! [String: Any]
+        surface["id"] = id
+        value["surface"] = surface
     }
 
     @Test("Malformed and unbounded projections cannot create a surface")
     func boundedProjection() throws {
         let valid = payload()
-        #expect(DocumentFloatingSurface.decode(valid) != nil)
+        #expect(DocumentFloatingEvent.decode(valid) != nil)
         for (key, value) in [
             ("id", 0 as Any), ("top", Double.infinity as Any),
             ("html", String(repeating: "x", count: 500_001) as Any),
@@ -29,11 +53,11 @@ struct DocumentFloatingSurfaceTests {
         ] {
             var malformed = valid
             malformed[key] = value
-            #expect(DocumentFloatingSurface.decode(malformed) == nil)
+            #expect(DocumentFloatingEvent.decode(malformed) == nil)
         }
         var extra = valid
         extra["source"] = "not an editing operation"
-        #expect(DocumentFloatingSurface.decode(extra) == nil)
+        #expect(DocumentFloatingEvent.decode(extra) == nil)
     }
 
     @Test("Selection actions use native layout and a menu without a duplicate composer")
@@ -71,13 +95,11 @@ struct DocumentFloatingSurfaceTests {
             window.close()
         }
         controller.present(
-            DocumentFloatingSurface(
-                id: 1, kind: .selection, left: 300, top: 180, bottom: 200,
-                html: "", css: "", items: [], selected: -1),
+            .selection(.init(id: 1, left: 300, top: 180, bottom: 200)),
             in: webView,
             inquire: { _, _ in throw AgentChatNoteMaterialError.selectionUnavailable }
         ) { _, action, _ in
-            #expect(action == "choose")
+            #expect(action == .choose)
             return true
         }
         let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
@@ -134,16 +156,14 @@ struct DocumentFloatingSurfaceTests {
         }
         func start(_ id: Int) throws {
             controller.present(
-                DocumentFloatingSurface(
-                    id: id, kind: .selection, left: 300, top: 180, bottom: 200,
-                    html: "", css: "", items: [], selected: -1),
+                .selection(.init(id: id, left: 300, top: 180, bottom: 200)),
                 in: webView,
                 inquire: { _, _ in
                     Issue.record("Cancelled validation must not admit the inquiry")
                     return nil
                 }
             ) { id, action, _ in
-                guard action == "choose" else { return true }
+                guard action == .choose else { return true }
                 await withCheckedContinuation { continuation in
                     if id == 1 { first = continuation } else { second = continuation }
                 }
@@ -195,12 +215,11 @@ struct DocumentFloatingSurfaceTests {
             window.close()
         }
         var id = 0
-        func show(_ items: [DocumentFloatingSurface.Item], selected: Int = 0, top: Double = 40) throws -> CGFloat {
+        func show(_ items: [DocumentSuggestionSurface.Item], selected: Int = 0, top: Double = 40) throws -> CGFloat {
             id += 1
             controller.present(
-                DocumentFloatingSurface(
-                    id: id, kind: .suggestions,
-                    left: 20, top: top, bottom: top + 20, html: "", css: "", items: items, selected: selected),
+                .suggestions(.init(
+                    id: id, left: 20, top: top, bottom: top + 20, items: items, selected: selected)),
                 in: webView
             ) { _, _, _ in true }
             let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
@@ -209,7 +228,7 @@ struct DocumentFloatingSurfaceTests {
         }
         let short = try show([.init(label: "Date", detail: "")])
         #expect(short > 44 && short < 100)
-        let items: [DocumentFloatingSurface.Item] = [
+        let items: [DocumentSuggestionSurface.Item] = [
             .init(label: "Date", detail: ""), .init(label: "研究笔记", detail: "Insert a linked research note"),
         ]
         let detailed = try show(items)
@@ -235,7 +254,7 @@ struct DocumentFloatingSurfaceTests {
         #expect(above.frame.maxY == anchoredBottom)
         #expect(above.frame.minY >= 12)
         #expect(above.frame.maxY < 240)
-        let long = [DocumentFloatingSurface.Item(label: String(repeating: "研究笔记", count: 40), detail: "")]
+        let long = [DocumentSuggestionSurface.Item(label: String(repeating: "研究笔记", count: 40), detail: "")]
         let capped = try show(long)
         #expect(capped > detailed && capped < webView.bounds.width)
         window.setContentSize(NSSize(width: 180, height: 400))
@@ -308,12 +327,12 @@ struct DocumentFloatingSurfaceTests {
         let wasKey = window.isKeyWindow
         let originalBounds = webView.bounds
         let originalFrame = webView.frame
-        let surface = try #require(DocumentFloatingSurface.decode(payload(id: 2)))
+        let surface = try #require(DocumentFloatingEvent.decode(payload(id: 2)))
         controller.present(surface, in: webView) { _, _, _ in true }
         #expect(!controller.isPreviewShown)
         let preview = try #require(controller.previewWebView)
         // A second report for the same pending target must not strand its measurement.
-        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 3))), in: webView) { _, _, _ in true }
+        controller.present(try #require(DocumentFloatingEvent.decode(payload(id: 3))), in: webView) { _, _, _ in true }
         #expect(controller.previewWebView === preview)
         let deadline = ContinuousClock.now.advanced(by: .seconds(8))
         while !controller.isPreviewShown && ContinuousClock.now < deadline {
@@ -330,18 +349,18 @@ struct DocumentFloatingSurfaceTests {
         let initialFrame = preview.window?.frame
         let text = try await preview.evaluateJavaScript("document.body.textContent") as? String ?? ""
         #expect(text.contains("Source stays unchanged"))
-        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 4))), in: webView) { _, _, _ in true }
+        controller.present(try #require(DocumentFloatingEvent.decode(payload(id: 4))), in: webView) { _, _, _ in true }
         #expect(controller.previewWebView === preview)
         #expect(preview.window?.frame == initialFrame)
         #expect(preview.configuration.defaultWebpagePreferences.allowsContentJavaScript == false)
         #expect(try await preview.evaluateJavaScript("getComputedStyle(document.body).backgroundColor") as? String == "rgba(0, 0, 0, 0)")
         controller.present(
-            try #require(DocumentFloatingSurface.decode(payload(id: 1, kind: "hidden"))),
+            try #require(DocumentFloatingEvent.decode(payload(id: 1, kind: "hidden"))),
             in: webView
         ) { _, _, _ in true }
         #expect(controller.previewWebView === preview)
         controller.present(
-            try #require(DocumentFloatingSurface.decode(payload(id: 4, kind: "hidden"))),
+            try #require(DocumentFloatingEvent.decode(payload(id: 4, kind: "hidden"))),
             in: webView
         ) { _, _, _ in true }
         #expect(controller.previewWebView == nil)
@@ -351,10 +370,10 @@ struct DocumentFloatingSurfaceTests {
         controller.present(surface, in: webView) { _, _, _ in true }
         let obsolete = controller.previewWebView
         var latest = payload(id: 10)
-        latest["html"] =
+        setPreviewHTML(&latest,
             "<h2 class='scholium-preview-title'>Latest target</h2><div class='scholium-preview-body scholium-document'>"
-            + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>"
-        controller.present(try #require(DocumentFloatingSurface.decode(latest)), in: webView) { _, _, _ in true }
+            + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>")
+        controller.present(try #require(DocumentFloatingEvent.decode(latest)), in: webView) { _, _, _ in true }
         let current = try #require(controller.previewWebView)
         #expect(current === obsolete)
         #expect(current === preview)
@@ -369,8 +388,8 @@ struct DocumentFloatingSurfaceTests {
         _ = try await current.evaluateJavaScript("window.scrollTo(0, 160)")
         let readingOffset = try await current.evaluateJavaScript("window.scrollY") as? Double
         #expect((readingOffset ?? 0) > 0)
-        latest["id"] = 11
-        controller.present(try #require(DocumentFloatingSurface.decode(latest)), in: webView) { _, _, _ in true }
+        setID(&latest, 11)
+        controller.present(try #require(DocumentFloatingEvent.decode(latest)), in: webView) { _, _, _ in true }
         #expect(try await current.evaluateJavaScript("window.scrollY") as? Double == readingOffset)
         // Closing deactivates the surface; reopening another target reuses only
         // the renderer, never the previous content, focus eligibility, or scroll.
@@ -378,7 +397,7 @@ struct DocumentFloatingSurfaceTests {
         #expect(controller.previewWebView == nil)
         #expect(current.superview == nil)
         #expect(!current.acceptsFirstResponder)
-        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 12))), in: webView) { _, _, _ in true }
+        controller.present(try #require(DocumentFloatingEvent.decode(payload(id: 12))), in: webView) { _, _, _ in true }
         #expect(controller.previewWebView === current)
         let reopenDeadline = ContinuousClock.now.advanced(by: .seconds(8))
         while !controller.isPreviewShown && ContinuousClock.now < reopenDeadline {
@@ -391,13 +410,13 @@ struct DocumentFloatingSurfaceTests {
         #expect(webView.frame == originalFrame && webView.bounds == originalBounds)
         // Cancel pending replacement, then end the host lifetime. Late callbacks
         // must neither expose the cancelled target nor affect the fresh renderer.
-        latest["id"] = 13
-        controller.present(try #require(DocumentFloatingSurface.decode(latest)), in: webView) { _, _, _ in true }
+        setID(&latest, 13)
+        controller.present(try #require(DocumentFloatingEvent.decode(latest)), in: webView) { _, _, _ in true }
         controller.dismiss()
         try await Task.sleep(for: .milliseconds(150))
         #expect(!controller.isPreviewShown && controller.previewWebView == nil)
         controller.reset()
-        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 14))), in: webView) { _, _, _ in true }
+        controller.present(try #require(DocumentFloatingEvent.decode(payload(id: 14))), in: webView) { _, _, _ in true }
         #expect(controller.previewWebView !== current)
         let previousOwnerRenderer = controller.previewWebView
         let otherOwner = WKWebView()
@@ -409,7 +428,7 @@ struct DocumentFloatingSurfaceTests {
         otherWindow.orderFront(nil)
         defer { otherWindow.close() }
         // Surface IDs belong to their originating WebView, not a global sequence.
-        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 1))), in: otherOwner) { _, _, _ in true }
+        controller.present(try #require(DocumentFloatingEvent.decode(payload(id: 1))), in: otherOwner) { _, _, _ in true }
         #expect(controller.previewWebView != nil)
         #expect(controller.previewWebView !== previousOwnerRenderer)
     }

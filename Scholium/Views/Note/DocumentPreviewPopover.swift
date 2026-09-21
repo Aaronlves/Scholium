@@ -5,7 +5,7 @@ import WebKit
 /// source, hover intent and invalidation; AppKit owns the visible frame.
 @MainActor
 final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDelegate {
-    var onEvent: ((String) -> Void)?
+    var onEvent: ((DocumentFloatingAction) -> Void)?
     // One renderer per document host. Hidden content is never an active preview.
     private var renderer: PreviewWebView?
     var webView: WKWebView? { surface == nil ? nil : renderer }
@@ -13,13 +13,13 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     private var generation: UInt64 = 0
     var isShown: Bool { popover?.isShown == true }
     private weak var owner: WKWebView?
-    private var surface: DocumentFloatingSurface?
+    private var surface: DocumentPreviewSurface?
     private var popover: NSPopover?
     private var measurement: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var eventMonitor: Any?
 
-    func present(_ value: DocumentFloatingSurface, in owner: WKWebView) {
+    func present(_ value: DocumentPreviewSurface, in owner: WKWebView) {
         // Repeated pointer/focus reports retain both the loaded content and its
         // reading position. A different target gets a fresh measured presentation.
         if self.owner === owner, let surface,
@@ -104,14 +104,14 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
                 let owner = self.owner, let surface = self.surface,
                 owner.window?.isVisible == true
             else {
-                self.onEvent?("dismiss")
+                self.onEvent?(.dismiss)
                 return
             }
             let size = NSSize(width: webView.frame.width, height: min(352, owner.bounds.height - 24, ceil(height)))
             let container = PreviewTrackingView(frame: NSRect(origin: .zero, size: size))
             container.onPointerPresence = { [weak self] entered in
                 guard let self, self.generation == generation else { return }
-                self.onEvent?(entered ? "enter" : "leave")
+                self.onEvent?(entered ? .enter : .leave)
             }
             container.setAccessibilityIdentifier("scholium.documentPreview")
             container.setAccessibilityElement(true)
@@ -147,12 +147,12 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         for name in [NSWindow.willCloseNotification, NSWindow.didResizeNotification] {
             observers.append(
                 NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.onEvent?("dismiss") }
+                    MainActor.assumeIsolated { self?.onEvent?(.dismiss) }
                 })
         }
         observers.append(
             NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.onEvent?("dismiss") }
+                MainActor.assumeIsolated { self?.onEvent?(.dismiss) }
             })
         observers.append(
             NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] notification in
@@ -161,7 +161,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
                     guard let self, let activated,
                         activated !== self.owner?.window, activated !== self.webView?.window
                     else { return }
-                    self.onEvent?("dismiss")
+                    self.onEvent?(.dismiss)
                 }
             })
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]) { [weak self] event in
@@ -171,7 +171,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
                     // Leave document/IME key handling with its original owner.
                     if event.window === self.webView?.window, event.keyCode == 53 {
                         let owner = self.owner
-                        self.onEvent?("dismiss")
+                        self.onEvent?(.dismiss)
                         owner?.window?.makeKey()
                         owner?.window?.makeFirstResponder(owner)
                         return true
@@ -184,7 +184,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
                         self.owner.map { owner in
                             target.map { $0 === owner || $0.isDescendant(of: owner) } ?? false
                         } ?? false
-                    if !isDocument { self.onEvent?("dismiss") }
+                    if !isDocument { self.onEvent?(.dismiss) }
                 }
                 return false
             }
@@ -194,15 +194,15 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
 
     func popoverDidClose(_ notification: Notification) {
         guard let closed = notification.object as? NSPopover, closed === popover else { return }
-        onEvent?("dismiss")
+        onEvent?(.dismiss)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
-        if webView === self.webView, let navigation, navigation === activeNavigation { onEvent?("dismiss") }
+        if webView === self.webView, let navigation, navigation === activeNavigation { onEvent?(.dismiss) }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
-        if webView === self.webView, let navigation, navigation === activeNavigation { onEvent?("dismiss") }
+        if webView === self.webView, let navigation, navigation === activeNavigation { onEvent?(.dismiss) }
     }
 
     func webView(
@@ -212,7 +212,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         decisionHandler(action.navigationType == .other && action.request.url?.absoluteString == "about:blank" ? .allow : .cancel)
     }
 
-    private static func previewHTML(_ value: DocumentFloatingSurface) -> String {
+    private static func previewHTML(_ value: DocumentPreviewSurface) -> String {
         let css = value.css.replacingOccurrences(of: "</style", with: "<\\/style", options: .caseInsensitive)
         return """
             <!doctype html><html><head><meta charset="utf-8">

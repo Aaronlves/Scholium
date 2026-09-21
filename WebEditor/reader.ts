@@ -2,7 +2,7 @@ import {createReplyProjection} from './chat-reply-projection';
 import {installChatReply} from "./chat-reply";
 import {createSelectionActions} from "./selection-actions";
 import {createReaderArrival} from "./arrival-highlight";
-import {createNativeFloatingBridge, previewSurface} from "./native-floating";
+import {createNativeFloatingPorts, previewSurface} from "./native-floating";
 import {installReviewFind, type ReviewFindRequest, type ReviewFindResult} from "./review-find";
 import {
   boundedReviewRangeText,
@@ -80,7 +80,7 @@ async function initializeReader(value: unknown): Promise<void> {
   userStyle.textContent = userCSS;
   const documentRoot = requiredElement('scholium-document');
   let presentationUpdateSequence = 0;
-  const replyProjection = config.chatReply ? createReplyProjection(documentRoot) : null;
+  const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
   readerWindow.scholiumReadNavigation?.destroy();
   readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
   window.addEventListener('pagehide', () => readerWindow.scholiumReadNavigation?.destroy(), {once: true});
@@ -104,7 +104,7 @@ async function initializeReader(value: unknown): Promise<void> {
 
   const popover = requiredElement('scholium-preview-popover');
   popover.remove();
-  const nativeFloating = createNativeFloatingBridge(surface => post('floatingSurface', {surface}));
+  const nativeFloating = createNativeFloatingPorts(event => post('floatingSurface', {event}));
   let nativePreviewID = 0;
   let nativePreviewHovered = false;
   const previewTitle = popover.querySelector<HTMLElement>('.scholium-preview-title')!;
@@ -354,7 +354,7 @@ async function initializeReader(value: unknown): Promise<void> {
   };
   readerWindow.scholiumMermaidReady = renderMermaidNodes();
   await readerWindow.scholiumMermaidReady;
-  if (config.chatReply === true) {
+  if (config.replyProjection === true) {
     const disposeReply = installChatReply(documentRoot, post);
     replyProjection!.commit();
     readerWindow.scholiumUpdateReply = async value => {
@@ -421,7 +421,7 @@ async function initializeReader(value: unknown): Promise<void> {
   }
   function hidePopover() {
     nativePreviewHovered = false;
-    nativeFloating.hide(nativePreviewID);
+    nativeFloating.preview.hide(nativePreviewID);
     clearTimeout(popoverHideTimer);
     popoverHideTimer = undefined;
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
@@ -605,7 +605,7 @@ async function initializeReader(value: unknown): Promise<void> {
 
   function positionPopover(anchor: Element) {
     popover.hidden = false;
-    nativePreviewID = nativeFloating.show(previewSurface(anchor.getBoundingClientRect(), popover), {
+    nativePreviewID = nativeFloating.preview.show(previewSurface(anchor.getBoundingClientRect(), popover), {
       dismiss: hidePopover,
       enter: () => { nativePreviewHovered = true; cancelPopoverHide(); },
       leave: () => { nativePreviewHovered = false; schedulePopoverHide(); },
@@ -805,7 +805,7 @@ async function initializeReader(value: unknown): Promise<void> {
     const reviewMermaidElements = reviewDocument
       ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')]
       : [];
-    const selectionActions = createSelectionActions(nativeFloating, () => {
+    const selectionActions = createSelectionActions(nativeFloating.selection, () => {
       const selection = window.getSelection();
       if (!reviewSelectionSurfaceActive || reviewPointerSelectionActive || !selection || selection.rangeCount !== 1
           || selection.isCollapsed || !reviewDocument) return null;

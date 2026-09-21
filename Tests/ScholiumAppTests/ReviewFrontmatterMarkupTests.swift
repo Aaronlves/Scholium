@@ -3,8 +3,9 @@ import Testing
 
 @testable import ScholiumApp
 
-/// Review renders authored YAML by hand while Edit reads the same bytes through
-/// a real YAML grammar. These cases pin the places the two used to disagree.
+/// Review uses the shared bounded lexical projection for authored YAML while Edit
+/// retains semantic authority through the real YAML grammar. These cases pin the
+/// places the two surfaces must agree without introducing a second parser.
 @Suite("Review YAML coloring")
 @MainActor
 struct ReviewFrontmatterMarkupTests {

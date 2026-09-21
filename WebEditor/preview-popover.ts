@@ -1,7 +1,7 @@
 import type {Extension} from "@codemirror/state";
 import {EditorView, ViewPlugin} from "@codemirror/view";
 import {announceEditorMessage} from "./accessibility";
-import {previewSurface, type NativeFloatingBridge} from "./native-floating";
+import {previewSurface, type NativePreviewPort} from "./native-floating";
 import type {
   FootnotePresentation,
   FootnoteReferencePresentation,
@@ -60,7 +60,7 @@ export interface PreviewPopoverController {
 /** Owns cached-link, footnote, and source-owned annotation previews without owning source. */
 export function createPreviewPopoverController(
   options: {
-    nativeFloating: NativeFloatingBridge;
+    nativeFloating: NativePreviewPort;
     previews(): readonly LinkPreview[];
     footnotes(): FootnotePresentation;
     renderFootnoteContent(content: string, parent: HTMLElement): void;

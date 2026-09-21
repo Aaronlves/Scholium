@@ -377,7 +377,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         startupTask?.cancel()
         documentLoadTask?.cancel()
         focusHandoffTask?.cancel()
-        cancelScheduledRecoveryCapture()
         self.webView = nil
         removeQATerminationObserver()
 
@@ -411,7 +410,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         focusHandoffTask = nil
         automaticFocusIsAuthorized = false
         automaticFocusTarget = .editor
-        cancelScheduledRecoveryCapture()
         committedTextSynchronizer = nil
         sourceChangeHandler = nil
         pendingSource = nil
@@ -522,7 +520,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let isFirstDocumentLoad = self.documentID != documentID
         let publishesLoadingState = isReady
         invalidateRequestQueue()
-        cancelScheduledRecoveryCapture()
         let nextFingerprint = DocumentFingerprint(content: source).sha256
         let restoredPresentation = pendingWindowPresentation
         pendingWindowPresentation = nil
@@ -1058,7 +1055,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// SwiftUI removes the WKWebView during a note collapse or replacement.
     /// The retained document session replays this snapshot into the next view.
     func captureStateForViewReconstruction(suspendForDetachment: Bool = false) async throws {
-        cancelScheduledRecoveryCapture()
         let expectedKey = RecoveryCaptureKey(
             requestEpoch: requestEpoch,
             generation: generation
@@ -1393,7 +1389,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         else { throw SessionError.invalidResult }
         let rebasedRanges = currentValidSelectionRanges()
         invalidateRequestQueue()
-        cancelScheduledRecoveryCapture()
         startingFingerprint = fingerprint.sha256
         lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
             documentID: documentID,
@@ -1735,7 +1730,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         floatingSurfaces.reset()
         invalidateRequestQueue()
         cancelModeTransition()
-        cancelScheduledRecoveryCapture()
         let recoveryRanges = currentValidSelectionRanges()
         if let snapshot = recoverySnapshot,
             snapshot.documentID == documentID,
@@ -2305,12 +2299,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             task.cancel()
         }
         inFlightRequestTasks.removeAll()
-    }
-
-    private func cancelScheduledRecoveryCapture() {
-        // Live recovery is owned by the incremental native exact-source
-        // mirror. Full CodeMirror state is captured only at an explicit view
-        // reconstruction boundary, never on the ordinary input path.
     }
 
     private func fallbackSelectionSnapshot() -> MarkdownEditorSelectionSnapshot {

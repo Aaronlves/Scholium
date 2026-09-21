@@ -244,14 +244,7 @@
         if (target.key === key || target.key === dismissed) return;
         hide();
         key = target.key;
-        id = floating.show({
-          kind: "selection",
-          ...target.anchor,
-          html: "",
-          css: "",
-          items: [],
-          selected: -1
-        }, {
+        id = floating.show({ ...target.anchor }, {
           dismiss,
           choose: () => {
             const valid = current()?.key === target.key;
@@ -378,51 +371,83 @@
   }
 
   // native-floating.ts
-  function createNativeFloatingBridge(post) {
+  function createNativeFloatingPorts(post) {
     let serial = 0;
-    let current = null;
-    const bridge = {
+    let active = null;
+    function activate(kind, callbacks, event2) {
+      if (active && active.kind !== kind) active.dismiss();
+      const id = ++serial;
+      active = { kind, id, dismiss: callbacks.dismiss, event: event2 };
+      return id;
+    }
+    function hide(kind, id) {
+      if (active?.kind !== kind || active.id !== id) return;
+      post({ type: "dismissSurface", kind, id });
+      active = null;
+    }
+    const preview = {
       show(surface, callbacks) {
-        if (current && current.surface.kind !== surface.kind) current.callbacks.dismiss();
-        const id = ++serial;
-        current = { surface: { ...surface, id }, callbacks };
-        post(current.surface);
+        const id = activate("preview", callbacks, (currentID, action, _index) => {
+          if (currentID !== id) return false;
+          if (action === "enter") callbacks.enter?.();
+          else if (action === "leave") callbacks.leave?.();
+          else if (action === "dismiss") callbacks.dismiss();
+          else return false;
+          return true;
+        });
+        post({ type: "previewSurface", surface: { ...surface, id } });
         return id;
       },
       hide(id) {
-        if (current?.surface.id !== id) return;
-        post({ ...current.surface, kind: "hidden", html: "", css: "", items: [], selected: -1 });
-        current = null;
-      },
-      event(id, action, index) {
-        if (current?.surface.id !== id) return false;
-        const callbacks = current.callbacks;
-        if (action === "enter") callbacks.enter?.();
-        else if (action === "leave") callbacks.leave?.();
-        else if (action === "dismiss") callbacks.dismiss();
-        else if (action === "choose" && current.surface.kind === "selection" && Number.isInteger(index) && index === 0) {
-          return callbacks.choose?.(index) !== false;
-        } else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
-          if (action === "select") callbacks.select?.(index);
-          else return callbacks.choose?.(index) !== false;
-        } else return false;
-        return true;
+        hide("preview", id);
       }
     };
-    window.scholiumNativeFloatingEvent = bridge.event;
-    return bridge;
+    const suggestions = {
+      show(surface, callbacks) {
+        const id = activate("suggestions", callbacks, (currentID, action, index) => {
+          if (currentID !== id || !Number.isInteger(index)) return false;
+          if (action === "dismiss") callbacks.dismiss();
+          else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
+          else if (action === "choose" && index >= 0 && index < surface.items.length) {
+            return callbacks.choose?.(index) !== false;
+          } else return false;
+          return true;
+        });
+        post({ type: "suggestionSurface", surface: { ...surface, id } });
+        return id;
+      },
+      hide(id) {
+        hide("suggestions", id);
+      }
+    };
+    const selection = {
+      show(surface, callbacks) {
+        const id = activate("selection", callbacks, (currentID, action, index) => {
+          if (currentID !== id) return false;
+          if (action === "dismiss") callbacks.dismiss();
+          else if (action === "choose" && index === 0) return callbacks.choose?.(index) !== false;
+          else return false;
+          return true;
+        });
+        post({ type: "selectionSurface", surface: { ...surface, id } });
+        return id;
+      },
+      hide(id) {
+        hide("selection", id);
+      }
+    };
+    const event = (id, action, index) => active?.id === id ? active.event(id, action, index) : false;
+    window.scholiumNativeFloatingEvent = event;
+    return { preview, suggestions, selection };
   }
   function previewSurface(anchor, root) {
     const css = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
     return {
-      kind: "preview",
       left: anchor.left,
       top: anchor.top,
       bottom: anchor.bottom,
       html: root.innerHTML,
-      css,
-      items: [],
-      selected: -1
+      css
     };
   }
 
@@ -754,7 +779,7 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 7 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || config.chatReply !== void 0 && typeof config.chatReply !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
+    if (config.version !== 7 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || config.replyProjection !== void 0 && typeof config.replyProjection !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
     return config;
   }
 
@@ -839,7 +864,7 @@
     userStyle.textContent = userCSS;
     const documentRoot = requiredElement("scholium-document");
     let presentationUpdateSequence = 0;
-    const replyProjection = config.chatReply ? createReplyProjection(documentRoot) : null;
+    const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
     readerWindow.scholiumReadNavigation?.destroy();
     readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
     window.addEventListener("pagehide", () => readerWindow.scholiumReadNavigation?.destroy(), { once: true });
@@ -864,7 +889,7 @@
     });
     const popover = requiredElement("scholium-preview-popover");
     popover.remove();
-    const nativeFloating = createNativeFloatingBridge((surface) => post("floatingSurface", { surface }));
+    const nativeFloating = createNativeFloatingPorts((event) => post("floatingSurface", { event }));
     let nativePreviewID = 0;
     let nativePreviewHovered = false;
     const previewTitle = popover.querySelector(".scholium-preview-title");
@@ -1098,7 +1123,7 @@
     };
     readerWindow.scholiumMermaidReady = renderMermaidNodes();
     await readerWindow.scholiumMermaidReady;
-    if (config.chatReply === true) {
+    if (config.replyProjection === true) {
       const disposeReply = installChatReply(documentRoot, post);
       replyProjection.commit();
       readerWindow.scholiumUpdateReply = async (value2) => {
@@ -1156,7 +1181,7 @@
     }
     function hidePopover() {
       nativePreviewHovered = false;
-      nativeFloating.hide(nativePreviewID);
+      nativeFloating.preview.hide(nativePreviewID);
       clearTimeout(popoverHideTimer);
       popoverHideTimer = void 0;
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
@@ -1328,7 +1353,7 @@
     };
     function positionPopover(anchor) {
       popover.hidden = false;
-      nativePreviewID = nativeFloating.show(previewSurface(anchor.getBoundingClientRect(), popover), {
+      nativePreviewID = nativeFloating.preview.show(previewSurface(anchor.getBoundingClientRect(), popover), {
         dismiss: hidePopover,
         enter: () => {
           nativePreviewHovered = true;
@@ -1516,7 +1541,7 @@
     if (selectionEnabled) {
       const reviewDocument = document.getElementById("scholium-document");
       const reviewMermaidElements = reviewDocument ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')] : [];
-      const selectionActions = createSelectionActions(nativeFloating, () => {
+      const selectionActions = createSelectionActions(nativeFloating.selection, () => {
         const selection = window.getSelection();
         if (!reviewSelectionSurfaceActive || reviewPointerSelectionActive || !selection || selection.rangeCount !== 1 || selection.isCollapsed || !reviewDocument) return null;
         const range = selection.getRangeAt(0);

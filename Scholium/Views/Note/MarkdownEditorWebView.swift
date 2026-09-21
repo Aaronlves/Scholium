@@ -455,9 +455,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case .floatingSurface(let request):
                 guard surfaceVisibility.isActive,
                     validEnvelope(request.envelope), let webView = message.webView,
-                    request.surface.kind != .selection || onAskAgent != nil
+                    !request.event.allowsAgentInquiry || onAskAgent != nil
                 else { return }
-                session.floatingSurfaces.present(request.surface, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
+                session.floatingSurfaces.present(request.event, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
                     // Autosave rebases the disk fingerprint, not the live buffer
                     // revision. Validate that revision at event dispatch instead.
                     guard let self, let webView,
@@ -468,7 +468,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     else { return false }
                     let accepted = try? await webView.callAsyncJavaScript(
                         "return window.scholiumNativeFloatingEvent?.(id, action, index)",
-                        arguments: ["id": id, "action": action, "index": index],
+                        arguments: ["id": id, "action": action.rawValue, "index": index],
                         in: nil, contentWorld: .page
                     )
                     return accepted as? Bool == true
@@ -573,11 +573,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 else { return }
                 _ = webView.consumePastedImage()
             case .requestMermaidRuntime(let envelope):
-                guard validEnvelope(envelope), let webView = message.webView else { return }
+                guard validEnvelope(envelope),
+                    let webView = message.webView,
+                    activeWebView === webView
+                else { return }
                 requestMermaidRuntime(in: webView)
             case .requestMathRuntime(let envelope):
                 guard validEnvelope(envelope),
-                    let webView = message.webView ?? activeWebView
+                    let webView = message.webView ?? activeWebView,
+                    activeWebView === webView
                 else { return }
                 requestMathRuntime(in: webView)
             case .cancelWritingContinuation(let request):
@@ -749,7 +753,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
 
         private func requestMermaidRuntime(in webView: WKWebView) {
-            guard mermaidRuntimeLoadTask == nil else { return }
+            guard activeWebView === webView,
+                mermaidRuntimeLoadTask == nil
+            else { return }
             let loadID = UUID()
             mermaidRuntimeLoadID = loadID
             mermaidRuntimeLoadTask = Task { @MainActor [weak self, weak webView] in
@@ -762,6 +768,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 }
                 guard let webView,
                     webView.navigationDelegate === self,
+                    self.activeWebView === webView,
                     !Task.isCancelled
                 else { return }
                 await ScholiumMermaidRuntimeLoader.installAndNotify(in: webView)
@@ -769,12 +776,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
 
         private func requestMathRuntime(in webView: WKWebView) {
-            guard mathRuntimeLoadTask == nil else { return }
+            guard activeWebView === webView,
+                mathRuntimeLoadTask == nil
+            else { return }
             mathRuntimeLoadTask = Task { @MainActor [weak self, weak webView] in
                 guard let self else { return }
                 defer { self.mathRuntimeLoadTask = nil }
                 guard let webView,
                     webView.navigationDelegate === self,
+                    self.activeWebView === webView,
                     !Task.isCancelled
                 else { return }
                 _ = await ScholiumMathRuntimeLoader.installAndRefresh(in: webView)

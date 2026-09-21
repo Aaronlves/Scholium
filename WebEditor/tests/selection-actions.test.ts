@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it, vi} from "vitest";
-import {createNativeFloatingBridge, type NativeFloatingPayload} from "../native-floating";
+import {createNativeFloatingPorts, type NativeFloatingEvent} from "../native-floating";
 import {createSelectionActions, type SelectionActionTarget} from "../selection-actions";
 import {EditorState} from "@codemirror/state";
 import type {EditorView} from "@codemirror/view";
@@ -13,9 +13,9 @@ describe("source selection action", () => {
       requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16),
       cancelAnimationFrame: clearTimeout,
     });
-    const sent: NativeFloatingPayload[] = [];
-    const bridge = createNativeFloatingBridge(surface => sent.push(surface));
-    const actions = createSelectionActions(bridge, () => ({
+    const sent: NativeFloatingEvent[] = [];
+    const ports = createNativeFloatingPorts(event => sent.push(event));
+    const actions = createSelectionActions(ports.selection, () => ({
       key: "revision:0:4", anchor: {left: 1, top: 2, bottom: 3},
     }));
     const state = EditorState.create({doc: "text", selection: {anchor: 0, head: 4}});
@@ -31,10 +31,12 @@ describe("source selection action", () => {
       onScroll: () => actions.dismiss(), post, flushPresentationGeometry() {},
     });
     actions.update();
-    const id = sent.at(-1)!.id;
+    const firstEvent = sent.at(-1)!;
+    const id = firstEvent.type === "selectionSurface" ? firstEvent.surface.id : 0;
     scrollDOM.dispatchEvent(new Event("scroll"));
-    expect(sent.at(-1)!.kind).toBe("hidden");
-    expect(bridge.event(id, "choose", 0)).toBe(false);
+    expect(sent.at(-1)).toEqual({type: "dismissSurface", kind: "selection", id});
+    expect((window as Window & {scholiumNativeFloatingEvent?: Function})
+      .scholiumNativeFloatingEvent?.(id, "choose", 0)).toBe(false);
     expect(post).not.toHaveBeenCalled();
     vi.advanceTimersByTime(16);
     expect(post).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({fallbackFraction: 0.4}));
@@ -46,31 +48,36 @@ describe("source selection action", () => {
     expect(post).toHaveBeenCalledTimes(1);
     expect(editor.state).toBe(state);
     actions.update();
-    expect(sent.at(-1)!.kind).toBe("hidden");
+    expect(sent.at(-1)!.type).toBe("dismissSurface");
   });
   it("rejects an old selection and retains dismissal until selection changes", () => {
     vi.stubGlobal("window", {});
-    const sent: NativeFloatingPayload[] = [];
-    const bridge = createNativeFloatingBridge(surface => sent.push(surface));
+    const sent: NativeFloatingEvent[] = [];
+    const ports = createNativeFloatingPorts(event => sent.push(event));
     let target: SelectionActionTarget | null = {key: "revision:1:2", anchor: {left: 1, top: 2, bottom: 3}};
-    const actions = createSelectionActions(bridge, () => target);
+    const actions = createSelectionActions(ports.selection, () => target);
     actions.update();
-    const first = sent.at(-1)!.id;
+    const initialEvent = sent.at(-1)!;
+    const first = initialEvent.type === "selectionSurface" ? initialEvent.surface.id : 0;
     target = {...target, key: "revision:4:5"};
-    expect(bridge.event(first, "choose", 0)).toBe(false);
+    expect((window as Window & {scholiumNativeFloatingEvent?: Function})
+      .scholiumNativeFloatingEvent?.(first, "choose", 0)).toBe(false);
     actions.update();
-    const current = sent.at(-1)!.id;
-    expect(bridge.event(first, "choose", 0)).toBe(false);
-    expect(bridge.event(current, "choose", 0)).toBe(true);
+    const currentEvent = sent.at(-1)!;
+    const current = currentEvent.type === "selectionSurface" ? currentEvent.surface.id : 0;
+    expect((window as Window & {scholiumNativeFloatingEvent?: Function})
+      .scholiumNativeFloatingEvent?.(first, "choose", 0)).toBe(false);
+    expect((window as Window & {scholiumNativeFloatingEvent?: Function})
+      .scholiumNativeFloatingEvent?.(current, "choose", 0)).toBe(true);
     const count = sent.length;
     actions.update();
     expect(sent).toHaveLength(count);
     target = null; actions.update();
     target = {key: "revision:4:5", anchor: {left: 1, top: 2, bottom: 3}};
     actions.update();
-    expect(sent.at(-1)!.kind).toBe("selection");
+    expect(sent.at(-1)!.type).toBe("selectionSurface");
     expect(actions.dismiss()).toBe(true);
-    expect(sent.at(-1)!.kind).toBe("hidden");
+    expect(sent.at(-1)!.type).toBe("dismissSurface");
     expect(actions.dismiss()).toBe(false);
     const dismissedCount = sent.length;
     actions.update();

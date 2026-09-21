@@ -29,7 +29,7 @@ import {
 import {transformMarkdown} from "./transformations";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import {Decoration, WidgetType, keymap, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate} from "@codemirror/view";
-import type {NativeFloatingBridge} from "./native-floating";
+import type {NativeSuggestionPort} from "./native-floating";
 import {localized, localizedTemplate, localizedCallout, type WebInterfaceLocalizationKey} from "./localization";
 
 export interface EditorLinkCompletionCandidate {
@@ -51,7 +51,7 @@ interface SourceRange {
 }
 
 interface InputSuggestionOptions {
-  nativeFloating: NativeFloatingBridge;
+  nativeFloating: NativeSuggestionPort;
   mode(state: EditorState): EditorMode;
   dialect(): MarkdownEditingDialect | null;
   isComposing(): boolean;
@@ -768,8 +768,7 @@ export function createEditorInputSuggestions(
       if (signature === this.signature) return;
       this.signature = signature;
       nativeID = options.nativeFloating.show({
-        kind: "suggestions", left: anchor.left, top: anchor.top, bottom: anchor.bottom,
-        html: "", css: "", items, selected,
+        left: anchor.left, top: anchor.top, bottom: anchor.bottom, items, selected,
       }, {
         dismiss: () => { closeCompletion(this.view); },
         select: index => {

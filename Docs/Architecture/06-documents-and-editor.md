@@ -131,6 +131,12 @@ Review matching is read-only. Completion and reference insertion validate curren
 context, generation, selection and protected ranges before one Undo transaction.
 Insertion receipts are revocable projections, never a second buffer.
 
+WebEditor exposes separate typed native ports for preview, completion and selection;
+the native host arbitrates one visible surface but never receives a universal payload
+with unrelated content or callbacks. Review may inject a bounded read-page extension;
+Chat owns its reply lifecycle, reply projection updates, transcript WebView subclass
+and reply events in that extension rather than in the neutral Review reader.
+
 Writing continuation shares the retained editor's inline suggestion owner, with
 separate generation-bound request/cancellation messages. Window composition captures
 the checked current paragraph and insertion receipt, packs bounded Related-Content
@@ -157,6 +163,11 @@ without hiding exact text. Typed extension nodes locate constructs; no consumer
 infers them outside proved syntax ranges. Normalized parser views map every node
 back to exact original half-open UTF-16 coordinates, preserving BOM, CRLF, Unicode
 and final newlines. Marker/visible/parent ranges distinguish source from layout.
+
+`FrontmatterPresentation` is only the shared lexical coloring projection for already
+bounded authored YAML lines. `NoteDocument`/Yams remains the sole semantic parser and
+source authority; the presentation helper cannot parse, repair, authorize or edit
+metadata.
 Graph publishes directed authored occurrences; incoming/outgoing are projections
 of the same exact occurrence, not deduplicated philosophical meaning.
 
@@ -236,6 +247,14 @@ dated results belong to Status. A focused series cannot pass the complete gate.
   `Scholium/Views/Note/DocumentWebViewContainer.swift`: one-visible-surface
   native composition boundary.
 - `Scholium/Views/Note/MarkdownEditorSession.swift`: checked native bridge/recovery.
+- `Scholium/Views/Note/SafeMarkdownReadWebView.swift` and
+  `Scholium/Views/Note/ScholiumReadPageExtension.swift`: neutral Review transport
+  and bounded read-page capability boundary.
+- `Scholium/Views/Sidebar/AgentChatReadPageExtension.swift`: Chat-owned reply
+  lifecycle and transcript-specific WebKit projection.
 - `WebEditor/editor.ts`, `WebEditor/live-presentation-layout.ts` and
-  `WebEditor/reader.ts`: controlled Web composition.
+  `WebEditor/reader.ts`, `WebEditor/native-floating.ts`: controlled Web composition
+  and typed native presentation ports.
+- `ScholiumContracts/FrontmatterPresentation.swift`: shared lexical YAML coloring
+  projection without a second semantic parser.
 - `ScholiumContracts/MarkdownSemanticDocument.swift`: committed source semantics.

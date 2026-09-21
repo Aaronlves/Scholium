@@ -29,7 +29,7 @@ function inlineContinuationHarness(source = "A claim about res", options: {
       ...(options.editable === false ? [EditorView.editable.of(false)] : [])]})
     .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
   const suggestions = createEditorInputSuggestions({
-    nativeFloating: {show: () => 0, hide: () => {}, event: () => true}, mode: () => options.mode ?? "livePreview",
+    nativeFloating: {show: () => 0, hide: () => {}}, mode: () => options.mode ?? "livePreview",
     dialect: () => dialect, isComposing: () => options.composing ?? false, protectedRanges: () => options.protectedRanges ?? [],
     requestLinkCompletions: id => { terms.push(id); },
     requestWritingContinuation: id => { requests.push(id); },
@@ -197,7 +197,7 @@ function controller(
   let request: {id: string; kind: string; query: string} | null = null;
   const undoLabels: string[] = [];
   const suggestions = createEditorInputSuggestions({
-    nativeFloating: {show: () => 0, hide: () => {}, event: () => true},
+    nativeFloating: {show: () => 0, hide: () => {}},
     mode: () => mode,
     dialect: () => dialect,
     isComposing: () => composing,

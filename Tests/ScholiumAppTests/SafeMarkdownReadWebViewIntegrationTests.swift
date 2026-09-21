@@ -49,7 +49,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let harness = ReadHarness(
             source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0,
-            laysOutForNativePreview: true, chatReply: true)
+            laysOutForNativePreview: true, replyProjection: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         let snapshot = try #require(
@@ -78,7 +78,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let harness = ReadHarness(
             source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0,
-            laysOutForNativePreview: true, chatReply: true)
+            laysOutForNativePreview: true, replyProjection: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         let cancelled =
@@ -121,7 +121,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let document = NoteDocument(relativePath: "Reply.md", rawContent: source)
         let harness = ReadHarness(
             source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
-            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0, laysOutForNativePreview: true, chatReply: true)
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0, laysOutForNativePreview: true, replyProjection: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         let selected = try #require(
@@ -2064,8 +2064,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         @Published var isReady = false
         var diagramSize: CGSize?
-        var chatReplyEnabled = false
         var replyEvents: [ReadReplyEvent] = []
+        var chatPageExtension: AgentChatReadPageExtension?
         @Published var restoration: Restoration?
         @Published var capturedAnchor: EditorScrollAnchor?
         var failure: String?
@@ -2188,7 +2188,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             testingForcesFinalizationFailure: Bool = false,
             testingScrollRestoreDelayMilliseconds: Int = 0,
             laysOutForNativePreview: Bool = false,
-            chatReply: Bool = false
+            replyProjection: Bool = false
         ) {
             _ = NSApplication.shared
             self.source = source
@@ -2202,7 +2202,12 @@ extension MarkdownEditorWebViewIntegrationTests {
                 testingForcesFinalizationFailure: testingForcesFinalizationFailure,
                 testingScrollRestoreDelayMilliseconds: testingScrollRestoreDelayMilliseconds
             )
-            sourceBox.chatReplyEnabled = chatReply
+            if replyProjection {
+                let box = sourceBox
+                sourceBox.chatPageExtension = AgentChatReadPageExtension {
+                    box.replyEvents.append($0)
+                }
+            }
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 420),
                 styleMask: [.titled, .closable, .resizable],
@@ -2220,7 +2225,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                 documentTitle: documentTitle,
                 userCSS: userCSS,
                 sourceBox: sourceBox,
-                laysOutForNativePreview: laysOutForNativePreview
+                laysOutForNativePreview: laysOutForNativePreview,
+                pageExtension: sourceBox.chatPageExtension
             )
             let controller = NSHostingController(rootView: root)
             controller.sizingOptions = []
@@ -3069,6 +3075,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let userCSS: String
         @ObservedObject var sourceBox: SourceBox
         let laysOutForNativePreview: Bool
+        let pageExtension: (any ScholiumReadPageExtension)?
 
         var body: some View {
             var surface = SafeMarkdownReadWebView(
@@ -3090,7 +3097,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },
-                onReplyEvent: sourceBox.chatReplyEnabled ? { sourceBox.replyEvents.append($0) } : nil,
+                pageExtension: pageExtension,
                 onRenderedDiagramSize: { sourceBox.diagramSize = $0 },
                 observedScrollPosition: sourceBox.observedScrollPosition,
                 scrollRestoreRequest: sourceBox.restoration.map { restoration in

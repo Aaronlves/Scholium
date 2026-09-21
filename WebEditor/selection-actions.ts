@@ -1,4 +1,4 @@
-import type {NativeFloatingBridge} from "./native-floating";
+import type {NativeSelectionPort} from "./native-floating";
 
 export interface SelectionActionTarget {
   key: string;
@@ -6,7 +6,7 @@ export interface SelectionActionTarget {
 }
 /** The document owns selection; native owns the one floating control. */
 export function createSelectionActions(
-  floating: NativeFloatingBridge,
+  floating: NativeSelectionPort,
   current: () => SelectionActionTarget | null,
 ) {
   let id: number | null = null;
@@ -30,8 +30,7 @@ export function createSelectionActions(
       if (target.key === key || target.key === dismissed) return;
       hide();
       key = target.key;
-      id = floating.show({kind: "selection", ...target.anchor,
-        html: "", css: "", items: [], selected: -1}, {
+      id = floating.show({...target.anchor}, {
         dismiss,
         choose: () => {
           const valid = current()?.key === target.key;

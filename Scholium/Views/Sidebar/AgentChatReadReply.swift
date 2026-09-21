@@ -35,13 +35,13 @@ struct AgentChatReadReply: View {
                     }
                 }
             } else if let projection = renderer.snapshot {
-                SafeMarkdownReadWebView(
+                AgentChatReadWebViewSurface(
                     documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
                     source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
                     onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
-                    selectionSurfaceIsActive: false, renderingReadinessIsAcknowledged: ready,
+                    renderingReadinessIsAcknowledged: ready,
                     onRenderingFailure: { failure = $0 }, onRenderingLoading: { ready = false },
-                    onRenderingReady: { ready = true }, onReplyEvent: { receive($0, expectedSource: projection.document.rawContent) }
+                    onRenderingReady: { ready = true }, onEvent: { receive($0, expectedSource: projection.document.rawContent) }
                 )
                 .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
                 .frame(height: height)

@@ -124,7 +124,7 @@ struct EditorScrollMessage: Equatable, Sendable {
 
 struct EditorFloatingSurfaceMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
-    let surface: DocumentFloatingSurface
+    let event: DocumentFloatingEvent
 }
 
 enum EditorBridgeMessage: Equatable, Sendable {
@@ -224,10 +224,10 @@ enum EditorBridgeMessageDecoder {
     ) -> EditorBridgeMessage? {
         switch type {
         case "floatingSurface":
-            guard hasOnlyKeys(object, additional: ["type", "surface"]),
-                let surface = DocumentFloatingSurface.decode(object["surface"])
+            guard hasOnlyKeys(object, additional: ["type", "event"]),
+                let event = DocumentFloatingEvent.decode(object["event"])
             else { return nil }
-            return .floatingSurface(EditorFloatingSurfaceMessage(envelope: envelope, surface: surface))
+            return .floatingSurface(EditorFloatingSurfaceMessage(envelope: envelope, event: event))
         case "editorError":
             guard hasOnlyKeys(object, additional: ["type", "message"]),
                 let message = optionalBoundedString(

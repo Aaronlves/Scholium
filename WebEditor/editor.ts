@@ -4,7 +4,7 @@ import {passageReplacement} from "./passage-replacement";
 import {createSelectionActions} from "./selection-actions";
 import {canRetainSyntax, syntaxToken, syntaxPresentation} from "./syntax-presentation";
 import {editorArrivalHighlight, showEditorArrival} from "./editor-arrival-highlight";
-import {createNativeFloatingBridge} from "./native-floating";
+import {createNativeFloatingPorts} from "./native-floating";
 import {
   Annotation,
   Compartment,
@@ -1963,7 +1963,7 @@ const liveProjectionNavigation = createLiveProjectionNavigation({
   mermaidPresentations: (state) => liveMermaidProjection.presentations(state),
 });
 
-const nativeFloating = createNativeFloatingBridge(surface => post({type: "floatingSurface", surface}));
+const nativeFloating = createNativeFloatingPorts(event => post({type: "floatingSurface", event}));
 let selectingForAgent = false;
 function selectionActionTarget() {
   if (selectingForAgent || editor.composing || lastDocumentFocusTarget === "title") return null;
@@ -1975,7 +1975,7 @@ function selectionActionTarget() {
   return {key: `${bridgeSessionID}:${documentVersion}:${ranges[0].from}:${ranges[0].to}`,
     anchor: {left: (first.left + last.left) / 2, top: first.top, bottom: last.bottom}};
 }
-const selectionActions = createSelectionActions(nativeFloating, selectionActionTarget);
+const selectionActions = createSelectionActions(nativeFloating.selection, selectionActionTarget);
 function measureSelectionAction(view: EditorView) {
   const attachment = documentAttachment;
   view.requestMeasure({key: selectionActions, read: selectionActionTarget,
@@ -1986,7 +1986,7 @@ function measureSelectionAction(view: EditorView) {
 
 
 const previewPopover = createPreviewPopoverController({
-  nativeFloating,
+  nativeFloating: nativeFloating.preview,
   previews: () => linkPreviews,
   footnotes: () => liveProjectionIndex.index(editor.state).footnotes,
   renderFootnoteContent: (content, parent) => appendMarkdownBlocks(content, parent, {
@@ -2025,7 +2025,7 @@ const sourceCollapsedActiveLine = [
 ];
 
 const inputSuggestions = createEditorInputSuggestions({
-  nativeFloating,
+  nativeFloating: nativeFloating.suggestions,
   mode: configuredEditorMode,
   dialect: () => editingDialect,
   isComposing: () => editor.composing,

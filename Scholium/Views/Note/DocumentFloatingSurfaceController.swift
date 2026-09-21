@@ -2,50 +2,149 @@ import AppKit
 import SwiftUI
 import WebKit
 
-/// A bounded read-only projection, never an editor/source operation.
-struct DocumentFloatingSurface: Codable, Equatable, Sendable {
-    enum Kind: String, Codable, Sendable { case preview, suggestions, selection, hidden }
-    struct Item: Codable, Equatable, Sendable {
-        let label: String
-        let detail: String
-    }
+/// A bounded read-only preview projection, never an editor/source operation.
+struct DocumentPreviewSurface: Codable, Equatable, Sendable {
     let id: Int
-    let kind: Kind
     let left: Double
     let top: Double
     let bottom: Double
     let html: String
     let css: String
+}
+
+/// A bounded read-only completion projection, never an editor/source operation.
+struct DocumentSuggestionSurface: Codable, Equatable, Sendable {
+    struct Item: Codable, Equatable, Sendable {
+        let label: String
+        let detail: String
+    }
+    let id: Int
+    let left: Double
+    let top: Double
+    let bottom: Double
     let items: [Item]
     let selected: Int
+}
+
+/// A bounded read-only selection-action projection, never an editor/source operation.
+struct DocumentSelectionSurface: Codable, Equatable, Sendable {
+    let id: Int
+    let left: Double
+    let top: Double
+    let bottom: Double
+}
+
+enum DocumentFloatingKind: String, Codable, Equatable, Sendable {
+    case preview
+    case suggestions
+    case selection
+}
+
+enum DocumentFloatingAction: String, Equatable, Sendable {
+    case dismiss
+    case enter
+    case leave
+    case select
+    case choose
+}
+
+struct DocumentFloatingDismissal: Codable, Equatable, Sendable {
+    let kind: DocumentFloatingKind
+    let id: Int
+}
+
+enum DocumentFloatingEvent: Equatable, Sendable {
+    case preview(DocumentPreviewSurface)
+    case suggestions(DocumentSuggestionSurface)
+    case selection(DocumentSelectionSurface)
+    case dismiss(DocumentFloatingDismissal)
+
+    var kind: DocumentFloatingKind? {
+        switch self {
+        case .preview: .preview
+        case .suggestions: .suggestions
+        case .selection: .selection
+        case .dismiss(let value): value.kind
+        }
+    }
+
+    var allowsAgentInquiry: Bool {
+        if case .selection = self { return true }
+        return false
+    }
 
     static func decode(_ value: Any?) -> Self? {
         guard let value = value as? [String: Any],
-            Set(value.keys) == ["id", "kind", "left", "top", "bottom", "html", "css", "items", "selected"],
+            Set(value.keys) == ["type", "surface"] || Set(value.keys) == ["type", "kind", "id"],
             JSONSerialization.isValidJSONObject(value),
-            let data = try? JSONSerialization.data(withJSONObject: value),
-            data.count <= 1_500_000,
-            let result = try? JSONDecoder().decode(Self.self, from: data),
-            result.id > 0,
-            [result.left, result.top, result.bottom].allSatisfy({ $0.isFinite && abs($0) <= 100_000 }),
-            result.bottom >= result.top,
-            result.html.utf8.count <= 500_000, result.css.utf8.count <= 900_000,
-            result.items.count <= 100,
-            result.items.allSatisfy({ $0.label.utf16.count <= 512 && $0.detail.utf16.count <= 1_024 }),
-            result.selected >= -1, result.selected < max(1, result.items.count)
+            let type = value["type"] as? String
         else { return nil }
-        switch result.kind {
-        case .preview:
-            guard !result.html.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
-        case .suggestions:
-            guard result.html.isEmpty, result.css.isEmpty, !result.items.isEmpty else { return nil }
-        case .selection:
-            guard result.html.isEmpty, result.css.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
-        case .hidden:
-            guard result.html.isEmpty, result.css.isEmpty, result.items.isEmpty else { return nil }
+
+        switch type {
+        case "previewSurface":
+            guard Set(value.keys) == ["type", "surface"],
+                let object = value["surface"] as? [String: Any],
+                Set(object.keys) == ["id", "left", "top", "bottom", "html", "css"],
+                let data = try? JSONSerialization.data(withJSONObject: object),
+                data.count <= 1_500_000,
+                let result = try? JSONDecoder().decode(DocumentPreviewSurface.self, from: data),
+                result.id > 0,
+                [result.left, result.top, result.bottom].allSatisfy({ $0.isFinite && abs($0) <= 100_000 }),
+                result.bottom >= result.top,
+                !result.html.isEmpty,
+                result.html.utf8.count <= 500_000,
+                result.css.utf8.count <= 900_000
+            else { return nil }
+            return .preview(result)
+        case "suggestionSurface":
+            guard Set(value.keys) == ["type", "surface"],
+                let object = value["surface"] as? [String: Any],
+                Set(object.keys) == ["id", "left", "top", "bottom", "items", "selected"],
+                let data = try? JSONSerialization.data(withJSONObject: object),
+                data.count <= 1_500_000,
+                let result = try? JSONDecoder().decode(DocumentSuggestionSurface.self, from: data),
+                result.id > 0,
+                [result.left, result.top, result.bottom].allSatisfy({ $0.isFinite && abs($0) <= 100_000 }),
+                result.bottom >= result.top,
+                !result.items.isEmpty,
+                result.items.count <= 100,
+                result.items.allSatisfy({ $0.label.utf16.count <= 512 && $0.detail.utf16.count <= 1_024 }),
+                result.selected >= -1,
+                result.selected < result.items.count
+            else { return nil }
+            return .suggestions(result)
+        case "selectionSurface":
+            guard Set(value.keys) == ["type", "surface"],
+                let object = value["surface"] as? [String: Any],
+                Set(object.keys) == ["id", "left", "top", "bottom"],
+                let data = try? JSONSerialization.data(withJSONObject: object),
+                data.count <= 100_000,
+                let result = try? JSONDecoder().decode(DocumentSelectionSurface.self, from: data),
+                result.id > 0,
+                [result.left, result.top, result.bottom].allSatisfy({ $0.isFinite && abs($0) <= 100_000 }),
+                result.bottom >= result.top
+            else { return nil }
+            return .selection(result)
+        case "dismissSurface":
+            guard Set(value.keys) == ["type", "kind", "id"],
+                let kind = value["kind"] as? String,
+                let kind = DocumentFloatingKind(rawValue: kind),
+                let id = value["id"] as? Int,
+                id > 0
+            else { return nil }
+            return .dismiss(DocumentFloatingDismissal(kind: kind, id: id))
+        default:
+            return nil
         }
-        return result
     }
+}
+
+private struct ActiveDocumentFloatingSurface: Equatable {
+    let id: Int
+    let kind: DocumentFloatingKind
+    let left: Double
+    let top: Double
+    let bottom: Double
 }
 
 /// Owns only native floating presentation in the originating WebKit viewport.
@@ -53,7 +152,7 @@ struct DocumentFloatingSurface: Codable, Equatable, Sendable {
 @MainActor
 final class DocumentFloatingSurfaceController: NSObject {
     private weak var owner: WKWebView?
-    private var surface: DocumentFloatingSurface?
+    private var surface: ActiveDocumentFloatingSurface?
     private var glass: TrackingGlassView?
     private var preview: DocumentPreviewPopover?
     private var suggestions: NativeFloatingChoiceList?
@@ -61,7 +160,7 @@ final class DocumentFloatingSurfaceController: NSObject {
     private var suggestionsBelow: Bool?
     var previewWebView: WKWebView? { preview?.webView }
     var isPreviewShown: Bool { preview?.isShown == true }
-    private var event: ((Int, String, Int) async -> Bool)?
+    private var event: ((Int, DocumentFloatingAction, Int) async -> Bool)?
     private var selectionBar: SelectionActionBar?
     var selectionResultPopover: NSPopover? { resultPopover }
     private var resultPopover: NSPopover?
@@ -70,35 +169,47 @@ final class DocumentFloatingSurfaceController: NSObject {
     private var observers: [NSObjectProtocol] = []
 
     func present(
-        _ value: DocumentFloatingSurface,
+        _ value: DocumentFloatingEvent,
         in webView: WKWebView,
         inquire: AgentSelectionInquiryHandler? = nil,
-        event: @escaping (Int, String, Int) async -> Bool
+        event: @escaping (Int, DocumentFloatingAction, Int) async -> Bool
     ) {
-        if value.kind == .hidden {
-            if surface?.id == value.id { dismiss() }
+        if case .dismiss(let value) = value {
+            if surface?.id == value.id, surface?.kind == value.kind { dismiss() }
             return
         }
         guard webView.window != nil, webView.bounds.width > 24, webView.bounds.height > 24,
             let viewport = webView.superview as? DocumentWebViewContainer
         else { return }
-        if owner === webView, let surface, value.id <= surface.id { return }
-        if value.kind == .selection,
-            value.bottom + 52 > webView.bounds.height - 12, value.top < 64
-        {
-            dismiss()
+        let next: ActiveDocumentFloatingSurface
+        switch value {
+        case .preview(let preview):
+            next = ActiveDocumentFloatingSurface(
+                id: preview.id, kind: .preview, left: preview.left, top: preview.top, bottom: preview.bottom)
+        case .suggestions(let suggestions):
+            next = ActiveDocumentFloatingSurface(
+                id: suggestions.id, kind: .suggestions, left: suggestions.left, top: suggestions.top, bottom: suggestions.bottom)
+        case .selection(let selection):
+            guard selection.bottom + 52 <= webView.bounds.height - 12 || selection.top >= 64 else {
+                dismiss()
+                return
+            }
+            next = ActiveDocumentFloatingSurface(
+                id: selection.id, kind: .selection, left: selection.left, top: selection.top, bottom: selection.bottom)
+        case .dismiss:
             return
         }
-        if owner !== webView { reset() } else if surface?.kind != value.kind { dismiss() }
+        if owner === webView, let surface, next.id <= surface.id { return }
+        if owner !== webView { reset() } else if surface?.kind != next.kind { dismiss() }
         self.event = event
         self.owner = webView
-        self.surface = value
-        if value.kind == .preview {
+        self.surface = next
+        if case .preview(let value) = value {
             let content = preview ?? DocumentPreviewPopover()
             preview = content
             content.onEvent = { [weak self] action in
                 self?.send(action)
-                if action == "dismiss" { self?.dismiss() }
+                if action == .dismiss { self?.dismiss() }
             }
             content.present(value, in: webView)
             return
@@ -108,7 +219,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             container.style = .regular
             container.setAccessibilityEnabled(true)
             container.cornerRadius = ScholiumCornerRole.boundedPanel.radius
-            container.onPointerPresence = { [weak self] entered in self?.send(entered ? "enter" : "leave") }
+            container.onPointerPresence = { [weak self] entered in self?.send(entered ? .enter : .leave) }
             glass = container
             viewport.addSubview(container, positioned: .above, relativeTo: webView)
             observers.append(
@@ -123,7 +234,7 @@ final class DocumentFloatingSurfaceController: NSObject {
                         guard responder !== owner, !responder.isDescendant(of: owner),
                             self.glass.map({ !responder.isDescendant(of: $0) }) == true
                         else { return }
-                        self.send("dismiss")
+                        self.send(.dismiss)
                         self.dismiss()
                     }
                 })
@@ -133,23 +244,23 @@ final class DocumentFloatingSurfaceController: NSObject {
                         forName: name, object: webView.window, queue: .main
                     ) { [weak self] _ in
                         MainActor.assumeIsolated {
-                            self?.send("dismiss")
+                            self?.send(.dismiss)
                             self?.dismiss()
                         }
                     })
             }
         }
         guard let glass else { return }
-        switch value.kind {
-        case .suggestions:
+        switch value {
+        case .suggestions(let value):
             let content = suggestions ?? NativeFloatingChoiceList(acceptsKeyboard: false)
             let isNewList = suggestions == nil
             if isNewList {
                 suggestions = content
                 glass.contentView = content
             }
-            content.choose = { [weak self] index in self?.send("choose", index: index) }
-            content.select = { [weak self] index in self?.send("select", index: index) }
+            content.choose = { [weak self] index in self?.send(.choose, index: index) }
+            content.select = { [weak self] index in self?.send(.select, index: index) }
             content.update(items: value.items.map { .init(label: $0.label, detail: $0.detail) }, selected: value.selected)
             preferredWidth = isNewList ? content.preferredSize.width : max(preferredWidth, content.preferredSize.width)
             // CodeMirror retains the single AX listbox, active descendant and keyboard path.
@@ -165,7 +276,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions)
             selectionBar = bar
             bar.onDismiss = { [weak self] in
-                self?.send("dismiss")
+                self?.send(.dismiss)
                 self?.dismiss()
             }
             bar.onInquiry = { [weak self] inquiry in
@@ -181,11 +292,11 @@ final class DocumentFloatingSurfaceController: NSObject {
                             self?.inquiryID = nil
                         }
                     }
-                    guard await event(surface.id, "choose", 0), !Task.isCancelled,
+                    guard await event(surface.id, .choose, 0), !Task.isCancelled,
                         let self, self.surface?.id == surface.id
                     else { return }
                     do {
-                        guard let result = try await inquire?(inquiry, { await event(surface.id, "choose", 0) }),
+                        guard let result = try await inquire?(inquiry, { await event(surface.id, .choose, 0) }),
                             !Task.isCancelled, self.surface?.id == surface.id
                         else { return }
                         self.showSelectionPopover(
@@ -218,7 +329,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             glass.setAccessibilityChildren([bar])
             preferredWidth = bar.preferredSize.width
             layout(height: bar.preferredSize.height)
-        case .hidden: break
+        case .dismiss: break
         }
     }
 
@@ -264,7 +375,7 @@ final class DocumentFloatingSurfaceController: NSObject {
         owner = nil
     }
 
-    private func send(_ action: String, index: Int = -1) {
+    private func send(_ action: DocumentFloatingAction, index: Int = -1) {
         guard let surface, let event else { return }
         Task { _ = await event(surface.id, action, index) }
     }
