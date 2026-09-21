@@ -2939,6 +2939,8 @@ struct FrontendArchitectureTests {
         #expect(!syntaxPresentationSource.contains("view.lineBlockAtHeight"))
         #expect(syntaxPresentationSource.contains("invalidateLayoutAnchor"))
         #expect(syntaxPresentationSource.contains("layoutEpoch"))
+        #expect(syntaxPresentationSource.contains("scheduleLayoutAnchor"))
+        #expect(syntaxPresentationSource.contains("queueMicrotask"))
         #expect(syntaxPresentationSource.contains("node.style.marginInlineStart"))
         #expect(!syntaxPresentationSource.contains("fromWidth"))
         #expect(!syntaxPresentationSource.contains("fromMarginInlineStart"))

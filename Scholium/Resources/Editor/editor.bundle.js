@@ -14071,13 +14071,12 @@
   var syntaxPresentation = ViewPlugin.fromClass(class {
     constructor(view) {
       this.view = view;
-      this.reduced.addEventListener("change", this.stop);
+      this.reduced.addEventListener("change", this.invalidateLayoutAnchor);
       this.resize = new ResizeObserver((entries) => {
         const width = entries[0]?.contentRect.width ?? 0;
         if (width === this.inlineSize) return;
         this.inlineSize = width;
-        this.layoutEpoch += 1;
-        this.stop();
+        this.invalidateLayoutAnchor();
         this.borrowed.clear();
         this.frames.clear();
         this.frontmatterFrames.clear();
@@ -14110,8 +14109,24 @@
       this.layoutEpoch += 1;
       this.stop();
     };
+    scheduleLayoutAnchor(anchor) {
+      queueMicrotask(() => {
+        if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
+        const scroll = this.view.scrollDOM;
+        if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return;
+        const scrollCorrection = applyLayoutAnchor(this.view, anchor);
+        if (scrollCorrection === 0) return;
+        const cursor = readLiveCursorGeometry(this.view);
+        writeLiveCursorGeometry(this.view, cursor && {
+          ...cursor,
+          top: cursor.top - scrollCorrection,
+          bottom: cursor.bottom - scrollCorrection
+        });
+      });
+    }
     update(update) {
       if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
+      this.layoutEpoch += 1;
       const animate = !update.docChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
       const layoutAnchor = !update.docChanged && update.selectionSet && !this.view.composing && update.transactions.every((transaction) => !transaction.scrollIntoView && transaction.effects.length === 0) ? captureLayoutAnchor(this.view, this.layoutEpoch) : null;
       for (const [key, transition] of this.transitions) {
@@ -14264,20 +14279,15 @@
           this.frames = next;
           for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
           const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
-          const scrollCorrection = layoutAnchor && layoutAnchor.epoch === this.layoutEpoch && !this.view.composing && Math.abs(this.view.scrollDOM.scrollTop - layoutAnchor.scrollTop) < 0.25 ? applyLayoutAnchor(this.view, layoutAnchor) : 0;
-          const adjustedCursor = measuredCursor && scrollCorrection !== 0 ? {
-            ...measuredCursor,
-            top: measuredCursor.top - scrollCorrection,
-            bottom: measuredCursor.bottom - scrollCorrection
-          } : measuredCursor;
-          writeLiveCursorGeometry(this.view, adjustedCursor);
+          if (layoutAnchor) this.scheduleLayoutAnchor(layoutAnchor);
+          writeLiveCursorGeometry(this.view, measuredCursor);
         }
       });
     }
     destroy() {
       this.destroyed = true;
       this.stop();
-      this.reduced.removeEventListener("change", this.stop);
+      this.reduced.removeEventListener("change", this.invalidateLayoutAnchor);
       this.view.scrollDOM.removeEventListener("scroll", this.invalidateLayoutAnchor);
       this.resize.disconnect();
     }
@@ -35817,6 +35827,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
 
   // live-structured-block-projections.ts
+  function selectionActivatesCalloutBody(selection, headerTo, presentationTo) {
+    return selection.empty ? selection.head > headerTo && selection.head <= presentationTo : selection.from < presentationTo && selection.to > headerTo;
+  }
   function createLiveStructuredBlockProjections(options) {
     const resolveCallout = (rawKind) => calloutDefinition(options.editingDialect(), rawKind);
     class TableWidget extends WidgetType {
@@ -35982,7 +35995,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const opening = calloutHeader(header.text);
         if (!opening) continue;
         const foldable2 = !!opening[3];
-        const bodyActive = selections.some((range) => range.empty ? range.head > header.to && range.head <= presentation.to : range.from < presentation.to && range.to > header.to);
+        const bodyActive = selections.some((range) => selectionActivatesCalloutBody(range, header.to, presentation.to));
         const collapsed = foldable2 && !bodyActive && (folds.get(presentation.from) ?? opening[3] === "-");
         const label = resolveCallout(opening[2]).label;
         if (foldable2 || !opening[4]) decorations2.push(Decoration.widget({

@@ -146,13 +146,12 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
   private inlineSize = 0;
 
   constructor(readonly view: EditorView) {
-    this.reduced.addEventListener("change", this.stop);
+    this.reduced.addEventListener("change", this.invalidateLayoutAnchor);
     this.resize = new ResizeObserver(entries => {
       const width = entries[0]?.contentRect.width ?? 0;
       if (width === this.inlineSize) return;
       this.inlineSize = width;
-      this.layoutEpoch += 1;
-      this.stop();
+      this.invalidateLayoutAnchor();
       this.borrowed.clear();
       this.frames.clear();
       this.frontmatterFrames.clear();
@@ -175,8 +174,25 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     this.stop();
   };
 
+  private scheduleLayoutAnchor(anchor: LayoutAnchor) {
+    queueMicrotask(() => {
+      if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
+      const scroll = this.view.scrollDOM;
+      if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return;
+      const scrollCorrection = applyLayoutAnchor(this.view, anchor);
+      if (scrollCorrection === 0) return;
+      const cursor = readLiveCursorGeometry(this.view);
+      writeLiveCursorGeometry(this.view, cursor && {
+        ...cursor,
+        top: cursor.top - scrollCorrection,
+        bottom: cursor.bottom - scrollCorrection,
+      });
+    });
+  }
+
   update(update: ViewUpdate) {
     if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
+    this.layoutEpoch += 1;
     const animate = !update.docChanged
       && !this.view.composing
       && update.state.selection.main.empty && !this.reduced.matches;
@@ -352,21 +368,13 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
         this.frames = next;
         for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
         // Geometry is already in its final state. If prefix borrowing changed
-        // the line, re-read the cursor after that synchronous commit and move
-        // the viewport anchor before writing the cursor marker.
+        // the line, re-read the cursor after that synchronous commit. Defer
+        // the custom anchor correction until CodeMirror finishes this measure
+        // cycle, so its own scroll anchoring remains the first and only
+        // correction in this cycle.
         const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
-        const scrollCorrection = layoutAnchor
-          && layoutAnchor.epoch === this.layoutEpoch
-          && !this.view.composing
-          && Math.abs(this.view.scrollDOM.scrollTop - layoutAnchor.scrollTop) < 0.25
-          ? applyLayoutAnchor(this.view, layoutAnchor)
-          : 0;
-        const adjustedCursor = measuredCursor && scrollCorrection !== 0
-          ? {...measuredCursor,
-            top: measuredCursor.top - scrollCorrection,
-            bottom: measuredCursor.bottom - scrollCorrection}
-          : measuredCursor;
-        writeLiveCursorGeometry(this.view, adjustedCursor);
+        if (layoutAnchor) this.scheduleLayoutAnchor(layoutAnchor);
+        writeLiveCursorGeometry(this.view, measuredCursor);
       },
     });
   }
@@ -374,7 +382,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
   destroy() {
     this.destroyed = true;
     this.stop();
-    this.reduced.removeEventListener("change", this.stop);
+    this.reduced.removeEventListener("change", this.invalidateLayoutAnchor);
     this.view.scrollDOM.removeEventListener("scroll", this.invalidateLayoutAnchor);
     this.resize.disconnect();
   }

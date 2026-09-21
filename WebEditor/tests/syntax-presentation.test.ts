@@ -4,7 +4,10 @@ import {describe, expect, it} from "vitest";
 import {canDisplaceSyntax, prefixNeedsMargin, syntaxToken} from "../syntax-presentation";
 import {createLiveSelectionController} from "../live-selection";
 import {createLiveProjectionIndexController} from "../live-projection-index";
-import {createLiveStructuredBlockProjections} from "../live-structured-block-projections";
+import {
+  createLiveStructuredBlockProjections,
+  selectionActivatesCalloutBody,
+} from "../live-structured-block-projections";
 import {createProjectedWidgetRegistry} from "../projected-widget-registry";
 import {scholiumNoteLanguage} from "../language";
 
@@ -22,6 +25,22 @@ describe("syntax presentation boundaries", () => {
     for (const token of ["> [!cite] ", "```", "~~~", "(long-target.md)", "", "\t>", ">\n>", "中文", "x".repeat(25)]) {
       expect(canDisplaceSyntax(token)).toBe(false);
     }
+  });
+
+  it("keeps Callout header and body boundaries half-open", () => {
+    const caret = (head: number) => ({from: head, to: head, head, empty: true});
+    const headerTo = 12;
+    const bodyTo = 28;
+    expect(selectionActivatesCalloutBody(caret(headerTo), headerTo, bodyTo)).toBe(false);
+    expect(selectionActivatesCalloutBody(caret(headerTo + 1), headerTo, bodyTo)).toBe(true);
+    expect(selectionActivatesCalloutBody(caret(bodyTo), headerTo, bodyTo)).toBe(true);
+    expect(selectionActivatesCalloutBody(caret(bodyTo + 1), headerTo, bodyTo)).toBe(false);
+    expect(selectionActivatesCalloutBody(
+      {from: 0, to: headerTo, head: headerTo, empty: false}, headerTo, bodyTo,
+    )).toBe(false);
+    expect(selectionActivatesCalloutBody(
+      {from: 0, to: headerTo + 1, head: headerTo + 1, empty: false}, headerTo, bodyTo,
+    )).toBe(true);
   });
 
   it("keeps exposed source addressable and hidden source out of accessibility", () => {

@@ -8,6 +8,7 @@ import {
   activeProjectionSignature,
   selectionActivatesSyntax,
   transactionChangedSyntaxTree,
+  type ProjectionSelectionRange,
 } from "./projection-update";
 import type {TablePresentation} from "./table-presentation";
 import type {
@@ -30,6 +31,16 @@ interface LiveCalloutProjectionState extends LiveBlockProjectionState {
   readonly presentations: readonly CalloutPresentation[];
   readonly active: boolean;
   readonly folds: ReadonlyMap<number, boolean>;
+}
+
+export function selectionActivatesCalloutBody(
+  selection: ProjectionSelectionRange,
+  headerTo: number,
+  presentationTo: number,
+) {
+  return selection.empty
+    ? selection.head > headerTo && selection.head <= presentationTo
+    : selection.from < presentationTo && selection.to > headerTo;
 }
 
 export function createLiveStructuredBlockProjections(options: {
@@ -210,9 +221,8 @@ export function createLiveStructuredBlockProjections(options: {
       const opening = calloutHeader(header.text);
       if (!opening) continue;
       const foldable = !!opening[3];
-      const bodyActive = selections.some(range => range.empty
-        ? range.head > header.to && range.head <= presentation.to
-        : range.from < presentation.to && range.to > header.to);
+      const bodyActive = selections.some(range =>
+        selectionActivatesCalloutBody(range, header.to, presentation.to));
       const collapsed = foldable && !bodyActive
         && (folds.get(presentation.from) ?? opening[3] === "-");
       const label = resolveCallout(opening[2]).label;
