@@ -14033,16 +14033,28 @@
     }
     return null;
   }
-  function captureLayoutAnchor(view) {
+  function captureLayoutAnchor(view, epoch) {
     const scroll = view.scrollDOM;
     const rect = scroll.getBoundingClientRect();
-    const probeHeight = Math.max(
-      0,
-      rect.top + 1 - view.documentTop + scroll.scrollTop
-    );
-    const block = view.lineBlockAtHeight(probeHeight);
-    const line = lineElementAt(view, block.from);
-    return line ? { from: block.from, top: line.getBoundingClientRect().top } : null;
+    const probeHeight = Math.max(0, rect.top + 1 - view.documentTop);
+    const blocks = view.viewportLineBlocks;
+    if (!blocks.length) return null;
+    const containing = blocks.findIndex((candidate) => candidate.top <= probeHeight && candidate.bottom > probeHeight);
+    const firstAfter = blocks.findIndex((candidate) => candidate.bottom > probeHeight);
+    const start = containing >= 0 ? containing : firstAfter >= 0 ? firstAfter : blocks.length - 1;
+    const candidates = blocks.slice(start).concat(blocks.slice(0, start));
+    for (const candidate of candidates) {
+      const line = lineElementAt(view, candidate.from);
+      if (line) {
+        return {
+          from: candidate.from,
+          top: line.getBoundingClientRect().top,
+          scrollTop: scroll.scrollTop,
+          epoch
+        };
+      }
+    }
+    return null;
   }
   function applyLayoutAnchor(view, anchor) {
     const line = lineElementAt(view, anchor.from);
@@ -14064,13 +14076,14 @@
         const width = entries[0]?.contentRect.width ?? 0;
         if (width === this.inlineSize) return;
         this.inlineSize = width;
+        this.layoutEpoch += 1;
         this.stop();
         this.borrowed.clear();
         this.frames.clear();
         this.frontmatterFrames.clear();
         this.measure(false);
       });
-      view.scrollDOM.addEventListener("scroll", this.stop, { passive: true });
+      view.scrollDOM.addEventListener("scroll", this.invalidateLayoutAnchor, { passive: true });
       this.resize.observe(view.scrollDOM);
       this.measure(false);
     }
@@ -14083,6 +14096,7 @@
     animations = [];
     objects = /* @__PURE__ */ new Set();
     destroyed = false;
+    layoutEpoch = 0;
     reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     resize;
     inlineSize = 0;
@@ -14092,10 +14106,14 @@
       this.transitions.clear();
       this.frontmatterTransitions.clear();
     };
+    invalidateLayoutAnchor = () => {
+      this.layoutEpoch += 1;
+      this.stop();
+    };
     update(update) {
       if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
       const animate = !update.docChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
-      const layoutAnchor = !update.docChanged && update.selectionSet && update.transactions.every((transaction) => !transaction.scrollIntoView && transaction.effects.length === 0) ? captureLayoutAnchor(this.view) : null;
+      const layoutAnchor = !update.docChanged && update.selectionSet && !this.view.composing && update.transactions.every((transaction) => !transaction.scrollIntoView && transaction.effects.length === 0) ? captureLayoutAnchor(this.view, this.layoutEpoch) : null;
       for (const [key, transition] of this.transitions) {
         const frame = this.frames.get(key);
         const progress = transition.animation.effect?.getComputedTiming().progress;
@@ -14246,7 +14264,7 @@
           this.frames = next;
           for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
           const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
-          const scrollCorrection = layoutAnchor ? applyLayoutAnchor(this.view, layoutAnchor) : 0;
+          const scrollCorrection = layoutAnchor && layoutAnchor.epoch === this.layoutEpoch && !this.view.composing && Math.abs(this.view.scrollDOM.scrollTop - layoutAnchor.scrollTop) < 0.25 ? applyLayoutAnchor(this.view, layoutAnchor) : 0;
           const adjustedCursor = measuredCursor && scrollCorrection !== 0 ? {
             ...measuredCursor,
             top: measuredCursor.top - scrollCorrection,
@@ -14260,15 +14278,15 @@
       this.destroyed = true;
       this.stop();
       this.reduced.removeEventListener("change", this.stop);
-      this.view.scrollDOM.removeEventListener("scroll", this.stop);
+      this.view.scrollDOM.removeEventListener("scroll", this.invalidateLayoutAnchor);
       this.resize.disconnect();
     }
   }, { eventHandlers: {
     compositionstart() {
-      this.stop();
+      this.invalidateLayoutAnchor();
     },
     mousedown() {
-      this.stop();
+      this.invalidateLayoutAnchor();
     }
   } });
 
