@@ -13,6 +13,10 @@ struct AgentChatObjectActionTests {
         _ = NSApplication.shared
         let source = "Prose before.\n\n```text\nfirst 中文 😀\n```\n\nBetween.\n\n| A | B |\n|---|---|\n| one | two |\n\n```text\nlast code\n```"
         let host = NSHostingView(rootView: AgentChatMarkdown(text: source))
+        // The window owns this explicit test surface. Do not let the hosting
+        // view replace its 650-point frame with the reader's transient
+        // intrinsic loading height while WebKit is still mounting.
+        host.sizingOptions = []
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 320, height: 650),
             styleMask: [.titled], backing: .buffered, defer: false)
