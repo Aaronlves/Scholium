@@ -14021,68 +14021,21 @@
   function prefixNeedsMargin(textWidth, tokenWidth, measure, availableMargin) {
     return textWidth > measure && textWidth - tokenWidth <= measure && tokenWidth + 4 <= availableMargin;
   }
-  function lineElementAt(view, position) {
-    for (const assoc of [1, -1]) {
-      try {
-        const point = view.domAtPos(position, assoc);
-        const element = point.node.nodeType === Node.ELEMENT_NODE ? point.node : point.node.parentElement;
-        const line = element?.closest(".cm-line");
-        if (line) return line;
-      } catch {
-      }
-    }
-    return null;
-  }
-  function captureLayoutAnchor(view, epoch) {
-    const scroll = view.scrollDOM;
-    const rect = scroll.getBoundingClientRect();
-    const probeHeight = Math.max(0, rect.top + 1 - view.documentTop);
-    const blocks = view.viewportLineBlocks;
-    if (!blocks.length) return null;
-    const containing = blocks.findIndex((candidate) => candidate.top <= probeHeight && candidate.bottom > probeHeight);
-    const firstAfter = blocks.findIndex((candidate) => candidate.bottom > probeHeight);
-    const start = containing >= 0 ? containing : firstAfter >= 0 ? firstAfter : blocks.length - 1;
-    const candidates = blocks.slice(start).concat(blocks.slice(0, start));
-    for (const candidate of candidates) {
-      const line = lineElementAt(view, candidate.from);
-      if (line) {
-        return {
-          from: candidate.from,
-          top: line.getBoundingClientRect().top,
-          scrollTop: scroll.scrollTop,
-          epoch
-        };
-      }
-    }
-    return null;
-  }
-  function applyLayoutAnchor(view, anchor) {
-    const line = lineElementAt(view, anchor.from);
-    if (!line) return 0;
-    const delta = line.getBoundingClientRect().top - anchor.top;
-    if (Math.abs(delta) < 0.25) return 0;
-    const scroll = view.scrollDOM;
-    const maximum = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-    const before = scroll.scrollTop;
-    const after = Math.max(0, Math.min(maximum, before + delta));
-    if (Math.abs(after - before) >= 0.25) scroll.scrollTop = after;
-    return after - before;
-  }
   var syntaxPresentation = ViewPlugin.fromClass(class {
     constructor(view) {
       this.view = view;
-      this.reduced.addEventListener("change", this.invalidateLayoutAnchor);
+      this.reduced.addEventListener("change", this.stop);
       this.resize = new ResizeObserver((entries) => {
         const width = entries[0]?.contentRect.width ?? 0;
         if (width === this.inlineSize) return;
         this.inlineSize = width;
-        this.invalidateLayoutAnchor();
+        this.stop();
         this.borrowed.clear();
         this.frames.clear();
         this.frontmatterFrames.clear();
         this.measure(false);
       });
-      view.scrollDOM.addEventListener("scroll", this.invalidateLayoutAnchor, { passive: true });
+      view.scrollDOM.addEventListener("scroll", this.stop, { passive: true });
       this.resize.observe(view.scrollDOM);
       this.measure(false);
     }
@@ -14095,7 +14048,6 @@
     animations = [];
     objects = /* @__PURE__ */ new Set();
     destroyed = false;
-    layoutEpoch = 0;
     reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     resize;
     inlineSize = 0;
@@ -14105,30 +14057,9 @@
       this.transitions.clear();
       this.frontmatterTransitions.clear();
     };
-    invalidateLayoutAnchor = () => {
-      this.layoutEpoch += 1;
-      this.stop();
-    };
-    scheduleLayoutAnchor(anchor) {
-      queueMicrotask(() => {
-        if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
-        const scroll = this.view.scrollDOM;
-        if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return;
-        const scrollCorrection = applyLayoutAnchor(this.view, anchor);
-        if (scrollCorrection === 0) return;
-        const cursor = readLiveCursorGeometry(this.view);
-        writeLiveCursorGeometry(this.view, cursor && {
-          ...cursor,
-          top: cursor.top - scrollCorrection,
-          bottom: cursor.bottom - scrollCorrection
-        });
-      });
-    }
     update(update) {
       if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
-      this.layoutEpoch += 1;
       const animate = !update.docChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
-      const layoutAnchor = !update.docChanged && update.selectionSet && !this.view.composing && update.transactions.every((transaction) => !transaction.scrollIntoView && transaction.effects.length === 0) ? captureLayoutAnchor(this.view, this.layoutEpoch) : null;
       for (const [key, transition] of this.transitions) {
         const frame = this.frames.get(key);
         const progress = transition.animation.effect?.getComputedTiming().progress;
@@ -14147,9 +14078,9 @@
       this.transitions.clear();
       this.frontmatterTransitions.clear();
       this.stop();
-      this.measure(animate, layoutAnchor);
+      this.measure(animate);
     }
-    measure(animate, layoutAnchor = null) {
+    measure(animate) {
       this.view.requestMeasure({
         key: this,
         read: () => ({
@@ -14279,7 +14210,6 @@
           this.frames = next;
           for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
           const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
-          if (layoutAnchor) this.scheduleLayoutAnchor(layoutAnchor);
           writeLiveCursorGeometry(this.view, measuredCursor);
         }
       });
@@ -14287,16 +14217,16 @@
     destroy() {
       this.destroyed = true;
       this.stop();
-      this.reduced.removeEventListener("change", this.invalidateLayoutAnchor);
-      this.view.scrollDOM.removeEventListener("scroll", this.invalidateLayoutAnchor);
+      this.reduced.removeEventListener("change", this.stop);
+      this.view.scrollDOM.removeEventListener("scroll", this.stop);
       this.resize.disconnect();
     }
   }, { eventHandlers: {
     compositionstart() {
-      this.invalidateLayoutAnchor();
+      this.stop();
     },
     mousedown() {
-      this.invalidateLayoutAnchor();
+      this.stop();
     }
   } });
 
@@ -35826,6 +35756,130 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     };
   }
 
+  // live-presentation-layout.ts
+  var preserveLivePresentationLayout = StateEffect.define({
+    map: (value, changes) => ({
+      from: changes.mapPos(value.from),
+      to: changes.mapPos(value.to)
+    })
+  });
+  function lineElementAt(view, position) {
+    for (const assoc of [1, -1]) {
+      try {
+        const point = view.domAtPos(position, assoc);
+        const element = point.node.nodeType === Node.ELEMENT_NODE ? point.node : point.node.parentElement;
+        const line = element?.closest(".cm-line");
+        if (line) return line;
+      } catch {
+      }
+    }
+    return null;
+  }
+  function intersects2(from, to, range) {
+    return from < range.to && to > range.from;
+  }
+  function captureLayoutAnchor(view, epoch, affected) {
+    const scroll = view.scrollDOM;
+    const rect = scroll.getBoundingClientRect();
+    const probeHeight = Math.max(0, rect.top + 1 - view.documentTop);
+    const blocks = view.viewportLineBlocks;
+    if (!blocks.length) return null;
+    const containing = blocks.findIndex((candidate) => candidate.top <= probeHeight && candidate.bottom > probeHeight);
+    const firstAfter = blocks.findIndex((candidate) => candidate.bottom > probeHeight);
+    const start = containing >= 0 ? containing : firstAfter >= 0 ? firstAfter : blocks.length - 1;
+    const ordered = blocks.slice(start).concat(blocks.slice(0, start));
+    const stable = affected.length === 0 ? ordered : ordered.filter((candidate) => !affected.some((range) => intersects2(candidate.from, candidate.to, range)));
+    const candidates = stable.length > 0 ? stable : ordered;
+    for (const candidate of candidates) {
+      const line = lineElementAt(view, candidate.from);
+      if (line) {
+        return {
+          from: candidate.from,
+          top: line.getBoundingClientRect().top,
+          scrollTop: scroll.scrollTop,
+          epoch
+        };
+      }
+    }
+    return null;
+  }
+  function applyLayoutAnchor(view, anchor) {
+    const line = lineElementAt(view, anchor.from);
+    if (!line) return 0;
+    const delta = line.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(delta) < 0.25) return 0;
+    const scroll = view.scrollDOM;
+    const maximum = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    const before = scroll.scrollTop;
+    const after = Math.max(0, Math.min(maximum, before + delta));
+    if (Math.abs(after - before) >= 0.25) scroll.scrollTop = after;
+    return after - before;
+  }
+  function layoutRanges(update) {
+    return update.transactions.flatMap((transaction) => transaction.effects.flatMap((effect) => effect.is(preserveLivePresentationLayout) ? [effect.value] : []));
+  }
+  var livePresentationLayout = ViewPlugin.fromClass(class {
+    constructor(view) {
+      this.view = view;
+      this.reduced.addEventListener("change", this.invalidate);
+      this.resize = new ResizeObserver(() => this.invalidate());
+      this.resize.observe(view.scrollDOM);
+      view.scrollDOM.addEventListener("scroll", this.invalidate, { passive: true });
+    }
+    view;
+    layoutEpoch = 0;
+    destroyed = false;
+    reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    resize;
+    invalidate = () => {
+      this.layoutEpoch += 1;
+    };
+    schedule(anchor) {
+      queueMicrotask(() => {
+        if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
+        const scroll = this.view.scrollDOM;
+        if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return;
+        const scrollCorrection = applyLayoutAnchor(this.view, anchor);
+        if (scrollCorrection === 0) return;
+        const cursor = readLiveCursorGeometry(this.view);
+        writeLiveCursorGeometry(this.view, cursor && {
+          ...cursor,
+          top: cursor.top - scrollCorrection,
+          bottom: cursor.bottom - scrollCorrection
+        });
+      });
+    }
+    update(update) {
+      if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
+      this.layoutEpoch += 1;
+      if (this.view.composing || update.docChanged || update.transactions.some((transaction) => transaction.scrollIntoView)) return;
+      const affected = layoutRanges(update);
+      const explicitLayout = affected.length > 0;
+      const selectionLayout = update.selectionSet && update.transactions.every((transaction) => transaction.effects.length === 0);
+      if (!explicitLayout && !selectionLayout) return;
+      const anchor = captureLayoutAnchor(this.view, this.layoutEpoch, affected);
+      if (!anchor) return;
+      this.view.requestMeasure({
+        key: this,
+        read: () => null,
+        write: () => this.schedule(anchor)
+      });
+    }
+    destroy() {
+      this.destroyed = true;
+      this.reduced.removeEventListener("change", this.invalidate);
+      this.view.scrollDOM.removeEventListener("scroll", this.invalidate);
+      this.resize.disconnect();
+    }
+  }, { eventHandlers: {
+    mousedown() {
+      this.invalidate();
+    },
+    compositionstart() {
+      this.invalidate();
+    }
+  } });
+
   // live-structured-block-projections.ts
   function selectionActivatesCalloutBody(selection, headerTo, presentationTo) {
     return selection.empty ? selection.head > headerTo && selection.head <= presentationTo : selection.from < presentationTo && selection.to > headerTo;
@@ -35920,22 +35974,30 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const setCalloutFold = StateEffect.define({
       map: (value, changes) => ({ ...value, from: changes.mapPos(value.from) })
     });
+    function calloutFoldEnd(state, headerTo, presentationTo) {
+      if (presentationTo <= headerTo || presentationTo >= state.doc.length) return presentationTo;
+      return state.doc.sliceString(presentationTo, presentationTo + 1) === "\n" ? presentationTo + 1 : presentationTo;
+    }
     class CalloutHeadingWidget extends WidgetType {
-      constructor(from, label, title, foldable2, collapsed) {
+      constructor(from, bodyFrom, foldTo, label, title, foldable2, collapsed) {
         super();
         this.from = from;
+        this.bodyFrom = bodyFrom;
+        this.foldTo = foldTo;
         this.label = label;
         this.title = title;
         this.foldable = foldable2;
         this.collapsed = collapsed;
       }
       from;
+      bodyFrom;
+      foldTo;
       label;
       title;
       foldable;
       collapsed;
       eq(other) {
-        return this.from === other.from && this.label === other.label && this.title === other.title && this.foldable === other.foldable && this.collapsed === other.collapsed;
+        return this.from === other.from && this.bodyFrom === other.bodyFrom && this.foldTo === other.foldTo && this.label === other.label && this.title === other.title && this.foldable === other.foldable && this.collapsed === other.collapsed;
       }
       toDOM(view) {
         const root = document.createElement("span");
@@ -35954,7 +36016,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             const collapsed = button.getAttribute("aria-expanded") === "true";
             view.dispatch({
               ...collapsed ? { selection: { anchor: from } } : {},
-              effects: setCalloutFold.of({ from, collapsed })
+              effects: [
+                preserveLivePresentationLayout.of({ from: this.bodyFrom, to: this.foldTo }),
+                setCalloutFold.of({ from, collapsed })
+              ]
             });
           });
           root.append(button);
@@ -35995,16 +36060,25 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const opening = calloutHeader(header.text);
         if (!opening) continue;
         const foldable2 = !!opening[3];
+        const foldTo = calloutFoldEnd(state, header.to, presentation.to);
         const bodyActive = selections.some((range) => selectionActivatesCalloutBody(range, header.to, presentation.to));
         const collapsed = foldable2 && !bodyActive && (folds.get(presentation.from) ?? opening[3] === "-");
         const label = resolveCallout(opening[2]).label;
         if (foldable2 || !opening[4]) decorations2.push(Decoration.widget({
-          widget: new CalloutHeadingWidget(presentation.from, label, opening[4], foldable2, collapsed),
+          widget: new CalloutHeadingWidget(
+            presentation.from,
+            header.to,
+            foldTo,
+            label,
+            opening[4],
+            foldable2,
+            collapsed
+          ),
           side: 1
         }).range(header.to - opening[4].length));
         if (collapsed) decorations2.push(Decoration.line({ class: "cm-live-callout-end" }).range(header.from));
-        if (collapsed && presentation.to > header.to) {
-          decorations2.push(Decoration.replace({}).range(header.to, presentation.to));
+        if (collapsed && foldTo > header.to) {
+          decorations2.push(Decoration.replace({}).range(header.to, foldTo));
         }
       }
       return Decoration.set(decorations2, true);
@@ -39273,6 +39347,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     livePreview,
     Prec.high(liveProjectionNavigation.extension),
     previewPopover.extension,
+    livePresentationLayout,
     EditorView.lineWrapping
   ];
   var sourceMode = [

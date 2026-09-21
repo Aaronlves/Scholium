@@ -2824,6 +2824,10 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("WebEditor/syntax-presentation.ts"),
             encoding: .utf8
         )
+        let livePresentationLayoutSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/live-presentation-layout.ts"),
+            encoding: .utf8
+        )
         let cursorGeometrySource = try String(
             contentsOf: repository.appendingPathComponent("WebEditor/live-cursor-geometry.ts"),
             encoding: .utf8
@@ -2895,6 +2899,7 @@ struct FrontendArchitectureTests {
             "livePreview",
             "liveProjectionNavigation.extension",
             "previewPopover.extension",
+            "livePresentationLayout",
         ] {
             // Check an installed extension entry, not a mode-name string inside
             // a shared callback (for example the text-transfer position adapter).
@@ -2934,13 +2939,15 @@ struct FrontendArchitectureTests {
         #expect(syntaxPresentationSource.contains("getComputedTiming"))
         #expect(syntaxPresentationSource.contains("{opacity: previous.opacity, color: previous.color}"))
         #expect(syntaxPresentationSource.contains("color: open ? activeColor : secondaryColor"))
-        #expect(syntaxPresentationSource.contains("applyLayoutAnchor"))
-        #expect(syntaxPresentationSource.contains("viewportLineBlocks"))
-        #expect(!syntaxPresentationSource.contains("view.lineBlockAtHeight"))
-        #expect(syntaxPresentationSource.contains("invalidateLayoutAnchor"))
-        #expect(syntaxPresentationSource.contains("layoutEpoch"))
-        #expect(syntaxPresentationSource.contains("scheduleLayoutAnchor"))
-        #expect(syntaxPresentationSource.contains("queueMicrotask"))
+        #expect(!syntaxPresentationSource.contains("applyLayoutAnchor"))
+        #expect(!syntaxPresentationSource.contains("viewportLineBlocks"))
+        #expect(livePresentationLayoutSource.contains("applyLayoutAnchor"))
+        #expect(livePresentationLayoutSource.contains("viewportLineBlocks"))
+        #expect(!livePresentationLayoutSource.contains("view.lineBlockAtHeight"))
+        #expect(livePresentationLayoutSource.contains("preserveLivePresentationLayout"))
+        #expect(livePresentationLayoutSource.contains("captureLayoutAnchor"))
+        #expect(livePresentationLayoutSource.contains("queueMicrotask"))
+        #expect(syntaxPresentationSource.contains("this.stop()"))
         #expect(syntaxPresentationSource.contains("node.style.marginInlineStart"))
         #expect(!syntaxPresentationSource.contains("fromWidth"))
         #expect(!syntaxPresentationSource.contains("fromMarginInlineStart"))

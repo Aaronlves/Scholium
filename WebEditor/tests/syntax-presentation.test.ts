@@ -9,6 +9,7 @@ import {
   selectionActivatesCalloutBody,
 } from "../live-structured-block-projections";
 import {createProjectedWidgetRegistry} from "../projected-widget-registry";
+import {preserveLivePresentationLayout} from "../live-presentation-layout";
 import {scholiumNoteLanguage} from "../language";
 
 describe("syntax presentation boundaries", () => {
@@ -43,6 +44,15 @@ describe("syntax presentation boundaries", () => {
     )).toBe(true);
   });
 
+  it("maps presentation layout ranges with the same source transaction", () => {
+    const state = EditorState.create({doc: "abcdef"});
+    const changes = state.changes({from: 0, insert: "x"});
+    const effect = preserveLivePresentationLayout.of({from: 2, to: 5});
+    const mapped = effect.map(changes);
+    expect(mapped).toBeDefined();
+    expect(mapped?.value).toEqual({from: 3, to: 6});
+  });
+
   it("keeps exposed source addressable and hidden source out of accessibility", () => {
     const hidden = syntaxToken("**", 4, 6, false);
     const exposed = syntaxToken("**", 4, 6, true);
@@ -73,6 +83,13 @@ describe("syntax presentation boundaries", () => {
         return ranges;
       };
       expect(replacements().length).toBe(fold === "-" ? 1 : 0);
+      if (fold === "-") {
+        const headerFrom = source.indexOf("> [!cite]-");
+        const headerTo = source.indexOf("\n", headerFrom);
+        const bodyFrom = source.indexOf("> **中文**");
+        const bodyTo = source.indexOf("\n", bodyFrom);
+        expect(replacements()).toEqual([[headerTo, bodyTo + 1]]);
+      }
       state = state.update({selection: {anchor: source.indexOf("evidence")}}).state;
       expect(replacements()).toEqual([]);
       expect(state.doc.toString()).toBe(source);

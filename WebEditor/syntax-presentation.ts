@@ -43,13 +43,6 @@ interface TokenTransition {
   toOpacity: number;
 }
 
-interface LayoutAnchor {
-  from: number;
-  top: number;
-  scrollTop: number;
-  epoch: number;
-}
-
 interface FrontmatterFrame {
   opacity: number;
   open: boolean;
@@ -67,67 +60,6 @@ export function prefixNeedsMargin(textWidth: number, tokenWidth: number,
     && tokenWidth + 4 <= availableMargin;
 }
 
-function lineElementAt(view: EditorView, position: number): HTMLElement | null {
-  for (const assoc of [1, -1] as const) {
-    try {
-      const point = view.domAtPos(position, assoc);
-      const element = point.node.nodeType === Node.ELEMENT_NODE
-        ? point.node as Element
-        : point.node.parentElement;
-      const line = element?.closest<HTMLElement>(".cm-line");
-      if (line) return line;
-    } catch {
-      // A line can leave the viewport between the block and DOM measurements.
-    }
-  }
-  return null;
-}
-
-function captureLayoutAnchor(view: EditorView, epoch: number): LayoutAnchor | null {
-  const scroll = view.scrollDOM;
-  const rect = scroll.getBoundingClientRect();
-  // `viewportLineBlocks` exposes the already-measured view state and is safe
-  // during ViewPlugin.update. `lineBlockAtHeight` calls readMeasured(), which
-  // CodeMirror rejects while it is applying a state update. Both the probe and
-  // block tops use documentTop-relative coordinates, so adding scrollTop here
-  // would count the scroll offset twice.
-  const probeHeight = Math.max(0, rect.top + 1 - view.documentTop);
-  const blocks = view.viewportLineBlocks;
-  if (!blocks.length) return null;
-  const containing = blocks.findIndex(candidate =>
-    candidate.top <= probeHeight && candidate.bottom > probeHeight);
-  const firstAfter = blocks.findIndex(candidate => candidate.bottom > probeHeight);
-  const start = containing >= 0
-    ? containing
-    : firstAfter >= 0 ? firstAfter : blocks.length - 1;
-  const candidates = blocks.slice(start).concat(blocks.slice(0, start));
-  for (const candidate of candidates) {
-    const line = lineElementAt(view, candidate.from);
-    if (line) {
-      return {
-        from: candidate.from,
-        top: line.getBoundingClientRect().top,
-        scrollTop: scroll.scrollTop,
-        epoch,
-      };
-    }
-  }
-  return null;
-}
-
-function applyLayoutAnchor(view: EditorView, anchor: LayoutAnchor): number {
-  const line = lineElementAt(view, anchor.from);
-  if (!line) return 0;
-  const delta = line.getBoundingClientRect().top - anchor.top;
-  if (Math.abs(delta) < 0.25) return 0;
-  const scroll = view.scrollDOM;
-  const maximum = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-  const before = scroll.scrollTop;
-  const after = Math.max(0, Math.min(maximum, before + delta));
-  if (Math.abs(after - before) >= 0.25) scroll.scrollTop = after;
-  return after - before;
-}
-
 /** Presentation only: never dispatches a source/selection transaction. A
  * retained mark carries exact text in both states, so exit can reverse entry.
  * Input, composition, scrolling and resizing finish motion immediately. */
@@ -140,24 +72,23 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
   private animations: Animation[] = [];
   private objects = new Set<HTMLElement>();
   private destroyed = false;
-  private layoutEpoch = 0;
   private reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   private resize: ResizeObserver;
   private inlineSize = 0;
 
   constructor(readonly view: EditorView) {
-    this.reduced.addEventListener("change", this.invalidateLayoutAnchor);
+    this.reduced.addEventListener("change", this.stop);
     this.resize = new ResizeObserver(entries => {
       const width = entries[0]?.contentRect.width ?? 0;
       if (width === this.inlineSize) return;
       this.inlineSize = width;
-      this.invalidateLayoutAnchor();
+      this.stop();
       this.borrowed.clear();
       this.frames.clear();
       this.frontmatterFrames.clear();
       this.measure(false);
     });
-    view.scrollDOM.addEventListener("scroll", this.invalidateLayoutAnchor, {passive: true});
+    view.scrollDOM.addEventListener("scroll", this.stop, {passive: true});
     this.resize.observe(view.scrollDOM);
     this.measure(false);
   }
@@ -169,39 +100,11 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     this.frontmatterTransitions.clear();
   };
 
-  readonly invalidateLayoutAnchor = () => {
-    this.layoutEpoch += 1;
-    this.stop();
-  };
-
-  private scheduleLayoutAnchor(anchor: LayoutAnchor) {
-    queueMicrotask(() => {
-      if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
-      const scroll = this.view.scrollDOM;
-      if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return;
-      const scrollCorrection = applyLayoutAnchor(this.view, anchor);
-      if (scrollCorrection === 0) return;
-      const cursor = readLiveCursorGeometry(this.view);
-      writeLiveCursorGeometry(this.view, cursor && {
-        ...cursor,
-        top: cursor.top - scrollCorrection,
-        bottom: cursor.bottom - scrollCorrection,
-      });
-    });
-  }
-
   update(update: ViewUpdate) {
     if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
-    this.layoutEpoch += 1;
     const animate = !update.docChanged
       && !this.view.composing
       && update.state.selection.main.empty && !this.reduced.matches;
-    const layoutAnchor = !update.docChanged && update.selectionSet
-      && !this.view.composing
-      && update.transactions.every(transaction =>
-        !transaction.scrollIntoView && transaction.effects.length === 0)
-      ? captureLayoutAnchor(this.view, this.layoutEpoch)
-      : null;
     for (const [key, transition] of this.transitions) {
       const frame = this.frames.get(key);
       const progress = transition.animation.effect?.getComputedTiming().progress;
@@ -222,10 +125,10 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     this.transitions.clear();
     this.frontmatterTransitions.clear();
     this.stop();
-    this.measure(animate, layoutAnchor);
+    this.measure(animate);
   }
 
-  private measure(animate: boolean, layoutAnchor: LayoutAnchor | null = null) {
+  private measure(animate: boolean) {
     this.view.requestMeasure({
       key: this,
       read: () => ({
@@ -368,12 +271,9 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
         this.frames = next;
         for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
         // Geometry is already in its final state. If prefix borrowing changed
-        // the line, re-read the cursor after that synchronous commit. Defer
-        // the custom anchor correction until CodeMirror finishes this measure
-        // cycle, so its own scroll anchoring remains the first and only
-        // correction in this cycle.
+        // the line, re-read the cursor after that synchronous commit. The
+        // shared Live Presentation Layout coordinator owns viewport correction.
         const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
-        if (layoutAnchor) this.scheduleLayoutAnchor(layoutAnchor);
         writeLiveCursorGeometry(this.view, measuredCursor);
       },
     });
@@ -382,11 +282,11 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
   destroy() {
     this.destroyed = true;
     this.stop();
-    this.reduced.removeEventListener("change", this.invalidateLayoutAnchor);
-    this.view.scrollDOM.removeEventListener("scroll", this.invalidateLayoutAnchor);
+    this.reduced.removeEventListener("change", this.stop);
+    this.view.scrollDOM.removeEventListener("scroll", this.stop);
     this.resize.disconnect();
   }
 }, {eventHandlers: {
-  compositionstart() { this.invalidateLayoutAnchor(); },
-  mousedown() { this.invalidateLayoutAnchor(); },
+  compositionstart() { this.stop(); },
+  mousedown() { this.stop(); },
 }});

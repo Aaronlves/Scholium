@@ -10,6 +10,7 @@ import {
   transactionChangedSyntaxTree,
   type ProjectionSelectionRange,
 } from "./projection-update";
+import {preserveLivePresentationLayout} from "./live-presentation-layout";
 import type {TablePresentation} from "./table-presentation";
 import type {
   CalloutPresentation,
@@ -154,12 +155,28 @@ export function createLiveStructuredBlockProjections(options: {
     map: (value, changes) => ({...value, from: changes.mapPos(value.from)}),
   });
 
+  function calloutFoldEnd(state: EditorState, headerTo: number, presentationTo: number) {
+    if (presentationTo <= headerTo || presentationTo >= state.doc.length) return presentationTo;
+    return state.doc.sliceString(presentationTo, presentationTo + 1) === "\n"
+      ? presentationTo + 1
+      : presentationTo;
+  }
+
   class CalloutHeadingWidget extends WidgetType {
-    constructor(readonly from: number, readonly label: string, readonly title: string,
-      readonly foldable: boolean, readonly collapsed: boolean) { super(); }
+    constructor(
+      readonly from: number,
+      readonly bodyFrom: number,
+      readonly foldTo: number,
+      readonly label: string,
+      readonly title: string,
+      readonly foldable: boolean,
+      readonly collapsed: boolean,
+    ) { super(); }
     eq(other: CalloutHeadingWidget) {
-      return this.from === other.from && this.label === other.label && this.title === other.title
-        && this.foldable === other.foldable && this.collapsed === other.collapsed;
+      return this.from === other.from && this.bodyFrom === other.bodyFrom
+        && this.foldTo === other.foldTo && this.label === other.label
+        && this.title === other.title && this.foldable === other.foldable
+        && this.collapsed === other.collapsed;
     }
     toDOM(view: EditorView) {
       const root = document.createElement("span");
@@ -178,7 +195,10 @@ export function createLiveStructuredBlockProjections(options: {
           const collapsed = button.getAttribute("aria-expanded") === "true";
           view.dispatch({
             ...(collapsed ? {selection: {anchor: from}} : {}),
-            effects: setCalloutFold.of({from, collapsed}),
+            effects: [
+              preserveLivePresentationLayout.of({from: this.bodyFrom, to: this.foldTo}),
+              setCalloutFold.of({from, collapsed}),
+            ],
           });
         });
         root.append(button);
@@ -221,6 +241,7 @@ export function createLiveStructuredBlockProjections(options: {
       const opening = calloutHeader(header.text);
       if (!opening) continue;
       const foldable = !!opening[3];
+      const foldTo = calloutFoldEnd(state, header.to, presentation.to);
       const bodyActive = selections.some(range =>
         selectionActivatesCalloutBody(range, header.to, presentation.to));
       const collapsed = foldable && !bodyActive
@@ -229,12 +250,20 @@ export function createLiveStructuredBlockProjections(options: {
       // Untitled inactive headers share Review's role title. Active syntax
       // hides this projection without inserting text into the source.
       if (foldable || !opening[4]) decorations.push(Decoration.widget({
-        widget: new CalloutHeadingWidget(presentation.from, label, opening[4], foldable, collapsed),
+        widget: new CalloutHeadingWidget(
+          presentation.from,
+          header.to,
+          foldTo,
+          label,
+          opening[4],
+          foldable,
+          collapsed,
+        ),
         side: 1,
       }).range(header.to - opening[4].length));
       if (collapsed) decorations.push(Decoration.line({class: "cm-live-callout-end"}).range(header.from));
-      if (collapsed && presentation.to > header.to) {
-        decorations.push(Decoration.replace({}).range(header.to, presentation.to));
+      if (collapsed && foldTo > header.to) {
+        decorations.push(Decoration.replace({}).range(header.to, foldTo));
       }
     }
     return Decoration.set(decorations, true);

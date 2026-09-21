@@ -163,6 +163,7 @@ import {createLiveMermaidProjection} from "./live-mermaid-projection";
 import {createLiveStructuredBlockProjections} from "./live-structured-block-projections";
 import {createLiveDisplayMathProjection} from "./live-display-math-projection";
 import {createLiveFootnoteProjection} from "./live-footnote-projection";
+import {livePresentationLayout} from "./live-presentation-layout";
 import {createLiveProjectionNavigation} from "./live-projection-navigation";
 import {createLiveInlineWidgets} from "./live-inline-widgets";
 import {sourceTextDirection} from "./source-direction";
@@ -2070,6 +2071,7 @@ const livePreviewMode = [
   livePreview,
   Prec.high(liveProjectionNavigation.extension),
   previewPopover.extension,
+  livePresentationLayout,
   EditorView.lineWrapping,
 ];
 const sourceMode = [

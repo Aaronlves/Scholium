@@ -167,7 +167,13 @@ conservatively. Complete whole-Note topology cannot be assumed from a viewport t
 Direct CodeMirror fields own block/line geometry; viewport plugins own inline
 projection only. Authored separators remain exact rows, not source-less duplicate
 spacing. Semantic widgets, selection, pointer mapping and scrolling share native
-measurement. No decoration state is mutated by an independent geometry cache.
+measurement. One Live Presentation Layout coordinator owns presentation-only
+geometry continuity: projection owners mark an affected source range with a
+typed effect, and the coordinator captures a stable source-line viewport anchor
+before decoration exchange and corrects it after CodeMirror measurement. Callout
+fold state remains session-local in its projection field, but it does not own
+scroll or pointer state. No decoration state is mutated by an independent
+geometry cache, and no projection owner performs a second scroll correction.
 
 Read and Live consume one semantic component/presentation contract. Application
 owns byte-checked Appearance/snippet storage and explicit reload; stale/invalid
@@ -229,5 +235,6 @@ dated results belong to Status. A focused series cannot pass the complete gate.
   `Scholium/Views/Note/DocumentWebViewContainer.swift`: one-visible-surface
   native composition boundary.
 - `Scholium/Views/Note/MarkdownEditorSession.swift`: checked native bridge/recovery.
-- `WebEditor/editor.ts` and `WebEditor/reader.ts`: controlled Web composition.
+- `WebEditor/editor.ts`, `WebEditor/live-presentation-layout.ts` and
+  `WebEditor/reader.ts`: controlled Web composition.
 - `ScholiumContracts/MarkdownSemanticDocument.swift`: committed source semantics.

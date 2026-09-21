@@ -4344,6 +4344,70 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Edit Callout disclosure keeps following-line pointer selection stable")
+    func editCalloutDisclosureKeepsFollowingLinePointerSelectionStable() async throws {
+        let source = """
+            Introductory context before the folded block.
+
+            > [!state]- Folded claim
+            > Body line one remains source-owned.
+            > Body line two remains source-owned.
+
+            AFTER_TARGET remains directly pointer-addressable.
+            Following context stays below the target.
+            """
+        let targetRange = try #require(source.range(of: "AFTER_TARGET"))
+        let targetFrom = targetRange.lowerBound.utf16Offset(in: source)
+        let targetTo = targetRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(
+            source: source,
+            initialWindowSize: NSSize(width: 1_080, height: 640),
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func waitForDisclosure(_ expanded: Bool) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                let value =
+                    try await harness.callPageJavaScript(
+                        """
+                        return document.querySelector('.cm-live-callout-disclosure')?.getAttribute('aria-expanded') === 'true';
+                        """
+                    ) as? Bool
+                if value == expanded { return }
+                if clock.now >= deadline {
+                    Issue.record("The Edit Callout disclosure did not reach the expected state \(expanded).")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        try await waitForDisclosure(false)
+        try await harness.session.testingClickElementBox(".cm-live-callout-disclosure")
+        try await waitForDisclosure(true)
+        try await harness.session.testingClickVisibleText("AFTER_TARGET")
+        _ = try await harness.waitUntilSelection(in: targetFrom..<targetTo)
+        let expandedSelection = try #require(harness.session.context?.selections.first)
+        #expect(expandedSelection.anchor == expandedSelection.head)
+        #expect(targetFrom..<targetTo ~= expandedSelection.head)
+        try await waitForDisclosure(true)
+
+        try await harness.session.testingClickElementBox(".cm-live-callout-disclosure")
+        try await waitForDisclosure(false)
+        try await harness.session.testingClickVisibleText("AFTER_TARGET")
+        _ = try await harness.waitUntilSelection(in: targetFrom..<targetTo)
+        let collapsedSelection = try #require(harness.session.context?.selections.first)
+        #expect(collapsedSelection.anchor == collapsedSelection.head)
+        #expect(targetFrom..<targetTo ~= collapsedSelection.head)
+        try await waitForDisclosure(false)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Edit source-less semantic spacing resolves to its document boundary")
     func editSourceLessSemanticSpacingResolvesToDocumentBoundary() async throws {
         let source = "```text\ncode\n```\nFollowing paragraph.\n"
