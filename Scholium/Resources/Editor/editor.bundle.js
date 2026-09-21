@@ -14021,6 +14021,41 @@
   function prefixNeedsMargin(textWidth, tokenWidth, measure, availableMargin) {
     return textWidth > measure && textWidth - tokenWidth <= measure && tokenWidth + 4 <= availableMargin;
   }
+  function lineElementAt(view, position) {
+    for (const assoc of [1, -1]) {
+      try {
+        const point = view.domAtPos(position, assoc);
+        const element = point.node.nodeType === Node.ELEMENT_NODE ? point.node : point.node.parentElement;
+        const line = element?.closest(".cm-line");
+        if (line) return line;
+      } catch {
+      }
+    }
+    return null;
+  }
+  function captureLayoutAnchor(view) {
+    const scroll = view.scrollDOM;
+    const rect = scroll.getBoundingClientRect();
+    const probeHeight = Math.max(
+      0,
+      rect.top + 1 - view.documentTop + scroll.scrollTop
+    );
+    const block = view.lineBlockAtHeight(probeHeight);
+    const line = lineElementAt(view, block.from);
+    return line ? { from: block.from, top: line.getBoundingClientRect().top } : null;
+  }
+  function applyLayoutAnchor(view, anchor) {
+    const line = lineElementAt(view, anchor.from);
+    if (!line) return 0;
+    const delta = line.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(delta) < 0.25) return 0;
+    const scroll = view.scrollDOM;
+    const maximum = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    const before = scroll.scrollTop;
+    const after = Math.max(0, Math.min(maximum, before + delta));
+    if (Math.abs(after - before) >= 0.25) scroll.scrollTop = after;
+    return after - before;
+  }
   var syntaxPresentation = ViewPlugin.fromClass(class {
     constructor(view) {
       this.view = view;
@@ -14030,8 +14065,6 @@
         if (width === this.inlineSize) return;
         this.inlineSize = width;
         this.stop();
-        for (const placement of this.placements.values()) placement.animation.cancel();
-        this.placements.clear();
         this.borrowed.clear();
         this.frames.clear();
         this.frontmatterFrames.clear();
@@ -14045,19 +14078,15 @@
     frames = /* @__PURE__ */ new Map();
     frontmatterFrames = /* @__PURE__ */ new Map();
     borrowed = /* @__PURE__ */ new Set();
-    placements = /* @__PURE__ */ new Map();
     transitions = /* @__PURE__ */ new Map();
     frontmatterTransitions = /* @__PURE__ */ new Map();
     animations = [];
     objects = /* @__PURE__ */ new Set();
-    frame = 0;
     destroyed = false;
     reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     resize;
     inlineSize = 0;
     stop = () => {
-      cancelAnimationFrame(this.frame);
-      this.frame = 0;
       for (const animation of this.animations) animation.cancel();
       this.animations = [];
       this.transitions.clear();
@@ -14066,14 +14095,13 @@
     update(update) {
       if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
       const animate = !update.docChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
+      const layoutAnchor = !update.docChanged && update.selectionSet && update.transactions.every((transaction) => !transaction.scrollIntoView && transaction.effects.length === 0) ? captureLayoutAnchor(this.view) : null;
       for (const [key, transition] of this.transitions) {
         const frame = this.frames.get(key);
         const progress = transition.animation.effect?.getComputedTiming().progress;
         if (frame && typeof progress === "number") {
           frame.color = getComputedStyle(transition.node).color || frame.color;
-          frame.width = transition.fromWidth + (transition.toWidth - transition.fromWidth) * progress;
           frame.opacity = transition.fromOpacity + (transition.toOpacity - transition.fromOpacity) * progress;
-          frame.marginInlineStart = transition.fromMarginInlineStart + (transition.toMarginInlineStart - transition.fromMarginInlineStart) * progress;
         }
       }
       for (const [key, transition] of this.frontmatterTransitions) {
@@ -14086,9 +14114,9 @@
       this.transitions.clear();
       this.frontmatterTransitions.clear();
       this.stop();
-      this.measure(animate);
+      this.measure(animate, layoutAnchor);
     }
-    measure(animate) {
+    measure(animate, layoutAnchor = null) {
       this.view.requestMeasure({
         key: this,
         read: () => ({
@@ -14114,9 +14142,7 @@
             const key = node.dataset.syntaxKey;
             const open = node.dataset.syntaxOpen === "true";
             const width = node.getBoundingClientRect().width;
-            const height = node.getBoundingClientRect().height;
             const line = node.closest(".cm-line");
-            const multiline = height > parseFloat(getComputedStyle(node).lineHeight) + 1;
             const displace = node.dataset.syntaxDisplace === "true" && !line?.matches(".cm-live-callout, .cm-live-codeblock, .cm-live-rule, .scholium-frontmatter-line");
             let borrow = open && this.borrowed.has(key);
             if (borrow && node.getBoundingClientRect().left < this.view.scrollDOM.getBoundingClientRect().left + 4) borrow = false;
@@ -14139,29 +14165,21 @@
                 node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left
               );
             }
-            const parentStyle = getComputedStyle(node.parentElement);
             const style = getComputedStyle(node);
             return {
               node,
               key,
               open,
               width,
-              height,
-              multiline,
               borrow,
-              displace,
               activeColor: style.getPropertyValue("--scholium-syntax-active-ink").trim(),
               secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim(),
-              opacity: Number.parseFloat(style.opacity) || 0,
-              marginInlineStart: borrow ? -width : 0,
-              fontSize: parentStyle.fontSize,
-              lineHeight: parentStyle.lineHeight
+              opacity: Number.parseFloat(style.opacity) || 0
             };
           })
         }),
         write: ({ tokens, objects, cursor, frontmatter }) => {
           if (this.destroyed) return;
-          writeLiveCursorGeometry(this.view, cursor);
           for (const object of objects) {
             if (animate && this.objects.size && !this.objects.has(object) && typeof object.animate === "function") {
               this.animations.push(object.animate(
@@ -14191,101 +14209,56 @@
           }
           this.frontmatterFrames = nextFrontmatter;
           const next = /* @__PURE__ */ new Map();
-          for (const { node, key, open, width, height, multiline, borrow, fontSize, lineHeight, displace, activeColor, secondaryColor } of tokens) {
+          let marginChanged = false;
+          for (const { node, key, open, width, borrow, activeColor, secondaryColor } of tokens) {
             const previous = this.frames.get(key);
             if (borrow) this.borrowed.add(key);
             else this.borrowed.delete(key);
-            const placement = this.placements.get(key);
-            if (!borrow || placement?.node !== node || placement.width !== width) {
-              placement?.animation.cancel();
-              this.placements.delete(key);
-              if (borrow && typeof node.animate === "function") {
-                const animation2 = node.animate(
-                  [{ marginInlineStart: `${-width}px` }],
-                  { duration: 0, fill: "forwards" }
-                );
-                this.placements.set(key, { node, width, animation: animation2 });
+            const targetMargin = borrow ? -width : 0;
+            if (targetMargin === 0) {
+              if (node.style.marginInlineStart) {
+                node.style.removeProperty("margin-inline-start");
+                marginChanged = true;
               }
+            } else if (node.style.marginInlineStart !== `${targetMargin}px`) {
+              node.style.marginInlineStart = `${targetMargin}px`;
+              marginChanged = true;
             }
             const targetOpacity = open ? 1 : 0;
-            const targetMarginInlineStart = borrow ? -width : 0;
             next.set(key, {
               open,
               color: open ? activeColor : secondaryColor,
-              width,
-              height,
-              opacity: targetOpacity,
-              marginInlineStart: targetMarginInlineStart,
-              multiline
+              opacity: targetOpacity
             });
-            if (!animate || !previous || previous.open === open || previous.multiline || multiline || typeof node.animate !== "function") continue;
-            const motionHeight = open ? height : previous.height;
-            const geometryFrames = [
-              {
-                width: `${previous.width}px`,
-                height: `${motionHeight}px`,
-                fontSize,
-                lineHeight,
-                whiteSpace: "pre",
-                marginInlineStart: `${previous.marginInlineStart}px`,
-                opacity: previous.opacity
-              },
-              {
-                width: `${width}px`,
-                height: `${motionHeight}px`,
-                fontSize,
-                lineHeight,
-                whiteSpace: "pre",
-                marginInlineStart: `${targetMarginInlineStart}px`,
-                opacity: targetOpacity
-              }
-            ];
-            const colorFrames = [
+            if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
+            const animation = node.animate([
               { opacity: previous.opacity, color: previous.color },
               { opacity: targetOpacity, color: open ? activeColor : secondaryColor }
-            ];
-            const frames = displace ? geometryFrames.map((frame, index) => ({ ...frame, ...colorFrames[index] })) : colorFrames;
-            const animation = node.animate(
-              frames,
-              { duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" }
-            );
+            ], { duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
             this.animations.push(animation);
             this.transitions.set(key, {
               node,
               animation,
-              fromWidth: previous.width,
-              toWidth: width,
               fromOpacity: previous.opacity,
-              toOpacity: targetOpacity,
-              fromMarginInlineStart: previous.marginInlineStart,
-              toMarginInlineStart: targetMarginInlineStart
+              toOpacity: targetOpacity
             });
           }
           this.frames = next;
           for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
-          for (const [key, placement] of this.placements) if (!next.has(key)) {
-            placement.animation.cancel();
-            this.placements.delete(key);
-          }
-          if (this.animations.some((animation) => animation.playState === "running")) {
-            this.tick();
-          } else {
-            this.stop();
-          }
+          const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
+          const scrollCorrection = layoutAnchor ? applyLayoutAnchor(this.view, layoutAnchor) : 0;
+          const adjustedCursor = measuredCursor && scrollCorrection !== 0 ? {
+            ...measuredCursor,
+            top: measuredCursor.top - scrollCorrection,
+            bottom: measuredCursor.bottom - scrollCorrection
+          } : measuredCursor;
+          writeLiveCursorGeometry(this.view, adjustedCursor);
         }
-      });
-    }
-    tick() {
-      this.frame = requestAnimationFrame(() => {
-        if (this.destroyed) return;
-        this.measure(false);
       });
     }
     destroy() {
       this.destroyed = true;
       this.stop();
-      for (const placement of this.placements.values()) placement.animation.cancel();
-      this.placements.clear();
       this.reduced.removeEventListener("change", this.stop);
       this.view.scrollDOM.removeEventListener("scroll", this.stop);
       this.resize.disconnect();
@@ -31409,6 +31382,9 @@ ${fence}
   function selectionActivatesSyntax(selection, projection) {
     return selection.empty ? selection.head >= projection.from && selection.head <= projection.to : selection.from < projection.to && selection.to > projection.from;
   }
+  function selectionIntersectsPhysicalLine(selection, lineFrom, lineTo, queryTo) {
+    return selection.empty ? selection.head >= lineFrom && selection.head <= lineTo : selection.from < queryTo && selection.to > lineFrom;
+  }
   function activeProjectionSignature(selections, projections) {
     const active = /* @__PURE__ */ new Map();
     for (const selection of selections) {
@@ -31424,7 +31400,8 @@ ${fence}
   function selectionProjectionSignature(doc2, selections, inlineProjections, listPrefixProjections = []) {
     const activeLines = selections.map((selection) => {
       const fromLine = doc2.lineAt(Math.max(0, Math.min(selection.from, doc2.length))).from;
-      const toLine = doc2.lineAt(Math.max(0, Math.min(selection.to, doc2.length))).from;
+      const endPosition = selection.empty ? selection.to : Math.max(selection.from, selection.to - 1);
+      const toLine = doc2.lineAt(Math.max(0, Math.min(endPosition, doc2.length))).from;
       return `${fromLine}:${toLine}`;
     }).join("|");
     return [
@@ -35189,7 +35166,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const { selection, projections } = options;
     function semanticLinePresentation(state, line, index) {
       const lineQueryTo = Math.min(state.doc.length, line.to + 1);
-      const active = selection.selection(state).ranges.some((range) => range.head >= line.from && range.head <= line.to || !range.empty && range.from < lineQueryTo && range.to >= line.from);
+      const active = selection.selection(state).ranges.some((range) => selectionIntersectsPhysicalLine(range, line.from, line.to, lineQueryTo));
       const ownsCollapsedCaret = selection.selection(state).ranges.some((range) => range.empty && range.head >= line.from && range.head <= line.to);
       const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
       const followsFrontmatter = index.frontmatterRange !== null && index.frontmatterRange.to < state.doc.length && line.from === index.frontmatterRange.to && !/^\s*$/.test(line.text);
@@ -38387,9 +38364,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         const lineFullyScanned = scanFrom === line.from && scanTo === line.to;
         const lineQueryTo = Math.min(doc2.length, scanTo + 1);
         const activeLine = projectionSelections.some(
-          (range) => range.head >= line.from && range.head <= line.to || !range.empty && range.from < lineQueryTo && range.to >= line.from
+          (range) => selectionIntersectsPhysicalLine(range, line.from, line.to, lineQueryTo)
         ) || view.composing && projectionSelections.some(
-          (range) => range.from < lineQueryTo && range.to >= line.from
+          (range) => selectionIntersectsPhysicalLine(range, line.from, line.to, lineQueryTo)
         );
         const inlineConstructIsActive = (from, to) => projectionSelections.some(
           (range) => selectionActivatesSyntax(range, { from, to })

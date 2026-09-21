@@ -102,6 +102,7 @@ import {
   selectionActivatesSyntax,
   selectionProjectionSignature,
   frontmatterPresentationNeedsRebuild,
+  selectionIntersectsPhysicalLine,
   transactionChangedSyntaxTree,
   type ProjectionSelectionRange,
   type ProjectionSourceRange,
@@ -961,10 +962,9 @@ function buildLiveDecorations(
       const lineFullyScanned = scanFrom === line.from && scanTo === line.to;
       const lineQueryTo = Math.min(doc.length, scanTo + 1);
       const activeLine = projectionSelections.some((range) =>
-        range.head >= line.from && range.head <= line.to
-        || !range.empty && range.from < lineQueryTo && range.to >= line.from,
+        selectionIntersectsPhysicalLine(range, line.from, line.to, lineQueryTo),
       ) || view.composing && projectionSelections.some(
-        (range) => range.from < lineQueryTo && range.to >= line.from,
+        (range) => selectionIntersectsPhysicalLine(range, line.from, line.to, lineQueryTo),
       );
       const inlineConstructIsActive = (from: number, to: number) =>
         projectionSelections.some((range) =>

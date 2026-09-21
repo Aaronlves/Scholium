@@ -2934,8 +2934,10 @@ struct FrontendArchitectureTests {
         #expect(syntaxPresentationSource.contains("getComputedTiming"))
         #expect(syntaxPresentationSource.contains("{opacity: previous.opacity, color: previous.color}"))
         #expect(syntaxPresentationSource.contains("color: open ? activeColor : secondaryColor"))
-        #expect(syntaxPresentationSource.contains("fromWidth"))
-        #expect(syntaxPresentationSource.contains("fromMarginInlineStart"))
+        #expect(syntaxPresentationSource.contains("applyLayoutAnchor"))
+        #expect(syntaxPresentationSource.contains("node.style.marginInlineStart"))
+        #expect(!syntaxPresentationSource.contains("fromWidth"))
+        #expect(!syntaxPresentationSource.contains("fromMarginInlineStart"))
         #expect(syntaxPresentationSource.contains("scholium-frontmatter-delimiter-line"))
         #expect(editorSource.contains("data-scholium-yaml-delimiter"))
         #expect(semanticProjectionSource.contains("[\"CommentBlock\", \"html\"]"))
@@ -2948,6 +2950,11 @@ struct FrontendArchitectureTests {
         #expect(editorStyles.contains(".cm-cursor"))
         #expect(editorStyles.contains(".cm-live-footnote-source-marker"))
         #expect(editorStyles.contains(".cm-syntax-token {"))
+        #expect(
+            editorStyles.contains(
+                ".cm-syntax-token[data-syntax-open=\"true\"][data-syntax-displace=\"true\"]"
+            )
+        )
         #expect(editorStyles.contains("font-family: inherit;"))
         #expect(editorStyles.contains("var(--scholium-document-technical-surface)"))
         #expect(ScholiumMathAssets.css.contains(".scholium-math-display"))

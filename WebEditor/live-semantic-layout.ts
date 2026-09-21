@@ -15,6 +15,7 @@ import {
 import {
   selectionActivatesSyntax,
   selectionAffectedProjectionRanges,
+  selectionIntersectsPhysicalLine,
   transactionChangedSyntaxTree,
   type ProjectionSelectionRange,
   type ProjectionSourceRange,
@@ -150,8 +151,7 @@ export function createLiveSemanticLayout(options: {
   ): SemanticLinePresentation {
     const lineQueryTo = Math.min(state.doc.length, line.to + 1);
     const active = selection.selection(state).ranges.some((range) =>
-      range.head >= line.from && range.head <= line.to
-        || !range.empty && range.from < lineQueryTo && range.to >= line.from);
+      selectionIntersectsPhysicalLine(range, line.from, line.to, lineQueryTo));
     const ownsCollapsedCaret = selection.selection(state).ranges.some((range) =>
       range.empty && range.head >= line.from && range.head <= line.to);
     const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;

@@ -38,6 +38,21 @@ export function selectionActivatesSyntax(
     : selection.from < projection.to && selection.to > projection.from;
 }
 
+/** A physical line includes its authored newline for nonempty selections,
+ * but a collapsed caret at the newline belongs only to the line's content.
+ * Keeping this half-open rule in one helper prevents the next line from
+ * activating when a selection ends exactly at its start. */
+export function selectionIntersectsPhysicalLine(
+  selection: ProjectionSelectionRange,
+  lineFrom: number,
+  lineTo: number,
+  queryTo: number,
+) {
+  return selection.empty
+    ? selection.head >= lineFrom && selection.head <= lineTo
+    : selection.from < queryTo && selection.to > lineFrom;
+}
+
 export function activeProjectionSignature(
   selections: readonly ProjectionSelectionRange[],
   projections: readonly ProjectionSourceRange[],
@@ -72,7 +87,10 @@ export function selectionProjectionSignature(
 ) {
   const activeLines = selections.map((selection) => {
     const fromLine = doc.lineAt(Math.max(0, Math.min(selection.from, doc.length))).from;
-    const toLine = doc.lineAt(Math.max(0, Math.min(selection.to, doc.length))).from;
+    const endPosition = selection.empty
+      ? selection.to
+      : Math.max(selection.from, selection.to - 1);
+    const toLine = doc.lineAt(Math.max(0, Math.min(endPosition, doc.length))).from;
     return `${fromLine}:${toLine}`;
   }).join("|");
   return [

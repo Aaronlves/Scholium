@@ -7,6 +7,7 @@ import {
   selectionAffectedProjectionRanges,
   selectionActivatesSyntax,
   selectionProjectionSignature,
+  selectionIntersectsPhysicalLine,
   transactionCanMapProjection,
   transactionCanMapProjectionTopology,
   transactionChangedSyntaxTree,
@@ -312,6 +313,25 @@ describe("local projection-topology proof", () => {
 describe("projection activation boundaries", () => {
   const projection = {from: 4, to: 12};
   const caret = (head: number) => ({from: head, to: head, head, empty: true});
+
+  it("keeps a selection ending at the next line start on the previous line", () => {
+    const line = {from: 0, to: 3, queryTo: 4};
+    const endingAtBoundary = {from: 0, to: 4, head: 4, empty: false};
+    const enteringNextLine = {from: 0, to: 5, head: 5, empty: false};
+    expect(selectionIntersectsPhysicalLine(
+      endingAtBoundary, line.from, line.to, line.queryTo,
+    )).toBe(true);
+    expect(selectionIntersectsPhysicalLine(
+      enteringNextLine, 4, 7, 8,
+    )).toBe(true);
+    expect(selectionIntersectsPhysicalLine(
+      {from: 0, to: 4, head: 4, empty: false}, 4, 7, 8,
+    )).toBe(false);
+    expect(selectionProjectionSignature(
+      EditorState.create({doc: "one\ntwo\nthree"}).doc,
+      [endingAtBoundary], [],
+    )).toContain("0:0");
+  });
 
   it("keeps inline syntax visible at both caret boundaries until the caret leaves", () => {
     for (const head of [4, 5, 11, 12]) expect(selectionActivatesSyntax(caret(head), projection)).toBe(true);

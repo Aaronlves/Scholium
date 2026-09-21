@@ -5214,7 +5214,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Short syntax expands while Callout and fence markers only fade")
+    @Test("Syntax activation commits layout while Callout and fence markers only fade")
     func syntaxMotionRespectsConstructBoundaries() async throws {
         let source = "Lead.\n\n**Bold**.\n\n> [!long-unsupported-callout-role] Title\n> Body.\n\n```typescript\nlet value = 1;\n```\n\nAfter."
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
@@ -5230,7 +5230,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                         callout: !!this.closest('.cm-live-callout'),
                         code: !!this.closest('.cm-live-codeblock'),
                         opens: this.dataset.syntaxOpen === 'true',
-                        width: frames.some(frame => 'width' in frame || 'marginInlineStart' in frame),
+                        geometry: frames.some(frame => 'width' in frame
+                            || 'height' in frame || 'marginInlineStart' in frame),
                         color: frames.some(frame => 'color' in frame)
                     });
                 }
@@ -5254,10 +5255,11 @@ struct MarkdownEditorWebViewIntegrationTests {
                 """
                 const frames = window.syntaxMotionFrames;
                 if (matchMedia('(prefers-reduced-motion: reduce)').matches) return frames.length === 0;
-                return frames.some(f => f.width && !f.callout && !f.code)
+                return frames.length > 0
+                    && frames.every(f => !f.geometry)
                     && frames.some(f => f.callout && f.opens && f.color)
                     && frames.some(f => f.code && f.opens && f.color)
-                    && frames.filter(f => f.callout || f.code).every(f => !f.width);
+                    && frames.some(f => !f.callout && !f.code && f.color);
                 """) as? Bool == true)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)

@@ -32,23 +32,20 @@ export function syntaxToken(source: string, from: number, to: number, exposed: b
 
 interface TokenFrame {
   color: string;
-  width: number;
-  height: number;
   opacity: number;
-  marginInlineStart: number;
   open: boolean;
-  multiline: boolean;
 }
 
 interface TokenTransition {
   node: HTMLElement;
   animation: Animation;
-  fromWidth: number;
-  toWidth: number;
   fromOpacity: number;
   toOpacity: number;
-  fromMarginInlineStart: number;
-  toMarginInlineStart: number;
+}
+
+interface LayoutAnchor {
+  from: number;
+  top: number;
 }
 
 interface FrontmatterFrame {
@@ -68,6 +65,47 @@ export function prefixNeedsMargin(textWidth: number, tokenWidth: number,
     && tokenWidth + 4 <= availableMargin;
 }
 
+function lineElementAt(view: EditorView, position: number): HTMLElement | null {
+  for (const assoc of [1, -1] as const) {
+    try {
+      const point = view.domAtPos(position, assoc);
+      const element = point.node.nodeType === Node.ELEMENT_NODE
+        ? point.node as Element
+        : point.node.parentElement;
+      const line = element?.closest<HTMLElement>(".cm-line");
+      if (line) return line;
+    } catch {
+      // A line can leave the viewport between the block and DOM measurements.
+    }
+  }
+  return null;
+}
+
+function captureLayoutAnchor(view: EditorView): LayoutAnchor | null {
+  const scroll = view.scrollDOM;
+  const rect = scroll.getBoundingClientRect();
+  const probeHeight = Math.max(
+    0,
+    rect.top + 1 - view.documentTop + scroll.scrollTop,
+  );
+  const block = view.lineBlockAtHeight(probeHeight);
+  const line = lineElementAt(view, block.from);
+  return line ? {from: block.from, top: line.getBoundingClientRect().top} : null;
+}
+
+function applyLayoutAnchor(view: EditorView, anchor: LayoutAnchor): number {
+  const line = lineElementAt(view, anchor.from);
+  if (!line) return 0;
+  const delta = line.getBoundingClientRect().top - anchor.top;
+  if (Math.abs(delta) < 0.25) return 0;
+  const scroll = view.scrollDOM;
+  const maximum = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+  const before = scroll.scrollTop;
+  const after = Math.max(0, Math.min(maximum, before + delta));
+  if (Math.abs(after - before) >= 0.25) scroll.scrollTop = after;
+  return after - before;
+}
+
 /** Presentation only: never dispatches a source/selection transaction. A
  * retained mark carries exact text in both states, so exit can reverse entry.
  * Input, composition, scrolling and resizing finish motion immediately. */
@@ -75,12 +113,10 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
   private frames = new Map<string, TokenFrame>();
   private frontmatterFrames = new Map<string, FrontmatterFrame>();
   private borrowed = new Set<string>();
-  private placements = new Map<string, {node: HTMLElement; width: number; animation: Animation}>();
   private transitions = new Map<string, TokenTransition>();
   private frontmatterTransitions = new Map<string, FrontmatterTransition>();
   private animations: Animation[] = [];
   private objects = new Set<HTMLElement>();
-  private frame = 0;
   private destroyed = false;
   private reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   private resize: ResizeObserver;
@@ -93,8 +129,6 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
       if (width === this.inlineSize) return;
       this.inlineSize = width;
       this.stop();
-      for (const placement of this.placements.values()) placement.animation.cancel();
-      this.placements.clear();
       this.borrowed.clear();
       this.frames.clear();
       this.frontmatterFrames.clear();
@@ -106,8 +140,6 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
   }
 
   readonly stop = () => {
-    cancelAnimationFrame(this.frame);
-    this.frame = 0;
     for (const animation of this.animations) animation.cancel();
     this.animations = [];
     this.transitions.clear();
@@ -119,17 +151,18 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     const animate = !update.docChanged
       && !this.view.composing
       && update.state.selection.main.empty && !this.reduced.matches;
+    const layoutAnchor = !update.docChanged && update.selectionSet
+      && update.transactions.every(transaction =>
+        !transaction.scrollIntoView && transaction.effects.length === 0)
+      ? captureLayoutAnchor(this.view)
+      : null;
     for (const [key, transition] of this.transitions) {
       const frame = this.frames.get(key);
       const progress = transition.animation.effect?.getComputedTiming().progress;
       if (frame && typeof progress === "number") {
         frame.color = getComputedStyle(transition.node).color || frame.color;
-        frame.width = transition.fromWidth
-          + (transition.toWidth - transition.fromWidth) * progress;
         frame.opacity = transition.fromOpacity
           + (transition.toOpacity - transition.fromOpacity) * progress;
-        frame.marginInlineStart = transition.fromMarginInlineStart
-          + (transition.toMarginInlineStart - transition.fromMarginInlineStart) * progress;
       }
     }
     for (const [key, transition] of this.frontmatterTransitions) {
@@ -143,10 +176,10 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     this.transitions.clear();
     this.frontmatterTransitions.clear();
     this.stop();
-    this.measure(animate);
+    this.measure(animate, layoutAnchor);
   }
 
-  private measure(animate: boolean) {
+  private measure(animate: boolean, layoutAnchor: LayoutAnchor | null = null) {
     this.view.requestMeasure({
       key: this,
       read: () => ({
@@ -172,9 +205,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           const key = node.dataset.syntaxKey!;
           const open = node.dataset.syntaxOpen === "true";
           const width = node.getBoundingClientRect().width;
-          const height = node.getBoundingClientRect().height;
           const line = node.closest<HTMLElement>(".cm-line");
-          const multiline = height > parseFloat(getComputedStyle(node).lineHeight) + 1;
           const displace = node.dataset.syntaxDisplace === "true"
             && !line?.matches(".cm-live-callout, .cm-live-codeblock, .cm-live-rule, .scholium-frontmatter-line");
           let borrow = open && this.borrowed.has(key);
@@ -198,14 +229,11 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
               && prefixNeedsMargin(textWidth, width, measure,
                 node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left);
           }
-          const parentStyle = getComputedStyle(node.parentElement!);
           const style = getComputedStyle(node);
-          return {node, key, open, width, height, multiline, borrow, displace,
+          return {node, key, open, width, borrow,
             activeColor: style.getPropertyValue("--scholium-syntax-active-ink").trim(),
             secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim(),
-            opacity: Number.parseFloat(style.opacity) || 0,
-            marginInlineStart: borrow ? -width : 0,
-            fontSize: parentStyle.fontSize, lineHeight: parentStyle.lineHeight};
+            opacity: Number.parseFloat(style.opacity) || 0};
         })}),
       write: ({tokens, objects, cursor, frontmatter}: {
         tokens: readonly {
@@ -213,16 +241,10 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           key: string;
           open: boolean;
           width: number;
-          height: number;
-          multiline: boolean;
-          displace: boolean;
           activeColor: string;
           secondaryColor: string;
           borrow: boolean;
           opacity: number;
-          marginInlineStart: number;
-          fontSize: string;
-          lineHeight: string;
         }[];
         objects: readonly HTMLElement[];
         cursor: LiveCursorGeometry | null;
@@ -231,10 +253,9 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           key: string;
           opacity: number;
           open: boolean;
-        }[];
+          }[];
       }) => {
         if (this.destroyed) return;
-        writeLiveCursorGeometry(this.view, cursor);
         for (const object of objects) {
           if (animate && this.objects.size && !this.objects.has(object) && typeof object.animate === "function") {
             this.animations.push(object.animate([{opacity: .65}, {opacity: 1}],
@@ -262,101 +283,64 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
         }
         this.frontmatterFrames = nextFrontmatter;
         const next = new Map<string, TokenFrame>();
-        for (const {node, key, open, width, height, multiline, borrow, fontSize, lineHeight, displace, activeColor, secondaryColor} of tokens) {
+        let marginChanged = false;
+        for (const {node, key, open, width, borrow, activeColor, secondaryColor} of tokens) {
           const previous = this.frames.get(key);
           if (borrow) this.borrowed.add(key); else this.borrowed.delete(key);
-          const placement = this.placements.get(key);
-          if (!borrow || placement?.node !== node || placement.width !== width) {
-            placement?.animation.cancel();
-            this.placements.delete(key);
-            if (borrow && typeof node.animate === "function") {
-              // Web Animations do not mutate CodeMirror-owned DOM attributes.
-              const animation = node.animate([{marginInlineStart: `${-width}px`}],
-                {duration: 0, fill: "forwards"});
-              this.placements.set(key, {node, width, animation});
+          const targetMargin = borrow ? -width : 0;
+          if (targetMargin === 0) {
+            if (node.style.marginInlineStart) {
+              node.style.removeProperty("margin-inline-start");
+              marginChanged = true;
             }
+          } else if (node.style.marginInlineStart !== `${targetMargin}px`) {
+            // Prefix borrowing is a layout decision, not a transition. Commit
+            // it before any visual pulse so the line never crosses a wrap
+            // threshold during the animation.
+            node.style.marginInlineStart = `${targetMargin}px`;
+            marginChanged = true;
           }
           const targetOpacity = open ? 1 : 0;
-          const targetMarginInlineStart = borrow ? -width : 0;
           next.set(key, {
             open,
             color: open ? activeColor : secondaryColor,
-            width,
-            height,
             opacity: targetOpacity,
-            marginInlineStart: targetMarginInlineStart,
-            multiline,
           });
-          if (!animate || !previous || previous.open === open || previous.multiline || multiline || typeof node.animate !== "function") continue;
-          const motionHeight = open ? height : previous.height;
-          const geometryFrames = [
-            {
-              width: `${previous.width}px`,
-              height: `${motionHeight}px`,
-              fontSize,
-              lineHeight,
-              whiteSpace: "pre",
-              marginInlineStart: `${previous.marginInlineStart}px`,
-              opacity: previous.opacity,
-            },
-            {
-              width: `${width}px`,
-              height: `${motionHeight}px`,
-              fontSize,
-              lineHeight,
-              whiteSpace: "pre",
-              marginInlineStart: `${targetMarginInlineStart}px`,
-              opacity: targetOpacity,
-            },
-          ];
-          const colorFrames = [
+          if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
+          const animation = node.animate([
             {opacity: previous.opacity, color: previous.color},
             {opacity: targetOpacity, color: open ? activeColor : secondaryColor},
-          ];
-          const frames = displace
-            ? geometryFrames.map((frame, index) => ({...frame, ...colorFrames[index]}))
-            : colorFrames;
-          const animation = node.animate(frames,
-            {duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both"});
+          ], {duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both"});
           this.animations.push(animation);
           this.transitions.set(key, {
             node,
             animation,
-            fromWidth: previous.width,
-            toWidth: width,
             fromOpacity: previous.opacity,
             toOpacity: targetOpacity,
-            fromMarginInlineStart: previous.marginInlineStart,
-            toMarginInlineStart: targetMarginInlineStart,
           });
         }
         this.frames = next;
         for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
-        for (const [key, placement] of this.placements) if (!next.has(key)) {
-          placement.animation.cancel();
-          this.placements.delete(key);
-        }
-        if (this.animations.some(animation => animation.playState === "running")) {
-          this.tick();
-        } else {
-          this.stop();
-        }
+        // Geometry is already in its final state. If prefix borrowing changed
+        // the line, re-read the cursor after that synchronous commit and move
+        // the viewport anchor before writing the cursor marker.
+        const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
+        const scrollCorrection = layoutAnchor
+          ? applyLayoutAnchor(this.view, layoutAnchor)
+          : 0;
+        const adjustedCursor = measuredCursor && scrollCorrection !== 0
+          ? {...measuredCursor,
+            top: measuredCursor.top - scrollCorrection,
+            bottom: measuredCursor.bottom - scrollCorrection}
+          : measuredCursor;
+        writeLiveCursorGeometry(this.view, adjustedCursor);
       },
-    });
-  }
-
-  private tick() {
-    this.frame = requestAnimationFrame(() => {
-      if (this.destroyed) return;
-      this.measure(false);
     });
   }
 
   destroy() {
     this.destroyed = true;
     this.stop();
-    for (const placement of this.placements.values()) placement.animation.cancel();
-    this.placements.clear();
     this.reduced.removeEventListener("change", this.stop);
     this.view.scrollDOM.removeEventListener("scroll", this.stop);
     this.resize.disconnect();
