@@ -1,7 +1,12 @@
 import {EditorState} from "@codemirror/state";
 import {EditorView} from "@codemirror/view";
 import {describe, expect, it} from "vitest";
-import {canDisplaceSyntax, prefixNeedsMargin, syntaxToken} from "../syntax-presentation";
+import {
+  animatedScalar,
+  canDisplaceSyntax,
+  prefixNeedsMargin,
+  syntaxToken,
+} from "../syntax-presentation";
 import {createLiveSelectionController} from "../live-selection";
 import {createLiveProjectionIndexController} from "../live-projection-index";
 import {
@@ -13,6 +18,12 @@ import {preserveLivePresentationLayout} from "../live-presentation-layout";
 import {scholiumNoteLanguage} from "../language";
 
 describe("syntax presentation boundaries", () => {
+  it("keeps the currently presented value when syntax animation reverses", () => {
+    expect(animatedScalar("0.41", 0.9, 0, 1)).toBeCloseTo(0.41);
+    expect(animatedScalar("auto", 0.25, 0, 1)).toBeCloseTo(0.25);
+    expect(animatedScalar("auto", null, 0.3, 0.8)).toBeCloseTo(0.3);
+  });
+
   it("borrows whitespace only for wrapping introduced by the prefix itself", () => {
     expect(prefixNeedsMargin(310, 20, 300, 40)).toBe(true);
     expect(prefixNeedsMargin(290, 20, 300, 40)).toBe(false);

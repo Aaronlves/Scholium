@@ -51,9 +51,21 @@ interface FrontmatterFrame {
 }
 
 interface FrontmatterTransition {
+  node: HTMLElement;
   animation: Animation;
   fromOpacity: number;
   toOpacity: number;
+}
+
+/** Preserve the browser's currently presented value when an animation is
+ * interrupted. WebKit can expose a null animation progress while the
+ * compositor still has a useful interpolated style value. */
+export function animatedScalar(computedValue: string, progress: number | null,
+  from: number, to: number): number {
+  const current = Number.parseFloat(computedValue);
+  if (Number.isFinite(current)) return current;
+  if (progress !== null && Number.isFinite(progress)) return from + (to - from) * progress;
+  return from;
 }
 
 export function prefixNeedsMargin(textWidth: number, tokenWidth: number,
@@ -111,18 +123,28 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     for (const [key, transition] of this.transitions) {
       const frame = this.frames.get(key);
       const progress = transition.animation.effect?.getComputedTiming().progress;
-      if (frame && typeof progress === "number") {
-        frame.color = getComputedStyle(transition.node).color || frame.color;
-        frame.opacity = transition.fromOpacity
-          + (transition.toOpacity - transition.fromOpacity) * progress;
+      if (frame) {
+        const style = getComputedStyle(transition.node);
+        frame.color = style.color || frame.color;
+        frame.opacity = animatedScalar(
+          style.opacity,
+          typeof progress === "number" ? progress : null,
+          transition.fromOpacity,
+          transition.toOpacity,
+        );
       }
     }
     for (const [key, transition] of this.frontmatterTransitions) {
       const frame = this.frontmatterFrames.get(key);
       const progress = transition.animation.effect?.getComputedTiming().progress;
-      if (frame && typeof progress === "number") {
-        frame.opacity = transition.fromOpacity
-          + (transition.toOpacity - transition.fromOpacity) * progress;
+      if (frame) {
+        const style = getComputedStyle(transition.node);
+        frame.opacity = animatedScalar(
+          style.opacity,
+          typeof progress === "number" ? progress : null,
+          transition.fromOpacity,
+          transition.toOpacity,
+        );
       }
     }
     this.transitions.clear();
@@ -230,6 +252,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           ], {duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both"});
           this.animations.push(animation);
           this.frontmatterTransitions.set(key, {
+            node,
             animation,
             fromOpacity,
             toOpacity,

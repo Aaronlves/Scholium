@@ -14029,6 +14029,12 @@
       }
     });
   }
+  function animatedScalar(computedValue, progress, from, to) {
+    const current = Number.parseFloat(computedValue);
+    if (Number.isFinite(current)) return current;
+    if (progress !== null && Number.isFinite(progress)) return from + (to - from) * progress;
+    return from;
+  }
   function prefixNeedsMargin(textWidth, tokenWidth, measure, availableMargin) {
     return textWidth > measure && textWidth - tokenWidth <= measure && tokenWidth + 4 <= availableMargin;
   }
@@ -14075,16 +14081,28 @@
       for (const [key, transition] of this.transitions) {
         const frame = this.frames.get(key);
         const progress = transition.animation.effect?.getComputedTiming().progress;
-        if (frame && typeof progress === "number") {
-          frame.color = getComputedStyle(transition.node).color || frame.color;
-          frame.opacity = transition.fromOpacity + (transition.toOpacity - transition.fromOpacity) * progress;
+        if (frame) {
+          const style = getComputedStyle(transition.node);
+          frame.color = style.color || frame.color;
+          frame.opacity = animatedScalar(
+            style.opacity,
+            typeof progress === "number" ? progress : null,
+            transition.fromOpacity,
+            transition.toOpacity
+          );
         }
       }
       for (const [key, transition] of this.frontmatterTransitions) {
         const frame = this.frontmatterFrames.get(key);
         const progress = transition.animation.effect?.getComputedTiming().progress;
-        if (frame && typeof progress === "number") {
-          frame.opacity = transition.fromOpacity + (transition.toOpacity - transition.fromOpacity) * progress;
+        if (frame) {
+          const style = getComputedStyle(transition.node);
+          frame.opacity = animatedScalar(
+            style.opacity,
+            typeof progress === "number" ? progress : null,
+            transition.fromOpacity,
+            transition.toOpacity
+          );
         }
       }
       this.transitions.clear();
@@ -14179,6 +14197,7 @@
             ], { duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
             this.animations.push(animation);
             this.frontmatterTransitions.set(key, {
+              node,
               animation,
               fromOpacity,
               toOpacity
