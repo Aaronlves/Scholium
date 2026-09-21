@@ -1,8 +1,10 @@
 import {Decoration, EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
 import {
   readLiveCursorGeometry,
+  readLiveCursorSurfaceGeometry,
   writeLiveCursorGeometry,
   type LiveCursorGeometry,
+  type LiveCursorSurfaceGeometry,
 } from "./live-cursor-geometry";
 
 /** Only short, single-line delimiters may displace prose. Destinations,
@@ -75,6 +77,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
   private reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   private resize: ResizeObserver;
   private inlineSize = 0;
+  private cursorMeasureKey = {};
 
   constructor(readonly view: EditorView) {
     this.reduced.addEventListener("change", this.stop);
@@ -138,6 +141,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           // competing while a widget is exchanged for its exact source.
           ".cm-live-table-widget, .cm-live-table, .cm-live-footnote-reference-widget, .cm-live-embed")],
         cursor: readLiveCursorGeometry(this.view),
+        cursorSurface: readLiveCursorSurfaceGeometry(this.view),
         frontmatter: [...this.view.contentDOM.querySelectorAll<HTMLElement>(
           ".scholium-frontmatter-delimiter-line[data-scholium-yaml-delimiter]")]
         .map((node, index) => {
@@ -184,7 +188,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
             secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim(),
             opacity: Number.parseFloat(style.opacity) || 0};
         })}),
-      write: ({tokens, objects, cursor, frontmatter}: {
+      write: ({tokens, objects, cursor, cursorSurface, frontmatter}: {
         tokens: readonly {
           node: HTMLElement;
           key: string;
@@ -197,6 +201,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
         }[];
         objects: readonly HTMLElement[];
         cursor: LiveCursorGeometry | null;
+        cursorSurface: LiveCursorSurfaceGeometry;
         frontmatter: readonly {
           node: HTMLElement;
           key: string;
@@ -271,10 +276,26 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
         this.frames = next;
         for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
         // Geometry is already in its final state. If prefix borrowing changed
-        // the line, re-read the cursor after that synchronous commit. The
-        // shared Live Presentation Layout coordinator owns viewport correction.
-        const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
-        writeLiveCursorGeometry(this.view, measuredCursor);
+        // the line, request a second read phase rather than reading layout from
+        // this write phase. The shared Live Presentation Layout coordinator
+        // owns viewport correction.
+        if (marginChanged) {
+          this.view.requestMeasure({
+            key: this.cursorMeasureKey,
+            read: () => ({
+              cursor: readLiveCursorGeometry(this.view),
+              surface: readLiveCursorSurfaceGeometry(this.view),
+            }),
+            write: ({cursor: measuredCursor, surface}: {
+              cursor: LiveCursorGeometry | null;
+              surface: LiveCursorSurfaceGeometry;
+            }) => {
+              if (!this.destroyed) writeLiveCursorGeometry(this.view, measuredCursor, surface);
+            },
+          });
+        } else {
+          writeLiveCursorGeometry(this.view, cursor, cursorSurface);
+        }
       },
     });
   }

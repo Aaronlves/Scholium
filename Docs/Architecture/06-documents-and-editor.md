@@ -170,10 +170,11 @@ spacing. Semantic widgets, selection, pointer mapping and scrolling share native
 measurement. One Live Presentation Layout coordinator owns presentation-only
 geometry continuity: projection owners mark an affected source range with a
 typed effect, and the coordinator captures a stable source-line viewport anchor
-before decoration exchange and corrects it after CodeMirror measurement. Callout
-fold state remains session-local in its projection field, but it does not own
-scroll or pointer state. No decoration state is mutated by an independent
-geometry cache, and no projection owner performs a second scroll correction.
+before decoration exchange from CodeMirror's logical line-block measurement,
+then corrects it in a later read/write measure cycle. Callout fold state remains
+session-local in its projection field, but it does not own scroll or pointer
+state. No decoration state is mutated by an independent geometry cache, and no
+projection owner performs a second scroll correction.
 
 Read and Live consume one semantic component/presentation contract. Application
 owns byte-checked Appearance/snippet storage and explicit reload; stale/invalid

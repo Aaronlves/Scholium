@@ -2,7 +2,10 @@ import {StateEffect} from "@codemirror/state";
 import {EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
 import {
   readLiveCursorGeometry,
+  readLiveCursorSurfaceGeometry,
   writeLiveCursorGeometry,
+  type LiveCursorGeometry,
+  type LiveCursorSurfaceGeometry,
 } from "./live-cursor-geometry";
 
 /**
@@ -30,20 +33,12 @@ interface LayoutAnchor {
   readonly epoch: number;
 }
 
-function lineElementAt(view: EditorView, position: number): HTMLElement | null {
-  for (const assoc of [1, -1] as const) {
-    try {
-      const point = view.domAtPos(position, assoc);
-      const element = point.node.nodeType === Node.ELEMENT_NODE
-        ? point.node as Element
-        : point.node.parentElement;
-      const line = element?.closest<HTMLElement>(".cm-line");
-      if (line) return line;
-    } catch {
-      // A line can leave the viewport between the block and DOM measurements.
-    }
-  }
-  return null;
+interface LayoutCorrection {
+  readonly delta: number;
+  readonly scrollTop: number;
+  readonly maximumScrollTop: number;
+  readonly cursor: LiveCursorGeometry | null;
+  readonly surface: LiveCursorSurfaceGeometry;
 }
 
 function intersects(
@@ -60,52 +55,48 @@ function captureLayoutAnchor(
   affected: readonly PresentationLayoutRange[],
 ): LayoutAnchor | null {
   const scroll = view.scrollDOM;
-  const rect = scroll.getBoundingClientRect();
   // `viewportLineBlocks` exposes the already-measured view state and is safe
-  // during ViewPlugin.update. `lineBlockAtHeight` calls readMeasured(), which
-  // CodeMirror rejects while it is applying a state update. Both the probe and
-  // block tops use documentTop-relative coordinates, so adding scrollTop here
-  // would count the scroll offset twice.
-  const probeHeight = Math.max(0, rect.top + 1 - view.documentTop);
+  // during ViewPlugin.update. `lineBlockAtHeight`, `documentTop`, and DOM
+  // geometry reads are not safe here because CodeMirror calls plugins before
+  // updating its own DOM. The returned order is already viewport order; using
+  // the first stable block avoids a second layout read while retaining a
+  // source-addressed anchor.
   const blocks = view.viewportLineBlocks;
   if (!blocks.length) return null;
-  const containing = blocks.findIndex(candidate =>
-    candidate.top <= probeHeight && candidate.bottom > probeHeight);
-  const firstAfter = blocks.findIndex(candidate => candidate.bottom > probeHeight);
-  const start = containing >= 0
-    ? containing
-    : firstAfter >= 0 ? firstAfter : blocks.length - 1;
-  const ordered = blocks.slice(start).concat(blocks.slice(0, start));
   const stable = affected.length === 0
-    ? ordered
-    : ordered.filter(candidate => !affected.some(range =>
+    ? blocks
+    : blocks.filter(candidate => !affected.some(range =>
       intersects(candidate.from, candidate.to, range)));
-  const candidates = stable.length > 0 ? stable : ordered;
+  const candidates = stable.length > 0 ? stable : blocks;
   for (const candidate of candidates) {
-    const line = lineElementAt(view, candidate.from);
-    if (line) {
-      return {
-        from: candidate.from,
-        top: line.getBoundingClientRect().top,
-        scrollTop: scroll.scrollTop,
-        epoch,
-      };
-    }
+    return {
+      from: candidate.from,
+      top: candidate.top,
+      scrollTop: scroll.scrollTop,
+      epoch,
+    };
   }
   return null;
 }
 
-function applyLayoutAnchor(view: EditorView, anchor: LayoutAnchor): number {
-  const line = lineElementAt(view, anchor.from);
-  if (!line) return 0;
-  const delta = line.getBoundingClientRect().top - anchor.top;
-  if (Math.abs(delta) < 0.25) return 0;
+function readLayoutCorrection(view: EditorView, anchor: LayoutAnchor): LayoutCorrection | null {
   const scroll = view.scrollDOM;
-  const maximum = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-  const before = scroll.scrollTop;
-  const after = Math.max(0, Math.min(maximum, before + delta));
-  if (Math.abs(after - before) >= 0.25) scroll.scrollTop = after;
-  return after - before;
+  if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return null;
+  let block: ReturnType<EditorView["lineBlockAt"]>;
+  try {
+    block = view.lineBlockAt(anchor.from);
+  } catch {
+    return null;
+  }
+  const delta = block.top - anchor.top;
+  if (Math.abs(delta) < 0.25) return null;
+  return {
+    delta,
+    scrollTop: scroll.scrollTop,
+    maximumScrollTop: Math.max(0, scroll.scrollHeight - scroll.clientHeight),
+    cursor: readLiveCursorGeometry(view),
+    surface: readLiveCursorSurfaceGeometry(view),
+  };
 }
 
 function layoutRanges(update: ViewUpdate): PresentationLayoutRange[] {
@@ -124,6 +115,7 @@ export const livePresentationLayout = ViewPlugin.fromClass(class {
   private destroyed = false;
   private reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   private resize: ResizeObserver;
+  private correctionKey = {};
 
   constructor(readonly view: EditorView) {
     this.reduced.addEventListener("change", this.invalidate);
@@ -139,15 +131,37 @@ export const livePresentationLayout = ViewPlugin.fromClass(class {
   private schedule(anchor: LayoutAnchor) {
     queueMicrotask(() => {
       if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
-      const scroll = this.view.scrollDOM;
-      if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return;
-      const scrollCorrection = applyLayoutAnchor(this.view, anchor);
-      if (scrollCorrection === 0) return;
-      const cursor = readLiveCursorGeometry(this.view);
-      writeLiveCursorGeometry(this.view, cursor && {
-        ...cursor,
-        top: cursor.top - scrollCorrection,
-        bottom: cursor.bottom - scrollCorrection,
+      // The first measure write runs after projection owners have committed
+      // their DOM. Schedule a fresh CodeMirror read/write cycle so the
+      // correction observes that final layout and never reads geometry from a
+      // write phase.
+      this.view.requestMeasure({
+        key: this.correctionKey,
+        read: () => {
+          if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return null;
+          return readLayoutCorrection(this.view, anchor);
+        },
+        write: (correction: LayoutCorrection | null) => {
+          if (!correction || this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
+          const scroll = this.view.scrollDOM;
+          if (Math.abs(scroll.scrollTop - correction.scrollTop) >= 0.25) return;
+          const after = Math.max(0, Math.min(
+            correction.maximumScrollTop,
+            correction.scrollTop + correction.delta,
+          ));
+          const applied = after - correction.scrollTop;
+          if (Math.abs(applied) < 0.25) return;
+          scroll.scrollTop = after;
+          const scaleY = correction.surface.scaleY;
+          writeLiveCursorGeometry(this.view, correction.cursor && {
+            ...correction.cursor,
+            top: correction.cursor.top - applied * scaleY,
+            bottom: correction.cursor.bottom - applied * scaleY,
+          }, {
+            ...correction.surface,
+            scrollTop: correction.surface.scrollTop + applied * scaleY,
+          });
+        },
       });
     });
   }

@@ -13982,20 +13982,31 @@
     }
     return { left: rect.left, top: rect.top, bottom: rect.bottom };
   }
-  function writeLiveCursorGeometry(view, geometry) {
-    if (!geometry) return;
-    const cursor = view.scrollDOM.querySelector(".cm-cursor-primary");
-    if (!cursor) return;
+  function readLiveCursorSurfaceGeometry(view) {
     const outer = view.scrollDOM.getBoundingClientRect();
     const scaleX = view.scaleX ?? 1;
     const scaleY = view.scaleY ?? 1;
-    const scrollLeft = view.scrollDOM.scrollLeft * scaleX;
-    const scrollTop = view.scrollDOM.scrollTop * scaleY;
-    const baseLeft = view.textDirection === Direction.LTR ? outer.left - scrollLeft : outer.right - view.scrollDOM.clientWidth * scaleX - scrollLeft;
-    const baseTop = outer.top - scrollTop;
-    cursor.style.left = `${(geometry.left - baseLeft) / scaleX}px`;
-    cursor.style.top = `${(geometry.top - baseTop) / scaleY}px`;
-    cursor.style.height = `${(geometry.bottom - geometry.top) / scaleY}px`;
+    return {
+      outerLeft: outer.left,
+      outerRight: outer.right,
+      outerTop: outer.top,
+      clientWidth: view.scrollDOM.clientWidth,
+      scaleX,
+      scaleY,
+      scrollLeft: view.scrollDOM.scrollLeft * scaleX,
+      scrollTop: view.scrollDOM.scrollTop * scaleY,
+      direction: view.textDirection
+    };
+  }
+  function writeLiveCursorGeometry(view, geometry, surface) {
+    if (!geometry) return;
+    const cursor = view.scrollDOM.querySelector(".cm-cursor-primary");
+    if (!cursor) return;
+    const baseLeft = surface.direction === Direction.LTR ? surface.outerLeft - surface.scrollLeft : surface.outerRight - surface.clientWidth * surface.scaleX - surface.scrollLeft;
+    const baseTop = surface.outerTop - surface.scrollTop;
+    cursor.style.left = `${(geometry.left - baseLeft) / surface.scaleX}px`;
+    cursor.style.top = `${(geometry.top - baseTop) / surface.scaleY}px`;
+    cursor.style.height = `${(geometry.bottom - geometry.top) / surface.scaleY}px`;
   }
 
   // syntax-presentation.ts
@@ -14051,6 +14062,7 @@
     reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     resize;
     inlineSize = 0;
+    cursorMeasureKey = {};
     stop = () => {
       for (const animation of this.animations) animation.cancel();
       this.animations = [];
@@ -14091,6 +14103,7 @@
             ".cm-live-table-widget, .cm-live-table, .cm-live-footnote-reference-widget, .cm-live-embed"
           )],
           cursor: readLiveCursorGeometry(this.view),
+          cursorSurface: readLiveCursorSurfaceGeometry(this.view),
           frontmatter: [...this.view.contentDOM.querySelectorAll(
             ".scholium-frontmatter-delimiter-line[data-scholium-yaml-delimiter]"
           )].map((node, index) => {
@@ -14142,7 +14155,7 @@
             };
           })
         }),
-        write: ({ tokens, objects, cursor, frontmatter }) => {
+        write: ({ tokens, objects, cursor, cursorSurface, frontmatter }) => {
           if (this.destroyed) return;
           for (const object of objects) {
             if (animate && this.objects.size && !this.objects.has(object) && typeof object.animate === "function") {
@@ -14209,8 +14222,20 @@
           }
           this.frames = next;
           for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
-          const measuredCursor = marginChanged ? readLiveCursorGeometry(this.view) : cursor;
-          writeLiveCursorGeometry(this.view, measuredCursor);
+          if (marginChanged) {
+            this.view.requestMeasure({
+              key: this.cursorMeasureKey,
+              read: () => ({
+                cursor: readLiveCursorGeometry(this.view),
+                surface: readLiveCursorSurfaceGeometry(this.view)
+              }),
+              write: ({ cursor: measuredCursor, surface }) => {
+                if (!this.destroyed) writeLiveCursorGeometry(this.view, measuredCursor, surface);
+              }
+            });
+          } else {
+            writeLiveCursorGeometry(this.view, cursor, cursorSurface);
+          }
         }
       });
     }
@@ -35763,57 +35788,43 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       to: changes.mapPos(value.to)
     })
   });
-  function lineElementAt(view, position) {
-    for (const assoc of [1, -1]) {
-      try {
-        const point = view.domAtPos(position, assoc);
-        const element = point.node.nodeType === Node.ELEMENT_NODE ? point.node : point.node.parentElement;
-        const line = element?.closest(".cm-line");
-        if (line) return line;
-      } catch {
-      }
-    }
-    return null;
-  }
   function intersects2(from, to, range) {
     return from < range.to && to > range.from;
   }
   function captureLayoutAnchor(view, epoch, affected) {
     const scroll = view.scrollDOM;
-    const rect = scroll.getBoundingClientRect();
-    const probeHeight = Math.max(0, rect.top + 1 - view.documentTop);
     const blocks = view.viewportLineBlocks;
     if (!blocks.length) return null;
-    const containing = blocks.findIndex((candidate) => candidate.top <= probeHeight && candidate.bottom > probeHeight);
-    const firstAfter = blocks.findIndex((candidate) => candidate.bottom > probeHeight);
-    const start = containing >= 0 ? containing : firstAfter >= 0 ? firstAfter : blocks.length - 1;
-    const ordered = blocks.slice(start).concat(blocks.slice(0, start));
-    const stable = affected.length === 0 ? ordered : ordered.filter((candidate) => !affected.some((range) => intersects2(candidate.from, candidate.to, range)));
-    const candidates = stable.length > 0 ? stable : ordered;
+    const stable = affected.length === 0 ? blocks : blocks.filter((candidate) => !affected.some((range) => intersects2(candidate.from, candidate.to, range)));
+    const candidates = stable.length > 0 ? stable : blocks;
     for (const candidate of candidates) {
-      const line = lineElementAt(view, candidate.from);
-      if (line) {
-        return {
-          from: candidate.from,
-          top: line.getBoundingClientRect().top,
-          scrollTop: scroll.scrollTop,
-          epoch
-        };
-      }
+      return {
+        from: candidate.from,
+        top: candidate.top,
+        scrollTop: scroll.scrollTop,
+        epoch
+      };
     }
     return null;
   }
-  function applyLayoutAnchor(view, anchor) {
-    const line = lineElementAt(view, anchor.from);
-    if (!line) return 0;
-    const delta = line.getBoundingClientRect().top - anchor.top;
-    if (Math.abs(delta) < 0.25) return 0;
+  function readLayoutCorrection(view, anchor) {
     const scroll = view.scrollDOM;
-    const maximum = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-    const before = scroll.scrollTop;
-    const after = Math.max(0, Math.min(maximum, before + delta));
-    if (Math.abs(after - before) >= 0.25) scroll.scrollTop = after;
-    return after - before;
+    if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return null;
+    let block;
+    try {
+      block = view.lineBlockAt(anchor.from);
+    } catch {
+      return null;
+    }
+    const delta = block.top - anchor.top;
+    if (Math.abs(delta) < 0.25) return null;
+    return {
+      delta,
+      scrollTop: scroll.scrollTop,
+      maximumScrollTop: Math.max(0, scroll.scrollHeight - scroll.clientHeight),
+      cursor: readLiveCursorGeometry(view),
+      surface: readLiveCursorSurfaceGeometry(view)
+    };
   }
   function layoutRanges(update) {
     return update.transactions.flatMap((transaction) => transaction.effects.flatMap((effect) => effect.is(preserveLivePresentationLayout) ? [effect.value] : []));
@@ -35831,21 +35842,40 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     destroyed = false;
     reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     resize;
+    correctionKey = {};
     invalidate = () => {
       this.layoutEpoch += 1;
     };
     schedule(anchor) {
       queueMicrotask(() => {
         if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
-        const scroll = this.view.scrollDOM;
-        if (Math.abs(scroll.scrollTop - anchor.scrollTop) >= 0.25) return;
-        const scrollCorrection = applyLayoutAnchor(this.view, anchor);
-        if (scrollCorrection === 0) return;
-        const cursor = readLiveCursorGeometry(this.view);
-        writeLiveCursorGeometry(this.view, cursor && {
-          ...cursor,
-          top: cursor.top - scrollCorrection,
-          bottom: cursor.bottom - scrollCorrection
+        this.view.requestMeasure({
+          key: this.correctionKey,
+          read: () => {
+            if (this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return null;
+            return readLayoutCorrection(this.view, anchor);
+          },
+          write: (correction) => {
+            if (!correction || this.destroyed || anchor.epoch !== this.layoutEpoch || this.view.composing) return;
+            const scroll = this.view.scrollDOM;
+            if (Math.abs(scroll.scrollTop - correction.scrollTop) >= 0.25) return;
+            const after = Math.max(0, Math.min(
+              correction.maximumScrollTop,
+              correction.scrollTop + correction.delta
+            ));
+            const applied = after - correction.scrollTop;
+            if (Math.abs(applied) < 0.25) return;
+            scroll.scrollTop = after;
+            const scaleY = correction.surface.scaleY;
+            writeLiveCursorGeometry(this.view, correction.cursor && {
+              ...correction.cursor,
+              top: correction.cursor.top - applied * scaleY,
+              bottom: correction.cursor.bottom - applied * scaleY
+            }, {
+              ...correction.surface,
+              scrollTop: correction.surface.scrollTop + applied * scaleY
+            });
+          }
         });
       });
     }

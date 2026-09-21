@@ -6,6 +6,18 @@ export interface LiveCursorGeometry {
   readonly bottom: number;
 }
 
+export interface LiveCursorSurfaceGeometry {
+  readonly outerLeft: number;
+  readonly outerRight: number;
+  readonly outerTop: number;
+  readonly clientWidth: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly scrollLeft: number;
+  readonly scrollTop: number;
+  readonly direction: Direction;
+}
+
 /**
  * CodeMirror's cursor layer normally measures positions when a transaction or
  * vertical geometry update arrives. Live Preview also changes inline geometry
@@ -44,6 +56,24 @@ export function readLiveCursorGeometry(view: EditorView): LiveCursorGeometry | n
   return {left: rect.left, top: rect.top, bottom: rect.bottom};
 }
 
+/** Read the surface geometry during a CodeMirror measure read phase. */
+export function readLiveCursorSurfaceGeometry(view: EditorView): LiveCursorSurfaceGeometry {
+  const outer = view.scrollDOM.getBoundingClientRect();
+  const scaleX = (view as EditorView & {scaleX?: number}).scaleX ?? 1;
+  const scaleY = (view as EditorView & {scaleY?: number}).scaleY ?? 1;
+  return {
+    outerLeft: outer.left,
+    outerRight: outer.right,
+    outerTop: outer.top,
+    clientWidth: view.scrollDOM.clientWidth,
+    scaleX,
+    scaleY,
+    scrollLeft: view.scrollDOM.scrollLeft * scaleX,
+    scrollTop: view.scrollDOM.scrollTop * scaleY,
+    direction: view.textDirection,
+  };
+}
+
 /**
  * Apply a measured source caret position to CodeMirror's own primary cursor
  * marker. Selection authority stays in EditorState; this only refreshes the
@@ -52,22 +82,18 @@ export function readLiveCursorGeometry(view: EditorView): LiveCursorGeometry | n
 export function writeLiveCursorGeometry(
   view: EditorView,
   geometry: LiveCursorGeometry | null,
+  surface: LiveCursorSurfaceGeometry,
 ) {
   if (!geometry) return;
   const cursor = view.scrollDOM.querySelector<HTMLElement>(".cm-cursor-primary");
   if (!cursor) return;
 
-  const outer = view.scrollDOM.getBoundingClientRect();
-  const scaleX = (view as EditorView & {scaleX?: number}).scaleX ?? 1;
-  const scaleY = (view as EditorView & {scaleY?: number}).scaleY ?? 1;
-  const scrollLeft = view.scrollDOM.scrollLeft * scaleX;
-  const scrollTop = view.scrollDOM.scrollTop * scaleY;
-  const baseLeft = view.textDirection === Direction.LTR
-    ? outer.left - scrollLeft
-    : outer.right - view.scrollDOM.clientWidth * scaleX - scrollLeft;
-  const baseTop = outer.top - scrollTop;
+  const baseLeft = surface.direction === Direction.LTR
+    ? surface.outerLeft - surface.scrollLeft
+    : surface.outerRight - surface.clientWidth * surface.scaleX - surface.scrollLeft;
+  const baseTop = surface.outerTop - surface.scrollTop;
 
-  cursor.style.left = `${(geometry.left - baseLeft) / scaleX}px`;
-  cursor.style.top = `${(geometry.top - baseTop) / scaleY}px`;
-  cursor.style.height = `${(geometry.bottom - geometry.top) / scaleY}px`;
+  cursor.style.left = `${(geometry.left - baseLeft) / surface.scaleX}px`;
+  cursor.style.top = `${(geometry.top - baseTop) / surface.scaleY}px`;
+  cursor.style.height = `${(geometry.bottom - geometry.top) / surface.scaleY}px`;
 }
