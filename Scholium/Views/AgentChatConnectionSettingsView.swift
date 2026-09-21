@@ -29,6 +29,14 @@ struct AgentChatConnectionSettingsView: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
+                if let version = controller.runtimeVersion {
+                    LabeledContent("Runtime") {
+                        Text(version)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
             } header: {
                 Text("Chat in Scholium")
             } footer: {
@@ -115,14 +123,6 @@ struct AgentChatConnectionAdvancedSettingsView: View {
                 Text("Custom Connection Paths", bundle: .module)
             }
             .id("agents.paths")
-
-            if let version = controller.runtimeVersion {
-                Section("Runtime") {
-                    Text(version)
-                        .font(.caption)
-                        .textSelection(.enabled)
-                }
-            }
 
         }
         .onDisappear { fileSelectionTask?.cancel() }

@@ -18,15 +18,51 @@ struct AgentChatCapabilitiesSettingsView: View {
     @State private var confirmationError: String?
     @State private var confirmsSharedChange = false
     @State private var toolEdit: AgentChatToolEdit?
+    @State private var capabilityFilter = ""
 
     private var userSkills: [AgentChatMethod] {
         capabilities.methods.filter { !$0.isProtected }
+    }
+
+    private var filteredUserSkills: [AgentChatMethod] {
+        userSkills.filter { method in
+            matchesCapabilityFilter(
+                method.selection.title,
+                method.selection.name,
+                method.description,
+                method.dependencies.joined(separator: " ")
+            )
+        }
+    }
+
+    private var toolNames: [String] {
+        Array(Set(capabilities.tools.map(\.name) + capabilities.toolConnections.map(\.name))).sorted()
+    }
+
+    private var filteredToolNames: [String] {
+        toolNames.filter { name in
+            let server = capabilities.tools.first { $0.name == name }
+            let configuration = capabilities.toolConnections.first { $0.name == name }
+            return matchesCapabilityFilter(
+                name,
+                server?.title,
+                server?.tools.joined(separator: " "),
+                configuration?.kind.rawValue
+            )
+        }
+    }
+
+    private var hasCapabilityFilter: Bool {
+        !capabilityFilter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         Group {
             statusSection
             if !zoteroOnly {
+                if capabilities.isConnected {
+                    capabilityFilterSection
+                }
                 CoreProtocolSettingsSection(coreProtocolURL: coreProtocolURL)
                 Section("Skills") {
                     VStack(alignment: .leading, spacing: 10) {
@@ -51,8 +87,16 @@ struct AgentChatCapabilitiesSettingsView: View {
                         if capabilities.hasMethods && userSkills.isEmpty {
                             Text("No Skills Found").foregroundStyle(.secondary)
                         }
-                        ForEach(userSkills) { method in
-                            methodRow(method)
+                        if !filteredUserSkills.isEmpty {
+                            ForEach(Array(filteredUserSkills.enumerated()), id: \.element.id) { index, method in
+                                if index > 0 {
+                                    Divider().padding(.leading, 8)
+                                }
+                                methodRow(method)
+                            }
+                        } else if hasCapabilityFilter && !userSkills.isEmpty {
+                            Text("No Skills Match Filter")
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -107,11 +151,13 @@ struct AgentChatCapabilitiesSettingsView: View {
                         Text("No Connected Tools").foregroundStyle(.secondary)
                     }
                     if !zoteroOnly {
-                        ForEach(
-                            Array(Set(capabilities.tools.map(\.name) + capabilities.toolConnections.map(\.name)))
-                                .sorted(), id: \.self
-                        ) { name in
-                            toolRow(name)
+                        if !filteredToolNames.isEmpty {
+                            ForEach(filteredToolNames, id: \.self) { name in
+                                toolRow(name)
+                            }
+                        } else if hasCapabilityFilter && !toolNames.isEmpty {
+                            Text("No Connected Tools Match Filter")
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -128,6 +174,27 @@ struct AgentChatCapabilitiesSettingsView: View {
                     .id(toolEdit.id)
                 }
             }
+        }
+    }
+
+    private var capabilityFilterSection: some View {
+        Section {
+            TextField("Filter Skills and Tools", text: $capabilityFilter)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Filter Skills and Tools")
+                .accessibilityIdentifier("scholium.settings.capabilityFilter")
+        } footer: {
+            Text("Filters the currently loaded runtime inventory; it does not change configuration.")
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .id("agents.capabilityFilter")
+    }
+
+    private func matchesCapabilityFilter(_ values: String?...) -> Bool {
+        let query = capabilityFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return values.compactMap { $0 }.contains {
+            $0.localizedCaseInsensitiveContains(query)
         }
     }
 
@@ -162,8 +229,19 @@ struct AgentChatCapabilitiesSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             if capabilities.configurationHome != nil {
-                Text(capabilities.isShared ? "Shared Codex Settings" : "Scholium Codex Settings")
-                    .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Configuration") {
+                    Text(capabilities.isShared ? "Shared Codex Settings" : "Scholium Codex Settings")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let version = controller.runtimeVersion {
+                LabeledContent("Runtime") {
+                    Text(version)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
         }
         .task(id: controller.selected?.threadID) {
@@ -211,22 +289,31 @@ struct AgentChatCapabilitiesSettingsView: View {
     }
 
     private func methodRow(_ method: AgentChatMethod) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Toggle(isOn: methodEnabledBinding(method)) {
                 Text(method.selection.title)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(minWidth: 170, alignment: .leading)
             .disabled(
                 method.isProtected || controller.hasActiveExecutions || capabilities.isRefreshing
                     || capabilities.isChanging)
 
-            Text(method.description).textSelection(.enabled)
-            if !method.dependencies.isEmpty {
-                Text("Declared Tools: \(method.dependencies.joined(separator: ", "))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(method.description)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !method.dependencies.isEmpty {
+                    Text("Declared Tools: \(method.dependencies.joined(separator: ", "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, ScholiumMetrics.Settings.rowVerticalInset)
+        .accessibilityElement(children: .contain)
     }
 
     private func methodEnabledBinding(_ method: AgentChatMethod) -> Binding<Bool> {
@@ -316,9 +403,16 @@ struct AgentChatCapabilitiesSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            ForEach(server?.tools ?? [], id: \.self) { Text($0).textSelection(.enabled) }
+            if let server, !server.tools.isEmpty {
+                Text(server.tools.joined(separator: ", "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, ScholiumMetrics.Settings.rowVerticalInset)
+        .accessibilityElement(children: .contain)
     }
 
     private func requestSignIn(_ server: AgentChatConnectedTool) {
