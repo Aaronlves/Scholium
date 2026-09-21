@@ -3,9 +3,9 @@ import Testing
 
 @testable import ScholiumApp
 
-/// Review uses the shared bounded lexical projection for authored YAML while Edit
-/// retains semantic authority through the real YAML grammar. These cases pin the
-/// places the two surfaces must agree without introducing a second parser.
+/// Review uses its bounded lexical projection for authored YAML while Edit retains
+/// semantic authority through the real YAML grammar. Cross-surface parity cases are
+/// owned by the shared Contracts fixture; these tests pin Review's HTML boundary.
 @Suite("Review YAML coloring")
 @MainActor
 struct ReviewFrontmatterMarkupTests {

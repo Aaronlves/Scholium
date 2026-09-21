@@ -90,6 +90,11 @@ import {completeHeadingSelection} from "./text-transfer-ranges";
 import {linkTargetAt} from "./link-target";
 import {scholiumNoteLanguage} from "./language";
 import {
+  frontmatterFallbackClass,
+  frontmatterKeyHasSeparator,
+  frontmatterTokenClass,
+} from "./frontmatter-presentation";
+import {
   boundedProjectionRanges,
   boundedLinePrefix,
   rangeKey,
@@ -1514,16 +1519,6 @@ const livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
     view.plugin(plugin)?.atomicRanges ?? Decoration.none),
 });
 
-const frontmatterTokenClassByNodeName: Record<string, string> = {
-  Key: "cm-live-yaml-key",
-  QuotedLiteral: "cm-live-yaml-string",
-  BlockLiteralHeader: "cm-live-yaml-scalar",
-  BlockLiteralContent: "cm-live-yaml-scalar",
-  FlowSequence: "cm-live-yaml-collection",
-  FlowMapping: "cm-live-yaml-collection",
-  Comment: "cm-live-yaml-comment",
-};
-
 /**
  * Derives the envelope's whole visible identity — where it ends, and whether
  * the selection is inside it — without scanning, so
@@ -1567,9 +1562,14 @@ function buildFrontmatterPresentation(state: EditorState): DecorationSet {
     }).range(state.doc.line(n).from));
   }
 
+  const tokenClassLines = new Set<number>();
   const addMark = (from: number, to: number, className: string) => {
     if (from < 0 || to <= from || from >= end) return;
-    lines.push(Decoration.mark({class: className}).range(from, Math.min(to, end)));
+    const clippedTo = Math.min(to, end);
+    lines.push(Decoration.mark({class: className}).range(from, clippedTo));
+    const firstLine = state.doc.lineAt(from).number;
+    const lastLine = state.doc.lineAt(Math.max(from, clippedTo - 1)).number;
+    for (let line = firstLine; line <= lastLine; line++) tokenClassLines.add(line);
   };
 
   if (boundary.endLine > 0) {
@@ -1589,14 +1589,30 @@ function buildFrontmatterPresentation(state: EditorState): DecorationSet {
     from: 0,
     to: end,
     enter: node => {
-      const className = node.name === "Literal" && ancestors.at(-1) !== "Key"
-        ? "cm-live-yaml-value"
-        : frontmatterTokenClassByNodeName[node.name];
+      const keyHasSeparator = node.name !== "Key"
+        || frontmatterKeyHasSeparator(
+          state.sliceDoc(node.to, Math.min(node.to + 2, state.doc.length)),
+        );
+      const className = keyHasSeparator
+        ? frontmatterTokenClass(node.name, ancestors.at(-1))
+        : undefined;
       if (className && node.name !== "DashLine") addMark(node.from, node.to, className);
       ancestors.push(node.name);
     },
     leave: () => { ancestors.pop(); },
   });
+
+  for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
+    const line = state.doc.line(n);
+    const isDelimiterLine = boundary.endLine > 0
+      && (n === 1 || n === boundary.endLine);
+    const fallbackClass = frontmatterFallbackClass(
+      line.text,
+      isDelimiterLine,
+      tokenClassLines.has(n),
+    );
+    if (fallbackClass) addMark(line.from, line.to, fallbackClass);
+  }
 
   return Decoration.set(lines, true);
 }

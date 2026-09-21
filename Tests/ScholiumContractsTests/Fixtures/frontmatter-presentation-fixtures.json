@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Review and Edit share representative YAML lexical roles",
+    "frontmatter": "source:\n  - https://example.com\nnote: time is 10:30\nbare\nrelated:\n  - \"Kant: the first Critique\"\n\"my: key\": value\nsources:\n  - title: Critique\nkeywords:\n  - kant\noffset: -5\n# a note about: this\ntitle: Fixture\nblock: |\n  preserve\nitems: [a, b]\nmap: {a: b}\n",
+    "lines": [
+      {"text":"source:", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key"]},
+      {"text":"  - https://example.com", "role":"value", "valueKind":"value", "editorClasses":["cm-live-yaml-value"]},
+      {"text":"note: time is 10:30", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key", "cm-live-yaml-value"]},
+      {"text":"bare", "role":"value", "valueKind":"value", "editorClasses":["cm-live-yaml-value"]},
+      {"text":"related:", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key"]},
+      {"text":"  - \"Kant: the first Critique\"", "role":"value", "valueKind":"string", "editorClasses":["cm-live-yaml-string"]},
+      {"text":"\"my: key\": value", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key", "cm-live-yaml-string", "cm-live-yaml-value"]},
+      {"text":"sources:", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key"]},
+      {"text":"  - title: Critique", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key", "cm-live-yaml-value"]},
+      {"text":"keywords:", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key"]},
+      {"text":"  - kant", "role":"value", "valueKind":"value", "editorClasses":["cm-live-yaml-value"]},
+      {"text":"offset: -5", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key", "cm-live-yaml-value"]},
+      {"text":"# a note about: this", "role":"comment", "valueKind":"value", "editorClasses":["cm-live-yaml-comment"]},
+      {"text":"title: Fixture", "role":"mapping", "valueKind":"value", "editorClasses":["cm-live-yaml-key", "cm-live-yaml-value"]},
+      {"text":"block: |", "role":"mapping", "valueKind":"scalar", "editorClasses":["cm-live-yaml-key", "cm-live-yaml-scalar"]},
+      {"text":"  preserve", "role":"value", "valueKind":"scalar", "editorClasses":["cm-live-yaml-scalar"]},
+      {"text":"items: [a, b]", "role":"mapping", "valueKind":"collection", "editorClasses":["cm-live-yaml-collection", "cm-live-yaml-key", "cm-live-yaml-value"]},
+      {"text":"map: {a: b}", "role":"mapping", "valueKind":"collection", "editorClasses":["cm-live-yaml-collection", "cm-live-yaml-key", "cm-live-yaml-value"]}
+    ]
+  }
+]

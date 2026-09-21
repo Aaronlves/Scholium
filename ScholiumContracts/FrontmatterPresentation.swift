@@ -48,7 +48,20 @@ public enum FrontmatterPresentation {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
         if lines.last == "" { lines.removeLast() }
+        var blockScalarIndentation: Int?
         return lines.map { line in
+            let indentation = line.prefix { $0 == " " || $0 == "\t" }.count
+            if let blockIndentation = blockScalarIndentation {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty {
+                    return Line(text: line, role: .blank)
+                }
+                if indentation > blockIndentation {
+                    return Line(text: line, role: .value(valueKind: .scalar))
+                }
+                blockScalarIndentation = nil
+            }
+
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty {
                 return Line(text: line, role: .blank)
@@ -60,12 +73,16 @@ public enum FrontmatterPresentation {
                 let key = String(line[..<colon])
                 let valueStart = line.index(after: colon)
                 let value = String(line[valueStart...])
-                return Line(
+                let projectedLine = Line(
                     text: line,
                     role: .mapping(
                         key: key,
                         value: value,
                         valueKind: valueKind(value)))
+                if case .mapping(_, _, let kind) = projectedLine.role, kind == .scalar {
+                    blockScalarIndentation = indentation
+                }
+                return projectedLine
             }
             return Line(text: line, role: .value(valueKind: valueKind(line)))
         }

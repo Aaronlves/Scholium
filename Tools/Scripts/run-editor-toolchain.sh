@@ -126,6 +126,7 @@ if $run_tests; then
   mkdir -p "$fixture_dir"
   cp "$repo_root/Tests/ScholiumContractsTests/Fixtures/semantic-parity-fixtures.json" "$fixture_dir/"
   cp "$repo_root/Tests/ScholiumContractsTests/Fixtures/base-syntax-parity-fixtures.json" "$fixture_dir/"
+  cp "$repo_root/Tests/ScholiumContractsTests/Fixtures/frontmatter-presentation-fixtures.json" "$fixture_dir/"
 fi
 
 cd "$stage"

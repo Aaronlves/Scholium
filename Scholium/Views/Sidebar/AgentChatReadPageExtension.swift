@@ -92,10 +92,6 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
 
     func acceptsMessageWithoutCurrentFingerprint(type: String) -> Bool {
         type == "replyInteraction"
-            || type == "replyLayout"
-            || type == "replyNoteContext"
-            || type == "replySelectionContext"
-            || type == "replyQuote"
     }
 
     func willBeginLoad(fingerprint _: String) {

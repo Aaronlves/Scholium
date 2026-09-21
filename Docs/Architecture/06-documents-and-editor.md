@@ -164,9 +164,12 @@ infers them outside proved syntax ranges. Normalized parser views map every node
 back to exact original half-open UTF-16 coordinates, preserving BOM, CRLF, Unicode
 and final newlines. Marker/visible/parent ranges distinguish source from layout.
 
-`FrontmatterPresentation` is only the shared lexical coloring projection for already
-bounded authored YAML lines. `NoteDocument`/Yams remains the sole semantic parser and
-source authority; the presentation helper cannot parse, repair, authorize or edit
+Review and Edit use one YAML presentation contract, with representative roles and
+CSS classes pinned by the shared frontmatter parity fixture. `FrontmatterPresentation`
+is Review's bounded lexical projection for already bounded authored YAML lines; Edit
+uses the equivalent CodeMirror projection and rejects implicit bare keys that Review
+does not present as keys. `NoteDocument`/Yams remains the sole semantic parser and
+source authority; neither presentation adapter can parse, repair, authorize or edit
 metadata.
 Graph publishes directed authored occurrences; incoming/outgoing are projections
 of the same exact occurrence, not deduplicated philosophical meaning.

@@ -31312,6 +31312,31 @@ ${fence}
     content: scholiumMarkdownContentLanguage
   });
 
+  // frontmatter-presentation.ts
+  var frontmatterTokenClassByNodeName = {
+    Key: "cm-live-yaml-key",
+    QuotedLiteral: "cm-live-yaml-string",
+    BlockLiteralHeader: "cm-live-yaml-scalar",
+    BlockLiteralContent: "cm-live-yaml-scalar",
+    FlowSequence: "cm-live-yaml-collection",
+    FlowMapping: "cm-live-yaml-collection",
+    Comment: "cm-live-yaml-comment"
+  };
+  function frontmatterTokenClass(nodeName, parentName) {
+    if (nodeName === "Literal" && parentName !== "Key") return "cm-live-yaml-value";
+    return frontmatterTokenClassByNodeName[nodeName];
+  }
+  function frontmatterKeyHasSeparator(followingText) {
+    if (followingText[0] !== ":") return false;
+    const next = followingText[1];
+    return next === void 0 || next === " " || next === "	" || next === "\r" || next === "\n";
+  }
+  function frontmatterFallbackClass(lineText, isDelimiterLine, hasTokenClass) {
+    const trimmed = lineText.trim();
+    if (isDelimiterLine || hasTokenClass || trimmed === "" || trimmed.startsWith("#")) return void 0;
+    return "cm-live-yaml-value";
+  }
+
   // projection-index.ts
   function compareRanges(left, right) {
     return left.from - right.from || left.to - right.to;
@@ -38975,15 +39000,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     decorations: (value) => value.decorations,
     provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomicRanges ?? Decoration.none)
   });
-  var frontmatterTokenClassByNodeName = {
-    Key: "cm-live-yaml-key",
-    QuotedLiteral: "cm-live-yaml-string",
-    BlockLiteralHeader: "cm-live-yaml-scalar",
-    BlockLiteralContent: "cm-live-yaml-scalar",
-    FlowSequence: "cm-live-yaml-collection",
-    FlowMapping: "cm-live-yaml-collection",
-    Comment: "cm-live-yaml-comment"
-  };
   function frontmatterPresentationIdentity(state) {
     const index = liveProjectionIndex.index(state);
     const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
@@ -39012,9 +39028,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         attributes
       }).range(state.doc.line(n).from));
     }
+    const tokenClassLines = /* @__PURE__ */ new Set();
     const addMark = (from, to, className) => {
       if (from < 0 || to <= from || from >= end) return;
-      lines.push(Decoration.mark({ class: className }).range(from, Math.min(to, end)));
+      const clippedTo = Math.min(to, end);
+      lines.push(Decoration.mark({ class: className }).range(from, clippedTo));
+      const firstLine = state.doc.lineAt(from).number;
+      const lastLine = state.doc.lineAt(Math.max(from, clippedTo - 1)).number;
+      for (let line = firstLine; line <= lastLine; line++) tokenClassLines.add(line);
     };
     if (boundary.endLine > 0) {
       const opening = state.doc.line(1);
@@ -39028,7 +39049,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       from: 0,
       to: end,
       enter: (node) => {
-        const className = node.name === "Literal" && ancestors.at(-1) !== "Key" ? "cm-live-yaml-value" : frontmatterTokenClassByNodeName[node.name];
+        const keyHasSeparator = node.name !== "Key" || frontmatterKeyHasSeparator(
+          state.sliceDoc(node.to, Math.min(node.to + 2, state.doc.length))
+        );
+        const className = keyHasSeparator ? frontmatterTokenClass(node.name, ancestors.at(-1)) : void 0;
         if (className && node.name !== "DashLine") addMark(node.from, node.to, className);
         ancestors.push(node.name);
       },
@@ -39036,6 +39060,16 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ancestors.pop();
       }
     });
+    for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
+      const line = state.doc.line(n);
+      const isDelimiterLine = boundary.endLine > 0 && (n === 1 || n === boundary.endLine);
+      const fallbackClass = frontmatterFallbackClass(
+        line.text,
+        isDelimiterLine,
+        tokenClassLines.has(n)
+      );
+      if (fallbackClass) addMark(line.from, line.to, fallbackClass);
+    }
     return Decoration.set(lines, true);
   }
   var liveFrontmatterLines = StateField.define({

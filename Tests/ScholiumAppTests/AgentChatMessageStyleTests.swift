@@ -1,4 +1,5 @@
 import AppKit
+import ScholiumContracts
 import SwiftUI
 import Testing
 import WebKit
@@ -11,8 +12,9 @@ struct AgentChatMessageStyleTests {
     @MainActor
     func streamingSelectionSurvives() async throws {
         var interactions = 0
+        var quotedSelections: [AgentChatReplySelection] = []
         func content(_ source: String) -> some View {
-            AgentChatMarkdown(text: source)
+            AgentChatMarkdown(text: source, quoteSelection: { quotedSelections.append($0) })
                 .environment(\.chatReadingInteraction, { interactions += 1 })
         }
         let original = "保留 😀 e\u{301} same same。\n\n```text\nretained code\n```\n\n继续回答"
@@ -75,6 +77,18 @@ struct AgentChatMessageStyleTests {
         host.rootView = content(updated)
         let current = try await waitFor("结束")
         #expect(current === web)
+        _ = try await web.callAsyncJavaScript(
+            """
+            window.webkit.messageHandlers.scholiumRead.postMessage({
+              version: 7, documentID: 'chat-reply', loadGeneration: 1,
+              fingerprint: staleFingerprint, type: 'replyQuote', text: 'stale quote'
+            });
+            return true;
+            """,
+            arguments: ["staleFingerprint": DocumentFingerprint(content: original).sha256],
+            in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(quotedSelections.isEmpty)
         let preserved =
             try await web.callAsyncJavaScript(
                 """

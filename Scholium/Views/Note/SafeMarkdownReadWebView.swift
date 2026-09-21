@@ -758,12 +758,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
+            let extensionMessageIsCurrent: Bool
+            if pageExtension == nil {
+                extensionMessageIsCurrent = true
+            } else {
+                guard let messageWebView = message.webView else { return }
+                extensionMessageIsCurrent = activeWebView === messageWebView
+            }
             guard message.name == Self.messageHandlerName,
                 let payload = message.body as? [String: Any],
                 payload["version"] as? Int == 7,
                 payload["documentID"] as? String == documentID,
                 (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
                 let type = payload["type"] as? String,
+                extensionMessageIsCurrent,
                 payload["fingerprint"] as? String == fingerprint
                     || pageExtension?.acceptsMessageWithoutCurrentFingerprint(type: type) == true
             else { return }
