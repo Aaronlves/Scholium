@@ -83,6 +83,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var continuationID: UUID?
     var eventTask: Task<Void, Never>?
     var persistenceTask: Task<Void, Never>?
+    var scheduledPersistenceTask: Task<Void, Never>?
+    var persistenceDirty = false
     var connectionTask: Task<Void, Never>?
     private var initialLoadTask: Task<Void, Never>?
     private let notificationSink: AgentChatNotificationSink

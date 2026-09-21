@@ -51,6 +51,28 @@ struct AgentChatPresentationTests {
         #expect(items.flatMap(\.messages) == [progress, operation, operation, final, other, unknown])
     }
 
+    @Test("The timeline projection preserves exact turn ownership and active activity")
+    func timelineProjection() {
+        var request = AgentChatMessage(id: "request", role: .user, text: "Explain")
+        request.turnID = "one"
+        var running = AgentChatMessage(
+            id: "running", role: .operation, text: "Read",
+            activity: .init(kind: .read, status: .running, source: .runtime))
+        running.turnID = "one"
+        var answer = AgentChatMessage(id: "answer", role: .assistant, text: "Answer", phase: .finalAnswer)
+        answer.turnID = "one"
+        var next = AgentChatMessage(id: "next", role: .user, text: "Next")
+        next.turnID = "two"
+
+        let projection = AgentChatTimelineProjection([request, running, answer, next])
+        #expect(projection.messages(for: "one").map(\.id) == ["request", "running", "answer"])
+        #expect(projection.activeActivityID(for: "one") == "running")
+        #expect(!projection.carriesTurnStatus(projection.items[0]))
+        #expect(projection.carriesTurnStatus(projection.items[1]))
+        #expect(!projection.carriesTurnStatus(projection.items[2]))
+        #expect(projection.carriesTurnStatus(projection.items[3]))
+    }
+
     @Test("Reply sources preserve exact Note references without treating external URLs or paths as files")
     func replyFileReferences() throws {
         let note = UUID()

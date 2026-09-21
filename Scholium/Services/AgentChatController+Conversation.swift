@@ -315,6 +315,37 @@ extension AgentChatController {
         if conversations[index] != previous { conversations[index].updatedAt = Date() }
     }
 
+    /// Validated live-stream events already carry a concrete message delta.
+    /// Keep that hot path separate from general reconciliation, whose
+    /// Equatable check protects ordinary possibly-idempotent updates.
+    func updateHot(in id: UUID, _ change: (inout AgentChatConversation) -> Void) {
+        guard let index = conversations.firstIndex(where: { $0.id == id }) else { return }
+        change(&conversations[index])
+        conversations[index].updatedAt = Date()
+    }
+
+    /// Stream items are normally the conversation tail. Check that position
+    /// before falling back to an identity scan, keeping ordinary delta delivery
+    /// independent of retained-history length.
+    @discardableResult
+    func updateHotMessage(
+        in conversationID: UUID, messageID: String, _ change: (inout AgentChatMessage) -> Void
+    ) -> Bool {
+        guard let conversationIndex = conversations.firstIndex(where: { $0.id == conversationID }) else { return false }
+        let messageIndex: Int?
+        if let last = conversations[conversationIndex].messages.indices.last,
+            conversations[conversationIndex].messages[last].id == messageID
+        {
+            messageIndex = last
+        } else {
+            messageIndex = conversations[conversationIndex].messages.firstIndex { $0.id == messageID }
+        }
+        guard let messageIndex else { return false }
+        change(&conversations[conversationIndex].messages[messageIndex])
+        conversations[conversationIndex].updatedAt = Date()
+        return true
+    }
+
     private func historySnapshot() -> [AgentChatConversation] {
         var snapshot = conversations
         for index in snapshot.indices {
@@ -345,9 +376,30 @@ extension AgentChatController {
         return operation
     }
 
+    private func scheduleHistorySave() {
+        // Draft and observation updates are hot-path mutations. Coalesce them
+        // here; send preparation, shutdown and explicit flushes use saveNow()
+        // to bypass the debounce and establish a durable write barrier.
+        guard scheduledPersistenceTask == nil else { return }
+        scheduledPersistenceTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(120))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self.scheduledPersistenceTask = nil
+            guard self.persistenceDirty else { return }
+            self.persistenceDirty = false
+            _ = self.enqueueHistorySave()
+        }
+    }
+
     func persist() {
         guard isLoaded else { return }
-        _ = enqueueHistorySave()
+        persistenceDirty = true
+        scheduleHistorySave()
     }
 
     func flushPersistence() async throws {
@@ -356,6 +408,10 @@ extension AgentChatController {
     }
 
     func saveNow() async throws {
+        guard isLoaded else { return }
+        scheduledPersistenceTask?.cancel()
+        scheduledPersistenceTask = nil
+        persistenceDirty = false
         try await enqueueHistorySave().value
     }
 }

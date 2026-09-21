@@ -196,8 +196,7 @@ struct AgentChatConversationDetailView: View {
     }
 
     @ViewBuilder
-    private func historyPagingButton(earlier: Bool) -> some View {
-        let ids = timelineItems.map(\.id)
+    private func historyPagingButton(earlier: Bool, ids: [String]) -> some View {
         let range = readingSession.history.range(in: ids)
         if earlier ? range.lowerBound > 0 : range.upperBound < ids.count {
             Button {
@@ -224,7 +223,9 @@ struct AgentChatConversationDetailView: View {
     }
 
     private var conversationDetail: some View {
-        VStack(spacing: 0) {
+        let projection = AgentChatTimelineProjection(timelineMessages)
+        let visibleTimelineItems = Array(projection.items[readingSession.history.range(in: projection.ids)])
+        return VStack(spacing: 0) {
             if controller.selected?.pendingMessageID != nil, !controller.isBusy {
                 Button("Continue Without Resending") { controller.confirmContinueAfterUncertainDelivery() }
                     .padding(8)
@@ -249,7 +250,7 @@ struct AgentChatConversationDetailView: View {
                             )
                             .accessibilityIdentifier("scholium.chat.emptyConversation")
                         }
-                        historyPagingButton(earlier: true)
+                        historyPagingButton(earlier: true, ids: projection.ids)
                         ForEach(visibleTimelineItems) { item in
                             VStack(alignment: .leading, spacing: 6) {
                                 if presentation.showsFind, let message = item.messages.first(where: { $0.id == presentation.find.selectedID }),
@@ -259,12 +260,12 @@ struct AgentChatConversationDetailView: View {
                                         .font(.caption).foregroundStyle(.secondary)
                                     Text(passage).font(.callout).textSelection(.enabled)
                                 }
-                                timelineItem(item)
+                                timelineItem(item, projection: projection)
                             }.id(item.id)
                                 .background(AgentChatReadingMarker(id: item.id, session: readingSession))
                         }
-                        historyPagingButton(earlier: false)
-                        if readingSession.history.last == nil { currentActivity }
+                        historyPagingButton(earlier: false, ids: projection.ids)
+                        if readingSession.history.last == nil { currentActivity(projection: projection) }
                         Color.clear.frame(height: 1).id("latest")
                     }.padding(.horizontal, ScholiumSidebarLayout.textInset)
                         .padding(.vertical, ScholiumSidebarLayout.edgeInset)
@@ -339,20 +340,20 @@ struct AgentChatConversationDetailView: View {
                 .onChange(of: presentation.find.selectedID) { _, id in
                     if let id { expandedActivityIDs.insert(id) }
                     if let id,
-                        let item = AgentChatTimelineItem.group(timelineMessages)
+                        let item = projection.items
                             .first(where: { $0.messages.contains(where: { $0.id == id }) })
                     {
-                        readingSession.navigate(to: item.id, in: timelineItems.map(\.id))
+                        readingSession.navigate(to: item.id, in: projection.ids)
                     }
                 }
             }
         }
         .onAppear {
             if presentation.showsFind { refreshFind() }
-            presentation.arrivalBaseline = Set(timelineMessages.map(\.id))
-            if !readingIsPaused { readingSession.history.latest(in: timelineItems.map(\.id)) }
+            presentation.arrivalBaseline = Set(projection.messages.map(\.id))
+            if !readingIsPaused { readingSession.history.latest(in: projection.ids) }
         }
-        .onChange(of: timelineItems.map(\.id)) { _, ids in
+        .onChange(of: projection.ids) { _, ids in
             if !readingIsPaused { readingSession.history.latest(in: ids) }
         }
         .onDisappear { presentation.arrivalBaseline = nil }
@@ -361,13 +362,14 @@ struct AgentChatConversationDetailView: View {
     }
 
     @ViewBuilder
-    private func timelineItem(_ item: AgentChatTimelineItem) -> some View {
+    private func timelineItem(_ item: AgentChatTimelineItem, projection: AgentChatTimelineProjection) -> some View {
         if item.isProcess {
             AgentChatProcessView(
                 messages: item.messages,
                 isActive: controller.isBusy && controller.currentTurnID != nil && item.messages.first?.turnID == controller.currentTurnID,
                 forceExpanded: presentation.showsFind && item.messages.contains { $0.id == presentation.find.selectedID },
-                status: item.carriesTurnStatus(in: timelineMessages) ? turnPresentation(item.messages.first?.turnID) : nil,
+                status: projection.carriesTurnStatus(item)
+                    ? turnPresentation(item.messages.first?.turnID, projection: projection) : nil,
                 preservesReading: isAwayFromLatest || readingIsPaused || presentation.transcriptIsScrolling,
                 hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
                 animates: isVisible && !reduceMotion && controller.approvals.isEmpty,
@@ -377,7 +379,7 @@ struct AgentChatConversationDetailView: View {
                     set: { readingSession.processExpansions[item.id] = $0 })
             ) { message in
                 if message.activity != nil {
-                    activityRow(message)
+                    activityRow(message, activeActivityID: projection.activeActivityID(for: controller.currentTurnID))
                 } else if let plan = message.plan {
                     AgentChatPlanView(
                         plan: plan,
@@ -391,12 +393,16 @@ struct AgentChatConversationDetailView: View {
                 }
             }
         } else if let message = item.messages.first {
-            if message.role == .assistant && item.carriesTurnStatus(in: timelineMessages) {
-                AgentChatTurnStatus(presentation: turnPresentation(message.turnID), animates: isVisible && !reduceMotion)
+            if message.role == .assistant && projection.carriesTurnStatus(item) {
+                AgentChatTurnStatus(
+                    presentation: turnPresentation(message.turnID, projection: projection),
+                    animates: isVisible && !reduceMotion)
             }
             messageView(message)
-            if message.role == .user && item.carriesTurnStatus(in: timelineMessages) {
-                AgentChatTurnStatus(presentation: turnPresentation(message.turnID), animates: isVisible && !reduceMotion)
+            if message.role == .user && projection.carriesTurnStatus(item) {
+                AgentChatTurnStatus(
+                    presentation: turnPresentation(message.turnID, projection: projection),
+                    animates: isVisible && !reduceMotion)
             }
         }
     }
@@ -570,13 +576,8 @@ struct AgentChatConversationDetailView: View {
         return AgentChatActivityProjection.summary(activity, locale: locale)
     }
 
-    private var currentActivityID: String? {
-        guard controller.state == .working, controller.approvals.isEmpty else { return nil }
-        return AgentChatTimelineItem.activeActivityID(in: timelineMessages, turnID: controller.currentTurnID)
-    }
-
     @ViewBuilder
-    private func activityRow(_ message: AgentChatMessage) -> some View {
+    private func activityRow(_ message: AgentChatMessage, activeActivityID: String?) -> some View {
         if let activity = message.activity {
             VStack(alignment: .leading, spacing: 4) {
                 if let report = activity.delegation {
@@ -607,7 +608,7 @@ struct AgentChatConversationDetailView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 AgentChatActivityText(
                                     text: activitySummary(activity),
-                                    isCurrent: isVisible && currentActivityID == message.id
+                                    isCurrent: isVisible && activeActivityID == message.id
                                 ).lineLimit(2)
                                 if activity.kind == .command && activity.commandAction == nil {
                                     Text(verbatim: activity.subject.split(whereSeparator: \.isNewline).first.map(String.init) ?? "")
@@ -639,10 +640,10 @@ struct AgentChatConversationDetailView: View {
         }
     }
 
-    private func turnPresentation(_ turnID: String?) -> AgentChatTurnPresentation {
+    private func turnPresentation(_ turnID: String?, projection: AgentChatTimelineProjection) -> AgentChatTurnPresentation {
         let record = turnID.flatMap { controller.selected?.turns[$0] }
         let live = controller.isBusy && turnID == controller.currentTurnID
-        let messages = timelineMessages.filter { $0.turnID == turnID && $0.role != .user }
+        let messages = projection.messages(for: turnID).filter { $0.role != .user }
         var state: AgentChatTurnPresentation.State = .uncertain
         if live {
             if controller.state == .stopping {
@@ -693,16 +694,16 @@ struct AgentChatConversationDetailView: View {
     }
 
     @ViewBuilder
-    private var currentActivity: some View {
+    private func currentActivity(projection: AgentChatTimelineProjection) -> some View {
         if controller.isBusy {
             let hasHeader =
                 controller.currentTurnID.map { turn in
-                    timelineMessages.contains { $0.turnID == turn }
+                    !projection.messages(for: turn).isEmpty
                 } ?? false
             if !hasHeader {
                 if controller.state == .working || controller.state == .stopping || controller.state == .compacting {
                     AgentChatTurnStatus(
-                        presentation: turnPresentation(controller.currentTurnID),
+                        presentation: turnPresentation(controller.currentTurnID, projection: projection),
                         animates: isVisible && !reduceMotion
                     )
                     .accessibilityIdentifier("scholium.chat.currentActivity")

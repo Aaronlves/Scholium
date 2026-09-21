@@ -22,7 +22,7 @@ struct AgentChatMarkdown: View {
 }
 
 struct AgentChatTimelineItem: Identifiable {
-    let messages: [AgentChatMessage]
+    var messages: [AgentChatMessage]
     var id: String { messages[0].id }
     var isProcess: Bool { Self.isProcess(messages[0]) }
     static func activeActivityID(in history: [AgentChatMessage], turnID: String?) -> String? {
@@ -47,14 +47,68 @@ struct AgentChatTimelineItem: Identifiable {
             if Self.isProcess(message), items.last?.isProcess == true,
                 items.last?.messages.last?.turnID == message.turnID
             {
-                let previous = items.removeLast()
-                items.append(.init(messages: previous.messages + [message]))
+                items[items.count - 1].messages.append(message)
             } else {
                 items.append(
                     .init(messages: [message]))
             }
         }
         return items
+    }
+}
+
+/// A single-pass view projection for the mounted transcript. It keeps the
+/// detail view from rescanning the complete retained history for every
+/// process row or turn-status label.
+struct AgentChatTimelineProjection {
+    let messages: [AgentChatMessage]
+    let items: [AgentChatTimelineItem]
+    let ids: [String]
+    private let messagesByTurn: [String: [AgentChatMessage]]
+    private let statusOwnerIDs: Set<String>
+    private let activeActivityIDs: [String: String]
+
+    init(_ messages: [AgentChatMessage]) {
+        self.messages = messages
+        self.items = AgentChatTimelineItem.group(messages)
+        self.ids = self.items.map(\.id)
+
+        var messagesByTurn: [String: [AgentChatMessage]] = [:]
+        var firstNonUserIDs: [String: String] = [:]
+        var lastUserIDs: [String: String] = [:]
+        var activeActivityIDs: [String: String] = [:]
+        for message in messages {
+            guard let turnID = message.turnID else { continue }
+            messagesByTurn[turnID, default: []].append(message)
+            if message.role != .user, firstNonUserIDs[turnID] == nil {
+                firstNonUserIDs[turnID] = message.id
+            }
+            if message.role == .user { lastUserIDs[turnID] = message.id }
+            if message.activity?.status == .running { activeActivityIDs[turnID] = message.id }
+        }
+        self.messagesByTurn = messagesByTurn
+        self.activeActivityIDs = activeActivityIDs
+
+        var statusOwnerIDs: Set<String> = []
+        for item in items {
+            guard let turnID = item.messages.first?.turnID else { continue }
+            let owner = firstNonUserIDs[turnID] ?? lastUserIDs[turnID]
+            if owner == item.id { statusOwnerIDs.insert(item.id) }
+        }
+        self.statusOwnerIDs = statusOwnerIDs
+    }
+
+    func messages(for turnID: String?) -> [AgentChatMessage] {
+        guard let turnID else { return [] }
+        return messagesByTurn[turnID] ?? []
+    }
+
+    func carriesTurnStatus(_ item: AgentChatTimelineItem) -> Bool {
+        statusOwnerIDs.contains(item.id)
+    }
+
+    func activeActivityID(for turnID: String?) -> String? {
+        turnID.flatMap { activeActivityIDs[$0] }
     }
 }
 

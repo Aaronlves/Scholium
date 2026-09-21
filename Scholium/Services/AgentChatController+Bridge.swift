@@ -782,24 +782,35 @@ extension AgentChatController {
                 }
             }
         case .activityDelta(let id, let text):
-            update(in: conversationID) { conversation in
-                if let index = conversation.messages.firstIndex(where: { $0.id == "runtime:\(id)" }),
-                    var activity = conversation.messages[index].activity
-                {
-                    AgentChatCommandOutput.appending(text, to: &activity)
-                    conversation.messages[index].activity = activity
-                }
+            _ = updateHotMessage(in: conversationID, messageID: "runtime:\(id)") { message in
+                guard var activity = message.activity else { return }
+                AgentChatCommandOutput.appending(text, to: &activity)
+                message.activity = activity
             }
         case .assistantDelta(let id, let text):
-            update(in: conversationID) {
-                if !text.isEmpty { $0.unreadAt = Date() }
-                if let index = $0.messages.firstIndex(where: { $0.id == id }) {
-                    $0.messages[index].text += text
-                } else {
-                    var message = AgentChatMessage(id: id, role: .assistant, text: text)
-                    message.turnID = event.turnID ?? executions[conversationID]?.turnID
-                    $0.messages.append(message)
+            guard !text.isEmpty else {
+                update(in: conversationID) {
+                    if let index = $0.messages.firstIndex(where: { $0.id == id }) {
+                        $0.messages[index].text += text
+                    } else {
+                        var message = AgentChatMessage(id: id, role: .assistant, text: text)
+                        message.turnID = event.turnID ?? executions[conversationID]?.turnID
+                        $0.messages.append(message)
+                    }
                 }
+                return
+            }
+            if updateHotMessage(in: conversationID, messageID: id, { message in
+                message.text += text
+            }) {
+                updateHot(in: conversationID) { $0.unreadAt = Date() }
+                return
+            }
+            updateHot(in: conversationID) {
+                $0.unreadAt = Date()
+                var message = AgentChatMessage(id: id, role: .assistant, text: text)
+                message.turnID = event.turnID ?? executions[conversationID]?.turnID
+                $0.messages.append(message)
             }
         }
     }

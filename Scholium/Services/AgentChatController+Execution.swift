@@ -830,8 +830,7 @@ extension AgentChatController {
         account = nil
         connectionState = .disconnected
         await connection?.close()
-        persist()
-        await persistenceTask?.value
+        try? await saveNow()
     }
 
     func questionAnswers(_ id: UUID) -> [String: AgentChatQuestionAnswer] {
