@@ -52,13 +52,6 @@ enum ScholiumGrid {
         static let readableWidth = foundationUnit * 90
     }
 
-    /// Settings owns one explanatory content-row rhythm. Native Lists and
-    /// controls retain their own geometry; these values apply only to the
-    /// supporting content and action rows inside preference pages.
-    enum SettingsPresentation {
-        static let titleDetailGap = foundationUnit * 1.5
-    }
-
     /// Research-facing sheets share one continuous editorial frame while
     /// their fields, operations, and lifecycle remain workflow-owned.
     enum ResearchSheet {
@@ -97,12 +90,6 @@ enum ScholiumMetrics {
         /// belong to the native toolbar and do not create a second row.
         static let regionHeaderHeight = ScholiumGrid.Dimension.regionHeaderHeight
         static let loadingOverlayInset = ScholiumGrid.foundationUnit * 7
-    }
-
-    enum SettingsPresentation {
-        static let titleDetailSpacing = ScholiumGrid.SettingsPresentation.titleDetailGap
-        static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
-        static let editorContentInset = ScholiumGrid.foundationUnit * 4.5
     }
 
     enum ResearchSheet {
@@ -154,12 +141,8 @@ enum ScholiumMetrics {
         static let matrixRowSpacing = ScholiumGrid.foundationUnit * 2.5
         static let numberFieldWidth: CGFloat = 64
         static let unitLabelWidth: CGFloat = 24
-        static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5
-        static let editorContentInset = ScholiumGrid.Spacing.regionContentInset
-        static let headerMaximumWidth = ScholiumGrid.foundationUnit * 155
         static let formExplanationMaximumWidth = ScholiumGrid.foundationUnit * 105
         static let appearancePickerWidth = ScholiumGrid.foundationUnit * 42
-        static let fieldSpacing = ScholiumGrid.foundationUnit * 1.5
         static let rootSpacing = ScholiumGrid.foundationUnit * 2.5
         static let rowDetailSpacing = ScholiumGrid.foundationUnit * 0.5
         static let rowActionMinimumSpacing = ScholiumGrid.Spacing.labelAccessoryGap

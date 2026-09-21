@@ -1,35 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// The shared presentation boundary for Scholium's macOS Settings window.
-/// Native controls retain their platform behavior; this layer supplies only
-/// label alignment and spacing shared by every Settings pane. System
-/// typography, colors, materials and control feedback remain native.
-@MainActor
-func settingsTitle(
-    _ title: LocalizedStringResource,
-    detail: LocalizedStringResource
-) -> some View {
-    VStack(
-        alignment: .leading,
-        spacing: ScholiumMetrics.SettingsPresentation.titleDetailSpacing
-    ) {
-        Text(title)
-            .font(.title2)
-            .foregroundStyle(.primary)
-            .accessibilityAddTraits(.isHeader)
-        Text(detail)
-            .font(.body)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-    .frame(
-        maxWidth: ScholiumMetrics.Settings.headerMaximumWidth,
-        alignment: .leading
-    )
-    .accessibilityElement(children: .contain)
-}
-
 @MainActor
 func settingsMatrixHeader(
     _ title: LocalizedStringResource
@@ -64,31 +35,6 @@ func settingsEditorSection<Content: View>(
             .fixedSize(horizontal: false, vertical: true)
     }
     .accessibilityElement(children: .contain)
-}
-
-/// A semantic settings group; macOS owns its surface, corners, and adaptation.
-@MainActor
-func settingsGroup<Content: View>(
-    _ title: LocalizedStringResource,
-    @ViewBuilder content: () -> Content
-) -> some View {
-    GroupBox {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(ScholiumGrid.Spacing.inlineControlGap)
-    } label: {
-        Text(title).accessibilityAddTraits(.isHeader)
-    }
-}
-
-@MainActor
-func settingsFormSection<Content: View>(
-    _ title: LocalizedStringResource,
-    @ViewBuilder content: () -> Content
-) -> some View {
-    settingsEditorSection(title, content: content)
 }
 
 private struct ScholiumSettingsPaneSurface: ViewModifier {
