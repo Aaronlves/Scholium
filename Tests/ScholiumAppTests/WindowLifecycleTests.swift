@@ -44,6 +44,38 @@ struct WindowLifecycleTests {
         #expect(restored.windowID == windowID)
     }
 
+    @Test("Bootstrap routing can keep automatic startup hidden until setup is needed")
+    func bootstrapWindowVisibility() {
+        _ = NSApplication.shared
+        let registry = ScholiumWindowLifecycleRegistry()
+        let windowID = UUID()
+        let coordinator = BootstrapWindowAttachment.Coordinator(
+            windowID: windowID,
+            lifecycleRegistry: registry,
+            isVisible: false
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer {
+            coordinator.detach()
+            window.close()
+        }
+
+        coordinator.attach(to: window)
+        #expect(!window.isVisible)
+
+        coordinator.setVisibility(true)
+        #expect(window.isVisible)
+
+        coordinator.setVisibility(false)
+        #expect(!window.isVisible)
+    }
+
     @Test("Triptych subtitle appears only across distinct open Triptychs")
     func triptychSubtitleScope() {
         let registry = ScholiumWindowLifecycleRegistry()

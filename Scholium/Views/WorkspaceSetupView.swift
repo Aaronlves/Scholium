@@ -19,7 +19,6 @@ struct WorkspaceSetupContext {
     let workspaceAssignment: TriptychAssignment?
     let registeredTriptychs: [TriptychAssignment]
     let recoveryMessage: String?
-    let refreshAssignment: () async -> Void
     let portableContainerURL: (URL) async -> URL?
     let prepareTriptychStructure: (URL, String) async throws -> WorkspaceSetupSelection
     let preserveUnsupportedPortableControl: (URL, URL, UUID?) async throws -> URL
@@ -100,7 +99,6 @@ private struct BootstrapFlowView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .buttonStyle(.automatic)
         .task {
-            await context.refreshAssignment()
             loadCurrentValuesIfNeeded()
             await loadPortableContainerIfAvailable()
         }

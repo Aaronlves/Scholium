@@ -1074,9 +1074,14 @@ final class WindowAttachmentView: NSView {
 struct BootstrapWindowAttachment: NSViewRepresentable {
     let windowID: UUID
     let lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    let isVisible: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(windowID: windowID, lifecycleRegistry: lifecycleRegistry)
+        Coordinator(
+            windowID: windowID,
+            lifecycleRegistry: lifecycleRegistry,
+            isVisible: isVisible
+        )
     }
 
     func makeNSView(context: Context) -> WindowAttachmentView {
@@ -1088,6 +1093,7 @@ struct BootstrapWindowAttachment: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
+        context.coordinator.setVisibility(isVisible)
         if let window = nsView.window { context.coordinator.attach(to: window) }
     }
 
@@ -1104,13 +1110,16 @@ struct BootstrapWindowAttachment: NSViewRepresentable {
         private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
         private weak var window: NSWindow?
         private var isRegistered = false
+        private var shouldBeVisible: Bool
 
         init(
             windowID: UUID,
-            lifecycleRegistry: ScholiumWindowLifecycleRegistry
+            lifecycleRegistry: ScholiumWindowLifecycleRegistry,
+            isVisible: Bool
         ) {
             self.windowID = windowID
             self.lifecycleRegistry = lifecycleRegistry
+            self.shouldBeVisible = isVisible
             lifecycleRegistry.register(id: windowID) {}
             isRegistered = true
         }
@@ -1125,6 +1134,17 @@ struct BootstrapWindowAttachment: NSViewRepresentable {
             window.titlebarSeparatorStyle = .none
             window.backgroundColor = .windowBackgroundColor
             lifecycleRegistry.markReady(id: windowID)
+            setVisibility(shouldBeVisible)
+        }
+
+        func setVisibility(_ isVisible: Bool) {
+            shouldBeVisible = isVisible
+            guard let window else { return }
+            if isVisible {
+                window.makeKeyAndOrderFront(nil)
+            } else {
+                window.orderOut(nil)
+            }
         }
 
         func detach() {

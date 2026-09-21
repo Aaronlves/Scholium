@@ -248,7 +248,8 @@ private struct ScholiumSettingsWindowReadyContent: View {
         ScholiumSettingsRoot(workspaceStore: workspaceStore)
     }
 }
-/// Triptych is available it opens a configured workspace window and closes.
+/// If a Triptych is available, this scene opens its configured workspace window
+/// and closes without presenting the setup form.
 private struct ScholiumBootstrapRoot: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
@@ -256,7 +257,7 @@ private struct ScholiumBootstrapRoot: View {
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     @StateObject private var model: ScholiumBootstrapModel
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
-    @State private var isResolvingWorkspace = true
+    @State private var shouldPresentSetup = false
     @State private var didRouteToWorkspace = false
     @State private var destinationWindowID: UUID?
     @State private var routingErrorMessage: String?
@@ -277,17 +278,18 @@ private struct ScholiumBootstrapRoot: View {
 
     var body: some View {
         Group {
-            if isResolvingWorkspace {
-                ScholiumLaunchPlaceholderView()
-            } else {
+            if shouldPresentSetup {
                 WorkspaceSetupView(context: workspaceSetupContext)
+            } else {
+                ScholiumLaunchPlaceholderView()
             }
         }
         .buttonStyle(.automatic)
         .background(
             BootstrapWindowAttachment(
                 windowID: route.windowID,
-                lifecycleRegistry: lifecycleRegistry
+                lifecycleRegistry: lifecycleRegistry,
+                isVisible: shouldPresentSetup
             )
         )
         .task {
@@ -295,7 +297,7 @@ private struct ScholiumBootstrapRoot: View {
                 return
             }
             await model.refresh()
-            isResolvingWorkspace = false
+            shouldPresentSetup = !model.isReadyToOpenWorkspace && !didRouteToWorkspace
             openConfiguredWorkspaceIfAvailable()
         }
         .onReceive(SystemNotificationService.shared.$notificationWindowID) { id in
@@ -316,6 +318,7 @@ private struct ScholiumBootstrapRoot: View {
             } catch {
                 didRouteToWorkspace = false
                 self.destinationWindowID = nil
+                shouldPresentSetup = true
                 routingErrorMessage = error.localizedDescription
             }
         }
@@ -329,7 +332,6 @@ private struct ScholiumBootstrapRoot: View {
             workspaceAssignment: model.workspaceAssignment,
             registeredTriptychs: model.registeredTriptychs,
             recoveryMessage: routingErrorMessage ?? model.recoveryMessage,
-            refreshAssignment: { await model.refresh() },
             portableContainerURL: { await model.portableContainerURL(for: $0) },
             prepareTriptychStructure: { parentURL, name in
                 try await model.prepareTriptychStructure(
