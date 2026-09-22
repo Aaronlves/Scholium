@@ -4,7 +4,7 @@ import type {MathProjection} from "./math";
 import {localized, localizedTemplate} from "./localization";
 import {populatePreviewDocument} from "./preview-popover";
 import type {LinkPreview} from "./previews";
-import {systemSymbolElement} from "./system-symbols";
+import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import {toggledTaskMarker} from "./transformations";
 import {appendMarkdownBlocks} from "./markdown-fragment";
 
@@ -24,6 +24,17 @@ export function createLiveInlineWidgets(options: {
   requestMathRuntime(): void;
   didToggleTask(): void;
 }) {
+  class AttachmentIconWidget extends WidgetType {
+    constructor(readonly symbol: WebSystemSymbolKey) { super(); }
+    eq(other: AttachmentIconWidget) { return other.symbol === this.symbol; }
+    toDOM() {
+      const icon = systemSymbolElement(this.symbol, "scholium-attachment-icon");
+      icon.dataset.scholiumAttachmentSymbol = this.symbol;
+      return icon;
+    }
+    ignoreEvent() { return false; }
+  }
+
   function listIndent(depth: number) {
     if (depth <= 0) return "";
     return `calc(${Array.from(
@@ -310,6 +321,7 @@ export function createLiveInlineWidgets(options: {
   }
 
   return {
+    attachmentIcon: (symbol: WebSystemSymbolKey) => new AttachmentIconWidget(symbol),
     embeddedNote: (preview: LinkPreview, target: string, sourceCaret: number) =>
       new EmbeddedNoteWidget(preview, target, sourceCaret),
     listIndent,

@@ -16,6 +16,7 @@ import {
 } from "./reader-configuration";
 import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
 import {AnimationFrameCoalescer} from "./interaction-reporting";
+import {decorateAttachmentLinks} from "./attachment-presentation";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -81,6 +82,7 @@ async function initializeReader(value: unknown): Promise<void> {
   const documentRoot = requiredElement('scholium-document');
   let presentationUpdateSequence = 0;
   const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
+  decorateAttachmentLinks(documentRoot);
   readerWindow.scholiumReadNavigation?.destroy();
   readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
   window.addEventListener('pagehide', () => readerWindow.scholiumReadNavigation?.destroy(), {once: true});
@@ -366,6 +368,7 @@ async function initializeReader(value: unknown): Promise<void> {
           || typeof update.html !== 'string' || update.html.length > 16_777_216
           || typeof update.presentationCSS !== 'string' || typeof update.userCSS !== 'string') return false;
       const restoreSelection = replyProjection!.apply(update.html);
+      decorateAttachmentLinks(documentRoot);
       fingerprint = update.fingerprint;
       presentationStyle.textContent = update.presentationCSS;
       userStyle.textContent = update.userCSS;

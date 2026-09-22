@@ -258,6 +258,7 @@ function inlinePresentation(
     // so it remains ordinary editable source instead of becoming an active
     // projection or link target.
     if (explicitVisible.length === 0) return null;
+    targetRange = explicitVisible[0];
     if (node.name === "Autolink") {
       visibleRanges = explicitVisible;
     } else {

@@ -15,6 +15,10 @@ export const webSystemSymbolKeys = [
   "textformat-superscript",
   "minus",
   "paperclip",
+  "doc-richtext",
+  "rectangle-on-rectangle",
+  "photo",
+  "doc-zipper",
 ] as const;
 
 export type WebSystemSymbolKey = typeof webSystemSymbolKeys[number];

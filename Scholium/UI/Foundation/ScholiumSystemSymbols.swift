@@ -20,6 +20,10 @@ enum ScholiumSystemSymbol: String, CaseIterable, Sendable {
     case textFormatSuperscript = "textformat.superscript"
     case minus
     case paperclip
+    case docRichtext = "doc.richtext"
+    case presentation = "rectangle.on.rectangle"
+    case photo
+    case archive = "doc.zipper"
     case copyDocuments = "doc.on.doc"
     case expand = "arrow.up.left.and.arrow.down.right"
 

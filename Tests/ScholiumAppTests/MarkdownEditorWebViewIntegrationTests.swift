@@ -6223,6 +6223,32 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A formatted attachment label has one decorative icon without changing exact source")
+    func attachmentIconDoesNotRepeatAcrossFormattedLabel() async throws {
+        let source = "Intro 中文 😀.\r\n\r\n[**Paper** final](Attachments/paper.pdf)\r\n\r\n[Note](Note.md#Section)\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let icons = try await harness.callPageJavaScript(
+            """
+            return [...document.querySelectorAll('.scholium-attachment-icon')].map(icon => ({
+              symbol: icon.dataset.scholiumAttachmentSymbol,
+              text: icon.textContent,
+              hidden: icon.getAttribute('aria-hidden')
+            }));
+            """) as? [[String: String]]
+        #expect(icons == [["symbol": "doc-richtext", "text": "", "hidden": "true"]])
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(try await harness.callPageJavaScript(
+            "return document.querySelectorAll('.scholium-attachment-icon').length;"
+        ) as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("The WebKit symbol catalog resolves every direct SF Symbol")
     func webSymbolCatalogResolvesDirectSystemSymbols() throws {
         let repository = URL(fileURLWithPath: #filePath)

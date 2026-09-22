@@ -267,10 +267,11 @@ navigation uses a short smooth reveal and the existing transient arrival marker.
 Reduce Motion uses immediate positioning and static feedback. The rail hides
 before it would compress or cover readable Document content.
 
-Attachments appear as ordinary file links or image embeds in the Document.
-File activation uses system Quick Look with its standard opening and dismissal
-controls. File-menu insertion acts on the active editor selection. Scholium
-adds no attachment sidebar, global attachment manager or persistent file reader.
+Attachments remain file links or image embeds. Review and inactive Edit
+add quiet file-type symbols beside authored link labels without changing source
+or activation. File-menu insertion uses the editor selection; system Quick Look
+owns file opening/dismissal. No attachment sidebar, global manager or persistent
+reader is added.
 
 Ordinary Edit entry restores retained, fingerprint-valid title/body focus and
 selection when available. Otherwise it uses an exactly mapped Review selection,

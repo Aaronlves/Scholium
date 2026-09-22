@@ -1,4 +1,5 @@
 import {CommittedSnapshotReceipt} from "./committed-snapshot-receipt";
+import {attachmentSymbol} from "./attachment-presentation";
 import {editorSuspension, editorSuspensionState, setEditorSuspension} from "./editor-suspension";
 import {createDocumentTitle} from "./document-title";
 import {passageReplacement} from "./passage-replacement";
@@ -1101,6 +1102,16 @@ function buildLiveDecorations(
             const previewIndex = construct.kind === "link"
               ? linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to))
               : undefined;
+            const symbol = construct.kind === "link" && construct.targetRange
+              && visible.from === construct.visibleRanges[0]?.from
+              ? attachmentSymbol(doc.sliceString(construct.targetRange.from, construct.targetRange.to))
+              : null;
+            if (symbol) {
+              decorations.push(Decoration.widget({
+                widget: liveInlineWidgets.attachmentIcon(symbol),
+                side: -1,
+              }).range(visible.from));
+            }
             if (previewIndex === undefined) {
               addMark(visible.from, visible.to, className);
             } else {

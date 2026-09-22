@@ -25,6 +25,84 @@
     }
   };
 
+  // attachment-presentation.ts
+  var attachmentSymbols = {
+    pdf: "doc-richtext",
+    doc: "doc-text",
+    docx: "doc-text",
+    odt: "doc-text",
+    rtf: "doc-text",
+    txt: "doc-text",
+    xls: "tablecells",
+    xlsx: "tablecells",
+    ods: "tablecells",
+    numbers: "tablecells",
+    csv: "tablecells",
+    tsv: "tablecells",
+    ppt: "rectangle-on-rectangle",
+    pptx: "rectangle-on-rectangle",
+    odp: "rectangle-on-rectangle",
+    key: "rectangle-on-rectangle",
+    png: "photo",
+    jpg: "photo",
+    jpeg: "photo",
+    gif: "photo",
+    webp: "photo",
+    heic: "photo",
+    heif: "photo",
+    avif: "photo",
+    tiff: "photo",
+    tif: "photo",
+    bmp: "photo",
+    svg: "photo",
+    ico: "photo",
+    zip: "doc-zipper",
+    gz: "doc-zipper",
+    gzip: "doc-zipper",
+    tar: "doc-zipper",
+    tgz: "doc-zipper",
+    bz2: "doc-zipper",
+    xz: "doc-zipper",
+    "7z": "doc-zipper",
+    rar: "doc-zipper"
+  };
+  function attachmentSymbol(destination) {
+    if (/[\u0000-\u001f\u007f]/.test(destination)) return null;
+    let path = destination.trim();
+    if (path.startsWith("<") && path.endsWith(">")) path = path.slice(1, -1);
+    else if (path.startsWith("<") || path.endsWith(">")) return null;
+    if (!path || path.startsWith("#")) return null;
+    if (/^scholium-note:/i.test(path)) {
+      path = path.slice("scholium-note:".length);
+    }
+    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(path)?.[1].toLowerCase();
+    if (scheme === "file") {
+      try {
+        const url = new URL(path);
+        if (url.hostname && url.hostname !== "localhost") return null;
+        path = url.pathname;
+      } catch {
+        return null;
+      }
+    } else if (scheme) {
+      return null;
+    }
+    path = path.split(/[?#]/, 1)[0];
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      return null;
+    }
+    if (path.startsWith("#") || /\.(?:md|markdown)[?#]/i.test(path)) return null;
+    if (!path || /[\u0000-\u001f\u007f]/.test(path) || path.startsWith("//") || path.endsWith("/") || /^[a-z][a-z\d+.-]*:/i.test(path)) return null;
+    const filename = path.slice(path.lastIndexOf("/") + 1);
+    const dot2 = filename.lastIndexOf(".");
+    if (dot2 <= 0 || dot2 === filename.length - 1) return null;
+    const extension = filename.slice(dot2 + 1).toLowerCase();
+    if (extension === "md" || extension === "markdown") return null;
+    return Object.hasOwn(attachmentSymbols, extension) ? attachmentSymbols[extension] : "paperclip";
+  }
+
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -23269,6 +23347,7 @@ ${fence}
     if (kind === "link" || kind === "image") {
       const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
       if (explicitVisible.length === 0) return null;
+      targetRange = explicitVisible[0];
       if (node.name === "Autolink") {
         visibleRanges = explicitVisible;
       } else {
@@ -37068,6 +37147,24 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
 
   // live-inline-widgets.ts
   function createLiveInlineWidgets(options) {
+    class AttachmentIconWidget extends WidgetType {
+      constructor(symbol) {
+        super();
+        this.symbol = symbol;
+      }
+      symbol;
+      eq(other) {
+        return other.symbol === this.symbol;
+      }
+      toDOM() {
+        const icon = systemSymbolElement(this.symbol, "scholium-attachment-icon");
+        icon.dataset.scholiumAttachmentSymbol = this.symbol;
+        return icon;
+      }
+      ignoreEvent() {
+        return false;
+      }
+    }
     function listIndent(depth2) {
       if (depth2 <= 0) return "";
       return `calc(${Array.from(
@@ -37317,6 +37414,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     }
     return {
+      attachmentIcon: (symbol) => new AttachmentIconWidget(symbol),
       embeddedNote: (preview, target, sourceCaret) => new EmbeddedNoteWidget(preview, target, sourceCaret),
       listIndent,
       listMarker: (value) => new ListMarkerWidget(value),
@@ -39056,6 +39154,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             for (const visible2 of visibleRanges) {
               if (visible2.from > position) addHidden(position, visible2.from);
               const previewIndex = construct.kind === "link" ? linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to)) : void 0;
+              const symbol = construct.kind === "link" && construct.targetRange && visible2.from === construct.visibleRanges[0]?.from ? attachmentSymbol(doc2.sliceString(construct.targetRange.from, construct.targetRange.to)) : null;
+              if (symbol) {
+                decorations2.push(Decoration.widget({
+                  widget: liveInlineWidgets.attachmentIcon(symbol),
+                  side: -1
+                }).range(visible2.from));
+              }
               if (previewIndex === void 0) {
                 addMark(visible2.from, visible2.to, className);
               } else {

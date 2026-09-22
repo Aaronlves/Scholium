@@ -1,0 +1,40 @@
+/* A decorative prefix leaves the authored label and selection text intact.
+   The link remains one inline target and long filenames can wrap normally. */
+.scholium-attachment-link::before,
+.scholium-attachment-icon {
+  content: "";
+  display: inline-block;
+  inline-size: 1em;
+  block-size: 1em;
+  margin-inline-end: .28em;
+  vertical-align: -.12em;
+  background-color: currentColor;
+  -webkit-mask: var(--scholium-attachment-symbol) center / contain no-repeat;
+  mask: var(--scholium-attachment-symbol) center / contain no-repeat;
+}
+
+.scholium-attachment-icon {
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
+}
+
+:is(.scholium-attachment-link, .scholium-attachment-icon)[data-scholium-attachment-symbol="doc-richtext"] {
+  --scholium-attachment-symbol: var(--scholium-system-symbol-doc-richtext);
+}
+:is(.scholium-attachment-link, .scholium-attachment-icon)[data-scholium-attachment-symbol="doc-text"] {
+  --scholium-attachment-symbol: var(--scholium-system-symbol-doc-text);
+}
+:is(.scholium-attachment-link, .scholium-attachment-icon)[data-scholium-attachment-symbol="tablecells"] {
+  --scholium-attachment-symbol: var(--scholium-system-symbol-tablecells);
+}
+:is(.scholium-attachment-link, .scholium-attachment-icon)[data-scholium-attachment-symbol="rectangle-on-rectangle"] {
+  --scholium-attachment-symbol: var(--scholium-system-symbol-rectangle-on-rectangle);
+}
+:is(.scholium-attachment-link, .scholium-attachment-icon)[data-scholium-attachment-symbol="photo"] {
+  --scholium-attachment-symbol: var(--scholium-system-symbol-photo);
+}
+:is(.scholium-attachment-link, .scholium-attachment-icon)[data-scholium-attachment-symbol="doc-zipper"] {
+  --scholium-attachment-symbol: var(--scholium-system-symbol-doc-zipper);
+}
+:is(.scholium-attachment-link, .scholium-attachment-icon)[data-scholium-attachment-symbol="paperclip"] {
+  --scholium-attachment-symbol: var(--scholium-system-symbol-paperclip);
+}
