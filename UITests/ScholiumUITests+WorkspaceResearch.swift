@@ -18,11 +18,13 @@ extension ScholiumUITests {
         let adjacentWords = "adjacentcobalt adjacenttundra"
         let destinationWords = "newmonsoon newvelvet"
         let mixedLine = lineWords + " " + adjacentWords
+        let longPassage =
+            "合成界面样本：\(lineWords) 标记这段可回到原文的材料。研究者可以先阅读上下文，再判断它与当前问题的关系；这里不预设支持或反对。The passage remains a source excerpt, with mixed-script wording and enough context to inspect its wrapping in the research pane."
         let additions = [
             (firstURL, "\n\n" + mixedLine + "\n" + lineWords + "\n" + mixedLine),
-            (secondURL, "\n\n" + lineWords + ".\n\n" + destinationWords),
+            (secondURL, "\n\n" + longPassage + "\n\n" + destinationWords),
             (topicURL, "\n\n" + adjacentWords + "."),
-            (workURL, "\n\n" + destinationWords + "."),
+            (workURL, "\n\n" + lineWords + "：另一篇笔记的合成段落，用于观察分组留白。\n\n" + destinationWords + "."),
         ]
         for (url, suffix) in additions {
             try write(source(at: url) + suffix, to: url)
@@ -92,6 +94,10 @@ extension ScholiumUITests {
         find.click()
         waitForMaterial(lineWords, excluding: adjacentWords)
         XCTAssertEqual(editor.value as? String, firstSource)
+        let groupedReferences = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        groupedReferences.name = "Research Inspector grouped references"
+        groupedReferences.lifetime = .keepAlways
+        add(groupedReferences)
 
         // The final line contains BOTH vocabularies; select only its last two
         // words. Ignoring that selection would also retrieve the Analysis.
@@ -370,6 +376,10 @@ extension ScholiumUITests {
             )
         ).firstMatch
         XCTAssertTrue(incoming.waitForExistence(timeout: 8))
+        let links = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        links.name = "Research Inspector incoming links"
+        links.lifetime = .keepAlways
+        add(links)
     }
 
     /// The default final QA route. It keeps one isolated application process

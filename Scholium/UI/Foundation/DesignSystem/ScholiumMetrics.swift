@@ -39,6 +39,9 @@ enum ScholiumGrid {
         static let headingToContentGap = foundationUnit * 2.5
         static let contentRowGap = foundationUnit * 2
         static let contentLineSpacing = foundationUnit
+        static let passageLineSpacing = foundationUnit / 2
+        static let passageRowInset = foundationUnit / 2
+        static let noteGroupSeparation = Spacing.inlineControlGap
         static let iconColumnWidth = foundationUnit * 4
         static let iconToTextGap = foundationUnit * 2
         static let connectionOccurrenceVerticalInset = foundationUnit

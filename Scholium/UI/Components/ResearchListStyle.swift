@@ -14,6 +14,6 @@ extension View {
         listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
             .listRowInsets(.horizontal, ResearchInspectorLayout.listRowInset)
-            .listRowInsets(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+            .listRowInsets(.vertical, ScholiumGrid.Apparatus.passageRowInset)
     }
 }

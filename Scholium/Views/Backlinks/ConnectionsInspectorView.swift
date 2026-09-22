@@ -215,6 +215,7 @@ struct ConnectionsInspectorView: View {
     }
 
     var body: some View {
+        let noteGroups = groups
         VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
             InspectorLinkDirectionControl(direction: $session.direction)
                 .padding(.horizontal, ResearchInspectorLayout.contentInset)
@@ -225,7 +226,7 @@ struct ConnectionsInspectorView: View {
                     Group {
                         ResearchProjectionFreshnessView(
                             freshness: context.freshness, retry: context.retryRefresh)
-                        if groups.isEmpty && externalLinks.isEmpty {
+                        if noteGroups.isEmpty && externalLinks.isEmpty {
                             ScholiumApparatusStateView(
                                 query.wrappedValue.isEmpty ? direction.emptyAnnouncement : "No Results",
                                 systemImage: "link"
@@ -269,7 +270,7 @@ struct ConnectionsInspectorView: View {
                             }
                             .accessibilityElement(children: .contain)
                         }
-                        ForEach(groups) { group in
+                        ForEach(noteGroups) { group in
                             let expanded = Binding(
                                 get: { !session.location(for: locationKey).collapsedGroups.contains(group.id) },
                                 set: { expanded in
@@ -284,7 +285,8 @@ struct ConnectionsInspectorView: View {
                             )
                             ResearchNoteGroupHeader(
                                 title: group.title, role: group.items.first?.peer?.reference.vaultRole,
-                                expanded: expanded
+                                expanded: expanded,
+                                separatesFromPreviousGroup: group.id != noteGroups.first?.id
                             ) {
                                 if let peer = group.items.first?.peer {
                                     Button("Open Linked Note") { context.openReference(peer.reference, nil) }
@@ -322,7 +324,7 @@ struct ConnectionsInspectorView: View {
                 .onChange(of: locationKey, initial: true) { _, key in
                     if let id = session.location(for: key).scrollID {
                         proxy.scrollTo(id, anchor: .top)
-                    } else if let id = groups.first?.id {
+                    } else if let id = noteGroups.first?.id {
                         proxy.scrollTo(id, anchor: .top)
                     }
                 }
@@ -346,7 +348,6 @@ private struct LinkOccurrenceRow: View {
                             in: contextText, label: item.edge.occurrence.alias ?? item.edge.occurrence.target
                         )
                         .textRenderer(ResearchHighlightRenderer())
-                        .font(ScholiumTypography.interface(.control))
                         .foregroundStyle(ScholiumNativeColorRole.label.color)
                         .scholiumContentControlInk(
                             resting: .primaryText,

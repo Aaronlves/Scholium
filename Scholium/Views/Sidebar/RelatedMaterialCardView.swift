@@ -7,6 +7,7 @@ struct RelatedMaterialNoteGroupView: View {
     let canInsertParagraph: Bool
     let isLoading: Bool
     let entranceProgress: CGFloat
+    var separatesFromPreviousGroup = false
     let open: (RelatedMaterialCard) -> Void
     let insert: (RelatedMaterialCard) -> Void
     let insertParagraph: (RelatedMaterialCard) -> Void
@@ -20,7 +21,8 @@ struct RelatedMaterialNoteGroupView: View {
                 expanded: $expanded,
                 entranceProgress: entranceProgress,
                 directoryContext: group.directoryContext,
-                relativePath: first.reference.relativePath
+                relativePath: first.reference.relativePath,
+                separatesFromPreviousGroup: separatesFromPreviousGroup
             ) {
                 Button("Link to This Note") { insert(first) }
                     .disabled(!canInsert || first.linkTarget == nil)
@@ -95,11 +97,10 @@ private struct RelatedMaterialPassageView: View {
     var body: some View {
         Button(action: open) {
             ResearchPassageCard {
-                ResearchPassageHighlight.matches(
-                    in: card.passage.excerpt, ranges: card.passage.excerptMatches
+                ResearchPassageExcerpt(
+                    text: ResearchPassageHighlight.matches(
+                        in: card.passage.excerpt, ranges: card.passage.excerptMatches)
                 )
-                .textRenderer(ResearchHighlightRenderer())
-                .font(ScholiumTypography.interface(.control)).lineLimit(3)
                 .foregroundStyle(ScholiumNativeColorRole.label.color)
                 .scholiumContentControlInk(
                     resting: .primaryText,
@@ -146,27 +147,28 @@ private struct RelatedMaterialPassageView: View {
 
 /// Initial-search preview of the same information regions used by a result card.
 struct RelatedMaterialSkeleton: View {
+    var separatesFromPreviousGroup = false
+
     var body: some View {
         Group {
-            HStack(spacing: ScholiumGrid.Apparatus.iconToTextGap) {
-                Image(systemName: "doc.text").frame(width: ScholiumGrid.Apparatus.iconColumnWidth)
-                Text("Writing References").redacted(reason: .placeholder)
-                Spacer()
-            }
-            .font(ScholiumTypography.interface(.control, emphasis: .strong))
-            .frame(minHeight: ScholiumSidebarLayout.controlHeight)
+            ResearchNoteGroupHeader(
+                title: ScholiumL10n.dynamicString("Writing References"), role: nil,
+                expanded: .constant(true),
+                separatesFromPreviousGroup: separatesFromPreviousGroup
+            ) {}
             ResearchPassageCard {
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    ForEach(0..<3) { _ in
-                        Text("Writing References").frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .font(ScholiumTypography.interface(.control))
-                .redacted(reason: .placeholder)
+                // Redacted text uses the same wrapping and line cap as a result,
+                // rather than three short fixed-width bars unrelated to the pane.
+                ResearchPassageExcerpt(
+                    text: Text(
+                        verbatim: Array(repeating: ScholiumL10n.dynamicString("Writing References"), count: 10)
+                            .joined(separator: " ")))
             }
         }
-        .foregroundStyle(.quaternary)
+        .redacted(reason: .placeholder)
         .modifier(ResearchSkeletonPulse(isActive: true))
+        .disabled(true)
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 }

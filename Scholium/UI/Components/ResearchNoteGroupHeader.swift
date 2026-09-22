@@ -9,6 +9,7 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
     var entranceProgress: CGFloat = 1
     var directoryContext: String? = nil
     var relativePath: String? = nil
+    var separatesFromPreviousGroup = false
     @ViewBuilder let actions: () -> Actions
     @State private var hovered = false
     @FocusState private var keyboardFocused: Bool
@@ -41,7 +42,7 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                         HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                            Text(verbatim: title).font(ScholiumTypography.interface(.control, emphasis: .strong))
+                            ResearchText(text: Text(verbatim: title)).font(ScholiumTypography.interface(.control, emphasis: .strong))
                                 .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                             Image(systemName: expanded ? "chevron.down" : "chevron.right")
                                 .font(.caption)
@@ -49,7 +50,7 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
                                 .accessibilityHidden(true)
                         }
                         if let directoryContext {
-                            Text(verbatim: directoryContext)
+                            ResearchText(text: Text(verbatim: directoryContext))
                                 .font(ScholiumTypography.interface(.small))
                                 .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                                 .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
@@ -89,6 +90,7 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
             .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString("More Actions") + ", " + sourceIdentity))
             .help("More Actions")
         }
+        .padding(.top, separatesFromPreviousGroup ? ScholiumGrid.Apparatus.noteGroupSeparation : 0)
         .onHover { hovered = $0 }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: showsActions)
     }

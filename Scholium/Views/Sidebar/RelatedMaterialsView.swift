@@ -18,6 +18,7 @@ struct RelatedMaterialsView: View {
 
     var body: some View {
         TimelineView(.animation(paused: entrance.deadline == nil || reduceMotion)) { timeline in
+            let groups = session.noteGroups
             List {
                 Group {
                     switch session.presentation {
@@ -44,18 +45,22 @@ struct RelatedMaterialsView: View {
                         .accessibilityIdentifier("scholium.related.issue")
                     case .loading:
                         if session.cards.isEmpty {
-                            ForEach(0..<3) { _ in RelatedMaterialSkeleton() }
+                            ForEach(0..<3) { index in
+                                RelatedMaterialSkeleton(separatesFromPreviousGroup: index > 0)
+                            }
                         }
                     case .results:
                         EmptyView()
                     }
-                    ForEach(session.noteGroups) { group in
+                    ForEach(groups) { group in
                         RelatedMaterialNoteGroupView(
                             group: group,
                             canInsert: editor != nil && session.insertionPoint != nil && !session.isLoading && !session.isInsertingParagraphLink,
                             canInsertParagraph: editor != nil && session.canInsertParagraphLink,
                             isLoading: session.isLoading,
-                            entranceProgress: reduceMotion ? 1 : entrance.progress(for: group.id, at: timeline.date),
+                            entranceProgress: reduceMotion
+                                ? 1 : entrance.progress(for: group.id, at: timeline.date),
+                            separatesFromPreviousGroup: group.id != groups.first?.id,
                             open: { if !session.isLoading { open($0) } },
                             insert: { if !session.isLoading { insert($0) } },
                             insertParagraph: insertParagraph,

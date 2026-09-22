@@ -47,10 +47,35 @@ enum ResearchPassageHighlight {
 
 private struct ResearchMatchAttribute: TextAttribute {}
 
-/// Draw only the highlight background; native Text keeps glyph layout and semantics.
+/// Native redaction can rewrap mixed-script text. Keep the source's exact text
+/// layout and render placeholder lines into it, without measuring/caching heights.
+struct ResearchText: View {
+    let text: Text
+    @Environment(\.redactionReasons) private var redactionReasons
+
+    var body: some View {
+        text
+            .textRenderer(ResearchHighlightRenderer(isPlaceholder: redactionReasons.contains(.placeholder)))
+            .environment(\.redactionReasons, redactionReasons.subtracting(.placeholder))
+    }
+}
+
+/// Native Text owns layout and semantics; draw glyphs/highlights or placeholder lines.
 struct ResearchHighlightRenderer: TextRenderer {
+    var isPlaceholder = false
+
     func draw(layout: Text.Layout, in context: inout GraphicsContext) {
         for line in layout {
+            if isPlaceholder {
+                let bounds = line.typographicBounds.rect
+                let bar = bounds.insetBy(dx: 0, dy: bounds.height * 0.2)
+                var placeholder = context
+                placeholder.opacity *= 0.16
+                placeholder.fill(
+                    Path(roundedRect: bar, cornerRadius: ScholiumGrid.Spacing.opticalAlignmentAdjustment),
+                    with: .foreground)
+                continue
+            }
             for run in line {
                 if run[ResearchMatchAttribute.self] != nil {
                     let rect = run.typographicBounds.rect
