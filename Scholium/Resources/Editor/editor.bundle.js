@@ -33698,12 +33698,37 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (!(next >= 56320 && next <= 57343)) return null;
       } else if (code2 >= 56320 && code2 <= 57343) return null;
     }
+    let sentenceEnd = null;
+    for (let index = 0; index < value.length; index++) {
+      const end = sentenceBoundaryEnd(value, index);
+      if (end === null) continue;
+      if (sentenceEnd !== null || value.slice(end).trim()) return null;
+      sentenceEnd = end;
+      index = end - 1;
+    }
     return value;
+  }
+  var sentenceClosingCharacters = /[\])}"'’”》」』）】〉》]/u;
+  function sentenceBoundaryEnd(value, index) {
+    if (!/[.!?。！？…]/u.test(value[index] ?? "")) return null;
+    if (value[index] === "." && /\d/u.test(value[index - 1] ?? "") && /\d/u.test(value[index + 1] ?? "")) return null;
+    let end = index + 1;
+    while (end < value.length && sentenceClosingCharacters.test(value[end])) end++;
+    const cjkTerminator = /[。！？]/u.test(value[index] ?? "");
+    return cjkTerminator || end === value.length || /\s/u.test(value[end] ?? "") ? end : null;
+  }
+  function sentenceIsUnfinished(before) {
+    const withoutTrailingSpace = before.replace(/\s+$/u, "");
+    const withoutClosers = withoutTrailingSpace.replace(
+      new RegExp(`${sentenceClosingCharacters.source}+$`, "u"),
+      ""
+    ).replace(/\s+$/u, "");
+    return !/[.!?。！？…]$/u.test(withoutClosers);
   }
   function continuationContextAllowed(options, state, position) {
     if (!isWritingSuggestionContext(options, state) || positionIsProtected(options, state, position) || positionIsProtected(options, state, Math.max(0, position - 1))) return false;
     const before = state.sliceDoc(Math.max(0, position - 512), position);
-    return /[\p{L}\p{N}]/u.test(before) && !/\[\[[^\]\n]*$|(?:^|\s)@[^\s]*$|(?:^|\s)\/[^\s]*$/u.test(before) && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
+    return /[\p{L}\p{N}]/u.test(before) && sentenceIsUnfinished(before) && !/\[\[[^\]\n]*$|(?:^|\s)@[^\s]*$|(?:^|\s)\/[^\s]*$/u.test(before) && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
   }
   function boundedUUID() {
     if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -34052,8 +34077,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           if (!valid()) return;
           const position = state.selection.main.head;
           let fallbackReason = null;
-          if (continuationEnabled) {
-            if (!continuationContextAllowed(options, state, position)) return;
+          if (continuationEnabled && continuationContextAllowed(options, state, position)) {
             const result = await requestContinuation(state, position);
             if (!valid()) return;
             if (result.text) {

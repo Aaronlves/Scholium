@@ -237,8 +237,10 @@ silently guess an ambiguous library.
 Writing continuation uses the existing App Server transport through a bounded
 ephemeral text-generation executor, not the conversation archive or execution admission
 for research tools. Explicit model/low-or-lower effort, disabled environment/MCP capabilities
-and event rejection constrain generation; timeout, cancellation and disconnect interrupt
-the owned turn. Editor publication and acceptance remain Document-owned.
+and event rejection constrain generation; the prompt and output contract are limited to
+the unfinished current sentence and stop at its first sentence boundary. Timeout,
+cancellation and disconnect interrupt the owned turn. Editor publication and acceptance
+remain Document-owned.
 
 The native composer owns selection, marked text, text Undo and focus; conversation
 owns the durable draft. Reply rendering uses sanitized immutable snapshots and

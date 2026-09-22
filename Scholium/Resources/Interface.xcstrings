@@ -78,6 +78,13 @@
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "AI 续写使用已连接的 Codex 账户，可能消耗其额度。请求采用模型支持的低或更低推理强度及标准服务层级。写作上下文及相关检索片段会发送至该连接，处理可能在远程进行。关闭 AI 或服务不可用时，仍可使用本地术语补全。" } }
       }
     },
+    "In Edit or Source, pause after typing an unfinished sentence. AI shows only the current sentence's suffix; press Tab to accept. It never inserts text automatically.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "In Edit or Source, pause after typing an unfinished sentence. AI shows only the current sentence's suffix; press Tab to accept. It never inserts text automatically." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "在“编辑”或“源文本”中，输入未完成的句子后暂停片刻。AI 只显示当前句子的补全；按 Tab 接受。它不会自动写入正文。" } }
+      }
+    },
     "settings.tab.document": {"comment": "Settings tab for document content presentation and appearance profiles, including typography.", "extractionState": "extracted_with_value", "localizations": {"en": {"stringUnit": {"state": "new", "value": "Document Appearance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文稿外观"}}}},
     "settings.tab.workspace": {
       "comment": "Settings tab for local Triptych registration and folder access.",

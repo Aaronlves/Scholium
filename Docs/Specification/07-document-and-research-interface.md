@@ -89,11 +89,11 @@ and undeclared titles. AI continuation defaults off. Writing Assistance selects
 an independent runtime-inventory model with low-cost default and low-or-lower supported effort.
 Unavailable choices never silently switch. Enabling permits bounded writing/retrieved
 context to reach the runtime; remote processing and usage are disclosed.
-AI takes priority, offering the current sentence's remainder. Unsaved writing controls
-direction; bounded Related-Content background keeps roles/revisions distinct, not
-instructions or evidence. Missing retrieval permits generation. AI failure, timeout
-or unusable output permits local fallback; waiting shows no local preview and late
-AI cannot replace fallback. AI previews identify origin.
+After a pause, AI is eligible at a focused caret in an unfinished sentence.
+Completed/protected/structural contexts suppress it; local completion remains. AI
+receives current-sentence context. The suffix stops at the first boundary and cannot
+cross sentence/paragraph. Failure/timeout falls back locally;
+waiting shows no preview and late AI is ignored. Previews identify origin.
 Tab/activation appends the visible suffix in one Undo; Return remains newline.
 Escape dismisses without fallback. Preview is not source or copied
 text. Typing, caret movement, focus loss, composition, document/configuration changes

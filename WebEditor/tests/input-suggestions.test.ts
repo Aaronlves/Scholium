@@ -48,6 +48,21 @@ function inlineContinuationHarness(source = "A claim about res", options: {
 }
 
 describe("AI-first inline continuation", () => {
+  it("requests only after an unfinished current sentence", async () => {
+    vi.useFakeTimers();
+    for (const source of ["A completed claim. ", "A completed claim。", "A completed claim.”"]) {
+      const h = inlineContinuationHarness(source);
+      await vi.advanceTimersByTimeAsync(1_200);
+      expect(h.requests).toEqual([]);
+      expect(h.terms).toEqual([]);
+      h.plugin.clear();
+    }
+    const h = inlineContinuationHarness("Earlier claim. A claim about res");
+    await vi.advanceTimersByTimeAsync(1_200);
+    expect(h.requests).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
   it("waits for AI without exposing or requesting local terms, and accepts one exact Undo event", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness("\uFEFFFirst 😀.\r\nA claim about res");
@@ -138,7 +153,7 @@ describe("AI-first inline continuation", () => {
   });
 
   it("rejects multiline, hidden controls, Markdown structures and malformed UTF16", () => {
-    for (const text of ["", " ", "a\nb", "a\u0085b", "a\u2028b", "a\u2029b", "a\u202eb", "[[note]]", "*claim*", "\ud800", "x".repeat(513)]) {
+    for (const text of ["", " ", "a\nb", "a\u0085b", "a\u2028b", "a\u2029b", "a\u202eb", "[[note]]", "*claim*", "\ud800", "x".repeat(513), " first. second", "第一句。第二句"]) {
       expect(safeContinuationSuffix(text)).toBeNull();
     }
     expect(safeContinuationSuffix(" qualifies the claim 😀。" )).toBe(" qualifies the claim 😀。");

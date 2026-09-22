@@ -30,6 +30,8 @@ struct WritingContinuationSettingsContent: View {
         } footer: {
             VStack(alignment: .leading) {
                 Text("This Mac", bundle: .module)
+                Text(ScholiumL10n.WritingAssistance.trigger)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(ScholiumL10n.WritingAssistance.contextAndAllowance)
                     .fixedSize(horizontal: false, vertical: true)
             }

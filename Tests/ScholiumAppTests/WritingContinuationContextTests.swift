@@ -13,8 +13,8 @@ struct WritingContinuationContextTests {
             source: source, selections: [.init(anchor: position, head: position)], paragraph: true)
     }
 
-    @Test("Uses exact current paragraph, with before and after kept separate")
-    func exactParagraph() throws {
+    @Test("Uses the exact current sentence, with before and after kept separate")
+    func exactSentence() throws {
         let source = "\u{feff}---\r\nkeywords: [控制]\r\n---\r\n\r\nEarlier paragraph.\r\n\r\n控制😀 moral res ends here.\r\n\r\nLater paragraph."
         let caret = (source as NSString).range(of: " ends here.").location
         let snapshot = try capture(source, caret: caret)
@@ -25,6 +25,30 @@ struct WritingContinuationContextTests {
         #expect(!context.focus.contains("Later"))
         #expect(!context.focus.contains("keywords"))
         #expect(!context.focus.contains("res "))
+    }
+
+    @Test("Excludes earlier sentences and rejects a completed current sentence")
+    func sentenceBoundary() throws {
+        let source = "Earlier sentence. Current claim about res. Later sentence."
+        let punctuation = (source as NSString).range(of: ".", options: [], range: NSRange(location: 20, length: source.utf16.count - 20)).location
+        let snapshot = try capture(source, caret: punctuation)
+        let context = try #require(WritingContinuationContext(snapshot: snapshot, caret: punctuation))
+        #expect(context.before == "Current claim about res")
+        #expect(context.after == ".")
+        #expect(!context.focus.contains("Earlier"))
+        #expect(!context.focus.contains("Later"))
+
+        let completedSource = "Earlier sentence. Current claim."
+        let completedCaret = completedSource.utf16.count
+        let completedSnapshot = try capture(completedSource, caret: completedCaret)
+        #expect(WritingContinuationContext(snapshot: completedSnapshot, caret: completedCaret) == nil)
+
+        let chinese = "前一句。当前句正在写"
+        let chineseCaret = chinese.utf16.count
+        let chineseSnapshot = try capture(chinese, caret: chineseCaret)
+        let chineseContext = try #require(WritingContinuationContext(snapshot: chineseSnapshot, caret: chineseCaret))
+        #expect(chineseContext.before == "当前句正在写")
+        #expect(!chineseContext.focus.contains("前一句"))
     }
 
     @Test("Retrieval focus ignores the growing final Latin word and retains Chinese wording")

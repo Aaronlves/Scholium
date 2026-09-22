@@ -77,6 +77,12 @@ enum ScholiumL10n {
                 table: "Interface", bundle: .module
             )
         }
+        static var trigger: LocalizedStringResource {
+            LocalizedStringResource(
+                "In Edit or Source, pause after typing an unfinished sentence. AI shows only the current sentence's suffix; press Tab to accept. It never inserts text automatically.",
+                table: "Interface", bundle: .module
+            )
+        }
     }
 
     enum RelatedMaterialGraph {

@@ -138,11 +138,15 @@ Chat owns its reply lifecycle, reply projection updates, transcript WebView subc
 and reply events in that extension rather than in the neutral Review reader.
 
 Writing continuation shares the retained editor's inline suggestion owner, with
-separate generation-bound request/cancellation messages. Window composition captures
-the checked current paragraph and insertion receipt, packs bounded Related-Content
-background, and rechecks identity, focus, conflict and configuration before generation
-and publication. Its one-result retrieval cache is bound to runtime, Note, complete
-Search generation, exact seed revision and focus; it is neither another index nor query history.
+separate generation-bound request/cancellation messages. A short post-input pause
+may request only an unfinished current sentence; completed sentences and structural
+contexts suppress AI while local completion remains independent. Window composition
+captures the checked current sentence inside its paragraph and insertion receipt,
+packs bounded Related-Content background, and rechecks identity, focus, conflict
+and configuration before generation and publication. Its one-result retrieval cache
+is bound to runtime, Note, complete Search generation, exact seed revision and focus;
+it is neither another index nor query history. Returned text is bounded to the first
+sentence boundary before it can become an inline preview.
 Machine-local continuation preferences remain independent of conversation settings.
 
 Attachment preparation joins the existing editor insertion and scoped rollback

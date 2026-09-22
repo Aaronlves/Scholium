@@ -153,7 +153,38 @@ export function safeContinuationSuffix(value: unknown): string | null {
       if (!(next >= 0xdc00 && next <= 0xdfff)) return null;
     } else if (code >= 0xdc00 && code <= 0xdfff) return null;
   }
+  // A response may complete the current sentence, but it must not continue
+  // into a second sentence. The native runtime applies the same check; keep
+  // the page-side guard so a malformed bridge value never becomes a ghost.
+  let sentenceEnd: number | null = null;
+  for (let index = 0; index < value.length; index++) {
+    const end = sentenceBoundaryEnd(value, index);
+    if (end === null) continue;
+    if (sentenceEnd !== null || value.slice(end).trim()) return null;
+    sentenceEnd = end;
+    index = end - 1;
+  }
   return value;
+}
+
+const sentenceClosingCharacters = /[\])}"'’”》」』）】〉》]/u;
+
+function sentenceBoundaryEnd(value: string, index: number): number | null {
+  if (!/[.!?。！？…]/u.test(value[index] ?? "")) return null;
+  if (value[index] === "." && /\d/u.test(value[index - 1] ?? "") && /\d/u.test(value[index + 1] ?? "")) return null;
+  let end = index + 1;
+  while (end < value.length && sentenceClosingCharacters.test(value[end])) end++;
+  const cjkTerminator = /[。！？]/u.test(value[index] ?? "");
+  return cjkTerminator || end === value.length || /\s/u.test(value[end] ?? "") ? end : null;
+}
+
+function sentenceIsUnfinished(before: string): boolean {
+  const withoutTrailingSpace = before.replace(/\s+$/u, "");
+  const withoutClosers = withoutTrailingSpace.replace(
+    new RegExp(`${sentenceClosingCharacters.source}+$`, "u"),
+    "",
+  ).replace(/\s+$/u, "");
+  return !/[.!?。！？…]$/u.test(withoutClosers);
 }
 
 function continuationContextAllowed(options: InputSuggestionOptions, state: EditorState, position: number) {
@@ -162,6 +193,7 @@ function continuationContextAllowed(options: InputSuggestionOptions, state: Edit
     || positionIsProtected(options, state, Math.max(0, position - 1))) return false;
   const before = state.sliceDoc(Math.max(0, position - 512), position);
   return /[\p{L}\p{N}]/u.test(before)
+    && sentenceIsUnfinished(before)
     && !/\[\[[^\]\n]*$|(?:^|\s)@[^\s]*$|(?:^|\s)\/[^\s]*$/u.test(before)
     && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
 }
@@ -534,8 +566,7 @@ export function createEditorInputSuggestions(
         if (!valid()) return;
         const position = state.selection.main.head;
         let fallbackReason: string | null = null;
-        if (continuationEnabled) {
-          if (!continuationContextAllowed(options, state, position)) return;
+        if (continuationEnabled && continuationContextAllowed(options, state, position)) {
           const result = await requestContinuation(state, position);
           if (!valid()) return;
           if (result.text) {
