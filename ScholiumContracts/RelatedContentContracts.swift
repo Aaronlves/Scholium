@@ -4,8 +4,8 @@ import Foundation
 /// generation. It does not change visible Search grammar, scopes, or Saved
 /// Search semantics.
 public enum RelatedContentContract {
-    public static let currentVersion = 12
-    public static let rankingPolicyVersion = 10
+    public static let currentVersion = 14
+    public static let rankingPolicyVersion = 12
     public static let maximumGraphCandidates = 12
     public static let maximumGraphPathsPerCandidate = 3
     public static let maximumGraphNeighbors = 256

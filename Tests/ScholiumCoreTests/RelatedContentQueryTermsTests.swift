@@ -1,3 +1,4 @@
+import Foundation
 import ScholiumContracts
 import Testing
 
@@ -107,6 +108,61 @@ struct RelatedContentQueryTermsTests {
         #expect(RelatedContentQueryTerms.quotedPhrases(in: "an author's reason isn't “an unfinished phrase") == [])
         #expect(RelatedContentQueryTerms.quotedPhrases(in: "\"  reason\n for   action  \"") == ["reason for action"])
         #expect(RelatedContentQueryTerms.quotedPhrases(in: "\\\"not a quote\\\"") == [])
+    }
+
+    @Test("Prepared ASCII runs retain the original Unicode token sequence and length bounds")
+    func normalizedRunEquivalence() {
+        let sources = [
+            "THE Reason reason NOT necessary 00 0 A abc123 foo_bar and Z",
+            "CAFÉ cafe\u{301} KELVIN ﬀorce Straße STRASSE İdea I\u{307}dea Σσς 각 각",
+            "自由freedom自主 foo\u{200D}bar a\u{20DD}b 😀 agency\r\nreason\tvalue",
+            String(repeating: "a", count: 128) + " " + String(repeating: "b", count: 129)
+                + " " + String(repeating: "é", count: 64) + " " + String(repeating: "é", count: 65),
+            (0x20...0x2FF).compactMap(UnicodeScalar.init).map { "Reason\($0)VALUE \($0)\($0)" }.joined(separator: " "),
+        ]
+        for source in sources {
+            #expect(RelatedContentQueryTerms.orderedTokens(in: source) == referenceTokens(in: source))
+            let signature = RelatedContentRecommendationPolicy.TextSignature(source)
+            #expect(signature.words == Set(referenceTokens(in: source)))
+        }
+    }
+
+    /// Frozen scalar-run extraction before ASCII preparation. The oracle still
+    /// normalizes each completed token independently, including folded Unicode.
+    private func referenceTokens(in value: String) -> [String] {
+        let ignored = Set(
+            "a an and are as at be been being but by for from had has have if in is it its of on or that the these this those to was we were with".split(
+                separator: " "
+            ).map(String.init))
+        var result: [String] = []
+        var run = ""
+        var cjk: Bool?
+        func finish() {
+            guard !run.isEmpty else { return }
+            for candidate in cjk == true ? SearchTokenization.queryTokens(for: run) : [run] {
+                let token = SearchTextNormalization.normalize(candidate)
+                let containsCJK = SearchTokenization.containsCJK(token)
+                if !token.isEmpty, token.utf8.count <= 128,
+                    containsCJK || token.count > 1, containsCJK || !ignored.contains(token)
+                {
+                    result.append(token)
+                }
+            }
+            run = ""
+            cjk = nil
+        }
+        for scalar in SearchTextNormalization.normalize(value).unicodeScalars {
+            let nextCJK = SearchTokenization.isCJK(scalar)
+            guard nextCJK || CharacterSet.alphanumerics.contains(scalar) else {
+                finish()
+                continue
+            }
+            if let cjk, cjk != nextCJK { finish() }
+            cjk = nextCJK
+            run.unicodeScalars.append(scalar)
+        }
+        finish()
+        return result
     }
 
     @Test("All query budgets are bounded, unique and deterministic, including very small limits")

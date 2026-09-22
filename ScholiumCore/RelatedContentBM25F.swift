@@ -95,35 +95,48 @@ struct RelatedContentBM25F {
         }
         let matcher = RelatedContentTermMatcher(terms: terms)
         let fields = RelatedContentRankingField.allCases
-        var lengths = [[Double]]()
-        var frequencies = [[[Double]]]()
         var average = Array(repeating: 0.0, count: fields.count)
         var nonempty = Array(repeating: 0.0, count: fields.count)
-        var documentFrequency = Array(repeating: 0.0, count: terms.count)
         for document in documents {
             try Task.checkCancellation()
-            var fieldLengths = [Double]()
-            var fieldFrequencies = [[Double]]()
-            var present = Set<Int>()
             for (f, field) in fields.enumerated() {
-                let text = document.fields[field.rawValue] ?? ""
                 let length = document.fieldLengths[field.rawValue] ?? 0
-                fieldLengths.append(length)
                 if length > 0 {
                     average[f] += length
                     nonempty[f] += 1
                 }
+            }
+        }
+        for f in fields.indices { average[f] = nonempty[f] > 0 ? average[f] / nonempty[f] : 1 }
+        let parametersByRole = Dictionary(
+            uniqueKeysWithValues: Set(roles ?? [.other]).map { role in
+                (role, fields.map { parameters($0, role: role) })
+            })
+        var frequencies = [[Double]]()
+        frequencies.reserveCapacity(documents.count)
+        var documentFrequency = Array(repeating: 0.0, count: terms.count)
+        for (d, document) in documents.enumerated() {
+            try Task.checkCancellation()
+            let fieldParameters = parametersByRole[roles?[d] ?? .other]!
+            var frequency = Array(repeating: 0.0, count: terms.count)
+            // Absent fields contribute zero. Normalize each present field once,
+            // and retain only the per-term sum, in the original field order.
+            // This avoids a document x field x term matrix and repeated field
+            // normalization without changing corpus statistics or arithmetic.
+            for (f, field) in fields.enumerated() {
+                guard let text = document.fields[field.rawValue] else { continue }
+                let p = fieldParameters[f]
+                let normalization = 1 - p.length + p.length * (document.fieldLengths[field.rawValue] ?? 0) / average[f]
                 let counts =
                     document.textIndexes[field.rawValue].map { matcher.counts(in: text, index: $0) }
                     ?? Array(repeating: 0, count: terms.count)
-                for (t, count) in counts.enumerated() where count > 0 { present.insert(t) }
-                fieldFrequencies.append(counts.map(Double.init))
+                for t in terms.indices {
+                    frequency[t] += p.weight * Double(counts[t]) / normalization
+                }
             }
-            for t in present { documentFrequency[t] += 1 }
-            lengths.append(fieldLengths)
-            frequencies.append(fieldFrequencies)
+            for t in terms.indices where frequency[t] > 0 { documentFrequency[t] += 1 }
+            frequencies.append(frequency)
         }
-        for f in fields.indices { average[f] = nonempty[f] > 0 ? average[f] / nonempty[f] : 1 }
         let k1 = 1.2
         let information = documentFrequency.map { log(1 + (Double(documents.count) - $0 + 0.5) / ($0 + 0.5)) }
         // Absent vocabulary cannot supply comparison information. In particular,
@@ -133,14 +146,8 @@ struct RelatedContentBM25F {
         var distinctive = Array(repeating: false, count: documents.count)
         let scores = try documents.indices.map { d in
             try Task.checkCancellation()
-            let fieldParameters = fields.map { parameters($0, role: roles?[d]) }
             return terms.indices.reduce(0.0) { score, t in
-                var frequency = 0.0
-                for f in fields.indices {
-                    let p = fieldParameters[f]
-                    let normalization = 1 - p.length + p.length * lengths[d][f] / average[f]
-                    frequency += p.weight * frequencies[d][f][t] / normalization
-                }
+                let frequency = frequencies[d][t]
                 let idf = information[t]
                 if frequency > 0 {
                     coverage[d] += idf / totalInformation

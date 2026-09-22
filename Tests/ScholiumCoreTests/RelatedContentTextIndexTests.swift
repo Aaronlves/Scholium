@@ -52,6 +52,20 @@ struct RelatedContentTextIndexTests {
         #expect(matcher.counts(in: text, index: RelatedContentTextIndex(text)) == [3, 3, 3, 1, 1, 1, 1, 1, 3])
     }
 
+    @Test("Presence skips invalid prefixes and retains all aliases without counting repeated matches")
+    func canonicalPresence() {
+        let terms = ["agency", "agency", "café", "cafe\u{301}", "自由", "自由agency", "not sufficient", "missing", ""]
+        for prefix in ["", "a\u{200D}b "] {
+            let text = SearchTextNormalization.lexicalNormalize(
+                prefix + "agencywork caféine 自由agencywork not sufficiently "
+                    + String(repeating: "agency CAFÉ 自由 自由agency not sufficient ", count: 100))
+            let index = RelatedContentTextIndex(text)
+            let expected = Set(terms.filter { canonicalCount(term: $0, text: text) > 0 })
+            #expect(RelatedContentTermMatcher(terms: terms).matchingTerms(in: text, index: index) == expected)
+            #expect(expected == Set(["agency", "café", "cafe\u{301}", "自由", "自由agency", "not sufficient"]))
+        }
+    }
+
     @Test("Complex graphemes retain the canonical fallback after persistence")
     func persistedComplexBoundary() throws {
         let text = SearchTextNormalization.lexicalNormalize("a\u{200D}b a agency reason freedom value")

@@ -321,7 +321,7 @@ private struct ScholiumInsertCommandContent: View {
             guard let appState else { return }
             appState.researchController.selectInspectorMode(.related)
             workspaceWindowActions?.setResearchInspectorVisible(true)
-            appState.findRelatedMaterials(paragraph: true)
+            appState.findRelatedMaterials()
         }
         .scholiumKeyboardShortcut(.findWritingReferences)
         .disabled(appState?.canFindWritingReferences != true)

@@ -71,6 +71,13 @@ public actor TriptychSearchIndex {
     // Replaced with each desired inventory; never used as publication authority.
     private var projectionHashes: [String: (input: ProjectionHashInput, hash: String)] = [:]
     private var relatedPassageMemo = RelatedContentSourceProjectionMemo()
+    private var relatedBackgroundPreparation = RelatedContentBackgroundPreparation()
+    var relatedBackgroundPreparationStatistics: RelatedContentBackgroundPreparation.Statistics {
+        relatedBackgroundPreparation.statistics
+    }
+    var relatedPassagePreparationStatistics: RelatedContentSourceProjectionMemo.Statistics {
+        relatedPassageMemo.statistics
+    }
     /// Query-local derived state is valid only for one complete Search
     /// generation. It is intentionally bounded to the maximum public result
     /// window plus one `hasMore` probe; larger offsets use the canonical scan.
@@ -854,7 +861,8 @@ public actor TriptychSearchIndex {
         }
     }
 
-    /// Enumerates every eligible lexical source from one complete generation.
+    /// Prepares whole-Note candidates when unfocused. A focus independently
+    /// retrieves all of its candidates, reusing only prepared row decoding.
     /// Workspace verifies current bytes before material scoring and limiting.
     public func relatedMaterialSourceCandidates(
         _ request: RelatedContentRequest
@@ -956,24 +964,27 @@ public actor TriptychSearchIndex {
                 limit: request.identityLimit
             )
             let focusedTerms = material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)
-            let scoringTerms = focusedTerms.isEmpty ? material.combinedTerms : focusedTerms
-            let lexicalPool = try relatedContentCandidates(
+            let focused = !request.seed.focuses.isEmpty
+            let scoringTerms = focused ? focusedTerms : material.combinedTerms
+            let preparationKey = RelatedContentBackgroundPreparation.Key(
+                seed: request.seed, generation: currentGeneration, roles: request.candidateRoles)
+            let prepared = try relatedBackgroundPreparation.prepared(for: preparationKey) ?? .init()
+            // A foreground cache miss performs only the ordinary focus scan;
+            // it never synchronously rebuilds the whole-Note background pool.
+            // Both paths use the same complete FTS pool and current payload checks.
+            let pool = try relatedContentCandidates(
                 terms: scoringTerms,
                 excluding: request.seed.noteID,
-                candidateRoles: request.candidateRoles
+                candidateRoles: request.candidateRoles,
+                reusing: prepared
             )
-            let scores = try RelatedContentBM25F.scores(
-                documents: lexicalPool.map { $0.document.relatedLexical!.scoringDocument }, terms: scoringTerms,
-                roles: lexicalPool.map { $0.document.vaultRole })
-            let lexical = zip(lexicalPool, scores).compactMap { candidate, score -> RelatedLexicalCandidate? in
-                let reason = material.lexicalReason(for: candidate)
-                guard score > 0, !reason.seedMatches.isEmpty else { return nil }
-                return RelatedLexicalCandidate(
-                    candidate: candidate,
-                    reason: reason,
-                    score: score
-                )
-            }.sorted(by: RelatedLexicalCandidate.precedes)
+            let lexical = try Self.relatedLexicalResults(pool.candidates, material: material, terms: scoringTerms)
+            if !focused {
+                // Only a complete background scan publishes preparation. A
+                // focused subset cannot overwrite a previously prepared Note.
+                try relatedBackgroundPreparation.store(pool.preparation, for: preparationKey)
+            }
+            try Task.checkCancellation()
             let lexicalHasMore = lexical.count > request.lexicalLimit
             let lexicalResults = lexical.map { item in
                 RelatedContentCandidate(
@@ -999,6 +1010,23 @@ public actor TriptychSearchIndex {
                 lexicalHasMore: lexicalHasMore
             )
         }
+    }
+
+    private nonisolated static func relatedLexicalResults(
+        _ candidates: [SearchCandidate], material: RelatedContentSeedMaterial, terms: [String]
+    ) throws -> [RelatedLexicalCandidate] {
+        let scores = try RelatedContentBM25F.scores(
+            documents: candidates.map { $0.document.relatedLexical!.scoringDocument }, terms: terms,
+            roles: candidates.map { $0.document.vaultRole })
+        var results: [RelatedLexicalCandidate] = []
+        for (candidate, score) in zip(candidates, scores) {
+            try Task.checkCancellation()
+            guard score > 0 else { continue }
+            let reason = material.lexicalReason(for: candidate)
+            guard !reason.seedMatches.isEmpty else { continue }
+            results.append(.init(candidate: candidate, reason: reason, score: score))
+        }
+        return results.sorted(by: RelatedLexicalCandidate.precedes)
     }
 
     private func searchIndex(
@@ -1207,27 +1235,49 @@ public actor TriptychSearchIndex {
         guard limit > 0 else { return ([], false) }
         let rolePlaceholders = candidateRoles.map { _ in "?" }
             .joined(separator: ", ")
+        let bindings =
+            candidateRoles.map {
+                SearchSQLiteBinding.text($0.vaultRole.rawValue)
+            } + [
+                .text(seed.vaultID.uuidString.lowercased()),
+                .text(seed.relativePath),
+            ]
+        // Both reads belong to the caller's fixed-generation transaction. Keep
+        // aliases in authored ordinal order without multiplying document rows.
+        var aliasesByDocument: [Int: [String]] = [:]
+        try database.query(
+            """
+            SELECT a.document_id, a.alias
+            FROM search_aliases a
+            JOIN search_documents d ON d.id = a.document_id
+            WHERE d.role IN (\(rolePlaceholders))
+              AND NOT (d.vault_id = ? AND d.relative_path = ?)
+            ORDER BY a.document_id, a.ordinal;
+            """,
+            bindings: bindings
+        ) { row in
+            try Task.checkCancellation()
+            if let alias = row.text(at: 1) {
+                aliasesByDocument[row.int(at: 0), default: []].append(alias)
+            }
+        }
         var matches: [RelatedIdentityCandidate] = []
         try database.query(
             """
-            SELECT d.id
+            SELECT \(Self.documentColumns(includingSourceEvidence: false)), d.id
             FROM search_documents d
             WHERE d.role IN (\(rolePlaceholders))
               AND NOT (d.vault_id = ? AND d.relative_path = ?)
             ORDER BY d.normalized_title, d.role_order, d.path_key,
                      d.relative_path;
             """,
-            bindings: candidateRoles.map {
-                .text($0.vaultRole.rawValue)
-            } + [
-                .text(seed.vaultID.uuidString.lowercased()),
-                .text(seed.relativePath),
-            ]
+            bindings: bindings
         ) { row in
             try Task.checkCancellation()
             guard
-                let document = try self.loadDocument(
-                    rowID: row.int(at: 0), includingSegments: false, includingSourceEvidence: false),
+                let document = try self.decodeDocument(
+                    row, rowID: row.int(at: 23), includingSegments: false, includingSourceEvidence: false,
+                    preparedAliases: aliasesByDocument[row.int(at: 23)] ?? []),
                 let reason = material.identityMentionReason(for: document)
             else { return }
             matches.append(
@@ -1254,8 +1304,10 @@ public actor TriptychSearchIndex {
     private func relatedContentCandidates(
         terms: [String],
         excluding seed: VaultQualifiedNoteID,
-        candidateRoles: [RelatedContentCandidateRole]
-    ) throws -> [SearchCandidate] {
+        candidateRoles: [RelatedContentCandidateRole],
+        reusing prepared: RelatedContentBackgroundPreparation.Value
+    ) throws -> (candidates: [SearchCandidate], preparation: RelatedContentBackgroundPreparation.Value) {
+        guard !terms.isEmpty else { return ([], .init()) }
         let expression = terms.map { term in
             let escaped = term.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
@@ -1263,9 +1315,10 @@ public actor TriptychSearchIndex {
         let rolePlaceholders = candidateRoles.map { _ in "?" }
             .joined(separator: ", ")
         var result: [SearchCandidate] = []
+        var preparation = RelatedContentBackgroundPreparation.Value()
         try database.query(
             """
-            SELECT d.id
+            SELECT \(Self.documentColumns(includingSourceEvidence: false, includingRelatedRankingText: true)), d.id
             FROM search_fts
             JOIN search_documents d ON d.id = search_fts.document_id
             WHERE search_fts MATCH ?
@@ -1285,10 +1338,13 @@ public actor TriptychSearchIndex {
         ) { row in
             try Task.checkCancellation()
             guard
-                let document = try self.loadDocument(
-                    rowID: row.int(at: 0), includingAliases: false,
-                    includingSourceEvidence: false, includingRelatedRankingText: true)
+                let document = try self.decodeDocument(
+                    row, rowID: row.int(at: 23), includingAliases: false,
+                    includingSourceEvidence: false, includingRelatedRankingText: true,
+                    preparedRelatedLexical: prepared.documents[row.int(at: 23)])
             else { return }
+            preparation.documents[document.rowID] = .init(
+                fingerprint: document.fingerprint, checksum: row.text(at: 22)!, projection: document.relatedLexical!)
             result.append(
                 SearchCandidate(
                     document: document,
@@ -1296,7 +1352,7 @@ public actor TriptychSearchIndex {
                     lexicalRank: 0
                 ))
         }
-        return result
+        return (result, preparation)
     }
 
     private func searchCurrentNote(
@@ -1483,6 +1539,22 @@ public actor TriptychSearchIndex {
         }
     }
 
+    // One column layout and decoder serve single-row Search loads and batched
+    // Related-Content reads. Batched callers append d.id at column 23.
+    private nonisolated static func documentColumns(
+        includingProperties: Bool = false, includingParagraphs: Bool = false,
+        includingSourceEvidence: Bool = true, includingRelatedRankingText: Bool = false
+    ) -> String {
+        """
+        d.vault_id, d.vault_name, d.role, d.relative_path, d.stable_note_id, d.title,
+        d.normalized_title, d.title_key, d.filename_key, d.path_key, d.callout_roles,
+        d.has_broken_link, d.fingerprint_sha256, d.fingerprint_byte_count,
+        d.evidential_layer, d.role_order, \(includingSourceEvidence ? "d.line_starts" : "NULL"), d.source_utf16_count,
+        \(includingProperties ? "d.property_issues" : "NULL"), \(includingParagraphs ? "d.paragraphs" : "NULL"), d.paragraphs_complete,
+        \(includingRelatedRankingText ? "d.related_lexical" : "NULL"), \(includingRelatedRankingText ? "d.related_lexical_hash" : "NULL")
+        """
+    }
+
     private func loadDocument(
         rowID: Int,
         includingProperties: Bool = false, includingParagraphs: Bool = false,
@@ -1492,82 +1564,100 @@ public actor TriptychSearchIndex {
         var document: StoredSearchDocument?
         try database.query(
             """
-            SELECT vault_id, vault_name, role, relative_path, stable_note_id, title,
-                   normalized_title, title_key, filename_key, path_key, callout_roles,
-                   has_broken_link, fingerprint_sha256, fingerprint_byte_count,
-                   evidential_layer, role_order, \(includingSourceEvidence ? "line_starts" : "NULL"), source_utf16_count,
-                   \(includingProperties ? "property_issues" : "NULL"), \(includingParagraphs ? "paragraphs" : "NULL"), paragraphs_complete,
-                   \(includingRelatedRankingText ? "related_lexical" : "NULL"), \(includingRelatedRankingText ? "related_lexical_hash" : "NULL")
-            FROM search_documents WHERE id = ?;
+            SELECT \(Self.documentColumns(
+                includingProperties: includingProperties, includingParagraphs: includingParagraphs,
+                includingSourceEvidence: includingSourceEvidence, includingRelatedRankingText: includingRelatedRankingText))
+            FROM search_documents d WHERE d.id = ?;
             """,
             bindings: [.int(rowID)]
         ) { row in
-            guard let vaultText = row.text(at: 0), let vaultID = UUID(uuidString: vaultText),
-                let vaultName = row.text(at: 1), let roleText = row.text(at: 2),
-                let role = VaultRole(rawValue: roleText), let path = row.text(at: 3),
-                let title = row.text(at: 5), let normalizedTitle = row.text(at: 6),
-                row.text(at: 7) != nil, let filenameKey = row.text(at: 8),
-                let pathKey = row.text(at: 9), let sha = row.text(at: 12),
-                let layerText = row.text(at: 14),
-                let layer = EvidentialLayer(rawValue: layerText)
-            else { return }
-            let sourceUTF16Count = row.int(at: 17)
-            guard sourceUTF16Count >= 0 else { throw SearchIndexError.corruptDatabase }
-            let lineStarts: [Int]
-            if includingSourceEvidence {
-                lineStarts = try Self.decodeGeneratedJSON([Int].self, from: row.text(at: 16))
-                guard sourceUTF16Count >= 0,
-                    lineStarts.first == 0,
-                    lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
-                    zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in previous < next })
-                else { throw SearchIndexError.corruptDatabase }
-            } else {
-                lineStarts = []
-            }
-            let aliases = includingAliases ? try self.aliases(documentID: rowID) : []
-            let segments: [SearchTextSegment]
-            if includingSegments && !includingRelatedRankingText {
-                segments = try self.segments(
-                    documentID: rowID, sourceUTF16Count: sourceUTF16Count,
-                    includingSourceEvidence: includingSourceEvidence,
-                    includingRelatedRankingText: includingRelatedRankingText)
-            } else {
-                segments = []
-            }
-            let properties =
-                includingProperties
-                ? try self.properties(documentID: rowID)
-                : []
-            document = StoredSearchDocument(
-                rowID: rowID,
-                vaultID: vaultID,
-                vaultName: vaultName,
-                vaultRole: role,
-                relativePath: path,
-                stableNoteID: row.text(at: 4),
-                title: title,
-                normalizedTitle: normalizedTitle,
-                filenameKey: filenameKey,
-                pathKey: pathKey,
-                aliases: aliases,
-                calloutRoles: Set((row.text(at: 10) ?? "").split(separator: " ").map(String.init)),
-                hasBrokenLink: row.int(at: 11) == 1,
-                fingerprint: DocumentFingerprint(
-                    sha256: sha,
-                    byteCount: row.int(at: 13)
-                ),
-                evidentialLayer: layer,
-                roleOrder: row.int(at: 15),
-                sourceLineStarts: lineStarts,
-                segments: segments,
-                paragraphs: includingParagraphs ? try Self.decodeParagraphs(row.text(at: 19), sourceUTF16Count: sourceUTF16Count) : [],
-                paragraphsAreComplete: row.int(at: 20) == 1,
-                properties: properties,
-                propertyIssues: includingProperties ? try Self.decodeGeneratedJSON([SearchPropertyProjection.Issue].self, from: row.text(at: 18)) : [],
-                relatedLexical: includingRelatedRankingText ? try RelatedContentLexicalProjection.decode(row.data(at: 21), checksum: row.text(at: 22)) : nil
-            )
+            document = try self.decodeDocument(
+                row, rowID: rowID, includingProperties: includingProperties, includingParagraphs: includingParagraphs,
+                includingAliases: includingAliases, includingSegments: includingSegments,
+                includingSourceEvidence: includingSourceEvidence, includingRelatedRankingText: includingRelatedRankingText)
         }
         return document
+    }
+
+    private func decodeDocument(
+        _ row: SearchSQLiteStatement, rowID: Int,
+        includingProperties: Bool = false, includingParagraphs: Bool = false,
+        includingAliases: Bool = true, includingSegments: Bool = true, includingSourceEvidence: Bool = true,
+        includingRelatedRankingText: Bool = false, preparedAliases: [String]? = nil,
+        preparedRelatedLexical: RelatedContentBackgroundPreparation.LexicalDocument? = nil
+    ) throws -> StoredSearchDocument? {
+        guard let vaultText = row.text(at: 0), let vaultID = UUID(uuidString: vaultText),
+            let vaultName = row.text(at: 1), let roleText = row.text(at: 2),
+            let role = VaultRole(rawValue: roleText), let path = row.text(at: 3),
+            let title = row.text(at: 5), let normalizedTitle = row.text(at: 6),
+            row.text(at: 7) != nil, let filenameKey = row.text(at: 8),
+            let pathKey = row.text(at: 9), let sha = row.text(at: 12),
+            let layerText = row.text(at: 14),
+            let layer = EvidentialLayer(rawValue: layerText)
+        else { return nil }
+        let sourceUTF16Count = row.int(at: 17)
+        guard sourceUTF16Count >= 0 else { throw SearchIndexError.corruptDatabase }
+        let lineStarts: [Int]
+        if includingSourceEvidence {
+            lineStarts = try Self.decodeGeneratedJSON([Int].self, from: row.text(at: 16))
+            guard sourceUTF16Count >= 0,
+                lineStarts.first == 0,
+                lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
+                zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in previous < next })
+            else { throw SearchIndexError.corruptDatabase }
+        } else {
+            lineStarts = []
+        }
+        let aliases = includingAliases ? try (preparedAliases ?? self.aliases(documentID: rowID)) : []
+        let segments: [SearchTextSegment]
+        if includingSegments && !includingRelatedRankingText {
+            segments = try self.segments(
+                documentID: rowID, sourceUTF16Count: sourceUTF16Count,
+                includingSourceEvidence: includingSourceEvidence,
+                includingRelatedRankingText: includingRelatedRankingText)
+        } else {
+            segments = []
+        }
+        let properties = includingProperties ? try self.properties(documentID: rowID) : []
+        let fingerprint = DocumentFingerprint(sha256: sha, byteCount: row.int(at: 13))
+        let relatedLexical: RelatedContentLexicalProjection?
+        if includingRelatedRankingText {
+            let payload = row.data(at: 21)
+            let checksum = row.text(at: 22)
+            if let preparedRelatedLexical,
+                preparedRelatedLexical.matches(payload, checksum: checksum, fingerprint: fingerprint)
+            {
+                relatedLexical = preparedRelatedLexical.projection
+            } else {
+                relatedLexical = try RelatedContentLexicalProjection.decode(payload, checksum: checksum)
+            }
+        } else {
+            relatedLexical = nil
+        }
+        return StoredSearchDocument(
+            rowID: rowID,
+            vaultID: vaultID,
+            vaultName: vaultName,
+            vaultRole: role,
+            relativePath: path,
+            stableNoteID: row.text(at: 4),
+            title: title,
+            normalizedTitle: normalizedTitle,
+            filenameKey: filenameKey,
+            pathKey: pathKey,
+            aliases: aliases,
+            calloutRoles: Set((row.text(at: 10) ?? "").split(separator: " ").map(String.init)),
+            hasBrokenLink: row.int(at: 11) == 1,
+            fingerprint: fingerprint,
+            evidentialLayer: layer,
+            roleOrder: row.int(at: 15),
+            sourceLineStarts: lineStarts,
+            segments: segments,
+            paragraphs: includingParagraphs ? try Self.decodeParagraphs(row.text(at: 19), sourceUTF16Count: sourceUTF16Count) : [],
+            paragraphsAreComplete: row.int(at: 20) == 1,
+            properties: properties,
+            propertyIssues: includingProperties ? try Self.decodeGeneratedJSON([SearchPropertyProjection.Issue].self, from: row.text(at: 18)) : [],
+            relatedLexical: relatedLexical)
     }
 
     private func aliases(documentID: Int) throws -> [String] {
@@ -2432,6 +2522,32 @@ public actor TriptychSearchIndex {
 }
 
 extension TriptychSearchIndex {
+    /// Warm the existing revision-checked paragraph memo without scoring or
+    /// selecting results. The caller still supplies current, authorized source
+    /// documents; candidate identity and fingerprint are verified by that memo.
+    public func prepareRelatedPassages(
+        _ request: RelatedContentRequest, sources: [RelatedContentSource]
+    ) throws {
+        try Task.checkCancellation()
+        let eligible = sources.filter { source in
+            source.candidate.note != request.seed.noteID
+                && request.candidateRoles.contains { $0.vaultRole == source.candidate.vaultRole }
+        }
+        let protection = relatedPassageMemo.scanProtection(for: eligible)
+        try database.readTransaction {
+            var seen = Set<VaultQualifiedNoteID>()
+            for source in eligible {
+                try Task.checkCancellation()
+                guard source.document.fingerprint == source.candidate.fingerprint,
+                    Data(source.document.relativePath.utf8) == Data(source.candidate.note.relativePath.utf8),
+                    seen.insert(source.candidate.note).inserted
+                else { continue }
+                _ = try relatedSourceProjection(for: source, protection: protection)
+            }
+            try Task.checkCancellation()
+        }
+    }
+
     public func relatedPassages(
         _ request: RelatedContentRequest, sources: [RelatedContentSource]
     ) throws -> [RelatedContentPassage] {
@@ -2442,30 +2558,36 @@ extension TriptychSearchIndex {
             })
         return try database.readTransaction {
             try Self.rankRelatedPassages(request, sources: sources) { source in
-                // Capture the database, not self, while mutating actor-owned memo.
-                let database = self.database
-                return try relatedPassageMemo.projection(for: source, protection: protection) { document in
-                    var projection: RelatedContentSourceProjection?
-                    try database.query(
-                        """
-                        SELECT related_projection, related_projection_hash, source_utf16_count
-                        FROM search_documents WHERE document_key = ?
-                            AND fingerprint_sha256 = ? AND fingerprint_byte_count = ?;
-                        """,
-                        bindings: [
-                            .text(Self.documentKey(vaultID: source.candidate.note.vaultID, path: document.relativePath)),
-                            .text(document.fingerprint.sha256), .int(document.fingerprint.byteCount),
-                        ]
-                    ) { row in
-                        projection = try RelatedContentSourceProjection.decode(
-                            row.data(at: 0), checksum: row.text(at: 1), sourceUTF16Count: row.int(at: 2))
-                    }
-                    // A source read may straddle an index publication. Its exact
-                    // verified bytes still permit preparation; never reuse a
-                    // projection from a different indexed revision.
-                    return try projection ?? RelatedContentSourceProjection(document: document)
-                }
+                try relatedSourceProjection(for: source, protection: protection)
             }
+        }
+    }
+
+    private func relatedSourceProjection(
+        for source: RelatedContentSource, protection: RelatedContentSourceProjectionMemo.ScanProtection
+    ) throws -> RelatedContentSourceProjection? {
+        // Capture the database, not self, while mutating actor-owned memo.
+        let database = self.database
+        return try relatedPassageMemo.projection(for: source, protection: protection) { document in
+            var projection: RelatedContentSourceProjection?
+            try database.query(
+                """
+                SELECT related_projection, related_projection_hash, source_utf16_count
+                FROM search_documents WHERE document_key = ?
+                    AND fingerprint_sha256 = ? AND fingerprint_byte_count = ?;
+                """,
+                bindings: [
+                    .text(Self.documentKey(vaultID: source.candidate.note.vaultID, path: document.relativePath)),
+                    .text(document.fingerprint.sha256), .int(document.fingerprint.byteCount),
+                ]
+            ) { row in
+                projection = try RelatedContentSourceProjection.decode(
+                    row.data(at: 0), checksum: row.text(at: 1), sourceUTF16Count: row.int(at: 2))
+            }
+            // A source read may straddle an index publication. Its exact
+            // verified bytes still permit preparation; never reuse a
+            // projection from a different indexed revision.
+            return try projection ?? RelatedContentSourceProjection(document: document)
         }
     }
 }

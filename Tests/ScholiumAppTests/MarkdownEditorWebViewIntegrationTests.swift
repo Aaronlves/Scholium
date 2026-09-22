@@ -1117,6 +1117,63 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Writing capture separates current-line retrieval from continuation and retains exact caret receipts")
+    func writingContextCaptureModes() async throws {
+        let source = "\u{FEFF}Before.\r\n\r\n控制😀 e\u{301} 当前行\r\nContinuation.\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let map = EditorSourceOffsetMap(source: source)
+        let lineText = "控制😀 e\u{301} 当前行"
+        let expected = (source as NSString).range(of: lineText)
+        let caret = try #require(map.editorUTF16Offset(forSourceUTF16Offset: NSMaxRange(expected)))
+        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        try await harness.waitUntilSelection(head: caret, stage: "writing-context caret")
+        let generation = harness.session.generation
+        let before = harness.session.context?.selections
+        let line = try await harness.session.writingContextSnapshot(mode: .selectionOrCurrentLine)
+        let point = try #require(line.point)
+        #expect(line.snapshot.excerpt.utf8.elementsEqual(lineText.utf8))
+        #expect(line.snapshot.source.utf8.elementsEqual(source.utf8))
+        #expect(line.snapshot.sourceRange.utf16LowerBound == expected.location)
+        #expect(line.snapshot.sourceRange.utf16UpperBound == NSMaxRange(expected))
+        #expect(point.generation == generation && point.documentID == harness.documentID)
+        #expect(point.selection == .init(anchor: caret, head: caret))
+        #expect(harness.session.acceptsInsertionPoint(point))
+        let paragraph = try await harness.session.writingContextSnapshot(mode: .selectionOrParagraph)
+        #expect(paragraph.snapshot.excerpt == lineText + "\r\nContinuation.\r\n")
+        #expect(paragraph.point == point)
+        #expect(harness.session.context?.selections == before)
+
+        let selectionText = "😀 e\u{301} 当前行\r\nContinuation"
+        let selectedRange = (source as NSString).range(of: selectionText)
+        let from = try #require(map.editorUTF16Offset(forSourceUTF16Offset: selectedRange.location))
+        let to = try #require(map.editorUTF16Offset(forSourceUTF16Offset: NSMaxRange(selectedRange)))
+        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        try await harness.waitUntilSelection(head: to, stage: "writing-context cross-line selection")
+        let selected = try await harness.session.writingContextSnapshot(mode: .selectionOrCurrentLine)
+        #expect(selected.point == nil)
+        #expect(selected.snapshot.excerpt.utf8.elementsEqual(selectionText.utf8))
+        #expect(selected.snapshot.sourceRange.utf16LowerBound == selectedRange.location)
+        #expect(selected.snapshot.sourceRange.utf16UpperBound == NSMaxRange(selectedRange))
+        #expect(!harness.session.acceptsInsertionPoint(point))
+
+        let end = map.editorUTF16Length
+        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end, stage: "writing-context blank trailing line")
+        do {
+            _ = try await harness.session.writingContextSnapshot(mode: .selectionOrCurrentLine)
+            Issue.record("An empty current line must not capture preceding prose")
+        } catch RelatedMaterialsError.invalidSeed {}
+        #expect(harness.session.generation == generation && !harness.session.isDirty)
+        #expect(harness.session.context?.selections == [.init(anchor: end, head: end)])
+        let unchanged = try await harness.session.currentText(for: harness.documentID)
+        #expect(unchanged.utf8.elementsEqual(source.utf8))
+        await harness.closeAndDrain()
+    }
+
     @Test("Syntax families retain exact source and Callout geometry through entry and exit")
     func syntaxFamiliesRetainSourceAndCalloutGeometry() async throws {
         let source =
@@ -6229,22 +6286,24 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let icons = try await harness.callPageJavaScript(
-            """
-            return [...document.querySelectorAll('.scholium-attachment-icon')].map(icon => ({
-              symbol: icon.dataset.scholiumAttachmentSymbol,
-              text: icon.textContent,
-              hidden: icon.getAttribute('aria-hidden')
-            }));
-            """) as? [[String: String]]
+        let icons =
+            try await harness.callPageJavaScript(
+                """
+                return [...document.querySelectorAll('.scholium-attachment-icon')].map(icon => ({
+                  symbol: icon.dataset.scholiumAttachmentSymbol,
+                  text: icon.textContent,
+                  hidden: icon.getAttribute('aria-hidden')
+                }));
+                """) as? [[String: String]]
         #expect(icons == [["symbol": "doc-richtext", "text": "", "hidden": "true"]])
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
-        #expect(try await harness.callPageJavaScript(
-            "return document.querySelectorAll('.scholium-attachment-icon').length;"
-        ) as? Int == 0)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-attachment-icon').length;"
+            ) as? Int == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }

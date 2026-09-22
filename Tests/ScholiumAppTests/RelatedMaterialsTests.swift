@@ -374,15 +374,22 @@ struct RelatedMaterialsTests {
         await model.find(capture: { throw RelatedMaterialsError.selectionRequired }, retrieve: { _ in response }, references: []).value
         #expect(model.issue != nil && !model.isLoading)
     }
-    @Test("Automatic empty selection preserves context without a selection error")
-    func automaticEmptySelection() async {
+    @Test(
+        "Automatic empty selection or blank line preserves context quietly",
+        arguments: [
+            RelatedMaterialsError.selectionRequired, .invalidSeed,
+        ])
+    func automaticInvalidCapture(error: RelatedMaterialsError) async {
         let model = RelatedMaterialsSession()
         let seed = seed()
         let response = response(seed.request)
         await model.find(capture: { seed }, retrieve: { _ in response }, references: [], automatic: true).value
         await model.find(
-            capture: { throw RelatedMaterialsError.selectionRequired },
-            retrieve: { _ in response }, references: [], automatic: true
+            capture: { throw error },
+            retrieve: { _ in
+                Issue.record("Invalid automatic context must not retrieve")
+                return response
+            }, references: [], automatic: true
         ).value
         #expect(model.seed?.request.id == seed.request.id)
         #expect(model.issue == nil && !model.isLoading && model.didSearch)

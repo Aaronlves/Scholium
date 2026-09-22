@@ -192,33 +192,35 @@ Evidence: `.build/fullscreen-focus-final-tests.log`,
 
 ## Retrieval quality and useful measurement comparisons
 
-**2026-09-17 — Graph retrieval:** Related-Content contract 12/ranking 10 passes
-20 generated graph, ranking, runtime and English/Chinese explanation checks.
-Evidence: `.build/graph-retrieval/graph-final-focused.log`. Two-step paths refine
-matching paragraphs; no real-vault, native interaction or researcher usefulness
-acceptance is established.
-Complete repository gate and Release compilation pass:
+**2026-09-23 — Retrieval:** Related-Content 14/ranking 12: source-line focus,
+silent bounded Note preparation; focused eligibility/ranking preserved.
+Unit/native checks cover exact capture, cold/prepared/rebuilt equivalence, invalidation,
+corruption, cancellation and narrow-source reads.
+Synthetic graph ablations preserve stronger unconnected material and improve
+tied/selective ranking, without researcher acceptance.
+Scorer results remain bit-identical over 8,000 paragraphs with 3/32 terms.
+In three paired 500-Note Debug restarts, preparation
+reduces foreground median 1.361→0.873 s, with 0.807–0.821 s background work;
+paired and 21 prior source/locator results remain identical.
+Evidence: `.build/two-layer-retrieval/`, `.build/retrieval-architecture/`,
+`.build/retrieval-optimization/`, `.build/recommendation-graph-evaluation/`,
+`.build/writing-references-performance/`. Integration gate stops at pre-existing
+toolbar/chat formatting. The 2026-09-17 Release baseline remains
 `.build/graph-retrieval/repository-gate.log`.
+Measurements below exclude editor capture/debounce, link-action preparation and
+native publication; they are not G7 or click-to-paint acceptance.
 
-**2026-09-17 — Lexical baseline:** Search schema 21 and Related-Content
-contract 11/ranking policy 9 have 62 scoped retrieval checks and unchanged outcomes
-for all 36 frozen synthetic cases after native-only normalization/projection reuse.
-The Release App compiles without model/inference-runtime dependencies; this is
-not packaging or native interaction acceptance. Measurements below are backend
-harness/Debug samples unless stated, excluding editor capture/debounce, link-action
-preparation and native publication; they are not G7 or click-to-paint acceptance.
-
-- **Current 2,000-Note Release harness:** generated multilingual Notes, 16
+- **2026-09-17 2,000-Note Release harness:** generated multilingual Notes, 16
   paragraphs each, plus Works seed. Configure 37.274 s; first query 2.883 s;
   repeats 2.003–2.012 s versus 3.222–3.256 s immediately before normalization/
   scan protection; varied focus 1.818–2.377 s; selected draft paragraph 2.327 s;
   reopen 5.716 s plus first query 2.786 s. Retention estimate remains 64 MiB;
   all candidates are checked/scored.
-- **Earlier three-role baseline, same fixture:** schema 20 / Related ranking 8.
-  Configure 33.162 s; first query 3.179 s; repeats 2.794–2.808 s; reopen 4.379 s
-  plus first query 3.188 s; varied focus 2.306–2.924 s; selected 50-paragraph draft
-  focus 3.336 s. Scenario samples, not p95; the Release harness excludes App
-  tests using Debug-only helpers.
+- **2026-09-23 500-Note Debug harness:** generated three-role corpus, 16 paragraphs
+  per Note; Xcode 27/Swift 6.4. Identical-input warm medians after reopen:
+  0.714 → 0.649 s; selected long focus: 1.604 → 1.129 s. Two repeats per
+  workload, not p95; all 21 ordered result digests agree. Prepared-scorer medians
+  across five samples: 3 terms 101 → 40 ms; 32 terms 593 → 153 ms.
 - **Task-authorized 433-Note private-copy evaluation, all roles:** byte-verified
   copy with tests on a second disposable copy. Configure 24.963 s; 20 backend
   queries median/sample p95 1.840/1.975 s versus 2.546/2.731 s immediately before
@@ -243,9 +245,9 @@ preparation and native publication; they are not G7 or click-to-paint acceptance
   first-Appearance 267.9 ms. Workspace totals overlap; not click-to-paint.
 
 Synthetic quality cases split 18 development/18 heldout: distinct-material nDCG@6
-0.582/0.598 → 0.601/0.641; material recall stays 0.625. Agent-authored cases are
+0.601/0.641 → 0.635/0.717; material recall 0.625 → 0.688/0.750. Agent-authored cases are
 not blind validation or researcher acceptance; raw Note recall falls when duplicate
-material is represented once. Private aggregate known-useful recall@6 stays 0.375;
+material is represented once. Earlier private aggregate known-useful recall@6 was 0.375;
 one earlier ranking change replaces a judged sixth result with unjudged material.
 Incomplete pools cannot establish improved/worsened philosophical usefulness.
 Agent review of 12 passages in two changed cases finds no coordinate defect and

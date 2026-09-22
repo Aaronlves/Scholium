@@ -4,10 +4,24 @@ import ScholiumContracts
 import ScholiumCore
 
 struct RelatedContentRetrievalMeasurement: Sendable {
+    let requestID: UUID
     let candidateCount: Int
+    let sourceCount: Int
+    let omittedSourceCount: Int
+    let graphUsed: Bool
+    let graphCandidateCount: Int
+    let graphContextCount: Int
+    /// Admission and index recall; the remaining stages partition the rest of totalDuration.
     let indexDuration: Duration
+    /// Graph eligibility, construction and attachment, excluding current-source reads.
+    let graphDuration: Duration
+    /// Current-source loading and validation only; older measurements included graph work here.
     let readDuration: Duration
     let passageDuration: Duration
+    /// Final availability/generation checks and response construction, including a stale return.
+    let finalizationDuration: Duration
+    /// Backend handle entry to return, excluding caller scheduling and native presentation.
+    let totalDuration: Duration
 }
 
 private func currentNoteCompletionTerms(
@@ -84,6 +98,56 @@ private func currentNoteCompletionTerms(
 }
 
 extension WorkspaceHandle {
+    /// Best-effort preparation uses the same registered scope, source reads and
+    /// Core projections as foreground retrieval. It publishes no workspace or
+    /// result state, and never replaces the foreground's current-source checks.
+    func prepareRelatedContent(_ request: RelatedContentRequest) async throws {
+        try requireActive()
+        try Task.checkCancellation()
+        guard currentSnapshot.phase.isComplete else { throw ScholiumApplicationError.workspaceStillLoading(id) }
+        guard
+            currentSnapshot.discovery.catalog.notes.contains(where: {
+                $0.reference.vaultID == request.seed.noteID.vaultID && $0.reference.relativePath == request.seed.noteID.relativePath
+            })
+        else { throw CocoaError(.fileReadNoSuchFile) }
+        let captured = currentSnapshot
+        let background = RelatedContentRequest(
+            id: request.id, seed: .init(noteID: request.seed.noteID, source: request.seed.source),
+            candidateRoles: request.candidateRoles)
+        let response = try await services.searchIndex.relatedMaterialSourceCandidates(background)
+        try requireActive()
+        try Task.checkCancellation()
+        guard [.current, .empty].contains(response.state),
+            case .current(let generation) = response.availability,
+            captured.discovery.searchGeneration == generation,
+            currentSnapshot.discovery.searchGeneration == generation,
+            currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
+        else { return }
+        var sources: [RelatedContentSource] = []
+        var seen = Set<VaultQualifiedNoteID>()
+        for candidate in response.identityCandidates + response.lexicalCandidates where seen.insert(candidate.note).inserted {
+            try Task.checkCancellation()
+            do {
+                let document = try await loadDocument(candidate.note)
+                guard document.fingerprint == candidate.fingerprint,
+                    document.rawContent.utf16.count <= RelatedContentContract.maximumSeedUTF16Count
+                else { continue }
+                sources.append(.init(candidate: candidate, document: document))
+            } catch is CancellationError { throw CancellationError() } catch { continue }
+        }
+        try requireActive()
+        try Task.checkCancellation()
+        guard currentSnapshot.discovery.searchGeneration == generation,
+            currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
+        else { return }
+        try await services.searchIndex.prepareRelatedPassages(background, sources: sources)
+        try requireActive()
+        try Task.checkCancellation()
+        guard currentSnapshot.discovery.searchGeneration == generation,
+            currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
+        else { throw CancellationError() }
+    }
+
     func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
         lastRelatedContentMeasurement = nil
         let started = ContinuousClock.now
@@ -145,6 +209,7 @@ extension WorkspaceHandle {
         var sources: [RelatedContentSource] = []
         var seen = Set<VaultQualifiedNoteID>()
         var omitted = 0
+        let graphPrepared = ContinuousClock.now
         for candidate in identityCandidates + lexicalCandidates + graphCandidates where seen.insert(candidate.note).inserted {
             try Task.checkCancellation()
             do {
@@ -160,9 +225,21 @@ extension WorkspaceHandle {
         }
         let read = ContinuousClock.now
         let passages = try await services.searchIndex.relatedPassages(request, sources: sources)
-        lastRelatedContentMeasurement = RelatedContentRetrievalMeasurement(
-            candidateCount: seen.count, indexDuration: started.duration(to: indexed),
-            readDuration: indexed.duration(to: read), passageDuration: read.duration(to: .now))
+        let ranked = ContinuousClock.now
+        // Publish after final validation, without another suspension. Measurements
+        // carry no source content and do not authorize publication of a response.
+        defer {
+            let finished = ContinuousClock.now
+            lastRelatedContentMeasurement = RelatedContentRetrievalMeasurement(
+                requestID: request.id, candidateCount: seen.count,
+                sourceCount: sources.count, omittedSourceCount: omitted,
+                graphUsed: graphResult != nil, graphCandidateCount: graphCandidates.count,
+                graphContextCount: graphResult?.contexts.count ?? 0,
+                indexDuration: started.duration(to: indexed),
+                graphDuration: indexed.duration(to: graphPrepared),
+                readDuration: graphPrepared.duration(to: read), passageDuration: read.duration(to: ranked),
+                finalizationDuration: ranked.duration(to: finished), totalDuration: started.duration(to: finished))
+        }
         try requireActive()
         try Task.checkCancellation()
         let finalAvailability = await services.searchIndex.availability()

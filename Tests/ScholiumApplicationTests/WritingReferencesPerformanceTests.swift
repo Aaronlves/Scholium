@@ -67,6 +67,8 @@ struct WritingReferencesPerformanceTests {
         var searchSamples: [[String: Any]] = []
         var lifecycleSamples: [[String: Any]] = []
         var expectedPassages: [RelatedContentPassage]?
+        var expectedPassagesByWorkload: [String: [RelatedContentPassage]] = [:]
+        let repetitions = 3
 
         func seconds(_ duration: Duration) -> Double {
             let value = duration.components
@@ -76,12 +78,12 @@ struct WritingReferencesPerformanceTests {
         func measureRecommendation(
             _ handle: WorkspaceHandle, vault: UUID, scenario: String, sample: Int,
             focus: String = "agency evidence 自由", source: String? = nil,
-            expectedCount: Int = RelatedContentContract.maximumPassages
+            expectedCount: Int = RelatedContentContract.maximumPassages, workload: Int = 0
         ) async throws -> RelatedContentResponse {
             let request = RelatedContentRequest(
                 seed: .init(
                     noteID: .init(vaultID: vault, relativePath: "Draft.md"),
-                    source: source ?? draft + String(repeating: "\n", count: sample),
+                    source: source ?? draft,
                     focuses: [.init(kind: .selectedPassage, text: focus)]))
             if threeVaults { #expect(request.candidateRoles.contains(.work)) }
             FileHandle.standardOutput.write(
@@ -91,12 +93,33 @@ struct WritingReferencesPerformanceTests {
             let response = try await handle.discovery.relatedContent(request)
             let elapsed = seconds(started.duration(to: .now))
             let measurement = try #require(await handle.lastRelatedContentMeasurement)
+            #expect(measurement.requestID == request.id)
+            #expect(response.requestID == request.id)
+            #expect(response.seedFingerprint == request.seed.fingerprint)
             #expect(response.state == .current)
             #expect(response.passages.count == expectedCount)
+            #expect(response.omittedSourceCount == 0)
+            #expect(measurement.sourceCount + measurement.omittedSourceCount == measurement.candidateCount)
+            #expect(measurement.omittedSourceCount == response.omittedSourceCount)
+            #expect(
+                measurement.indexDuration + measurement.graphDuration + measurement.readDuration
+                    + measurement.passageDuration + measurement.finalizationDuration == measurement.totalDuration)
+            #expect(seconds(measurement.totalDuration) <= elapsed)
+            let workloadKey = "\(scenario):\(workload)"
+            if let expected = expectedPassagesByWorkload[workloadKey] {
+                #expect(response.passages == expected)
+            } else {
+                expectedPassagesByWorkload[workloadKey] = response.passages
+            }
             var passageRoleCounts = ["source_corpus": 0, "topic_knowledge": 0, "draft_project": 0]
             for passage in response.passages {
                 let currentSource = try #require(expectedSources[passage.candidate.note.relativePath])
                 #expect(passage.candidate.vaultRole == expectedRoles[passage.candidate.note.relativePath])
+                #expect(
+                    handle.assignment.vaults.values.contains {
+                        $0.id == passage.candidate.note.vaultID && $0.role == passage.candidate.vaultRole
+                    })
+                #expect(passage.candidate.note != request.seed.noteID)
                 passageRoleCounts[passage.candidate.vaultRole.rawValue, default: 0] += 1
                 #expect(passage.candidate.fingerprint == DocumentFingerprint(content: currentSource))
                 let range = try #require(
@@ -106,18 +129,51 @@ struct WritingReferencesPerformanceTests {
                             length: passage.range.utf16UpperBound - passage.range.utf16LowerBound), in: currentSource))
                 #expect(String(currentSource[range]) == passage.source)
             }
+            // Only digests leave this synthetic harness. Normalize disposable vault
+            // UUIDs to roles so ordered source/locator results compare across runs.
+            let resultRecords: [[String: Any]] = response.passages.map { passage in
+                [
+                    "role": passage.candidate.vaultRole.rawValue,
+                    "path": passage.candidate.note.relativePath,
+                    "source_sha256": passage.candidate.fingerprint.sha256,
+                    "lower": passage.range.utf16LowerBound, "upper": passage.range.utf16UpperBound,
+                    "passage_sha256": DocumentFingerprint(content: passage.source).sha256,
+                ]
+            }
+            let resultDigest = DocumentFingerprint(
+                data: try JSONSerialization.data(withJSONObject: resultRecords, options: [.sortedKeys])
+            ).sha256
+            let inputDigest = DocumentFingerprint(
+                data: try JSONSerialization.data(withJSONObject: [request.seed.source, focus])
+            ).sha256
             samples.append([
-                "scenario": scenario, "sample": sample, "seconds": elapsed, "passages": response.passages.count,
+                "scenario": scenario, "workload": workload, "sample": sample,
+                "phase": sample == 0 ? "first" : "repeat",
+                "input_sha256": inputDigest, "ordered_result_sha256": resultDigest,
+                "seed_utf16_count": request.seed.source.utf16.count, "focus_utf16_count": focus.utf16.count,
+                "seconds": elapsed, "passages": response.passages.count,
                 "passage_role_counts": passageRoleCounts,
                 "candidates": measurement.candidateCount,
+                "sources": measurement.sourceCount, "omitted_sources": measurement.omittedSourceCount,
+                "graph_used": measurement.graphUsed, "graph_candidates": measurement.graphCandidateCount,
+                "graph_contexts": measurement.graphContextCount,
                 "index_seconds": seconds(measurement.indexDuration),
+                "graph_seconds": seconds(measurement.graphDuration),
                 "read_seconds": seconds(measurement.readDuration),
                 "passage_seconds": seconds(measurement.passageDuration),
+                "finalization_seconds": seconds(measurement.finalizationDuration),
+                "backend_total_seconds": seconds(measurement.totalDuration),
+                "caller_overhead_seconds": elapsed - seconds(measurement.totalDuration),
             ])
             print(
                 "Writing References: \(count) notes, \(scenario) sample \(sample), "
                     + "\(String(format: "%.3f", elapsed)) s, \(response.passages.count) exact passages")
-            print("Recommendation passage role counts: \(passageRoleCounts)")
+            print(
+                "Recommendation stages (seconds): index=\(seconds(measurement.indexDuration)) "
+                    + "graph=\(seconds(measurement.graphDuration)) read=\(seconds(measurement.readDuration)) "
+                    + "passage=\(seconds(measurement.passageDuration)) finalization=\(seconds(measurement.finalizationDuration)) "
+                    + "total=\(seconds(measurement.totalDuration)); candidates=\(measurement.candidateCount), "
+                    + "sources=\(measurement.sourceCount), graph contexts=\(measurement.graphContextCount)")
             return response
         }
 
@@ -161,7 +217,9 @@ struct WritingReferencesPerformanceTests {
 
             // Preserve the original three samples and source shape for comparison with earlier reports.
             for sample in 0..<3 {
-                let response = try await measureRecommendation(handle, vault: vault, scenario: "initial_session", sample: sample)
+                let response = try await measureRecommendation(
+                    handle, vault: vault, scenario: "initial_session", sample: sample,
+                    source: draft + String(repeating: "\n", count: sample))
                 if let expectedPassages { #expect(response.passages == expectedPassages) } else { expectedPassages = response.passages }
             }
             await activeRuntime.shutdown()
@@ -174,9 +232,15 @@ struct WritingReferencesPerformanceTests {
             print("Writing References lifecycle: reopen existing state, \(String(format: "%.3f", reopenElapsed)) s")
             let restartedResponse = try await measureRecommendation(reopened, vault: vault, scenario: "first_after_restart", sample: 0)
             #expect(restartedResponse.passages == expectedPassages)
+            for sample in 1..<repetitions {
+                _ = try await measureRecommendation(reopened, vault: vault, scenario: "first_after_restart", sample: sample)
+            }
 
-            for (sample, focus) in ["uncertainty alternatives", "理由 价值 行动", "freedom objection"].enumerated() {
-                _ = try await measureRecommendation(reopened, vault: vault, scenario: "varied_focus", sample: sample, focus: focus)
+            for (workload, focus) in ["uncertainty alternatives", "理由 价值 行动", "freedom objection"].enumerated() {
+                for sample in 0..<repetitions {
+                    _ = try await measureRecommendation(
+                        reopened, vault: vault, scenario: "varied_focus", sample: sample, focus: focus, workload: workload)
+                }
             }
             // A selected prose paragraph exercises the focus-term budget within a larger unsaved draft.
             let selectedParagraph =
@@ -192,9 +256,11 @@ struct WritingReferencesPerformanceTests {
                         : "Draft section \(paragraph) discusses agency, evidence and 自由, comparing an argument with its objection. "
                             + "The researcher records alternatives and uncertainty before revising the surrounding discussion."
                 }.joined(separator: "\n\n") + "\n"
-            _ = try await measureRecommendation(
-                reopened, vault: vault, scenario: "selected_prose_in_50_paragraph_draft", sample: 0,
-                focus: selectedParagraph, source: longDraft)
+            for sample in 0..<repetitions {
+                _ = try await measureRecommendation(
+                    reopened, vault: vault, scenario: "selected_prose_in_50_paragraph_draft", sample: sample,
+                    focus: selectedParagraph, source: longDraft)
+            }
             for (scenario, query) in [("english", "agency evidence"), ("chinese", "自由"), ("annotation", "freedom")] {
                 try await measureSearch(reopened, scenario: scenario, query: query)
             }
@@ -215,17 +281,94 @@ struct WritingReferencesPerformanceTests {
                 focus: "incrementalneedle", source: "# Draft\n\nincrementalneedle\n", expectedCount: 1)
             #expect(changedResponse.passages.first?.candidate.note.relativePath == changedName)
             #expect(changedResponse.passages.first?.source.contains("Incrementalneedle") == true)
+            for sample in 1..<repetitions {
+                _ = try await measureRecommendation(
+                    reopened, vault: vault, scenario: "first_after_update", sample: sample,
+                    focus: "incrementalneedle", source: "# Draft\n\nincrementalneedle\n", expectedCount: 1)
+            }
             try await measureSearch(reopened, scenario: "updated_note", query: "incrementalneedle", expectedPath: changedName)
             await activeRuntime.shutdown()
+            if environment["SCHOLIUM_MEASURE_RELATED_PREPARATION"] == "1" {
+                // Independent reopened actors keep both arms cold. Preparation
+                // time is reported separately; it is not deleted from total work
+                // or confused with foreground/native click-to-paint latency.
+                for trial in 0..<3 {
+                    var unprepared: RelatedContentResponse?
+                    for prepare in [false, true] {
+                        activeRuntime = WorkspaceRuntime(configuration: configuration)
+                        let handle = try await activeRuntime.openWorkspace(id: workspaceID)
+                        if prepare {
+                            let started = ContinuousClock.now
+                            try await handle.discovery.prepareRelatedContent(
+                                .init(
+                                    seed: .init(
+                                        noteID: .init(vaultID: vault, relativePath: "Draft.md"), source: longDraft)))
+                            lifecycleSamples.append([
+                                "scenario": "silent_note_preparation", "trial": trial,
+                                "seconds": seconds(started.duration(to: .now)),
+                            ])
+                        }
+                        let result = try await measureRecommendation(
+                            handle, vault: vault,
+                            scenario: prepare ? "prepared_line_after_restart" : "unprepared_line_after_restart",
+                            sample: 0, focus: selectedParagraph, source: longDraft, workload: trial)
+                        if prepare { #expect(result.passages == unprepared?.passages) } else { unprepared = result }
+                        await activeRuntime.shutdown()
+                    }
+                }
+            }
         } catch {
             await activeRuntime.shutdown()
             throw error
         }
+        // Do not pool different focuses, first calls, or changed seed bytes into
+        // a steady-state distribution. Three samples describe variability, not p95.
+        let groups = Dictionary(grouping: samples) { sample in
+            ["scenario", "workload", "phase", "input_sha256"].map { String(describing: sample[$0]!) }.joined(separator: ":")
+        }
+        let summaries: [[String: Any]] = groups.keys.sorted().map { key in
+            let group = groups[key]!
+            let first = group[0]
+            var summary: [String: Any] = [
+                "scenario": first["scenario"]!, "workload": first["workload"]!, "phase": first["phase"]!,
+                "input_sha256": first["input_sha256"]!, "sample_count": group.count,
+            ]
+            for metric in [
+                "seconds", "index_seconds", "graph_seconds", "read_seconds", "passage_seconds",
+                "finalization_seconds", "backend_total_seconds", "caller_overhead_seconds",
+            ] {
+                let values = group.compactMap { $0[metric] as? Double }.sorted()
+                let middle = values.count / 2
+                summary[metric] = [
+                    "min": values[0], "max": values[values.count - 1],
+                    "median": values.count.isMultiple(of: 2) ? (values[middle - 1] + values[middle]) / 2 : values[middle],
+                ]
+            }
+            return summary
+        }
+        #if DEBUG
+            let buildConfiguration = "debug"
+        #else
+            let buildConfiguration = "release"
+        #endif
         let report: [String: Any] = [
+            "schema_version": 2, "fixture_version": 1, "build_configuration": buildConfiguration,
+            "os_version": ProcessInfo.processInfo.operatingSystemVersionString,
+            "processor_count": ProcessInfo.processInfo.processorCount,
+            "physical_memory_bytes": ProcessInfo.processInfo.physicalMemory,
+            "related_content_contract": RelatedContentContract.currentVersion,
+            "ranking_policy": RelatedContentContract.rankingPolicyVersion,
             "label": label, "notes": count, "paragraphs_per_note": 16,
             "three_vault_corpus": threeVaults, "corpus_note_counts": corpusRoleCounts, "additional_works_seed_notes": 1,
             "measurement":
-                "Backend diagnostics; recommendation and search timings exclude opening, debounce and UI publication; lifecycle timings reported separately",
+                "Backend diagnostics only; excludes editor capture, debounce, link-action preparation and native publication; native end-to-end latency is unmeasured. Lifecycle timings reported separately.",
+            "stage_semantics":
+                "index + graph + read + passage + finalization = backend_total. Before schema 2, read included graph; compare old read with graph + read. seconds also includes the discovery caller boundary.",
+            "oracle":
+                "Exact current source fingerprints, roles and UTF-16 source slices; full ordered passage equality within each workload. Ordered result digest compares role/path/fingerprint/range/source across disposable runs, excluding random vault UUIDs.",
+            "sampling":
+                "Initial three samples preserve historical trailing-newline seed variants. Other recommendation workloads run three identical inputs. Summaries split first/repeat calls and exact inputs; no p95 claim.",
+            "recommendation_summaries": summaries,
             "samples": samples, "search_samples": searchSamples, "lifecycle_samples": lifecycleSamples,
         ]
         let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])

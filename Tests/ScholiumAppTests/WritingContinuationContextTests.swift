@@ -10,7 +10,7 @@ struct WritingContinuationContextTests {
         let map = EditorSourceOffsetMap(source: source)
         let position = try #require(map.editorUTF16Offset(forSourceUTF16Offset: caret))
         return try MarkdownWritingContextProjection.capture(
-            source: source, selections: [.init(anchor: position, head: position)], paragraph: true)
+            source: source, selections: [.init(anchor: position, head: position)], mode: .selectionOrParagraph)
     }
 
     @Test("Uses the exact current sentence, with before and after kept separate")

@@ -105,13 +105,14 @@ lexical preparation to exact source revisions. Negation cannot evaluate cropped
 body passages. Literal term groups persist raw alternatives with group-level
 preimage comparison, not query macros or hidden expansion.
 
-Recommendation retrieval shares that index and semantic parser. It checks all
-eligible current source candidates, ranks complete comparison-set scores before
-selected excerpts, and retains exact passage ranges separately from readable
-highlight projections. Revision-bound memoization cannot skip source validation
-or candidate scoring. Within/cross-Note deduplication preserves original source
-provenance; role diversity and local weighting are ranking mechanisms, not
-philosophical interpretation. Ordinary Search coordinates/clauses remain separate.
+Recommendation retrieval shares Search's transaction/decoder/parser. Core owns
+bounded, revision/generation/role-bound Note preparation reused by independent
+focused recall. Application validates current sources before scoring; prewarming
+authorizes no results. The window owns silent preparation cancellation and
+foreground priority. Complete comparison sets precede bounded excerpts; exact
+source ranges remain separate from readable highlights. Deduplication preserves
+provenance; contextual weighting implies no philosophical interpretation.
+Ordinary Search coordinates/clauses remain separate.
 
 Source resource projection walks current links/images and validated Zotero
 locators without API calls or inferred bindings. One portable attachment registry

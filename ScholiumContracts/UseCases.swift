@@ -173,6 +173,8 @@ public protocol DiscoveryUseCases: Sendable {
     func search(_ request: SearchRequest) async throws -> SearchResponse
     func searchCompletions(_ request: SearchCompletionRequest) async throws -> SearchCompletionResponse
     func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse
+    /// Prepare Note-level discovery without publishing or retaining result cards.
+    func prepareRelatedContent(_ request: RelatedContentRequest) async throws
     func links(
         for note: VaultQualifiedNoteID,
         direction: WorkspaceLinkDirection

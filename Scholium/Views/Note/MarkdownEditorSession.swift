@@ -946,7 +946,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             result.selections.count == 1, let selection = result.selections.first
         else { throw SessionError.invalidResult }
         if selection.isNonempty {
-            let captured = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, paragraph: false)
+            let captured = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, mode: .selectionOnly)
             guard
                 let span = try? ParagraphAnchorPlanner.paragraph(
                     in: NoteDocument(relativePath: identity, rawContent: source), atUTF16: captured.sourceRange.utf16LowerBound)
@@ -962,10 +962,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func selectedSourceSnapshot() async throws -> MarkdownSourceSelectionSnapshot {
-        try await writingContextSnapshot(paragraph: false).snapshot
+        try await writingContextSnapshot(mode: .selectionOnly).snapshot
     }
 
-    func writingContextSnapshot(paragraph: Bool) async throws -> (snapshot: MarkdownSourceSelectionSnapshot, point: MarkdownEditorInsertionPoint?) {
+    func writingContextSnapshot(mode: MarkdownWritingContextCaptureMode) async throws -> (
+        snapshot: MarkdownSourceSelectionSnapshot, point: MarkdownEditorInsertionPoint?
+    ) {
         guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
         let epoch = requestEpoch
         let identity = documentID
@@ -973,7 +975,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard epoch == requestEpoch, identity == documentID, self.webView === webView,
             result.resultingGeneration == generation, !isComposing, let source = result.text
         else { throw SessionError.invalidResult }
-        let snapshot = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, paragraph: paragraph)
+        let snapshot = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, mode: mode)
         let point = result.selections.first.flatMap { selection -> MarkdownEditorInsertionPoint? in
             guard !selection.isNonempty else { return nil }
             return .init(sessionID: sessionID, documentID: identity, generation: generation, selection: selection)

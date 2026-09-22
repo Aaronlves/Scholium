@@ -103,23 +103,25 @@ never enter source/history. System spelling/grammar remains
 separate from prediction.
 
 **Find Writing References…** in Insert (default Shift-Command-J, configurable)
-uses the same Related pane and result session as selection recommendations. It
-captures the selected passage, or the current paragraph when the caret is empty.
-The visible pane performs this same query automatically on opening, after a short
-selection debounce, or after about 1.2 seconds without typing at an empty caret.
+shares selection recommendations' pane/session. It captures selections,
+otherwise the current logical source line, independent of soft wrapping. Blank
+lines never borrow preceding prose. Silent Note preparation works with the pane
+closed, changing no results, focus or errors. Source/index changes invalidate it;
+composition, departure and foreground retrieval cancel it. Retrieval never requires
+preparation. The visible pane queries on opening, after a short selection debounce,
+or after about 1.2 seconds without typing at an empty caret.
 Resuming editing restores following even if the pointer was left in the pane.
 A stale index is refreshed once before showing a recoverable retrieval error.
 Composition, focus outside the editor and pointer interaction in the pane suspend
-automatic replacement. A retry action appears only for a failed or incomplete retrieval. The pane
-never opens itself. Unchanged results retain their card identities and ordering;
-a fresh, valid caret receipt restores insertion without another confirmation.
-Each Note group has up to two ranked passages, navigation
+automatic replacement. Only failed/incomplete retrieval offers Retry. Unchanged
+results retain card identities/order; a fresh caret receipt restores insertion.
+Each Note offers up to two passages, navigation
 and Note/paragraph link insertion. Unavailable insertion never hides
 readable material. No excerpts or generated prose are inserted. Waiting shows
 the actual shortcut or unbound command's menu path. Typing never opens the pane.
 Same-Note writing or failed retrieval retains results/context; §18.5 owns departure.
-Text/selection changes invalidate insertion; successful retrieval renews its caret
-receipt without confirmation or a standing refresh indicator.
+Text/selection changes invalidate insertion; retrieval renews it without
+confirmation or a standing refresh indicator.
 Paragraph insertion is explicit: it validates the complete current ordinary
 paragraph, creates an authored anchor only when needed, saves and rechecks that
 source, then inserts its live link. It neither navigates away from the draft nor

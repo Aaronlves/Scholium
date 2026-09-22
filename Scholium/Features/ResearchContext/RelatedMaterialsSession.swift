@@ -76,6 +76,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     func beginParagraphInsertion(_ card: RelatedMaterialCard) -> Bool {
         guard canInsertParagraphLink, cards.contains(card) else { return false }
         stopAutomaticSearch()
+        stopBackgroundPreparation()
         isInsertingParagraphLink = true
         return true
     }
@@ -138,6 +139,64 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     private var scheduledSearch: Task<Void, Never>?
     private var generation = UUID()
     private var task: Task<Void, Never>?
+    private var backgroundTask: Task<Void, Never>?
+    private var backgroundTicket = UUID()
+    private var pendingBackground: BackgroundKey?
+    private var preparedBackground: BackgroundKey?
+
+    struct BackgroundKey: Equatable {
+        let runtime: TriptychRuntimeIdentity
+        let note: VaultQualifiedNoteID
+        let sessionID: UUID
+        let documentID: String
+        let startingFingerprint: String
+        let editorGeneration: Int
+        let searchGeneration: SearchGenerationID
+    }
+
+    /// Window lifetime and cancellation only. Prepared retrieval data belongs to
+    /// Core; neither a successful preparation nor an error changes visible state.
+    @discardableResult
+    func prepareBackground(
+        key: BackgroundKey,
+        pause: @escaping @MainActor () async throws -> Void = { try await Task.sleep(for: .milliseconds(350)) },
+        prepare: @escaping @MainActor () async throws -> Void
+    ) -> Task<Void, Never>? {
+        guard key != pendingBackground, key != preparedBackground, !isLoading, !isInsertingParagraphLink else { return nil }
+        stopBackgroundPreparation()
+        pendingBackground = key
+        let ticket = backgroundTicket
+        let operation = Task(priority: .utility) { [weak self] in
+            do {
+                try await pause()
+                try Task.checkCancellation()
+                guard let self, self.backgroundTicket == ticket else { return }
+                try await prepare()
+                try Task.checkCancellation()
+                guard self.backgroundTicket == ticket else { return }
+                self.preparedBackground = key
+            } catch {
+                // Speculation cannot turn a readable pane into an error state.
+            }
+            guard let self, self.backgroundTicket == ticket else { return }
+            self.pendingBackground = nil
+            self.backgroundTask = nil
+        }
+        backgroundTask = operation
+        return operation
+    }
+
+    func stopBackgroundPreparation() {
+        backgroundTicket = UUID()
+        backgroundTask?.cancel()
+        backgroundTask = nil
+        pendingBackground = nil
+    }
+
+    func stopBackgroundPreparation(sessionID: UUID) {
+        guard pendingBackground?.sessionID == sessionID else { return }
+        stopBackgroundPreparation()
+    }
 
     func report(_ error: Error) {
         issue = error.localizedDescription
@@ -148,6 +207,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
 
     func reset() {
         cancel()
+        preparedBackground = nil
         seed = nil
         insertionPoint = nil
         contextChanged = false
@@ -181,6 +241,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     }
 
     func cancel() {
+        stopBackgroundPreparation()
         if isLoading {
             issue = String(localized: "Search cancelled. You can find material again when ready.", bundle: .module)
             needsRefresh = seed != nil
@@ -198,6 +259,9 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         linkTarget: @escaping @MainActor (VaultNoteReference) async -> String? = { _ in nil }
     ) -> Task<Void, Never> {
         if isInsertingParagraphLink { return Task {} }
+        // Foreground work has priority over speculative source reads. Already
+        // prepared Core data remains usable; cancelling this task clears no cache.
+        stopBackgroundPreparation()
         if !automatic {
             scheduledSearch?.cancel()
             scheduledSearch = nil

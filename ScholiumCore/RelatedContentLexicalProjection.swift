@@ -23,6 +23,15 @@ struct RelatedContentLexicalProjection: Codable, Sendable {
 
     func encoded() throws -> Data { try JSONEncoder().encode(self) }
 
+    /// Conservative accounting for both the Note scoring fields and the
+    /// independently allocated matcher segments. Shared storage is counted twice.
+    var estimatedByteCount: Int {
+        128 + scoringDocument.estimatedByteCount
+            + segments.reduce(0) {
+                $0 + 96 + $1.text.utf8.count + $1.index.estimatedByteCount
+            }
+    }
+
     static func decode(_ data: Data?, checksum: String?) throws -> Self {
         guard let data, checksum == RelatedContentSourceProjection.checksum(data) else {
             throw SearchIndexError.corruptDatabase

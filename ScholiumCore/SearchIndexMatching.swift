@@ -141,7 +141,7 @@ struct RelatedContentSeedMaterial {
             RelatedContentSeedSegment(
                 kind: $0.kind,
                 field: nil,
-                normalizedText: SearchTextNormalization.normalize($0.text)
+                normalizedText: SearchTextNormalization.lexicalNormalize($0.text)
             )
         }
         segments.append(
@@ -191,9 +191,13 @@ struct RelatedContentSeedMaterial {
     func identityMentionReason(
         for document: StoredSearchDocument
     ) -> RelatedContentIdentityMentionReason? {
+        identityMentionReason(title: document.title, aliases: document.aliases)
+    }
+
+    func identityMentionReason(title: String, aliases: [String]) -> RelatedContentIdentityMentionReason? {
         var identities: [(RelatedContentIdentityKind, String)] = []
-        identities.append((.title, document.title))
-        identities.append(contentsOf: document.aliases.map { (.alias, $0) })
+        identities.append((.title, title))
+        identities.append(contentsOf: aliases.map { (.alias, $0) })
         var mentions: [RelatedContentIdentityMention] = []
         var seen = Set<RelatedContentIdentityMention>()
         for (identityKind, identity) in identities {

@@ -79,8 +79,21 @@ struct RelatedContentTermMatcher {
     }
 
     func matchingTerms(in normalizedText: String, index: RelatedContentTextIndex) -> Set<String> {
-        let counts = counts(in: normalizedText, index: index)
-        return Set(terms.indices.compactMap { counts[$0] > 0 ? terms[$0] : nil })
+        // Admission and explanations need presence, not full frequencies.
+        // Keep BM25's counting path separate, and stop Unicode/phrase scans at
+        // their first canonical match without allocating a query-sized array.
+        guard let words = index.words else { return exactMatchingTerms(in: normalizedText) }
+        var result = Set<String>()
+        for (word, indices) in wordIndices where words[word, default: 0] > 0 {
+            for i in indices { result.insert(terms[i]) }
+        }
+        for i in otherIndices {
+            if !index.containsCJK && cjkIndices.contains(i) { continue }
+            if SearchMatcher.containsOccurrence(of: .term(terms[i]), in: normalizedText, normalizedNeedle: needles[i]) {
+                result.insert(terms[i])
+            }
+        }
+        return result
     }
 
     func matchingTerms(in normalizedText: String) -> Set<String> {
@@ -92,5 +105,13 @@ struct RelatedContentTermMatcher {
         terms.indices.map {
             relatedContentOccurrenceCount(term: terms[$0], text: normalizedText, normalizedNeedle: needles[$0])
         }
+    }
+
+    private func exactMatchingTerms(in normalizedText: String) -> Set<String> {
+        Set(
+            terms.indices.compactMap {
+                SearchMatcher.containsOccurrence(of: .term(terms[$0]), in: normalizedText, normalizedNeedle: needles[$0])
+                    ? terms[$0] : nil
+            })
     }
 }

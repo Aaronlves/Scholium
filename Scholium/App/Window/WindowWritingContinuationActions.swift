@@ -35,7 +35,7 @@ extension WindowModel {
             return .unavailable(.invalidContext)
         }
         do {
-            let captured = try await editor.writingContextSnapshot(paragraph: true)
+            let captured = try await editor.writingContextSnapshot(mode: .selectionOrParagraph)
             guard let point = captured.point,
                 EditorSourceOffsetMap(source: captured.snapshot.source)
                     .sourceUTF16Offset(forEditorUTF16Offset: point.selection.head) == caret,

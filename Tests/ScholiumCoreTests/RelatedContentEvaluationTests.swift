@@ -43,6 +43,10 @@ struct RelatedContentEvaluationTests {
         let rankedNoteIDs: [String]
         let grades: [Int]
         let candidateUsefulRecall: Double?
+        let locallyMatchedUsefulRecall: Double?
+        let eligibleUsefulRecall: Double?
+        let stagesByNote: [String: [String: Int]]
+        let missingUsefulNotes: [String: String]
         let usefulRecallAt6: Double?
         let usefulPrecisionAt6: Double
         let returnedUsefulPrecision: Double?
@@ -59,6 +63,8 @@ struct RelatedContentEvaluationTests {
         let cases: Int
         let casesWithUsefulJudgments: Int
         let meanCandidateUsefulRecall: Double?
+        let meanLocallyMatchedUsefulRecall: Double?
+        let meanEligibleUsefulRecall: Double?
         let meanUsefulRecallAt6: Double?
         let meanUsefulPrecisionAt6: Double
         let meanReturnedUsefulPrecision: Double?
@@ -120,6 +126,8 @@ struct RelatedContentEvaluationTests {
                 "Authored recommendation evaluation [\(value.split.rawValue), \(value.cases) cases]: "
                     + "nDCG@6=\(formatted(value.meanNDCGAt6)), "
                     + "candidateRecall=\(formatted(value.meanCandidateUsefulRecall)), "
+                    + "localRecall=\(formatted(value.meanLocallyMatchedUsefulRecall)), "
+                    + "eligibleRecall=\(formatted(value.meanEligibleUsefulRecall)), "
                     + "recall@6=\(formatted(value.meanUsefulRecallAt6)), "
                     + "precision@6=\(formatted(value.meanUsefulPrecisionAt6)), "
                     + "returnedPrecision=\(formatted(value.meanReturnedUsefulPrecision)), "
@@ -161,6 +169,9 @@ struct RelatedContentEvaluationTests {
             return RelatedContentSource(candidate: candidate, document: document.document)
         }
         let passages = try await index.relatedPassages(request, sources: sources)
+        var diagnostics: [RelatedContentRankingDiagnostic] = []
+        let diagnosed = try TriptychSearchIndex.relatedPassages(request, sources: sources) { diagnostics.append($0) }
+        #expect(diagnosed == passages)
         // Query stability is separate from quality judgments. A cache hit or
         // reversed current-source traversal must not change the recommendation.
         #expect(try await index.relatedPassages(request, sources: sources.reversed()) == passages)
@@ -176,6 +187,28 @@ struct RelatedContentEvaluationTests {
         }
         let judgments = Dictionary(uniqueKeysWithValues: scenario.items.map { ("\($0.id).md", $0.grade) })
         let usefulIDs = Set(judgments.filter { $0.value > 0 }.keys)
+        var stagesByNote: [String: [String: Int]] = [:]
+        for event in diagnostics {
+            stagesByNote[event.note.relativePath, default: [:]][event.stage.rawValue, default: 0] += 1
+        }
+        let candidateIDs = Set(candidates.map { $0.note.relativePath })
+        let returnedIDs = Set(passages.map { $0.candidate.note.relativePath })
+        var missingUsefulNotes: [String: String] = [:]
+        for path in usefulIDs.subtracting(returnedIDs) {
+            let stages = stagesByNote[path] ?? [:]
+            missingUsefulNotes[path] =
+                !candidateIDs.contains(path)
+                ? "notRecalled"
+                : ((stages["localMatch"] ?? 0) == 0
+                    ? "noLocalMatch"
+                    : ((stages["eligible"] ?? 0) == 0
+                        ? "insufficientFocus"
+                        : ((stages["duplicate"] ?? 0) > 0 ? "duplicate" : "limited")))
+        }
+        func recall(at stage: String) -> Double? {
+            guard !usefulIDs.isEmpty else { return nil }
+            return Double(usefulIDs.filter { (stagesByNote[$0]?[stage] ?? 0) > 0 }.count) / Double(usefulIDs.count)
+        }
         var rankedIDs: [String] = []
         var equivalences: Set<String> = []
         var redundant = 0
@@ -209,6 +242,8 @@ struct RelatedContentEvaluationTests {
             rankedNoteIDs: rankedIDs, grades: grades,
             candidateUsefulRecall: usefulIDs.isEmpty
                 ? nil : Double(Set(candidates.map { $0.note.relativePath }).intersection(usefulIDs).count) / Double(usefulIDs.count),
+            locallyMatchedUsefulRecall: recall(at: "localMatch"), eligibleUsefulRecall: recall(at: "eligible"),
+            stagesByNote: stagesByNote, missingUsefulNotes: missingUsefulNotes,
             usefulRecallAt6: usefulIDs.isEmpty ? nil : Double(usefulReturned) / Double(usefulIDs.count),
             usefulPrecisionAt6: Double(usefulReturned) / 6,
             returnedUsefulPrecision: rankedIDs.isEmpty ? nil : Double(usefulReturned) / Double(rankedIDs.count),
@@ -236,6 +271,8 @@ struct RelatedContentEvaluationTests {
         return .init(
             split: split, cases: selected.count, casesWithUsefulJudgments: selected.count - noUseful.count,
             meanCandidateUsefulRecall: mean(selected.compactMap(\.candidateUsefulRecall)),
+            meanLocallyMatchedUsefulRecall: mean(selected.compactMap(\.locallyMatchedUsefulRecall)),
+            meanEligibleUsefulRecall: mean(selected.compactMap(\.eligibleUsefulRecall)),
             meanUsefulRecallAt6: mean(selected.compactMap(\.usefulRecallAt6)),
             meanUsefulPrecisionAt6: mean(selected.map(\.usefulPrecisionAt6)) ?? 0,
             meanReturnedUsefulPrecision: mean(selected.compactMap(\.returnedUsefulPrecision)),

@@ -5,6 +5,139 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testRelatedMaterialCurrentLineSelectionAndNoteDeparture() throws {
+        // setUp clones the staged standard 500-Note Triptych into this journey's
+        // UUID directory. Modify existing anchors only, while its QA app is down;
+        // never change TestVaults, the staged copy, or the fixture's Note count.
+        app.terminate()
+        let firstURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let secondURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave B.md")
+        let topicURL = triptychDirectory.appendingPathComponent("02-topics/QA Topic.md")
+        let workURL = triptychDirectory.appendingPathComponent("03-works/QA Work.md")
+        let lineWords = "linequartz linezephyr"
+        let adjacentWords = "adjacentcobalt adjacenttundra"
+        let destinationWords = "newmonsoon newvelvet"
+        let mixedLine = lineWords + " " + adjacentWords
+        let additions = [
+            (firstURL, "\n\n" + mixedLine + "\n" + lineWords + "\n" + mixedLine),
+            (secondURL, "\n\n" + lineWords + ".\n\n" + destinationWords),
+            (topicURL, "\n\n" + adjacentWords + "."),
+            (workURL, "\n\n" + destinationWords + "."),
+        ]
+        for (url, suffix) in additions {
+            try write(source(at: url) + suffix, to: url)
+        }
+        let firstSource = try source(at: firstURL)
+        let secondSource = try source(at: secondURL)
+        let expectedBytes = try additions.map { ($0.0, try Data(contentsOf: $0.0)) }
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 45))
+        waitForCurrentDocumentSurface()
+
+        let inspector = app.descendants(matching: .any)["scholium.researchInspector"].firstMatch
+        let inspectorMode = app.descendants(matching: .any)["scholium.inspectorMode"].firstMatch
+        // Native List exposes the enclosing Inspector identifier, not the
+        // inner SwiftUI `scholium.related` identifier. Use the real selector.
+        XCTAssertFalse(
+            inspector.exists && inspectorMode.exists && inspectorMode.value as? String == "Related Material",
+            "Opening a Note must not open Related Material by itself.")
+        if inspector.exists {
+            clickInspectorVisibilityControl()
+            XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+        }
+        selectDocumentMode("Source")
+        let editor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == firstSource })
+        editor.click()
+        editor.typeKey(.end, modifierFlags: .command)
+        editor.typeKey(.leftArrow, modifierFlags: .command)
+        editor.typeKey(.upArrow, modifierFlags: [])
+
+        // Sample at the completed Source/caret action boundary, outside a waiter:
+        // an inverted wait's deadline can interrupt AX snapshot resolution.
+        // No native AX receipt proves background completion or continuous absence.
+        XCTAssertFalse(inspector.exists, "Caret navigation must not open the Inspector.")
+        XCTAssertFalse(
+            inspectorMode.exists && inspectorMode.value as? String == "Related Material",
+            "Preparation must not select Related Material by itself.")
+        XCTAssertEqual(editor.value as? String, firstSource)
+        XCTAssertEqual(try Data(contentsOf: firstURL), Data(firstSource.utf8))
+
+        func card(containing wording: String) -> XCUIElement {
+            app.buttons.matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                    "scholium.related.card.", wording)
+            ).firstMatch
+        }
+        func waitForMaterial(_ expected: String, excluding unexpected: String) {
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    let match = card(containing: expected)
+                    return inspector.exists && inspectorMode.exists && inspectorMode.value as? String == "Related Material"
+                        && match.exists && match.isEnabled && !card(containing: unexpected).exists
+                }, "Expected only the active writing focus, not adjacent or departed context.")
+            XCTAssertFalse(app.descendants(matching: .any)["scholium.related.issue"].firstMatch.exists)
+        }
+
+        // Menu entry captures the middle source line. Both adjacent lines are
+        // nonempty and include the Topic's distinct vocabulary, so paragraph
+        // expansion would visibly admit the unwanted Topic passage as well.
+        app.menuBars.menuBarItems["Insert"].click()
+        let find = app.menuItems["Find Writing References…"].firstMatch
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        XCTAssertTrue(find.isEnabled)
+        find.click()
+        waitForMaterial(lineWords, excluding: adjacentWords)
+        XCTAssertEqual(editor.value as? String, firstSource)
+
+        // The final line contains BOTH vocabularies; select only its last two
+        // words. Ignoring that selection would also retrieve the Analysis.
+        // Close first so the keyboard route must also reveal the pane itself.
+        clickInspectorVisibilityControl()
+        XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+        editor.click()
+        editor.typeKey(.end, modifierFlags: .command)
+        editor.typeKey(.leftArrow, modifierFlags: [.option, .shift])
+        editor.typeKey(.leftArrow, modifierFlags: [.option, .shift])
+        app.typeKey("j", modifierFlags: [.command, .shift])
+        waitForMaterial(adjacentWords, excluding: lineWords)
+        XCTAssertEqual(editor.value as? String, firstSource)
+
+        // Request again and leave without waiting for completion. Native timing
+        // cannot force an in-flight worker, so this asserts departure isolation,
+        // not a deterministic cancellation race or an internal task/cache state.
+        app.typeKey("j", modifierFlags: [.command, .shift])
+        openNote("QA Autosave B.md", expectedTitle: "QA Autosave B", in: app.windows.firstMatch)
+        XCTAssertFalse(
+            card(containing: adjacentWords).exists,
+            "Departing the seed Note must clear its previous material.")
+        selectDocumentMode("Source")
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == secondSource })
+        editor.click()
+        editor.typeKey(.end, modifierFlags: .command)
+        app.typeKey("j", modifierFlags: [.command, .shift])
+        waitForMaterial(destinationWords, excluding: adjacentWords)
+        XCTAssertFalse(card(containing: lineWords).exists)
+
+        // The positive result wait above establishes the new Note's foreground
+        // action boundary. Check its visible state directly, without an inverted
+        // AX polling window or a claim that a late worker was forced to complete.
+        XCTAssertFalse(card(containing: adjacentWords).exists)
+        XCTAssertTrue(card(containing: destinationWords).exists)
+        XCTAssertEqual(editor.value as? String, secondSource)
+        for (url, bytes) in expectedBytes {
+            XCTAssertEqual(
+                try Data(contentsOf: url), bytes,
+                "Retrieval and silent preparation must not rewrite any fixture source.")
+        }
+        // The suite's existing tearDown terminates the one QA process and removes
+        // only this journey-owned directory, retaining normal failure artifacts.
+    }
+
+    @MainActor
     func testAgentChangesShowsExactUpdateAndRestoresSettledBytes() throws {
         let noteURL =
             triptychDirectory

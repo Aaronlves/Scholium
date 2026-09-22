@@ -8,15 +8,17 @@ extension TriptychSearchIndex {
     /// Rank Notes using their authored context, then choose locally matching
     /// paragraphs within each Note. Metadata is neither an excerpt nor prose.
     nonisolated static func relatedPassages(
-        _ request: RelatedContentRequest, sources: [RelatedContentSource]
+        _ request: RelatedContentRequest, sources: [RelatedContentSource],
+        record: ((RelatedContentRankingDiagnostic) -> Void)? = nil
     ) throws -> [RelatedContentPassage] {
-        try rankRelatedPassages(request, sources: sources) { source in
+        try rankRelatedPassages(request, sources: sources, record: record) { source in
             try RelatedContentSourceProjection(document: source.document)
         }
     }
 
     nonisolated static func rankRelatedPassages(
         _ request: RelatedContentRequest, sources: [RelatedContentSource],
+        record: ((RelatedContentRankingDiagnostic) -> Void)? = nil,
         project: (RelatedContentSource) throws -> RelatedContentSourceProjection?
     ) throws -> [RelatedContentPassage] {
         let seedDocument = NoteDocument(relativePath: request.seed.noteID.relativePath, rawContent: request.seed.source)
@@ -26,8 +28,12 @@ extension TriptychSearchIndex {
         let requiredFocusMatches = min(2, distinctFocusTermCount)
         let phrases = Array(Set(request.seed.focuses.flatMap { RelatedContentQueryTerms.quotedPhrases(in: $0.text) })).sorted()
         let focused = !request.seed.focuses.isEmpty
-        var ranked: [(passage: RelatedContentPassage, normalizedText: String, score: Double, documentIndex: Int, focusCoverage: Int, phraseCoverage: Double)] =
-            []
+        var ranked:
+            [(
+                passage: RelatedContentPassage, normalizedText: String, score: Double, documentIndex: Int, focusCoverage: Int, phraseCoverage: Double,
+                localIdentity: Bool
+            )] =
+                []
         var scoringDocuments: [RelatedContentBM25F.Document] = []
         var scoringRoles: [VaultRole] = []
         var noteDocuments: [RelatedContentBM25F.Document] = []
@@ -41,8 +47,17 @@ extension TriptychSearchIndex {
                 source.candidate.note != request.seed.noteID,
                 request.candidateRoles.contains(where: { $0.vaultRole == source.candidate.vaultRole }),
                 seenSources.insert(source.candidate.note).inserted
-            else { continue }
-            guard let projection = try project(source) else { continue }
+            else {
+                record?(.init(note: source.candidate.note, range: nil, stage: .rejectedSource))
+                continue
+            }
+            guard let projection = try project(source) else {
+                record?(.init(note: source.candidate.note, range: nil, stage: .unavailableProjection))
+                continue
+            }
+            if projection.paragraphs.isEmpty {
+                record?(.init(note: source.candidate.note, range: nil, stage: .noParagraphs))
+            }
             if case .graphConnection = source.candidate.reason {
                 let terms = Set(focusedTerms.isEmpty ? material.combinedTerms : focusedTerms)
                 // Graph-only unrelated Notes must not change the lexical
@@ -52,11 +67,15 @@ extension TriptychSearchIndex {
                         !material.termMatcher.matchingTerms(in: unit.normalizedDisplayText, index: unit.textIndex)
                             .isDisjoint(with: terms)
                     })
-                else { continue }
+                else {
+                    record?(.init(note: source.candidate.note, range: nil, stage: .noLocalMatch))
+                    continue
+                }
             }
             noteIndices[source.candidate.note] = noteDocuments.count
             noteDocuments.append(projection.noteScoringDocument)
             noteRoles.append(source.candidate.vaultRole)
+            var focusedIdentities: [String]?
             for unit in projection.paragraphs {
                 try Task.checkCancellation()
                 guard
@@ -75,7 +94,11 @@ extension TriptychSearchIndex {
                     return terms.isEmpty ? nil : .init(seedKind: group.kind, terms: terms)
                 }
                 let focusCoverage = Set(matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms)).count
-                guard matches.contains(where: { !focused || $0.seedKind != .sourceNote }) else { continue }
+                guard matches.contains(where: { !focused || $0.seedKind != .sourceNote }) else {
+                    record?(.init(note: source.candidate.note, range: unit.range, stage: .noLocalMatch))
+                    continue
+                }
+                record?(.init(note: source.candidate.note, range: unit.range, stage: .localMatch))
                 let phraseCoverage: Double
                 if phrases.isEmpty {
                     phraseCoverage = 0
@@ -93,7 +116,17 @@ extension TriptychSearchIndex {
                     candidate: source.candidate, range: unit.range,
                     source: String(source.document.rawContent[sourceRange]), displayText: unit.displayText,
                     excerpt: "", excerptMatches: [], matches: matches)
-                ranked.append((passage, normalized, 0, documentIndex, focusCoverage, phraseCoverage))
+                var localIdentity = false
+                if focused, focusCoverage < requiredFocusMatches, phraseCoverage == 0 {
+                    // Only ambiguous single-term admission needs current-source
+                    // names. Prepare them once per Note, not once per paragraph.
+                    if focusedIdentities == nil {
+                        focusedIdentities = RelatedContentRecommendationPolicy.focusedIdentities(in: source.document, material: material)
+                    }
+                    localIdentity = RelatedContentRecommendationPolicy.locallyMatchesFocusedIdentity(
+                        focusedIdentities!, normalizedText: normalized)
+                }
+                ranked.append((passage, normalized, 0, documentIndex, focusCoverage, phraseCoverage, localIdentity))
             }
         }
         let evaluation = try RelatedContentBM25F.evaluate(
@@ -101,12 +134,19 @@ extension TriptychSearchIndex {
             terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms, roles: scoringRoles)
         let maximumScore = evaluation.scores.max() ?? 0
         ranked.removeAll { item in
-            focused && item.focusCoverage < requiredFocusMatches && item.phraseCoverage == 0
+            let rejected =
+                focused && item.focusCoverage < requiredFocusMatches && item.phraseCoverage == 0
+                && !item.localIdentity
                 && !(distinctFocusTermCount >= 3 && evaluation.coverage[item.documentIndex] >= 0.6
                     && evaluation.hasDistinctiveMatch[item.documentIndex]
                     && item.passage.matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms).contains {
                         !["not", "no", "never", "cannot", "only"].contains($0)
                     })
+            record?(
+                .init(
+                    note: item.passage.candidate.note, range: item.passage.range,
+                    stage: rejected ? .insufficientFocus : .eligible, coverage: evaluation.coverage[item.documentIndex]))
+            return rejected
         }
         for index in ranked.indices {
             let item = ranked[index]
@@ -136,10 +176,14 @@ extension TriptychSearchIndex {
         let passageRelevance = Dictionary(ranked.map { ($0.passage.id, $0.score) }, uniquingKeysWith: max)
         var grouped: [VaultQualifiedNoteID: [RelatedContentPassage]] = [:]
         var seen: [VaultQualifiedNoteID: Set<String>] = [:]
+        var duplicatePassages = Set<String>()
         for item in ranked where item.score > 0 {
             let note = item.passage.candidate.note
             let key = item.normalizedText
-            guard seen[note, default: []].insert(key).inserted else { continue }
+            guard seen[note, default: []].insert(key).inserted else {
+                if record != nil { duplicatePassages.insert(item.passage.id) }
+                continue
+            }
             grouped[note, default: []].append(item.passage)
         }
         let maximumNoteScore = noteScores.max() ?? 0
@@ -206,6 +250,7 @@ extension TriptychSearchIndex {
                         signatures[passage.id] = signature
                     }
                     if exactDisplayed.contains(signature.exact) {
+                        if record != nil { duplicatePassages.insert(passage.id) }
                         cursor += 1
                         continue
                     }
@@ -243,6 +288,20 @@ extension TriptychSearchIndex {
                     candidate: passage.candidate, range: passage.range,
                     source: passage.source, displayText: passage.displayText,
                     excerpt: preview.text, excerptMatches: preview.ranges, matches: passage.matches))
+        }
+        if let record {
+            let selected = Set(result.map(\.id))
+            for item in ranked where item.score > 0 {
+                // Terminal outcomes concern the displayed set; exact copies are
+                // distinguished from material omitted by Note/overall limits.
+                let stage: RelatedContentRankingDiagnostic.Stage =
+                    selected.contains(item.passage.id)
+                    ? .selected
+                    : (duplicatePassages.contains(item.passage.id)
+                        || exactDisplayed.contains(RelatedContentRecommendationPolicy.TextSignature(item.passage.displayText).exact)
+                        ? .duplicate : .limited)
+                record(.init(note: item.passage.candidate.note, range: item.passage.range, stage: stage))
+            }
         }
         return result
     }

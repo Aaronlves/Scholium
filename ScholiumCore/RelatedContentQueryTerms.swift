@@ -80,6 +80,18 @@ enum RelatedContentQueryTerms {
 
         func finish() {
             guard !current.isEmpty else { return }
+            // The complete input is already case-normalized and this run
+            // contains only alphanumerics. ASCII runs cannot acquire different
+            // boundaries, normalization or CJK tokens when normalized again.
+            // Keep non-ASCII runs on the established Unicode/CJK path.
+            if current.utf8.allSatisfy({ $0 < 128 }) {
+                if current.utf8.count > 1, current.utf8.count <= 128, !ignoredLatinTerms.contains(current) {
+                    result.append(current)
+                }
+                current = ""
+                currentIsCJK = nil
+                return
+            }
             let candidates = currentIsCJK == true ? SearchTokenization.queryTokens(for: current) : [current]
             for candidate in candidates {
                 let token = SearchTextNormalization.normalize(candidate)

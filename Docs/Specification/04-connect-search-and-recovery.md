@@ -205,7 +205,15 @@ are never standalone recommended material. Author, date, path and unknown
 properties do not contribute to default topic ranking. Explicit Search fields
 retain their existing semantics. Incoming annotation text is never transferred
 to its target, and each authored occurrence contributes once.
-An explicit focus supplies scoring terms rather than unrelated source-Note terms.
+Retrieval uses current-Note background preparation and independent focused
+recall. Note opening and paused writing may prepare background material
+silently, without opening the pane or publishing results. Preparation is bounded,
+disposable and bound to source revision, index generation and authorized scope;
+it never restricts focused recall or replaces current-source validation. Missing
+or invalid preparation uses the same complete focused retrieval path without
+synchronously rebuilding the background pool. Background preparation changes
+neither candidate eligibility nor ranking. An explicit focus supplies scoring
+terms rather than unrelated source-Note terms; background scores are never added.
 Bounded term selection spans the complete focus, retains adjacent term pairs,
 and gives explicitly quoted wording a bounded share of the query. Quoted phrase
 order and negation remain authored text; extraction invents no synonym or thesis.
@@ -214,7 +222,10 @@ paragraph BM25F and explicitly quoted phrase matches. Repetition and metadata
 cannot independently manufacture local relevance. Multi-term focuses normally
 require multiple locally matching terms; a distinctive single term may qualify
 when it supplies most of the focus's lexical information. Negation alone cannot
-qualify through that exception. These are lexical features, not conceptual or
+qualify through that exception. A complete Note title or alias explicitly present
+in the focus and repeated in the paragraph also supplies local lexical admission;
+a partial name, metadata-only match, or name only in surrounding source does not.
+This admission adds no ranking bonus or inferred meaning. These are lexical features, not conceptual or
 argumentative judgments. Note context refines this local relevance through
 separately normalized Note scores. Explicitly naming a Note in the focus supplies
 bounded identity context, never a role-wide authority bonus. Raw Note and paragraph

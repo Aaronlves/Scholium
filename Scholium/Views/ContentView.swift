@@ -208,6 +208,18 @@ struct ContentView: View {
         .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .ignoresSafeArea(.container, edges: .top)
+        .background {
+            if appState.presentedDocumentMode != .read, !appState.isDetachedDocumentWindow,
+                let editor = currentNoteDocumentSession?.editorSession
+            {
+                RelatedMaterialPreparationObserver(
+                    editor: editor, session: researchController.relatedMaterials,
+                    searchGeneration: workspaceProjectionController.searchGeneration,
+                    prepare: { appState.prepareRelatedMaterials() }
+                )
+                .id(ObjectIdentifier(editor))
+            }
+        }
         .overlay {
             if appState.isLoading {
                 LoadingOverlay()
@@ -789,7 +801,7 @@ struct ContentView: View {
                         sourceLine: sourceLine
                     )
                 },
-                findRelated: { appState.findRelatedMaterials(automatic: true, paragraph: true) },
+                findRelated: { appState.findRelatedMaterials(automatic: true) },
                 retryRelated: { appState.retryRelatedMaterials() },
                 openRelated: { card in Task { _ = await appState.useRelatedMaterial(card, inChat: false) }
                 },
@@ -843,6 +855,25 @@ struct ContentView: View {
         }
     }
 
+}
+
+/// Nonvisual delivery adapter. The window session owns task lifetime; Core owns
+/// prepared data. Caret-only events are coalesced by the unchanged generation key.
+private struct RelatedMaterialPreparationObserver: View {
+    @ObservedObject var editor: MarkdownEditorSession
+    let session: RelatedMaterialsSession
+    let searchGeneration: SearchGenerationID?
+    let prepare: @MainActor () -> Void
+
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0).accessibilityHidden(true)
+            .onAppear(perform: prepare)
+            .onReceive(editor.writingContextChanges) { prepare() }
+            .onChange(of: editor.isReady) { _, _ in prepare() }
+            .onChange(of: editor.isLoaded) { _, _ in prepare() }
+            .onChange(of: searchGeneration) { _, _ in prepare() }
+            .onDisappear { session.stopBackgroundPreparation(sessionID: editor.sessionID) }
+    }
 }
 
 private struct LibrarySurface<Content: View>: View {

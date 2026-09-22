@@ -10,7 +10,7 @@ extension WindowModel {
     }
 
     @MainActor
-    func findRelatedMaterials(automatic: Bool = false, paragraph: Bool = true, refreshIndex: Bool = false) {
+    func findRelatedMaterials(automatic: Bool = false, refreshIndex: Bool = false) {
         let materials = researchController.relatedMaterials
         guard let capabilities = windowWorkspaceController.activeCapabilities,
             let descriptor = currentDocumentDescriptor, let note = currentNote
@@ -19,12 +19,12 @@ extension WindowModel {
             return
         }
         let editor = documentController.session(for: descriptor).editorSession
-        guard !automatic || ((paragraph || editor.hasNonemptySelection) && editor.hasWritingFocus && !editor.isComposing && presentedDocumentMode != .read)
+        guard !automatic || (editor.hasWritingFocus && !editor.isComposing && presentedDocumentMode != .read)
         else { return }
         materials.find(
             capture: { [weak self] in
                 let selection: MarkdownSourceSelectionSnapshot
-                let captured = try await editor.writingContextSnapshot(paragraph: paragraph)
+                let captured = try await editor.writingContextSnapshot(mode: .selectionOrCurrentLine)
                 selection = captured.snapshot
                 guard let self,
                     self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
@@ -68,7 +68,7 @@ extension WindowModel {
 
     @MainActor
     func retryRelatedMaterials() {
-        findRelatedMaterials(paragraph: true, refreshIndex: researchController.relatedMaterials.needsRefresh)
+        findRelatedMaterials(refreshIndex: researchController.relatedMaterials.needsRefresh)
     }
 
     @MainActor private func relatedLinkTarget(_ reference: VaultNoteReference, from descriptor: WindowDocumentDescriptor) async -> String? {
