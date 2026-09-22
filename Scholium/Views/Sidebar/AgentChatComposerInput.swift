@@ -23,6 +23,7 @@ struct AgentChatComposerInput: NSViewRepresentable {
     }
 
     func updateNSView(_ host: AgentChatComposerHost, context: Context) {
+        var replacedDraft = false
         if host.completion !== completion { host.completion?.detach(from: host.editor) }
         host.completion = completion
         completion?.candidates = candidates
@@ -37,10 +38,12 @@ struct AgentChatComposerInput: NSViewRepresentable {
             host.conversationID = conversationID
             host.editor.replaceDraft(text, selection: NSRange(location: (text as NSString).length, length: 0))
             host.lastPublishedText = text
+            replacedDraft = true
         } else if host.editor.string != text, !host.editor.hasMarkedText() {
             let selection = host.editor.selectedRange()
             host.editor.replaceDraft(text, selection: NSRange(location: min(selection.location, (text as NSString).length), length: 0))
             host.lastPublishedText = text
+            replacedDraft = true
         }
         host.editor.completionConversationID = conversationID
         completion?.attach(to: host.editor, in: conversationID)
@@ -56,9 +59,12 @@ struct AgentChatComposerInput: NSViewRepresentable {
         if host.focusValue != isFocused {
             host.focusValue = isFocused
             host.requestedFocus = isFocused
+            host.needsLayout = true
         }
-        host.invalidateIntrinsicContentSize()
-        host.needsLayout = true
+        if replacedDraft {
+            host.invalidateIntrinsicContentSize()
+            host.needsLayout = true
+        }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: AgentChatComposerHost, context: Context) -> CGSize? {
@@ -95,9 +101,14 @@ struct AgentChatComposerInput: NSViewRepresentable {
     var focusValue = false
     var requestedFocus: Bool?
     var lastPublishedText = ""
+    private let measurementStorage = NSTextStorage()
+    private let measurementLayout = NSLayoutManager()
+    private let measurementContainer = NSTextContainer(containerSize: .zero)
 
     init() {
         super.init(frame: .zero)
+        measurementStorage.addLayoutManager(measurementLayout)
+        measurementLayout.addTextContainer(measurementContainer)
         drawsBackground = false
         borderType = .noBorder
         hasVerticalScroller = true
@@ -154,17 +165,23 @@ struct AgentChatComposerInput: NSViewRepresentable {
     private func measuredTextHeight(width: CGFloat) -> CGFloat {
         // SwiftUI sizing probes must not resize the live NSTextView or change
         // its accessibility frame, selection, wrapping or candidate anchor.
-        let storage = NSTextStorage(attributedString: editor.attributedString())
-        let manager = NSLayoutManager()
-        manager.usesFontLeading = editor.layoutManager?.usesFontLeading ?? true
-        let container = NSTextContainer(
-            containerSize: NSSize(
-                width: max(1, width - 2 * editor.textContainerInset.width), height: CGFloat.greatestFiniteMagnitude))
-        container.lineFragmentPadding = editor.textContainer?.lineFragmentPadding ?? 5
-        storage.addLayoutManager(manager)
-        manager.addTextContainer(container)
-        manager.ensureLayout(for: container)
-        return ceil(manager.usedRect(for: container).height + 2 * editor.textContainerInset.height)
+        // Keep TextKit's derived layout between identical SwiftUI probes. Reply
+        // updates do not change the draft; rebuilding all its glyphs for every
+        // proposal competes with both typing and streaming on the main actor.
+        let content = editor.attributedString()
+        if !measurementStorage.isEqual(to: content) {
+            measurementStorage.setAttributedString(content)
+        }
+        let usesFontLeading = editor.layoutManager?.usesFontLeading ?? true
+        if measurementLayout.usesFontLeading != usesFontLeading {
+            measurementLayout.usesFontLeading = usesFontLeading
+        }
+        let size = NSSize(width: max(1, width - 2 * editor.textContainerInset.width), height: CGFloat.greatestFiniteMagnitude)
+        if measurementContainer.containerSize != size { measurementContainer.containerSize = size }
+        let padding = editor.textContainer?.lineFragmentPadding ?? 5
+        if measurementContainer.lineFragmentPadding != padding { measurementContainer.lineFragmentPadding = padding }
+        measurementLayout.ensureLayout(for: measurementContainer)
+        return ceil(measurementLayout.usedRect(for: measurementContainer).height + 2 * editor.textContainerInset.height)
     }
 
     func commitCurrentDraft() {

@@ -178,7 +178,9 @@ final class AgentChatReadingStore {
 /// mounted rows alive; explicit jumps replace the window. No source is discarded.
 struct AgentChatHistoryWindow: Equatable {
     static let pageSize = 24
-    static let initialPageSize = 12
+    // Bound cold WebKit startup to the latest exchanges. Earlier Messages
+    // retains the larger explicit page size without discarding any history.
+    static let initialPageSize = 4
     var first: String?
     var last: String?
     func range(in ids: [String]) -> Range<Int> {
@@ -221,10 +223,29 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
     final class View: NSView {
         let session: AgentChatReadingSession
         private var observers: [NSObjectProtocol] = []
+        private var insetObservation: NSKeyValueObservation?
         private weak var scroll: NSScrollView?
         private var queued = false
         private var writing = false
-        private var lastDocumentSize = NSSize.zero
+        private var pendingScrollObservation = false
+        private struct Geometry: Equatable {
+            let documentSize: NSSize
+            let viewportSize: NSSize
+            let top: CGFloat
+            let bottom: CGFloat
+            let left: CGFloat
+            let right: CGFloat
+            @MainActor init(_ scroll: NSScrollView, document: NSView) {
+                documentSize = document.frame.size
+                viewportSize = scroll.contentView.bounds.size
+                let insets = scroll.contentInsets
+                top = insets.top
+                bottom = insets.bottom
+                left = insets.left
+                right = insets.right
+            }
+        }
+        private var lastGeometry: Geometry?
         private var hasAppliedPosition = false
         private var lifecycleID: UInt64 = 0
         init(session: AgentChatReadingSession) {
@@ -239,6 +260,9 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
             guard window != nil, let scroll = enclosingScrollView else { return }
             self.scroll = scroll
             session.viewport = self
+            insetObservation = scroll.observe(\.contentInsets, options: [.new]) { [weak self] _, _ in
+                MainActor.assumeIsolated { self?.scheduleLayout() }
+            }
             let clip = scroll.contentView
             clip.postsBoundsChangedNotifications = true
             scroll.documentView?.postsFrameChangedNotifications = true
@@ -258,12 +282,15 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
             lifecycleID &+= 1
             observers.forEach(NotificationCenter.default.removeObserver)
             observers = []
+            insetObservation?.invalidate()
+            insetObservation = nil
             if session.viewport === self { session.viewport = nil }
             session.isScrolling = false
             scroll = nil
             queued = false
             writing = false
-            lastDocumentSize = .zero
+            pendingScrollObservation = false
+            lastGeometry = nil
             hasAppliedPosition = false
         }
         override func layout() {
@@ -315,13 +342,20 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
                 scheduleLayout()
                 return
             }
-            if document.frame.size != lastDocumentSize {
+            // Resizing the viewport or its floating input inset is layout,
+            // not a researcher choosing another reading position.
+            if Geometry(scroll, document: document) != lastGeometry {
                 scheduleLayout()
                 return
             }
-            // Includes accessibility scrollbar actions that have no gesture phase.
-            if session.isScrolling || !queued {
+            if session.isScrolling {
                 settleUserPosition()
+            } else if !queued {
+                // Native input layout can move the clip before publishing its
+                // new inset. Classify a phase-less movement after that layout
+                // settles; unchanged geometry still admits accessibility scrolls.
+                pendingScrollObservation = true
+                scheduleLayout()
             }
         }
         private func bottomDistance(_ scroll: NSScrollView) -> CGFloat {
@@ -329,15 +363,18 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
         }
         func reconcile() {
             guard let scroll, let document = scroll.documentView else { return }
+            let geometry = Geometry(scroll, document: document)
             if session.initialTranscriptPhase == .hydrating {
-                lastDocumentSize = document.frame.size
+                lastGeometry = geometry
                 return
             }
             guard !session.isScrolling else {
                 return
             }
-            let sizeChanged = document.frame.size != lastDocumentSize
-            lastDocumentSize = document.frame.size
+            let geometryChanged = geometry != lastGeometry
+            lastGeometry = geometry
+            let observedScroll = pendingScrollObservation
+            pendingScrollObservation = false
 
             if let request = session.viewportRequest {
                 guard apply(request.target, in: scroll, document: document) else { return }
@@ -347,7 +384,8 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
                 return
             }
 
-            guard !hasAppliedPosition || sizeChanged else {
+            if observedScroll && !geometryChanged { settleUserPosition() }
+            guard !hasAppliedPosition || geometryChanged else {
                 session.isAwayFromLatest = bottomDistance(scroll) > 80
                 return
             }

@@ -85,6 +85,9 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var persistenceTask: Task<Void, Never>?
     var scheduledPersistenceTask: Task<Void, Never>?
     var persistenceDirty = false
+    // Each mounted Chat owns one token; closing one window cannot mark a
+    // conversation unread while another window still displays its transcript.
+    var transcriptReaders: [UUID: UUID] = [:]
     var connectionTask: Task<Void, Never>?
     private var initialLoadTask: Task<Void, Never>?
     private let notificationSink: AgentChatNotificationSink

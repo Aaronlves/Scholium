@@ -469,47 +469,80 @@ extension AgentChatController {
         }
         // Decode the entire snapshot before mutating retained history or delivery state.
         let turns = try CodexChatTranscript.history(result, threadID: threadID, delegationOrigins: origins)
+        // Reconcile a complete runtime snapshot locally. Publishing each item both
+        // exposes intermediate history and repeatedly copies/compares the retained
+        // conversation on the main actor.
+        var reconciled = conversation
+        var messageIndices = Dictionary(grouping: reconciled.messages.indices, by: { reconciled.messages[$0].id })
+        let planMessageIDs = Dictionary(grouping: conversation.messages.filter { $0.plan != nil }, by: { $0.plan!.turnID })
+            .mapValues { $0.map(\.id) }
         var previousMessageID: String?
         for turn in turns {
             for item in turn.items {
                 switch item.content {
                 case .assistant(let text, let phase):
-                    update(in: conversationID) { conversation in
-                        if let index = conversation.messages.firstIndex(where: { $0.id == item.id }) {
-                            conversation.messages[index].text = text
-                            conversation.messages[index].phase = phase
+                    let index: Int
+                    if let existing = messageIndices[item.id]?.first {
+                        index = existing
+                        reconciled.messages[index].text = text
+                        reconciled.messages[index].phase = phase
+                    } else {
+                        index = previousMessageID.flatMap { messageIndices[$0]?.first.map { $0 + 1 } } ?? 0
+                        reconciled.messages.insert(.init(id: item.id, role: .assistant, text: text, phase: phase), at: index)
+                        if index == reconciled.messages.count - 1 {
+                            messageIndices[item.id] = [index]
                         } else {
-                            let insertion =
-                                previousMessageID.flatMap { previous in
-                                    conversation.messages.firstIndex { $0.id == previous }.map { $0 + 1 }
-                                } ?? 0
-                            conversation.messages.insert(.init(id: item.id, role: .assistant, text: text, phase: phase), at: insertion)
+                            // Inserting a missing older reply shifts retained positions.
+                            // The ordinary retained-history refresh needs no reindexing.
+                            messageIndices = Dictionary(grouping: reconciled.messages.indices, by: { reconciled.messages[$0].id })
                         }
                     }
-                    retainAsyncQuestions(item, in: conversationID)
+                    if let questions = item.asyncQuestions, reconciled.messages[index].asyncQuestion == nil {
+                        reconciled.messages[index].asyncQuestion = .init(questions: questions)
+                    }
                     previousMessageID = item.id
                 case .activity(let value):
                     guard !item.isManagedTool, let activity = AgentChatActivityProjection.withLocalizedFailure(value) else { continue }
-                    recordActivity(activity, id: "runtime:\(item.id)", conversationID: conversationID, turnID: turn.id)
-                    previousMessageID = "runtime:\(item.id)"
+                    let id = "runtime:\(item.id)"
+                    let index = messageIndices[id]?.first
+                    var message = AgentChatMessage(id: id, role: .operation, text: "", activity: activity)
+                    message.turnID = turn.id
+                    message.activity = AgentChatCommandOutput.reconciling(
+                        activity, with: index.map { reconciled.messages[$0].activity } ?? nil)
+                    if let index {
+                        reconciled.messages[index] = message
+                    } else {
+                        messageIndices[id] = [reconciled.messages.count]
+                        reconciled.messages.append(message)
+                    }
+                    previousMessageID = id
                 case .user(let text, let hasAdditionalMaterial):
                     if !hasAdditionalMaterial, let replies = CodexChatAsyncQuestions.decode(text) {
-                        receiveQuestionReplies(replies, in: conversationID)
+                        Self.receiveQuestionReplies(replies, in: &reconciled)
                     }
                     if let clientID = item.clientMessageID {
-                        update(in: conversationID) { if $0.pendingMessageID == clientID { $0.pendingMessageID = nil } }
+                        if reconciled.pendingMessageID == clientID { reconciled.pendingMessageID = nil }
                         previousMessageID = clientID
                     }
                 }
             }
-            attributeTurn(turn, in: conversationID)
-            update(in: conversationID) { conversation in
-                conversation.lastRunStatus = turn.status.runStatus
-                for index in conversation.messages.indices where conversation.messages[index].plan?.turnID == turn.id {
-                    conversation.messages[index].plan?.runStatus = turn.status.runStatus
+            let record = AgentChatTurnRecord(status: turn.status, timing: turn.timing)
+            reconciled.turns[turn.id] = reconciled.turns[turn.id]?.merging(record) ?? record
+            for id in turn.messageIDs {
+                for index in messageIndices[id] ?? [] { reconciled.messages[index].turnID = turn.id }
+            }
+            reconciled.lastRunStatus = turn.status.runStatus
+            for id in planMessageIDs[turn.id] ?? [] {
+                for index in messageIndices[id] ?? [] where reconciled.messages[index].plan?.turnID == turn.id {
+                    reconciled.messages[index].plan?.runStatus = turn.status.runStatus
                 }
             }
         }
+        guard reconciled != conversation,
+            let index = conversations.firstIndex(where: { $0.id == conversationID })
+        else { return }
+        reconciled.updatedAt = Date()
+        conversations[index] = reconciled
     }
 
     func attributeTurn(_ turn: AgentChatTranscript.Turn, in conversationID: UUID) {
@@ -641,18 +674,20 @@ extension AgentChatController {
     }
 
     func receiveQuestionReplies(_ replies: [AgentChatQuestionReply], in conversationID: UUID) {
-        update(in: conversationID) { conversation in
-            for index in conversation.messages.indices {
-                guard var request = conversation.messages[index].asyncQuestion else { continue }
-                for reply in replies where request.questions.contains(where: { $0.id == reply.questionItemId && $0.prompt == reply.question }) {
-                    request.responses[reply.questionItemId] = reply.answer
-                }
-                if request.remaining.isEmpty {
-                    if conversation.pendingMessageID == request.pendingMessageID { conversation.pendingMessageID = nil }
-                    request.pendingMessageID = nil
-                }
-                conversation.messages[index].asyncQuestion = request
+        update(in: conversationID) { Self.receiveQuestionReplies(replies, in: &$0) }
+    }
+
+    private static func receiveQuestionReplies(_ replies: [AgentChatQuestionReply], in conversation: inout AgentChatConversation) {
+        for index in conversation.messages.indices {
+            guard var request = conversation.messages[index].asyncQuestion else { continue }
+            for reply in replies where request.questions.contains(where: { $0.id == reply.questionItemId && $0.prompt == reply.question }) {
+                request.responses[reply.questionItemId] = reply.answer
             }
+            if request.remaining.isEmpty {
+                if conversation.pendingMessageID == request.pendingMessageID { conversation.pendingMessageID = nil }
+                request.pendingMessageID = nil
+            }
+            conversation.messages[index].asyncQuestion = request
         }
     }
 

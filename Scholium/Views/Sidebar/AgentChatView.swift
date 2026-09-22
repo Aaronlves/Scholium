@@ -22,6 +22,7 @@ struct AgentChatView: View {
     var changes: [AgentChange]? = nil
     var changesError: String? = nil
     @State private var showsConversationList = true
+    @State private var transcriptReaderID = UUID()
     @State private var listState = AgentChatConversationListState()
     @State private var detailStore = AgentChatDetailPresentationStore()
     private var detailPresentation: AgentChatDetailPresentation {
@@ -127,6 +128,7 @@ struct AgentChatView: View {
             markVisibleConversationRead()
         }
         .onAppear { markVisibleConversationRead() }
+        .onDisappear { controller.displayTranscript(nil, readerID: transcriptReaderID) }
         .onChange(of: controller.contextPresentationID, initial: true) { _, request in
             guard request != nil else { return }
             showsConversationList = false
@@ -170,8 +172,8 @@ struct AgentChatView: View {
     }
 
     private func markVisibleConversationRead() {
-        if isVisible, !showsConversationList, let id = controller.selectedID {
-            controller.setUnread(id, unread: false)
-        }
+        controller.displayTranscript(
+            isVisible && !showsConversationList ? controller.selectedID : nil,
+            readerID: transcriptReaderID)
     }
 }

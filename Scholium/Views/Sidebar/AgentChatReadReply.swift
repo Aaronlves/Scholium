@@ -113,8 +113,13 @@ struct AgentChatReadReply: View {
         .task(id: source) {
             preview.close()
             failure = nil
-            ready = false
-            hasMeasuredLayout = false
+            // Source revisions reconcile inside the retained page. Its measured
+            // prefix stays readable while the next projection is prepared;
+            // navigation or a replacement (not an append) invalidates readiness.
+            if let displayed = renderer.snapshot?.document.rawContent, !source.hasPrefix(displayed) {
+                ready = false
+                hasMeasuredLayout = false
+            }
             renderer.submit(source)
         }
     }

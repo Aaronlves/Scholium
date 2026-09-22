@@ -761,8 +761,9 @@ extension AgentChatController {
                 recordActivity(activity, id: "runtime:\(item.id)", conversationID: conversationID, turnID: event.turnID)
                 if completed || activity.kind == .compaction { persist() }
             case .assistant(let text, let phase):
+                let shouldMarkUnread = !isTranscriptVisible(in: conversationID)
                 update(in: conversationID) {
-                    if !text.isEmpty, $0.messages.first(where: { $0.id == item.id })?.text != text { $0.unreadAt = Date() }
+                    if shouldMarkUnread, !text.isEmpty, $0.messages.first(where: { $0.id == item.id })?.text != text { $0.unreadAt = Date() }
                     if let index = $0.messages.firstIndex(where: { $0.id == item.id }) {
                         $0.messages[index].text = text
                         $0.messages[index].phase = phase
@@ -800,14 +801,12 @@ extension AgentChatController {
                 }
                 return
             }
-            if updateHotMessage(in: conversationID, messageID: id, { message in
+            if updateHotMessage(in: conversationID, messageID: id, marksUnread: true, { message in
                 message.text += text
             }) {
-                updateHot(in: conversationID) { $0.unreadAt = Date() }
                 return
             }
-            updateHot(in: conversationID) {
-                $0.unreadAt = Date()
+            updateHot(in: conversationID, marksUnread: true) {
                 var message = AgentChatMessage(id: id, role: .assistant, text: text)
                 message.turnID = event.turnID ?? executions[conversationID]?.turnID
                 $0.messages.append(message)

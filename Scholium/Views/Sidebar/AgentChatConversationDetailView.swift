@@ -344,16 +344,15 @@ struct AgentChatConversationDetailView: View {
                 .opacity(readingSession.isInitialTranscriptReady ? 1 : 0)
                 .allowsHitTesting(readingSession.isInitialTranscriptReady)
                 .accessibilityHidden(!readingSession.isInitialTranscriptReady)
-                .overlay {
+                .overlay(alignment: .topLeading) {
                     if !readingSession.isInitialTranscriptReady, !visibleReplyReaderIDs.isEmpty {
-                        VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                            ProgressView().controlSize(.small)
-                            Text("Loading Conversation…", bundle: .module)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .accessibilityElement(children: .combine)
+                        ScholiumContentStateView(
+                            title: Text("Loading Conversation…", bundle: .module),
+                            indicator: .progress,
+                            placement: .leading, density: .compact
+                        )
+                        .padding(.horizontal, ScholiumSidebarLayout.textInset)
+                        .padding(.vertical, ScholiumSidebarLayout.edgeInset)
                         .accessibilityIdentifier("scholium.chat.transcript.hydrating")
                     }
                 }
@@ -373,31 +372,33 @@ struct AgentChatConversationDetailView: View {
                         readingSession.navigate(to: item.id, in: projection.ids)
                     }
                 }
-                // Keep the dock in layout rather than floating it over the
-                // document. This makes the final marker and native viewport
-                // agree about the visible bottom edge on the first pass.
-                VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                    if hasConversationAccessories {
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                                conversationActivityButtons
-                                conversationNavigationButtons
-                            }.fixedSize(horizontal: true, vertical: false)
-                            VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                                conversationActivityButtons
-                                conversationNavigationButtons
+                // The native safe area measures the complete dock. Replies can
+                // scroll beneath its glass while the viewport retains enough
+                // bottom inset to bring every final-message action into reach.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                        if hasConversationAccessories {
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                                    conversationActivityButtons
+                                    conversationNavigationButtons
+                                }.fixedSize(horizontal: true, vertical: false)
+                                VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                                    conversationActivityButtons
+                                    conversationNavigationButtons
+                                }
                             }
                         }
-                    }
-                    if controller.selected?.isAvailable == false {
-                        Button("Restore Chat") {
-                            if let id = controller.selectedID {
-                                controller.setArchived(id, archived: false)
-                                didRestoreConversation()
-                            }
-                        }.buttonStyle(.glass).padding()
-                    } else {
-                        inputDock
+                        if controller.selected?.isAvailable == false {
+                            Button("Restore Chat") {
+                                if let id = controller.selectedID {
+                                    controller.setArchived(id, archived: false)
+                                    didRestoreConversation()
+                                }
+                            }.buttonStyle(.glass).padding()
+                        } else {
+                            inputDock
+                        }
                     }
                 }
             }

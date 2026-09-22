@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Disposable test fixtures and app state stay inside this checkout. -->
-    <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-    <array>
-        <string>$(PROJECT_DIR)/.build/qa-runtime/</string>
-    </array>
+    <!-- XCTest must deliver per-journey launch arguments and the isolated
+         fixture/home environment. A sandboxed macOS runner launches through
+         NSWorkspace, which drops those inputs on the selected toolchain. -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
 </dict>
 </plist>

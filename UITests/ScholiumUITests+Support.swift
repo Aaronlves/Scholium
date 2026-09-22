@@ -300,7 +300,9 @@ extension ScholiumUITests {
                 .descendants(matching: .outlineRow)
                 .containing(.any, identifier: identifier)
                 .firstMatch
-            if !selectedNativeRow.isSelected { return false }
+            guard selectedNativeRow.exists, selectedNativeRow.isSelected else {
+                return false
+            }
         }
         let usableSurface = app.descendants(matching: .any).matching(
             NSPredicate(

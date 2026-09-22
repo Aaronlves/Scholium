@@ -53,6 +53,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     private var pendingReplyUpdate: (() -> Void)?
     private var replyPageFingerprint: String?
     private var replyUpdateTask: Task<Void, Never>?
+    private var replyPageGeneration: UInt64 = 0
 
     init(onEvent: ((ReadReplyEvent) -> Void)? = nil) {
         self.onEvent = onEvent
@@ -95,6 +96,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     }
 
     func willBeginLoad(fingerprint _: String) {
+        replyPageGeneration &+= 1
         replyNavigationReady = false
         pendingReplyUpdate = nil
         replyPageFingerprint = nil
@@ -116,14 +118,16 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         didApply: @escaping @MainActor (_ source: String, _ fingerprint: String) -> Void,
         didFail: @escaping @MainActor (_ error: any Error) -> Void
     ) -> Bool {
-        guard let previousFingerprint = replyPageFingerprint else { return false }
+        guard replyPageFingerprint != nil else { return false }
+        let pageGeneration = replyPageGeneration
         let update = { [weak self, weak webView] in
             guard let self, let webView else { return }
             let previousTask = self.replyUpdateTask
             self.replyUpdateTask = Task { @MainActor [weak self, weak webView] in
                 await previousTask?.value
                 guard let self, let webView, !Task.isCancelled,
-                    isCurrent(), self.replyPageFingerprint == previousFingerprint
+                    isCurrent(), self.replyPageGeneration == pageGeneration,
+                    let previousFingerprint = self.replyPageFingerprint
                 else { return }
                 defer { if isCurrent() { self.replyUpdateTask = nil } }
                 do {
@@ -140,13 +144,15 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                                 "html": body, "presentationCSS": presentationCSS, "userCSS": userCSS,
                             ]
                         ], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
-                    guard isCurrent(), updated as? Bool == true else {
-                        throw CocoaError(.coderReadCorrupt)
-                    }
+                    guard !Task.isCancelled, self.replyPageGeneration == pageGeneration else { return }
+                    guard updated as? Bool == true else { throw CocoaError(.coderReadCorrupt) }
+                    // JavaScript may commit while a newer source becomes current.
+                    // The next queued update must start from the actual DOM revision;
+                    // only the current source may publish readiness and selection.
                     self.replyPageFingerprint = fingerprint
-                    didApply(source, fingerprint)
+                    if isCurrent() { didApply(source, fingerprint) }
                 } catch {
-                    guard isCurrent() else { return }
+                    guard !Task.isCancelled, self.replyPageGeneration == pageGeneration, isCurrent() else { return }
                     didFail(error)
                 }
             }
@@ -218,6 +224,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     }
 
     func cancel() {
+        replyPageGeneration &+= 1
         replyUpdateTask?.cancel()
         replyUpdateTask = nil
         pendingReplyUpdate = nil

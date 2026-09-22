@@ -139,7 +139,7 @@ struct AgentChatSidebarLifecycleTests {
                     let scroll = marker.enclosingScrollView, let document = scroll.documentView
                 else { return false }
                 return document.frame.height > scroll.contentView.bounds.height + 300
-                    && abs(scroll.contentView.bounds.maxY - document.frame.height) < 1
+                    && abs(scroll.contentView.bounds.maxY - document.frame.height - scroll.contentInsets.bottom) < 1
                     && findField(in: host) != nil
             }
             #expect(!session.isRetainingPosition)
@@ -233,6 +233,7 @@ struct AgentChatSidebarLifecycleTests {
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
             showAccountUsage: {}, showDiagnostics: { _, _ in })
         let host = NSHostingView(rootView: AnyView(detail))
+        let entryStart = ContinuousClock.now
         let window = mount(host)
         defer {
             window.contentView = nil
@@ -242,6 +243,7 @@ struct AgentChatSidebarLifecycleTests {
         let latestID = try #require(projection.ids.last)
         var samples: [CGFloat] = []
         var visibleSamples: [CGFloat] = []
+        var firstVisible: Duration?
         let deadline = ContinuousClock.now.advanced(by: .seconds(4))
         while ContinuousClock.now < deadline {
             host.window?.layoutIfNeeded()
@@ -250,9 +252,12 @@ struct AgentChatSidebarLifecycleTests {
                 let scroll = marker.enclosingScrollView, let document = scroll.documentView
             {
                 samples.append(scroll.contentView.bounds.minY)
-                if session.isInitialTranscriptReady { visibleSamples.append(scroll.contentView.bounds.minY) }
+                if session.isInitialTranscriptReady {
+                    visibleSamples.append(scroll.contentView.bounds.minY)
+                    if firstVisible == nil { firstVisible = entryStart.duration(to: .now) }
+                }
                 if samples.count > 1, document.frame.height > scroll.contentView.bounds.height + 300,
-                    session.viewportRequest == nil, abs(scroll.contentView.bounds.maxY - document.frame.height) < 2
+                    session.viewportRequest == nil, abs(scroll.contentView.bounds.maxY - document.frame.height - scroll.contentInsets.bottom) < 2
                 {
                     // Keep sampling after the first valid bottom position so a later
                     // reader measurement cannot hide a second jump.
@@ -275,7 +280,7 @@ struct AgentChatSidebarLifecycleTests {
             "CHAT_LONG_ENTRY messages=\(conversation.messages.count) samples=\(samples.count) "
                 + "max_jump=\(maximumJump) visible_samples=\(visibleSamples.count) "
                 + "max_visible_jump=\(maximumVisibleJump) bottom_distance=\(bottomDistance) "
-                + "changed=\(changedSamples)"
+                + "first_visible=\(String(describing: firstVisible)) changed=\(changedSamples)"
         )
         #expect(!samples.isEmpty)
         #expect(!visibleSamples.isEmpty)

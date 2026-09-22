@@ -170,7 +170,7 @@ struct AgentChatReadingTests {
     func historyWindow() {
         let ids = (0..<300).map(String.init)
         var window = AgentChatHistoryWindow()
-        #expect(window.range(in: ids) == 288..<300)
+        #expect(window.range(in: ids) == 296..<300)
         window.reveal("80", in: ids)
         #expect(window.range(in: ids).contains(80))
         #expect(window.range(in: ids).count == AgentChatHistoryWindow.pageSize)
@@ -181,7 +181,7 @@ struct AgentChatReadingTests {
         window.later(in: ids)
         #expect(window.range(in: ids).count == 72)
         window.latest(in: ids)
-        #expect(window.range(in: ids) == 288..<300)
+        #expect(window.range(in: ids) == 296..<300)
         #expect(window.range(in: []).isEmpty)
     }
 

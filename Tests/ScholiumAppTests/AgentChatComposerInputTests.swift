@@ -6,6 +6,33 @@ import Testing
 
 @Suite("Native chat input") @MainActor
 struct AgentChatComposerInputTests {
+    @Test("Repeated sizing of an unchanged draft preserves native input")
+    func repeatedSizingOfUnchangedDraft() {
+        let host = AgentChatComposerHost()
+        let source = String(repeating: "研究材料 with English, 中文 and emoji 🦉. ", count: 160)
+        host.editor.string = source
+        host.editor.setSelectedRange(NSRange(location: 3, length: 4))
+        let frame = host.editor.frame
+        let expected = host.fittingHeight(width: 320)
+        let start = ContinuousClock.now
+        for _ in 0..<200 { #expect(host.fittingHeight(width: 320) == expected) }
+        print("CHAT_COMPOSER_SIZE probes=200 utf16=\(source.utf16.count) elapsed=\(start.duration(to: .now))")
+        #expect(host.editor.string == source)
+        #expect(host.editor.selectedRange() == NSRange(location: 3, length: 4))
+        #expect(host.editor.frame == frame)
+        host.editor.string = "short"
+        let short = host.fittingHeight(width: 320)
+        #expect(short < expected)
+        host.editor.font = .systemFont(ofSize: 36)
+        #expect(host.fittingHeight(width: 320) > short)
+        host.editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        let marked = host.editor.markedRange()
+        let selection = host.editor.selectedRange()
+        for width: CGFloat in [240, 480, 240] { _ = host.fittingHeight(width: width) }
+        #expect(host.editor.hasMarkedText() && host.editor.markedRange() == marked)
+        #expect(host.editor.selectedRange() == selection)
+    }
+
     @Test("Composition is published by the attached composer and blocks its delivery until committed")
     func composerCompositionDelivery() {
         let host = AgentChatComposerHost()

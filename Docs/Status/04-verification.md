@@ -127,20 +127,18 @@ tests, public-symbol guards, Release compilation and helper isolation.
 These are scoped development results, not the complete UI suite or human
 VoiceOver/Full Keyboard Access/installed-IME/system-adaptation acceptance.
 
-**2026-09-16 — Chat delivery/composer:** Owning renderer/Chat checks cover Stop/
-failed-delivery queue revocation, completion/acknowledgement ordering, ordered
-pre-send saving, conversation-scoped material preparation and renderer-owned rich
-object actions. Native 300-point-sidebar QA covers candidate resizing/selection,
-expanded queue, question completion, Stop and independent drafts; additional
-fixtures cover Light/Dark requests, marked-text callbacks and object actions.
-Evidence: `.build/chat-fixes/verification.md`,
-`.build/chat-layering/verification.md`.
-That input-area proof did not establish shell conversation-state lifetime or
-implicit reader-mode selection correctness; no new debt conclusion is inferred.
-The 2026-09-08 input correction's 106 owning checks and simulated-runtime journey
-retain whitespace geometry, wrapping, Return/Shift-Return, marked-text dispatch,
-blank clicks, caret, Undo, drafts, disconnected Return and multiline sending.
-This is not installed-IME or real inference acceptance.
+**2026-09-22 — Chat response/reading:** Tests cover history batching, stream
+publication, WebKit selection, draft measurement and floating-composer geometry.
+Synthetic 4,000-message hydration: 10.7s→22–42ms; 200 unchanged-draft sizing probes:
+1.027s→13ms. These are microbenchmarks, not provider latency. Narrow Light/Dark
+native QA verified input growth/shrink and latest-reply clearance; draft/Find/back
+UI verification passed. Ten dark-reader mounts completed.
+Evidence: `.build/chat-viewport-final.log`, `.build/chat-reader-dark-scheme-check.log`,
+`.build/chat-experience-ui-final.log`.
+Earlier delivery/queue/material and native-input proof remains in
+`.build/chat-fixes/verification.md`, `.build/chat-layering/verification.md`.
+Neither establishes installed-IME, VoiceOver, real inference or researcher visual
+acceptance.
 
 **Retained Chat component boundaries:** Deterministic fixtures and inspected
 Light/Dark offscreen native renders cover Note/file/image/PDF materials and

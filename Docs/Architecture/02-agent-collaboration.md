@@ -242,13 +242,14 @@ the unfinished current sentence and stop at its first sentence boundary. Phases 
 bounded reasons stay request-bound; cancellation, timeout and disconnect interrupt the
 turn. Editor publication and acceptance remain Document-owned.
 
-The native composer owns selection, marked text, text Undo and focus; conversation
-owns the durable draft. Reply rendering uses sanitized immutable snapshots and
-rich-object identities; Copy/Expand cannot independently reparse objects.
-Continuous selection stays with the safe reader, transcript offset with one native
-viewport, and window-local anchors/disclosure with the reading session. In-page
-reconciliation preserves unchanged blocks/selection; no second text-reveal or
-scroll timeline is introduced. Reader/source preview geometry never grants trust.
+The composer owns selection, marked text, Undo and focus; conversations
+own durable drafts. The Chat controller uses window-scoped visibility tokens to
+avoid cycling unread markers during visible streaming. Sanitized reply snapshots
+own rich-object identities; Copy/Expand cannot reparse objects. The safe reader
+preserves continuous selection; one native viewport owns scrolling, and reading
+sessions own window-local anchors/disclosures. In-page updates preserve unchanged
+blocks and selection without a second reveal/scroll timeline. Preview geometry
+grants no trust.
 
 Live notification validity remains execution-owned and is never replayed from
 history. System delivery/routes belong to Runtime and Ownership.

@@ -107,6 +107,19 @@ extension AgentChatController {
         persist()
     }
 
+    func displayTranscript(_ conversationID: UUID?, readerID: UUID) {
+        guard let conversationID, conversation(conversationID) != nil else {
+            transcriptReaders.removeValue(forKey: readerID)
+            return
+        }
+        transcriptReaders[readerID] = conversationID
+        setUnread(conversationID, unread: false)
+    }
+
+    func isTranscriptVisible(in conversationID: UUID) -> Bool {
+        transcriptReaders.values.contains(conversationID)
+    }
+
     func setImportant(_ id: UUID, important: Bool) {
         guard isLoaded, let index = conversations.firstIndex(where: { $0.id == id }) else { return }
         conversations[index].importantAt = important ? Date() : nil
@@ -318,10 +331,15 @@ extension AgentChatController {
     /// Validated live-stream events already carry a concrete message delta.
     /// Keep that hot path separate from general reconciliation, whose
     /// Equatable check protects ordinary possibly-idempotent updates.
-    func updateHot(in id: UUID, _ change: (inout AgentChatConversation) -> Void) {
+    func updateHot(in id: UUID, marksUnread: Bool = false, _ change: (inout AgentChatConversation) -> Void) {
         guard let index = conversations.firstIndex(where: { $0.id == id }) else { return }
-        change(&conversations[index])
-        conversations[index].updatedAt = Date()
+        let shouldMarkUnread = marksUnread && !isTranscriptVisible(in: id)
+        func apply(to conversation: inout AgentChatConversation) {
+            change(&conversation)
+            if shouldMarkUnread { conversation.unreadAt = Date() }
+            conversation.updatedAt = Date()
+        }
+        apply(to: &conversations[index])
     }
 
     /// Stream items are normally the conversation tail. Check that position
@@ -329,7 +347,8 @@ extension AgentChatController {
     /// independent of retained-history length.
     @discardableResult
     func updateHotMessage(
-        in conversationID: UUID, messageID: String, _ change: (inout AgentChatMessage) -> Void
+        in conversationID: UUID, messageID: String, marksUnread: Bool = false,
+        _ change: (inout AgentChatMessage) -> Void
     ) -> Bool {
         guard let conversationIndex = conversations.firstIndex(where: { $0.id == conversationID }) else { return false }
         let messageIndex: Int?
@@ -341,8 +360,13 @@ extension AgentChatController {
             messageIndex = conversations[conversationIndex].messages.firstIndex { $0.id == messageID }
         }
         guard let messageIndex else { return false }
-        change(&conversations[conversationIndex].messages[messageIndex])
-        conversations[conversationIndex].updatedAt = Date()
+        let shouldMarkUnread = marksUnread && !isTranscriptVisible(in: conversationID)
+        func apply(to conversation: inout AgentChatConversation) {
+            change(&conversation.messages[messageIndex])
+            if shouldMarkUnread { conversation.unreadAt = Date() }
+            conversation.updatedAt = Date()
+        }
+        apply(to: &conversations[conversationIndex])
         return true
     }
 
