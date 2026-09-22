@@ -35272,6 +35272,38 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
 
   // live-semantic-layout.ts
+  var spacingPriority = {
+    callout: 10,
+    displayMath: 9,
+    table: 8,
+    code: 7,
+    html: 6,
+    orderedList: 5,
+    unorderedList: 5,
+    blockQuote: 4,
+    thematicBreak: 3,
+    heading: 2,
+    paragraph: 1
+  };
+  function semanticSpacingBlocks(blocks, frontmatterEnd = 0) {
+    const priority = (block) => spacingPriority[block.kind] ?? 0;
+    const candidates = blocks.filter((block) => block.parent === null && block.to > frontmatterEnd).sort((a, b) => a.from - b.from || priority(b) - priority(a) || a.to - b.to);
+    const maximumHigherEnd = new Array(11).fill(-1);
+    const owners = [];
+    for (const block of candidates) {
+      const rank = priority(block);
+      if (maximumHigherEnd[rank] < block.to) owners.push(block);
+      for (let lower = 0; lower < rank; lower += 1) {
+        maximumHigherEnd[lower] = Math.max(maximumHigherEnd[lower], block.to);
+      }
+    }
+    return owners.sort((a, b) => a.from - b.from || a.to - b.to);
+  }
+  function semanticBlankLineSourceOffset(view, target) {
+    const line = target?.closest(".cm-live-semantic-blank-gap");
+    if (!line || !view.contentDOM.contains(line)) return null;
+    return view.state.doc.lineAt(view.posAtDOM(line, 0)).from;
+  }
   function isFencedDelimiterLine(doc2, block, lineFrom) {
     if (!block.fenced) return false;
     return block.markerRanges.some((range) => doc2.lineAt(range.from).from === lineFrom);
@@ -35507,11 +35539,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           if (presentation.classes.length > 0) {
             attributes.class = presentation.classes.join(" ");
           }
-          if (presentation.calloutPresentation) {
-            attributes["data-scholium-callout-from"] = String(
-              presentation.calloutPresentation.from
-            );
-          }
           if (presentation.quoteDepth > 0) {
             attributes.style = `--scholium-live-quote-depth: ${presentation.quoteDepth};`;
           }
@@ -35553,6 +35580,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       let decorations2 = existing;
       for (const range of expandedPhysicalLineRanges(state, affected)) {
         decorations2 = decorations2.update({
+          filterFrom: range.from,
+          filterTo: range.to,
           filter: (from) => from < range.from || from > range.to,
           add: semanticLineDecorationRanges(state, range.from, range.to),
           sort: true
@@ -35584,18 +35613,27 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const lineField = StateField.define({
       create: buildLineState,
       update(previous, transaction) {
-        if (transactionChangedSyntaxTree(transaction)) return buildLineState(transaction.state);
         if (transaction.docChanged) {
           if (!projections.topologyWasMapped(transaction)) return buildLineState(transaction.state);
           const mapped = previous.decorations.map(transaction.changes);
+          const before = selection.selection(transaction.startState).map(transaction.changes);
+          const after = selection.selection(transaction.state);
+          const affected = mergedChangedLineRanges(transaction);
+          if (!before.eq(after)) affected.push(...affectedProjectionAndCodeBlockRanges(
+            projections,
+            transaction.state,
+            before.ranges,
+            after.ranges
+          ));
           return {
             decorations: replacingLineDecorationsInRanges(
               mapped,
               transaction.state,
-              mergedChangedLineRanges(transaction)
+              affected
             )
           };
         }
+        if (transactionChangedSyntaxTree(transaction)) return buildLineState(transaction.state);
         if (selection.changed(transaction.startState, transaction.state)) {
           const affected = affectedProjectionAndCodeBlockRanges(
             projections,
@@ -35618,21 +35656,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     function semanticBlockGapRanges(state) {
       const index = projections.index(state);
       if (index.hasUnclosedFrontmatter) return [];
-      const spacingPriority = {
-        callout: 100,
-        displayMath: 90,
-        table: 80,
-        code: 70,
-        html: 60,
-        orderedList: 50,
-        unorderedList: 50,
-        blockQuote: 40,
-        thematicBreak: 30,
-        heading: 20,
-        paragraph: 10
-      };
-      const rawTopLevelBlocks = index.syntax.blocks.filter((block) => block.parent === null).filter((block) => block.to > (index.frontmatterRange?.to ?? 0));
-      const topLevelBlocks = rawTopLevelBlocks.filter((candidate) => !rawTopLevelBlocks.some((owner) => owner !== candidate && owner.from <= candidate.from && owner.to >= candidate.to && (spacingPriority[owner.kind] ?? 0) > (spacingPriority[candidate.kind] ?? 0))).sort((left, right) => left.from - right.from || left.to - right.to);
+      const topLevelBlocks = semanticSpacingBlocks(index.syntax.blocks, index.frontmatterRange?.to);
       const ranges = [];
       let previous = null;
       for (const current of topLevelBlocks) {
@@ -35655,8 +35679,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
                 "cm-live-semantic-blank-gap",
                 `cm-live-semantic-gap-after-${previousSpacing}`,
                 `cm-live-semantic-gap-before-${nextSpacing}`
-              ].join(" "),
-              "data-scholium-blank-source-offset": String(authoredSeparatorLine)
+              ].join(" ")
             }
           }).range(authoredSeparatorLine));
         } else if (previousSpacing !== "none" || nextSpacing !== "none") {
@@ -35686,9 +35709,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const spacingField = StateField.define({
       create: buildSpacingState,
       update(previous, transaction) {
-        if (!transaction.docChanged && !transactionChangedSyntaxTree(transaction)) return previous;
-        if (transactionChangedSyntaxTree(transaction)) return buildSpacingState(transaction.state);
-        return projections.topologyWasMapped(transaction) ? { decorations: previous.decorations.map(transaction.changes) } : buildSpacingState(transaction.state);
+        if (transaction.docChanged) {
+          return projections.topologyWasMapped(transaction) ? { decorations: previous.decorations.map(transaction.changes) } : buildSpacingState(transaction.state);
+        }
+        return transactionChangedSyntaxTree(transaction) ? buildSpacingState(transaction.state) : previous;
       },
       provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
     });
@@ -36357,7 +36381,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const calloutMotion = ViewPlugin.fromClass(class {
       constructor(view) {
         this.view = view;
-        this.previous = this.readGroups();
         this.view.requestMeasure({
           key: this,
           read: () => this.readGroups(),
@@ -36372,12 +36395,19 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       animations = [];
       reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
       readGroups() {
+        const callouts = options.projections.index(this.view.state).callouts;
         const groups = /* @__PURE__ */ new Map();
         for (const line of this.view.contentDOM.querySelectorAll(
-          ".cm-line.cm-live-callout[data-scholium-callout-from]"
+          ".cm-line.cm-live-callout"
         )) {
-          const key = line.dataset.scholiumCalloutFrom;
-          if (!key) continue;
+          const sourceLine = this.view.state.doc.lineAt(this.view.posAtDOM(line, 0));
+          const callout = projectionRangesIntersecting(
+            callouts,
+            sourceLine.from,
+            Math.min(this.view.state.doc.length, sourceLine.to + 1)
+          )[0];
+          if (!callout) continue;
+          const key = String(callout.from);
           const group = groups.get(key) ?? { header: null, bodyLines: [] };
           if (line.classList.contains("cm-live-callout-header")) group.header = line;
           if (line.classList.contains("cm-live-callout-body-line")) group.bodyLines.push(line);
@@ -38426,14 +38456,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return true;
   }
   var projectedWidgets = createProjectedWidgetRegistry();
-  function projectedWidgetSourceOffset(event) {
+  function projectedWidgetSourceOffset(view, event) {
     const target = event.target instanceof Element ? event.target : null;
-    const blankSourceOffset = target?.closest("[data-scholium-blank-source-offset]")?.dataset.scholiumBlankSourceOffset;
-    if (blankSourceOffset !== void 0) {
-      const parsed = Number.parseInt(blankSourceOffset, 10);
-      if (Number.isSafeInteger(parsed)) return parsed;
-    }
-    return projectedWidgets.sourceOffset(event);
+    return semanticBlankLineSourceOffset(view, target) ?? projectedWidgets.sourceOffset(event);
   }
   function headingAtPointer(view, event) {
     const target = event.target instanceof Element ? event.target : null;
@@ -38507,7 +38532,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   function projectedWidgetPointerStart(view, event) {
     if (headingPointerIsContent(view, event)) return false;
-    const sourceOffset = projectedWidgets.sourceOffset(event) ?? projectedHeadingSourceOffset(view, event) ?? projectedWidgetSourceOffset(event);
+    const sourceOffset = projectedWidgets.sourceOffset(event) ?? projectedHeadingSourceOffset(view, event) ?? projectedWidgetSourceOffset(view, event);
     if (sourceOffset === null) return false;
     event.preventDefault();
     dispatchProjectedPointerSelection(view, event, sourceOffset);
@@ -39595,7 +39620,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var editorContextMenu = createEditorContextMenuExtension({
     context: (view) => currentEditorContext(view),
     mode: (view) => configuredEditorMode(view.state),
-    positionAtEvent: (view, event) => projectedWidgetSourceOffset(event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }),
+    positionAtEvent: (view, event) => projectedWidgetSourceOffset(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }),
     request: (request) => post({ type: "contextMenuRequested", ...request })
   });
   var editorExtensions = [

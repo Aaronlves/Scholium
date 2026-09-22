@@ -11,6 +11,7 @@ import {
   type ProjectionSelectionRange,
 } from "./projection-update";
 import {preserveLivePresentationLayout} from "./live-presentation-layout";
+import {projectionRangesIntersecting} from "./projection-index";
 import type {TablePresentation} from "./table-presentation";
 import type {
   CalloutPresentation,
@@ -338,7 +339,8 @@ export function createLiveStructuredBlockProjections(options: {
     private reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     constructor(readonly view: EditorView) {
-      this.previous = this.readGroups();
+      // Plugin construction may precede replacement of the old document DOM.
+      // Resolve current source locations only after CodeMirror commits it.
       this.view.requestMeasure({
         key: this,
         read: () => this.readGroups(),
@@ -348,15 +350,23 @@ export function createLiveStructuredBlockProjections(options: {
     }
 
     private readGroups() {
+      const callouts = options.projections.index(this.view.state).callouts;
       const groups = new Map<string, {
         header: HTMLElement | null;
         bodyLines: HTMLElement[];
       }>();
       for (const line of this.view.contentDOM.querySelectorAll<HTMLElement>(
-        ".cm-line.cm-live-callout[data-scholium-callout-from]",
+        ".cm-line.cm-live-callout",
       )) {
-        const key = line.dataset.scholiumCalloutFrom;
-        if (!key) continue;
+        // DOM and the shared index already carry the current positions.
+        // Embedding absolute offsets in mapped line decorations creates a
+        // stale second location owner after edits earlier in the document.
+        const sourceLine = this.view.state.doc.lineAt(this.view.posAtDOM(line, 0));
+        const callout = projectionRangesIntersecting(
+          callouts, sourceLine.from, Math.min(this.view.state.doc.length, sourceLine.to + 1),
+        )[0];
+        if (!callout) continue;
+        const key = String(callout.from);
         const group = groups.get(key) ?? {header: null, bodyLines: []};
         if (line.classList.contains("cm-live-callout-header")) group.header = line;
         if (line.classList.contains("cm-live-callout-body-line")) group.bodyLines.push(line);

@@ -162,7 +162,7 @@ import {
   createLiveSelectionController,
   textSelectionPresentation,
 } from "./live-selection";
-import {createLiveSemanticLayout} from "./live-semantic-layout";
+import {createLiveSemanticLayout, semanticBlankLineSourceOffset} from "./live-semantic-layout";
 import {createProjectedWidgetRegistry} from "./projected-widget-registry";
 import {createLiveMermaidProjection} from "./live-mermaid-projection";
 import {createLiveStructuredBlockProjections} from "./live-structured-block-projections";
@@ -606,16 +606,9 @@ function modifiedProjectedLink(view: EditorView, event: MouseEvent) {
 
 const projectedWidgets = createProjectedWidgetRegistry();
 
-function projectedWidgetSourceOffset(event: MouseEvent) {
+function projectedWidgetSourceOffset(view: EditorView, event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
-  const blankSourceOffset = target
-    ?.closest<HTMLElement>("[data-scholium-blank-source-offset]")
-    ?.dataset.scholiumBlankSourceOffset;
-  if (blankSourceOffset !== undefined) {
-    const parsed = Number.parseInt(blankSourceOffset, 10);
-    if (Number.isSafeInteger(parsed)) return parsed;
-  }
-  return projectedWidgets.sourceOffset(event);
+  return semanticBlankLineSourceOffset(view, target) ?? projectedWidgets.sourceOffset(event);
 }
 
 function headingAtPointer(view: EditorView, event: MouseEvent) {
@@ -737,7 +730,7 @@ function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
 
   const sourceOffset = projectedWidgets.sourceOffset(event)
     ?? projectedHeadingSourceOffset(view, event)
-    ?? projectedWidgetSourceOffset(event);
+    ?? projectedWidgetSourceOffset(view, event);
   if (sourceOffset === null) return false;
   event.preventDefault();
   dispatchProjectedPointerSelection(view, event, sourceOffset);
@@ -2105,7 +2098,7 @@ const sourceMode = [
 const editorContextMenu = createEditorContextMenuExtension({
   context: (view) => currentEditorContext(view),
   mode: (view) => configuredEditorMode(view.state),
-  positionAtEvent: (view, event) => projectedWidgetSourceOffset(event)
+  positionAtEvent: (view, event) => projectedWidgetSourceOffset(view, event)
     ?? view.posAtCoords({x: event.clientX, y: event.clientY}),
   request: (request) => post({type: "contextMenuRequested", ...request}),
 });

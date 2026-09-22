@@ -63,6 +63,44 @@ interface LiveSemanticBlockSpacingState {
 
 type SemanticBlockSpacing = "none" | "half" | "paragraph" | "standard" | "callout";
 
+const spacingPriority: Partial<Record<SemanticBlockProjection["kind"], number>> = {
+  callout: 10, displayMath: 9, table: 8, code: 7, html: 6,
+  orderedList: 5, unorderedList: 5, blockQuote: 4,
+  thematicBreak: 3, heading: 2, paragraph: 1,
+};
+
+/** Select spacing owners with a containment sweep, not an all-pairs scan. */
+export function semanticSpacingBlocks(
+  blocks: readonly SemanticBlockProjection[],
+  frontmatterEnd = 0,
+): SemanticBlockProjection[] {
+  const priority = (block: SemanticBlockProjection) => spacingPriority[block.kind] ?? 0;
+  const candidates = blocks
+    .filter(block => block.parent === null && block.to > frontmatterEnd)
+    // At an equal start, higher-priority owners must be seen first, even
+    // when their end sorts after the candidate in the source index.
+    .sort((a, b) => a.from - b.from || priority(b) - priority(a) || a.to - b.to);
+  const maximumHigherEnd = new Array<number>(11).fill(-1);
+  const owners: SemanticBlockProjection[] = [];
+  for (const block of candidates) {
+    const rank = priority(block);
+    if (maximumHigherEnd[rank] < block.to) owners.push(block);
+    // Retain all owners' coverage, including one suppressed by a yet higher
+    // owner. Equal-priority and merely overlapping ranges remain independent.
+    for (let lower = 0; lower < rank; lower += 1) {
+      maximumHigherEnd[lower] = Math.max(maximumHigherEnd[lower], block.to);
+    }
+  }
+  return owners.sort((a, b) => a.from - b.from || a.to - b.to);
+}
+
+/** Resolve an authored separator from CodeMirror's current, mapped DOM. */
+export function semanticBlankLineSourceOffset(view: EditorView, target: Element | null): number | null {
+  const line = target?.closest(".cm-live-semantic-blank-gap");
+  if (!line || !view.contentDOM.contains(line)) return null;
+  return view.state.doc.lineAt(view.posAtDOM(line, 0)).from;
+}
+
 function isFencedDelimiterLine(
   doc: Text,
   block: SemanticCodeBlockRange,
@@ -365,11 +403,6 @@ export function createLiveSemanticLayout(options: {
         if (presentation.classes.length > 0) {
           attributes.class = presentation.classes.join(" ");
         }
-        if (presentation.calloutPresentation) {
-          attributes["data-scholium-callout-from"] = String(
-            presentation.calloutPresentation.from,
-          );
-        }
         if (presentation.quoteDepth > 0) {
           // The depth is parser-owned data transported as a CSS custom
           // property. The stylesheet can therefore paint every ancestor rail
@@ -424,6 +457,8 @@ export function createLiveSemanticLayout(options: {
     let decorations = existing;
     for (const range of expandedPhysicalLineRanges(state, affected)) {
       decorations = decorations.update({
+        filterFrom: range.from,
+        filterTo: range.to,
         filter: (from) => from < range.from || from > range.to,
         add: semanticLineDecorationRanges(state, range.from, range.to),
         sort: true,
@@ -458,18 +493,26 @@ export function createLiveSemanticLayout(options: {
   const lineField = StateField.define<LiveSemanticLineState>({
     create: buildLineState,
     update(previous, transaction) {
-      if (transactionChangedSyntaxTree(transaction)) return buildLineState(transaction.state);
       if (transaction.docChanged) {
         if (!projections.topologyWasMapped(transaction)) return buildLineState(transaction.state);
         const mapped = previous.decorations.map(transaction.changes);
+        const before = selection.selection(transaction.startState).map(transaction.changes);
+        const after = selection.selection(transaction.state);
+        const affected = mergedChangedLineRanges(transaction);
+        // A replacement can edit one place and move selection from another.
+        // Refresh both activation neighborhoods in the new coordinates.
+        if (!before.eq(after)) affected.push(...affectedProjectionAndCodeBlockRanges(
+          projections, transaction.state, before.ranges, after.ranges,
+        ));
         return {
           decorations: replacingLineDecorationsInRanges(
             mapped,
             transaction.state,
-            mergedChangedLineRanges(transaction),
+            affected,
           ),
         };
       }
+      if (transactionChangedSyntaxTree(transaction)) return buildLineState(transaction.state);
       if (selection.changed(transaction.startState, transaction.state)) {
         const affected = affectedProjectionAndCodeBlockRanges(
           projections,
@@ -493,29 +536,7 @@ export function createLiveSemanticLayout(options: {
   function semanticBlockGapRanges(state: EditorState): Range<Decoration>[] {
     const index = projections.index(state);
     if (index.hasUnclosedFrontmatter) return [];
-    const spacingPriority: Partial<Record<SemanticBlockProjection["kind"], number>> = {
-      callout: 100,
-      displayMath: 90,
-      table: 80,
-      code: 70,
-      html: 60,
-      orderedList: 50,
-      unorderedList: 50,
-      blockQuote: 40,
-      thematicBreak: 30,
-      heading: 20,
-      paragraph: 10,
-    };
-    const rawTopLevelBlocks = index.syntax.blocks
-      .filter((block) => block.parent === null)
-      .filter((block) => block.to > (index.frontmatterRange?.to ?? 0));
-    const topLevelBlocks = rawTopLevelBlocks
-      .filter((candidate) => !rawTopLevelBlocks.some((owner) =>
-        owner !== candidate
-          && owner.from <= candidate.from
-          && owner.to >= candidate.to
-          && (spacingPriority[owner.kind] ?? 0) > (spacingPriority[candidate.kind] ?? 0)))
-      .sort((left, right) => left.from - right.from || left.to - right.to);
+    const topLevelBlocks = semanticSpacingBlocks(index.syntax.blocks, index.frontmatterRange?.to);
     const ranges: Range<Decoration>[] = [];
     let previous: SemanticBlockProjection | null = null;
     for (const current of topLevelBlocks) {
@@ -546,7 +567,6 @@ export function createLiveSemanticLayout(options: {
               `cm-live-semantic-gap-after-${previousSpacing}`,
               `cm-live-semantic-gap-before-${nextSpacing}`,
             ].join(" "),
-            "data-scholium-blank-source-offset": String(authoredSeparatorLine),
           },
         }).range(authoredSeparatorLine));
       } else if (previousSpacing !== "none" || nextSpacing !== "none") {
@@ -578,11 +598,16 @@ export function createLiveSemanticLayout(options: {
   const spacingField = StateField.define<LiveSemanticBlockSpacingState>({
     create: buildSpacingState,
     update(previous, transaction) {
-      if (!transaction.docChanged && !transactionChangedSyntaxTree(transaction)) return previous;
-      if (transactionChangedSyntaxTree(transaction)) return buildSpacingState(transaction.state);
-      return projections.topologyWasMapped(transaction)
-        ? {decorations: previous.decorations.map(transaction.changes)}
-        : buildSpacingState(transaction.state);
+      if (transaction.docChanged) {
+        // A new syntax-tree identity is normal during typing. The shared
+        // index has already proved whether this edit preserves topology.
+        return projections.topologyWasMapped(transaction)
+          ? {decorations: previous.decorations.map(transaction.changes)}
+          : buildSpacingState(transaction.state);
+      }
+      return transactionChangedSyntaxTree(transaction)
+        ? buildSpacingState(transaction.state)
+        : previous;
     },
     provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
   });

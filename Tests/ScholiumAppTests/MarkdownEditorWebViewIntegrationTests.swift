@@ -6077,6 +6077,31 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         try await harness.waitUntilSelection(head: blankOffset, stage: "authored separator click")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        // A topology-safe edit maps the separator decoration. Pointer entry
+        // must resolve its current source line, never an embedded old offset.
+        harness.session.revealSourceRange(fromUTF16: 4, toUTF16: 4)
+        try await harness.waitUntilSelection(head: 4, stage: "edit before separator")
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '中文');")
+        let edited = "Lead中文 paragraph.\n\n> Quoted paragraph.\n> Continued quotation.\n\nFollowing paragraph.\n"
+        #expect(try await harness.session.currentText(for: harness.documentID) == edited)
+        try await harness.session.testingClickBlankLine(
+            between: "Lead中文 paragraph.",
+            and: "Quoted paragraph."
+        )
+        try await harness.waitUntilSelection(head: blankOffset + 2, stage: "mapped separator click")
+        _ = try await harness.callPageJavaScript(
+            """
+            document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, bubbles: true, cancelable: true
+            }));
+            """)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        try await harness.session.testingClickBlankLine(
+            between: "Lead paragraph.", and: "Quoted paragraph."
+        )
+        try await harness.waitUntilSelection(head: blankOffset, stage: "separator after Undo")
         await harness.closeAndDrain()
     }
 
