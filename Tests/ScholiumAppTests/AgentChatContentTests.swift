@@ -6,7 +6,7 @@ import WebKit
 
 @testable import ScholiumApp
 
-@Suite("Chat content and viewed changes")
+@Suite("Chat content and viewed changes", .serialized)
 @MainActor
 struct AgentChatContentTests {
     @Test func objectGeometryRejectsInvalidOrAmbiguousIdentity() throws {

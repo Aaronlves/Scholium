@@ -81,6 +81,16 @@ struct RelatedMaterialNavigationTests {
             #expect(changedNotice.message.contains("different version"))
             #expect(try Data(contentsOf: file) == Data(external.utf8))
 
+            // Pin the current source before deleting it. A live inventory
+            // event is allowed to remove a clean deleted Note; this retained
+            // dirty session is the recovery boundary that keeps the source
+            // context available while the action reports the missing file.
+            let descriptor = try #require(window.currentDocumentDescriptor)
+            let session = window.documentController.session(for: descriptor)
+            session.suppressAutosave = true
+            session.editingSource = "Unsaved source must remain untouched."
+            #expect(session.hasUnsavedChanges)
+            await prepareSeed()
             try FileManager.default.removeItem(at: file)
             await prepareSeed()
             #expect(await window.useRelatedMaterial(card, inChat: false))
@@ -90,11 +100,9 @@ struct RelatedMaterialNavigationTests {
             #expect(window.shellState.operationIssues.last?.message.contains("could not be verified") == true)
             try Data(external.utf8).write(to: file)
 
-            let descriptor = try #require(window.currentDocumentDescriptor)
-            let session = window.documentController.session(for: descriptor)
-            session.suppressAutosave = true
-            session.editingSource = "Unsaved source must remain untouched."
+            #expect(session.hasUnsavedChanges)
             await prepareSeed()
+            #expect(window.researchController.relatedMaterials.seed != nil)
             #expect(await window.useRelatedMaterial(card, inChat: false))
             await window.waitForPendingDocumentTransitionsForTesting()
             #expect(window.documentController.sourceLocationRequest == nil)
