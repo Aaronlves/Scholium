@@ -188,7 +188,7 @@ enum ScholiumWebDesignTokens {
           min-width: 0;
           inline-size: 100%;
           margin: 0;
-          padding-block: var(--scholium-document-content-top-inset) var(--scholium-rhythm-trailing-scroll);
+          padding-block: calc(var(--scholium-document-content-top-inset) + var(--scholium-document-toolbar-inset, 0px)) var(--scholium-rhythm-trailing-scroll);
           padding-inline: max(
             var(--scholium-rhythm-inline-regular),
             calc(50% - var(--scholium-document-half-line-width))

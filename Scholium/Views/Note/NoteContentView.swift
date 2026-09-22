@@ -362,7 +362,6 @@ struct NoteContentView: View {
 
                 documentBodySurface
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
                     .overlay {
                         DocumentFindOverlay(model: documentFind, allowsReplacement: isEditing)
                     }
@@ -736,6 +735,8 @@ struct NoteContentView: View {
         } editor: {
             bodyEditor
         }
+        .environment(\.documentToolbarUnderlap, true)
+        .ignoresSafeArea(.container, edges: .top)
         .scholiumSurface(.document)
         .overlay(alignment: .topLeading) {
             if isEditing,

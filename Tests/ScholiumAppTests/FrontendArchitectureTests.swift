@@ -1264,13 +1264,14 @@ struct FrontendArchitectureTests {
         #expect(editorSource.contains("markdownCommandTransformation(editor.state, operation.command, argument)"))
     }
 
-    @Test("Native split backgrounds fill the titlebar without an extension effect")
-    func nativeSurfaceContainer() throws {
+    @Test("Native split foreground underlap is explicit while backgrounds fill the titlebar", arguments: [false, true])
+    func nativeSurfaceContainer(contentExtendsUnderToolbar: Bool) throws {
         let contentController = NSViewController()
         contentController.view = NSView()
         let controller = ScholiumSurfaceContainerViewController(
             contentViewController: contentController,
-            backgroundRole: .navigation
+            backgroundRole: .navigation,
+            contentExtendsUnderToolbar: contentExtendsUnderToolbar
         )
 
         _ = controller.view
@@ -1298,7 +1299,13 @@ struct FrontendArchitectureTests {
             window.layoutIfNeeded()
             let foreground = contentController.view.convert(contentController.view.bounds, to: nil)
             #expect(background.frame == controller.view.bounds)
-            #expect(foreground.maxY <= window.contentLayoutRect.maxY + 1)
+            if contentExtendsUnderToolbar {
+                let fullRegion = controller.view.convert(controller.view.bounds, to: nil)
+                #expect(abs(foreground.maxY - fullRegion.maxY) < 1)
+                #expect(foreground.maxY > window.contentLayoutRect.maxY + 1)
+            } else {
+                #expect(foreground.maxY <= window.contentLayoutRect.maxY + 1)
+            }
             #expect(foreground.height > 0)
         }
     }
@@ -1331,7 +1338,10 @@ struct FrontendArchitectureTests {
         #expect(libraryItem.behavior == .sidebar)
         #expect(!(libraryItem.viewController is ScholiumSurfaceContainerViewController))
         #expect(documentItem.automaticallyAdjustsSafeAreaInsets)
-        #expect(documentItem.viewController is ScholiumSurfaceContainerViewController)
+        let documentContainer = try #require(documentItem.viewController as? ScholiumSurfaceContainerViewController)
+        let apparatusContainer = try #require(splitController.splitViewItems[2].viewController as? ScholiumSurfaceContainerViewController)
+        #expect(documentContainer.contentExtendsUnderToolbar)
+        #expect(!apparatusContainer.contentExtendsUnderToolbar)
     }
 
     @Test("Research Inspector separates divider resizing from explicit visibility")
@@ -2983,7 +2993,7 @@ struct FrontendArchitectureTests {
         #expect(!editorSource.contains("editor.scrollDOM.classList.toggle"))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "padding-block: var(--scholium-document-content-top-inset) var(--scholium-rhythm-trailing-scroll)"
+                "padding-block: calc(var(--scholium-document-content-top-inset) + var(--scholium-document-toolbar-inset, 0px)) var(--scholium-rhythm-trailing-scroll)"
             ))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(

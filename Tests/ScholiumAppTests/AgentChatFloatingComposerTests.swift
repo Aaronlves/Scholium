@@ -80,6 +80,9 @@ struct AgentChatFloatingComposerTests {
         let marker = try #require(session.markers[latestID]?.view)
         let scroll = try #require(marker.enclosingScrollView)
         let document = try #require(scroll.documentView)
+        // The native top bar reserves readable space inside the same scroll
+        // viewport, rather than clipping the transcript below a sibling header.
+        #expect(scroll.contentInsets.top >= ScholiumSidebarLayout.headerHeight)
         // Actual transcript geometry must extend behind the input. A sibling
         // below the scroll view cannot satisfy this even if its rows fit.
         let scrollFrame = scroll.convert(scroll.bounds, to: nil)
@@ -131,6 +134,20 @@ struct AgentChatFloatingComposerTests {
             earlier.convert(earlier.bounds, to: document).minY - scroll.contentView.bounds.minY - scroll.contentInsets.top
         }
         let retainedOffset = offset()
+        let compactTopInset = scroll.contentInsets.top
+        presentation.showsFind = true
+        try await settle(host) {
+            scroll.contentInsets.top > compactTopInset + 1
+                && abs(offset() - retainedOffset) < 2
+        }
+        #expect(earlier.enclosingScrollView === scroll)
+        #expect(composer() === editor)
+        #expect(session.isRetainingPosition)
+        presentation.showsFind = false
+        try await settle(host) {
+            abs(scroll.contentInsets.top - compactTopInset) < 2
+                && abs(offset() - retainedOffset) < 2
+        }
         var selectedReader: WKWebView?
         for web in descendants(host).compactMap({ $0 as? WKWebView }) {
             if try await web.evaluateJavaScript("document.querySelector('#scholium-document strong')?.textContent") as? String == "Retained passage 0" {

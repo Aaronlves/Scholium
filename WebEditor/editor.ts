@@ -137,7 +137,7 @@ import {
 } from "./performance";
 import {createPreviewPopoverController} from "./preview-popover";
 import {appendMarkdownBlocks} from "./markdown-fragment";
-import {createEditorScrollCoordinator} from "./scroll-coordinator";
+import {createEditorScrollCoordinator, documentToolbarScrollMargin} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
 import {boundedUUID, createEditorInputSuggestions} from "./input-suggestions";
 import {exactOffsetForNormalizedOffset} from "./state";
@@ -2144,6 +2144,7 @@ const editorExtensions = [
   ]),
   saveKeymap,
   documentFindExtension,
+  documentToolbarScrollMargin,
   editorContextMenu,
   stateReporter,
   linkActivation,

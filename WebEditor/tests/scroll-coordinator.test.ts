@@ -1,11 +1,38 @@
 import {EditorState} from "@codemirror/state";
-import type {EditorView} from "@codemirror/view";
+import {EditorView} from "@codemirror/view";
 import {afterEach, describe, expect, it, vi} from "vitest";
-import {createEditorScrollCoordinator} from "../scroll-coordinator";
+import {createEditorScrollCoordinator, documentToolbarScrollMargin} from "../scroll-coordinator";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("scroll coordination across runtime reuse", () => {
+  it("updates and clears the covered caret region when native toolbar overlap changes", () => {
+    let inset = "52px";
+    const dom = {};
+    vi.stubGlobal("getComputedStyle", (element: unknown) => {
+      expect(element).toBe(dom);
+      return {getPropertyValue: (property: string) => {
+        expect(property).toBe("--scholium-document-toolbar-inset");
+        return inset;
+      }};
+    });
+    const state = EditorState.create({doc: "Retained 中文 source", extensions: [documentToolbarScrollMargin]});
+    const view = {dom, state, scaleY: 1} as unknown as EditorView;
+    const margin = state.facet(EditorView.scrollMargins)[0];
+    expect(margin(view)).toEqual({top: 52});
+    // Focus Layout changes the native overlap on the retained editor, while
+    // scaled editor geometry still uses the same visual coordinate system.
+    inset = "28px";
+    Object.assign(view, {scaleY: 1.5});
+    expect(margin(view)).toEqual({top: 42});
+    // Tabs, recovery notices, or a hidden titlebar can eliminate overlap.
+    // Ordinary document padding must not become a standing scroll margin.
+    for (const absent of ["0px", "", "-1px"]) {
+      inset = absent;
+      expect(margin(view)).toBeNull();
+    }
+  });
+
   it("does not repost an unchanged source anchor", () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {

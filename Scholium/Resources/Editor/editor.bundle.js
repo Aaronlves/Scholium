@@ -33390,6 +33390,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   };
 
   // scroll-coordinator.ts
+  var documentToolbarScrollMargin = EditorView.scrollMargins.of((view) => {
+    const inset = parseFloat(getComputedStyle(view.dom).getPropertyValue("--scholium-document-toolbar-inset"));
+    return Number.isFinite(inset) && inset > 0 ? { top: inset * view.scaleY } : null;
+  });
   function createEditorScrollCoordinator(editor2, options) {
     let scrollRevision = 0;
     let lastPostedAnchor = null;
@@ -39661,6 +39665,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     ]),
     saveKeymap,
     documentFindExtension,
+    documentToolbarScrollMargin,
     editorContextMenu,
     stateReporter,
     linkActivation,

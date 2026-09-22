@@ -4,6 +4,14 @@ import type {EditorScrollAnchor} from "./protocol";
 import {recordEditorMetric} from "./performance";
 import {AnimationFrameCoalescer} from "./interaction-reporting";
 
+// Native geometry publishes only the portion actually covered by the toolbar.
+// Keep caret scrolling clear without changing manual scroll or restored anchors.
+export const documentToolbarScrollMargin = EditorView.scrollMargins.of(view => {
+  const inset = parseFloat(getComputedStyle(view.dom)
+    .getPropertyValue("--scholium-document-toolbar-inset"));
+  return Number.isFinite(inset) && inset > 0 ? {top: inset * view.scaleY} : null;
+});
+
 export interface EditorGeometrySnapshot {
   anchor: EditorScrollAnchor;
   document: Text;

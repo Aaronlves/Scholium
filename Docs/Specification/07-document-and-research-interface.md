@@ -19,9 +19,8 @@ Editor failure retains the Note and offers **Retry Edit** and **Source**. An
 exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
-Document backgrounds continue behind toolbar controls; native safe areas
-keep scrolling content below them. Selection, focus, Undo, composition, and
-restoration are unchanged.
+Document content softens only behind native toolbar bounds; initial content remains
+unobscured. Paper, selection, focus, Undo, composition and restoration remain unchanged.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.
 A nonempty body selection offers Explain, Polish and More Actions in

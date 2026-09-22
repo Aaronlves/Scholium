@@ -33,7 +33,10 @@ role. Native controls own continuous swipe feedback. Full swipe executes read or
 provide equivalent operations plus Rename and Changes. Search filters include
 Unread and Important, with Clear/empty feedback. §8.7 owns durable meanings.
 Library and Chat share native header controls and a spacing grid; headings,
-dates and row text align. The bottom
+dates and row text align. Chat's list and transcript scroll beneath their fixed
+top controls with the system's soft scroll-edge effect. Header, search, Find
+and connection state remain readable and operable while preserving the current
+reading position. The bottom
 composer and compact conversation-files entry float above the transcript using
 native Liquid Glass. Transcript content scrolls beneath these controls, with no
 extra opaque backing, gradient mask or simulated blur. One bottom area arranges

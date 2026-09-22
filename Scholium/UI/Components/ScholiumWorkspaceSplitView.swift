@@ -3,19 +3,22 @@ import SwiftUI
 
 /// One opaque semantic content plane for a native split item. The same
 /// background view fills the complete region beneath the transparent titlebar,
-/// while foreground content remains a sibling in the live safe area. The
+/// while foreground content explicitly chooses toolbar underlap or the live safe area. The
 /// native Sidebar deliberately does not use this container: its split-item
 /// behavior owns Liquid Glass and samples the adjacent Document underlay.
 @MainActor
 final class ScholiumSurfaceContainerViewController: NSViewController {
     let contentViewController: NSViewController
     let backgroundView: NSView
+    let contentExtendsUnderToolbar: Bool
 
     init(
         contentViewController: NSViewController,
-        backgroundRole: ScholiumSurfaceRole
+        backgroundRole: ScholiumSurfaceRole,
+        contentExtendsUnderToolbar: Bool
     ) {
         self.contentViewController = contentViewController
+        self.contentExtendsUnderToolbar = contentExtendsUnderToolbar
         let backgroundHost = NSHostingView(
             rootView: backgroundRole.colorRole.color
         )
@@ -64,7 +67,9 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
                 equalTo: containerView.safeAreaLayoutGuide.trailingAnchor
             ),
             contentView.topAnchor.constraint(
-                equalTo: containerView.safeAreaLayoutGuide.topAnchor
+                equalTo: contentExtendsUnderToolbar
+                    ? containerView.topAnchor
+                    : containerView.safeAreaLayoutGuide.topAnchor
             ),
             contentView.bottomAnchor.constraint(
                 equalTo: containerView.safeAreaLayoutGuide.bottomAnchor
@@ -318,11 +323,13 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             self.apparatusHost = apparatusHost
             documentBackgroundController = ScholiumSurfaceContainerViewController(
                 contentViewController: documentTabsController,
-                backgroundRole: .document
+                backgroundRole: .document,
+                contentExtendsUnderToolbar: true
             )
             apparatusBackgroundController = ScholiumSurfaceContainerViewController(
                 contentViewController: apparatusHost,
-                backgroundRole: .apparatus
+                backgroundRole: .apparatus,
+                contentExtendsUnderToolbar: false
             )
             super.init(nibName: nil, bundle: nil)
         }

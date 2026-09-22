@@ -6,6 +6,7 @@ import WebKit
 struct SafeMarkdownReadWebView: NSViewRepresentable {
     @Environment(\.scholiumDocumentSurfaceVisibility)
     private var surfaceVisibility
+    @Environment(\.documentToolbarUnderlap) private var toolbarUnderlap
     /// App-owned bridge scripts and the native message handler live in a
     /// named content world. Research-authored CSS and Markdown never enter
     /// that world, and the page world exposes no native handler or script.
@@ -140,11 +141,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
         )
         container.setSurfaceVisibility(surfaceVisibility)
+        container.toolbarUnderlapEnabled = toolbarUnderlap
         context.coordinator.surfaceVisibility = surfaceVisibility
         return container
     }
 
     func updateNSView(_ container: DocumentWebViewContainer, context: Context) {
+        container.toolbarUnderlapEnabled = toolbarUnderlap
         let webView = container.webView
         container.setSurfaceVisibility(surfaceVisibility)
         context.coordinator.surfaceVisibility = surfaceVisibility

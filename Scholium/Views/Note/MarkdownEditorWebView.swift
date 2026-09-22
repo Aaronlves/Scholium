@@ -6,6 +6,7 @@ import WebKit
 struct MarkdownEditorWebView: NSViewRepresentable {
     @Environment(\.scholiumDocumentSurfaceVisibility)
     private var surfaceVisibility
+    @Environment(\.documentToolbarUnderlap) private var toolbarUnderlap
     @ObservedObject var session: MarkdownEditorSession
     let documentID: String
     let documentTitle: String
@@ -212,11 +213,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             }
         )
         container.setSurfaceVisibility(surfaceVisibility)
+        container.toolbarUnderlapEnabled = toolbarUnderlap
         context.coordinator.surfaceVisibility = surfaceVisibility
         return container
     }
 
     func updateNSView(_ container: DocumentWebViewContainer, context: Context) {
+        container.toolbarUnderlapEnabled = toolbarUnderlap
         let webView = container.webView
         container.setSurfaceVisibility(surfaceVisibility)
         context.coordinator.activeWebView = webView

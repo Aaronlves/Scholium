@@ -44,11 +44,7 @@ struct AgentChatConversationDetailView: View {
     let showDiagnostics: (String?, String?) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            AgentChatConnectionStatus(controller: controller) { showDiagnostics(nil, $0) }
-            conversationDetail
-        }
+        conversationDetail
         .sheet(item: $presentation.queueEditTarget) { target in
             AgentChatQueuedMessageEditor(
                 message: target.message,
@@ -230,179 +226,184 @@ struct AgentChatConversationDetailView: View {
         return timelineMessages.first(where: { $0.turnID == turnID && $0.role == .user })?.id
     }
 
-    private var conversationDetail: some View {
-        let projection = AgentChatTimelineProjection(timelineMessages)
-        let visibleTimelineItems = Array(projection.items[readingSession.history.range(in: projection.ids)])
-        return VStack(spacing: 0) {
+    private var conversationTopBar: some View {
+        VStack(spacing: 0) {
+            header
+            AgentChatConnectionStatus(controller: controller) { showDiagnostics(nil, $0) }
             if controller.selected?.pendingMessageID != nil, !controller.isBusy {
                 Button("Continue Without Resending") { controller.confirmContinueAfterUncertainDelivery() }
                     .buttonStyle(ScholiumContentActionButtonStyle())
                     .accessibilityLabel("Continue Without Resending")
                     .padding(8)
             }
-            VStack(spacing: 0) {
-                if presentation.showsFind {
-                    AgentChatFindBar(
-                        query: $presentation.find.query, focusRequest: presentation.findFocusRequest,
-                        position: presentation.find.position, count: presentation.find.messageIDs.count,
-                        move: { backwards in presentation.find.move(backwards: backwards) }, dismiss: dismissFind)
+            if presentation.showsFind {
+                AgentChatFindBar(
+                    query: $presentation.find.query, focusRequest: presentation.findFocusRequest,
+                    position: presentation.find.position, count: presentation.find.messageIDs.count,
+                    move: { backwards in presentation.find.move(backwards: backwards) }, dismiss: dismissFind)
+            }
+            if isHydratingHistory, !timelineMessages.isEmpty {
+                HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    ProgressView().controlSize(.small)
+                    Text("Updating Conversation…", bundle: .module)
+                    Spacer(minLength: 0)
                 }
-                if isHydratingHistory, !timelineMessages.isEmpty {
-                    HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                        ProgressView().controlSize(.small)
-                        Text("Updating Conversation…", bundle: .module)
-                        Spacer(minLength: 0)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, ScholiumSidebarLayout.textInset)
-                    .padding(.vertical, ScholiumSidebarLayout.itemSpacing)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("scholium.chat.historyRefreshing")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, ScholiumSidebarLayout.textInset)
+                .padding(.vertical, ScholiumSidebarLayout.itemSpacing)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("scholium.chat.historyRefreshing")
+            }
+        }
+    }
+
+    private var conversationDetail: some View {
+        let projection = AgentChatTimelineProjection(timelineMessages)
+        let visibleTimelineItems = Array(projection.items[readingSession.history.range(in: projection.ids)])
+        return ScrollView {
+            // Transcript geometry must describe the loaded messages, rather than
+            // LazyVStack's changing estimates as long replies enter the viewport.
+            VStack(alignment: .leading, spacing: ScholiumChatAppearance.messageSpacing) {
+                if isHydratingHistory, controller.selected?.messages.isEmpty != false {
+                    ScholiumContentStateView(
+                        title: Text("Loading Conversation…", bundle: .module),
+                        indicator: .progress,
+                        placement: .leading, density: .compact
+                    )
+                    .accessibilityIdentifier("scholium.chat.historyLoading")
+                } else if controller.selected?.messages.isEmpty != false {
+                    ScholiumContentStateView(
+                        title: Text("New Conversation"),
+                        detail: Text("Discuss your research here. Add a passage or name a note to begin."),
+                        indicator: .symbol("bubble.left.and.bubble.right"),
+                        placement: .leading, density: .compact
+                    )
+                    .accessibilityIdentifier("scholium.chat.emptyConversation")
                 }
-                ScrollView {
-                    // Transcript geometry must describe the loaded messages, rather than
-                    // LazyVStack's changing estimates as long replies enter the viewport.
-                    VStack(alignment: .leading, spacing: ScholiumChatAppearance.messageSpacing) {
-                        if isHydratingHistory, controller.selected?.messages.isEmpty != false {
-                            ScholiumContentStateView(
-                                title: Text("Loading Conversation…", bundle: .module),
-                                indicator: .progress,
-                                placement: .leading, density: .compact
-                            )
-                            .accessibilityIdentifier("scholium.chat.historyLoading")
-                        } else if controller.selected?.messages.isEmpty != false {
-                            ScholiumContentStateView(
-                                title: Text("New Conversation"),
-                                detail: Text("Discuss your research here. Add a passage or name a note to begin."),
-                                indicator: .symbol("bubble.left.and.bubble.right"),
-                                placement: .leading, density: .compact
-                            )
-                            .accessibilityIdentifier("scholium.chat.emptyConversation")
+                historyPagingButton(earlier: true, ids: projection.ids)
+                ForEach(visibleTimelineItems) { item in
+                    VStack(alignment: .leading, spacing: 6) {
+                        if presentation.showsFind, let message = item.messages.first(where: { $0.id == presentation.find.selectedID }),
+                            let passage = AgentChatSearch.passage(in: message, query: AgentChatSearch.query(presentation.find.query))
+                        {
+                            Label("Matching Message", systemImage: ScholiumSidebarAction.search.symbol)
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text(passage).font(.callout).textSelection(.enabled)
                         }
-                        historyPagingButton(earlier: true, ids: projection.ids)
-                        ForEach(visibleTimelineItems) { item in
-                            VStack(alignment: .leading, spacing: 6) {
-                                if presentation.showsFind, let message = item.messages.first(where: { $0.id == presentation.find.selectedID }),
-                                    let passage = AgentChatSearch.passage(in: message, query: AgentChatSearch.query(presentation.find.query))
-                                {
-                                    Label("Matching Message", systemImage: ScholiumSidebarAction.search.symbol)
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    Text(passage).font(.callout).textSelection(.enabled)
-                                }
-                                timelineItem(item, projection: projection)
-                            }.id(item.id)
-                                .background(AgentChatReadingMarker(id: item.id, session: readingSession))
-                        }
-                        historyPagingButton(earlier: false, ids: projection.ids)
-                        if readingSession.history.last == nil { currentActivity(projection: projection) }
-                        Color.clear.frame(height: 1).id("latest")
-                    }.padding(.horizontal, ScholiumSidebarLayout.textInset)
-                        .padding(.vertical, ScholiumSidebarLayout.edgeInset)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(AgentChatScrollBoundary())
-                        .background(AgentChatTranscriptViewport(session: readingSession))
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("scholium.chat.transcript.content")
+                        timelineItem(item, projection: projection)
+                    }.id(item.id)
+                        .background(AgentChatReadingMarker(id: item.id, session: readingSession))
                 }
-                .accessibilityIdentifier("scholium.chat.transcript")
-                .environment(
-                    \.openURL,
-                    OpenURLAction { url in
-                        if url.scheme == "scholium-chat" {
-                            guard let target = AgentChatReplyQuotation.target(url),
-                                controller.conversations.contains(where: {
-                                    $0.id == target.conversationID
-                                        && $0.messages.contains(where: { $0.id == target.messageID })
-                                })
-                            else { return .discarded }
-                            openReply(.init(conversationID: target.conversationID, messageID: target.messageID))
-                            return .handled
-                        }
-                        if url.scheme == "scholium-note" {
-                            _ = openReference(url)
-                            return .handled
-                        }
-                        if let destination = AgentChatReplySource.externalURL(url) { return .systemAction(destination) }
-                        return .discarded
-                    }
+                historyPagingButton(earlier: false, ids: projection.ids)
+                if readingSession.history.last == nil { currentActivity(projection: projection) }
+                Color.clear.frame(height: 1).id("latest")
+            }.padding(.horizontal, ScholiumSidebarLayout.textInset)
+                .padding(.vertical, ScholiumSidebarLayout.edgeInset)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AgentChatScrollBoundary())
+                .background(AgentChatTranscriptViewport(session: readingSession))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("scholium.chat.transcript.content")
+        }
+        .accessibilityIdentifier("scholium.chat.transcript")
+        .environment(
+            \.openURL,
+            OpenURLAction { url in
+                if url.scheme == "scholium-chat" {
+                    guard let target = AgentChatReplyQuotation.target(url),
+                        controller.conversations.contains(where: {
+                            $0.id == target.conversationID
+                                && $0.messages.contains(where: { $0.id == target.messageID })
+                        })
+                    else { return .discarded }
+                    openReply(.init(conversationID: target.conversationID, messageID: target.messageID))
+                    return .handled
+                }
+                if url.scheme == "scholium-note" {
+                    _ = openReference(url)
+                    return .handled
+                }
+                if let destination = AgentChatReplySource.externalURL(url) { return .systemAction(destination) }
+                return .discarded
+            }
+        )
+        .environment(\.chatReadingInteraction, { readingSession.pause() })
+        .simultaneousGesture(TapGesture().onEnded { presentation.completion.dismiss() })
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectHidden(true, for: .bottom)
+        .onScrollPhaseChange { _, phase in
+            presentation.transcriptIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+            if phase == .tracking || phase == .interacting {
+                readingSession.beginUserScroll()
+            } else if phase == .idle {
+                readingSession.endUserScroll()
+            } else {
+                readingSession.isScrolling = presentation.transcriptIsScrolling
+            }
+        }
+        .frame(maxHeight: .infinity)
+        .opacity(readingSession.isInitialTranscriptReady ? 1 : 0)
+        .allowsHitTesting(readingSession.isInitialTranscriptReady)
+        .accessibilityHidden(!readingSession.isInitialTranscriptReady)
+        .overlay(alignment: .topLeading) {
+            if !readingSession.isInitialTranscriptReady, !visibleReplyReaderIDs.isEmpty {
+                ScholiumContentStateView(
+                    title: Text("Loading Conversation…", bundle: .module),
+                    indicator: .progress,
+                    placement: .leading, density: .compact
                 )
-                .environment(\.chatReadingInteraction, { readingSession.pause() })
-                .simultaneousGesture(TapGesture().onEnded { presentation.completion.dismiss() })
-                .scrollEdgeEffectHidden(true, for: .bottom)
-                .onScrollPhaseChange { _, phase in
-                    presentation.transcriptIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
-                    if phase == .tracking || phase == .interacting {
-                        readingSession.beginUserScroll()
-                    } else if phase == .idle {
-                        readingSession.endUserScroll()
-                    } else {
-                        readingSession.isScrolling = presentation.transcriptIsScrolling
-                    }
-                }
-                .frame(maxHeight: .infinity)
-                .opacity(readingSession.isInitialTranscriptReady ? 1 : 0)
-                .allowsHitTesting(readingSession.isInitialTranscriptReady)
-                .accessibilityHidden(!readingSession.isInitialTranscriptReady)
-                .overlay(alignment: .topLeading) {
-                    if !readingSession.isInitialTranscriptReady, !visibleReplyReaderIDs.isEmpty {
-                        ScholiumContentStateView(
-                            title: Text("Loading Conversation…", bundle: .module),
-                            indicator: .progress,
-                            placement: .leading, density: .compact
-                        )
-                        .padding(.horizontal, ScholiumSidebarLayout.textInset)
-                        .padding(.vertical, ScholiumSidebarLayout.edgeInset)
-                        .accessibilityIdentifier("scholium.chat.transcript.hydrating")
-                    }
-                }
-                .onPreferenceChange(AgentChatReplyHydrationPreference.self) { states in
-                    readingSession.observeReplyHydration(states)
-                }
-                .task(id: replyNavigation) {
-                    guard let target = replyNavigation, target.conversationID == controller.selectedID else { return }
-                    revealMessage(target.messageID)
-                }
-                .onChange(of: presentation.find.selectedID) { _, id in
-                    if let id { expandedActivityIDs.insert(id) }
-                    if let id,
-                        let item = projection.items
-                            .first(where: { $0.messages.contains(where: { $0.id == id }) })
-                    {
-                        readingSession.navigate(to: item.id, in: projection.ids)
-                    }
-                }
-                // The native safe area measures the complete dock. Replies can
-                // scroll beneath its glass while the viewport retains enough
-                // bottom inset to bring every final-message action into reach.
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                        if hasConversationAccessories {
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                                    conversationActivityButtons
-                                    conversationNavigationButtons
-                                }.fixedSize(horizontal: true, vertical: false)
-                                VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                                    conversationActivityButtons
-                                    conversationNavigationButtons
-                                }
-                            }
-                        }
-                        if controller.selected?.isAvailable == false {
-                            Button("Restore Chat") {
-                                if let id = controller.selectedID {
-                                    controller.setArchived(id, archived: false)
-                                    didRestoreConversation()
-                                }
-                            }.buttonStyle(.glass).padding()
-                        } else {
-                            inputDock
+                .padding(.horizontal, ScholiumSidebarLayout.textInset)
+                .padding(.vertical, ScholiumSidebarLayout.edgeInset)
+                .accessibilityIdentifier("scholium.chat.transcript.hydrating")
+            }
+        }
+        .onPreferenceChange(AgentChatReplyHydrationPreference.self) { states in
+            readingSession.observeReplyHydration(states)
+        }
+        .task(id: replyNavigation) {
+            guard let target = replyNavigation, target.conversationID == controller.selectedID else { return }
+            revealMessage(target.messageID)
+        }
+        .onChange(of: presentation.find.selectedID) { _, id in
+            if let id { expandedActivityIDs.insert(id) }
+            if let id,
+                let item = projection.items
+                    .first(where: { $0.messages.contains(where: { $0.id == id }) })
+            {
+                readingSession.navigate(to: item.id, in: projection.ids)
+            }
+        }
+        // The native safe area measures the complete dock. Replies can
+        // scroll beneath its glass while the viewport retains enough
+        // bottom inset to bring every final-message action into reach.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                if hasConversationAccessories {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                            conversationActivityButtons
+                            conversationNavigationButtons
+                        }.fixedSize(horizontal: true, vertical: false)
+                        VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                            conversationActivityButtons
+                            conversationNavigationButtons
                         }
                     }
+                }
+                if controller.selected?.isAvailable == false {
+                    Button("Restore Chat") {
+                        if let id = controller.selectedID {
+                            controller.setArchived(id, archived: false)
+                            didRestoreConversation()
+                        }
+                    }.buttonStyle(.glass).padding()
+                } else {
+                    inputDock
                 }
             }
         }
+        .safeAreaBar(edge: .top, spacing: 0) { conversationTopBar }
         .onAppear {
             if presentation.showsFind { refreshFind() }
             presentation.arrivalBaseline = Set(projection.messages.map(\.id))

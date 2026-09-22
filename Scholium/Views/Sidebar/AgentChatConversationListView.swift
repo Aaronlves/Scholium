@@ -26,6 +26,26 @@ struct AgentChatConversationListView: View {
     @State private var deletionTarget: UUID?
 
     var body: some View {
+        conversationList
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .safeAreaBar(edge: .top, spacing: 0) { conversationTopBar }
+            .alert(
+                "Delete Conversation?",
+                isPresented: Binding(
+                    get: { deletionTarget != nil }, set: { if !$0 { deletionTarget = nil } }
+                )
+            ) {
+                Button("Cancel", role: .cancel) { deletionTarget = nil }
+                Button("Delete", role: .destructive) {
+                    if let id = deletionTarget { controller.deleteConversation(id) }
+                    deletionTarget = nil
+                }
+            } message: {
+                Text("This permanently deletes the local conversation history and drafts. This cannot be undone.")
+            }
+    }
+
+    private var conversationTopBar: some View {
         VStack(spacing: 0) {
             AgentChatHeader(
                 title: state.showsArchived ? String(localized: "Archived Chats") : String(localized: "Chat"),
@@ -53,21 +73,6 @@ struct AgentChatConversationListView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("scholium.chat.filterStatus")
             }
-            conversationList
-        }
-        .alert(
-            "Delete Conversation?",
-            isPresented: Binding(
-                get: { deletionTarget != nil }, set: { if !$0 { deletionTarget = nil } }
-            )
-        ) {
-            Button("Cancel", role: .cancel) { deletionTarget = nil }
-            Button("Delete", role: .destructive) {
-                if let id = deletionTarget { controller.deleteConversation(id) }
-                deletionTarget = nil
-            }
-        } message: {
-            Text("This permanently deletes the local conversation history and drafts. This cannot be undone.")
         }
     }
 
