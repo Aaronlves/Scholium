@@ -101,10 +101,12 @@ struct AgentChatReadReply: View {
         // a retained reader must stay mounted while its source streams forward.
         .preference(
             key: AgentChatReplyReadyPreference.self,
-            value: ready || failure != nil || renderer.snapshot == nil)
+            value: ready || failure != nil || renderer.snapshot == nil
+        )
         .preference(
             key: AgentChatReplyHydrationPreference.self,
-            value: readerID.map { [$0: readerIsVisible || failure != nil] } ?? [:])
+            value: readerID.map { [$0: readerIsVisible || failure != nil] } ?? [:]
+        )
         .onDisappear {
             preview.close()
             renderer.cancel()

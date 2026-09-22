@@ -14,12 +14,13 @@ struct WritingContinuationContext: Equatable {
     let focus: String
 
     init?(snapshot: MarkdownSourceSelectionSnapshot, caret: Int) {
-        guard let sentence = Self.currentSentenceRange(
-            in: snapshot.source,
-            lowerBound: snapshot.sourceRange.utf16LowerBound,
-            upperBound: snapshot.sourceRange.utf16UpperBound,
-            caret: caret
-        ),
+        guard
+            let sentence = Self.currentSentenceRange(
+                in: snapshot.source,
+                lowerBound: snapshot.sourceRange.utf16LowerBound,
+                upperBound: snapshot.sourceRange.utf16UpperBound,
+                caret: caret
+            ),
             let preceding = Range(
                 NSRange(location: sentence.lowerBound, length: caret - sentence.lowerBound),
                 in: snapshot.source
@@ -74,8 +75,9 @@ struct WritingContinuationContext: Equatable {
             }
             var end = index + 1
             while end < characters.count, Self.isSentenceCloser(characters[end]) { end += 1 }
-            guard Self.isCJKSentenceTerminator(characters[index])
-                || end == characters.count || characters[end].isWhitespace
+            guard
+                Self.isCJKSentenceTerminator(characters[index])
+                    || end == characters.count || characters[end].isWhitespace
             else { return nil }
             return end
         }

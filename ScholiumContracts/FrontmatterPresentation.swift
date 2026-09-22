@@ -41,10 +41,12 @@ public enum FrontmatterPresentation {
     /// The input is not repaired or reserialized; the trailing boundary newline
     /// is omitted only because the closing delimiter owns that boundary.
     public static func lines(in frontmatter: String) -> [Line] {
-        let normalized = frontmatter
+        let normalized =
+            frontmatter
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        var lines = normalized
+        var lines =
+            normalized
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
         if lines.last == "" { lines.removeLast() }

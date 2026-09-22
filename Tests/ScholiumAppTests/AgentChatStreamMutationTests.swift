@@ -32,7 +32,8 @@ struct AgentChatStreamMutationTests {
         let second = try #require(controller.selectedID)
         controller.update(in: second) { $0.threadID = "second-thread" }
         controller.setUnread(first, unread: true)
-        let firstReader = UUID(), secondReader = UUID()
+        let firstReader = UUID()
+        let secondReader = UUID()
         let orderDate = controller.conversation(first)?.updatedAt
         controller.displayTranscript(first, readerID: firstReader)
         controller.displayTranscript(first, readerID: secondReader)
@@ -63,7 +64,8 @@ struct AgentChatStreamMutationTests {
         // Final aggregates also respect visible readers; completion and disconnect
         // retain the durable barrier even though ordinary deltas do not write.
         await controller.receive([
-            "method": .string("item/completed"), "params": .object([
+            "method": .string("item/completed"),
+            "params": .object([
                 "threadId": .string("second-thread"), "turnId": .string("turn"),
                 "item": .object([
                     "type": .string("agentMessage"), "id": .string("reply"),
@@ -116,9 +118,12 @@ struct AgentChatStreamMutationTests {
     }
 
     private static func delta(_ text: String, item: String = "reply", thread: String = "thread") -> [String: MCPJSONValue] {
-        ["method": .string("item/agentMessage/delta"), "params": .object([
-            "threadId": .string(thread), "turnId": .string("turn"),
-            "itemId": .string(item), "delta": .string(text),
-        ])]
+        [
+            "method": .string("item/agentMessage/delta"),
+            "params": .object([
+                "threadId": .string(thread), "turnId": .string("turn"),
+                "itemId": .string(item), "delta": .string(text),
+            ]),
+        ]
     }
 }

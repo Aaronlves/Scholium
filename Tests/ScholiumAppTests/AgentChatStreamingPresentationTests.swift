@@ -35,11 +35,15 @@ struct AgentChatStreamingPresentationTests {
         let input = Input()
         let readiness = Readiness()
         let host = NSHostingView(rootView: Reply(input: input, readiness: readiness))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 600),
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 600),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         func settle(_ condition: () async throws -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(10))
             while !(try await condition()) {
@@ -53,12 +57,14 @@ struct AgentChatStreamingPresentationTests {
         }
         try await settle { readiness.ready }
         let web = try #require(reader(host))
-        let selected = try await web.evaluateJavaScript("""
-            const range = document.createRange();
-            range.selectNodeContents(document.querySelector('#scholium-document strong'));
-            window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
-            window.getSelection().toString();
-            """) as? String
+        let selected =
+            try await web.evaluateJavaScript(
+                """
+                const range = document.createRange();
+                range.selectNodeContents(document.querySelector('#scholium-document strong'));
+                window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+                window.getSelection().toString();
+                """) as? String
         #expect(selected == "existing reply")
         let start = ContinuousClock.now
         for index in 0..<20 {

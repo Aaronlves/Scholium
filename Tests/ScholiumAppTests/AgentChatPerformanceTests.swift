@@ -55,14 +55,16 @@ struct AgentChatPerformanceTests {
             controller.editDraft("Synthetic draft edit \(index)")
         }
         let mutationDuration = mutationStart.duration(to: .now)
-        let mutationMilliseconds = Double(mutationDuration.components.attoseconds) / 1e15
+        let mutationMilliseconds =
+            Double(mutationDuration.components.attoseconds) / 1e15
             + Double(mutationDuration.components.seconds) * 1_000
 
         let flushStart = ContinuousClock.now
         try await controller.flushPersistence()
         let flushDuration = flushStart.duration(to: .now)
         let saves = await recorder.count
-        let flushMilliseconds = Double(flushDuration.components.attoseconds) / 1e15
+        let flushMilliseconds =
+            Double(flushDuration.components.attoseconds) / 1e15
             + Double(flushDuration.components.seconds) * 1_000
 
         #expect(saves == 1)
@@ -87,7 +89,8 @@ struct AgentChatPerformanceTests {
         let projection = AgentChatTimelineProjection(messages)
         let grouped = projection.items
         let duration = start.duration(to: .now)
-        let milliseconds = Double(duration.components.attoseconds) / 1e15
+        let milliseconds =
+            Double(duration.components.attoseconds) / 1e15
             + Double(duration.components.seconds) * 1_000
 
         #expect(grouped.count == 1)
@@ -154,7 +157,8 @@ struct AgentChatPerformanceTests {
         let start = ContinuousClock.now
         for _ in 0..<3 { host.layoutSubtreeIfNeeded() }
         let duration = start.duration(to: .now)
-        let milliseconds = Double(duration.components.attoseconds) / 1e15
+        let milliseconds =
+            Double(duration.components.attoseconds) / 1e15
             + Double(duration.components.seconds) * 1_000
         #expect(host.fittingSize.height > 0)
         print("CHAT_PERF process_layout_messages=\(messages.count) elapsed_ms=\(milliseconds)")
@@ -196,12 +200,13 @@ struct AgentChatPerformanceTests {
                     "threadId": .string("synthetic-thread"),
                     "turnId": .string("streaming-turn"),
                     "itemId": .string("streaming"),
-                    "delta": .string("x\(index)")
-                ])
+                    "delta": .string("x\(index)"),
+                ]),
             ])
         }
         let duration = start.duration(to: .now)
-        let milliseconds = Double(duration.components.attoseconds) / 1e15
+        let milliseconds =
+            Double(duration.components.attoseconds) / 1e15
             + Double(duration.components.seconds) * 1_000
 
         #expect(controller.selected?.messages.last?.text.count == 690)

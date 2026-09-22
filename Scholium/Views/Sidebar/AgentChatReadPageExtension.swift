@@ -193,7 +193,8 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                 height < 1_000_000
             else { return true }
             let width = payload["intrinsicWidth"] as? Double
-            guard payload["intrinsicWidth"] is NSNull
+            guard
+                payload["intrinsicWidth"] is NSNull
                     || width.map({ $0.isFinite && $0 > 0 && $0 < 1_000_000 }) == true,
                 let objects = ReadReplyObject.decode(payload["objects"])
             else { return true }

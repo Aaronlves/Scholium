@@ -27,10 +27,12 @@ struct DocumentPreviewLatencyTests {
             window.close()
         }
         for sample in 0..<8 {
-            let surface = DocumentFloatingEvent.preview(.init(
-                id: sample + 1, left: 280, top: 220, bottom: 240,
-                html: "<h2 class='scholium-preview-title'>Synthetic \(sample)</h2><div class='scholium-preview-body scholium-document'><p>Preview latency sample 中文。</p></div>",
-                css: ScholiumWebFonts.css))
+            let surface = DocumentFloatingEvent.preview(
+                .init(
+                    id: sample + 1, left: 280, top: 220, bottom: 240,
+                    html:
+                        "<h2 class='scholium-preview-title'>Synthetic \(sample)</h2><div class='scholium-preview-body scholium-document'><p>Preview latency sample 中文。</p></div>",
+                    css: ScholiumWebFonts.css))
             let start = ContinuousClock.now
             controller.present(surface, in: owner) { _, _, _ in true }
             let synchronous = start.duration(to: .now)

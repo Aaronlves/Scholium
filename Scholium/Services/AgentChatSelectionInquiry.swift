@@ -1,11 +1,16 @@
 import Foundation
-import ScholiumApplication
+
+/// The window's selectable writing operations. Transport stays with Chat.
+enum AgentChatWritingAssistanceOperation: Sendable {
+    case explain
+    case polish
+}
 
 /// A typed shortcut: the window captures source; writing assistance or Chat owns execution.
 struct AgentChatSelectionInquiry: Equatable, Sendable {
     let title: String
     let question: String?
-    var operation: CodexWritingAssistanceRequest.Operation? = nil
+    var operation: AgentChatWritingAssistanceOperation? = nil
 
     static var ask: Self { .init(title: ScholiumL10n.string("Ask Agent"), question: nil) }
     static var explain: Self {

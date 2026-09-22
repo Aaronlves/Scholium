@@ -29,7 +29,10 @@ struct AgentChatReadPageExtensionTests {
         let deadline = ContinuousClock.now.advanced(by: .seconds(5))
         while ContinuousClock.now < deadline {
             if (try? await webView.callAsyncJavaScript(
-                "return document.body?.id === 'fixture';", arguments: [:], in: nil, contentWorld: world)) as? Bool == true { break }
+                "return document.body?.id === 'fixture';", arguments: [:], in: nil, contentWorld: world)) as? Bool == true
+            {
+                break
+            }
             await Task.yield()
         }
         _ = try await webView.callAsyncJavaScript(
@@ -65,8 +68,9 @@ struct AgentChatReadPageExtensionTests {
         submit("first", source: "First prefix")
         var firstIsSuspended = false
         while ContinuousClock.now < deadline {
-            firstIsSuspended = (try await webView.callAsyncJavaScript(
-                "return typeof window.releaseReply === 'function';", arguments: [:], in: nil, contentWorld: world)) as? Bool == true
+            firstIsSuspended =
+                (try await webView.callAsyncJavaScript(
+                    "return typeof window.releaseReply === 'function';", arguments: [:], in: nil, contentWorld: world)) as? Bool == true
             if firstIsSuspended { break }
             await Task.yield()
         }
@@ -96,9 +100,10 @@ struct AgentChatReadPageExtensionTests {
         _ = try await webView.callAsyncJavaScript(
             "window.releaseReply();", arguments: [:], in: nil, contentWorld: world)
         while applied.isEmpty && failures == 0 && ContinuousClock.now < deadline { await Task.yield() }
-        let result = try #require(try await webView.callAsyncJavaScript(
-            "return {fingerprint: window.replyState.fingerprint, body: document.body.textContent};",
-            arguments: [:], in: nil, contentWorld: world) as? [String: String])
+        let result = try #require(
+            try await webView.callAsyncJavaScript(
+                "return {fingerprint: window.replyState.fingerprint, body: document.body.textContent};",
+                arguments: [:], in: nil, contentWorld: world) as? [String: String])
         #expect(failures == 0)
         #expect(applied == [latest])
         #expect(result["fingerprint"] == "latest")

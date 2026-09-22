@@ -108,7 +108,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
             configuration.defaultWebpagePreferences.allowsContentJavaScript = true
             ScholiumWebFontResources.install(in: configuration)
-            webView = pageExtension?.makeWebView(configuration: configuration)
+            webView =
+                pageExtension?.makeWebView(configuration: configuration)
                 ?? WKWebView(frame: .zero, configuration: configuration)
         }
         contentController.add(
@@ -342,11 +343,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             webView: WKWebView
         ) {
             let documentChanged = self.documentID != documentID || self.fingerprint != fingerprint
-            if documentChanged && !(pageExtension?.preservesPage(
-                currentDocumentID: self.documentID,
-                nextDocumentID: documentID,
-                hasLoadedPage: hasLoadedPage
-            ) == true) {
+            if documentChanged
+                && !(pageExtension?.preservesPage(
+                    currentDocumentID: self.documentID,
+                    nextDocumentID: documentID,
+                    hasLoadedPage: hasLoadedPage
+                ) == true)
+            {
                 loadedSignature = nil
                 finalizedSignature = nil
                 appliedLinkPreviewRevision = ""
@@ -442,40 +445,41 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 loadedSignature = signature
                 let generation = loadGeneration
                 let expectedDocumentID = documentID
-                let didStart = pageExtension?.updateIfNeeded(
-                    body: body,
-                    source: source,
-                    fingerprint: fingerprint,
-                    signature: signature,
-                    documentID: expectedDocumentID,
-                    loadGeneration: generation,
-                    presentationCSS: presentationCSS,
-                    userCSS: userCSS,
-                    in: webView,
-                    isCurrent: { [weak self, weak webView] in
-                        guard let self, let webView else { return false }
-                        return self.activeWebView === webView
-                            && self.loadGeneration == generation
-                            && self.loadedSignature == signature
-                    },
-                    didApply: { [weak self, weak webView] source, _ in
-                        guard let self, let webView,
-                            self.activeWebView === webView,
-                            self.loadedSignature == signature
-                        else { return }
-                        self.selectionSource = source
-                        self.sourceUTF16Length = source.utf16.count
-                        self.pageIsReady = true
-                        self.finalizedSignature = signature
-                        self.renderingReadinessIsAcknowledged = true
-                        webView.setAccessibilityIdentifier("scholium.renderedDocument.\(expectedDocumentID)")
-                        self.onRenderingReady?()
-                    },
-                    didFail: { [weak self] error in
-                        guard let self, self.loadedSignature == signature else { return }
-                        self.onRenderingFailure?(error.localizedDescription)
-                    }
-                ) == true
+                let didStart =
+                    pageExtension?.updateIfNeeded(
+                        body: body,
+                        source: source,
+                        fingerprint: fingerprint,
+                        signature: signature,
+                        documentID: expectedDocumentID,
+                        loadGeneration: generation,
+                        presentationCSS: presentationCSS,
+                        userCSS: userCSS,
+                        in: webView,
+                        isCurrent: { [weak self, weak webView] in
+                            guard let self, let webView else { return false }
+                            return self.activeWebView === webView
+                                && self.loadGeneration == generation
+                                && self.loadedSignature == signature
+                        },
+                        didApply: { [weak self, weak webView] source, _ in
+                            guard let self, let webView,
+                                self.activeWebView === webView,
+                                self.loadedSignature == signature
+                            else { return }
+                            self.selectionSource = source
+                            self.sourceUTF16Length = source.utf16.count
+                            self.pageIsReady = true
+                            self.finalizedSignature = signature
+                            self.renderingReadinessIsAcknowledged = true
+                            webView.setAccessibilityIdentifier("scholium.renderedDocument.\(expectedDocumentID)")
+                            self.onRenderingReady?()
+                        },
+                        didFail: { [weak self] error in
+                            guard let self, self.loadedSignature == signature else { return }
+                            self.onRenderingFailure?(error.localizedDescription)
+                        }
+                    ) == true
                 if didStart { return }
             }
             selectionSource = source

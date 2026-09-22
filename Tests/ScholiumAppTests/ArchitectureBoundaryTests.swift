@@ -45,7 +45,11 @@ struct ArchitectureBoundaryTests {
         #expect(package.contains(#".library(name: "ScholiumContracts""#))
         #expect(!package.contains(#".library(name: "ScholiumCore""#))
         #expect(compact.contains(#"name:"ScholiumApplication",dependencies:["ScholiumContracts","ScholiumCore"]"#))
-        #expect(compact.contains(#"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication",]"#))
+        let expectedAppDependencies = [
+            #"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication","#,
+            #".product(name:"ThinkingOrbs",package:"ThinkingOrbs"),]"#,
+        ].joined()
+        #expect(compact.contains(expectedAppDependencies))
     }
 
     @Test("Core and Application imports remain confined to composition roots")

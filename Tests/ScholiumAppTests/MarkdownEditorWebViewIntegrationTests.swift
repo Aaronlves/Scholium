@@ -1618,7 +1618,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         let list = try #require(currentList())
         let allLabels = list.items.map(\.label)
         #expect(allLabels.contains("Table") && allLabels.contains("Date"))
-        let initialWidth = list.superview?.frame.width
+        let initialWidthDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while (list.superview?.frame.width ?? 0) <= 0, ContinuousClock.now < initialWidthDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let initialWidth = try #require(list.superview?.frame.width, "Completion list did not finish its initial layout")
         try await verifyEditing("/\n")
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'tab');")
         try await waitForList(["Table"])

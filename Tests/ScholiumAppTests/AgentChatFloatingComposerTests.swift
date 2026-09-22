@@ -26,7 +26,8 @@ struct AgentChatFloatingComposerTests {
             question.turnID = "turn-\(index)"
             var reply = AgentChatMessage(
                 id: "reply-\(index)", role: .assistant,
-                text: "**Retained passage \(index)**\n\n" + String(repeating: "Synthetic source discussion with 中文, English, and exact reading continuity.\n\n", count: 12),
+                text: "**Retained passage \(index)**\n\n"
+                    + String(repeating: "Synthetic source discussion with 中文, English, and exact reading continuity.\n\n", count: 12),
                 phase: .finalAnswer)
             reply.turnID = question.turnID
             return [question, reply]
@@ -48,17 +49,24 @@ struct AgentChatFloatingComposerTests {
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
             showAccountUsage: {}, showDiagnostics: { _, _ in })
-        let host = NSHostingView(rootView: detail
-            .environment(\.colorScheme, adapted ? .dark : .light)
-            .environment(\.locale, Locale(identifier: adapted ? "zh-Hans" : "en")))
+        let host = NSHostingView(
+            rootView:
+                detail
+                .environment(\.colorScheme, adapted ? .dark : .light)
+                .environment(\.locale, Locale(identifier: adapted ? "zh-Hans" : "en")))
         host.sizingOptions = []
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: adapted ? 300 : 360, height: 680),
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: adapted ? 300 : 360, height: 680),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: adapted ? .accessibilityHighContrastDarkAqua : .aqua)
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
-        defer { window.orderOut(nil); window.contentView = nil; window.close() }
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
         func composer() -> AgentChatComposerHost? { descendants(host).compactMap { $0 as? AgentChatComposerHost }.first }
         func latestIsPositioned() -> Bool {
             guard session.isInitialTranscriptReady, session.viewportRequest == nil,
@@ -92,7 +100,8 @@ struct AgentChatFloatingComposerTests {
         let compactHeight = editor.frame.height
         window.makeFirstResponder(editor.editor)
         editor.editor.setSelectedRange(NSRange(location: 0, length: editor.editor.string.utf16.count))
-        editor.editor.insertText(String(repeating: "Latest-follow draft grows with 中文.\n", count: 9),
+        editor.editor.insertText(
+            String(repeating: "Latest-follow draft grows with 中文.\n", count: 9),
             replacementRange: editor.editor.selectedRange())
         try await settle(host) {
             editor.frame.height > compactHeight + 10 && latestIsPositioned()
@@ -103,9 +112,12 @@ struct AgentChatFloatingComposerTests {
         #expect(composer() === editor)
         editor.editor.setSelectedRange(NSRange(location: 0, length: editor.editor.string.utf16.count))
         editor.editor.insertText("", replacementRange: editor.editor.selectedRange())
-        try await settle(host, diagnostic: {
-            "height=\(editor.frame.height) compact=\(compactHeight) position=\(session.position) bottom=\(document.frame.height - scroll.contentView.bounds.maxY + scroll.contentInsets.bottom) inset=\(scroll.contentInsets.bottom)"
-        }) {
+        try await settle(
+            host,
+            diagnostic: {
+                "height=\(editor.frame.height) compact=\(compactHeight) position=\(session.position) bottom=\(document.frame.height - scroll.contentView.bounds.maxY + scroll.contentInsets.bottom) inset=\(scroll.contentInsets.bottom)"
+            }
+        ) {
             abs(editor.frame.height - compactHeight) < 2 && latestIsPositioned()
                 && !session.isRetainingPosition
         }
@@ -127,12 +139,14 @@ struct AgentChatFloatingComposerTests {
             }
         }
         let web = try #require(selectedReader)
-        let selected = try await web.evaluateJavaScript("""
-            const selection = window.getSelection();
-            const range = document.createRange();
-            range.selectNodeContents(document.querySelector('#scholium-document strong'));
-            selection.removeAllRanges(); selection.addRange(range); selection.toString();
-            """) as? String
+        let selected =
+            try await web.evaluateJavaScript(
+                """
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(document.querySelector('#scholium-document strong'));
+                selection.removeAllRanges(); selection.addRange(range); selection.toString();
+                """) as? String
         #expect(selected == "Retained passage 0")
         let shortHeight = editor.frame.height
         controller.editDraft(String(repeating: "Growing draft with 中文 and retained material.\n", count: 9))
@@ -180,7 +194,10 @@ struct AgentChatFloatingComposerTests {
         let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = scroll
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         func atBottom() -> Bool {
             abs(document.frame.height - scroll.contentView.bounds.maxY + scroll.contentInsets.bottom) < 1
         }

@@ -1,5 +1,4 @@
 import Foundation
-import ScholiumApplication
 import ScholiumContracts
 
 extension WindowModel {
@@ -152,7 +151,11 @@ extension WindowModel {
                     guard chat.connectionState == .ready, chat.account != nil else {
                         throw SelectionWritingError.notConnected
                     }
-                    let reply = try await chat.writingAssistance(.init(operation: operation, passage: attachment.text, model: model))
+                    let reply = try await chat.writingAssistance(
+                        operation: operation,
+                        passage: attachment.text,
+                        model: model
+                    )
                     guard self?.chatController === chat, WritingAssistancePreferences.shared.model == model else { throw CancellationError() }
                     return reply
                 },

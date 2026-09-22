@@ -133,7 +133,10 @@ struct AgentChatNoteMaterialTests {
                 ) { didContinueSelection = true }
             }
             try await wait { releaseSelection != nil }
-            #expect(chat.preparingMaterials.contains(target))
+            // A hidden Chat has no active destination. Ask Agent must capture
+            // a new conversation only after validation succeeds, rather than
+            // preparing the previously selected conversation.
+            #expect(chat.preparingMaterials.isEmpty)
             chat.select(other)
             releaseSelection?.resume(returning: true)
             releaseSelection = nil
@@ -143,6 +146,8 @@ struct AgentChatNoteMaterialTests {
             #expect(chat.selected?.attachments.isEmpty == true)
             chat.select(target)
             _ = try await window.runSelectionInquiry(.ask, validate: { true }) { didContinueSelection = true }
+            let selectionConversationID = try #require(chat.selectedID)
+            #expect(selectionConversationID != target && selectionConversationID != other)
             #expect(didContinueSelection && chat.selected?.attachments.first?.text == "Literal")
             #expect(chat.preparingMaterials.isEmpty)
             chat.removeAttachment(try #require(chat.selected?.attachments.first?.id))
@@ -161,16 +166,16 @@ struct AgentChatNoteMaterialTests {
             let preparationObservation = chat.$preparingMaterials.sink { preparationStates.append($0) }
             let retainedConversationIDs = chat.conversations.map(\.id)
             #expect(!(await window.addCurrentSelectionToChat()))
-            #expect(preparationStates.contains([target]) && chat.preparingMaterials.isEmpty)
+            #expect(preparationStates.contains([selectionConversationID]) && chat.preparingMaterials.isEmpty)
             #expect(chat.selected?.draft == "Keep @selection while source selection is unavailable")
             #expect(chat.conversations.map(\.id) == retainedConversationIDs)
             preparationObservation.cancel()
-            chat.setArchived(target, archived: true)
+            chat.setArchived(selectionConversationID, archived: true)
             #expect(chat.selected?.isAvailable == false)
             #expect(!(await window.addCurrentSelectionToChat()))
-            #expect(chat.selectedID == target && chat.conversations.map(\.id) == retainedConversationIDs)
+            #expect(chat.selectedID == selectionConversationID && chat.conversations.map(\.id) == retainedConversationIDs)
             #expect(chat.selected?.draft == "Keep @selection while source selection is unavailable")
-            chat.deleteConversation(target)
+            chat.deleteConversation(selectionConversationID)
             let remainingConversationIDs = chat.conversations.map(\.id)
             #expect(chat.selectedID == nil)
             #expect(!(await window.addCurrentSelectionToChat()))

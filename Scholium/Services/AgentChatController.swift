@@ -9,6 +9,17 @@ enum AgentChatInteractionReply {
     case runtime(AgentChatRuntimeApproval.Decision)
 }
 
+/// A window-facing result for inline writing. Application transport errors do
+/// not escape the Chat composition boundary.
+enum AgentChatWritingContinuationFailure: Error, Sendable {
+    case connectionError
+    case busy
+    case invalidContext
+    case noSuggestion
+    case serviceError
+    case timedOut
+}
+
 struct AgentChatApproval: Identifiable {
     let id: UUID
     let title: String
@@ -285,9 +296,66 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         models.filter(CodexWritingAssistance.supports)
     }
 
+    var isWritingAssistanceBusy: Bool { writingAssistanceExecution != nil }
+
     func canRequestWritingAssistance(model: String) -> Bool {
         connectionState == .ready && account != nil && !isRenewingSettings && !capabilities.isChanging
             && models.contains { $0.model == model && CodexWritingAssistance.supports($0) }
+    }
+
+    /// Isolated generation shares the authenticated transport, never Chat drafts,
+    /// retained conversations, materials, Skills or source-mutation admission.
+    func writingAssistance(
+        operation: AgentChatWritingAssistanceOperation,
+        passage: String,
+        model: String
+    ) async throws -> String {
+        let requestOperation: CodexWritingAssistanceRequest.Operation =
+            switch operation {
+            case .explain: .explain
+            case .polish: .polish
+            }
+        return try await writingAssistance(
+            .init(operation: requestOperation, passage: passage, model: model)
+        )
+    }
+
+    func continueWritingAssistance(
+        before: String,
+        after: String,
+        background: [String],
+        model: String
+    ) async throws -> Result<String, AgentChatWritingContinuationFailure> {
+        do {
+            return .success(
+                try await writingAssistance(
+                    .init(before: before, after: after, background: background, model: model)
+                )
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as CodexWritingAssistanceError {
+            let failure: AgentChatWritingContinuationFailure
+            switch error {
+            case .unavailable: failure = .connectionError
+            case .busy: failure = .busy
+            case .invalidContext: failure = .invalidContext
+            case .invalidOutput: failure = .noSuggestion
+            case .unsafeRuntime: failure = .serviceError
+            case .timedOut: failure = .timedOut
+            }
+            return .failure(failure)
+        } catch let error as CodexConnectionError {
+            let failure: AgentChatWritingContinuationFailure
+            switch error {
+            case .disconnected, .server: failure = .connectionError
+            case .timedOut: failure = .timedOut
+            case .invalidMessage: failure = .serviceError
+            }
+            return .failure(failure)
+        } catch {
+            return .failure(.serviceError)
+        }
     }
 
     /// Isolated generation shares the authenticated transport, never Chat drafts,

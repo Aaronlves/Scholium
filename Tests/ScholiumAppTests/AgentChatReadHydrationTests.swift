@@ -49,12 +49,17 @@ struct AgentChatReadHydrationTests {
             let hydration = Hydration()
             let host = NSHostingView(rootView: Transcript(appearance: appearance, hydration: hydration))
             host.sizingOptions = []
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 650),
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 340, height: 650),
                 styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
             window.contentView = host
             window.makeKeyAndOrderFront(nil)
-            defer { window.orderOut(nil); window.contentView = nil; window.close() }
+            defer {
+                window.orderOut(nil)
+                window.contentView = nil
+                window.close()
+            }
             let deadline = ContinuousClock.now.advanced(by: .seconds(10))
             var didSwitch = !switchDuringLoad
             while !hydration.complete && ContinuousClock.now < deadline {
@@ -69,7 +74,8 @@ struct AgentChatReadHydrationTests {
             if !hydration.complete {
                 print("CHAT_HYDRATION attempt=\(attempt) incomplete=\(hydration.states) readers=\(readers(host).count)")
                 for web in readers(host) {
-                    let state = try? await web.evaluateJavaScript("({state:document.readyState,height:document.querySelector('#scholium-document')?.getBoundingClientRect().height})")
+                    let state = try? await web.evaluateJavaScript(
+                        "({state:document.readyState,height:document.querySelector('#scholium-document')?.getBoundingClientRect().height})")
                     print("CHAT_HYDRATION page=\(web.accessibilityIdentifier()) state=\(String(describing: state))")
                 }
             }
