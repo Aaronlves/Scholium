@@ -5,6 +5,8 @@ import SwiftUI
 /// disabled presentation and accessibility; the shared content feedback owns
 /// only the pointer treatment.
 struct ScholiumContentActionButtonStyle: PrimitiveButtonStyle {
+    var restingRole: ScholiumColorRole = .secondaryText
+
     func makeBody(configuration: Configuration) -> some View {
         Button(role: configuration.role, action: configuration.trigger) {
             configuration.label
@@ -15,14 +17,16 @@ struct ScholiumContentActionButtonStyle: PrimitiveButtonStyle {
                 .contentShape(.rect)
         }
         .buttonStyle(.borderless)
-        .modifier(ScholiumContentActionFeedback())
+        .modifier(ScholiumContentActionFeedback(restingRole: restingRole))
     }
 }
 
 private struct ScholiumContentActionFeedback: ViewModifier {
+    var restingRole: ScholiumColorRole = .secondaryText
+
     func body(content: Content) -> some View {
         content
-            .scholiumContentControlInk()
+            .scholiumContentControlInk(resting: restingRole)
             .scholiumActivationPointer()
             .scholiumContentControlPointerFeedback(
                 in: RoundedRectangle(
@@ -52,11 +56,16 @@ private struct ScholiumIconControlModifier: ViewModifier {
 }
 
 extension View {
-    /// Native menus retain their menu host; their label supplies the same
-    /// target geometry as a compact action. Do not style individual menu items.
+    /// A button-backed native menu shares the action's complete activation and
+    /// feedback region, not the smaller borderless pop-up button's image rect.
+    /// Menu items keep their system-owned style.
     func scholiumContentActionMenu() -> some View {
-        menuStyle(.borderlessButton)
-            .buttonStyle(.borderless)
+        menuStyle(.button)
+            .buttonStyle(.plain)
+            .frame(
+                minWidth: ScholiumGrid.Dimension.preferredCustomTarget,
+                minHeight: ScholiumGrid.Dimension.preferredCustomTarget
+            )
             .modifier(ScholiumContentActionFeedback())
     }
 

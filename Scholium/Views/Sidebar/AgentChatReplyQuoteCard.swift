@@ -17,22 +17,11 @@ struct AgentChatReplyQuoteCard: View {
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "quote.opening").foregroundStyle(.secondary)
                         Text(verbatim: quote.text)
-                            .scholiumContentControlInk(
-                                resting: .primaryText,
-                                emphasized: .accent
-                            )
                             .lineLimit(2).multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .buttonStyle(.plain)
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
+                .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
                 .accessibilityLabel(Text("Reply Excerpt"))
                 .accessibilityValue(quote.text)
                 if let remove {

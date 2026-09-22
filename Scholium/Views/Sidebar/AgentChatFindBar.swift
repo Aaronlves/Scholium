@@ -40,7 +40,8 @@ struct AgentChatFindBar: View {
                 .help("Next Matching Message").accessibilityLabel("Next Matching Message")
                 .disabled(count == 0)
                 Button("Done", action: dismiss)
-            }.controlSize(.small)
+                    .accessibilityLabel("Done")
+            }.buttonStyle(ScholiumContentActionButtonStyle()).controlSize(.regular)
         }
         .padding(.horizontal, ScholiumSidebarLayout.textInset)
         .padding(.vertical, 8)

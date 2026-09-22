@@ -6,6 +6,7 @@ struct AgentChatQuestionForm: View {
     @Binding var answers: [String: AgentChatQuestionAnswer]
     let isSubmitting: Bool
     let failure: String?
+    var canSubmit = true
     var toolContext: String? = nil
     var technicalDetail: String? = nil
     var stop: (() -> Void)? = nil
@@ -24,7 +25,11 @@ struct AgentChatQuestionForm: View {
 
     private func advance() {
         guard !isSubmitting, let question = currentQuestion, answers[question.id]?.value(for: question) != nil else { return }
-        if questionIndex + 1 < questions.count { questionIndex += 1 } else if questions.allSatisfy({ answers[$0.id]?.value(for: $0) != nil }) { reply() }
+        if questionIndex + 1 < questions.count {
+            questionIndex += 1
+        } else if canSubmit && questions.allSatisfy({ answers[$0.id]?.value(for: $0) != nil }) {
+            reply()
+        }
     }
 
     var body: some View {
@@ -48,6 +53,7 @@ struct AgentChatQuestionForm: View {
                     AgentChatQuestionField(
                         question: question, isReadOnly: isSubmitting,
                         isLast: questionIndex == questions.count - 1,
+                        canAdvance: questionIndex < questions.count - 1 || canSubmit,
                         answer: Binding(get: { answers[question.id] }, set: { answers[question.id] = $0 }),
                         advance: advance
                     )
@@ -56,9 +62,13 @@ struct AgentChatQuestionForm: View {
                 }
             }
             if isSubmitting { AgentChatSubmissionStatus(failure: failure) }
+            if !isSubmitting, let failure {
+                Text(failure).font(.caption).foregroundStyle(.secondary)
+            }
             HStack(spacing: 12) {
                 if isSubmitting && failure != nil, let stop {
                     Button("End Turn", action: stop)
+                        .accessibilityLabel(Text("End Turn", bundle: .module))
                 }
                 if questionIndex > 0 && !isSubmitting {
                     Button {
@@ -69,8 +79,9 @@ struct AgentChatQuestionForm: View {
                         } icon: {
                             Image(systemName: "chevron.backward")
                         }
-                    }.labelStyle(.iconOnly)
+                    }.labelStyle(ScholiumSidebarActionLabelStyle())
                         .help(Text("Previous Question", bundle: .module))
+                        .accessibilityLabel(Text("Previous Question", bundle: .module))
                 }
                 if !isSubmitting {
                     Button(action: skip) {
@@ -87,7 +98,9 @@ struct AgentChatQuestionForm: View {
                                 Image(systemName: "forward.end")
                             }
                         }
-                    }.labelStyle(.iconOnly)
+                    }.labelStyle(ScholiumSidebarActionLabelStyle())
+                        .disabled(!canSubmit)
+                        .accessibilityLabel(Text(toolContext != nil ? "Decline Request" : "Skip Questions", bundle: .module))
                         .help(
                             Text(
                                 toolContext != nil
@@ -101,18 +114,15 @@ struct AgentChatQuestionForm: View {
                 }
                 if !isSubmitting, let question = currentQuestion, question.options.isEmpty || question.allowsOther {
                     Button(action: advance) {
-                        Label {
-                            Text(questionIndex == questions.count - 1 ? "Send Answer" : "Next Question", bundle: .module)
-                        } icon: {
-                            Image(systemName: questionIndex == questions.count - 1 ? "arrow.up" : "arrow.right")
-                        }
+                        AgentChatComposerIcon(content: .action(questionIndex == questions.count - 1 ? "arrow.up.circle.fill" : "arrow.right.circle.fill"))
                     }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .disabled(!hasCustomAnswer)
+                    .buttonStyle(ScholiumContentActionButtonStyle())
+                    .agentChatComposerControl()
+                    .help(Text(questionIndex == questions.count - 1 ? "Send Answer" : "Next Question", bundle: .module))
+                    .accessibilityLabel(Text(questionIndex == questions.count - 1 ? "Send Answer" : "Next Question", bundle: .module))
+                    .disabled(!hasCustomAnswer || (questionIndex == questions.count - 1 && !canSubmit))
                 }
-            }.buttonStyle(.borderless).controlSize(.regular)
+            }.buttonStyle(ScholiumContentActionButtonStyle()).controlSize(.regular)
 
         }
         .buttonStyle(.borderless)
@@ -126,6 +136,7 @@ private struct AgentChatQuestionField: View {
     let question: AgentChatQuestion
     let isReadOnly: Bool
     let isLast: Bool
+    let canAdvance: Bool
     @Binding var answer: AgentChatQuestionAnswer?
     let advance: () -> Void
     @AccessibilityFocusState private var promptIsFocused: Bool
@@ -164,19 +175,11 @@ private struct AgentChatQuestionField: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
-                        .scholiumContentControlInk(
-                            resting: .primaryText,
-                            emphasized: .accent
-                        )
                     }
-                    .buttonStyle(.borderless)
-                    .scholiumActivationPointer()
-                    .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
-                    )
+                    .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
+                    .disabled(!canAdvance)
+                    .accessibilityLabel(Text(verbatim: option.label))
+                    .accessibilityValue(Text(verbatim: option.description))
                     .accessibilityAddTraits(answer == .option(option.label) ? .isSelected : [])
                     .help(Text(isLast ? "Send Answer" : "Next Question", bundle: .module))
                 }

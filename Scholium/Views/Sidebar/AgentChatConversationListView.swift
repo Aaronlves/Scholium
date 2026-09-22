@@ -80,7 +80,7 @@ struct AgentChatConversationListView: View {
         } label: {
             ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.more.symbol)
         }
-        .scholiumSidebarHeaderControl()
+        .scholiumContentActionMenu().menuIndicator(.hidden)
         .help("Chat Options").accessibilityLabel("Chat Options")
         .accessibilityIdentifier("scholium.chat.archived")
     }

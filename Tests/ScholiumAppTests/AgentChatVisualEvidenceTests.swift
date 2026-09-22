@@ -304,7 +304,7 @@ struct AgentChatVisualEvidenceTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1"))
-    func renderQuestionForm() throws {
+    func renderQuestionForm() async throws {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let output = repository.appendingPathComponent(".build/agent-chat-evolution/renders")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
@@ -331,12 +331,23 @@ struct AgentChatVisualEvidenceTests {
                     toolContext: state == "tool" ? "fixture_library · choose_source" : nil,
                     technicalDetail: state == "tool" ? "Synthetic tool arguments" : nil, stop: {}, reply: {}, skip: {}
                 )
-                .frame(width: 340).background(Color(nsColor: .windowBackgroundColor))
+                .frame(width: 340, height: 420, alignment: .topLeading).background(Color(nsColor: .windowBackgroundColor))
                 .environment(\.colorScheme, scheme).environment(\.locale, Locale(identifier: "zh-Hans"))
                 let host = NSHostingView(rootView: content)
                 host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
                 host.frame = NSRect(origin: .zero, size: host.fittingSize)
-                host.layoutSubtreeIfNeeded()
+                let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.contentView = host
+                defer {
+                    window.contentView = nil
+                    window.close()
+                }
+                for _ in 0..<8 {
+                    window.layoutIfNeeded()
+                    host.layoutSubtreeIfNeeded()
+                    await Task.yield()
+                }
                 let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
                 host.cacheDisplay(in: host.bounds, to: bitmap)
                 try #require(bitmap.representation(using: .png, properties: [:]))
@@ -778,6 +789,7 @@ struct AgentChatVisualEvidenceTests {
                             Button("Choose File…", action: {})
                         } label: {
                             AgentChatComposerIcon(content: .add)
+                                .agentChatComposerControl()
                         }
                         .scholiumContentActionMenu()
                         .agentChatComposerControl()

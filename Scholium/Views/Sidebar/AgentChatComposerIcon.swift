@@ -7,6 +7,7 @@ struct AgentChatComposerIcon: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.scholiumContentControlIsEmphasized) private var isEmphasized
 
     enum Content {
         case add
@@ -43,7 +44,7 @@ struct AgentChatComposerIcon: View {
         if case .action = content {
             return Color(nsColor: isEnabled ? .controlAccentColor : .disabledControlTextColor)
         }
-        return Color(nsColor: .secondaryLabelColor)
+        return Color(nsColor: isEnabled && isEmphasized ? .labelColor : .secondaryLabelColor)
     }
 
     private var addImage: NSImage {
@@ -136,10 +137,13 @@ struct AgentChatComposerIcon: View {
 }
 
 extension View {
-    /// Controls, not their native menu labels, own activation and row geometry.
+    /// Put this inside a Menu label as well as on the control so its native
+    /// button-style activation includes the whitespace around the glyph.
     func agentChatComposerControl() -> some View {
         frame(
             width: ScholiumGrid.Dimension.preferredCustomTarget,
-            height: ScholiumGrid.Dimension.preferredCustomTarget)
+            height: ScholiumGrid.Dimension.preferredCustomTarget
+        )
+        .contentShape(.rect)
     }
 }

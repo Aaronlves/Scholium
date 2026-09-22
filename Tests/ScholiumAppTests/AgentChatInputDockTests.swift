@@ -289,6 +289,7 @@ struct AgentChatInputDockTests {
                 if ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1" {
                     try await Task.sleep(for: .milliseconds(100))
                     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                    try FileManager.default.createDirectory(at: repository.appendingPathComponent(".build/chat-input-dock"), withIntermediateDirectories: true)
                     let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
                     host.cacheDisplay(in: host.bounds, to: bitmap)
                     try #require(bitmap.representation(using: .png, properties: [:])).write(

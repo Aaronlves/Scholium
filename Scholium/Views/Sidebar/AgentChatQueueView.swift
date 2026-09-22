@@ -70,19 +70,9 @@ struct AgentChatQueueView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
-                            .scholiumContentControlInk(
-                                resting: .primaryText,
-                                emphasized: .accent
-                            )
                         }
                         .help(Text("Queued message", bundle: .module))
-                        .scholiumActivationPointer()
-                        .scholiumContentControlPointerFeedback(
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                style: .continuous
-                            )
-                        )
+                        .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
                         deliveryButton(message)
                         Menu {
                             Button {

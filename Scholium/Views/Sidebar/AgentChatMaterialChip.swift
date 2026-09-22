@@ -45,19 +45,8 @@ struct AgentChatMaterialChip: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .scholiumContentControlInk(
-                        resting: .primaryText,
-                        emphasized: .accent
-                    )
                 }
-                .buttonStyle(.plain)
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
+                .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
                 .help(attachment.relativePath)
                 .accessibilityLabel(Text("Preview material: \(title)"))
                 .accessibilityValue(Text("\(extent), \(source): \(excerpt.prefix(120))"))

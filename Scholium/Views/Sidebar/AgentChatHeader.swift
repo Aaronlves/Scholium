@@ -13,7 +13,7 @@ struct AgentChatHeader<Actions: View>: View {
                 Button(action: back) {
                     ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.back.symbol)
                 }
-                .scholiumSidebarHeaderControl()
+                .buttonStyle(ScholiumContentActionButtonStyle())
                 .help("Conversations").accessibilityLabel("Conversations")
                 .accessibilityIdentifier("scholium.chat.back")
             }
@@ -24,7 +24,7 @@ struct AgentChatHeader<Actions: View>: View {
                 Button(action: newConversation) {
                     ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.newConversation.symbol)
                 }
-                .scholiumSidebarHeaderControl()
+                .buttonStyle(ScholiumContentActionButtonStyle())
                 .disabled(!canCreate)
                 .help("New Conversation").accessibilityLabel("New Conversation")
                 .accessibilityIdentifier("scholium.chat.newConversation")

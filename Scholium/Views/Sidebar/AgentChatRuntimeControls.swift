@@ -78,6 +78,7 @@ struct AgentChatConfigurationMenu: View {
             }
         } label: {
             AgentChatComposerIcon(content: .reasoning(AgentChatControlLabels.effortGaugeLevel(effectiveEffort)))
+                .agentChatComposerControl()
         }
         .scholiumContentActionMenu()
         .menuIndicator(.hidden)

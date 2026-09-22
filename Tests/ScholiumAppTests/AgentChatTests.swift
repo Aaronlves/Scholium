@@ -275,6 +275,82 @@ struct AgentChatTests {
         await reopened.disconnect()
     }
 
+    @Test("Async answer availability follows delivery admission without requiring or consuming an answer")
+    func asyncQuestionAdmission() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("async-form")
+        controller.send()
+        try await eventually { controller.pendingAsyncQuestion != nil && !controller.isBusy }
+        let request = try #require(controller.pendingAsyncQuestion)
+        let owner = try #require(controller.selectedID)
+        controller.editDraft("Keep the ordinary draft")
+        let userCount = try #require(controller.selected?.messages.filter { $0.role == .user }.count)
+        #expect(controller.canSubmitAsyncQuestion(request.id))
+        #expect(!controller.canSubmitAsyncQuestion("missing-request"))
+        controller.answerAsyncQuestion(request.id)
+        #expect(controller.selected?.messages.filter { $0.role == .user }.count == userCount)
+        #expect(controller.pendingAsyncQuestion?.asyncQuestion?.answers.isEmpty == true)
+
+        controller.connectionState = .disconnected
+        #expect(!controller.canSubmitAsyncQuestion(request.id))
+        controller.answerAsyncQuestion(request.id, skip: true)
+        #expect(controller.pendingAsyncQuestion?.asyncQuestion?.pendingMessageID == nil)
+        controller.connectionState = .ready
+
+        controller.executions[owner]?.isRefreshingHistory = true
+        #expect(!controller.canSubmitAsyncQuestion(request.id))
+        controller.answerAsyncQuestion(request.id, skip: true)
+        #expect(controller.pendingAsyncQuestion?.asyncQuestion?.pendingMessageID == nil)
+        controller.executions[owner]?.isRefreshingHistory = false
+
+        let preferences = try #require(controller.selected?.preferences)
+        controller.update { $0.preferences.model = "unavailable-fixture-model" }
+        #expect(!controller.canSubmitAsyncQuestion(request.id))
+        controller.answerAsyncQuestion(request.id, skip: true)
+        #expect(controller.pendingAsyncQuestion?.asyncQuestion?.pendingMessageID == nil)
+        controller.update { $0.preferences = preferences }
+        #expect(controller.canSubmitAsyncQuestion(request.id))
+
+        controller.answerAsyncQuestion(request.id, skip: true)
+        #expect(!controller.canSubmitAsyncQuestion(request.id))
+        controller.answerAsyncQuestion(request.id, skip: true)
+        try await eventually { controller.pendingAsyncQuestion == nil }
+        #expect(controller.selected?.messages.filter { $0.role == .user }.count == userCount + 1)
+        #expect(controller.selected?.draft == "Keep the ordinary draft")
+        await controller.disconnect()
+        #expect(!controller.canSubmitAsyncQuestion(request.id))
+    }
+
+    @Test("Pending request count includes every async request and an approval awaiting confirmation")
+    func pendingRequestInventory() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("async-form")
+        controller.send()
+        try await eventually { controller.pendingAsyncQuestion != nil && !controller.isBusy }
+        let owner = try #require(controller.selectedID)
+        #expect(controller.pendingRequestCount == 1)
+        var second = AgentChatMessage(role: .assistant, text: "Another pending question")
+        second.asyncQuestion = .init(questions: [
+            .init(id: "second-question", prompt: "Which passage?", options: [], allowsOther: true, isSecret: false)
+        ])
+        controller.update { $0.messages.append(second) }
+        controller.executions[owner]?.approvals.append(
+            .init(id: UUID(), title: "Awaiting confirmation", detail: "", questions: [], runtimeDecision: .once))
+        #expect(controller.pendingRequestCount == 3)
+        controller.newConversation()
+        #expect(controller.pendingRequestCount == 0)
+        controller.select(owner)
+        #expect(controller.pendingRequestCount == 3)
+        controller.executions[owner]?.approvals.removeAll()
+        await controller.disconnect()
+    }
+
     @Test("Unanswered async questions restore with their drafts; skipping and uncertain recovery do not replay", arguments: [false, true])
     func asyncQuestionRecovery(uncertain: Bool) async throws {
         let root = try root()

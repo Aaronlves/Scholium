@@ -33,19 +33,8 @@ struct AgentChatLocalMaterialChip: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .scholiumContentControlInk(
-                        resting: .primaryText,
-                        emphasized: .accent
-                    )
                 }
-                .buttonStyle(.plain)
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
+                .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
                 .accessibilityLabel("Preview material: \(AgentChatLocalMaterialLabels.title(material))")
                 if let remove {
                     Button(action: remove) {

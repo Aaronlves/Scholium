@@ -29,7 +29,7 @@ struct AgentChatRuntimeApprovalView: View {
             if let decision {
                 Text(decision.label(locale: locale)).font(.callout).foregroundStyle(.secondary)
                 AgentChatSubmissionStatus(failure: failure)
-                if failure != nil { Button("End Turn", action: stop) }
+                if failure != nil { Button("End Turn", action: stop).accessibilityLabel(Text("End Turn", bundle: .module)) }
             } else {
                 if request.grants.isEmpty {
                     Text("This request has no supported grant here.", bundle: .module).font(.caption).foregroundStyle(.secondary)
@@ -50,13 +50,15 @@ struct AgentChatRuntimeApprovalView: View {
                 }.controlSize(.regular)
             }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.chat.runtimeApproval")
     }
 
     private var rejection: some View {
-        Button(request.rejection.label(locale: locale)) { respond(request.rejection) }.fixedSize()
+        Button(request.rejection.label(locale: locale)) { respond(request.rejection) }
+            .accessibilityLabel(Text(verbatim: request.rejection.label(locale: locale)))
+            .fixedSize()
     }
 
     @ViewBuilder

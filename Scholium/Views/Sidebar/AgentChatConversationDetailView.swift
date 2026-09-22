@@ -121,7 +121,7 @@ struct AgentChatConversationDetailView: View {
             } label: {
                 ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.more.symbol)
             }
-            .scholiumSidebarHeaderControl()
+            .scholiumContentActionMenu().menuIndicator(.hidden)
             .accessibilityLabel("Chat Options")
             .accessibilityIdentifier("scholium.chat.options")
             .popover(isPresented: contextIsPresented(at: .conversation), arrowEdge: .leading) {
@@ -215,7 +215,8 @@ struct AgentChatConversationDetailView: View {
                     earlier ? "Earlier Messages" : "Later Messages",
                     systemImage: earlier ? ScholiumSidebarAction.earlier.symbol : ScholiumSidebarAction.later.symbol)
             }
-            .buttonStyle(.borderless).font(.callout)
+            .buttonStyle(ScholiumContentActionButtonStyle()).font(.callout)
+            .accessibilityLabel(Text(earlier ? "Earlier Messages" : "Later Messages", bundle: .module))
             .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
             .accessibilityIdentifier(earlier ? "scholium.chat.earlier" : "scholium.chat.later")
         }
@@ -235,6 +236,8 @@ struct AgentChatConversationDetailView: View {
         return VStack(spacing: 0) {
             if controller.selected?.pendingMessageID != nil, !controller.isBusy {
                 Button("Continue Without Resending") { controller.confirmContinueAfterUncertainDelivery() }
+                    .buttonStyle(ScholiumContentActionButtonStyle())
+                    .accessibilityLabel("Continue Without Resending")
                     .padding(8)
             }
             VStack(spacing: 0) {
@@ -1083,7 +1086,7 @@ struct AgentChatConversationDetailView: View {
         } input: {
             AgentChatInputDock(
                 requestID: pending.map { "approval:\($0.id)" } ?? asyncMessage.map { "question:\($0.id)" }, requestTitle: title,
-                requestCount: controller.approvals.count + (asyncMessage == nil ? 0 : 1), isActive: isVisible,
+                requestCount: controller.pendingRequestCount, isActive: isVisible,
                 isReadingHistory: isAwayFromLatest || readingSession.isRetainingPosition || presentation.transcriptIsScrolling,
                 isEditingDraft: presentation.messageIsFocused
                     && (controller.selected?.draft.isEmpty == false
@@ -1103,6 +1106,8 @@ struct AgentChatConversationDetailView: View {
                             get: { controller.selected?.messages.first { $0.id == message.id }?.asyncQuestion?.answers ?? [:] },
                             set: { controller.editAsyncAnswers(message.id, values: $0) }),
                         isSubmitting: request.pendingMessageID != nil, failure: controller.error,
+                        canSubmit: controller.canSubmitAsyncQuestion(message.id),
+                        stop: controller.state == .working ? { controller.stop() } : nil,
                         reply: { controller.answerAsyncQuestion(message.id) },
                         skip: { controller.answerAsyncQuestion(message.id, skip: true) }
                     )
@@ -1238,6 +1243,7 @@ struct AgentChatConversationDetailView: View {
                     }
                 } label: {
                     AgentChatComposerIcon(content: .add)
+                        .agentChatComposerControl()
                 }
                 .scholiumContentActionMenu()
                 .agentChatComposerControl()
@@ -1311,6 +1317,7 @@ struct AgentChatConversationDetailView: View {
                 Text(approval.title).font(.headline).padding(.horizontal, 4)
                 if approval.updatePreview != nil {
                     Button("Review Changes") { presentation.comparisonRequest = approval }
+                        .accessibilityLabel("Review Changes")
                         .accessibilityIdentifier("scholium.chat.reviewProposedChanges")
                 }
                 AgentChatContentScroll {
@@ -1319,11 +1326,12 @@ struct AgentChatConversationDetailView: View {
                 }
                 HStack(spacing: 12) {
                     Button("Decline") { controller.answer(approval.id, allow: false) }
+                        .accessibilityLabel("Decline")
                     Spacer(minLength: 8)
                     Button("Allow Once") { controller.answer(approval.id, allow: true) }
                         .buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
                 }.controlSize(.regular)
-            }.buttonStyle(.borderless).id(approval.id)
+            }.buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText)).id(approval.id)
         }
     }
 }

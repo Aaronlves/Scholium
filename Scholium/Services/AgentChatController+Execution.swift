@@ -607,6 +607,18 @@ extension AgentChatController {
         return selected.messages.first { $0.asyncQuestion?.isPending == true }
     }
 
+    var pendingRequestCount: Int {
+        guard let selected, selected.isAvailable == true else { return 0 }
+        return approvals.count + selected.messages.filter { $0.asyncQuestion?.isPending == true }.count
+    }
+
+    /// Delivery availability is independent of answer completeness so Skip and
+    /// an offered final answer can be enabled before that answer is selected.
+    func canSubmitAsyncQuestion(_ id: String) -> Bool {
+        guard let selected, let message = asyncQuestionMessage(id, in: selected, skip: true) else { return false }
+        return canSend(message: message, in: selected)
+    }
+
     func editAsyncAnswers(_ id: String, values: [String: AgentChatQuestionAnswer]) {
         guard selected?.isAvailable == true else { return }
         update { conversation in
@@ -644,22 +656,28 @@ extension AgentChatController {
         }
     }
 
-    func answerAsyncQuestion(_ id: String, skip: Bool = false) {
-        guard let selected, let request = selected.messages.first(where: { $0.id == id })?.asyncQuestion,
+    private func asyncQuestionMessage(_ id: String, in conversation: AgentChatConversation, skip: Bool) -> AgentChatMessage? {
+        guard let request = conversation.messages.first(where: { $0.id == id })?.asyncQuestion,
             request.isPending, request.pendingMessageID == nil
-        else { return }
+        else { return nil }
         let replies = request.remaining.compactMap { question -> AgentChatQuestionReply? in
             guard let answer = skip ? "" : request.answers[question.id]?.value(for: question) else { return nil }
             return .init(questionItemId: question.id, question: question.prompt, answer: answer)
         }
-        guard replies.count == request.remaining.count else { return }
+        guard replies.count == request.remaining.count else { return nil }
         var message = AgentChatMessage(
             role: .user,
             text: replies.map {
                 $0.question + "\n" + ($0.answer.isEmpty ? ScholiumL10n.string("Skipped") : $0.answer)
             }.joined(separator: "\n\n"))
         message.questionReplies = replies
-        guard canSend(message: message, in: selected) else { return }
+        return message
+    }
+
+    func answerAsyncQuestion(_ id: String, skip: Bool = false) {
+        guard let selected, let message = asyncQuestionMessage(id, in: selected, skip: skip),
+            let replies = message.questionReplies, canSend(message: message, in: selected)
+        else { return }
         update(in: selected.id) { conversation in
             if let index = conversation.messages.firstIndex(where: { $0.id == id }) {
                 conversation.messages[index].asyncQuestion?.pendingMessageID = message.id
