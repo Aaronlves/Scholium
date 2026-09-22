@@ -6,6 +6,10 @@ struct AgentChatConnectionStatus: View {
     @Environment(\.openSettings) private var openSettings
     let showDiagnostics: (String) -> Void
 
+    private var executionError: String? {
+        controller.selectedID.flatMap { controller.executions[$0]?.error }
+    }
+
     @ViewBuilder
     var body: some View {
         if controller.isRenewingSettings {
@@ -21,14 +25,36 @@ struct AgentChatConnectionStatus: View {
             }
         } else if controller.isLoaded {
             if controller.connectionState == .disconnected {
-                ScholiumSidebarState(Text("Not Connected"), indicator: .symbol("network")) {
-                    Button("Connect Codex") { controller.connectConfigured() }
+                if let error = controller.connectionError {
+                    ScholiumSidebarState(
+                        Text("Connection Failed", bundle: .module),
+                        detail: Text("Retry the connection or open Diagnostics.", bundle: .module),
+                        indicator: .symbol("exclamationmark.triangle", role: .attention)
+                    ) {
+                        Button("Retry") { controller.connectConfigured() }
+                        Button("Diagnostics…") { showDiagnostics(error) }
+                    }
+                } else {
+                    ScholiumSidebarState(Text("Not Connected"), indicator: .symbol("network")) {
+                        Button("Connect Codex") { controller.connectConfigured() }
+                    }
                 }
             } else if controller.connectionState == .connecting {
                 ScholiumSidebarState(Text("Connecting…"), indicator: .progress)
             } else if controller.account == nil {
-                ScholiumSidebarState(Text("Sign-In Required"), indicator: .symbol("person.crop.circle")) {
-                    Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy)
+                if let error = controller.connectionError {
+                    ScholiumSidebarState(
+                        Text("Sign-In Failed", bundle: .module),
+                        detail: Text("Try signing in again or open Diagnostics.", bundle: .module),
+                        indicator: .symbol("exclamationmark.triangle", role: .attention)
+                    ) {
+                        Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy)
+                        Button("Diagnostics…") { showDiagnostics(error) }
+                    }
+                } else {
+                    ScholiumSidebarState(Text("Sign-In Required"), indicator: .symbol("person.crop.circle")) {
+                        Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy)
+                    }
                 }
             }
         }
@@ -52,12 +78,12 @@ struct AgentChatConnectionStatus: View {
                 Button("New Conversation") { controller.newConversation() }
             }
         }
-        if let error = controller.error {
+        if let error = executionError {
             ScholiumSidebarState(Text("Conversation Needs Attention"), indicator: .symbol("exclamationmark.triangle", role: .attention)) {
                 Button("Diagnostics…") {
                     showDiagnostics(error)
                 }
-                if controller.state == .disconnected {
+                if controller.connectionState == .disconnected {
                     Button("Agent Settings…") {
                         SettingsNavigationRequest.select(.agents, agentCategory: .connection)
                         openSettings()

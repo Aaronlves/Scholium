@@ -23,10 +23,6 @@ struct AgentChatConversationDetailView: View {
     var changesError: String? = nil
     @AppStorage(AgentChatInputBehavior.key) private var inputBehavior = AgentChatInputBehavior.steer
     @AppStorage(AgentChangeViewedLedger.key) private var viewedChangeData = Data()
-    private var readingIsPaused: Bool {
-        get { readingSession.isPaused }
-        nonmutating set { if newValue { readingSession.pause() } else { readingSession.isPaused = false } }
-    }
     private var isAwayFromLatest: Bool { readingSession.isAwayFromLatest }
     private var expandedActivityIDs: Set<String> {
         get { readingSession.expandedActivities }
@@ -184,9 +180,22 @@ struct AgentChatConversationDetailView: View {
     }
 
     private var timelineItems: [AgentChatTimelineItem] { AgentChatTimelineItem.group(timelineMessages) }
+    private var isHydratingHistory: Bool {
+        controller.isRefreshingHistory && controller.selected?.threadID != nil
+    }
     private var visibleTimelineItems: [AgentChatTimelineItem] {
         let items = timelineItems
         return Array(items[readingSession.history.range(in: items.map(\.id))])
+    }
+
+    private var visibleReplyReaderIDs: Set<String> {
+        Set(
+            visibleTimelineItems
+                .filter { !$0.isProcess }
+                .flatMap(\.messages)
+                .filter { !$0.text.isEmpty }
+                .map(\.id)
+        )
     }
 
     private func revealMessage(_ id: String) {
@@ -200,9 +209,7 @@ struct AgentChatConversationDetailView: View {
         let range = readingSession.history.range(in: ids)
         if earlier ? range.lowerBound > 0 : range.upperBound < ids.count {
             Button {
-                readingSession.viewport?.capture()
-                readingSession.pause()
-                if earlier { readingSession.history.earlier(in: ids) } else { readingSession.history.later(in: ids) }
+                readingSession.page(earlier: earlier, in: ids)
             } label: {
                 Label(
                     earlier ? "Earlier Messages" : "Later Messages",
@@ -230,18 +237,38 @@ struct AgentChatConversationDetailView: View {
                 Button("Continue Without Resending") { controller.confirmContinueAfterUncertainDelivery() }
                     .padding(8)
             }
-            Group {
+            VStack(spacing: 0) {
                 if presentation.showsFind {
                     AgentChatFindBar(
                         query: $presentation.find.query, focusRequest: presentation.findFocusRequest,
                         position: presentation.find.position, count: presentation.find.messageIDs.count,
                         move: { backwards in presentation.find.move(backwards: backwards) }, dismiss: dismissFind)
                 }
+                if isHydratingHistory, !timelineMessages.isEmpty {
+                    HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                        ProgressView().controlSize(.small)
+                        Text("Updating Conversation…", bundle: .module)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, ScholiumSidebarLayout.textInset)
+                    .padding(.vertical, ScholiumSidebarLayout.itemSpacing)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("scholium.chat.historyRefreshing")
+                }
                 ScrollView {
                     // Transcript geometry must describe the loaded messages, rather than
                     // LazyVStack's changing estimates as long replies enter the viewport.
                     VStack(alignment: .leading, spacing: ScholiumChatAppearance.messageSpacing) {
-                        if controller.selected?.messages.isEmpty != false {
+                        if isHydratingHistory, controller.selected?.messages.isEmpty != false {
+                            ScholiumContentStateView(
+                                title: Text("Loading Conversation…", bundle: .module),
+                                indicator: .progress,
+                                placement: .leading, density: .compact
+                            )
+                            .accessibilityIdentifier("scholium.chat.historyLoading")
+                        } else if controller.selected?.messages.isEmpty != false {
                             ScholiumContentStateView(
                                 title: Text("New Conversation"),
                                 detail: Text("Discuss your research here. Add a passage or name a note to begin."),
@@ -276,7 +303,6 @@ struct AgentChatConversationDetailView: View {
                         .accessibilityIdentifier("scholium.chat.transcript.content")
                 }
                 .accessibilityIdentifier("scholium.chat.transcript")
-                .defaultScrollAnchor(.top, for: .alignment)
                 .environment(
                     \.openURL,
                     OpenURLAction { url in
@@ -298,40 +324,38 @@ struct AgentChatConversationDetailView: View {
                         return .discarded
                     }
                 )
-                .environment(\.chatReadingInteraction, { readingIsPaused = true })
+                .environment(\.chatReadingInteraction, { readingSession.pause() })
                 .simultaneousGesture(TapGesture().onEnded { presentation.completion.dismiss() })
                 .scrollEdgeEffectHidden(true, for: .bottom)
                 .onScrollPhaseChange { _, phase in
                     presentation.transcriptIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
-                    readingSession.isScrolling = presentation.transcriptIsScrolling
-                    if phase == .tracking || phase == .interacting { readingSession.pause() }
-                    if phase == .idle { readingSession.viewport?.capture() }
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                        if hasConversationAccessories {
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                                    conversationActivityButtons
-                                    conversationNavigationButtons
-                                }.fixedSize(horizontal: true, vertical: false)
-                                VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                                    conversationActivityButtons
-                                    conversationNavigationButtons
-                                }
-                            }
-                        }
-                        if controller.selected?.isAvailable == false {
-                            Button("Restore Chat") {
-                                if let id = controller.selectedID {
-                                    controller.setArchived(id, archived: false)
-                                    didRestoreConversation()
-                                }
-                            }.buttonStyle(.glass).padding()
-                        } else {
-                            inputDock
-                        }
+                    if phase == .tracking || phase == .interacting {
+                        readingSession.beginUserScroll()
+                    } else if phase == .idle {
+                        readingSession.endUserScroll()
+                    } else {
+                        readingSession.isScrolling = presentation.transcriptIsScrolling
                     }
+                }
+                .frame(maxHeight: .infinity)
+                .opacity(readingSession.isInitialTranscriptReady ? 1 : 0)
+                .allowsHitTesting(readingSession.isInitialTranscriptReady)
+                .accessibilityHidden(!readingSession.isInitialTranscriptReady)
+                .overlay {
+                    if !readingSession.isInitialTranscriptReady, !visibleReplyReaderIDs.isEmpty {
+                        VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                            ProgressView().controlSize(.small)
+                            Text("Loading Conversation…", bundle: .module)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("scholium.chat.transcript.hydrating")
+                    }
+                }
+                .onPreferenceChange(AgentChatReplyHydrationPreference.self) { states in
+                    readingSession.observeReplyHydration(states)
                 }
                 .task(id: replyNavigation) {
                     guard let target = replyNavigation, target.conversationID == controller.selectedID else { return }
@@ -346,19 +370,45 @@ struct AgentChatConversationDetailView: View {
                         readingSession.navigate(to: item.id, in: projection.ids)
                     }
                 }
+                // Keep the dock in layout rather than floating it over the
+                // document. This makes the final marker and native viewport
+                // agree about the visible bottom edge on the first pass.
+                VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                    if hasConversationAccessories {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                                conversationActivityButtons
+                                conversationNavigationButtons
+                            }.fixedSize(horizontal: true, vertical: false)
+                            VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                                conversationActivityButtons
+                                conversationNavigationButtons
+                            }
+                        }
+                    }
+                    if controller.selected?.isAvailable == false {
+                        Button("Restore Chat") {
+                            if let id = controller.selectedID {
+                                controller.setArchived(id, archived: false)
+                                didRestoreConversation()
+                            }
+                        }.buttonStyle(.glass).padding()
+                    } else {
+                        inputDock
+                    }
+                }
             }
         }
         .onAppear {
             if presentation.showsFind { refreshFind() }
             presentation.arrivalBaseline = Set(projection.messages.map(\.id))
-            if !readingIsPaused { readingSession.history.latest(in: projection.ids) }
+            readingSession.mount(in: projection.ids, readerIDs: visibleReplyReaderIDs)
         }
         .onChange(of: projection.ids) { _, ids in
-            if !readingIsPaused { readingSession.history.latest(in: ids) }
+            readingSession.contentDidChange(in: ids, readerIDs: visibleReplyReaderIDs)
         }
         .onDisappear { presentation.arrivalBaseline = nil }
         .task { if isVisible && pendingRequest == nil && controller.pendingAsyncQuestion == nil { presentation.messageIsFocused = true } }
-        .id(controller.selectedID)
     }
 
     @ViewBuilder
@@ -366,23 +416,23 @@ struct AgentChatConversationDetailView: View {
         if item.isProcess {
             let turnID = item.messages.first?.turnID
             let status = projection.carriesTurnStatus(item) ? turnPresentation(turnID, projection: projection) : nil
-            let orbStyle = projection.activeActivityID(for: turnID) == nil ? status?.state.activityOrbStyle : nil
+            let activeActivityID = projection.activeActivityID(for: turnID)
             AgentChatProcessView(
                 messages: item.messages,
                 isActive: controller.isBusy && controller.currentTurnID != nil && item.messages.first?.turnID == controller.currentTurnID,
                 forceExpanded: presentation.showsFind && item.messages.contains { $0.id == presentation.find.selectedID },
                 status: status,
-                orbStyle: orbStyle,
-                preservesReading: isAwayFromLatest || readingIsPaused || presentation.transcriptIsScrolling,
+                preservesReading: isAwayFromLatest || readingSession.isRetainingPosition || presentation.transcriptIsScrolling,
                 hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
+                inspectedActivityIDs: expandedActivityIDs,
                 animates: isVisible && !reduceMotion && controller.approvals.isEmpty,
-                inspect: { readingIsPaused = true },
+                inspect: { readingSession.pause() },
                 userExpansion: Binding(
                     get: { readingSession.processExpansions[item.id] },
                     set: { readingSession.processExpansions[item.id] = $0 })
             ) { message in
                 if message.activity != nil {
-                    activityRow(message, activeActivityID: projection.activeActivityID(for: controller.currentTurnID))
+                    activityRow(message, activeActivityID: activeActivityID)
                 } else if let plan = message.plan {
                     AgentChatPlanView(
                         plan: plan,
@@ -391,20 +441,22 @@ struct AgentChatConversationDetailView: View {
                             set: { readingSession.planExpansions[message.id] = $0 }))
                 } else {
                     AgentChatMarkdown(
-                        text: message.text
+                        text: message.text, readerID: message.id
                     ).foregroundStyle(.secondary)
                 }
             }
         } else if let message = item.messages.first {
             if message.role == .assistant && projection.carriesTurnStatus(item) {
+                let status = turnPresentation(message.turnID, projection: projection)
                 AgentChatTurnStatus(
-                    presentation: turnPresentation(message.turnID, projection: projection),
+                    presentation: status,
                     animates: isVisible && !reduceMotion)
             }
             messageView(message)
             if message.role == .user && projection.carriesTurnStatus(item) {
+                let status = turnPresentation(message.turnID, projection: projection)
                 AgentChatTurnStatus(
-                    presentation: turnPresentation(message.turnID, projection: projection),
+                    presentation: status,
                     animates: isVisible && !reduceMotion)
             }
         }
@@ -432,7 +484,7 @@ struct AgentChatConversationDetailView: View {
                         }
                     } else if !message.text.isEmpty {
                         AgentChatMarkdown(
-                            text: message.text, expandsToFillWidth: message.role != .user,
+                            text: message.text, readerID: message.id, expandsToFillWidth: message.role != .user,
                             quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil)
                     }
                     if !message.attachments.isEmpty || !message.localMaterials.isEmpty {
@@ -517,7 +569,7 @@ struct AgentChatConversationDetailView: View {
     }
 
     private var allowsReplyMotion: Bool {
-        isVisible && !isAwayFromLatest && !readingIsPaused && !presentation.transcriptIsScrolling && !controller.isRefreshingHistory
+        isVisible && !isAwayFromLatest && !readingSession.isRetainingPosition && !presentation.transcriptIsScrolling && !controller.isRefreshingHistory
     }
 
     @ViewBuilder private func quoteCards(_ quotes: [AgentChatReplyQuote], editable: Bool) -> some View {
@@ -588,7 +640,7 @@ struct AgentChatConversationDetailView: View {
                         expansion: Binding(
                             get: { expandedActivityIDs.contains(message.id) },
                             set: { expanded in
-                                readingIsPaused = true
+                                readingSession.pause()
                                 if expanded { expandedActivityIDs.insert(message.id) } else { expandedActivityIDs.remove(message.id) }
                             }))
                 } else {
@@ -596,7 +648,7 @@ struct AgentChatConversationDetailView: View {
                         isExpanded: Binding(
                             get: { expandedActivityIDs.contains(message.id) },
                             set: { expanded in
-                                readingIsPaused = true
+                                readingSession.pause()
                                 if expanded { expandedActivityIDs.insert(message.id) } else { expandedActivityIDs.remove(message.id) }
                             })
                     ) {
@@ -684,7 +736,7 @@ struct AgentChatConversationDetailView: View {
 
     @ViewBuilder
     private func currentActivity(projection: AgentChatTimelineProjection) -> some View {
-        if controller.isBusy {
+        if controller.isBusy, !isHydratingHistory {
             let hasHeader =
                 controller.currentTurnID.map { turn in
                     !projection.messages(for: turn).isEmpty
@@ -694,21 +746,14 @@ struct AgentChatConversationDetailView: View {
                     let presentation = turnPresentation(controller.currentTurnID, projection: projection)
                     AgentChatTurnStatus(
                         presentation: presentation,
-                        animates: isVisible && !reduceMotion,
-                        orbStyle: presentation.state.activityOrbStyle
+                        animates: isVisible && !reduceMotion
                     )
                     .accessibilityIdentifier("scholium.chat.currentActivity")
-                } else {
+                } else if controller.state == .branching {
                     HStack {
                         Text(
-                            controller.state == .branching
-                                ? ScholiumL10n.string("Creating Branch…", locale: locale)
-                                : controller.isRefreshingHistory
-                                    ? ScholiumL10n.string("Loading Conversation…", locale: locale)
-                                    : ScholiumL10n.string("Connecting…", locale: locale))
-                        if controller.state == .branching {
-                            Button("Cancel") { controller.stop() }.accessibilityIdentifier("scholium.chat.cancelBranch")
-                        }
+                            ScholiumL10n.string("Creating Branch…", locale: locale))
+                        Button("Cancel") { controller.stop() }.accessibilityIdentifier("scholium.chat.cancelBranch")
                     }.font(.callout).foregroundStyle(.secondary)
                 }
             }
@@ -1039,7 +1084,7 @@ struct AgentChatConversationDetailView: View {
             AgentChatInputDock(
                 requestID: pending.map { "approval:\($0.id)" } ?? asyncMessage.map { "question:\($0.id)" }, requestTitle: title,
                 requestCount: controller.approvals.count + (asyncMessage == nil ? 0 : 1), isActive: isVisible,
-                isReadingHistory: isAwayFromLatest || readingIsPaused || presentation.transcriptIsScrolling,
+                isReadingHistory: isAwayFromLatest || readingSession.isRetainingPosition || presentation.transcriptIsScrolling,
                 isEditingDraft: presentation.messageIsFocused
                     && (controller.selected?.draft.isEmpty == false
                         || presentation.completion.isComposing),

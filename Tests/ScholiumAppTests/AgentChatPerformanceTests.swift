@@ -1,6 +1,8 @@
+import AppKit
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
+import SwiftUI
 import Testing
 
 @testable import ScholiumApp
@@ -91,6 +93,71 @@ struct AgentChatPerformanceTests {
         #expect(grouped.count == 1)
         #expect(grouped[0].messages.count == messages.count)
         print("CHAT_PERF timeline_messages=\(messages.count) grouped_items=\(grouped.count) elapsed_ms=\(milliseconds)")
+    }
+
+    @Test("Process browsing mounts a bounded tail and keeps inspected activity visible")
+    func processWindowKeepsBrowsingBounded() {
+        let messages = (0..<100).map {
+            AgentChatMessage(id: "activity-\($0)", role: .operation, text: "Synthetic activity")
+        }
+        let tail = AgentChatProcessWindow.indices(
+            messages: messages, loadedCount: AgentChatProcessWindow.pageSize, inspectedIDs: [])
+        #expect(tail == Array(68..<100))
+        #expect(AgentChatProcessWindow.hasEarlier(messages: messages, loadedCount: tail.count))
+
+        let inspected = AgentChatProcessWindow.indices(
+            messages: messages, loadedCount: tail.count, inspectedIDs: ["activity-5"])
+        #expect(inspected.contains(5))
+        #expect(inspected.last == 99)
+
+        let expanded = AgentChatProcessWindow.nextCount(
+            messages: messages, loadedCount: tail.count)
+        #expect(expanded == 64)
+    }
+
+    @Test("Long process presentation measures the mounted activity group")
+    func longProcessPresentationLayout() {
+        let messages = (0..<400).map { index in
+            AgentChatMessage(
+                id: "activity-\(index)", role: .operation, text: "",
+                activity: .init(
+                    kind: index == 399 ? .read : .tool,
+                    status: index == 399 ? .running : .completed,
+                    source: .runtime,
+                    subject: "synthetic-target-\(index)"))
+        }
+        let content = ScrollView {
+            AgentChatProcessView(
+                messages: messages,
+                isActive: true,
+                forceExpanded: true,
+                status: .init(state: .working, timing: .init(startedAt: Date(timeIntervalSinceNow: -12))),
+                animates: false,
+                userExpansion: .constant(true)
+            ) { message in
+                if let activity = message.activity {
+                    DisclosureGroup {
+                        Text("Synthetic retained details")
+                    } label: {
+                        AgentChatActivitySummary(activity: activity, noteTarget: nil, openNote: { _ in })
+                    }
+                    .disclosureGroupStyle(
+                        AgentChatDisclosureStyle(
+                            animates: false,
+                            symbol: activity.kind.symbol,
+                            orbStyle: AgentChatActivityOrbStyle.style(for: activity)))
+                }
+            }
+        }
+        let host = NSHostingView(rootView: content)
+        host.frame = NSRect(x: 0, y: 0, width: 420, height: 800)
+        let start = ContinuousClock.now
+        for _ in 0..<3 { host.layoutSubtreeIfNeeded() }
+        let duration = start.duration(to: .now)
+        let milliseconds = Double(duration.components.attoseconds) / 1e15
+            + Double(duration.components.seconds) * 1_000
+        #expect(host.fittingSize.height > 0)
+        print("CHAT_PERF process_layout_messages=\(messages.count) elapsed_ms=\(milliseconds)")
     }
 
     @Test("Streaming deltas use a bounded tail lookup")

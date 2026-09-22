@@ -63,8 +63,10 @@ continues. User messages align trailing in content-sized shared-Accent bubbles w
 legible full-opacity text. Repeated visible speaker labels are omitted; alignment
 and accessible speaker names retain authorship. Agent replies support natural long-form prose.
 One quiet status above each attributed Agent turn replaces its speaker label and
-serves as the process disclosure when process items exist. It describes observed
-research activity, followed by elapsed time only when runtime timing is known.
+serves as the process disclosure when process items exist. While a turn is
+active, it shows only `Working for … s` when runtime timing is known, or a
+short `Working…` fallback until timing is known; individual activity rows carry
+the observed research action and target.
 A pending asynchronous answer count remains beside the turn status even after
 runtime completion; it does not change that recorded outcome.
 Completion shows total turn duration, including waits, never private thinking time;

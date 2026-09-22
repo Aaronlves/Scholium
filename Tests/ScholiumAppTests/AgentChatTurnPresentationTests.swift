@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Research turn status and elapsed time")
 struct AgentChatTurnPresentationTests {
-    @Test("Only the latest running activity in the live turn can pulse")
+    @Test("Only the latest active activity in the live turn is current")
     func activeActivity() {
         func message(_ id: String, _ status: AgentChatActivity.Status, turn: String = "current") -> AgentChatMessage {
             var result = AgentChatMessage(
@@ -19,7 +19,7 @@ struct AgentChatTurnPresentationTests {
             message("running", .running), message("done", .completed),
             message("waiting", .waitingForInput), message("other", .running, turn: "other"),
         ]
-        #expect(AgentChatTimelineItem.activeActivityID(in: values, turnID: "current") == "running")
+        #expect(AgentChatTimelineItem.activeActivityID(in: values, turnID: "current") == "waiting")
         #expect(AgentChatTimelineItem.activeActivityID(in: values + [message("latest", .running)], turnID: "current") == "latest")
         #expect(AgentChatTimelineItem.activeActivityID(in: values, turnID: nil) == nil)
         #expect(AgentChatTimelineItem.activeActivityID(in: [message("done", .completed)], turnID: "current") == nil)
@@ -52,6 +52,8 @@ struct AgentChatTurnPresentationTests {
         let running = AgentChatTurnPresentation(state: .reading, timing: timing)
         #expect(running.seconds(at: start.addingTimeInterval(12)) == 12)
         #expect(running.elapsedLabel(at: start.addingTimeInterval(12), locale: Locale(identifier: "en")) == "Working for 12 s")
+        #expect(running.statusLabel(at: start.addingTimeInterval(12), locale: Locale(identifier: "en")) == "Working for 12 s")
+        #expect(AgentChatTurnPresentation(state: .working).statusLabel(at: start, locale: Locale(identifier: "en")) == "Working…")
         #expect(running.seconds(at: start.addingTimeInterval(-1)) == nil)
         #expect(AgentChatTurnPresentation(state: .working).seconds(at: start) == nil)
         for state in [AgentChatTurnPresentation.State.waitingForInput, .waitingForApproval, .uncertain, .stopping] {
@@ -63,6 +65,11 @@ struct AgentChatTurnPresentationTests {
             let presentation = AgentChatTurnPresentation(state: state, timing: timing)
             #expect(!presentation.isWorking && presentation.seconds(at: start.addingTimeInterval(500)) == 38)
             #expect(presentation.elapsedLabel(at: start.addingTimeInterval(500), locale: Locale(identifier: "en")) == "Worked for 38 s")
+            if state == .completed {
+                #expect(presentation.statusLabel(at: start.addingTimeInterval(500), locale: Locale(identifier: "en")) == "Worked for 38 s")
+            } else {
+                #expect(presentation.statusLabel(at: start.addingTimeInterval(500), locale: Locale(identifier: "en")).contains("Worked for 38 s"))
+            }
         }
     }
 

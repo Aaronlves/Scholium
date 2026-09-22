@@ -5,13 +5,14 @@ import SwiftUI
 
 struct AgentChatMarkdown: View {
     let text: String
+    var readerID: String? = nil
     var expandsToFillWidth = true
     var quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         AgentChatReadReply(
-            source: text, quote: quoteSelection, openLink: { openURL($0) },
+            source: text, readerID: readerID, quote: quoteSelection, openLink: { openURL($0) },
             fitsContent: !expandsToFillWidth
         )
         .font(ScholiumChatAppearance.messageFont)
@@ -27,7 +28,7 @@ struct AgentChatTimelineItem: Identifiable {
     var isProcess: Bool { Self.isProcess(messages[0]) }
     static func activeActivityID(in history: [AgentChatMessage], turnID: String?) -> String? {
         guard let turnID else { return nil }
-        return history.last { $0.turnID == turnID && $0.activity?.status == .running }?.id
+        return history.last { $0.turnID == turnID && $0.activity?.status.isActive == true }?.id
     }
     func carriesTurnStatus(in history: [AgentChatMessage]) -> Bool {
         guard let turn = messages.first?.turnID else { return false }
@@ -84,7 +85,7 @@ struct AgentChatTimelineProjection {
                 firstNonUserIDs[turnID] = message.id
             }
             if message.role == .user { lastUserIDs[turnID] = message.id }
-            if message.activity?.status == .running { activeActivityIDs[turnID] = message.id }
+            if message.activity?.status.isActive == true { activeActivityIDs[turnID] = message.id }
         }
         self.messagesByTurn = messagesByTurn
         self.activeActivityIDs = activeActivityIDs

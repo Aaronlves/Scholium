@@ -123,6 +123,7 @@ extension AgentChatController {
 
     func login() {
         guard let runtime, connectionState == .ready, !hasActiveExecutions else { return }
+        connectionError = nil
         let connectionID = connectionID
         connectionTask = Task { [weak self] in
             do {

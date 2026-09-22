@@ -19,13 +19,7 @@ struct AgentChatTurnPresentation: Equatable {
     }
     var titleKey: String.LocalizationValue {
         switch state {
-        case .working: "Considering your question…"
-        case .executing: "Executing a command…"
-        case .responding: "Composing a reply…"
-        case .reading: "Reading material…"
-        case .searching: "Looking through material…"
-        case .writing: "Revising notes…"
-        case .organizing: "Organizing the discussion…"
+        case .working, .executing, .responding, .reading, .searching, .writing, .organizing: "Working…"
         case .waitingForInput: "Waiting for your response"
         case .waitingForApproval: "Waiting for your permission"
         case .stopping: "Stopping…"
@@ -49,12 +43,24 @@ struct AgentChatTurnPresentation: Equatable {
         let key: String.LocalizationValue = isWorking ? "Working for %lld s" : "Worked for %lld s"
         return String(format: ScholiumL10n.string(key, locale: locale), seconds)
     }
+
+    func statusLabel(at now: Date, locale: Locale = .current) -> String {
+        if isWorking {
+            return elapsedLabel(at: now, locale: locale) ?? ScholiumL10n.string("Working…", locale: locale)
+        }
+        if state == .completed, let elapsed = elapsedLabel(at: now, locale: locale) {
+            return elapsed
+        }
+        if let elapsed = elapsedLabel(at: now, locale: locale) {
+            return ScholiumL10n.string(titleKey, locale: locale) + " · " + elapsed
+        }
+        return ScholiumL10n.string(titleKey, locale: locale)
+    }
 }
 
 struct AgentChatTurnStatus: View {
     let presentation: AgentChatTurnPresentation
     var animates = true
-    var orbStyle: AgentChatActivityOrbStyle? = nil
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.locale) private var locale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -69,18 +75,7 @@ struct AgentChatTurnStatus: View {
         ) { context in
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    if let orbStyle {
-                        AgentChatActivityOrb(style: orbStyle, animates: animates)
-                    }
-                    if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
-                        Text(elapsed)
-                    } else {
-                        Text(ScholiumL10n.string(presentation.titleKey, locale: locale))
-                        if let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
-                            Text("· " + elapsed)
-                                .accessibilityHidden(true)
-                        }
-                    }
+                    Text(presentation.statusLabel(at: context.date, locale: locale))
                 }
                 if presentation.pendingAnswers > 0 {
                     Text("\(presentation.pendingAnswers) answers pending", bundle: .module)

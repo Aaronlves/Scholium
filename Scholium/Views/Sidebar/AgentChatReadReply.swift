@@ -6,6 +6,7 @@ import SwiftUI
 /// spans prose, lists, code and horizontally scrolling tables.
 struct AgentChatReadReply: View {
     let source: String
+    var readerID: String? = nil
     let quote: ((AgentChatReplySelection) -> Void)?
     let openLink: (URL) -> Void
     var fitsContent = false
@@ -16,6 +17,7 @@ struct AgentChatReadReply: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @StateObject private var renderer = AgentChatReplyProjection()
     @State private var ready = false
+    @State private var hasMeasuredLayout = false
     @State private var height = ScholiumChatAppearance.messageLoadingHeight
     @State private var intrinsicWidth: CGFloat?
     @State private var objects: [ReadReplyObject] = []
@@ -35,50 +37,74 @@ struct AgentChatReadReply: View {
                     }
                 }
             } else if let projection = renderer.snapshot {
-                AgentChatReadWebViewSurface(
-                    documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
-                    source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
-                    onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
-                    renderingReadinessIsAcknowledged: ready,
-                    onRenderingFailure: { failure = $0 }, onRenderingLoading: { ready = false },
-                    onRenderingReady: { ready = true }, onEvent: { receive($0, expectedSource: projection.document.rawContent) }
-                )
-                .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
-                .frame(height: height)
-                .overlay(alignment: .topLeading) {
-                    ZStack(alignment: .topLeading) {
-                        ForEach(objects) { object in
-                            AgentChatRichObjectActions(
-                                object: object,
-                                copy: {
-                                    guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource) else { return false }
-                                    readingInteraction()
-                                    NSPasteboard.general.clearContents()
-                                    return NSPasteboard.general.setString(payload.copyText, forType: .string)
-                                },
-                                expand: { origin in
-                                    guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource) else { return }
-                                    readingInteraction()
-                                    preview.present(
-                                        title: ScholiumL10n.string(payload.kind == .diagram ? "Diagram" : payload.kind == .code ? "Code" : "Table"),
-                                        copyText: payload.copyText, from: origin
-                                    ) {
-                                        AgentChatRichContent(object: payload, naturalSize: object.naturalSize, openLink: openLink)
+                // Keep the readable native projection as the row's geometry until
+                // the dedicated reader has reported both a loaded page and its
+                // actual height. Mounting WebKit at the one-line loading height
+                // makes the whole transcript collapse and then expand on first
+                // entry, which is visible as a spurious scroll.
+                ZStack(alignment: .topLeading) {
+                    AgentChatReadWebViewSurface(
+                        documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
+                        source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
+                        onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
+                        renderingReadinessIsAcknowledged: ready,
+                        onRenderingFailure: { failure = $0 },
+                        onRenderingLoading: {
+                            ready = false
+                            hasMeasuredLayout = false
+                        },
+                        onRenderingReady: { ready = true },
+                        onEvent: { receive($0, expectedSource: projection.document.rawContent) }
+                    )
+                    .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
+                    .frame(height: height)
+                    .opacity(readerIsVisible ? 1 : 0)
+                    .allowsHitTesting(readerIsVisible)
+                    .overlay(alignment: .topLeading) {
+                        ZStack(alignment: .topLeading) {
+                            ForEach(objects) { object in
+                                AgentChatRichObjectActions(
+                                    object: object,
+                                    copy: {
+                                        guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource) else { return false }
+                                        readingInteraction()
+                                        NSPasteboard.general.clearContents()
+                                        return NSPasteboard.general.setString(payload.copyText, forType: .string)
+                                    },
+                                    expand: { origin in
+                                        guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource) else { return }
+                                        readingInteraction()
+                                        preview.present(
+                                            title: ScholiumL10n.string(payload.kind == .diagram ? "Diagram" : payload.kind == .code ? "Code" : "Table"),
+                                            copyText: payload.copyText, from: origin
+                                        ) {
+                                            AgentChatRichContent(object: payload, naturalSize: object.naturalSize, openLink: openLink)
+                                        }
                                     }
-                                }
-                            )
-                            .disabled(objectsSource != source || objectsSource != projection.document.rawContent)
-                            .frame(width: object.frame.width, height: object.frame.height, alignment: .topTrailing)
-                            .offset(x: object.frame.minX, y: object.frame.minY)
+                                )
+                                .disabled(objectsSource != source || objectsSource != projection.document.rawContent)
+                                .frame(width: object.frame.width, height: object.frame.height, alignment: .topTrailing)
+                                .offset(x: object.frame.minX, y: object.frame.minY)
+                            }
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    if !readerIsVisible { fallbackBody }
                 }
+                .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity, alignment: .leading)
+                .frame(height: readerIsVisible ? height : nil, alignment: .topLeading)
             } else {
-                ProgressView("Loading…")
+                fallbackBody
             }
         }
-        .preference(key: AgentChatReplyReadyPreference.self, value: ready || failure != nil)
+        // The native preview is an acceptable first paint when no reader exists;
+        // a retained reader must stay mounted while its source streams forward.
+        .preference(
+            key: AgentChatReplyReadyPreference.self,
+            value: ready || failure != nil || renderer.snapshot == nil)
+        .preference(
+            key: AgentChatReplyHydrationPreference.self,
+            value: readerID.map { [$0: readerIsVisible || failure != nil] } ?? [:])
         .onDisappear {
             preview.close()
             renderer.cancel()
@@ -87,7 +113,33 @@ struct AgentChatReadReply: View {
         .task(id: source) {
             preview.close()
             failure = nil
+            ready = false
+            hasMeasuredLayout = false
             renderer.submit(source)
+        }
+    }
+
+    private var readerIsVisible: Bool {
+        // Standalone readers are not part of transcript hydration and retain
+        // their direct interaction path. Only transcript-owned readers wait
+        // for the page's measured geometry before replacing the native preview.
+        readerID == nil || ready && hasMeasuredLayout
+    }
+
+    @ViewBuilder
+    private var fallbackBody: some View {
+        // Keep retained history readable while the exact WebKit projection is
+        // prepared. This is presentation-only; source and selection authority
+        // remain in the reader below.
+        let readable = MarkdownVisibleText.render(source)
+        if readable.isEmpty {
+            ProgressView("Loading…")
+        } else {
+            Text(verbatim: readable)
+                .font(ScholiumChatAppearance.messageFont)
+                .foregroundStyle(ScholiumChatAppearance.messageForeground)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -97,6 +149,7 @@ struct AgentChatReadReply: View {
         case .interaction: readingInteraction()
         case .layout(let value, let width, let objects):
             height = value
+            hasMeasuredLayout = true
             intrinsicWidth = width
             self.objects = objects.filter { renderer.snapshot?.objects[$0.id] != nil }
             objectsSource = expectedSource
@@ -217,5 +270,14 @@ private struct AgentChatRichObjectActions: View {
                 .accessibilityHidden(true)
         }
         .onDisappear { origin = nil }
+    }
+}
+
+/// Visible transcript readers report stable layout readiness independently of
+/// the animation preference used by a single arriving message.
+struct AgentChatReplyHydrationPreference: PreferenceKey {
+    static let defaultValue: [String: Bool] = [:]
+    static func reduce(value: inout [String: Bool], nextValue: () -> [String: Bool]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
     }
 }

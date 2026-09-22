@@ -17,6 +17,10 @@ struct AgentChatActivityOrbTests {
             AgentChatActivityOrbStyle.style(for: .init(kind: .delegation, source: .runtime)) == .weaving)
         #expect(
             AgentChatActivityOrbStyle.style(for: .init(kind: .read, source: .scholium)) == .working)
+        #expect(
+            AgentChatActivityOrbStyle.style(for: .init(kind: .create, source: .scholium)) == .composing)
+        #expect(
+            AgentChatActivityOrbStyle.style(for: .init(kind: .compaction, source: .runtime)) == .breathing)
 
         var searchCommand = AgentChatActivity(kind: .command, source: .runtime)
         searchCommand.commandAction = .init(kind: .search, target: "argument")
@@ -43,12 +47,4 @@ struct AgentChatActivityOrbTests {
         }
     }
 
-    @Test("Turn fallback uses a neutral Orb and never simulates private reasoning")
-    func turnFallbackMapping() {
-        #expect(AgentChatTurnPresentation.State.working.activityOrbStyle == .breathing)
-        #expect(AgentChatTurnPresentation.State.searching.activityOrbStyle == .searching)
-        #expect(AgentChatTurnPresentation.State.responding.activityOrbStyle == .composing)
-        #expect(AgentChatTurnPresentation.State.waitingForInput.activityOrbStyle == nil)
-        #expect(AgentChatTurnPresentation.State.uncertain.activityOrbStyle == nil)
-    }
 }

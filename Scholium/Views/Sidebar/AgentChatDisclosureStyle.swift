@@ -25,6 +25,9 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
         @State private var isHovered = false
         @State private var hasOpened = false
         @FocusState private var isFocused: Bool
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        private var effectiveAnimates: Bool { animates && !reduceMotion }
 
         private var showsChevron: Bool {
             (symbol == nil && orbStyle == nil) || configuration.isExpanded || isHovered || isFocused
@@ -35,12 +38,12 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
         private var indicator: some View {
             ZStack {
                 if let orbStyle {
-                    AgentChatActivityOrb(style: orbStyle, animates: animates)
+                    AgentChatActivityOrb(style: orbStyle, animates: effectiveAnimates)
                         .opacity(showsChevron ? 0 : 1)
                 } else if let symbol {
                     Image(systemName: symbol).opacity(showsChevron ? 0 : 1)
                 }
-                ScholiumSidebarDisclosureIndicator(isExpanded: configuration.isExpanded, animates: animates)
+                ScholiumSidebarDisclosureIndicator(isExpanded: configuration.isExpanded, animates: effectiveAnimates)
                     .opacity(showsChevron ? 1 : 0)
             }
             .font(.caption)
@@ -122,6 +125,10 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
                             .padding(.leading, indicatorWidth / 2)
                             .allowsHitTesting(false).accessibilityHidden(true)
                         }
+                        // DisclosureGroup does not provide a reliable vertical
+                        // proposal for nested retained readers. Give the mounted
+                        // process its intrinsic height so the outer transcript
+                        // owns one stable scroll geometry.
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(height: configuration.isExpanded ? nil : 0, alignment: .top)
                         .clipped()

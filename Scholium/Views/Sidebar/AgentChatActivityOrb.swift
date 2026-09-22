@@ -44,23 +44,12 @@ enum AgentChatActivityOrbStyle: Equatable, Sendable {
             return .connecting
         case .delegation:
             return .weaving
-        case .read, .readAttachment, .create, .update, .trash, .command, .files, .compaction:
+        case .create, .update:
+            return .composing
+        case .compaction:
+            return .breathing
+        case .read, .readAttachment, .trash, .command, .files:
             return .working
-        }
-    }
-}
-
-extension AgentChatTurnPresentation.State {
-    /// Fallback for the brief period before the runtime has emitted a public
-    /// activity row. A generic breathing state does not claim private thought.
-    var activityOrbStyle: AgentChatActivityOrbStyle? {
-        switch self {
-        case .working: .breathing
-        case .responding: .composing
-        case .reading, .writing, .executing, .organizing: .working
-        case .searching: .searching
-        case .waitingForInput, .waitingForApproval, .stopping,
-             .completed, .interrupted, .failed, .uncertain: nil
         }
     }
 }
@@ -86,8 +75,12 @@ struct AgentChatActivityOrb: View {
             isPaused: isPaused
         )
         .id(style)
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.18), value: style)
+        .transition(shouldAnimateStyle ? .opacity : .identity)
+        .animation(shouldAnimateStyle ? .easeInOut(duration: 0.18) : nil, value: style)
         .accessibilityHidden(true)
+    }
+
+    private var shouldAnimateStyle: Bool {
+        animates && !reduceMotion && contrast != .increased && activeState != .inactive
     }
 }

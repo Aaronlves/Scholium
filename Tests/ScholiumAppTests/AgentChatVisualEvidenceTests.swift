@@ -87,7 +87,7 @@ struct AgentChatVisualEvidenceTests {
                         presentation: .init(
                             state: state,
                             timing: .init(startedAt: Date(timeIntervalSinceNow: -12), durationMilliseconds: 38_500)),
-                        animates: false, orbStyle: state.activityOrbStyle)
+                        animates: false)
                 }
                 Divider()
                 AgentChatMarkdown(text: "这一区分还需要结合上下文核对。The distinction needs further support.\n\n**原文与解释**\n\n- 保留原文措辞。\n- 将重构与原文明说的理由区分开。")
@@ -827,7 +827,34 @@ struct AgentChatVisualEvidenceTests {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let styles: [AgentChatActivityOrbStyle] = [.breathing, .working, .searching, .connecting, .weaving, .composing]
         for scheme in [ColorScheme.light, .dark] {
-            let content = VStack(alignment: .leading, spacing: 8) {
+            let content = ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                AgentChatProcessView(
+                    messages: [
+                        AgentChatMessage(
+                            role: .operation,
+                            text: "",
+                            activity: .init(kind: .read, status: .running, source: .scholium))
+                    ],
+                    isActive: false,
+                    forceExpanded: false,
+                    status: .init(state: .reading, timing: .init(startedAt: Date(timeIntervalSinceNow: -6))),
+                    animates: false,
+                    userExpansion: .constant(true)
+                ) { message in
+                    if let activity = message.activity {
+                        DisclosureGroup {
+                            Text("Activity details")
+                        } label: {
+                            AgentChatActivitySummary(activity: activity, noteTarget: nil, openNote: { _ in })
+                        }
+                        .disclosureGroupStyle(
+                            AgentChatDisclosureStyle(
+                                animates: false,
+                                symbol: activity.kind.symbol,
+                                orbStyle: AgentChatActivityOrbStyle.style(for: activity)))
+                    }
+                }
                 ForEach(Array(styles.enumerated()), id: \.offset) { _, style in
                     DisclosureGroup {
                         Text("Activity details")
@@ -836,6 +863,7 @@ struct AgentChatVisualEvidenceTests {
                     }
                     .disclosureGroupStyle(
                         AgentChatDisclosureStyle(animates: false, symbol: "ellipsis", orbStyle: style))
+                }
                 }
             }
             .padding(20).frame(width: 280)

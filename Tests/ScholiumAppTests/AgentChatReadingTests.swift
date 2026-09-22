@@ -170,7 +170,7 @@ struct AgentChatReadingTests {
     func historyWindow() {
         let ids = (0..<300).map(String.init)
         var window = AgentChatHistoryWindow()
-        #expect(window.range(in: ids) == 276..<300)
+        #expect(window.range(in: ids) == 288..<300)
         window.reveal("80", in: ids)
         #expect(window.range(in: ids).contains(80))
         #expect(window.range(in: ids).count == AgentChatHistoryWindow.pageSize)
@@ -181,7 +181,7 @@ struct AgentChatReadingTests {
         window.later(in: ids)
         #expect(window.range(in: ids).count == 72)
         window.latest(in: ids)
-        #expect(window.range(in: ids) == 276..<300)
+        #expect(window.range(in: ids) == 288..<300)
         #expect(window.range(in: []).isEmpty)
     }
 
@@ -233,9 +233,19 @@ struct AgentChatReadingTests {
         viewport.viewDidMoveToWindow()
         viewport.reconcile()
         #expect(abs(scroll.contentView.bounds.minY - 1070) < 1)
+        session.navigate(to: "answer", in: ["answer"])
+        viewport.capture()
+        #expect(session.anchor == .init(id: "answer", offset: 0))
+        #expect(session.viewportRequest?.target == .anchor(.init(id: "answer", offset: 0)))
+        viewport.reconcile()
+        #expect(abs(scroll.contentView.bounds.minY - 950) < 1)
+        #expect(session.viewportRequest == nil)
         session.latest(in: ["answer"])
+        viewport.capture()
+        #expect(session.viewportRequest?.target == .latest)
         viewport.reconcile()
         #expect(abs(scroll.contentView.bounds.maxY - document.frame.height) < 1)
+        #expect(session.viewportRequest == nil)
     }
 
     @Test("A jump mounts older history and restores its actual native reading anchor")
@@ -275,6 +285,10 @@ struct AgentChatReadingTests {
             session.viewport?.reconcile()
         }
         try await settle("89")
+        let latestMarker = try #require(session.markers["89"]?.view)
+        let latestScroll = try #require(latestMarker.enclosingScrollView)
+        let latestDocument = try #require(latestScroll.documentView)
+        #expect(abs(latestScroll.contentView.bounds.maxY - latestDocument.frame.height) < 1)
         #expect(session.markers["5"]?.view == nil)
         session.navigate(to: "5", in: ids)
         try await settle("5")
@@ -282,12 +296,13 @@ struct AgentChatReadingTests {
         let scroll = try #require(marker.enclosingScrollView)
         let document = try #require(scroll.documentView)
         #expect(abs(marker.convert(marker.bounds, to: document).minY - scroll.contentView.bounds.minY) < 1)
-        #expect(session.isPaused)
+        #expect(session.isRetainingPosition)
         #expect(session.markers["89"]?.view == nil)
         session.latest(in: ids)
         try await settle("89")
-        #expect(!session.isPaused)
+        #expect(!session.isRetainingPosition)
         #expect(!session.isAwayFromLatest)
+        #expect(abs(latestScroll.contentView.bounds.maxY - latestDocument.frame.height) < 1)
     }
 
     @Test("All named reply actions fit the narrow reading grid without clipping controls")

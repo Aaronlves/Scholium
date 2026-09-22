@@ -1,4 +1,5 @@
 import AppKit
+import ScholiumApplication
 import ScholiumContracts
 import SwiftUI
 import Testing
@@ -137,8 +138,12 @@ struct AgentChatSidebarLifecycleTests {
                 guard let marker = session.markers[firstMessage.id]?.view,
                     let scroll = marker.enclosingScrollView, let document = scroll.documentView
                 else { return false }
-                return document.frame.height > scroll.contentView.bounds.height + 300 && findField(in: host) != nil
+                return document.frame.height > scroll.contentView.bounds.height + 300
+                    && abs(scroll.contentView.bounds.maxY - document.frame.height) < 1
+                    && findField(in: host) != nil
             }
+            #expect(!session.isRetainingPosition)
+            #expect(session.viewportRequest == nil)
             session.pause()
             session.anchor = .init(id: firstMessage.id, offset: -120)
             session.viewport?.reconcile()
@@ -171,7 +176,7 @@ struct AgentChatSidebarLifecycleTests {
                     - scroll.contentView.bounds.minY - scroll.contentInsets.top
                 return abs(offset - retainedAnchor.offset) < 2
             }
-            #expect(session.isPaused)
+            #expect(session.isRetainingPosition)
             #expect(findField(in: host)?.stringValue == "retained")
             #expect(composer(in: host)?.editor.string == "Unsent draft after background completion")
             try await controller.flushPersistence()
@@ -180,6 +185,103 @@ struct AgentChatSidebarLifecycleTests {
             throw error
         }
         await controller.disconnect()
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_CHAT_LONG_FIXTURE"] == "1"))
+    func firstEntryOfLongConversationRecordsNativeViewportStability() async throws {
+        _ = NSApplication.shared
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/long-entry-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let triptychID = UUID()
+        var conversation = AgentChatConversation(triptychID: triptychID)
+        conversation.title = "Synthetic long conversation"
+        conversation.threadID = "synthetic-long-conversation"
+        conversation.messages = (0..<36).flatMap { index in
+            let turnID = "synthetic-turn-\(index)"
+            var question = AgentChatMessage(
+                id: "synthetic-question-\(index)", role: .user,
+                text: "请继续核对第 \(index + 1) 组材料中的主张、依据与解释边界。")
+            question.turnID = turnID
+            var reply = AgentChatMessage(
+                id: "synthetic-reply-\(index)", role: .assistant,
+                text: "## 第 \(index + 1) 组核对\n\n"
+                    + String(repeating: "这是一段用于测试首次进入聊天时 WebKit 阅读器逐步测量高度的合成回复。它包含中文、English、列表和表格，以便暴露布局稳定性问题。\n\n", count: 4)
+                    + "- 保留来源文本。\n- 单独标出分析。\n\n"
+                    + "| 项目 | 状态 |\n|---|---|\n| 原文 | 已保留 |\n| 解释 | 待核对 |\n",
+                phase: .finalAnswer)
+            reply.turnID = turnID
+            return [question, reply]
+        }
+        let storage = AgentChatStorage(root: root.appendingPathComponent(triptychID.uuidString))
+        try await storage.save([conversation])
+
+        let controller = fixtureChatController(triptychID: triptychID, root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await settle { controller.isLoaded }
+
+        let presentation = AgentChatDetailPresentation()
+        let session = AgentChatReadingSession()
+        let projection = AgentChatTimelineProjection(conversation.messages)
+        let detail = AgentChatConversationDetailView(
+            controller: controller, isVisible: true, addSelection: { _ in false },
+            noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+            openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+            showConversationChanges: { _ in }, presentation: presentation, readingSession: session,
+            focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
+            newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
+            showAccountUsage: {}, showDiagnostics: { _, _ in })
+        let host = NSHostingView(rootView: AnyView(detail))
+        let window = mount(host)
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+
+        let latestID = try #require(projection.ids.last)
+        var samples: [CGFloat] = []
+        var visibleSamples: [CGFloat] = []
+        let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+        while ContinuousClock.now < deadline {
+            host.window?.layoutIfNeeded()
+            host.layoutSubtreeIfNeeded()
+            if let marker = session.markers[latestID]?.view,
+                let scroll = marker.enclosingScrollView, let document = scroll.documentView
+            {
+                samples.append(scroll.contentView.bounds.minY)
+                if session.isInitialTranscriptReady { visibleSamples.append(scroll.contentView.bounds.minY) }
+                if samples.count > 1, document.frame.height > scroll.contentView.bounds.height + 300,
+                    session.viewportRequest == nil, abs(scroll.contentView.bounds.maxY - document.frame.height) < 2
+                {
+                    // Keep sampling after the first valid bottom position so a later
+                    // reader measurement cannot hide a second jump.
+                    if samples.count > 80 { break }
+                }
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let scroll = try #require(session.markers[latestID]?.view?.enclosingScrollView)
+        let document = try #require(scroll.documentView)
+        let jumps = zip(samples, samples.dropFirst()).map { abs($1 - $0) }
+        let maximumJump = jumps.max() ?? 0
+        let visibleJumps = zip(visibleSamples, visibleSamples.dropFirst()).map { abs($1 - $0) }
+        let maximumVisibleJump = visibleJumps.max() ?? 0
+        let bottomDistance = max(0, document.frame.height - scroll.contentView.bounds.maxY + scroll.contentInsets.bottom)
+        let changedSamples = samples.enumerated().filter { index, value in
+            index == 0 || abs(value - samples[index - 1]) > 1
+        }.map { "\($0.offset):\($0.element)" }.joined(separator: ",")
+        print(
+            "CHAT_LONG_ENTRY messages=\(conversation.messages.count) samples=\(samples.count) "
+                + "max_jump=\(maximumJump) visible_samples=\(visibleSamples.count) "
+                + "max_visible_jump=\(maximumVisibleJump) bottom_distance=\(bottomDistance) "
+                + "changed=\(changedSamples)"
+        )
+        #expect(!samples.isEmpty)
+        #expect(!visibleSamples.isEmpty)
+        #expect(maximumVisibleJump < 2)
+        #expect(session.viewportRequest == nil)
+        #expect(bottomDistance < 2)
     }
 
     private func mount<Content: View>(_ host: NSHostingView<Content>) -> NSWindow {

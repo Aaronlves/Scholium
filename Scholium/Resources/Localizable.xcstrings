@@ -2985,6 +2985,16 @@
         }
       }
     },
+    "Sign-In Failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录失败"
+          }
+        }
+      }
+    },
     "Open Conversation": {
       "localizations": {
         "en": {
@@ -9799,22 +9809,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关联仍在刷新。请稍后再打开该链接。"
-          }
-        }
-      }
-    },
-    "Considering your question…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Considering your question…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在梳理问题…"
           }
         }
       }
@@ -24130,6 +24124,16 @@
         }
       }
     },
+    "Retry the connection or open Diagnostics.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请重试连接或打开诊断。"
+          }
+        }
+      }
+    },
     "Retry Edit" : {
       "localizations" : {
         "zh-Hans" : {
@@ -30840,6 +30844,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在更新文件"
+          }
+        }
+      }
+    },
+    "Updating Conversation…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在更新对话…"
+          }
+        }
+      }
+    },
+    "Try signing in again or open Diagnostics.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请重新登录或打开诊断。"
           }
         }
       }
