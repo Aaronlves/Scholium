@@ -259,7 +259,7 @@ public struct DocumentSourceAppearance: Codable, Hashable, Sendable {
     public var fontFamily: String
     public var fontSizePoints: Double
 
-    public init(fontFamily: String = "Courier", fontSizePoints: Double = 9.6) {
+    public init(fontFamily: String = "Menlo", fontSizePoints: Double = 11.5) {
         self.fontFamily = fontFamily
         self.fontSizePoints = fontSizePoints
     }

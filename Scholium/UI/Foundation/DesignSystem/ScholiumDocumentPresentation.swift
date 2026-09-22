@@ -46,9 +46,11 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
                   --scholium-rhythm-paragraph-gap: %.6fpx;
                 }
                 @media (max-width: %.6frem) {
+                  :root {
+                    --scholium-rhythm-inline-source: var(--scholium-rhythm-inline-narrow);
+                  }
                   .scholium-document,
-                  .cm-editor.scholium-live-mode .cm-content,
-                  .cm-editor.scholium-source-mode .cm-content {
+                  .cm-editor.scholium-live-mode .cm-content {
                     padding-inline: max(
                       var(--scholium-rhythm-inline-narrow),
                       calc(50%% - var(--scholium-document-half-line-width))
@@ -143,6 +145,7 @@ struct ScholiumDocumentContentInsets: Equatable, Sendable {
 /// renderer-aware until the visual comparison freezes the rhythm contract.
 enum ScholiumDocumentRhythm {
     static let narrowWidthThresholdRootEms = ScholiumGrid.Document.narrowWidthThresholdRootEms
+    static let sourceWorkWidthCharacterUnits = 82
     static let sourceLineHeight = 1.5
     static let codeBlockInset: CGFloat = 16
     static let quoteInlineInset = ScholiumGrid.Spacing.sectionSeparation

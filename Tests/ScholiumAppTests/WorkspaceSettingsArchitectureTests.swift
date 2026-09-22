@@ -525,7 +525,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains("store.removeAppearance"))
         #expect(appearanceSource.contains("AppearanceReadingEditor"))
         #expect(appearanceSource.contains("Picker(\"Body Font\", selection: $profile.settings.body.fontFamily)"))
-        #expect(appearanceSource.contains("\"Line width\""))
+        #expect(appearanceSource.contains("\"Reading line width\""))
         #expect(appearanceSource.contains("DocumentAppearanceSettings.lineWidthCharacterUnitsRange"))
         #expect(appearanceSource.contains("accessibilityUnit: \"character-width units\""))
         #expect(!appearanceSource.contains("Full width"))

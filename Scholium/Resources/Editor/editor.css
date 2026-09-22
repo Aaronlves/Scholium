@@ -35,6 +35,22 @@ body,
   line-height: var(--scholium-rhythm-source-line-height);
 }
 
+/* Keep structure chromatic but anchored to accessible document ink; the
+   platform Accent alone is not guaranteed to contrast with every Paper. */
+.cm-editor.scholium-source-mode {
+  --scholium-source-structure-ink: color-mix(
+    in srgb,
+    var(--scholium-color-primary-text) 75%,
+    var(--scholium-color-accent)
+  );
+}
+
+@media (prefers-contrast: more) {
+  .cm-editor.scholium-source-mode {
+    --scholium-source-structure-ink: var(--scholium-color-primary-text);
+  }
+}
+
 .cm-editor .cm-scroller .cm-content {
   box-sizing: border-box;
   min-width: 0;
@@ -48,6 +64,13 @@ body,
   font-size: var(--scholium-document-text-scale);
   caret-color: transparent;
   cursor: text;
+}
+
+/* Source's gutter and text share a centered work measure. Continuation rows
+   indent within their logical line without inserting a character. */
+.cm-editor.scholium-source-mode .cm-line {
+  padding-inline-start: 1.5ch;
+  text-indent: -1.5ch;
 }
 
 /* CodeMirror alone paints insertion points. WebKit's native caret can leave a
@@ -114,10 +137,34 @@ body,
   display: none;
 }
 
-.cm-gutters {
+#editor .cm-editor.scholium-source-mode .cm-gutters {
   color: var(--scholium-color-secondary-text);
-  background: color-mix(in srgb, var(--scholium-color-surface-background) 96%, var(--scholium-color-primary-text) 4%);
-  border-right: 1px solid var(--scholium-color-separator);
+  background: var(--scholium-color-document-background);
+  border-inline-end: 0;
+}
+
+.scholium-source-mode .cm-lineNumbers .cm-gutterElement {
+  padding-inline: 0.5ch 0.75ch;
+}
+
+.scholium-source-mode .cm-foldGutter .cm-gutterElement {
+  padding-inline: 0 0.5ch;
+}
+
+.scholium-source-mode .cm-source-heading,
+.scholium-source-mode .cm-source-link {
+  color: var(--scholium-source-structure-ink);
+}
+
+.scholium-source-mode .cm-source-yaml-key {
+  color: var(--scholium-source-structure-ink);
+}
+
+.scholium-source-mode .cm-source-marker,
+.scholium-source-mode .cm-source-meta,
+.scholium-source-mode .cm-source-url,
+.scholium-source-mode .cm-source-comment {
+  color: var(--scholium-color-secondary-text);
 }
 
 /* Live Preview projects the body while keeping the authored YAML envelope in

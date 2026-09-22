@@ -4,6 +4,7 @@ import type {
   Line,
   MarkdownConfig,
 } from "@lezer/markdown";
+import {styleTags, tags} from "@lezer/highlight";
 
 const SPACE = 0x20;
 const TAB = 0x09;
@@ -294,6 +295,16 @@ function parseFootnoteDefinition(cx: BlockContext, line: Line) {
  * authority for identities, diagnostics, and authored link occurrences.
  */
 export const scholiumMarkdownDialect: MarkdownConfig = {
+  props: [styleTags({
+    "WikiLink/...": tags.link,
+    "WikiLinkTarget WikiLinkAlias": tags.link,
+    "WikiLinkOpenMark WikiEmbedMark WikiLinkAliasMark WikiLinkCloseMark": tags.processingInstruction,
+    "FootnoteReference/... FootnoteDefinition/... InlineFootnote/...": tags.labelName,
+    "FootnoteOpenMark FootnoteCloseMark FootnoteDefinitionMark InlineFootnoteOpenMark": tags.processingInstruction,
+    "MathMark HighlightMark CalloutQuoteMark": tags.processingInstruction,
+    "CalloutRoleMark": tags.labelName,
+    "ObsidianComment/... UnclosedObsidianComment/... ObsidianCommentBlock/... UnclosedObsidianCommentBlock/...": tags.comment,
+  })],
   defineNodes: [
     "WikiLink", "WikiLinkOpenMark", "WikiEmbedMark",
     "WikiLinkTarget", "WikiLinkAliasMark", "WikiLinkAlias", "WikiLinkCloseMark",

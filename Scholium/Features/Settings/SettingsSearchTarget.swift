@@ -63,7 +63,7 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 "appearance.bodySize", .document, "Body font size", ["body size", "字号", "正文字号"],
                 section: "appearance.reading"),
             Self(
-                "appearance.width", .document, "Line width", ["line width", "行宽"],
+                "appearance.width", .document, "Reading line width", ["line width", "阅读行宽", "行宽"],
                 section: "appearance.reading"),
             Self(
                 "appearance.lineSpacing", .document, "Line spacing", ["line spacing", "行距"],

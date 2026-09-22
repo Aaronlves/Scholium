@@ -47,7 +47,8 @@ enum ScholiumWebDesignTokens {
             --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
             --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
             --scholium-document-source-font-size: \(number(defaults.source.fontSizePoints))pt;
-            --scholium-document-source-font-family: "Courier", ui-monospace, "SFMono-Regular", Menlo, monospace;
+            --scholium-document-source-font-family: "\(defaults.source.fontFamily)", ui-monospace, monospace;
+            --scholium-source-half-work-width: \(ScholiumDocumentRhythm.sourceWorkWidthCharacterUnits / 2)ch;
             --scholium-document-title-size: 180%;
             --scholium-document-title-line-height: 1.15;
             --scholium-document-title-after: 0.65em;
@@ -250,11 +251,18 @@ enum ScholiumWebDesignTokens {
         .cm-editor .cm-line[lang="zh-Hans"] {
           line-break: strict;
         }
-        .cm-editor.scholium-source-mode .cm-content {
+        .cm-editor.scholium-source-mode .cm-scroller {
+          box-sizing: border-box;
           padding-inline: max(
             var(--scholium-rhythm-inline-source),
-            calc(50% - var(--scholium-document-half-line-width))
+            calc(50% - var(--scholium-source-half-work-width))
           );
+        }
+        .cm-editor.scholium-source-mode .cm-content {
+          inline-size: 0;
+          flex: 1 1 0;
+          min-inline-size: 0;
+          padding-inline: 1ch 0;
         }
         :is(.scholium-document, .cm-editor) button:not(:disabled),
         :is(.scholium-document, .cm-editor) select:not(:disabled),

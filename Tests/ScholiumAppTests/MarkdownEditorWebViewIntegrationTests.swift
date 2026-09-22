@@ -2465,12 +2465,16 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Source mode preserves exact Markdown without semantic typography")
+    @Test("Source mode preserves exact Markdown with restrained syntax hierarchy")
     func sourceModeUsesExactSourceTypography() async throws {
         let source = """
+            ---
+            summary: Synthetic source hierarchy
+            ---
+
             # Exact heading
 
-            **Bold source** and *italic source* and ~~struck source~~ and [linked source](https://example.test).
+            **Bold source** and *italic source* and ~~struck source~~ and [linked source](https://example.test) plus [[Topic|alias]].
             """
         let harness = EditorHarness(source: source, initialMode: .source)
         defer { harness.close() }
@@ -2491,6 +2495,71 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot.visibleLineClassSummary.contains("**Bold source**"))
         #expect(snapshot.visibleLineClassSummary.contains("*italic source*"))
         #expect(snapshot.visibleLineClassSummary.contains("~~struck source~~"))
+        #expect(
+            (try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-source-mode .cm-source-heading').length;"
+            ) as? Int ?? 0) > 0
+        )
+        #expect(
+            (try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-source-mode .cm-source-marker').length;"
+            ) as? Int ?? 0) > 0
+        )
+        #expect(
+            (try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-source-mode .cm-source-yaml-key').length;"
+            ) as? Int ?? 0) > 0
+        )
+        #expect(
+            (try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-source-mode .cm-source-url').length;"
+            ) as? Int ?? 0) > 0
+        )
+        let sourceColors = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const editor = document.querySelector('.scholium-source-mode');
+                const color = selector => getComputedStyle(editor.querySelector(selector)).color;
+                const background = getComputedStyle(editor).backgroundColor;
+                const channels = value => {
+                    const values = value.match(/-?(?:\\d*\\.)?\\d+/g)?.slice(0, 3).map(Number) || [];
+                    return value.startsWith('color(') ? values.map(channel => channel * 255) : values;
+                };
+                const luminance = value => {
+                    const linear = channels(value).map(channel => {
+                        const component = channel / 255;
+                        return component <= 0.04045 ? component / 12.92
+                            : Math.pow((component + 0.055) / 1.055, 2.4);
+                    });
+                    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+                };
+                const ratio = value => {
+                    const first = luminance(value);
+                    const second = luminance(background);
+                    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+                };
+                const heading = color('.cm-source-heading:not(.cm-source-marker)');
+                const marker = color('.cm-source-marker');
+                const wikiTarget = [...editor.querySelectorAll('.cm-source-link')]
+                    .find(element => element.textContent === 'Topic');
+                return {
+                    distinctStructure: heading !== marker,
+                    yamlKeyUsesStructureInk: color('.cm-source-yaml-key') === heading,
+                    wikiTargetUsesStructureInk: wikiTarget
+                        ? getComputedStyle(wikiTarget).color === heading : false,
+                    minimumContrast: Math.min(...[
+                        '.cm-source-heading:not(.cm-source-marker)', '.cm-source-link',
+                        '.cm-source-yaml-key', '.cm-source-marker',
+                        '.cm-source-url', '.cm-source-comment'
+                    ].filter(selector => editor.querySelector(selector)).map(selector => ratio(color(selector))))
+                };
+                """
+            ) as? [String: Any]
+        )
+        #expect(sourceColors["distinctStructure"] as? Bool == true)
+        #expect(sourceColors["yamlKeyUsesStructureInk"] as? Bool == true)
+        #expect(sourceColors["wikiTargetUsesStructureInk"] as? Bool == true)
+        #expect((sourceColors["minimumContrast"] as? NSNumber)?.doubleValue ?? 0 >= 4.5)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         let before = harness.session.context?.selections
         var profile = DocumentAppearanceProfile(name: "Source font fixture")
@@ -7226,15 +7295,19 @@ struct MarkdownEditorWebViewIntegrationTests {
                     && $0.presentation.viewportWidth > 704
                     && $0.presentation.rootLineWidth
                         == "\(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch"
-                    && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > 40
+                    && $0.presentation.documentFontFamily.contains("Menlo")
             }
             #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
-            #expect(regularSourceGrid.presentation.documentFontFamily.contains("Courier"))
             #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
 
-            let regularSourceInset = try #require(
-                Double(regularSourceGrid.contentPaddingInlineStart.dropLast(2))
-            )
+            let regularSourceInset = try #require(try await harness.callPageJavaScript(
+                "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-source-mode .cm-scroller')).paddingInlineStart);"
+            ) as? Double)
+            let gutterGap = try #require(try await harness.callPageJavaScript(
+                "return document.querySelector('.scholium-source-mode .cm-content').getBoundingClientRect().left - document.querySelector('.scholium-source-mode .cm-gutters').getBoundingClientRect().right;"
+            ) as? Double)
+            #expect(regularSourceInset > 40)
+            #expect(gutterGap >= 0 && gutterGap < 32)
             let selectionBeforeLineWidthChange = harness.session.context?.selections
             let undoBeforeLineWidthChange = harness.session.context?.undoLabel
             let scrollAnchorBeforeLineWidthChange = try await harness.session.currentScrollAnchor()
@@ -7252,13 +7325,16 @@ struct MarkdownEditorWebViewIntegrationTests {
                     + DocumentAppearanceStyles.css(for: narrowMeasureProfile)
             )
             let customSourceGrid = try await harness.waitUntilPresentation(
-                stage: "custom Source line width"
+                stage: "reading line width leaves Source measure independent"
             ) {
                 $0.label == "Markdown source editor"
                     && $0.presentation.rootLineWidth == "48ch"
-                    && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > regularSourceInset
             }
-            #expect(customSourceGrid.presentation.documentFontFamily.contains("Courier"))
+            let customSourceInset = try #require(try await harness.callPageJavaScript(
+                "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-source-mode .cm-scroller')).paddingInlineStart);"
+            ) as? Double)
+            #expect(abs(customSourceInset - regularSourceInset) < 1)
+            #expect(customSourceGrid.presentation.documentFontFamily.contains("Menlo"))
             #expect(customSourceGrid.isFocused)
             #expect(harness.session.context?.selections == selectionBeforeLineWidthChange)
             #expect(harness.session.context?.undoLabel == undoBeforeLineWidthChange)

@@ -902,11 +902,11 @@ private struct AppearanceReadingEditor: View {
                         .frame(width: ScholiumMetrics.Settings.unitLabelWidth, alignment: .leading)
                 }
             }
-            LabeledContent("Line width") {
+            LabeledContent("Reading line width") {
                 AppearanceDoubleValueControl(
                     value: $profile.settings.lineWidthCharacterUnits,
                     range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange,
-                    step: 1, suffix: "ch", precision: 0, title: "Line width",
+                    step: 1, suffix: "ch", precision: 0, title: "Reading line width",
                     accessibilityUnit: "character-width units")
             }
             LabeledContent("Line spacing") {

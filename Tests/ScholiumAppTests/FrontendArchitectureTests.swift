@@ -2889,6 +2889,7 @@ struct FrontendArchitectureTests {
         ]
         #expect(sourceModeExtensions.contains("EditorView.lineWrapping"))
         #expect(sourceModeExtensions.contains("sourceTextDirection"))
+        #expect(sourceModeExtensions.contains("sourceHighlighting"))
         #expect(!liveModeExtensions.contains("sourceTextDirection"))
         #expect(sourceModeExtensions.contains("editorModeFacet.of(\"source\")"))
         #expect(sourceModeExtensions.contains("EditorView.editorAttributes.of"))
@@ -2934,6 +2935,7 @@ struct FrontendArchitectureTests {
 
         #expect(editorStyles.contains(".scholium-live-mode .cm-lineNumbers"))
         #expect(editorStyles.contains(".scholium-source-mode .cm-activeLine"))
+        #expect(editorStyles.contains(".scholium-source-mode .cm-source-heading"))
         #expect(editorStyles.contains(".scholium-live-mode .cm-activeLine"))
         #expect(editorStyles.contains("#editor .cm-editor.scholium-live-mode .cm-scroller"))
         #expect(editorStyles.contains("#editor .cm-editor.scholium-source-mode .cm-scroller"))
@@ -3712,6 +3714,7 @@ struct FrontendArchitectureTests {
         #expect(sharedCSS.contains("--scholium-content-focus-ring: var(--scholium-color-accent);"))
         #expect(sharedCSS.contains("--scholium-document-line-width: 66ch"))
         #expect(sharedCSS.contains("--scholium-document-half-line-width: 33ch"))
+        #expect(sharedCSS.contains("--scholium-source-half-work-width: 41ch"))
         #expect(sharedCSS.contains("text-autospace: normal;"))
         #expect(sharedCSS.contains("text-spacing-trim: trim-both;"))
         #expect(sharedCSS.contains("hyphens: none;"))
@@ -3729,6 +3732,7 @@ struct FrontendArchitectureTests {
         #expect(sharedCSS.contains("inline-size: 100%;"))
         #expect(sharedCSS.contains("calc(50% - var(--scholium-document-half-line-width))"))
         #expect(sharedCSS.contains(".cm-editor.scholium-source-mode .cm-content"))
+        #expect(sharedCSS.contains(".cm-editor.scholium-source-mode .cm-scroller"))
         #expect(sharedCSS.contains("var(--scholium-color-primary-text) 90%"))
         #expect(sharedCSS.contains("var(--scholium-color-document-background)"))
         #expect(sharedCSS.contains("color: var(--scholium-color-primary-text);"))

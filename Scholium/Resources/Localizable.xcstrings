@@ -16400,18 +16400,18 @@
         }
       }
     },
-    "Line width" : {
+    "Reading line width" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Line width"
+            "value" : "Reading line width"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "行宽"
+            "value" : "阅读行宽"
           }
         }
       }

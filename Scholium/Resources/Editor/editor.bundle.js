@@ -17150,6 +17150,106 @@
       scope
     };
   }
+  function highlightTags(highlighters, tags3) {
+    let result = null;
+    for (let highlighter of highlighters) {
+      let value = highlighter.style(tags3);
+      if (value)
+        result = result ? result + " " + value : value;
+    }
+    return result;
+  }
+  function highlightTree(tree, highlighter, putStyle, from = 0, to = tree.length) {
+    let builder = new HighlightBuilder(from, Array.isArray(highlighter) ? highlighter : [highlighter], putStyle);
+    builder.highlightRange(tree.cursor(), from, to, "", builder.highlighters);
+    builder.flush(to);
+  }
+  var HighlightBuilder = class {
+    constructor(at, highlighters, span) {
+      this.at = at;
+      this.highlighters = highlighters;
+      this.span = span;
+      this.class = "";
+    }
+    startSpan(at, cls) {
+      if (cls != this.class) {
+        this.flush(at);
+        if (at > this.at)
+          this.at = at;
+        this.class = cls;
+      }
+    }
+    flush(to) {
+      if (to > this.at && this.class)
+        this.span(this.at, to, this.class);
+    }
+    highlightRange(cursor, from, to, inheritedClass, highlighters) {
+      let { type, from: start, to: end } = cursor;
+      if (start >= to || end <= from)
+        return;
+      if (type.isTop)
+        highlighters = this.highlighters.filter((h) => !h.scope || h.scope(type));
+      let cls = inheritedClass;
+      let rule = getStyleTags(cursor) || Rule.empty;
+      let tagCls = highlightTags(highlighters, rule.tags);
+      if (tagCls) {
+        if (cls)
+          cls += " ";
+        cls += tagCls;
+        if (rule.mode == 1)
+          inheritedClass += (inheritedClass ? " " : "") + tagCls;
+      }
+      this.startSpan(Math.max(from, start), cls);
+      if (rule.opaque)
+        return;
+      let mounted = cursor.tree && cursor.tree.prop(NodeProp.mounted);
+      if (mounted && mounted.overlay) {
+        let inner = cursor.node.enter(mounted.overlay[0].from + start, 1);
+        let innerHighlighters = this.highlighters.filter((h) => !h.scope || h.scope(mounted.tree.type));
+        let hasChild2 = cursor.firstChild();
+        for (let i2 = 0, pos = start; ; i2++) {
+          let next = i2 < mounted.overlay.length ? mounted.overlay[i2] : null;
+          let nextPos = next ? next.from + start : end;
+          let rangeFrom2 = Math.max(from, pos), rangeTo2 = Math.min(to, nextPos);
+          if (rangeFrom2 < rangeTo2 && hasChild2) {
+            while (cursor.from < rangeTo2) {
+              this.highlightRange(cursor, rangeFrom2, rangeTo2, inheritedClass, highlighters);
+              this.startSpan(Math.min(rangeTo2, cursor.to), cls);
+              if (cursor.to >= nextPos || !cursor.nextSibling())
+                break;
+            }
+          }
+          if (!next || nextPos > to)
+            break;
+          pos = next.to + start;
+          if (pos > from) {
+            this.highlightRange(inner.cursor(), Math.max(from, next.from + start), Math.min(to, pos), "", innerHighlighters);
+            this.startSpan(Math.min(to, pos), cls);
+          }
+        }
+        if (hasChild2)
+          cursor.parent();
+      } else if (cursor.firstChild()) {
+        if (mounted)
+          inheritedClass = "";
+        do {
+          if (cursor.to <= from)
+            continue;
+          if (cursor.from >= to)
+            break;
+          this.highlightRange(cursor, from, to, inheritedClass, highlighters);
+          this.startSpan(Math.min(to, cursor.to), cls);
+        } while (cursor.nextSibling());
+        cursor.parent();
+      }
+    }
+  };
+  function getStyleTags(node) {
+    let rule = node.type.prop(ruleNodeProp);
+    while (rule && rule.context && !node.matchContext(rule.context))
+      rule = rule.next;
+    return rule || null;
+  }
   var t = Tag.define;
   var comment = t();
   var name = t();
@@ -18870,6 +18970,68 @@
       return new _HighlightStyle(specs, options || {});
     }
   };
+  var highlighterFacet = /* @__PURE__ */ Facet.define();
+  var fallbackHighlighter = /* @__PURE__ */ Facet.define({
+    combine(values2) {
+      return values2.length ? [values2[0]] : null;
+    }
+  });
+  function getHighlighters(state) {
+    let main = state.facet(highlighterFacet);
+    return main.length ? main : state.facet(fallbackHighlighter);
+  }
+  function syntaxHighlighting(highlighter, options) {
+    let ext = [treeHighlighter], themeType;
+    if (highlighter instanceof HighlightStyle) {
+      if (highlighter.module)
+        ext.push(EditorView.styleModule.of(highlighter.module));
+      themeType = highlighter.themeType;
+    }
+    if (options === null || options === void 0 ? void 0 : options.fallback)
+      ext.push(fallbackHighlighter.of(highlighter));
+    else if (themeType)
+      ext.push(highlighterFacet.computeN([EditorView.darkTheme], (state) => {
+        return state.facet(EditorView.darkTheme) == (themeType == "dark") ? [highlighter] : [];
+      }));
+    else
+      ext.push(highlighterFacet.of(highlighter));
+    return ext;
+  }
+  var TreeHighlighter = class {
+    constructor(view) {
+      this.markCache = /* @__PURE__ */ Object.create(null);
+      this.tree = syntaxTree(view.state);
+      this.decorations = this.buildDeco(view, getHighlighters(view.state));
+      this.decoratedTo = view.viewport.to;
+    }
+    update(update) {
+      let tree = syntaxTree(update.state), highlighters = getHighlighters(update.state);
+      let styleChange = highlighters != getHighlighters(update.startState);
+      let { viewport } = update.view, decoratedToMapped = update.changes.mapPos(this.decoratedTo, 1);
+      if (tree.length < viewport.to && !styleChange && tree.type == this.tree.type && decoratedToMapped >= viewport.to) {
+        this.decorations = this.decorations.map(update.changes);
+        this.decoratedTo = decoratedToMapped;
+      } else if (tree != this.tree || update.viewportChanged || styleChange) {
+        this.tree = tree;
+        this.decorations = this.buildDeco(update.view, highlighters);
+        this.decoratedTo = viewport.to;
+      }
+    }
+    buildDeco(view, highlighters) {
+      if (!highlighters || !this.tree.length)
+        return Decoration.none;
+      let builder = new RangeSetBuilder();
+      for (let { from, to } of view.visibleRanges) {
+        highlightTree(this.tree, highlighters, (from2, to2, style) => {
+          builder.add(from2, to2, this.markCache[style] || (this.markCache[style] = Decoration.mark({ class: style })));
+        }, from, to);
+      }
+      return builder.finish();
+    }
+  };
+  var treeHighlighter = /* @__PURE__ */ Prec.high(/* @__PURE__ */ ViewPlugin.fromClass(TreeHighlighter, {
+    decorations: (v) => v.decorations
+  }));
   var defaultHighlightStyle = /* @__PURE__ */ HighlightStyle.define([
     {
       tag: tags.meta,
@@ -31719,6 +31881,16 @@ ${fence}
     return null;
   }
   var scholiumMarkdownDialect = {
+    props: [styleTags({
+      "WikiLink/...": tags.link,
+      "WikiLinkTarget WikiLinkAlias": tags.link,
+      "WikiLinkOpenMark WikiEmbedMark WikiLinkAliasMark WikiLinkCloseMark": tags.processingInstruction,
+      "FootnoteReference/... FootnoteDefinition/... InlineFootnote/...": tags.labelName,
+      "FootnoteOpenMark FootnoteCloseMark FootnoteDefinitionMark InlineFootnoteOpenMark": tags.processingInstruction,
+      "MathMark HighlightMark CalloutQuoteMark": tags.processingInstruction,
+      "CalloutRoleMark": tags.labelName,
+      "ObsidianComment/... UnclosedObsidianComment/... ObsidianCommentBlock/... UnclosedObsidianCommentBlock/...": tags.comment
+    })],
     defineNodes: [
       "WikiLink",
       "WikiLinkOpenMark",
@@ -31801,6 +31973,18 @@ ${fence}
   var scholiumNoteLanguage = yamlFrontmatter({
     content: scholiumMarkdownContentLanguage
   });
+
+  // source-highlighting.ts
+  var sourceHighlightStyle = HighlightStyle.define([
+    { tag: tags.heading, class: "cm-source-heading" },
+    { tag: tags.link, class: "cm-source-link" },
+    { tag: tags.definition(tags.propertyName), class: "cm-source-yaml-key" },
+    { tag: tags.processingInstruction, class: "cm-source-marker" },
+    { tag: tags.meta, class: "cm-source-meta" },
+    { tag: tags.url, class: "cm-source-url" },
+    { tag: tags.comment, class: "cm-source-comment" }
+  ]);
+  var sourceHighlighting = syntaxHighlighting(sourceHighlightStyle);
 
   // frontmatter-presentation.ts
   var frontmatterTokenClassByNodeName = {
@@ -39767,6 +39951,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     lineNumbers(),
     sourceCollapsedActiveLine,
     foldGutter(),
+    sourceHighlighting,
     sourceTextDirection,
     EditorView.lineWrapping
   ];

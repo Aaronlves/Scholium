@@ -90,6 +90,7 @@ import {createEditorTextTransfer} from "./text-transfer";
 import {completeHeadingSelection} from "./text-transfer-ranges";
 import {linkTargetAt} from "./link-target";
 import {scholiumNoteLanguage} from "./language";
+import {sourceHighlighting} from "./source-highlighting";
 import {
   frontmatterFallbackClass,
   frontmatterKeyHasSeparator,
@@ -1876,6 +1877,7 @@ const sourceMode = [
   lineNumbers(),
   sourceCollapsedActiveLine,
   foldGutter(),
+  sourceHighlighting,
   sourceTextDirection,
   EditorView.lineWrapping,
 ];

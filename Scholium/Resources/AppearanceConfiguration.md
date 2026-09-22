@@ -32,7 +32,7 @@ with another complete configuration of the same format.
 
 | Field | Meaning / 含义 | Supported values |
 | --- | --- | --- |
-| `lineWidthCharacterUnits` | Reading measure / 行宽 | 48–96; relative character-width units, not a count of Chinese characters |
+| `lineWidthCharacterUnits` | Review/Edit reading measure / 审阅与编辑行宽 | 48–96; relative character-width units, not a count of Chinese characters. Source uses a separate adaptive work measure. |
 | `body.fontFamily` | Body font / 正文字体 | `alegreya`, `iowan`, `palatino`, `georgia`, `times`, `systemSerif`, or an installed font family name / 或已安装字体家族名 |
 | `body.cjkStrongFontFamily` | Chinese strong face / 中文加粗字体 | omitted or `null` follows body font; `""` restores body font; otherwise an installed family name |
 | `body.cjkEmphasisFontFamily` | Chinese emphasis face / 中文强调字体 | omitted or `null` uses Kaiti SC; `""` follows the body font's native italic; otherwise an installed family name |
@@ -143,5 +143,5 @@ sanitized, scoped to document content, and projected into both Review and Edit.
 `li`、`blockquote`、`table`、`code`、`strong`、`em`、`mark` 以及公开的 Callout
 选择器；片段会经过安全检查，只作用于文稿内容，并同时投影到 Review 和 Edit。
 
-Default sizing follows a 16 CSS px body (12 pt), with Courier at 12.8 CSS px (9.6 pt) for Source and Frontmatter. Heading scales remain relative to body text; the body font family is unchanged.
+Default sizing follows a 16 CSS px body (12 pt), with Menlo at about 15.3 CSS px (11.5 pt) for Source and Frontmatter. Heading scales remain relative to body text; the body font family is unchanged.
 这些字段只控制段间距、首行缩进和对齐。断词由 `hyphenation` 字段控制；字距、词距、

@@ -160,12 +160,11 @@ preserves position and reading context; long content scrolls internally. Moving
 the pointer from trigger into preview permits continued reading. Disclosure
 never mutates source, moves selection or takes document focus.
 
-All modes use one adaptive editorial grid and one Appearance **Line width**
-value. Review/Edit use scholarly type; Source uses exact-source type. The
-measure remains centered with readable logical insets and adapts at narrow
-widths and enlarged text. Source soft-wraps visual rows without changing
-logical lines. Layout changes reconfigure the retained editor rather than
-replace its buffer, selection, Undo, composition, scroll, or focus.
+Review/Edit share Appearance **Reading line width**. Source uses a wider adaptive
+measure with its line/fold gutter beside text. Exact-source type and quiet,
+contrast-safe syntax colors distinguish headings, YAML, links and markers. Soft wraps
+distinguish continuation rows. Layout changes
+retain buffer, selection, Undo, composition, scroll and focus.
 
 Beta/1.0 interactive writing supports English, Simplified Chinese, and mixed
 content. Every Unicode byte remains preserved and Source-visible. Code,
@@ -214,7 +213,8 @@ presents only the requested mode after readiness, without showing a temporary
 layout from another mode.
 A View-menu action may navigate to Frontmatter without creating an empty
 envelope or changing its document order.
-Source always displays the full original text. The documented `appearances.json`
+Source shows all text by default; explicit folds remain visibly and
+accessibly reversible. The documented `appearances.json`
 file owns structured profiles, including file-managed Callout geometry; Advanced CSS owns content overrides. Finder, guidance, Reload and Restore
 Defaults remain available. External edits prevent stale overwrite; invalid
 reload preserves loaded appearance and drafts and identifies the invalid field.
