@@ -40,7 +40,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     var onPassageAction: ((DocumentPassageAction) -> Void)? = nil
     var writingContinuationEnabled = false
     var writingContinuationContextKey = ""
-    var writingContinuationQuery: @MainActor (Int) async -> EditorWritingContinuationResult = { _ in .unavailable(nil) }
+    var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
 
     static func requiresMathRuntime(
         source: String,
@@ -366,7 +366,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             ) async -> [EditorLinkCompletion]
         var writingContinuationEnabled = false
         var writingContinuationContextKey = ""
-        var writingContinuationQuery: @MainActor (Int) async -> EditorWritingContinuationResult = { _ in .unavailable(nil) }
+        var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
         var onLinkActivation: (String) -> Void
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
@@ -614,7 +614,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                             writingContinuationEditorCaret = nil
                         }
                     }
-                    let result = await writingContinuationQuery(request.caretUTF16Offset)
+                    let result = await writingContinuationQuery(request.caretUTF16Offset) { [weak self, weak webView] status in
+                        self?.publishWritingContinuationStatus(
+                            status,
+                            requestID: request.requestID,
+                            envelope: request.envelope,
+                            contextKey: contextKey,
+                            page: page,
+                            in: webView
+                        )
+                    }
                     guard !Task.isCancelled, writingContinuationRequestID == request.requestID,
                         writingContinuationEnabled, contextKey == writingContinuationContextKey,
                         page == pageGeneration, validEnvelope(request.envelope), activeWebView === webView
@@ -623,7 +632,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     switch result {
                     case .suggestion(let suffix):
                         value = suffix.utf16.count <= 512 ? ["text": suffix] : [:]
-                    case .unavailable(let reason): value = ["reason": reason.map { String($0.prefix(512)) } ?? ""]
+                    case .unavailable(let reason):
+                        if let reason, reason.showsInEditor {
+                            let message = WebKitInterfaceLocalization.current().string(reason.localizationKey)
+                            value = ["reason": String(message.prefix(512))]
+                        } else {
+                            value = ["reason": ""]
+                        }
                     }
                     _ = try? await webView.callAsyncJavaScript(
                         "window.scholiumEditor.resolveWritingContinuation(requestID, value)",
@@ -817,6 +832,34 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             writingContinuationTask = nil
             writingContinuationRequestID = nil
             writingContinuationEditorCaret = nil
+        }
+
+        private func publishWritingContinuationStatus(
+            _ status: EditorWritingContinuationStatus,
+            requestID: String,
+            envelope: EditorBridgeEnvelope,
+            contextKey: String,
+            page: UInt64,
+            in webView: WKWebView?
+        ) {
+            guard !Task.isCancelled, let webView,
+                writingContinuationRequestID == requestID,
+                writingContinuationEnabled, contextKey == writingContinuationContextKey,
+                page == pageGeneration, validEnvelope(envelope), activeWebView === webView
+            else { return }
+            let value: [String: Any] = ["phase": status.rawValue]
+            Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView,
+                    self.writingContinuationRequestID == requestID,
+                    self.writingContinuationEnabled,
+                    contextKey == self.writingContinuationContextKey,
+                    page == self.pageGeneration,
+                    self.validEnvelope(envelope), self.activeWebView === webView
+                else { return }
+                _ = try? await webView.callAsyncJavaScript(
+                    "window.scholiumEditor.setWritingContinuationStatus(requestID, value)",
+                    arguments: ["requestID": requestID, "value": value], in: nil, contentWorld: .page)
+            }
         }
 
         func cancelDocumentTitleRename() {

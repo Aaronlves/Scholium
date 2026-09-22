@@ -115,7 +115,7 @@ struct DocumentFeatureState {
 struct DocumentFeatureActions {
     var passageAction: @MainActor (DocumentPassageAction, MarkdownSourceSelectionSnapshot?) -> Void = { _, _ in }
     var askAgent: AgentSelectionInquiryHandler = { _, _ in nil }
-    var writingContinuation: @MainActor (Int) async -> EditorWritingContinuationResult = { _ in .unavailable(nil) }
+    var writingContinuation: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
     let requestIdentityResolution: @MainActor () -> Void
     let retryIdentityRecovery: @MainActor () async -> Void
     let beginSearch: @MainActor (SearchInvocation) -> Void

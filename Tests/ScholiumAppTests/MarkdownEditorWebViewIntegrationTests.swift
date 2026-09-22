@@ -21,7 +21,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             initialSourceRange: source.utf16.count..<source.utf16.count,
             laysOutForPointerTesting: true,
             writingContinuationEnabled: true,
-            writingContinuationQuery: { caret in
+            writingContinuationQuery: { caret, _ in
                 requestedCarets.append(caret)
                 return .suggestion("ponsibility needs care.")
             })
@@ -7302,7 +7302,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             fixedLayoutSize: NSSize? = nil,
             laysOutForPointerTesting: Bool = false,
             writingContinuationEnabled: Bool = false,
-            writingContinuationQuery: @escaping @MainActor (Int) async -> EditorWritingContinuationResult = { _ in .unavailable(nil) },
+            writingContinuationQuery: @escaping EditorWritingContinuationQuery = { _, _ in .unavailable(nil) },
             onTitleRename: @escaping @MainActor (String, String) async throws -> String = {
                 _, requested in requested
             }
@@ -7988,7 +7988,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var userCSS = ""
         @Published var writingContinuationEnabled = false
         @Published var writingContinuationModel = "model-a"
-        var writingContinuationQuery: @MainActor (Int) async -> EditorWritingContinuationResult = { _ in .unavailable(nil) }
+        var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
         var activatedLinks: [String] = []
         let mode: MarkdownEditorMode
         init(_ source: String, mode: MarkdownEditorMode, documentTitle: String) {

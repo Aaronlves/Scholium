@@ -199,6 +199,7 @@ interface ScholiumEditorAPI {
   prepareForReuse(): boolean;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
   resolveWritingContinuation(requestID: string, value: unknown): void;
+  setWritingContinuationStatus(requestID: string, value: unknown): void;
   resolveDocumentTitleRename(
     requestID: string,
     accepted: boolean,
@@ -3099,6 +3100,7 @@ webkitWindow.scholiumEditor = {
   },
   resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
   resolveWritingContinuation: inputSuggestions.resolveWritingContinuation,
+  setWritingContinuationStatus: inputSuggestions.setWritingContinuationStatus,
   resolveDocumentTitleRename,
   refreshMathRuntime() {
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});

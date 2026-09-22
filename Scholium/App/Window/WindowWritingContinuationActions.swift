@@ -1,27 +1,47 @@
 import Foundation
+import ScholiumApplication
 import ScholiumContracts
 
 extension WindowModel {
     @MainActor
-    func continueWriting(at caret: Int) async -> EditorWritingContinuationResult {
+    func continueWriting(
+        at caret: Int,
+        status: EditorWritingContinuationStatusHandler
+    ) async -> EditorWritingContinuationResult {
         let preferences = WritingContinuationPreferences.shared
-        guard preferences.enabled, canEditCurrentNote, presentedDocumentMode != .read,
-            let descriptor = currentDocumentDescriptor,
-            let capabilities = windowWorkspaceController.activeCapabilities,
+        guard preferences.enabled else { return .unavailable(.disabled) }
+        guard canEditCurrentNote, presentedDocumentMode != .read,
+            let descriptor = currentDocumentDescriptor
+        else { return .unavailable(.invalidContext) }
+        guard let capabilities = windowWorkspaceController.activeCapabilities,
             let chat = chatController
-        else { return .unavailable(nil) }
+        else { return .unavailable(.notConnected) }
         let model = preferences.model
-        guard chat.canRequestWritingContinuation(model: model) else { return .unavailable(nil) }
+        guard chat.connectionState == .ready, chat.account != nil else {
+            return .unavailable(.notConnected)
+        }
+        guard !chat.isRenewingSettings, !chat.capabilities.isChanging else {
+            return .unavailable(.notReady)
+        }
+        guard chat.models.contains(where: { $0.model == model && CodexWritingContinuation.supports($0) }) else {
+            return .unavailable(.modelUnavailable)
+        }
+        guard chat.canRequestWritingContinuation(model: model) else {
+            return .unavailable(.notReady)
+        }
+        guard chat.continuationExecution == nil else { return .unavailable(.busy) }
         let session = documentController.session(for: descriptor)
         let editor = session.editorSession
-        guard session.conflict == nil, editor.hasWritingFocus, !editor.isComposing else { return .unavailable(nil) }
+        guard session.conflict == nil, editor.hasWritingFocus, !editor.isComposing else {
+            return .unavailable(.invalidContext)
+        }
         do {
             let captured = try await editor.writingContextSnapshot(paragraph: true)
             guard let point = captured.point,
                 EditorSourceOffsetMap(source: captured.snapshot.source)
                     .sourceUTF16Offset(forEditorUTF16Offset: point.selection.head) == caret,
                 let context = WritingContinuationContext(snapshot: captured.snapshot, caret: caret)
-            else { return .unavailable(nil) }
+            else { return .unavailable(.invalidContext) }
             func remainsCurrent() -> Bool {
                 !Task.isCancelled && preferences.enabled && preferences.model == model
                     && canEditCurrentNote
@@ -30,7 +50,7 @@ extension WindowModel {
                     && chatController === chat && editor.acceptsInsertionPoint(point)
                     && editor.hasWritingFocus && session.conflict == nil && presentedDocumentMode != .read
             }
-            guard remainsCurrent() else { return .unavailable(nil) }
+            guard remainsCurrent() else { return .unavailable(.cancelled) }
             var background: [String] = []
             var backgroundResponse: RelatedContentResponse?
             if let generation = workspaceProjectionController.searchGeneration {
@@ -42,6 +62,7 @@ extension WindowModel {
                     backgroundResponse = cached
                     background = WritingContinuationContext.background(cached, catalog: workspaceCatalog?.notes ?? [])
                 } else if captured.snapshot.source.utf16.count <= RelatedContentContract.maximumSeedUTF16Count {
+                    status(.retrieving)
                     let request = RelatedContentRequest(
                         seed: .init(
                             noteID: key.note, source: captured.snapshot.source,
@@ -49,7 +70,7 @@ extension WindowModel {
                         identityLimit: 1, lexicalLimit: 3)
                     do {
                         let response = try await capabilities.discovery.relatedContent(request)
-                        guard remainsCurrent() else { return .unavailable(nil) }
+                        guard remainsCurrent() else { return .unavailable(.cancelled) }
                         if response.requestID == request.id, response.seedFingerprint == request.seed.fingerprint,
                             response.freshnessToken == .triptych(generation),
                             workspaceProjectionController.searchGeneration == generation
@@ -66,24 +87,50 @@ extension WindowModel {
                     }
                 }
             }
-            guard remainsCurrent() else { return .unavailable(nil) }
+            guard remainsCurrent() else { return .unavailable(.cancelled) }
+            status(.generating)
             let suffix = try await chat.writingContinuation(
                 .init(before: context.before, after: context.after, background: background, model: model))
-            guard remainsCurrent() else { return .unavailable(nil) }
+            guard remainsCurrent() else { return .unavailable(.cancelled) }
             if !background.isEmpty, let backgroundResponse {
                 guard WritingContinuationContext.background(backgroundResponse, catalog: workspaceCatalog?.notes ?? []) == background
-                else { return .unavailable(nil) }
+                else { return .unavailable(.cancelled) }
             }
-            return suffix.isEmpty ? .unavailable(nil) : .suggestion(suffix)
+            return suffix.isEmpty ? .unavailable(.noSuggestion) : .suggestion(suffix)
         } catch is CancellationError {
-            return .unavailable(nil)
+            return .unavailable(.cancelled)
+        } catch let error as CodexWritingContinuationError {
+            return .unavailable(Self.editorUnavailableReason(for: error))
+        } catch let error as CodexConnectionError {
+            return .unavailable(Self.editorUnavailableReason(for: error))
         } catch {
             guard !Task.isCancelled, preferences.enabled, preferences.model == model,
                 currentDocumentDescriptor == descriptor
-            else { return .unavailable(nil) }
-            // The shared preview supplies localized fallback feedback; raw
-            // transport diagnostics are not writing suggestions.
-            return .unavailable(nil)
+            else { return .unavailable(.cancelled) }
+            return .unavailable(.serviceError)
+        }
+    }
+
+    private static func editorUnavailableReason(
+        for error: CodexWritingContinuationError
+    ) -> EditorWritingContinuationUnavailableReason {
+        switch error {
+        case .unavailable: .connectionError
+        case .busy: .busy
+        case .invalidContext: .invalidContext
+        case .invalidOutput: .noSuggestion
+        case .unsafeRuntime: .serviceError
+        case .timedOut: .timedOut
+        }
+    }
+
+    private static func editorUnavailableReason(
+        for error: CodexConnectionError
+    ) -> EditorWritingContinuationUnavailableReason {
+        switch error {
+        case .disconnected, .server: .connectionError
+        case .timedOut: .timedOut
+        case .invalidMessage: .serviceError
         }
     }
 }

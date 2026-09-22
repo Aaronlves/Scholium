@@ -16,6 +16,18 @@ struct MarkdownEditorProtocolTests {
         #expect(!operation.serializesSourceMutation)
     }
 
+    @Test("Continuation lifecycle keeps actionable failures distinct from quiet cancellation")
+    func continuationLifecycleReasons() {
+        #expect(EditorWritingContinuationStatus.preparing.rawValue == "preparing")
+        #expect(EditorWritingContinuationStatus.retrieving.rawValue == "retrieving")
+        #expect(EditorWritingContinuationStatus.generating.rawValue == "generating")
+        #expect(EditorWritingContinuationUnavailableReason.notConnected.showsInEditor)
+        #expect(EditorWritingContinuationUnavailableReason.modelUnavailable.showsInEditor)
+        #expect(EditorWritingContinuationUnavailableReason.timedOut.showsInEditor)
+        #expect(!EditorWritingContinuationUnavailableReason.invalidContext.showsInEditor)
+        #expect(!EditorWritingContinuationUnavailableReason.cancelled.showsInEditor)
+    }
+
     @Test("Continuation queries and cancellation require typed bounded identity")
     func continuationMessageDecoding() throws {
         var body: [String: Any] = [

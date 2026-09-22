@@ -90,15 +90,16 @@ an independent runtime-inventory model with low-cost default and low-or-lower su
 Unavailable choices never silently switch. Enabling permits bounded writing/retrieved
 context to reach the runtime; remote processing and usage are disclosed.
 After a pause, AI is eligible at a focused caret in an unfinished sentence.
-Completed/protected/structural contexts suppress it; local completion remains. AI
-receives current-sentence context. The suffix stops at the first boundary and cannot
-cross sentence/paragraph. Failure/timeout falls back locally;
-waiting shows no preview and late AI is ignored. Previews identify origin.
-Tab/activation appends the visible suffix in one Undo; Return remains newline.
-Escape dismisses without fallback. Preview is not source or copied
-text. Typing, caret movement, focus loss, composition, document/configuration changes
-cancel requests/previews. Literal/code/frontmatter contexts and multiple
-selections suppress both. System spelling/grammar remains separate from prediction.
+Completed/protected/structural contexts suppress AI; local completion remains. AI uses
+current-sentence context; suffix cannot cross a sentence/paragraph. An admitted request
+shows phases at the caret; Reduce Motion freezes it. Off stays quiet.
+Connection/model/runtime failures and timeout show a reason;
+cancellation/stale work stay quiet. Waiting shows no preview; late AI ignored.
+Tab appends in one Undo; Return remains newline. Escape dismisses without fallback;
+preview is not source. Typing/caret/focus/composition/configuration changes cancel
+requests/previews. Literal/code/frontmatter/multiple selections suppress both. Statuses
+never enter source/history. System spelling/grammar remains
+separate from prediction.
 
 **Find Writing References…** in Insert (default Shift-Command-J, configurable)
 uses the same Related pane and result session as selection recommendations. It

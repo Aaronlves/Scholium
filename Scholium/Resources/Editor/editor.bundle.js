@@ -31620,6 +31620,20 @@ ${fence}
     "Accept AI continuation: {text} (Tab)",
     "AI continuation timed out; using library completion.",
     "AI continuation unavailable; using library completion.",
+    "AI continuation is preparing.",
+    "AI continuation is retrieving related context.",
+    "AI continuation is composing.",
+    "AI continuation is not enabled.",
+    "AI continuation is not connected. Connect Codex in Agents & Chat.",
+    "AI continuation is not ready. Check Writing Assistance settings.",
+    "The selected AI continuation model is unavailable. Choose an available model in Writing Assistance.",
+    "AI continuation is still stopping. Try again in a moment.",
+    "AI continuation could not connect. Check Agents & Chat.",
+    "AI continuation timed out. Library completion remains available.",
+    "AI returned no usable continuation. Library completion remains available.",
+    "AI continuation could not be used for this writing context.",
+    "AI continuation was cancelled.",
+    "AI continuation could not be generated. Library completion remains available.",
     "The edited Markdown document exceeds the supported editor size.",
     "Finish editing the note title before switching documents.",
     "Copy",
@@ -33656,6 +33670,16 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
 
   // input-suggestions.ts
+  function writingContinuationPhaseLabel(phase) {
+    switch (phase) {
+      case "preparing":
+        return "AI continuation is preparing.";
+      case "retrieving":
+        return "AI continuation is retrieving related context.";
+      case "generating":
+        return "AI continuation is composing.";
+    }
+  }
   var suggestionSymbolByType = {
     "scholium-note": "doc-text",
     "scholium-analysis-reference": "doc-text",
@@ -33915,6 +33939,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     let continuationEnabled = false;
     let continuationContextKey = "";
     let clearInlineWriting;
+    let showInlineContinuationStatus;
     const pendingContinuations = /* @__PURE__ */ new Map();
     function cancelContinuations() {
       for (const [requestID, pending] of pendingContinuations) {
@@ -33926,7 +33951,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     function requestContinuation(state, position) {
       const requestID = boundedUUID();
-      return new Promise((resolve) => {
+      const promise = new Promise((resolve) => {
         const timeout = setTimeout(() => {
           pendingContinuations.delete(requestID);
           options.cancelWritingContinuation?.(requestID);
@@ -33936,6 +33961,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (options.requestWritingContinuation) options.requestWritingContinuation(requestID, state, position);
         else resolveContinuation(requestID, { text: null, reason: null });
       });
+      return { requestID, promise };
+    }
+    function setContinuationStatus(requestID, value) {
+      if (!pendingContinuations.has(requestID)) return;
+      const payload = value && typeof value === "object" ? value : {};
+      const phase = payload.phase;
+      if (phase !== "preparing" && phase !== "retrieving" && phase !== "generating") return;
+      showInlineContinuationStatus?.(requestID, phase);
     }
     function resolveContinuation(requestID, value) {
       const pending = pendingContinuations.get(requestID);
@@ -33982,6 +34015,43 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           event.preventDefault();
         });
         node.addEventListener("click", () => this.accept());
+        return node;
+      }
+      ignoreEvent() {
+        return true;
+      }
+    }
+    class ContinuationStatus extends WidgetType {
+      constructor(message, active) {
+        super();
+        this.message = message;
+        this.active = active;
+      }
+      message;
+      active;
+      toDOM() {
+        const node = document.createElement("span");
+        node.className = `scholium-writing-status${this.active ? " scholium-writing-status-active" : " scholium-writing-status-error"}`;
+        if (this.active) {
+          const orb = document.createElement("span");
+          orb.className = "scholium-writing-orb";
+          orb.setAttribute("aria-hidden", "true");
+          for (let index = 0; index < 3; index++) {
+            const dot2 = document.createElement("span");
+            dot2.className = "scholium-writing-orb-dot";
+            dot2.setAttribute("aria-hidden", "true");
+            orb.append(dot2);
+          }
+          node.append(orb);
+        }
+        const label = document.createElement("span");
+        label.textContent = this.message;
+        node.append(label);
+        node.setAttribute("role", "status");
+        node.setAttribute("aria-live", "polite");
+        node.setAttribute("aria-atomic", "true");
+        node.setAttribute("aria-label", this.message);
+        node.title = this.message;
         return node;
       }
       ignoreEvent() {
@@ -34039,18 +34109,35 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           this.clear();
           this.view.dispatch({});
         };
+        showInlineContinuationStatus = (requestID, phase) => {
+          if (this.continuationRequestID !== requestID || !this.isValidContext()) return;
+          this.showStatus(writingContinuationPhaseLabel(phase), true);
+        };
       }
       view;
       decorations = Decoration.none;
       generation = 0;
       timer;
       acceptChoice = null;
+      continuationRequestID = null;
       clear() {
         this.generation++;
         clearTimeout(this.timer);
         cancelContinuations();
         this.acceptChoice = null;
+        this.continuationRequestID = null;
         this.decorations = Decoration.none;
+      }
+      isValidContext() {
+        return this.view.hasFocus && !this.view.composing && isWritingSuggestionContext(options, this.view.state);
+      }
+      showStatus(message, active) {
+        if (!this.isValidContext()) return;
+        this.decorations = Decoration.set([Decoration.widget({
+          widget: new ContinuationStatus(message, active),
+          side: -1
+        }).range(this.view.state.selection.main.head)]);
+        this.view.dispatch({});
       }
       accept() {
         if (!this.acceptChoice || this.view.composing || !isWritingSuggestionContext(options, this.view.state)) return false;
@@ -34078,8 +34165,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           const position = state.selection.main.head;
           let fallbackReason = null;
           if (continuationEnabled && continuationContextAllowed(options, state, position)) {
-            const result = await requestContinuation(state, position);
+            const request = requestContinuation(state, position);
+            this.continuationRequestID = request.requestID;
+            this.showStatus(writingContinuationPhaseLabel("preparing"), true);
+            const result = await request.promise;
             if (!valid()) return;
+            this.continuationRequestID = null;
             if (result.text) {
               const text = result.text;
               this.acceptChoice = () => {
@@ -34102,17 +34193,26 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           void Promise.resolve(writingCompletionSource(context)).then((result) => {
             if (this.generation !== generation || this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection) || !this.view.hasFocus || this.view.composing || options.isComposing() || !result) return;
             const choice = result.options[0];
-            if (!choice?.ghostText || typeof choice.apply !== "function") return;
+            if (!choice?.ghostText || typeof choice.apply !== "function") {
+              if (fallbackReason) this.showStatus(fallbackReason, false);
+              return;
+            }
             const apply = choice.apply;
             this.acceptChoice = () => {
               if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
               this.clear();
               apply(this.view, choice, result.from, state.selection.main.head);
             };
-            this.decorations = Decoration.set([Decoration.widget({
+            const decorations2 = [];
+            if (fallbackReason) decorations2.push(Decoration.widget({
+              widget: new ContinuationStatus(fallbackReason, false),
+              side: -1
+            }).range(state.selection.main.head));
+            decorations2.push(Decoration.widget({
               widget: new Ghost(choice.ghostText, () => this.accept(), false, fallbackReason),
               side: 1
-            }).range(state.selection.main.head)]);
+            }).range(state.selection.main.head));
+            this.decorations = Decoration.set(decorations2);
             this.view.dispatch({});
           });
         }, continuationEnabled ? 1200 : 300);
@@ -34120,6 +34220,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       destroy() {
         this.clear();
         clearInlineWriting = void 0;
+        showInlineContinuationStatus = void 0;
       }
     }, {
       decorations: (value) => value.decorations,
@@ -34367,6 +34468,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         clearInlineWriting?.();
         cancelContinuations();
       },
+      setWritingContinuationStatus: setContinuationStatus,
       resolveWritingContinuation: resolveContinuation,
       writingCompletionSource,
       extension: [autocompletion({
@@ -40490,6 +40592,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     },
     resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
     resolveWritingContinuation: inputSuggestions.resolveWritingContinuation,
+    setWritingContinuationStatus: inputSuggestions.setWritingContinuationStatus,
     resolveDocumentTitleRename,
     refreshMathRuntime() {
       editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });

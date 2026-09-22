@@ -76,7 +76,20 @@ export interface EditorInputSuggestionsController {
   resetDocument(): void;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
   configureWritingContinuation(enabled: boolean, contextKey: string): void;
+  setWritingContinuationStatus(requestID: string, value: unknown): void;
   resolveWritingContinuation(requestID: string, value: unknown): void;
+}
+
+type WritingContinuationPhase = "preparing" | "retrieving" | "generating";
+
+function writingContinuationPhaseLabel(
+  phase: WritingContinuationPhase,
+): WebInterfaceLocalizationKey {
+  switch (phase) {
+    case "preparing": return "AI continuation is preparing.";
+    case "retrieving": return "AI continuation is retrieving related context.";
+    case "generating": return "AI continuation is composing.";
+  }
 }
 
 type SuggestionType =
@@ -423,6 +436,7 @@ export function createEditorInputSuggestions(
   let continuationEnabled = false;
   let continuationContextKey = "";
   let clearInlineWriting: (() => void) | undefined;
+  let showInlineContinuationStatus: ((requestID: string, phase: WritingContinuationPhase) => void) | undefined;
   const pendingContinuations = new Map<string, {
     resolve(value: {text: string | null; reason: string | null}): void;
     timeout: ReturnType<typeof setTimeout>;
@@ -437,7 +451,7 @@ export function createEditorInputSuggestions(
   }
   function requestContinuation(state: EditorState, position: number) {
     const requestID = boundedUUID();
-    return new Promise<{text: string | null; reason: string | null}>(resolve => {
+    const promise = new Promise<{text: string | null; reason: string | null}>(resolve => {
       const timeout = setTimeout(() => {
         pendingContinuations.delete(requestID);
         options.cancelWritingContinuation?.(requestID);
@@ -447,6 +461,14 @@ export function createEditorInputSuggestions(
       if (options.requestWritingContinuation) options.requestWritingContinuation(requestID, state, position);
       else resolveContinuation(requestID, {text: null, reason: null});
     });
+    return {requestID, promise};
+  }
+  function setContinuationStatus(requestID: string, value: unknown) {
+    if (!pendingContinuations.has(requestID)) return;
+    const payload = value && typeof value === "object" ? value as {phase?: unknown} : {};
+    const phase = payload.phase;
+    if (phase !== "preparing" && phase !== "retrieving" && phase !== "generating") return;
+    showInlineContinuationStatus?.(requestID, phase);
   }
   function resolveContinuation(requestID: string, value: unknown) {
     const pending = pendingContinuations.get(requestID);
@@ -480,6 +502,36 @@ export function createEditorInputSuggestions(
       if (this.reason) { node.title = this.reason; node.setAttribute("aria-description", this.reason); }
       node.addEventListener("mousedown", event => { event.preventDefault(); });
       node.addEventListener("click", () => this.accept());
+      return node;
+    }
+    ignoreEvent() { return true; }
+  }
+
+  class ContinuationStatus extends WidgetType {
+    constructor(readonly message: string, readonly active: boolean) { super(); }
+    toDOM() {
+      const node = document.createElement("span");
+      node.className = `scholium-writing-status${this.active ? " scholium-writing-status-active" : " scholium-writing-status-error"}`;
+      if (this.active) {
+        const orb = document.createElement("span");
+        orb.className = "scholium-writing-orb";
+        orb.setAttribute("aria-hidden", "true");
+        for (let index = 0; index < 3; index++) {
+          const dot = document.createElement("span");
+          dot.className = "scholium-writing-orb-dot";
+          dot.setAttribute("aria-hidden", "true");
+          orb.append(dot);
+        }
+        node.append(orb);
+      }
+      const label = document.createElement("span");
+      label.textContent = this.message;
+      node.append(label);
+      node.setAttribute("role", "status");
+      node.setAttribute("aria-live", "polite");
+      node.setAttribute("aria-atomic", "true");
+      node.setAttribute("aria-label", this.message);
+      node.title = this.message;
       return node;
     }
     ignoreEvent() { return true; }
@@ -533,13 +585,32 @@ export function createEditorInputSuggestions(
     private generation = 0;
     private timer: ReturnType<typeof setTimeout> | undefined;
     private acceptChoice: (() => void) | null = null;
-    constructor(readonly view: EditorView) { clearInlineWriting = () => { this.clear(); this.view.dispatch({}); }; }
+    private continuationRequestID: string | null = null;
+    constructor(readonly view: EditorView) {
+      clearInlineWriting = () => { this.clear(); this.view.dispatch({}); };
+      showInlineContinuationStatus = (requestID, phase) => {
+        if (this.continuationRequestID !== requestID || !this.isValidContext()) return;
+        this.showStatus(writingContinuationPhaseLabel(phase), true);
+      };
+    }
     clear() {
       this.generation++;
       clearTimeout(this.timer);
       cancelContinuations();
       this.acceptChoice = null;
+      this.continuationRequestID = null;
       this.decorations = Decoration.none;
+    }
+    private isValidContext() {
+      return this.view.hasFocus && !this.view.composing
+        && isWritingSuggestionContext(options, this.view.state);
+    }
+    private showStatus(message: string, active: boolean) {
+      if (!this.isValidContext()) return;
+      this.decorations = Decoration.set([Decoration.widget({
+        widget: new ContinuationStatus(message, active), side: -1,
+      }).range(this.view.state.selection.main.head)]);
+      this.view.dispatch({});
     }
     accept() {
       if (!this.acceptChoice || this.view.composing || !isWritingSuggestionContext(options, this.view.state)) return false;
@@ -567,8 +638,12 @@ export function createEditorInputSuggestions(
         const position = state.selection.main.head;
         let fallbackReason: string | null = null;
         if (continuationEnabled && continuationContextAllowed(options, state, position)) {
-          const result = await requestContinuation(state, position);
+          const request = requestContinuation(state, position);
+          this.continuationRequestID = request.requestID;
+          this.showStatus(writingContinuationPhaseLabel("preparing"), true);
+          const result = await request.promise;
           if (!valid()) return;
+          this.continuationRequestID = null;
           if (result.text) {
             const text = result.text;
             this.acceptChoice = () => {
@@ -590,21 +665,33 @@ export function createEditorInputSuggestions(
             || !this.view.state.selection.eq(state.selection) || !this.view.hasFocus
             || this.view.composing || options.isComposing() || !result) return;
           const choice = result.options[0] as (Completion & {ghostText?: string}) | undefined;
-          if (!choice?.ghostText || typeof choice.apply !== "function") return;
+          if (!choice?.ghostText || typeof choice.apply !== "function") {
+            if (fallbackReason) this.showStatus(fallbackReason, false);
+            return;
+          }
           const apply = choice.apply;
           this.acceptChoice = () => {
             if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
             this.clear();
             apply(this.view, choice, result.from, state.selection.main.head);
           };
-          this.decorations = Decoration.set([Decoration.widget({
+          const decorations = [];
+          if (fallbackReason) decorations.push(Decoration.widget({
+            widget: new ContinuationStatus(fallbackReason, false), side: -1,
+          }).range(state.selection.main.head));
+          decorations.push(Decoration.widget({
             widget: new Ghost(choice.ghostText, () => this.accept(), false, fallbackReason), side: 1,
-          }).range(state.selection.main.head)]);
+          }).range(state.selection.main.head));
+          this.decorations = Decoration.set(decorations);
           this.view.dispatch({});
         });
       }, continuationEnabled ? 1_200 : 300);
     }
-    destroy() { this.clear(); clearInlineWriting = undefined; }
+    destroy() {
+      this.clear();
+      clearInlineWriting = undefined;
+      showInlineContinuationStatus = undefined;
+    }
   }, {
     decorations: value => value.decorations,
     eventHandlers: {
@@ -854,6 +941,7 @@ export function createEditorInputSuggestions(
       clearInlineWriting?.();
       cancelContinuations();
     },
+    setWritingContinuationStatus: setContinuationStatus,
     resolveWritingContinuation: resolveContinuation,
     writingCompletionSource,
     extension: [autocompletion({

@@ -145,9 +145,9 @@ captures the checked current sentence inside its paragraph and insertion receipt
 packs bounded Related-Content background, and rechecks identity, focus, conflict
 and configuration before generation and publication. Its one-result retrieval cache
 is bound to runtime, Note, complete Search generation, exact seed revision and focus;
-it is neither another index nor query history. Returned text is bounded to the first
-sentence boundary before it can become an inline preview.
-Machine-local continuation preferences remain independent of conversation settings.
+it is neither another index nor query history. Returned text and status stay request-bound
+through inline preview; identity guards clear both. Machine-local continuation preferences remain
+independent of conversation settings.
 
 Attachment preparation joins the existing editor insertion and scoped rollback
 in [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).

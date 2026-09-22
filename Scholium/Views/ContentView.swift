@@ -356,9 +356,9 @@ struct ContentView: View {
                     windowCoordinator.actions.activateSidebar(.chat)
                 }
             },
-            writingContinuation: { caret in
-                guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return .unavailable(nil) }
-                return await appState.continueWriting(at: caret)
+            writingContinuation: { caret, status in
+                guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return .unavailable(.cancelled) }
+                return await appState.continueWriting(at: caret, status: status)
             },
             requestIdentityResolution: {
                 guard let path = documentPath else { return }

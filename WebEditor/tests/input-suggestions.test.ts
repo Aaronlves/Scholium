@@ -81,6 +81,23 @@ describe("AI-first inline continuation", () => {
     vi.useRealTimers();
   });
 
+  it("shows composing progress and keeps a visible connection failure at the caret", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    await vi.advanceTimersByTimeAsync(1_200);
+    expect(h.requests).toHaveLength(1);
+    expect(h.plugin.decorations.size).toBe(1);
+    h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "generating"});
+    expect(h.plugin.decorations.size).toBe(1);
+    h.suggestions.resolveWritingContinuation(h.requests[0], {
+      text: null, reason: "AI continuation could not connect. Check Agents & Chat.",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.plugin.decorations.size).toBe(1);
+    expect(h.plugin.accept()).toBe(false);
+    vi.useRealTimers();
+  });
+
   it("falls back after timeout and ignores the late AI response", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness();
