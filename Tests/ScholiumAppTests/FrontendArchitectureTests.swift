@@ -900,10 +900,8 @@ struct FrontendArchitectureTests {
             splitSource.contains(
                 "rootView: backgroundRole.colorRole.color"
             ))
-        #expect(
-            splitSource.contains(
-                "equalTo: containerView.safeAreaLayoutGuide.topAnchor"
-            ))
+        // nativeSurfaceContainer verifies both safe-area and toolbar-underlap
+        // geometry against real native frames.
         #expect(!splitSource.contains("contentUnderlapsTitlebar"))
         #expect(!splitSource.contains("placeholderHost.safeAreaRegions = []"))
         #expect(!splitSource.contains("host.safeAreaRegions = []"))
@@ -2897,7 +2895,7 @@ struct FrontendArchitectureTests {
         #expect(!sourceModeExtensions.contains("defaultHighlightStyle"))
         for liveOnlyExtension in [
             "liveProjectionIndex.extension",
-            "liveDocumentTitle",
+            "documentTitle.extension",
             "liveSemanticLayout.extension",
             "liveSelection.extension",
             "liveMermaidProjection.extension",
@@ -3039,6 +3037,7 @@ struct FrontendArchitectureTests {
             )
         }
         let editorSource = try source("WebEditor/editor.ts")
+        let documentTitle = try source("WebEditor/document-title.ts")
         let semanticLayout = try source("WebEditor/live-semantic-layout.ts")
         let mermaidProjection = try source("WebEditor/live-mermaid-projection.ts")
         let structuredBlocks = try source(
@@ -3056,7 +3055,9 @@ struct FrontendArchitectureTests {
         #expect(!editorSource.contains("positionDocumentTitle"))
         #expect(!editorSource.contains("minHeight"))
         #expect(editorSource.contains("buildFrontmatterPresentation"))
-        #expect(editorSource.contains("liveDocumentTitle"))
+        #expect(editorSource.contains("documentTitle.extension"))
+        #expect(documentTitle.contains("StateField.define<DecorationSet>"))
+        #expect(documentTitle.contains("EditorView.decorations.from(field)"))
 
         let buildStart = try #require(
             editorSource.range(of: "function buildLiveDecorations(")

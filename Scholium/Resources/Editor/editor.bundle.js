@@ -13747,8 +13747,419 @@
     EditorView.editorAttributes.from(editorSuspensionState, (token) => token === null ? {} : { inert: "" }),
     EditorState.transactionFilter.of((transaction) => transaction.startState.field(editorSuspensionState) !== null && transaction.docChanged ? [] : transaction)
   ];
-  function titleAllowsDetachment(title, draft, renamePending) {
-    return !renamePending && (draft === null || draft === title);
+
+  // localization.ts
+  var webInterfaceLocalizationKeys = [
+    "Tab",
+    "Accept suggestion: {text} (Tab)",
+    "AI",
+    "Accept AI continuation: {text} (Tab)",
+    "AI continuation timed out; using library completion.",
+    "AI continuation unavailable; using library completion.",
+    "AI continuation is preparing.",
+    "AI continuation is retrieving related context.",
+    "AI continuation is composing.",
+    "AI continuation is not enabled.",
+    "AI continuation is not connected. Connect Codex in Agents & Chat.",
+    "AI continuation is not ready. Check Writing Assistance settings.",
+    "The selected AI continuation model is unavailable. Choose an available model in Writing Assistance.",
+    "AI continuation is still stopping. Try again in a moment.",
+    "AI continuation could not connect. Check Agents & Chat.",
+    "AI continuation timed out. Library completion remains available.",
+    "AI returned no usable continuation. Library completion remains available.",
+    "AI continuation could not be used for this writing context.",
+    "AI continuation was cancelled.",
+    "AI continuation could not be generated. Library completion remains available.",
+    "The edited Markdown document exceeds the supported editor size.",
+    "Finish editing the note title before switching documents.",
+    "Copy",
+    "Expand",
+    "YAML frontmatter",
+    "File and image paste is not supported in Editor 1.0.",
+    "Markdown editor, Edit mode",
+    "Markdown source editor",
+    "Note title",
+    "Heading level {level}",
+    "Link",
+    "Callout",
+    "Quotation",
+    "Table",
+    "Bulleted list",
+    "Numbered list",
+    "Bold text",
+    "Emphasized text",
+    "Inline code",
+    "Exact Markdown and YAML source",
+    "Task item",
+    "Show Link Annotation",
+    "Hide Link Annotation",
+    "Link Annotation",
+    "linked note",
+    "Markdown table",
+    "Embedded note {title}",
+    "Open embedded note {title}",
+    "Embedded note content for {title}",
+    "Embedded note",
+    "Mathematics could not be rendered. Source is shown.",
+    "Diagram rendering is unavailable. Mermaid source is shown.",
+    "This Mermaid diagram is unsupported or could not be rendered. Source is shown.",
+    "This Mermaid diagram could not be isolated safely. Source is shown.",
+    "Mermaid source: {source}",
+    "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
+    "This Mermaid diagram could not be rendered. Source is shown.",
+    "Footnote {ordinal}",
+    "Edit mode unavailable",
+    "Close the YAML frontmatter in Source mode to restore the visual projection.",
+    "The editor could not preserve the exact source line endings.",
+    "The replacement would make the document too large.",
+    "The Markdown editor could not start.",
+    "The Review renderer stopped unexpectedly.",
+    "No preview is available at the insertion point.",
+    "Preview content",
+    "Paragraph",
+    "Bold",
+    "Italic",
+    "Strikethrough",
+    "Highlight",
+    "Annotated Wikilink",
+    "Inline Code",
+    "Code Block",
+    "Blockquote",
+    "Comment",
+    "Date",
+    "Inline Math",
+    "Display Math",
+    "Mermaid",
+    "Footnote",
+    "Divider",
+    "Orientation",
+    "Introduces the note's purpose, scope, and route.",
+    "Source",
+    "Records sources that anchor the note without implying that they support every claim.",
+    "Connections",
+    "Routes the reader to a curated set of neighboring knowledge objects.",
+    "Statement",
+    "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it.",
+    "Illustration",
+    "Presents a scenario, example, thought experiment, or test case used in reasoning.",
+    "Preserves source-specific wording with attribution.",
+    "Caution",
+    "Marks a limitation, unresolved dependency, source restriction, or interpretive warning.",
+    "Note",
+    "Preserves an unsupported callout without assigning a research role.",
+    "Selection actions",
+    "Return saves \xB7 Shift-Return adds a line \xB7 Escape cancels",
+    "Submit Comment for QA",
+    "Comment for line {start}",
+    "Comment for lines {start} through {end}",
+    "Open comment at line {start}",
+    "Open comment at lines {start} through {end}",
+    "Open {count} comments at line {start}",
+    "Open {count} comments at lines {start} through {end}",
+    "Could not save. Your Comment is still here.",
+    "This Comment is too long to save here.",
+    "Saving\u2026"
+  ];
+  var fallbackPayload = {
+    languageTag: "en",
+    strings: {}
+  };
+  function payloadFromDocument() {
+    if (typeof document === "undefined") return fallbackPayload;
+    const encoded = document.querySelector(
+      'meta[name="scholium-interface-localization"]'
+    )?.content;
+    if (!encoded) return fallbackPayload;
+    try {
+      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+      const candidate = JSON.parse(new TextDecoder().decode(bytes));
+      if (typeof candidate.languageTag !== "string" || !candidate.strings || typeof candidate.strings !== "object") return fallbackPayload;
+      const strings = {};
+      for (const key of webInterfaceLocalizationKeys) {
+        const value = candidate.strings[key];
+        if (typeof value === "string" && value.length <= 4096) strings[key] = value;
+      }
+      return { languageTag: candidate.languageTag.slice(0, 32), strings };
+    } catch {
+      return fallbackPayload;
+    }
+  }
+  var activePayload = payloadFromDocument();
+  function localized(key) {
+    return localizedFrom(activePayload, key);
+  }
+  function localizedTemplate(key, replacements) {
+    return localizedTemplateFrom(activePayload, key, replacements);
+  }
+  function localizedFrom(payload, key) {
+    return payload.strings[key] ?? key;
+  }
+  function localizedTemplateFrom(payload, key, replacements) {
+    return localizedFrom(payload, key).replace(
+      /\{([A-Za-z]+)\}/g,
+      (placeholder, name2) => Object.hasOwn(replacements, name2) ? String(replacements[name2]) : placeholder
+    );
+  }
+  var calloutLocalizationKeys = {
+    orient: ["Orientation", "Introduces the note's purpose, scope, and route."],
+    cite: ["Source", "Records sources that anchor the note without implying that they support every claim."],
+    connect: ["Connections", "Routes the reader to a curated set of neighboring knowledge objects."],
+    state: ["Statement", "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it."],
+    illustrate: ["Illustration", "Presents a scenario, example, thought experiment, or test case used in reasoning."],
+    quote: ["Quotation", "Preserves source-specific wording with attribution."],
+    flag: ["Caution", "Marks a limitation, unresolved dependency, source restriction, or interpretive warning."],
+    neutral: ["Note", "Preserves an unsupported callout without assigning a research role."]
+  };
+  function localizedCallout(identifier4, fallback) {
+    if (activePayload.languageTag !== "zh-Hans") return fallback;
+    const keys = calloutLocalizationKeys[identifier4];
+    return keys ? { label: localized(keys[0]), meaning: localized(keys[1]) } : fallback;
+  }
+
+  // document-title.ts
+  function createDocumentTitle(options) {
+    const refreshDocumentTitleEffect = StateEffect.define();
+    let documentTitle2 = "";
+    let documentTitleDraft = null;
+    let documentTitleError = null;
+    let documentTitleRenameRequest = null;
+    let documentTitlePresentationRevision = 0;
+    class DocumentTitleWidget extends WidgetType {
+      constructor(title, presentationRevision) {
+        super();
+        this.title = title;
+        this.presentationRevision = presentationRevision;
+      }
+      title;
+      presentationRevision;
+      eq(other) {
+        return other.title === this.title && other.presentationRevision === this.presentationRevision;
+      }
+      toDOM() {
+        const attachment = options.attachment();
+        const wrapper = document.createElement("div");
+        wrapper.className = "cm-live-note-title scholium-note-title";
+        wrapper.setAttribute("role", "heading");
+        wrapper.setAttribute("aria-level", "1");
+        wrapper.setAttribute("aria-label", documentTitleDraft ?? this.title);
+        wrapper.setAttribute("dir", "auto");
+        wrapper.setAttribute("data-scholium-protected", "note-title");
+        const input = document.createElement("textarea");
+        input.className = "scholium-note-title-input";
+        input.value = documentTitleDraft ?? this.title;
+        input.rows = 1;
+        input.wrap = "soft";
+        input.spellcheck = false;
+        input.maxLength = 1024;
+        input.setAttribute("aria-label", localized("Note title"));
+        input.setAttribute("data-scholium-title-input", "true");
+        input.disabled = documentTitleRenameRequest !== null;
+        if (documentTitleRenameRequest) input.setAttribute("aria-busy", "true");
+        if (documentTitleError) {
+          input.setAttribute("aria-invalid", "true");
+          input.setAttribute("aria-describedby", "scholium-note-title-error");
+        }
+        const resize = () => {
+          input.style.height = "0";
+          input.style.height = `${input.scrollHeight}px`;
+        };
+        let composing = false;
+        let commitAfterComposition = false;
+        const normalizeInput = () => {
+          if (attachment !== options.attachment()) return;
+          if (composing) {
+            documentTitleDraft = input.value;
+            wrapper.setAttribute("aria-label", input.value || this.title);
+            resize();
+            return;
+          }
+          const normalized2 = input.value.replace(/[\r\n]+/g, " ");
+          if (normalized2 !== input.value) input.value = normalized2;
+          documentTitleDraft = input.value;
+          wrapper.setAttribute("aria-label", input.value || this.title);
+          documentTitleError = null;
+          input.removeAttribute("aria-invalid");
+          input.removeAttribute("aria-describedby");
+          wrapper.querySelector(".scholium-note-title-error")?.remove();
+          resize();
+        };
+        const commit = () => {
+          if (attachment !== options.attachment() || options.isSuspended()) return;
+          if (documentTitleRenameRequest) return;
+          const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
+          documentTitleDraft = requestedTitle;
+          if (requestedTitle === documentTitle2) {
+            documentTitleDraft = null;
+            documentTitleError = null;
+            return;
+          }
+          const requestID = options.requestID();
+          documentTitleRenameRequest = {
+            requestID,
+            requestedTitle
+          };
+          input.disabled = true;
+          input.setAttribute("aria-busy", "true");
+          options.requestRename({
+            requestID,
+            expectedTitle: documentTitle2,
+            requestedTitle
+          });
+        };
+        let cancelling = false;
+        input.addEventListener("input", normalizeInput);
+        input.addEventListener("focus", () => {
+          if (attachment !== options.attachment()) return;
+          options.focusChanged();
+        });
+        input.addEventListener("compositionstart", () => {
+          if (attachment !== options.attachment()) return;
+          composing = true;
+          options.beginComposition();
+        });
+        input.addEventListener("compositionend", () => {
+          if (attachment !== options.attachment()) return;
+          composing = false;
+          options.endComposition();
+          normalizeInput();
+          if (commitAfterComposition) {
+            commitAfterComposition = false;
+            commit();
+          }
+        });
+        input.addEventListener("keydown", (event) => {
+          if (attachment !== options.attachment()) return;
+          if (composing || event.isComposing) return;
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            cancelling = true;
+            documentTitleDraft = null;
+            documentTitleError = null;
+            input.value = documentTitle2;
+            resize();
+            input.blur();
+          }
+        });
+        input.addEventListener("blur", () => {
+          if (attachment !== options.attachment()) return;
+          if (cancelling) {
+            cancelling = false;
+            return;
+          }
+          if (composing) {
+            commitAfterComposition = true;
+            return;
+          }
+          commit();
+        });
+        const stopEditorPointerHandling = (event) => event.stopPropagation();
+        input.addEventListener("pointerdown", stopEditorPointerHandling);
+        input.addEventListener("mousedown", stopEditorPointerHandling);
+        wrapper.addEventListener("pointerdown", (event) => {
+          if (event.target === input || input.disabled) return;
+          event.preventDefault();
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        });
+        wrapper.append(input);
+        if (documentTitleError) {
+          const error = document.createElement("div");
+          error.id = "scholium-note-title-error";
+          error.className = "scholium-note-title-error";
+          error.setAttribute("role", "alert");
+          error.textContent = documentTitleError;
+          wrapper.append(error);
+        }
+        queueMicrotask(resize);
+        return wrapper;
+      }
+      ignoreEvent() {
+        return true;
+      }
+    }
+    function documentTitleDecorations() {
+      if (!documentTitle2) return Decoration.none;
+      return Decoration.set([
+        Decoration.widget({
+          widget: new DocumentTitleWidget(
+            documentTitle2,
+            documentTitlePresentationRevision
+          ),
+          block: true,
+          side: -2
+        }).range(0)
+      ]);
+    }
+    function resolveDocumentTitleRename(requestID, accepted, title, error) {
+      if (!documentTitleRenameRequest || requestID !== documentTitleRenameRequest.requestID || typeof accepted !== "boolean" || typeof title !== "string" || title.length > 1024 || typeof error !== "string" || error.length > 4096) return;
+      const requestedTitle = documentTitleRenameRequest.requestedTitle;
+      documentTitleRenameRequest = null;
+      if (accepted) {
+        documentTitle2 = title;
+        documentTitleDraft = null;
+        documentTitleError = null;
+      } else {
+        documentTitleDraft = requestedTitle;
+        documentTitleError = error;
+      }
+      documentTitlePresentationRevision += 1;
+      options.dispatch(refreshDocumentTitleEffect.of(null));
+      if (!accepted) {
+        const attachment = options.attachment();
+        queueMicrotask(() => {
+          if (attachment !== options.attachment()) return;
+          const input = document.querySelector(
+            ".scholium-note-title-input"
+          );
+          input?.focus();
+          input?.setSelectionRange(input.value.length, input.value.length);
+        });
+      }
+    }
+    const liveDocumentTitle = StateField.define({
+      create: () => documentTitleDecorations(),
+      update: (decorations2, transaction) => {
+        const titleChanged = transaction.effects.some((effect) => effect.is(refreshDocumentTitleEffect));
+        return transaction.docChanged || titleChanged ? documentTitleDecorations() : decorations2;
+      },
+      provide: (field) => EditorView.decorations.from(field)
+    });
+    return {
+      extension: liveDocumentTitle,
+      resolveRename: resolveDocumentTitleRename,
+      // The native detachment transaction consults this before capturing source.
+      // Filename drafts live in this control and are not source recovery data.
+      allowsDetachment: () => documentTitleRenameRequest === null && (documentTitleDraft === null || documentTitleDraft === documentTitle2),
+      ownsCompositionEvent: (event) => event.target instanceof Element && event.target.closest("[data-scholium-title-input]") !== null,
+      resetDocument() {
+        documentTitle2 = "";
+        documentTitleDraft = null;
+        documentTitleError = null;
+        documentTitleRenameRequest = null;
+        documentTitlePresentationRevision += 1;
+      },
+      setTitle(value) {
+        if (documentTitle2 === value && documentTitleDraft === null && documentTitleError === null && documentTitleRenameRequest === null) return;
+        documentTitle2 = value;
+        documentTitleDraft = null;
+        documentTitleError = null;
+        documentTitleRenameRequest = null;
+        documentTitlePresentationRevision += 1;
+        options.dispatch(refreshDocumentTitleEffect.of(null));
+      },
+      focus() {
+        const input = document.querySelector(
+          ".scholium-note-title-input"
+        );
+        if (!input || input.disabled) return false;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        return true;
+      }
+    };
   }
 
   // state.ts
@@ -31612,174 +32023,6 @@ ${fence}
     return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
   }
 
-  // localization.ts
-  var webInterfaceLocalizationKeys = [
-    "Tab",
-    "Accept suggestion: {text} (Tab)",
-    "AI",
-    "Accept AI continuation: {text} (Tab)",
-    "AI continuation timed out; using library completion.",
-    "AI continuation unavailable; using library completion.",
-    "AI continuation is preparing.",
-    "AI continuation is retrieving related context.",
-    "AI continuation is composing.",
-    "AI continuation is not enabled.",
-    "AI continuation is not connected. Connect Codex in Agents & Chat.",
-    "AI continuation is not ready. Check Writing Assistance settings.",
-    "The selected AI continuation model is unavailable. Choose an available model in Writing Assistance.",
-    "AI continuation is still stopping. Try again in a moment.",
-    "AI continuation could not connect. Check Agents & Chat.",
-    "AI continuation timed out. Library completion remains available.",
-    "AI returned no usable continuation. Library completion remains available.",
-    "AI continuation could not be used for this writing context.",
-    "AI continuation was cancelled.",
-    "AI continuation could not be generated. Library completion remains available.",
-    "The edited Markdown document exceeds the supported editor size.",
-    "Finish editing the note title before switching documents.",
-    "Copy",
-    "Expand",
-    "YAML frontmatter",
-    "File and image paste is not supported in Editor 1.0.",
-    "Markdown editor, Edit mode",
-    "Markdown source editor",
-    "Note title",
-    "Heading level {level}",
-    "Link",
-    "Callout",
-    "Quotation",
-    "Table",
-    "Bulleted list",
-    "Numbered list",
-    "Bold text",
-    "Emphasized text",
-    "Inline code",
-    "Exact Markdown and YAML source",
-    "Task item",
-    "Show Link Annotation",
-    "Hide Link Annotation",
-    "Link Annotation",
-    "linked note",
-    "Markdown table",
-    "Embedded note {title}",
-    "Open embedded note {title}",
-    "Embedded note content for {title}",
-    "Embedded note",
-    "Mathematics could not be rendered. Source is shown.",
-    "Diagram rendering is unavailable. Mermaid source is shown.",
-    "This Mermaid diagram is unsupported or could not be rendered. Source is shown.",
-    "This Mermaid diagram could not be isolated safely. Source is shown.",
-    "Mermaid source: {source}",
-    "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
-    "This Mermaid diagram could not be rendered. Source is shown.",
-    "Footnote {ordinal}",
-    "Edit mode unavailable",
-    "Close the YAML frontmatter in Source mode to restore the visual projection.",
-    "The editor could not preserve the exact source line endings.",
-    "The replacement would make the document too large.",
-    "The Markdown editor could not start.",
-    "The Review renderer stopped unexpectedly.",
-    "No preview is available at the insertion point.",
-    "Preview content",
-    "Paragraph",
-    "Bold",
-    "Italic",
-    "Strikethrough",
-    "Highlight",
-    "Annotated Wikilink",
-    "Inline Code",
-    "Code Block",
-    "Blockquote",
-    "Comment",
-    "Date",
-    "Inline Math",
-    "Display Math",
-    "Mermaid",
-    "Footnote",
-    "Divider",
-    "Orientation",
-    "Introduces the note's purpose, scope, and route.",
-    "Source",
-    "Records sources that anchor the note without implying that they support every claim.",
-    "Connections",
-    "Routes the reader to a curated set of neighboring knowledge objects.",
-    "Statement",
-    "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it.",
-    "Illustration",
-    "Presents a scenario, example, thought experiment, or test case used in reasoning.",
-    "Preserves source-specific wording with attribution.",
-    "Caution",
-    "Marks a limitation, unresolved dependency, source restriction, or interpretive warning.",
-    "Note",
-    "Preserves an unsupported callout without assigning a research role.",
-    "Selection actions",
-    "Return saves \xB7 Shift-Return adds a line \xB7 Escape cancels",
-    "Submit Comment for QA",
-    "Comment for line {start}",
-    "Comment for lines {start} through {end}",
-    "Open comment at line {start}",
-    "Open comment at lines {start} through {end}",
-    "Open {count} comments at line {start}",
-    "Open {count} comments at lines {start} through {end}",
-    "Could not save. Your Comment is still here.",
-    "This Comment is too long to save here.",
-    "Saving\u2026"
-  ];
-  var fallbackPayload = {
-    languageTag: "en",
-    strings: {}
-  };
-  function payloadFromDocument() {
-    if (typeof document === "undefined") return fallbackPayload;
-    const encoded = document.querySelector(
-      'meta[name="scholium-interface-localization"]'
-    )?.content;
-    if (!encoded) return fallbackPayload;
-    try {
-      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-      const candidate = JSON.parse(new TextDecoder().decode(bytes));
-      if (typeof candidate.languageTag !== "string" || !candidate.strings || typeof candidate.strings !== "object") return fallbackPayload;
-      const strings = {};
-      for (const key of webInterfaceLocalizationKeys) {
-        const value = candidate.strings[key];
-        if (typeof value === "string" && value.length <= 4096) strings[key] = value;
-      }
-      return { languageTag: candidate.languageTag.slice(0, 32), strings };
-    } catch {
-      return fallbackPayload;
-    }
-  }
-  var activePayload = payloadFromDocument();
-  function localized(key) {
-    return localizedFrom(activePayload, key);
-  }
-  function localizedTemplate(key, replacements) {
-    return localizedTemplateFrom(activePayload, key, replacements);
-  }
-  function localizedFrom(payload, key) {
-    return payload.strings[key] ?? key;
-  }
-  function localizedTemplateFrom(payload, key, replacements) {
-    return localizedFrom(payload, key).replace(
-      /\{([A-Za-z]+)\}/g,
-      (placeholder, name2) => Object.hasOwn(replacements, name2) ? String(replacements[name2]) : placeholder
-    );
-  }
-  var calloutLocalizationKeys = {
-    orient: ["Orientation", "Introduces the note's purpose, scope, and route."],
-    cite: ["Source", "Records sources that anchor the note without implying that they support every claim."],
-    connect: ["Connections", "Routes the reader to a curated set of neighboring knowledge objects."],
-    state: ["Statement", "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it."],
-    illustrate: ["Illustration", "Presents a scenario, example, thought experiment, or test case used in reasoning."],
-    quote: ["Quotation", "Preserves source-specific wording with attribution."],
-    flag: ["Caution", "Marks a limitation, unresolved dependency, source restriction, or interpretive warning."],
-    neutral: ["Note", "Preserves an unsupported callout without assigning a research role."]
-  };
-  function localizedCallout(identifier4, fallback) {
-    if (activePayload.languageTag !== "zh-Hans") return fallback;
-    const keys = calloutLocalizationKeys[identifier4];
-    return keys ? { label: localized(keys[0]), meaning: localized(keys[1]) } : fallback;
-  }
-
   // accessibility.ts
   function unsupportedFilePasteMessage() {
     return localized("File and image paste is not supported in Editor 1.0.");
@@ -38176,14 +38419,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   var programmaticDocumentChange = Annotation.define();
   var refreshLivePreviewEffect = StateEffect.define();
-  var refreshDocumentTitleEffect = StateEffect.define();
   var refreshMermaidThemeEffect = StateEffect.define();
   var mermaidThemeRevision = 0;
-  var documentTitle = "";
-  var documentTitleDraft = null;
-  var documentTitleError = null;
-  var documentTitleRenameRequest = null;
-  var documentTitlePresentationRevision = 0;
   var lastDocumentFocusTarget;
   function setDocumentFocusTarget(target) {
     const changed = lastDocumentFocusTarget !== target;
@@ -38196,211 +38433,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function configuredEditorMode(state) {
     return state.facet(editorModeFacet);
   }
-  var DocumentTitleWidget = class extends WidgetType {
-    constructor(title, presentationRevision) {
-      super();
-      this.title = title;
-      this.presentationRevision = presentationRevision;
-    }
-    title;
-    presentationRevision;
-    eq(other) {
-      return other.title === this.title && other.presentationRevision === this.presentationRevision;
-    }
-    toDOM() {
-      const attachment = documentAttachment;
-      const wrapper = document.createElement("div");
-      wrapper.className = "cm-live-note-title scholium-note-title";
-      wrapper.setAttribute("role", "heading");
-      wrapper.setAttribute("aria-level", "1");
-      wrapper.setAttribute("aria-label", documentTitleDraft ?? this.title);
-      wrapper.setAttribute("dir", "auto");
-      wrapper.setAttribute("data-scholium-protected", "note-title");
-      const input = document.createElement("textarea");
-      input.className = "scholium-note-title-input";
-      input.value = documentTitleDraft ?? this.title;
-      input.rows = 1;
-      input.wrap = "soft";
-      input.spellcheck = false;
-      input.maxLength = 1024;
-      input.setAttribute("aria-label", localized("Note title"));
-      input.setAttribute("data-scholium-title-input", "true");
-      input.disabled = documentTitleRenameRequest !== null;
-      if (documentTitleRenameRequest) input.setAttribute("aria-busy", "true");
-      if (documentTitleError) {
-        input.setAttribute("aria-invalid", "true");
-        input.setAttribute("aria-describedby", "scholium-note-title-error");
-      }
-      const resize = () => {
-        input.style.height = "0";
-        input.style.height = `${input.scrollHeight}px`;
-      };
-      let composing = false;
-      let commitAfterComposition = false;
-      const normalizeInput = () => {
-        if (attachment !== documentAttachment) return;
-        if (composing) {
-          documentTitleDraft = input.value;
-          wrapper.setAttribute("aria-label", input.value || this.title);
-          resize();
-          return;
-        }
-        const normalized2 = input.value.replace(/[\r\n]+/g, " ");
-        if (normalized2 !== input.value) input.value = normalized2;
-        documentTitleDraft = input.value;
-        wrapper.setAttribute("aria-label", input.value || this.title);
-        documentTitleError = null;
-        input.removeAttribute("aria-invalid");
-        input.removeAttribute("aria-describedby");
-        wrapper.querySelector(".scholium-note-title-error")?.remove();
-        resize();
-      };
-      const commit = () => {
-        if (attachment !== documentAttachment || editor.state.field(editorSuspensionState) !== null) return;
-        if (documentTitleRenameRequest) return;
-        const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
-        documentTitleDraft = requestedTitle;
-        if (requestedTitle === documentTitle) {
-          documentTitleDraft = null;
-          documentTitleError = null;
-          return;
-        }
-        const requestID = boundedUUID();
-        documentTitleRenameRequest = {
-          requestID,
-          expectedTitle: documentTitle,
-          requestedTitle
-        };
-        input.disabled = true;
-        input.setAttribute("aria-busy", "true");
-        post({
-          type: "requestDocumentTitleRename",
-          requestID,
-          expectedTitle: documentTitle,
-          requestedTitle
-        });
-      };
-      let cancelling = false;
-      input.addEventListener("input", normalizeInput);
-      input.addEventListener("focus", () => {
-        if (attachment !== documentAttachment) return;
-        setDocumentFocusTarget("title");
-      });
-      input.addEventListener("compositionstart", () => {
-        if (attachment !== documentAttachment) return;
-        composing = true;
-        compositionGate.begin("title");
-        publishEditorContext();
-      });
-      input.addEventListener("compositionend", () => {
-        if (attachment !== documentAttachment) return;
-        composing = false;
-        finishComposition("title");
-        normalizeInput();
-        if (commitAfterComposition) {
-          commitAfterComposition = false;
-          commit();
-        }
-      });
-      input.addEventListener("keydown", (event) => {
-        if (attachment !== documentAttachment) return;
-        if (composing || event.isComposing) return;
-        if (event.key === "Enter") {
-          event.preventDefault();
-          commit();
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          cancelling = true;
-          documentTitleDraft = null;
-          documentTitleError = null;
-          input.value = documentTitle;
-          resize();
-          input.blur();
-        }
-      });
-      input.addEventListener("blur", () => {
-        if (attachment !== documentAttachment) return;
-        if (cancelling) {
-          cancelling = false;
-          return;
-        }
-        if (composing) {
-          commitAfterComposition = true;
-          return;
-        }
-        commit();
-      });
-      const stopEditorPointerHandling = (event) => event.stopPropagation();
-      input.addEventListener("pointerdown", stopEditorPointerHandling);
-      input.addEventListener("mousedown", stopEditorPointerHandling);
-      wrapper.addEventListener("pointerdown", (event) => {
-        if (event.target === input || input.disabled) return;
-        event.preventDefault();
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-      });
-      wrapper.append(input);
-      if (documentTitleError) {
-        const error = document.createElement("div");
-        error.id = "scholium-note-title-error";
-        error.className = "scholium-note-title-error";
-        error.setAttribute("role", "alert");
-        error.textContent = documentTitleError;
-        wrapper.append(error);
-      }
-      queueMicrotask(resize);
-      return wrapper;
-    }
-    ignoreEvent() {
-      return true;
-    }
-  };
-  function documentTitleDecorations() {
-    if (!documentTitle) return Decoration.none;
-    return Decoration.set([
-      Decoration.widget({
-        widget: new DocumentTitleWidget(
-          documentTitle,
-          documentTitlePresentationRevision
-        ),
-        block: true,
-        side: -2
-      }).range(0)
-    ]);
-  }
-  function resolveDocumentTitleRename(requestID, accepted, title, error) {
-    if (!documentTitleRenameRequest || requestID !== documentTitleRenameRequest.requestID || typeof accepted !== "boolean" || typeof title !== "string" || title.length > 1024 || typeof error !== "string" || error.length > 4096) return;
-    const requestedTitle = documentTitleRenameRequest.requestedTitle;
-    documentTitleRenameRequest = null;
-    if (accepted) {
-      documentTitle = title;
-      documentTitleDraft = null;
-      documentTitleError = null;
-    } else {
-      documentTitleDraft = requestedTitle;
-      documentTitleError = error;
-    }
-    documentTitlePresentationRevision += 1;
-    editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
-    if (!accepted) {
-      const attachment = documentAttachment;
-      queueMicrotask(() => {
-        if (attachment !== documentAttachment) return;
-        const input = document.querySelector(
-          ".scholium-note-title-input"
-        );
-        input?.focus();
-        input?.setSelectionRange(input.value.length, input.value.length);
-      });
-    }
-  }
-  var liveDocumentTitle = StateField.define({
-    create: () => documentTitleDecorations(),
-    update: (decorations2, transaction) => {
-      const titleChanged = transaction.effects.some((effect) => effect.is(refreshDocumentTitleEffect));
-      return transaction.docChanged || titleChanged ? documentTitleDecorations() : decorations2;
+  var documentTitle = createDocumentTitle({
+    attachment: () => documentAttachment,
+    isSuspended: () => editor.state.field(editorSuspensionState) !== null,
+    requestID: boundedUUID,
+    dispatch: (effect) => editor.dispatch({ effects: effect }),
+    requestRename: (request) => post({ type: "requestDocumentTitleRename", ...request }),
+    focusChanged: () => setDocumentFocusTarget("title"),
+    beginComposition: () => {
+      compositionGate.begin("title");
+      publishEditorContext();
     },
-    provide: (field) => EditorView.decorations.from(field)
+    endComposition: () => finishComposition("title")
   });
   var hiddenSyntax = Decoration.replace({});
   var liveMark = (className) => Decoration.mark({ class: className });
@@ -39595,7 +39639,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     documentTextLanguage,
     syntaxPresentation,
     liveProjectionIndex.extension,
-    liveDocumentTitle,
+    documentTitle.extension,
     inputSuggestions.extension,
     liveSemanticLayout.extension,
     liveFrontmatterLines,
@@ -39979,7 +40023,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         editorOperations.setMode(operation.mode);
         break;
       case "setDocumentTitle":
-        editorOperations.setDocumentTitle(operation.value);
+        documentTitle.setTitle(operation.value);
         break;
       case "setPresentationCSS":
         editorOperations.setPresentationCSS(operation.value);
@@ -40049,7 +40093,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return { ...successfulResult(request.requestID), recovery: captureRecovery() };
       }
       case "suspendForDetachment": {
-        if (!titleAllowsDetachment(documentTitle, documentTitleDraft, documentTitleRenameRequest !== null)) {
+        if (!documentTitle.allowsDetachment()) {
           return rejected(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
         }
         editor.dispatch({ effects: setEditorSuspension.of(operation.suspensionID) });
@@ -40204,7 +40248,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         editorOperations.focus();
         break;
       case "focusTitle": {
-        if (!editorOperations.focusTitle()) {
+        if (!documentTitle.focus()) {
           return rejected(request.requestID, documentVersion, "document title is unavailable");
         }
         break;
@@ -40268,14 +40312,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       publishEditorContext();
     }, 0);
   }
-  function isTitleComposition(event) {
-    return event.target instanceof Element && event.target.closest("[data-scholium-title-input]") !== null;
-  }
   editor.contentDOM.addEventListener("compositionend", (event) => {
-    if (!isTitleComposition(event)) finishComposition("editor");
+    if (!documentTitle.ownsCompositionEvent(event)) finishComposition("editor");
   });
   editor.contentDOM.addEventListener("compositionstart", (event) => {
-    if (isTitleComposition(event)) return;
+    if (documentTitle.ownsCompositionEvent(event)) return;
     compositionGate.begin();
     const attachment = documentAttachment;
     window.queueMicrotask(() => {
@@ -40440,11 +40481,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       bridgeSessionID = sessionID;
       bridgeDocumentID = documentID;
       bridgeFingerprint = startingFingerprint;
-      documentTitle = "";
-      documentTitleDraft = null;
-      documentTitleError = null;
-      documentTitleRenameRequest = null;
-      documentTitlePresentationRevision += 1;
+      documentTitle.resetDocument();
       lastDocumentFocusTarget = void 0;
       linkPreviews = [];
       linkPreviewIndexByRange = /* @__PURE__ */ new Map();
@@ -40462,15 +40499,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       dirty = false;
       lastInteractionAvailabilitySignature = null;
       scheduleEditorInteractionReport(true);
-    },
-    setDocumentTitle(value) {
-      if (documentTitle === value && documentTitleDraft === null && documentTitleError === null && documentTitleRenameRequest === null) return;
-      documentTitle = value;
-      documentTitleDraft = null;
-      documentTitleError = null;
-      documentTitleRenameRequest = null;
-      documentTitlePresentationRevision += 1;
-      editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
     },
     /** @param {string} mode */
     setMode(mode) {
@@ -40593,15 +40621,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     focus() {
       editor.focus();
     },
-    focusTitle() {
-      const input = document.querySelector(
-        ".scholium-note-title-input"
-      );
-      if (!input || input.disabled) return false;
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-      return true;
-    },
     blur() {
       previewPopover.hide();
       editor.contentDOM.blur();
@@ -40623,7 +40642,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
     resolveWritingContinuation: inputSuggestions.resolveWritingContinuation,
     setWritingContinuationStatus: inputSuggestions.setWritingContinuationStatus,
-    resolveDocumentTitleRename,
+    resolveDocumentTitleRename: documentTitle.resolveRename,
     refreshMathRuntime() {
       editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
       return true;

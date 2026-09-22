@@ -19,8 +19,3 @@ export const editorSuspension: Extension = [
   EditorState.transactionFilter.of(transaction =>
     transaction.startState.field(editorSuspensionState) !== null && transaction.docChanged ? [] : transaction),
 ];
-
-/** A filename draft belongs to its live control and is not in source recovery. */
-export function titleAllowsDetachment(title: string, draft: string | null, renamePending: boolean) {
-  return !renamePending && (draft === null || draft === title);
-}

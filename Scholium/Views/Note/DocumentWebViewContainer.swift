@@ -13,10 +13,9 @@ protocol ScholiumDocumentInputStateProviding: AnyObject {
 final class DocumentWebViewContainer: NSView {
     let webView: WKWebView
     private let keyEquivalentRoute: ScholiumDocumentKeyEquivalentRoute
-    private var loadingObservation: NSKeyValueObservation?
     private var chromeObservation: NSKeyValueObservation?
     private let toolbarTransition = DocumentToolbarTransition()
-    private var projectedToolbarInset: CGFloat?
+    private lazy var webEnvironment = DocumentWebEnvironment(webView: webView, hostView: self)
     var toolbarUnderlapEnabled = false {
         didSet { if oldValue != toolbarUnderlapEnabled { needsLayout = true } }
     }
@@ -39,25 +38,7 @@ final class DocumentWebViewContainer: NSView {
         addSubview(webView)
         toolbarTransition.isHidden = true
         addSubview(toolbarTransition)
-        // WebKit deliberately exposes a default blue CSS system Accent. Resolve
-        // the researcher's choice in AppKit and project it into every retained
-        // document, including Review and both editing modes.
-        loadingObservation = webView.observe(\.isLoading, options: [.initial, .new]) {
-            [weak self] _, change in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.projectedToolbarInset = nil
-                guard change.newValue == false else { return }
-                self.updateSystemAccent()
-                self.needsLayout = true
-            }
-        }
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(systemColorsDidChange),
-            name: NSColor.systemColorsDidChangeNotification,
-            object: nil
-        )
+        webEnvironment.refreshAppearance()
     }
 
     /// Native WebKit views remain allocated for editor identity and recovery,
@@ -101,15 +82,7 @@ final class DocumentWebViewContainer: NSView {
         toolbarTransition.isHidden = overlap.isEmpty
         // Retained surfaces need the same geometry before scroll restoration
         // and reveal; visibility must not change document padding.
-        guard webView.superview === self, !webView.isLoading,
-            projectedToolbarInset != overlap.height else { return }
-        projectedToolbarInset = overlap.height
-        webView.callAsyncJavaScript(
-            "document.documentElement.style.setProperty(name, value)",
-            arguments: ["name": "--scholium-document-toolbar-inset", "value": "\(overlap.height)px"],
-            in: nil, in: .defaultClient,
-            completionHandler: nil
-        )
+        webEnvironment.updateToolbarInset(overlap.height)
     }
 
     /// Window coordinates are unflipped; convert the actual chrome rectangle
@@ -127,30 +100,7 @@ final class DocumentWebViewContainer: NSView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        updateSystemAccent()
-    }
-
-    @objc private func systemColorsDidChange(_ notification: Notification) {
-        updateSystemAccent()
-    }
-
-    private func updateSystemAccent() {
-        let value = ScholiumColorRole.systemAccentRGBValue(for: webView.effectiveAppearance)
-        webView.callAsyncJavaScript(
-            """
-            const root = document.documentElement;
-            if (root && root.style.getPropertyValue(name) !== value) {
-                root.style.setProperty(name, value);
-            }
-            """,
-            arguments: [
-                "name": ScholiumColorRole.accent.cssVariableName,
-                "value": String(format: "#%06x", value),
-            ],
-            in: nil,
-            in: .defaultClient,
-            completionHandler: nil
-        )
+        webEnvironment.refreshAppearance()
     }
 
     private var documentOwnsKeyEquivalentFocus: Bool {

@@ -4,7 +4,7 @@ import {history, undo, undoDepth, redo} from "@codemirror/commands";
 import {describe, expect, it} from "vitest";
 import {createMarkdownDocumentState} from "../bootstrap";
 import {captureExactHistory, exactSourceFitsChanges, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource, sourceCapacityExceeded} from "../exact-source-history";
-import {editorSuspension, editorSuspensionState, setEditorSuspension, titleAllowsDetachment} from "../editor-suspension";
+import {editorSuspension, editorSuspensionState, setEditorSuspension} from "../editor-suspension";
 import {ExactSourceMirror} from "../state";
 
 const extensions = [history(), exactSourceHistory, editorSuspension, EditorState.lineSeparator.of("\n")];
@@ -66,13 +66,6 @@ describe("exact source transaction admission", () => {
 });
 
 describe("detachment capture state", () => {
-  it("does not detach a live filename draft or an unresolved rename", () => {
-    expect(titleAllowsDetachment("Title", "Draft", false)).toBe(false);
-    expect(titleAllowsDetachment("Title", "", false)).toBe(false);
-    expect(titleAllowsDetachment("Title", null, true)).toBe(false);
-    expect(titleAllowsDetachment("Title", "Title", false)).toBe(true);
-    expect(titleAllowsDetachment("Title", null, false)).toBe(true);
-  });
   it("freezes input and retains source/history while the captured state restores writable", () => {
     let state = initial("a\r\nb\nc");
     state = state.update({changes: {from: 1, to: 2}, selection: EditorSelection.single(1), userEvent: "delete.forward"}).state;

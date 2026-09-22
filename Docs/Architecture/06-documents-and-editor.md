@@ -10,7 +10,7 @@ identity survives attachment while transport identity rotates. Dirty, composing,
 conflicted, saving and recovery states pin sessions. Destination leases precede
 release; close flushes before membership removal. Clean unleased sessions discard
 source, Undo, rendered content and previews, retaining only bounded volatile
-position state. Equal paths in different vaults remain distinct.
+position state. Equal paths across vaults remain distinct.
 
 Each document session owns one persistent editor/flush identity, checked exact
 mirror and committed revision, atomic presentation phase, pending intent,
@@ -19,7 +19,7 @@ retry/comparison state. Review and allocated editor hosts retain identity across
 mode/layout/theme changes; hidden hosts cannot receive input or accessibility
 focus. Requested mode is not presented fact until matching acknowledgment.
 
-The document host owns one visible native surface at a time. A retained Review
+The document host owns one visible native surface. A retained Review
 or editor WebView may remain allocated for identity, recovery and readiness, but
 its native container is explicitly hidden from compositing and accessibility
 when inactive; SwiftUI z-order and hit-testing are not the visibility authority.
@@ -131,11 +131,10 @@ Review matching is read-only. Completion and reference insertion validate curren
 context, generation, selection and protected ranges before one Undo transaction.
 Insertion receipts are revocable projections, never a second buffer.
 
-WebEditor exposes separate typed native ports for preview, completion and selection;
-the native host arbitrates one visible surface but never receives a universal payload
-with unrelated content or callbacks. Review may inject a bounded read-page extension;
-Chat owns its reply lifecycle, reply projection updates, transcript WebView subclass
-and reply events in that extension rather than in the neutral Review reader.
+Separate typed WebEditor ports expose preview, completion and selection; the native
+host arbitrates one visible surface without universal payloads or unrelated callbacks.
+Review admits bounded read-page extensions. Chat's extension owns reply lifecycle,
+projection updates, transcript WebView subclass and events, outside the neutral reader.
 
 Writing continuation shares the retained editor's inline suggestion owner, with
 separate generation-bound request/cancellation messages. A short post-input pause
@@ -194,13 +193,12 @@ session-local in its projection field, but it does not own scroll or pointer
 state. No decoration state is mutated by an independent geometry cache, and no
 projection owner performs a second scroll correction.
 
-Read and Live consume one semantic component/presentation contract. Application
-owns byte-checked Appearance/snippet storage and explicit reload; stale/invalid
-external edits preserve loaded state and cannot be overwritten by stale GUI saves.
-The host transports protected components, dynamic presentation and sanitized user
-CSS as distinct ordered layers on both surfaces. Style/font measurement remains
-document-bound and does not recreate WebView, EditorState, source, composition or
-Undo. Source font preferences configure the same exact editor.
+Read/Edit share semantic components/presentation. Application owns byte-checked
+Appearance/snippet storage and explicit reload. Stale/invalid external edits preserve
+loaded state and reject stale GUI saves. Both hosts transport protected components,
+dynamic presentation and sanitized user CSS in distinct ordered layers. Document-bound
+style/font measurement preserves WebView, EditorState, source, composition and Undo.
+Source fonts configure the same editor.
 
 Review emits sanitized read-only DOM. In-page projection updates preserve selection
 and scroll; only source/style/capability page identity can replace the page.
@@ -237,31 +235,22 @@ provenance follows the actual build graph.
 
 ### Measurement boundary
 
-Content-free diagnostics are bounded and do not log researcher identifiers.
-Visible-paint samples end at measured native/WebKit presentation, not internal
-work. Process-set attribution validates launchd ownership/executable identity,
-not process names or PPID guesses. Source-free network-denied priming creates no
-source/runtime authority. Isolated performance driving and packaged evidence
-follow [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
-dated results belong to Status. A focused series cannot pass the complete gate.
+Bounded content-free diagnostics exclude researcher identifiers. Visible-paint
+samples end at native/WebKit presentation. Process attribution verifies launchd
+ownership/executable identity, never names/PPID guesses. Source-free network-denied
+priming grants no source/runtime authority. Isolated performance driving and
+packaged evidence follow [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
+Status owns dated results. Focused checks cannot pass the complete gate.
 
-## Source entry points
+## Editor responsibility map
 
-- `Scholium/Features/Document/DocumentController.swift`: retained document workflows.
-- `Scholium/Features/Document/DocumentSessionStore.swift`: document presentation,
-  native-surface ownership and per-surface scroll handoff.
-- `Scholium/Views/Note/DocumentEditorHost.swift` and
-  `Scholium/Views/Note/DocumentWebViewContainer.swift`: one-visible-surface
-  native composition boundary.
-- `Scholium/Views/Note/MarkdownEditorSession.swift`: checked native bridge/recovery.
-- `Scholium/Views/Note/SafeMarkdownReadWebView.swift` and
-  `Scholium/Views/Note/ScholiumReadPageExtension.swift`: neutral Review transport
-  and bounded read-page capability boundary.
-- `Scholium/Views/Sidebar/AgentChatReadPageExtension.swift`: Chat-owned reply
-  lifecycle and transcript-specific WebKit projection.
-- `WebEditor/editor.ts`, `WebEditor/live-presentation-layout.ts` and
-  `WebEditor/reader.ts`, `WebEditor/native-floating.ts`: controlled Web composition
-  and typed native presentation ports.
-- `ScholiumContracts/FrontmatterPresentation.swift`: shared lexical YAML coloring
-  projection without a second semantic parser.
-- `ScholiumContracts/MarkdownSemanticDocument.swift`: committed source semantics.
+| Boundary | Owner; excluded responsibility |
+| --- | --- |
+| Document workflow | `DocumentController` / `DocumentSessionStore`: identity, modes, save/conflict; no DOM. |
+| Editing authority | CodeMirror / `exact-source-history.ts`: source, selection, composition, Undo; no filesystem. |
+| Checked transport | `MarkdownEditorSession`: mirror, request admission, recovery. `MarkdownEditorWebView.Coordinator`: page lifecycle/routing; no second buffer. |
+| Native viewport | `DocumentEditorHost`: active surface. `DocumentWebViewContainer`: geometry/input/accessibility. `DocumentToolbarTransition`: decoration; no input. |
+| Native environment | `DocumentWebEnvironment`: attached-page Accent/inset projection; no source, scroll or hit-testing. |
+| Web presentation | Semantic projections, `scroll-coordinator.ts`, `live-presentation-layout.ts`: rendering/restoration; no save authority. |
+| Independent controls | `document-title.ts`: filename drafts/rename receipts, shared composition gate; no Markdown edits. `EditorWritingContinuationController`: cancellable requests/publications, bridge-owned admission. |
+| Read capabilities | `SafeMarkdownReadWebView` / `ScholiumReadPageExtension`: committed projection; Chat owns reply extensions. |
