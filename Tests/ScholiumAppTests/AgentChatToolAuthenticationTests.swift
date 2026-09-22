@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
@@ -11,12 +12,34 @@ struct AgentChatToolAuthenticationTests {
     private var repository: URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     }
-    private func wait(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(8))
-        while !condition() {
-            try #require(ContinuousClock.now < deadline, "Tool authentication fixture did not reach expected state")
-            try await Task.sleep(for: .milliseconds(10))
+    private func wait(
+        for changes: ObservableObjectPublisher,
+        sourceLocation: SourceLocation = #_sourceLocation,
+        until condition: () -> Bool
+    ) async throws {
+        let events = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let observation = changes.sink { events.continuation.yield(()) }
+        let deadline = Task {
+            do {
+                try await Task.sleep(for: .seconds(8))
+                events.continuation.finish()
+            } catch {}
         }
+        defer {
+            observation.cancel()
+            deadline.cancel()
+            events.continuation.finish()
+        }
+        try Task.checkCancellation()
+        if condition() { return }
+        // objectWillChange precedes mutation. Read only after resuming on the
+        // main actor, once the synchronous publication and mutation finish.
+        for await _ in events.stream {
+            try Task.checkCancellation()
+            if condition() { return }
+        }
+        try Task.checkCancellation()
+        try #require(condition(), "Tool authentication fixture did not reach expected state", sourceLocation: sourceLocation)
     }
     private func connect(_ controller: AgentChatController) async throws {
         try #require(await controller.waitUntilLoaded(), "Chat history did not finish loading")
@@ -34,39 +57,44 @@ struct AgentChatToolAuthenticationTests {
         let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
-        try await connect(controller)
-        let capabilities = controller.capabilities
-        let server = try #require(capabilities.tools.first { $0.name == "fixture-library" })
-        controller.editDraft("hold while signing in")
-        controller.send()
-        try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
-        let authThread = try #require(controller.selected?.threadID)
-        #expect(capabilities.canSignIn(server))
-        var opened: [URL] = []
-        capabilities.signIn(server, threadID: authThread) { opened.append($0) }
-        try await wait { capabilities.authorizationURL != nil }
-        #expect(opened.count == 1 && capabilities.authenticationNotice == nil)
-        #expect(capabilities.authenticatingTool == server.name && !capabilities.canSignIn(server))
-        #expect(capabilities.authenticationFeedbackTool == server.name)
-        capabilities.authenticationCompleted(["name": .string(server.name), "threadId": .string("another"), "success": .bool(true)], visibleThreadID: nil)
-        #expect(capabilities.authenticatingTool == server.name)
-        try "failure".write(to: controller.runtimeHome.appendingPathComponent("finish-tool-auth"), atomically: true, encoding: .utf8)
-        capabilities.refresh(threadID: nil)
-        try await wait { capabilities.authenticatingTool == nil && capabilities.hasTools && !capabilities.isRefreshing }
-        #expect(capabilities.authenticationError != nil && capabilities.authenticationNotice == nil && capabilities.authorizationURL == nil)
-        #expect(capabilities.authenticationFeedbackTool == server.name)
-        capabilities.signIn(server, threadID: authThread) { opened.append($0) }
-        try await wait { capabilities.authorizationURL != nil }
-        #expect(opened.count == 2)
-        try "success".write(to: controller.runtimeHome.appendingPathComponent("finish-tool-auth"), atomically: true, encoding: .utf8)
-        capabilities.refresh(threadID: nil)
-        try await wait { capabilities.authenticatingTool == nil && capabilities.hasTools && !capabilities.isRefreshing }
-        #expect(capabilities.authenticationNotice?.contains(server.name) == true)
-        #expect(capabilities.authorizationURL == nil && capabilities.authenticationError == nil)
-        #expect(capabilities.tools.first { $0.name == server.name }?.connectionStatus == "notStarted")
-        try await controller.flushPersistence()
-        let archive = root.appendingPathComponent(controller.triptychID.uuidString).appendingPathComponent("conversations.json")
-        #expect(try !String(contentsOf: archive, encoding: .utf8).contains("auth.example.test"))
+        do {
+            try await connect(controller)
+            let capabilities = controller.capabilities
+            let server = try #require(capabilities.tools.first { $0.name == "fixture-library" })
+            controller.editDraft("hold while signing in")
+            controller.send()
+            try await wait(for: controller.objectWillChange) { controller.state == .working && controller.selected?.pendingMessageID == nil }
+            let authThread = try #require(controller.selected?.threadID)
+            #expect(capabilities.canSignIn(server))
+            var opened: [URL] = []
+            capabilities.signIn(server, threadID: authThread) { opened.append($0) }
+            try await wait(for: capabilities.objectWillChange) { capabilities.authorizationURL != nil }
+            #expect(opened.count == 1 && capabilities.authenticationNotice == nil)
+            #expect(capabilities.authenticatingTool == server.name && !capabilities.canSignIn(server))
+            #expect(capabilities.authenticationFeedbackTool == server.name)
+            capabilities.authenticationCompleted(["name": .string(server.name), "threadId": .string("another"), "success": .bool(true)], visibleThreadID: nil)
+            #expect(capabilities.authenticatingTool == server.name)
+            try "failure".write(to: controller.runtimeHome.appendingPathComponent("finish-tool-auth"), atomically: true, encoding: .utf8)
+            capabilities.refresh(threadID: nil)
+            try await wait(for: capabilities.objectWillChange) { capabilities.authenticatingTool == nil && capabilities.hasTools && !capabilities.isRefreshing }
+            #expect(capabilities.authenticationError != nil && capabilities.authenticationNotice == nil && capabilities.authorizationURL == nil)
+            #expect(capabilities.authenticationFeedbackTool == server.name)
+            capabilities.signIn(server, threadID: authThread) { opened.append($0) }
+            try await wait(for: capabilities.objectWillChange) { capabilities.authorizationURL != nil }
+            #expect(opened.count == 2)
+            try "success".write(to: controller.runtimeHome.appendingPathComponent("finish-tool-auth"), atomically: true, encoding: .utf8)
+            capabilities.refresh(threadID: nil)
+            try await wait(for: capabilities.objectWillChange) { capabilities.authenticatingTool == nil && capabilities.hasTools && !capabilities.isRefreshing }
+            #expect(capabilities.authenticationNotice?.contains(server.name) == true)
+            #expect(capabilities.authorizationURL == nil && capabilities.authenticationError == nil)
+            #expect(capabilities.tools.first { $0.name == server.name }?.connectionStatus == "notStarted")
+            try await controller.flushPersistence()
+            let archive = root.appendingPathComponent(controller.triptychID.uuidString).appendingPathComponent("conversations.json")
+            #expect(try !String(contentsOf: archive, encoding: .utf8).contains("auth.example.test"))
+        } catch {
+            await controller.disconnect()
+            throw error
+        }
         await controller.disconnect()
     }
 
@@ -77,22 +105,27 @@ struct AgentChatToolAuthenticationTests {
         let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
-        try await connect(controller)
-        var opened = 0
-        let unsafe = controller.runtimeHome.appendingPathComponent("unsafe-auth-url")
-        try Data().write(to: unsafe)
-        let server = try #require(controller.capabilities.tools.first { $0.name == "fixture-library" })
-        controller.capabilities.signIn(server, threadID: nil) { _ in opened += 1 }
-        try await wait { controller.capabilities.authenticationError != nil }
-        #expect(opened == 0 && controller.capabilities.authorizationURL == nil)
-        try FileManager.default.removeItem(at: unsafe)
-        try Data().write(to: controller.runtimeHome.appendingPathComponent("hold-tool-auth"))
-        controller.capabilities.signIn(server, threadID: nil) { _ in opened += 1 }
-        #expect(controller.capabilities.authenticatingTool == server.name)
-        await controller.disconnect()
-        #expect(opened == 0 && controller.capabilities.authenticatingTool == nil)
-        #expect(controller.capabilities.authenticationFeedbackTool == nil)
-        controller.capabilities.authenticationCompleted(["name": .string(server.name), "success": .bool(true)], visibleThreadID: nil)
-        #expect(controller.capabilities.authenticationNotice == nil)
+        do {
+            try await connect(controller)
+            var opened = 0
+            let unsafe = controller.runtimeHome.appendingPathComponent("unsafe-auth-url")
+            try Data().write(to: unsafe)
+            let server = try #require(controller.capabilities.tools.first { $0.name == "fixture-library" })
+            controller.capabilities.signIn(server, threadID: nil) { _ in opened += 1 }
+            try await wait(for: controller.capabilities.objectWillChange) { controller.capabilities.authenticationError != nil }
+            #expect(opened == 0 && controller.capabilities.authorizationURL == nil)
+            try FileManager.default.removeItem(at: unsafe)
+            try Data().write(to: controller.runtimeHome.appendingPathComponent("hold-tool-auth"))
+            controller.capabilities.signIn(server, threadID: nil) { _ in opened += 1 }
+            #expect(controller.capabilities.authenticatingTool == server.name)
+            await controller.disconnect()
+            #expect(opened == 0 && controller.capabilities.authenticatingTool == nil)
+            #expect(controller.capabilities.authenticationFeedbackTool == nil)
+            controller.capabilities.authenticationCompleted(["name": .string(server.name), "success": .bool(true)], visibleThreadID: nil)
+            #expect(controller.capabilities.authenticationNotice == nil)
+        } catch {
+            await controller.disconnect()
+            throw error
+        }
     }
 }

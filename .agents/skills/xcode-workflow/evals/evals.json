@@ -92,6 +92,29 @@
         "Does not run build/test preflight or launch a QA app for documentation lookup.",
         "Reports the documentation version and does not infer build success from the declaration."
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "A formatted test log is empty and the wrapper exits zero. The raw log says compilation failed; another run selected zero tests. Diagnose the proof we have without broad reruns or replacing the build tooling.",
+      "expected_output": "Uses raw build and execution evidence rather than formatter success.",
+      "files": [],
+      "assertions": [
+        "Distinguishes build failure, zero selected tests, and passing executed tests.",
+        "Preserves the underlying tool exit status and full log.",
+        "Reuses existing build entrypoints without adding a Makefile or formatter by default."
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "The baseline clean build took 80 seconds; after changing build settings, a no-change warm build took 9 seconds. Diagnose whether we improved build performance and propose the smallest reliable measurement.",
+      "expected_output": "Rejects the mismatched comparison and binds a controlled build scenario.",
+      "files": [],
+      "assertions": [
+        "Separates clean, no-change warm, and edited incremental measurements.",
+        "Holds toolchain, configuration, dependencies and cache state comparable and reports noise.",
+        "Uses timing evidence before changing settings; does not delete shared caches or disable correctness checks.",
+        "Does not report a measured speedup or application performance improvement from these inputs."
+      ]
     }
   ]
 }

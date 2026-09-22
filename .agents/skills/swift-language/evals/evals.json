@@ -109,6 +109,52 @@
         "Uses request identity as well as vault identity to reject same-vault stale results.",
         "Describes deterministic suspension/release testing instead of sleeps."
       ]
+    },
+    {
+      "id": 10,
+      "prompt": "Review tests named “save preserves the draft” and “busy requests fail” that only search source files for flush() and guard strings. Propose bounded replacement tests using the existing injectable boundary and filesystem API.",
+      "expected_output": "Distinguishes structural assertions from behavior and supplies independent outcome checks.",
+      "files": [],
+      "assertions": [
+        "Does not present source-string matches as save, refusal, or UI evidence.",
+        "Uses observable bytes, revisions, and specific rejection semantics rather than restating implementation.",
+        "States which injected or external boundaries remain unverified."
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Replace a polling test for a published authentication state, and design a concurrent-operation test whose busy guard may be missing. Both must fail cleanly if the expected event or rejection never occurs.",
+      "expected_output": "Uses observable completion and failure-safe synchronization without introducing production-only test architecture.",
+      "files": [],
+      "assertions": [
+        "Subscribes before triggering and accounts for initial state and publication timing.",
+        "Does not use confirmation as an implicit asynchronous waiter.",
+        "A deadline bounds failure; a second request cannot deadlock on the first request release barrier.",
+        "Cleans subscriptions and suspended tasks on failure and cancellation."
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "We want 90% coverage, a ban on mocks, mostly E2E tests, and .serialized on every suite to make them reliable. Assess this proposal for our existing Swift tests.",
+      "expected_output": "Makes risk-based choices instead of treating metrics or framework traits as universal guarantees.",
+      "files": [],
+      "assertions": [
+        "Uses coverage to inspect meaningful gaps, not to claim correctness or invent an unapproved threshold.",
+        "Prefers real dependencies while allowing bounded substitutes with fidelity checks.",
+        "Explains that serialized suites do not isolate unrelated global resource users.",
+        "Keeps effective existing frameworks and selects the evidence layer from the claim."
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "An async helper called from a MainActor Task performs expensive parsing before its first await. The target changed its default isolation settings; determine whether this work runs off the actor.",
+      "expected_output": "Checks target compiler features and actual isolation before choosing a mechanism.",
+      "files": [],
+      "assertions": [
+        "Does not infer background execution from async or Task syntax.",
+        "Checks module settings and enabled feature semantics against the selected compiler.",
+        "Does not blindly add detached tasks or MainActor annotations."
+      ]
     }
   ]
 }

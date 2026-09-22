@@ -3,6 +3,10 @@
 Resolve compiler mode, isolation settings, SDK, and diagnostics from the selected
 toolchain. Identify every executor, callback, or task reaching the mutable
 resource before adding annotations.
+Inspect the target module's default actor isolation and enabled concurrency
+features: `async`, `await`, and `Task {}` do not establish background execution.
+Verify the actual isolation transition before moving expensive work; do not add
+detached tasks or actor annotations merely to silence a diagnostic.
 
 - Choose one owner: immutable value transfer, a UI/custom actor, or an audited
   synchronous primitive suited to actual callers. UI mutations stay on their
@@ -38,3 +42,8 @@ only behavior exercised.
 Recompile the narrow correction and exercise affected interleavings, failure,
 cancellation, deallocation, and responsiveness. Widen annotations only when
 ownership requires it; report any concurrency boundary not exercised.
+
+For isolation defaults and explicit execution changes, consult
+[SE-0461](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0461-async-function-isolation.md)
+against the selected compiler and enabled features. Its model is not evidence
+that every existing target has opted into those defaults.

@@ -11,6 +11,8 @@ project, or `Package.swift`; do not invent a project wrapper.
 ## Select the requested work
 
 - **Build and diagnose:** use the toolchain and execution workflow below.
+  For a slow build or build-output tooling change, read
+  [build diagnosis](references/build-diagnosis.md).
 - **Automated:** verify one app interaction through
   [interaction verification](references/interaction-verification.md).
 - **Human acceptance:** use that same reference to stage the irreducible human

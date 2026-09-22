@@ -16,7 +16,7 @@ toolchain, and relevant official Swift/SDK evidence before changing behavior.
 - API names, argument labels, or public documentation: [API naming](references/api-naming.md).
 - Isolation, Sendable, tasks, cancellation, callbacks, or shared mutable state:
   [concurrency](references/concurrency.md).
-- Writing or converting direct unit/integration tests:
+- Writing, reviewing, or converting direct unit/integration tests:
   [unit testing](references/unit-testing.md).
 
 A synchronous helper correction needs none of these references unless it changes
