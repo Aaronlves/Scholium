@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "ScholiumApplication", targets: ["ScholiumApplication"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/haplollc/ThinkingOrbs.git", from: "1.1.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "6.2.2"),
         .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.8.0"),
     ],
@@ -45,6 +46,7 @@ let package = Package(
             dependencies: [
                 "ScholiumContracts",
                 "ScholiumApplication",
+                .product(name: "ThinkingOrbs", package: "ThinkingOrbs"),
             ],
             path: "Scholium",
             resources: [.process("Resources")]

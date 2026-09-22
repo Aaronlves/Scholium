@@ -364,12 +364,15 @@ struct AgentChatConversationDetailView: View {
     @ViewBuilder
     private func timelineItem(_ item: AgentChatTimelineItem, projection: AgentChatTimelineProjection) -> some View {
         if item.isProcess {
+            let turnID = item.messages.first?.turnID
+            let status = projection.carriesTurnStatus(item) ? turnPresentation(turnID, projection: projection) : nil
+            let orbStyle = projection.activeActivityID(for: turnID) == nil ? status?.state.activityOrbStyle : nil
             AgentChatProcessView(
                 messages: item.messages,
                 isActive: controller.isBusy && controller.currentTurnID != nil && item.messages.first?.turnID == controller.currentTurnID,
                 forceExpanded: presentation.showsFind && item.messages.contains { $0.id == presentation.find.selectedID },
-                status: projection.carriesTurnStatus(item)
-                    ? turnPresentation(item.messages.first?.turnID, projection: projection) : nil,
+                status: status,
+                orbStyle: orbStyle,
                 preservesReading: isAwayFromLatest || readingIsPaused || presentation.transcriptIsScrolling,
                 hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
                 animates: isVisible && !reduceMotion && controller.approvals.isEmpty,
@@ -567,22 +570,17 @@ struct AgentChatConversationDetailView: View {
             remove: editable ? { controller.removeDraftCoordinationTarget() } : nil)
     }
 
-    private func activitySummary(_ activity: AgentChatActivity) -> String {
-        if let id = activity.files.first?.noteID,
-            let note = noteChoices.first(where: { $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == id })
-        {
-            return AgentChatActivityProjection.title(activity, locale: locale) + " · " + note.title
-        }
-        return AgentChatActivityProjection.summary(activity, locale: locale)
-    }
-
     @ViewBuilder
     private func activityRow(_ message: AgentChatMessage, activeActivityID: String?) -> some View {
         if let activity = message.activity {
+            let isCurrent = isVisible && activeActivityID == message.id
+            let orbStyle = isCurrent ? AgentChatActivityOrbStyle.style(for: activity) : nil
+            let noteTarget = AgentChatActivityProjection.noteTarget(activity, notes: noteChoices)
             VStack(alignment: .leading, spacing: 4) {
                 if let report = activity.delegation {
                     AgentChatDelegationView(
                         report: report, operationStatus: activity.status,
+                        orbStyle: orbStyle,
                         openAgent: { target in
                             guard let conversation = controller.selectedID else { return }
                             presentation.inspectedAgent = controller.childController(targetID: target, messageID: message.id, in: conversation)
@@ -604,26 +602,17 @@ struct AgentChatConversationDetailView: View {
                     ) {
                         AgentChatActivityDetails(activity: activity, isInline: true, openNote: { _ = openReference($0) })
                     } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                AgentChatActivityText(
-                                    text: activitySummary(activity),
-                                    isCurrent: isVisible && activeActivityID == message.id
-                                ).lineLimit(2)
-                                if activity.kind == .command && activity.commandAction == nil {
-                                    Text(verbatim: activity.subject.split(whereSeparator: \.isNewline).first.map(String.init) ?? "")
-                                        .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            if activity.status != .running && activity.status != .completed {
-                                Text(activity.status.label(locale: locale)).foregroundStyle(.secondary)
-                            }
-                        }
+                        AgentChatActivitySummary(
+                            activity: activity,
+                            noteTarget: noteTarget,
+                            openNote: { _ = openReference($0) })
                     }
                     .disclosureGroupStyle(
                         AgentChatDisclosureStyle(
                             animates: isVisible,
-                            symbol: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol
+                            symbol: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol,
+                            orbStyle: orbStyle,
+                            allowsLabelInteraction: noteTarget != nil
                         ))
                 }
             }
@@ -702,9 +691,11 @@ struct AgentChatConversationDetailView: View {
                 } ?? false
             if !hasHeader {
                 if controller.state == .working || controller.state == .stopping || controller.state == .compacting {
+                    let presentation = turnPresentation(controller.currentTurnID, projection: projection)
                     AgentChatTurnStatus(
-                        presentation: turnPresentation(controller.currentTurnID, projection: projection),
-                        animates: isVisible && !reduceMotion
+                        presentation: presentation,
+                        animates: isVisible && !reduceMotion,
+                        orbStyle: presentation.state.activityOrbStyle
                     )
                     .accessibilityIdentifier("scholium.chat.currentActivity")
                 } else {

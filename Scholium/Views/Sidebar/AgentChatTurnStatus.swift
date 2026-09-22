@@ -54,7 +54,7 @@ struct AgentChatTurnPresentation: Equatable {
 struct AgentChatTurnStatus: View {
     let presentation: AgentChatTurnPresentation
     var animates = true
-    var isActivityDisclosure = false
+    var orbStyle: AgentChatActivityOrbStyle? = nil
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.locale) private var locale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -69,12 +69,10 @@ struct AgentChatTurnStatus: View {
         ) { context in
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    if presentation.state == .completed, isActivityDisclosure {
-                        Text("Activity Log", bundle: .module)
-                        if let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
-                            Text("· " + elapsed).accessibilityHidden(true)
-                        }
-                    } else if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
+                    if let orbStyle {
+                        AgentChatActivityOrb(style: orbStyle, animates: animates)
+                    }
+                    if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
                         Text(elapsed)
                     } else {
                         Text(ScholiumL10n.string(presentation.titleKey, locale: locale))
@@ -103,8 +101,6 @@ struct AgentChatTurnStatus: View {
     }
 
     private var accessibilityLabel: String {
-        let title = ScholiumL10n.string(presentation.titleKey, locale: locale)
-        guard isActivityDisclosure else { return title }
-        return "\(ScholiumL10n.string("Activity Log", locale: locale)): \(title)"
+        ScholiumL10n.string(presentation.titleKey, locale: locale)
     }
 }

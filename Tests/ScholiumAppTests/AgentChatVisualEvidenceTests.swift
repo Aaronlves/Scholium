@@ -86,7 +86,8 @@ struct AgentChatVisualEvidenceTests {
                     AgentChatTurnStatus(
                         presentation: .init(
                             state: state,
-                            timing: .init(startedAt: Date(timeIntervalSinceNow: -12), durationMilliseconds: 38_500)), animates: false)
+                            timing: .init(startedAt: Date(timeIntervalSinceNow: -12), durationMilliseconds: 38_500)),
+                        animates: false, orbStyle: state.activityOrbStyle)
                 }
                 Divider()
                 AgentChatMarkdown(text: "这一区分还需要结合上下文核对。The distinction needs further support.\n\n**原文与解释**\n\n- 保留原文措辞。\n- 将重构与原文明说的理由区分开。")
@@ -724,8 +725,8 @@ struct AgentChatVisualEvidenceTests {
                     selectedModel: model, permission: .ask, isEnabled: true, canSelectModel: true,
                     selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in }, selectWebSearch: { _ in })
                 AgentChatPlanView(plan: plan)
-                AgentChatActivityText(text: "已读取笔记 · 行动理由.md", isCurrent: false)
-                AgentChatActivityText(text: "正在检索知识库 · 实践理性与行动理由之间的关系", isCurrent: true)
+                AgentChatActivityText(text: "已读取笔记 · 行动理由.md")
+                AgentChatActivityText(text: "正在检索知识库 · 实践理性与行动理由之间的关系")
                 AgentChatActivityDetails(
                     activity: .init(
                         kind: .command, status: .failed, source: .runtime,
@@ -750,6 +751,105 @@ struct AgentChatVisualEvidenceTests {
             host.cacheDisplay(in: host.bounds, to: bitmap)
             let data = try #require(bitmap.representation(using: .png, properties: [:]))
             try data.write(to: root.appendingPathComponent(scheme == .light ? "runtime-light.png" : "runtime-dark.png"))
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1"))
+    func renderActivityHierarchy() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let output = repository.appendingPathComponent(".build/agent-chat-evolution/renders")
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let noteID = UUID()
+        let target = AgentChatActivityNoteTarget(
+            noteID: noteID, vaultID: UUID(), title: "Mitchell-2021-introduction-emotion-as-feeling-to")
+        let noteActivity = AgentChatActivity(
+            kind: .read, status: .completed, source: .scholium,
+            files: [.init(path: "Analyses/mitchell.md", noteID: noteID, effect: .read)])
+        let toolActivity = AgentChatActivity(
+            kind: .tool, status: .failed, source: .runtime,
+            subject: "zotero_read_original", detail: "The original could not be loaded.")
+        for scheme in [ColorScheme.light, .dark] {
+            let content = VStack(alignment: .leading, spacing: 10) {
+                AgentChatProcessView(
+                    messages: [AgentChatMessage(role: .operation, text: "", activity: noteActivity)],
+                    isActive: false, forceExpanded: true,
+                    status: .init(state: .completed, timing: .init(durationMilliseconds: 656_000)),
+                    animates: false, userExpansion: .constant(false)
+                ) { message in
+                    if let activity = message.activity {
+                        DisclosureGroup {
+                            Text("Note details")
+                        } label: {
+                            AgentChatActivitySummary(activity: activity, noteTarget: target, openNote: { _ in })
+                        }
+                        .disclosureGroupStyle(
+                            AgentChatDisclosureStyle(symbol: activity.kind.symbol, allowsLabelInteraction: true))
+                    }
+                }
+                DisclosureGroup {
+                    Text(toolActivity.subject).monospaced()
+                    Text(toolActivity.detail).monospaced()
+                } label: {
+                    AgentChatActivitySummary(activity: toolActivity, noteTarget: nil, openNote: { _ in })
+                }
+                .disclosureGroupStyle(AgentChatDisclosureStyle(symbol: toolActivity.status.symbol))
+            }
+            .padding(16)
+            .frame(width: 300)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .environment(\.colorScheme, scheme)
+            .environment(\.locale, Locale(identifier: "en"))
+            let host = NSHostingView(rootView: content)
+            host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+            host.frame = NSRect(origin: .zero, size: host.fittingSize)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            defer {
+                window.contentView = nil
+                window.close()
+            }
+            window.contentView = host
+            window.layoutIfNeeded()
+            host.layoutSubtreeIfNeeded()
+            let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            try #require(bitmap.representation(using: .png, properties: [:]))
+                .write(to: output.appendingPathComponent("activity-hierarchy-\(scheme == .light ? "light" : "dark").png"))
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1"))
+    func renderActivityOrbs() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let output = repository.appendingPathComponent(".build/agent-chat-evolution/renders")
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let styles: [AgentChatActivityOrbStyle] = [.breathing, .working, .searching, .connecting, .weaving, .composing]
+        for scheme in [ColorScheme.light, .dark] {
+            let content = VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(styles.enumerated()), id: \.offset) { _, style in
+                    DisclosureGroup {
+                        Text("Activity details")
+                    } label: {
+                        Text(style.design.title)
+                    }
+                    .disclosureGroupStyle(
+                        AgentChatDisclosureStyle(animates: false, symbol: "ellipsis", orbStyle: style))
+                }
+            }
+            .padding(20).frame(width: 280)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .environment(\.colorScheme, scheme)
+            .environment(\.locale, Locale(identifier: "en"))
+            let host = NSHostingView(rootView: content)
+            host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+            host.frame = NSRect(origin: .zero, size: host.fittingSize)
+            host.layoutSubtreeIfNeeded()
+            let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            try #require(bitmap.representation(using: .png, properties: [:]))
+                .write(to: output.appendingPathComponent("activity-orbs-\(scheme == .light ? "light" : "dark").png"))
         }
     }
 }

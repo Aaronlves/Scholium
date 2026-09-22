@@ -7,6 +7,7 @@ struct AgentChatDelegationView: View {
     @Environment(\.locale) private var locale
     let report: AgentChatDelegation
     let operationStatus: AgentChatActivity.Status
+    var orbStyle: AgentChatActivityOrbStyle? = nil
     var openAgent: ((String) -> Void)? = nil
     var canOpenAgent = true
     var expansion: Binding<Bool>? = nil
@@ -29,7 +30,7 @@ struct AgentChatDelegationView: View {
             .help(Text(verbatim: presentation.summary))
             .accessibilityElement(children: .combine)
         }
-        .disclosureGroupStyle(AgentChatDisclosureStyle(symbol: "person.2"))
+        .disclosureGroupStyle(AgentChatDisclosureStyle(symbol: "person.2", orbStyle: orbStyle))
         .accessibilityIdentifier("scholium.chat.delegation")
     }
 

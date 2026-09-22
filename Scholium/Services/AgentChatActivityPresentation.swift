@@ -1,6 +1,16 @@
 import Foundation
 import ScholiumContracts
 
+struct AgentChatActivityNoteTarget: Equatable {
+    let noteID: UUID
+    let vaultID: UUID
+    let title: String
+
+    var url: URL {
+        AgentChatReference.url(noteID: noteID, vaultID: vaultID)
+    }
+}
+
 /// A projection of public runtime events and App receipts, never a source writer.
 enum AgentChatActivityProjection {
     static func title(_ activity: AgentChatActivity, locale: Locale = .current) -> String {
@@ -54,6 +64,21 @@ enum AgentChatActivityProjection {
     static func summary(_ activity: AgentChatActivity, locale: Locale = .current) -> String {
         let title = title(activity, locale: locale)
         return subject(activity).map { title + " · " + $0 } ?? title
+    }
+
+    /// Resolves only an exact App-owned Note identity. A path or runtime file
+    /// report is not enough to turn a technical subject into a Note link.
+    static func noteTarget(
+        _ activity: AgentChatActivity,
+        notes: [WorkspaceCatalogNote]
+    ) -> AgentChatActivityNoteTarget? {
+        guard activity.source == .scholium, activity.files.count == 1,
+            let file = activity.files.first, let noteID = file.noteID,
+            let note = notes.first(where: { $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == noteID })
+        else { return nil }
+        let title = note.title.isEmpty ? (file.path as NSString).lastPathComponent : note.title
+        guard !title.isEmpty else { return nil }
+        return .init(noteID: noteID, vaultID: note.reference.vaultID, title: title)
     }
 
     static func withLocalizedFailure(_ value: AgentChatActivity?) -> AgentChatActivity? {

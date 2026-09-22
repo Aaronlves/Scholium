@@ -7,6 +7,7 @@ struct AgentChatProcessView<Row: View>: View {
     let isActive: Bool
     let forceExpanded: Bool
     var status: AgentChatTurnPresentation? = nil
+    var orbStyle: AgentChatActivityOrbStyle? = nil
     var preservesReading = false
     var hasInspectedActivity = false
     var animates = true
@@ -40,7 +41,8 @@ struct AgentChatProcessView<Row: View>: View {
         } label: {
             VStack(alignment: .leading, spacing: 4) {
                 if let status {
-                    AgentChatTurnStatus(presentation: status, animates: animates, isActivityDisclosure: true)
+                    AgentChatTurnStatus(
+                        presentation: status, animates: animates, orbStyle: orbStyle)
                 } else {
                     Text("Process", bundle: .module).font(.callout).foregroundStyle(.secondary)
                 }

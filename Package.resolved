@@ -1,5 +1,5 @@
 {
-  "originHash" : "13be18f06f140d9992504307f16d95c42f7c69b54b9686ac57026a692a6175f8",
+  "originHash" : "7672bb92433082ec82d4734480252d385c3aed6c64edb060cff29f532914f2d7",
   "pins" : [
     {
       "identity" : "swift-cmark",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "3c6f9523da3a1ec2fd829673e472d95b8097a3b8",
         "version" : "0.8.0"
+      }
+    },
+    {
+      "identity" : "thinkingorbs",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/haplollc/ThinkingOrbs.git",
+      "state" : {
+        "revision" : "e2c07bbdec4db797fb302300ef0159b1806a909f",
+        "version" : "1.1.0"
       }
     },
     {

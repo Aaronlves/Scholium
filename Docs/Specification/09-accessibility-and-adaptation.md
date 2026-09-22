@@ -196,9 +196,12 @@ integrations. Verify:
   distinguish authors without repeated visible labels or reliance on bubbles.
   Turn status remains readable without pulse; ticking seconds are not live announcements.
   Streaming steals neither focus nor scroll;
-  drafts and uncertain delivery remain inspectable. Activity names action,
-  target and status; Changes separates pending mutations from history, while
-  reads and no-ops stay in activity details. Closing a comparison returns to its origin. Native
+  drafts and uncertain delivery remain inspectable. Activity names the observed
+  action and status, and exposes one exact Scholium Note target as an underlined,
+  keyboard-accessible link when that identity is available; runtime subjects,
+  paths and errors remain in the activity Details disclosure. Changes separates
+  pending mutations from history, while reads and no-ops retain their exact
+  identities in that hierarchy. Closing a comparison returns to its origin. Native
   transparency/contrast and Reduce Motion preserve readable status.
 - Chat capability menus announce current model, reasoning effort, web-search
   mode and selected Skills. Context and account quota have separate names and

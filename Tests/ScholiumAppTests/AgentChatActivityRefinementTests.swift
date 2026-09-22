@@ -34,6 +34,39 @@ struct AgentChatActivityRefinementTests {
 
     }
 
+    @Test("Only an exact Scholium Note identity becomes a first-level target")
+    func noteTarget() {
+        let noteID = UUID()
+        let vaultID = UUID()
+        let note = WorkspaceCatalogNote(
+            reference: .init(
+                vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                relativePath: "mitchell-2021-introduction-emotion-as-feeling-to.md",
+                stableNoteID: noteID.uuidString),
+            title: "Mitchell-2021-introduction-emotion-as-feeling-to",
+            fingerprint: .init(content: "note"), validationWarnings: [])
+        let activity = AgentChatActivity(
+            kind: .read, source: .scholium,
+            files: [.init(path: note.reference.relativePath, noteID: noteID, effect: .read)])
+
+        let target = AgentChatActivityProjection.noteTarget(activity, notes: [note])
+        #expect(target?.noteID == noteID)
+        #expect(target?.vaultID == vaultID)
+        #expect(target?.title == note.title)
+        #expect(target.map { AgentChatReference.parse($0.url)?.vaultID == vaultID } == true)
+
+        var runtimeActivity = activity
+        runtimeActivity = .init(
+            kind: activity.kind, status: activity.status, source: .runtime,
+            files: activity.files)
+        #expect(AgentChatActivityProjection.noteTarget(runtimeActivity, notes: [note]) == nil)
+
+        let unresolved = AgentChatActivity(
+            kind: .read, source: .scholium,
+            files: [.init(path: note.reference.relativePath, effect: .read)])
+        #expect(AgentChatActivityProjection.noteTarget(unresolved, notes: [note]) == nil)
+    }
+
     @Test("Reply actions keep supplied materials separate from explicit sources")
     func replyActionAvailability() {
         let source = AgentChatReplySource(url: URL(string: "https://example.org/paper")!, title: "Paper")

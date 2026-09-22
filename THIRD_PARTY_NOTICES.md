@@ -10,6 +10,7 @@ This file records the dependencies used to build Scholium. Exact JavaScript vers
   bundle: permissive licenses reproduced package-by-package in
   `Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt`.
 - Yams 6.2.x: MIT License.
+- ThinkingOrbs 1.1.0 (Haplo LLC; original designs and engine by Jakub Antalik): MIT License.
 - Swift Markdown 0.8.0: Apache License 2.0, including its notice and bundled
   Swift CMark attribution.
 - Swift CMark 0.8.0 and its incorporated sources: BSD-2-Clause and the

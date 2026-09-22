@@ -69,31 +69,45 @@ A pending asynchronous answer count remains beside the turn status even after
 runtime completion; it does not change that recorded outcome.
 Completion shows total turn duration, including waits, never private thinking time;
 missing timing stays unnumbered. Waiting, interruption, uncertainty and failure
-have distinct text. Completed process groups use an **Activity Log** label with
-reported duration when available; their accessible name retains the turn outcome.
+have distinct text. Completed process groups retain the reported duration in the
+same quiet status row (for example, **Worked for 656 s**) without repeating an
+Activity Log label; when timing is unavailable, the turn status remains the
+fallback visible name. Their accessible name retains the turn outcome.
 The header is a quiet text row with a leading disclosure triangle, without a
 full-width selection plate or link-colored hover treatment. Its entire row is a
 named, keyboard-accessible toggle. The current activity names its
-observed action and target, with intermittent text shimmer. Completed activities
-use quiet past-tense descriptions without repeated success badges. Other running
-items remain identifiable; no parallel work is silently marked complete. Short
-operations avoid flashing, and stopped, waiting or inactive presentations stop
-shimmer immediately. Reduce Motion and Increase Contrast retain static readable
-text. Glyph positions, input, scrolling and window geometry never animate with
-shimmer. Runtime command-action metadata may describe reads/searches; unknown
-commands use neutral wording rather than inferred research claims.
+observed action and target, with one small state-aware Orb in the existing
+indicator gutter while a reported operation is running. The Orb maps only
+public activity and turn states to retrieval, connection, collaboration,
+composition or neutral work; private reasoning never selects a design. Text
+remains stable. Completed
+activities use quiet past-tense descriptions without repeated success badges.
+Other running items remain identifiable; no parallel work is silently marked
+complete. Waiting, stopped, failed, uncertain or inactive presentations use
+static text and native symbols; inactive presentations stop Orb motion. Reduce
+Motion and Increase Contrast retain readable text and a static or hidden Orb.
+Glyph positions, input, scrolling and window geometry never animate with the
+Orb. Runtime command-action metadata may
+describe reads/searches; unknown commands use neutral wording rather than
+inferred research claims.
 Body text uses native primary text; history and supporting labels use secondary
 text. The collapsed process shows only its single status/timing row, without an
 operation inventory. Disclosure follows distance from research: answers, source
 navigation and necessary decisions are direct; operation history is secondary;
-raw technical records are deeper. Each activity has one row and one disclosure for its retained command,
-parameters, output and errors. Single calls have no extra grouping layer.
+raw technical records are deeper. Each activity has one first-level row and one
+Details disclosure for its retained command, parameters, output and errors. When
+an activity reports one exact App-owned Scholium Note, its first-level row shows
+the observed action followed by one underlined, keyboard-accessible Note target;
+activating that target opens the exact Note. An unresolved identity never becomes
+a link. Runtime/tool subjects, paths, parameters and raw errors remain in the
+same activity's Details disclosure rather than being repeated in the first-level
+row. Single calls have no extra grouping layer.
 Delegation follows the same disclosure hierarchy: its collapsed row names the
 action and supplied task path or Agent count. Opaque identities, requests, reports
 and per-target navigation stay in its details. Coordination completion never
 claims target completion; failures and unavailable reported states remain visible.
-Unknown commands may show their literal identifier as secondary text without
-inferring purpose. Details expose reported exit code, duration and directory;
+Unknown commands keep their literal identifier in Details as secondary text
+without inferring purpose. Details expose reported exit code, duration and directory;
 missing values stay absent. Long output opens in the shared resizable read-only preview
 with selection and copying. Failure and unconfirmed-outcome counts remain
 visible when the process is collapsed, regardless of a final answer or later
@@ -115,8 +129,9 @@ Streaming and collapse do not animate the entire transcript or steal its positio
 failed-turn and uncertain outcomes remain visible; Find reveals a matching process
 entry without dropping the draft or stored trace. Reply Note links open Notes;
 Chat adds no duplicate file cards above or below those links. Reading and no-op
-records belong to activity details, where exact returned Note identities provide
-Open Note. The floating Changes entry counts confirmed, not-yet-viewed mutations
+records follow the same hierarchy: an exact Scholium Note may be opened from the
+first-level target, while returned paths and additional Note identities remain in
+Details. The floating Changes entry counts confirmed, not-yet-viewed mutations
 in this conversation, never reads or runtime-only claims. Its native popover
 separates Open Note from View Changes. Both the entry and All Changes history remain
 when the pending list is empty; only the pending badge disappears. Input attachments

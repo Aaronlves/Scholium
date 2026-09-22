@@ -479,7 +479,8 @@ Agent message as presumed reasoning. The client does not expose raw reasoning
 items or reinterpret ordinary answer text as a private reasoning trace.
 Default progress names the action and outcome in ordinary research language.
 Full commands, paths, parameters and raw failure output stay in details;
-literal command identifiers may appear as secondary activity text. A visible status still identifies
+literal command identifiers stay in activity details as secondary technical text.
+A visible status still identifies
 failure or an uncertain outcome; required questions, permission scope and recovery
 actions cannot be hidden as technical detail. Native activity indicators reflect
 actual running state and use a static alternative under Reduce Motion.
