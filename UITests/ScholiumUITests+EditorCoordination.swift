@@ -6,7 +6,7 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
-    func testSelectionActionFailureStaysBesideBarAndPreservesPassage() throws {
+    func testSelectionActionResultReplacesBarAndPreservesPassage() throws {
         try enterLivePreviewAndAppend("\n\nSelection action fixture")
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
         let before = editor.value as? String
@@ -14,7 +14,6 @@ extension ScholiumUITests {
         editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
         let polish = app.buttons["Polish"].firstMatch
         XCTAssertTrue(polish.waitForExistence(timeout: 8))
-        let barFrame = polish.frame
         polish.hover()
         let hover = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         hover.name = "Selection actions — system accent hover"
@@ -23,9 +22,18 @@ extension ScholiumUITests {
         polish.click()
         let result = app.descendants(matching: .any)["scholium.selectionResult"].firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Connect in Chat to send this instruction."].firstMatch.exists)
-        let resultFrame = result.frame
-        XCTAssertLessThan(min(abs(resultFrame.minY - barFrame.maxY), abs(barFrame.minY - resultFrame.maxY)), 45)
+        XCTAssertTrue(app.staticTexts["Connect and sign in to Codex in Agents & Chat to use writing assistance."].firstMatch.exists)
+        XCTAssertFalse(polish.exists, "The action bar must give way to its result")
+        XCTAssertTrue(result.isHittable)
+        XCTAssertTrue(editor.frame.intersects(result.frame))
+        let replace = app.buttons["scholium.selectionResult.adopt"].firstMatch
+        let retry = app.buttons["scholium.selectionResult.regenerate"].firstMatch
+        let chat = app.buttons["scholium.selectionResult.continue"].firstMatch
+        XCTAssertTrue(replace.exists && retry.exists && chat.exists)
+        XCTAssertFalse(replace.isEnabled, "An incomplete proposal must not be replaceable")
+        XCTAssertGreaterThan(replace.frame.minX, retry.frame.maxX, "Replacement owns the trailing footer position")
+        XCTAssertLessThan(abs(replace.frame.midY - retry.frame.midY), 8)
+        XCTAssertLessThan(chat.frame.maxY, retry.frame.minY, "Chat handoff belongs in the header")
         XCTAssertEqual(editor.value as? String, before)
         let failure = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         failure.name = "Selection actions — anchored unavailable connection"
@@ -34,6 +42,12 @@ extension ScholiumUITests {
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { !result.exists })
         XCTAssertEqual(editor.value as? String, before)
+        // Digits exercise keyboard focus without entering an uncommitted CJK candidate.
+        app.typeText("24680")
+        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String)?.hasSuffix("24680") == true })
+        XCTAssertFalse((editor.value as? String)?.contains("Selection action fixture") == true)
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == before })
     }
 
     @MainActor

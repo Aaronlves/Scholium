@@ -10,6 +10,7 @@ struct AgentChatReplyNavigation: Equatable {
 /// Window-local routing and retained page presentation; runtime state stays in the controller.
 struct AgentChatView: View {
     @ObservedObject var controller: AgentChatController
+    let transcriptReaderID: UUID
     let isVisible: Bool
     let addSelection: (UUID) async -> Bool
     let noteChoices: [WorkspaceCatalogNote]
@@ -22,7 +23,6 @@ struct AgentChatView: View {
     var changes: [AgentChange]? = nil
     var changesError: String? = nil
     @State private var showsConversationList = true
-    @State private var transcriptReaderID = UUID()
     @State private var listState = AgentChatConversationListState()
     @State private var detailStore = AgentChatDetailPresentationStore()
     private var detailPresentation: AgentChatDetailPresentation {

@@ -150,7 +150,7 @@ struct AgentChatVisualEvidenceTests {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         for scheme in [ColorScheme.light, .dark] {
             let content = AgentChatView(
-                controller: controller, isVisible: false, addSelection: { _ in false },
+                controller: controller, transcriptReaderID: UUID(), isVisible: false, addSelection: { _ in false },
                 noteChoices: [], addNote: { _, _ in },
                 openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
@@ -486,7 +486,7 @@ struct AgentChatVisualEvidenceTests {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         for scheme in [ColorScheme.light, .dark] {
             let content = AgentChatView(
-                controller: controller, isVisible: false, addSelection: { _ in false },
+                controller: controller, transcriptReaderID: UUID(), isVisible: false, addSelection: { _ in false },
                 noteChoices: [], addNote: { _, _ in }, openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
             )
@@ -902,41 +902,41 @@ struct AgentChatVisualEvidenceTests {
         for scheme in [ColorScheme.light, .dark] {
             let content = ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                AgentChatProcessView(
-                    messages: [
-                        AgentChatMessage(
-                            role: .operation,
-                            text: "",
-                            activity: .init(kind: .read, status: .running, source: .scholium))
-                    ],
-                    isActive: false,
-                    forceExpanded: false,
-                    status: .init(state: .reading, timing: .init(startedAt: Date(timeIntervalSinceNow: -6))),
-                    animates: false,
-                    userExpansion: .constant(true)
-                ) { message in
-                    if let activity = message.activity {
+                    AgentChatProcessView(
+                        messages: [
+                            AgentChatMessage(
+                                role: .operation,
+                                text: "",
+                                activity: .init(kind: .read, status: .running, source: .scholium))
+                        ],
+                        isActive: false,
+                        forceExpanded: false,
+                        status: .init(state: .reading, timing: .init(startedAt: Date(timeIntervalSinceNow: -6))),
+                        animates: false,
+                        userExpansion: .constant(true)
+                    ) { message in
+                        if let activity = message.activity {
+                            DisclosureGroup {
+                                Text("Activity details")
+                            } label: {
+                                AgentChatActivitySummary(activity: activity, noteTarget: nil, openNote: { _ in })
+                            }
+                            .disclosureGroupStyle(
+                                AgentChatDisclosureStyle(
+                                    animates: false,
+                                    symbol: activity.kind.symbol,
+                                    orbStyle: AgentChatActivityOrbStyle.style(for: activity)))
+                        }
+                    }
+                    ForEach(Array(styles.enumerated()), id: \.offset) { _, style in
                         DisclosureGroup {
                             Text("Activity details")
                         } label: {
-                            AgentChatActivitySummary(activity: activity, noteTarget: nil, openNote: { _ in })
+                            Text(style.design.title)
                         }
                         .disclosureGroupStyle(
-                            AgentChatDisclosureStyle(
-                                animates: false,
-                                symbol: activity.kind.symbol,
-                                orbStyle: AgentChatActivityOrbStyle.style(for: activity)))
+                            AgentChatDisclosureStyle(animates: false, symbol: "ellipsis", orbStyle: style))
                     }
-                }
-                ForEach(Array(styles.enumerated()), id: \.offset) { _, style in
-                    DisclosureGroup {
-                        Text("Activity details")
-                    } label: {
-                        Text(style.design.title)
-                    }
-                    .disclosureGroupStyle(
-                        AgentChatDisclosureStyle(animates: false, symbol: "ellipsis", orbStyle: style))
-                }
                 }
             }
             .padding(20).frame(width: 280)

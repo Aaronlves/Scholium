@@ -30,9 +30,10 @@ struct AgentChatSidebarLifecycleTests {
         let secondID = try #require(controller.selectedID)
         controller.editDraft("第二个未发送草稿")
 
+        let readerID = UUID()
         let host = NSHostingView(
             rootView: AgentChatView(
-                controller: controller, isVisible: true, addSelection: { _ in false },
+                controller: controller, transcriptReaderID: readerID, isVisible: true, addSelection: { _ in false },
                 noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
                 openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }))
@@ -41,8 +42,10 @@ struct AgentChatSidebarLifecycleTests {
             window.contentView = nil
             window.close()
         }
+        #expect(controller.transcriptReaders[readerID] == nil, "The conversation list is not an active conversation")
         #expect(await controller.selectNotification(.init(triptychID: controller.triptychID, conversationID: firstID, event: .inputRequired)))
         try await settle(host) { composer(in: host)?.conversationID == firstID }
+        #expect(controller.transcriptReaders[readerID] == firstID)
         let first = try #require(composer(in: host))
         #expect(first.editor.string == firstDraft)
 

@@ -51,11 +51,11 @@ enum ScholiumL10n {
             LocalizedStringResource("Enable AI Continuation", table: "Interface", bundle: .module)
         }
         static var model: LocalizedStringResource {
-            LocalizedStringResource("Continuation Model", table: "Interface", bundle: .module)
+            LocalizedStringResource("Writing Assistance Model", table: "Interface", bundle: .module)
         }
         static var openTriptych: LocalizedStringResource {
             LocalizedStringResource(
-                "Open a Triptych and connect Codex in Agents & Chat to choose a continuation model.",
+                "Open a Triptych and connect Codex in Agents & Chat to choose a writing assistance model.",
                 table: "Interface", bundle: .module
             )
         }
@@ -73,7 +73,7 @@ enum ScholiumL10n {
         }
         static var contextAndAllowance: LocalizedStringResource {
             LocalizedStringResource(
-                "AI continuation uses the connected Codex account and may consume its allowance. Requests use low or lower supported reasoning effort and the standard service tier. Writing context and relevant search excerpts are sent to that connection; processing may be remote. With AI off or unavailable, local terminology completion remains available.",
+                "Explain, Polish and AI continuation share this model and use the connected Codex account. Selected passages or writing context may be processed remotely and consume its allowance. Turning off automatic continuation leaves Explain and Polish available. Local terminology completion remains available.",
                 table: "Interface", bundle: .module
             )
         }

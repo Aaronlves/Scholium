@@ -1,82 +1,84 @@
 import SwiftUI
 
+/// Presentation of a window-owned writing result. Dismissal never owns operations.
 struct AgentSelectionResultView: View {
-    let result: AgentSelectionResult
+    @ObservedObject var result: AgentSelectionResult
     let close: () -> Void
-    @ObservedObject private var chat: AgentChatController
-    @State private var adoptionError: String?
-    @State private var adopting = false
-    @State private var adopted = false
+    var width: CGFloat = 380
     @State private var copied = false
-    init(result: AgentSelectionResult, close: @escaping () -> Void) {
-        self.result = result
-        self.close = close
-        self.chat = result.chat
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(result.title).font(.headline)
                 Spacer()
-                if chat.isBusy(in: result.conversationID) {
-                    Button("Stop", systemImage: "stop") { chat.stop(in: result.conversationID) }
-                        .labelStyle(.iconOnly)
+                Button("Continue in Chat", systemImage: "bubble.left.and.bubble.right") {
+                    close()
+                    result.continueInChat()
                 }
+                .labelStyle(.iconOnly)
+                .help("Continue in Chat")
+                .disabled(!result.canContinueInChat)
+                .accessibilityIdentifier("scholium.selectionResult.continue")
+                Button("Close", systemImage: "xmark", action: close)
+                    .labelStyle(.iconOnly)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("scholium.selectionResult.close")
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    if result.adopt != nil {
+                        DisclosureGroup("Original") {
+                            Text(result.original).textSelection(.enabled)
+                        }
+                    }
                     if let reply = result.finalReply {
                         if result.adopt != nil {
-                            DisclosureGroup("Original") { Text(result.original).textSelection(.enabled) }
                             Text(reply).textSelection(.enabled)
                         } else {
                             Text(.init(reply)).textSelection(.enabled)
                         }
-                    } else if chat.approvalCount(in: result.conversationID) + chat.questionCount(in: result.conversationID) > 0 {
-                        Text("Continue in Chat to respond.")
-                    } else if let error = chat.selectionResultError(in: result.conversationID) {
-                        Text(error).textSelection(.enabled)
-                    } else if chat.isBusy(in: result.conversationID) {
+                    } else if !result.isGenerating, !result.isStopped, result.error == nil {
+                        Text("No completed reply.")
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if result.versions.count > 1 {
+                HStack {
+                    Button("Previous Version", systemImage: "chevron.left") { result.previousVersion() }
+                        .labelStyle(.iconOnly)
+                        .disabled(result.selectedVersionIndex == 0 || result.isAdopting || result.isAdopted)
+                    Text(ScholiumL10n.string("Version \(result.selectedVersionIndex + 1) of \(result.versions.count)"))
+                        .monospacedDigit()
+                    Button("Next Version", systemImage: "chevron.right") { result.nextVersion() }
+                        .labelStyle(.iconOnly)
+                        .disabled(result.selectedVersionIndex == result.versions.count - 1 || result.isAdopting || result.isAdopted)
+                    Spacer()
+                }
+                .accessibilityIdentifier("scholium.selectionResult.versions")
+            }
+            operationStatus
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    secondaryActions
+                    Spacer(minLength: 12)
+                    replacementAction
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        secondaryActions
+                        Spacer()
+                    }
+                    if result.adopt != nil {
                         HStack {
-                            ProgressView().controlSize(.small)
-                            Text("Preparing reply…")
+                            Spacer()
+                            replacementAction
                         }
-                    } else {
-                        Text("No completed reply. Continue in Chat to review or retry.")
-                    }
-                    if let adoptionError { Text(adoptionError).textSelection(.enabled) }
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }.frame(maxHeight: 300)
-            HStack {
-                if let reply = result.finalReply {
-                    Button("Copy", systemImage: "doc.on.doc") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(reply, forType: .string)
-                        copied = true
-                    }.labelStyle(.iconOnly)
-                        .help(copied ? "Copied" : "Copy")
-                    if let adopt = result.adopt {
-                        Button(ScholiumL10n.string(adopted ? "Adopted" : "Adopt")) {
-                            adopting = true
-                            Task { @MainActor in
-                                defer { adopting = false }
-                                do {
-                                    try await adopt(reply)
-                                    adopted = true
-                                    adoptionError = nil
-                                } catch { adoptionError = error.localizedDescription }
-                            }
-                        }.disabled(adopted || adopting)
-                            .accessibilityIdentifier("scholium.selectionResult.adopt")
                     }
                 }
-                Spacer()
-                Button("Continue in Chat") {
-                    close()
-                    result.continueInChat()
-                }
-                .accessibilityIdentifier("scholium.selectionResult.continue")
             }
         }
         .environment(
@@ -86,10 +88,78 @@ struct AgentSelectionResultView: View {
                 return ["https", "http"].contains(url.scheme?.lowercased() ?? "") ? .systemAction : .discarded
             }
         )
+        .onChange(of: result.selectedVersionIndex) { _, _ in copied = false }
         .padding(16)
-        .frame(width: 340)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: width, height: 340)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.selectionResult")
+    }
+
+    @ViewBuilder
+    private var operationStatus: some View {
+        if let message = result.adoptionError ?? result.error {
+            ScrollView {
+                Label {
+                    Text(message).textSelection(.enabled)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle")
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 72)
+            .accessibilityIdentifier("scholium.selectionResult.error")
+        } else if result.isStopped {
+            Text("Generation stopped.")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if result.isGenerating || result.isAdopting {
+            HStack {
+                ProgressView().controlSize(.small)
+                Text(ScholiumL10n.string(result.isAdopting ? "Replacing selection…" : "Preparing reply…"))
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var secondaryActions: some View {
+        Button("Copy", systemImage: "doc.on.doc") {
+            guard let reply = result.finalReply else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(reply, forType: .string)
+            copied = true
+        }
+        .labelStyle(.iconOnly)
+        .help(copied ? "Copied" : "Copy")
+        .accessibilityValue(copied ? ScholiumL10n.string("Copied") : "")
+        .disabled(result.finalReply == nil)
+        .accessibilityIdentifier("scholium.selectionResult.copy")
+        Button {
+            if result.isGenerating { result.stop() } else { result.regenerate() }
+        } label: {
+            ZStack {
+                // Reserve the longest lifecycle label so narrow footers do not
+                // switch layout when Regenerate becomes Stop or Retry.
+                Label("Regenerate", systemImage: "arrow.clockwise")
+                    .hidden().accessibilityHidden(true)
+                Label(
+                    ScholiumL10n.string(result.isGenerating ? "Stop" : result.error == nil ? "Regenerate" : "Retry"),
+                    systemImage: result.isGenerating ? "stop" : "arrow.clockwise")
+            }
+        }
+        .disabled(!result.isGenerating && !result.canRegenerate)
+        .accessibilityIdentifier(result.isGenerating ? "scholium.selectionResult.stop" : "scholium.selectionResult.regenerate")
+    }
+
+    @ViewBuilder
+    private var replacementAction: some View {
+        if result.adopt != nil {
+            Button(ScholiumL10n.string(result.isAdopted ? "Replaced" : "Replace Selection")) {
+                result.adoptSelectedVersion()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!result.canAdopt)
+            .accessibilityIdentifier("scholium.selectionResult.adopt")
+        }
     }
 }

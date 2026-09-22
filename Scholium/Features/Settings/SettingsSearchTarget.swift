@@ -117,7 +117,7 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 "writing.continuation", .writing, ScholiumL10n.WritingAssistance.enable,
                 ["Writing Assistance", "Writing Continuation", "autocomplete", "completion", "sentence", "写作辅助", "写作续写", "续写", "补全"]),
             Self(
-                "writing.model", .writing, ScholiumL10n.WritingAssistance.model, ["续写模型"], section: "writing.continuation"),
+                "writing.model", .writing, ScholiumL10n.WritingAssistance.model, ["续写模型", "解释模型", "润色模型"], section: "writing.continuation"),
             Self(
                 "writing.selection", .writing, "Selection Actions",
                 ["selection", "prompt", "instruction", "选段操作", "选区操作", "指令"]),

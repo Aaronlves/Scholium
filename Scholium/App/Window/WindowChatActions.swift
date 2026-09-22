@@ -1,4 +1,5 @@
 import Foundation
+import ScholiumApplication
 import ScholiumContracts
 
 extension WindowModel {
@@ -37,7 +38,7 @@ extension WindowModel {
     /// scope. Their invoking surfaces retain ownership of error presentation.
     @MainActor
     private func stageCurrentSelectionInChat(
-        inquiry: AgentChatSelectionInquiry, validate: @escaping AgentSelectionValidation = { true }
+        inquiry: AgentChatSelectionInquiry, newConversation: Bool = false, validate: @escaping AgentSelectionValidation = { true }
     ) async throws -> Bool {
         guard !Task.isCancelled, let chat = chatController else { return false }
         let selected = chat.selectedID
@@ -48,12 +49,12 @@ extension WindowModel {
             }
             // A missing or archived destination has no live draft to guard.
             // Create its replacement only after a valid passage is captured.
-            if chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
+            if newConversation || chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
             guard let conversationID = chat.selectedID,
                 chat.prepareSelectionInquiry([attachment], inquiry: inquiry, to: conversationID)
             else { throw AgentChatNoteMaterialError.unavailable }
         }
-        if let selected, chat.selected?.isAvailable == true {
+        if !newConversation, let selected, chat.selected?.isAvailable == true {
             var failure: (any Error)?
             let prepared = await chat.performMaterialPreparation(in: selected) {
                 do { try await capture() } catch {
@@ -76,8 +77,12 @@ extension WindowModel {
         guard !Task.isCancelled else { return nil }
         guard let chat = chatController, let descriptor = currentDocumentDescriptor else { throw AgentChatNoteMaterialError.unavailable }
         do {
-            if inquiry.question == nil {
-                let prepared = try await stageCurrentSelectionInChat(inquiry: inquiry) { [self] in
+            if inquiry.operation == nil {
+                let visible =
+                    shellState.libraryVisible && shellState.sidebarContent == .chat
+                    && chat.transcriptReaders[nativeWindowID] != nil
+                    && chat.transcriptReaders[nativeWindowID] == chat.selectedID
+                let prepared = try await stageCurrentSelectionInChat(inquiry: inquiry, newConversation: !visible) { [self] in
                     guard await validate() else { return false }
                     return currentDocumentDescriptor?.sessionKey == descriptor.sessionKey
                 }
@@ -88,11 +93,24 @@ extension WindowModel {
             guard chatController === chat, currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
                 await validate(), !Task.isCancelled
             else { return nil }
-            guard let id = chat.beginSelectionInquiry(inquiry, attachment: attachment) else { throw AgentChatNoteMaterialError.unavailable }
+            let model = WritingAssistancePreferences.shared.model
+            if let retained = selectionResult, retained.inquiry == inquiry, retained.model == model,
+                retained.attachment.noteID == attachment.noteID, retained.attachment.vaultID == attachment.vaultID,
+                retained.attachment.fingerprint == attachment.fingerprint, retained.attachment.sourceRange == attachment.sourceRange,
+                retained.attachment.text == attachment.text,
+                (retained.result.adopt != nil) == (inquiry.operation == .polish && presentedDocumentMode != .read),
+                !retained.result.isAdopted
+            {
+                return retained.result
+            }
+            await selectionResult?.result.stopAndWait()
+            guard !Task.isCancelled, chatController === chat,
+                currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, await validate()
+            else { return nil }
             let adopt: ((String) async throws -> Void)?
-            if inquiry.resultKind == .replacement, presentedDocumentMode != .read {
+            if inquiry.operation == .polish, presentedDocumentMode != .read {
                 adopt = { [weak self, weak chat] replacement in
-                    guard let self, let chat, self.chatController === chat,
+                    guard let self, let chat, !self.windowCloseCoordinator.isFinalized, self.chatController === chat,
                         self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
                         self.presentedDocumentMode != .read,
                         self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true,
@@ -101,8 +119,13 @@ extension WindowModel {
                     let session = self.documentController.session(for: descriptor)
                     guard session.conflict == nil else { throw AgentChatNoteMaterialError.changedSource }
                     guard !session.editorSession.isComposing else { throw AgentChatNoteMaterialError.composing }
+                    let generation = session.editorSession.generation
                     let snapshot = try await session.editorSession.currentTextSnapshot()
-                    guard self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                    guard !self.windowCloseCoordinator.isFinalized,
+                        self.documentController.retainedSession(for: descriptor.sessionKey) === session,
+                        snapshot.generation == generation, session.editorSession.generation == generation,
+                        !session.editorSession.isComposing,
+                        self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
                         self.presentedDocumentMode != .read, session.conflict == nil,
                         DocumentFingerprint(content: snapshot.text) == attachment.fingerprint,
                         let webView = session.editorSession.webView
@@ -115,19 +138,45 @@ extension WindowModel {
             } else {
                 adopt = nil
             }
-            return AgentSelectionResult(
-                chat: chat, conversationID: id, title: inquiry.title,
-                original: attachment.text, adopt: adopt,
+            var conversationsByVersion: [String: UUID] = [:]
+            let result = AgentSelectionResult(
+                title: inquiry.title, original: attachment.text, adopt: adopt,
                 openReference: { [weak self, weak chat] url in
                     guard let self, let chat, self.chatController === chat else { return false }
                     return self.openChatReference(url)
                 },
-                continueInChat: { [weak self, weak chat] in
+                generate: { [weak self, weak chat] in
+                    guard let chat, self?.chatController === chat,
+                        WritingAssistancePreferences.shared.model == model, let operation = inquiry.operation
+                    else { throw CancellationError() }
+                    guard chat.connectionState == .ready, chat.account != nil else {
+                        throw SelectionWritingError.notConnected
+                    }
+                    let reply = try await chat.writingAssistance(.init(operation: operation, passage: attachment.text, model: model))
+                    guard self?.chatController === chat, WritingAssistancePreferences.shared.model == model else { throw CancellationError() }
+                    return reply
+                },
+                continueInChat: { [weak self, weak chat] reply in
                     guard let self, let chat, self.chatController === chat else { return }
-                    chat.select(id)
-                    chat.presentContext(in: id)
+                    let version = reply ?? ""
+                    if let id = conversationsByVersion[version], chat.conversations.contains(where: { $0.id == id && $0.isAvailable }) {
+                        chat.select(id)
+                        chat.presentContext(in: id)
+                    } else {
+                        chat.newConversation()
+                        guard let id = chat.selectedID else { return }
+                        var question = inquiry.question ?? inquiry.title
+                        if let reply {
+                            question += "\n\n" + ScholiumL10n.string("AI-generated suggestion for discussion:") + "\n" + reply
+                        }
+                        guard chat.prepareSelectionInquiry([attachment], inquiry: .init(title: inquiry.title, question: question), to: id) else { return }
+                        conversationsByVersion[version] = id
+                    }
                     continueInChat()
                 })
+            selectionResult = (inquiry, attachment, model, result)
+            result.regenerate()
+            return result
         } catch is CancellationError {
             return nil
         } catch {
@@ -510,5 +559,12 @@ private enum ChatSourceLocationStatus { case identity, current, changed, unverif
         guard let continuation else { return }
         self.continuation = nil
         continuation.resume(with: result)
+    }
+}
+
+private enum SelectionWritingError: LocalizedError {
+    case notConnected
+    var errorDescription: String? {
+        ScholiumL10n.string("Connect and sign in to Codex in Agents & Chat to use writing assistance.")
     }
 }

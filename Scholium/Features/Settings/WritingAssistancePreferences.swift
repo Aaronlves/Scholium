@@ -4,14 +4,14 @@ import Foundation
 
 /// Machine-local writing assistance, independent of conversation preferences.
 @MainActor
-final class WritingContinuationPreferences: ObservableObject {
-    static let shared = WritingContinuationPreferences()
+final class WritingAssistancePreferences: ObservableObject {
+    static let shared = WritingAssistancePreferences()
     static let enabledKey = "scholium.writingContinuation.enabled"
     static let modelKey = "scholium.writingContinuation.model"
     static let defaultModel = "gpt-5.6-luna"
 
-    @Published var enabled: Bool {
-        didSet { defaults.set(enabled, forKey: Self.enabledKey) }
+    @Published var continuationEnabled: Bool {
+        didSet { defaults.set(continuationEnabled, forKey: Self.enabledKey) }
     }
     @Published var model: String {
         didSet { defaults.set(model, forKey: Self.modelKey) }
@@ -25,7 +25,7 @@ final class WritingContinuationPreferences: ObservableObject {
         let rawModel = defaults.object(forKey: Self.modelKey)
         let boolean = rawEnabled as? NSNumber
         let validBoolean = boolean.map { CFGetTypeID($0) == CFBooleanGetTypeID() } ?? false
-        enabled = validBoolean ? boolean!.boolValue : false
+        continuationEnabled = validBoolean ? boolean!.boolValue : false
         let storedModel = rawModel as? String
         let validModel = storedModel.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
         model = validModel ? storedModel! : Self.defaultModel
@@ -37,7 +37,7 @@ final class WritingContinuationPreferences: ObservableObject {
     }
 
     func restoreDefaults() {
-        enabled = false
+        continuationEnabled = false
         model = Self.defaultModel
         defaults.removeObject(forKey: Self.enabledKey)
         defaults.removeObject(forKey: Self.modelKey)

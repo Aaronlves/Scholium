@@ -7,6 +7,14 @@ import Testing
 
 @Suite("Passage research handoff", .serialized)
 @MainActor struct AgentChatSelectionInquiryTests {
+    @Test("Only built-in actions use isolated generation, even when custom names match")
+    func explicitActionIdentity() {
+        #expect(AgentChatSelectionInquiry.explain.operation == .explain)
+        #expect(AgentChatSelectionInquiry.polish.operation == .polish)
+        #expect(SelectionActionDefinition(name: "Polish", prompt: "Discuss this passage").inquiry.operation == nil)
+        #expect(AgentChatSelectionInquiry.ask.operation == nil)
+    }
+
     @Test("Unavailable selection actions return their error to the invoking surface")
     func unavailableSelectionInquiry() async throws {
         let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
@@ -71,14 +79,6 @@ import Testing
             #expect(!chat.prepareSelectionInquiry([material], inquiry: inquiry, to: id))
             #expect(chat.selected?.draft.isEmpty == true && chat.selected?.attachments.isEmpty == true)
         }
-        let visible = chat.selectedID
-        chat.editDraft("Keep this draft")
-        let resultID = try #require(chat.beginSelectionInquiry(.polish, attachment: material))
-        #expect(chat.selectedID == visible && chat.selected?.draft == "Keep this draft")
-        let result = try #require(chat.conversations.first { $0.id == resultID })
-        #expect(result.attachments == [material] && result.permission == .ask)
-        #expect(result.messages.isEmpty && !result.draft.isEmpty)
-        #expect(chat.selectionResultError(in: resultID) != nil)
         await chat.disconnect()
     }
 }

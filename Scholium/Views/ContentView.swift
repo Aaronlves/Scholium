@@ -142,6 +142,7 @@ struct ContentView: View {
                 if let chat = appState.chatController {
                     AgentChatView(
                         controller: chat,
+                        transcriptReaderID: appState.nativeWindowID,
                         isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
                         addSelection: { conversationID in
                             guard chat.selectedID == conversationID else { return false }

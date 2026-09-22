@@ -79,8 +79,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     let displayWindow: @MainActor (UUID) -> AgentChatDisplayScope?
     let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
     var runtime: CodexAppServer?
-    @Published var continuationExecution: CodexWritingContinuation?
-    var continuationID: UUID?
+    @Published var writingAssistanceExecution: CodexWritingAssistance?
+    var writingAssistanceID: UUID?
     var eventTask: Task<Void, Never>?
     var persistenceTask: Task<Void, Never>?
     var scheduledPersistenceTask: Task<Void, Never>?
@@ -279,42 +279,49 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var suggestedHelperPath: String? { ScholiumAgentIntegrationResources.chatHelperURL()?.path }
     var selected: AgentChatConversation? { conversations.first { $0.id == selectedID } }
     var isBusy: Bool { selectedID.map(isBusy(in:)) ?? (connectionState == .connecting) }
-    var hasActiveExecutions: Bool { executions.values.contains(where: \.isBusy) || continuationExecution?.isActive == true }
+    var hasActiveExecutions: Bool { executions.values.contains(where: \.isBusy) || writingAssistanceExecution?.isActive == true }
 
-    var writingContinuationModels: [AgentChatModel] {
-        models.filter(CodexWritingContinuation.supports)
+    var writingAssistanceModels: [AgentChatModel] {
+        models.filter(CodexWritingAssistance.supports)
     }
 
-    func canRequestWritingContinuation(model: String) -> Bool {
+    func canRequestWritingAssistance(model: String) -> Bool {
         connectionState == .ready && account != nil && !isRenewingSettings && !capabilities.isChanging
-            && models.contains { $0.model == model && CodexWritingContinuation.supports($0) }
+            && models.contains { $0.model == model && CodexWritingAssistance.supports($0) }
     }
 
     /// Isolated generation shares the authenticated transport, never Chat drafts,
     /// retained conversations, materials, Skills or source-mutation admission.
-    func writingContinuation(_ request: CodexWritingContinuationRequest) async throws -> String {
-        guard canRequestWritingContinuation(model: request.model), let runtime, let connectionID,
-            let workingDirectory, let model = models.first(where: { $0.model == request.model })
-        else { throw CodexWritingContinuationError.unavailable }
-        guard continuationExecution == nil else { throw CodexWritingContinuationError.busy }
-        let identity = UUID()
-        continuationID = identity
-        let execution = CodexWritingContinuation(runtime: runtime, skillPaths: capabilities.methods.map { $0.selection.path }) { [weak self] in
-            guard let self, self.continuationID == identity else { return }
-            self.continuationExecution = nil
-            self.continuationID = nil
+    func writingAssistance(_ request: CodexWritingAssistanceRequest) async throws -> String {
+        if let previous = writingAssistanceExecution {
+            guard previous.isFinishing else { throw CodexWritingAssistanceError.busy }
+            try await previous.waitForCleanup()
         }
-        continuationExecution = execution
+        try Task.checkCancellation()
+        // Resolve connection and model after cleanup: disconnect or another
+        // caller may have changed either while this request was suspended.
+        guard canRequestWritingAssistance(model: request.model), let runtime, let connectionID,
+            let workingDirectory, let model = models.first(where: { $0.model == request.model })
+        else { throw CodexWritingAssistanceError.unavailable }
+        guard writingAssistanceExecution == nil else { throw CodexWritingAssistanceError.busy }
+        let identity = UUID()
+        writingAssistanceID = identity
+        let execution = CodexWritingAssistance(runtime: runtime, skillPaths: capabilities.methods.map { $0.selection.path }) { [weak self] in
+            guard let self, self.writingAssistanceID == identity else { return }
+            self.writingAssistanceExecution = nil
+            self.writingAssistanceID = nil
+        }
+        writingAssistanceExecution = execution
         do {
-            let suffix = try await execution.run(request, model: model, cwd: workingDirectory)
+            let text = try await execution.run(request, model: model, cwd: workingDirectory)
             try Task.checkCancellation()
-            guard self.connectionID == connectionID else { throw CodexWritingContinuationError.unavailable }
-            return suffix
+            guard self.connectionID == connectionID else { throw CodexWritingAssistanceError.unavailable }
+            return text
         } catch {
             // Failed preflight starts no task and therefore needs no async teardown.
-            if !execution.isActive, continuationID == identity {
-                continuationExecution = nil
-                continuationID = nil
+            if !execution.isActive, writingAssistanceID == identity {
+                writingAssistanceExecution = nil
+                writingAssistanceID = nil
             }
             throw error
         }

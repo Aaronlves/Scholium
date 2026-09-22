@@ -3,11 +3,11 @@ import SwiftUI
 
 struct WritingContinuationSettingsContent: View {
     @Environment(\.agentChatSettingsController) private var controller
-    @ObservedObject private var preferences = WritingContinuationPreferences.shared
+    @ObservedObject private var preferences = WritingAssistancePreferences.shared
 
     var body: some View {
         Section {
-            Toggle(isOn: $preferences.enabled) {
+            Toggle(isOn: $preferences.continuationEnabled) {
                 Text(ScholiumL10n.WritingAssistance.enable)
             }
             .accessibilityIdentifier("scholium.settings.writingContinuation.enabled")
@@ -26,7 +26,7 @@ struct WritingContinuationSettingsContent: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         } header: {
-            Text("Writing Continuation")
+            Text("Writing Assistance")
         } footer: {
             VStack(alignment: .leading) {
                 Text("This Mac", bundle: .module)
@@ -42,10 +42,10 @@ struct WritingContinuationSettingsContent: View {
 
 private struct WritingContinuationModelSettings: View {
     @ObservedObject var controller: AgentChatController
-    @ObservedObject var preferences: WritingContinuationPreferences
+    @ObservedObject var preferences: WritingAssistancePreferences
 
     private var connected: Bool { controller.connectionState == .ready && controller.account != nil }
-    private var continuationModels: [AgentChatModel] { controller.writingContinuationModels }
+    private var continuationModels: [AgentChatModel] { controller.writingAssistanceModels }
 
     var body: some View {
         WritingContinuationModelPicker(preferences: preferences, models: continuationModels, connected: connected)
@@ -62,7 +62,7 @@ private struct WritingContinuationModelSettings: View {
 }
 
 private struct WritingContinuationModelPicker: View {
-    @ObservedObject var preferences: WritingContinuationPreferences
+    @ObservedObject var preferences: WritingAssistancePreferences
     let models: [AgentChatModel]
     let connected: Bool
 
@@ -79,7 +79,7 @@ private struct WritingContinuationModelPicker: View {
         } label: {
             Text(ScholiumL10n.WritingAssistance.model)
         }
-        .disabled(!preferences.enabled || availableModels.isEmpty)
+        .disabled(availableModels.isEmpty)
         .accessibilityIdentifier("scholium.settings.writingContinuation.model")
     }
 }

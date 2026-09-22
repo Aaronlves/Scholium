@@ -1,6 +1,9 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Explain, Polish and AI continuation share this model and use the connected Codex account. Selected passages or writing context may be processed remotely and consume its allowance. Turning off automatic continuation leaves Explain and Polish available. Local terminology completion remains available.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Explain, Polish and AI continuation share this model and use the connected Codex account. Selected passages or writing context may be processed remotely and consume its allowance. Turning off automatic continuation leaves Explain and Polish available. Local terminology completion remains available."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "解释、润色和 AI 续写共用此模型及已连接的 Codex 账户。选中段落或写作上下文可能在远程处理，并消耗账户额度。关闭自动续写后仍可使用解释和润色。本地术语补全始终可用。"}}}},
+    "Open a Triptych and connect Codex in Agents & Chat to choose a writing assistance model.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open a Triptych and connect Codex in Agents & Chat to choose a writing assistance model."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开脉络，并在“智能体与聊天”中连接 Codex，以选择写作辅助模型。"}}}},
+    "Writing Assistance Model": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Writing Assistance Model"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "写作辅助模型"}}}},
     "Direct outgoing connection.": {
       "extractionState": "manual",
       "localizations": {
@@ -57,13 +60,7 @@
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "启用 AI 续写" } }
       }
     },
-    "Continuation Model": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Continuation Model" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "续写模型" } }
-      }
-    },
+
     "The selected model is unavailable on this connection. Choose an available model; Scholium will not substitute another model automatically.": {
       "extractionState": "manual",
       "localizations": {
@@ -71,13 +68,7 @@
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前连接不支持已选模型。请选择可用模型；Scholium 不会自动替换为其他模型。" } }
       }
     },
-    "AI continuation uses the connected Codex account and may consume its allowance. Requests use low or lower supported reasoning effort and the standard service tier. Writing context and relevant search excerpts are sent to that connection; processing may be remote. With AI off or unavailable, local terminology completion remains available.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "AI continuation uses the connected Codex account and may consume its allowance. Requests use low or lower supported reasoning effort and the standard service tier. Writing context and relevant search excerpts are sent to that connection; processing may be remote. With AI off or unavailable, local terminology completion remains available." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "AI 续写使用已连接的 Codex 账户，可能消耗其额度。请求采用模型支持的低或更低推理强度及标准服务层级。写作上下文及相关检索片段会发送至该连接，处理可能在远程进行。关闭 AI 或服务不可用时，仍可使用本地术语补全。" } }
-      }
-    },
+
     "In Edit or Source, pause after typing an unfinished sentence. AI shows only the current sentence's suffix; press Tab to accept. It never inserts text automatically.": {
       "extractionState": "manual",
       "localizations": {
@@ -104,8 +95,7 @@
         }
       }
     },
-    "Connect and sign in to Codex in Agents & Chat. Your selected model is retained.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connect and sign in to Codex in Agents & Chat. Your selected model is retained."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请在“智能体与聊天”中连接并登录 Codex。已选模型会保留。"}}}},
-    "Open a Triptych and connect Codex in Agents & Chat to choose a continuation model.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open a Triptych and connect Codex in Agents & Chat to choose a continuation model."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开三联体，并在“智能体与聊天”中连接 Codex，以选择续写模型。"}}}}
-  },
+    "Connect and sign in to Codex in Agents & Chat. Your selected model is retained.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connect and sign in to Codex in Agents & Chat. Your selected model is retained."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请在“智能体与聊天”中连接并登录 Codex。已选模型会保留。"}}}}
+},
   "version": "1.3"
 }

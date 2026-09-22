@@ -1,11 +1,11 @@
 import Foundation
+import ScholiumApplication
 
-/// An instruction shortcut. Source capture and execution are owned by the window and Chat.
+/// A typed shortcut: the window captures source; writing assistance or Chat owns execution.
 struct AgentChatSelectionInquiry: Equatable, Sendable {
-    enum ResultKind: Sendable { case discussion, replacement }
     let title: String
     let question: String?
-    var resultKind: ResultKind = .discussion
+    var operation: CodexWritingAssistanceRequest.Operation? = nil
 
     static var ask: Self { .init(title: ScholiumL10n.string("Ask Agent"), question: nil) }
     static var explain: Self {
@@ -14,7 +14,7 @@ struct AgentChatSelectionInquiry: Equatable, Sendable {
             question:
                 ScholiumL10n.string(
                     "Explain the attached passage concisely. Distinguish its explicit claims from your interpretation, and identify uncertainty where context is missing. Do not change Notes."
-                ))
+                ), operation: .explain)
     }
     static var polish: Self {
         .init(
@@ -22,7 +22,7 @@ struct AgentChatSelectionInquiry: Equatable, Sendable {
             question:
                 ScholiumL10n.string(
                     "Polish the attached passage while preserving its thesis, terminology, qualifications, citations and Markdown structure. Return only the proposed replacement Markdown, without a code fence or introductory explanation. Do not change Notes."
-                ), resultKind: .replacement)
+                ), operation: .polish)
     }
     static var clarifyConcepts: Self {
         .init(

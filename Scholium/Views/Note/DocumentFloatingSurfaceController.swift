@@ -200,7 +200,11 @@ final class DocumentFloatingSurfaceController: NSObject {
             return
         }
         if owner === webView, let surface, next.id <= surface.id { return }
-        if owner !== webView { reset() } else if surface?.kind != next.kind { dismiss() }
+        if owner !== webView {
+            reset()
+        } else if surface?.kind != next.kind || (surface?.kind == .selection && surface?.id != next.id) {
+            dismiss()
+        }
         self.event = event
         self.owner = webView
         self.surface = next
@@ -244,6 +248,9 @@ final class DocumentFloatingSurfaceController: NSObject {
                         forName: name, object: webView.window, queue: .main
                     ) { [weak self] _ in
                         MainActor.assumeIsolated {
+                            // The native transient popover owns activation and outside-click
+                            // dismissal while its controls take keyboard focus.
+                            if name == NSWindow.didResignKeyNotification, self?.resultPopover != nil { return }
                             self?.send(.dismiss)
                             self?.dismiss()
                         }
@@ -296,12 +303,19 @@ final class DocumentFloatingSurfaceController: NSObject {
                         let self, self.surface?.id == surface.id
                     else { return }
                     do {
-                        guard let result = try await inquire?(inquiry, { await event(surface.id, .choose, 0) }),
-                            !Task.isCancelled, self.surface?.id == surface.id
+                        let result = try await inquire?(inquiry, { await event(surface.id, .choose, 0) })
+                        guard !Task.isCancelled, self.surface?.id == surface.id,
+                            self.inquiryID == inquiryID
                         else { return }
+                        guard let result else {
+                            self.send(.dismiss)
+                            self.dismiss()
+                            return
+                        }
                         self.showSelectionPopover(
                             AgentSelectionResultView(
-                                result: result, close: { [weak self] in self?.resultPopover?.close() }))
+                                result: result, close: { [weak self] in self?.resultPopover?.close() },
+                                width: min(380, max(1, (self.owner?.bounds.width ?? 404) - 24))))
                     } catch is CancellationError {
                         return
                     } catch {
@@ -313,10 +327,11 @@ final class DocumentFloatingSurfaceController: NSObject {
                                 HStack {
                                     Spacer()
                                     Button("Dismiss") { [weak self] in self?.resultPopover?.close() }
+                                        .keyboardShortcut(.cancelAction)
                                 }
                             }
                             .padding(16)
-                            .frame(width: 300)
+                            .frame(width: min(300, max(1, (self.owner?.bounds.width ?? 324) - 24)))
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("scholium.selectionResult.error"))
                     }
@@ -334,19 +349,30 @@ final class DocumentFloatingSurfaceController: NSObject {
     }
 
     private func showSelectionPopover<Content: View>(_ content: Content) {
-        guard let glass, let selectionBar, selectionBar.window != nil else { return }
-        glass.layoutSubtreeIfNeeded()
+        guard let owner, owner.window != nil, let surface, surface.kind == .selection else { return }
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let hosting = NSHostingController(rootView: content)
+        hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
         popover.contentSize = hosting.view.fittingSize
         resultPopover = popover
         popover.delegate = self
-        // Anchor to the visible native surface, after layout, for both results and
-        // unavailable actions. The stack's fitting geometry is not its outer edge.
-        popover.show(relativeTo: glass.bounds, of: glass, preferredEdge: glass.isFlipped ? .maxY : .minY)
+        // Source capture has finished. Remove only the toolbar presentation: a
+        // full dismissal here would cancel capture and invalidate its selection.
+        selectionBar = nil
+        glass?.onPointerPresence = nil
+        glass?.removeFromSuperview()
+        glass = nil
+        let bounds = owner.bounds
+        let top = min(max(0, surface.top), bounds.height)
+        let bottom = min(max(top, surface.bottom), bounds.height)
+        let anchor = NSRect(
+            x: min(max(0, surface.left), bounds.width - 1),
+            y: owner.isFlipped ? top : bounds.height - bottom,
+            width: 1, height: max(1, bottom - top))
+        popover.show(relativeTo: anchor, of: owner, preferredEdge: owner.isFlipped ? .maxY : .minY)
     }
 
     func dismiss() {
@@ -431,5 +457,7 @@ extension DocumentFloatingSurfaceController: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         guard notification.object as? NSPopover === resultPopover else { return }
         resultPopover = nil
+        send(.dismiss)
+        dismiss()
     }
 }

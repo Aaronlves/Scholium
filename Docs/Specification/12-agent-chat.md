@@ -48,22 +48,29 @@ selections offer Edit or Source. No-selection and unavailable-editor states
 request an explicit selection rather than sharing the whole document. Ask Agent
 stages that checked passage in the current conversation and focuses its ordinary
 composer without sending, replacing a draft, or granting a Note modification.
-Selection actions provide Explain, Polish and a menu of custom operations. Explicit
-activation sends the checked passage in a separate ordinary conversation without
-consuming or replacing the current Chat draft. A native anchored result presents
-actual progress, Stop, errors and the public answer; Continue in Chat opens that
-same conversation for further questions or required approvals. Closing the result
-hides presentation without discarding history or cancelling. Unavailable connection
-or source preserves the request and exposes repair without resending.
-Explain separates the passage's wording from interpretation. Polish preserves
-thesis, terminology, qualifications and citations, and returns proposed source
-without changing Notes. Custom actions request discussion or a
-proposal; they do not independently authorize source mutation. Ordinary runtime
-permissions remain in force. A completed Polish proposal replaces its captured range only after Adopt, with
-the same editable document, exact source revision and inactive composition. Adoption is one
-editor Undo operation; changed source retains the proposal for Copy or Chat and
-requires a fresh request rather than fuzzy relocation or overwriting later edits.
-Review offers Copy and Continue in Chat, with adoption available in Edit/Source.
+Selection actions provide Explain, Polish and a menu of custom operations.
+Explain and Polish use the same Writing Assistance model and isolated, tool-free
+request channel as AI continuation. Explicit activation sends only the checked
+passage; it neither creates a conversation nor uses Chat history or permissions.
+Automatic-continuation enablement does not disable these explicit actions.
+The anchored result exposes generation, Stop, failure and Retry. Regeneration
+retains earlier versions. Closing hides
+presentation without cancelling; the window retains its latest action until
+replacement or teardown. Repeating that action on the same unchanged passage
+reopens it. Continue in Chat creates and opens an ordinary conversation draft
+with the captured passage and the inspected AI result, without sending or
+inventing history; repeating a version’s handoff reopens its conversation.
+Explain distinguishes wording, interpretation and missing context.
+Polish preserves thesis, terminology, qualifications, citations and Markdown.
+Replace Selection applies only a completed proposal to the captured range in
+the same editable document and exact source revision, with inactive composition.
+Replacement stays single-flight across dismissal, with one Undo. Changed source retains the proposal
+for Copy or Chat and requires a fresh request, never fuzzy relocation or overwrite.
+Review offers Copy and Continue in Chat; replacement belongs to Edit/Source.
+Custom actions and Ask Agent stage their instruction and checked passage in the
+current window's visibly open, available conversation. Without one, they create
+and open a new conversation. They focus the composer, preserve existing drafts,
+and never send automatically or independently authorize source mutation.
 
 Settings owns an ordered list of at most five custom selection
 actions with name, prompt, enabled state, Add, Remove, reorder and Restore

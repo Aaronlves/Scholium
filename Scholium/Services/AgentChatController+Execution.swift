@@ -862,9 +862,9 @@ extension AgentChatController {
             reconnectTask = nil
         }
         capabilities.detach()
-        continuationExecution?.stop(throwing: CodexConnectionError.disconnected)
-        continuationExecution = nil
-        continuationID = nil
+        writingAssistanceExecution?.stop(throwing: CodexConnectionError.disconnected)
+        writingAssistanceExecution = nil
+        writingAssistanceID = nil
         connectionID = nil
         connectionTask?.cancel()
         connectionTask = nil

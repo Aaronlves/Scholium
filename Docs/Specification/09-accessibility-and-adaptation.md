@@ -116,7 +116,9 @@ YAML interaction; §18.6 owns state/action wording. Verify:
   routes remain accessible. Ask Agent preserves the original selection while
   handing focus to the existing Chat composer; its native action, menu and
   shortcut share one capture path. The first Escape dismisses an open selection
-  action while preserving the selected passage; input-method composition takes
+  action or result while preserving the selected passage; result controls expose
+  generation, Stop, retry, inspected version and exact replacement consequence.
+  Dismissal restores Document focus; input-method composition takes
   precedence. Neither edits or sends. Source mapping failure names
   Edit/Source as the available repair. Returning a verified Chat passage restores
   native selection in Review or opens its exact Source range; a read-only

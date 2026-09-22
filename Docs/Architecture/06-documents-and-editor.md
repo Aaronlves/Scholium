@@ -146,8 +146,8 @@ packs bounded Related-Content background, and rechecks identity, focus, conflict
 and configuration before generation and publication. Its one-result retrieval cache
 is bound to runtime, Note, complete Search generation, exact seed revision and focus;
 it is neither another index nor query history. Returned text and status stay request-bound
-through inline preview; identity guards clear both. Machine-local continuation preferences remain
-independent of conversation settings.
+through inline preview; identity guards clear both. Machine-local Writing Assistance preferences share the model with explicit
+selection actions and remain independent of conversation settings.
 
 Attachment preparation joins the existing editor insertion and scoped rollback
 in [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).

@@ -37,7 +37,7 @@ Appearance, Writing Assistance, Agents & Chat, Keyboard Shortcuts and Zotero.
 Workspace owns Triptych registration,
 folder access and portable-data location. Document Appearance presents the
 complete content profile and CSS snippets in one scrolling page. Writing
-Assistance groups opt-in continuation and its independent model choice with
+Assistance groups opt-in continuation and the shared continuation/Explain/Polish model with
 Selection Actions. Keyboard Shortcuts is directly reachable.
 Agents & Chat uses three native segments: Connection and Chat, Skills and Tools,
 and External Access. Each segment is a complete scrolling task page; manual

@@ -61,6 +61,7 @@ final class WindowModel: ObservableObject {
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
     let writingContinuationContextCache = WritingContinuationContextCache()
+    var selectionResult: (inquiry: AgentChatSelectionInquiry, attachment: AgentChatAttachment, model: String, result: AgentSelectionResult)?
     lazy var discoveryController = DiscoveryController(
         shellState: shellState
     ) { [weak self] intent in
@@ -567,6 +568,8 @@ final class WindowModel: ObservableObject {
         },
         finalizeDependencies: { [weak self] in
             guard let self else { return }
+            self.selectionResult?.result.stop()
+            self.selectionResult = nil
             self.libraryMutationController.unbind()
             self.researchController.unbind()
             self.windowWorkspaceController.cancelAll()

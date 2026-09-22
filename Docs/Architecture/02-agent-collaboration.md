@@ -234,13 +234,14 @@ silently guess an ambiguous library.
 
 ### Native presentation boundary
 
-Writing continuation uses the existing App Server transport through a bounded
-ephemeral text-generation executor, not the conversation archive or execution admission
-for research tools. Explicit model/low-or-lower effort, disabled environment/MCP capabilities
-and event rejection constrain generation; the prompt and output contract are limited to
-the unfinished current sentence and stop at its first sentence boundary. Phases and
-bounded reasons stay request-bound; cancellation, timeout and disconnect interrupt the
-turn. Editor publication and acceptance remain Document-owned.
+Continuation, Explain and Polish share `CodexWritingAssistance`:
+ephemeral, tool-free App Server requests with model preferences independent of
+Chat. Model/effort checks, disabled capabilities and event rejection constrain
+execution. Operation-specific prompts, JSON validation and deadlines distinguish
+sentence continuation from explanation/replacement Markdown. Cancellation,
+timeout and disconnect interrupt the exact turn. Window-owned selection results
+retain variants; popovers own presentation. Explicit Chat handoff creates drafts;
+Document owns validation and replacement.
 
 The composer owns selection, marked text, Undo and focus; conversations
 own durable drafts. The Chat controller uses window-scoped visibility tokens to

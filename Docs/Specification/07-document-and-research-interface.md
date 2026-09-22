@@ -24,20 +24,21 @@ keep scrolling content below them. Selection, focus, Undo, composition, and
 restoration are unchanged.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.
-A nonempty body selection offers a compact native surface beside the passage
-in Review, Edit and Source: Explain, Polish and More Actions. The native
-More Actions menu contains Ask Agent and enabled custom operations. Instructions stay in Chat, without duplicate input or expanding action pages.
-The native glass container and AppKit controls own layout, transitions, hover,
-pressed, disabled, focus and menu feedback. Peer labels and symbols use native
-primary text. Hover uses system Accent with minimal gaps between action targets
-and the containing surface. No custom skin or animation engine is added.
-The surface retains its selection anchor without adding document padding.
-Results and unavailable-action explanations use a bounded native popover under
-§8.7 immediately beside the surface, with dismissal and no dimming.
-Selection changes, scrolling, Escape, composition, mode changes and document
-departure dismiss the surface. Settings owns ordered custom operations and
-validation. Ask Agent, its Research-menu action and shortcut retain the draft-only
-Chat handoff under §8.7. Unverifiable source ranges remain unavailable.
+A nonempty body selection offers Explain, Polish and More Actions in
+Review, Edit and Source. More Actions contains Ask Agent and enabled custom
+operations; instructions stay in Chat. Native controls own layout, transitions,
+hover, pressed, disabled, focus and menu feedback. Peer labels use primary text;
+hover uses system Accent with minimal gaps. No custom skin or animation engine.
+Explain and Polish replace the toolbar with one bounded native popover anchored
+to the passage, preferably below. Progress, Stop, completed content and errors
+share it. Replace Selection stays trailing; Regenerate becomes Stop.
+Copy, Chat handoff and version navigation remain. Results scroll.
+Custom operations dismiss the toolbar and open Chat under §8.7. No document
+padding, dimming or stacked toolbar is added. Selection changes, scrolling,
+Escape, composition, mode changes and departure dismiss presentation; native
+focus restoration preserves the passage. Settings owns custom operations.
+Ask Agent's menu and shortcut share §8.7's draft-only handoff. Unverifiable
+source ranges remain unavailable.
 
 Body context menus and Research commands expose §5.4. Review mutations require
 verified source and Edit. Reorganization sheets use native search and a striped
@@ -86,7 +87,8 @@ to the input method; application navigation and acceptance resume afterward.
 Edit/Source share an inline preview with dotted underline and ⇥, never a panel.
 Local completion offers authored alias/keyword suffixes, excluding complete terms
 and undeclared titles. AI continuation defaults off. Writing Assistance selects
-an independent runtime-inventory model with low-cost default and low-or-lower supported effort.
+one runtime-inventory model shared by continuation, Explain and Polish, independent
+of Chat, with low-cost default and low-or-lower supported effort.
 Unavailable choices never silently switch. Enabling permits bounded writing/retrieved
 context to reach the runtime; remote processing and usage are disclosed.
 After a pause, AI is eligible at a focused caret in an unfinished sentence.

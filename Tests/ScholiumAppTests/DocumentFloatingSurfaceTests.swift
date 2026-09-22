@@ -9,25 +9,35 @@ import WebKit
 @MainActor
 struct DocumentFloatingSurfaceTests {
     private func payload(id: Int = 1, kind: String = "preview") -> [String: Any] {
-        let html = "<h2 class='scholium-preview-title'>Synthetic preview</h2><div class='scholium-preview-body scholium-document'><p>Source stays unchanged.</p></div>"
+        let html =
+            "<h2 class='scholium-preview-title'>Synthetic preview</h2><div class='scholium-preview-body scholium-document'><p>Source stays unchanged.</p></div>"
         if kind == "hidden" {
             return ["type": "dismissSurface", "kind": "preview", "id": id]
         }
         if kind == "selection" {
-            return ["type": "selectionSurface", "surface": [
-                "id": id, "left": 290, "top": 240, "bottom": 260,
-            ]]
+            return [
+                "type": "selectionSurface",
+                "surface": [
+                    "id": id, "left": 290, "top": 240, "bottom": 260,
+                ],
+            ]
         }
         if kind == "suggestions" {
-            return ["type": "suggestionSurface", "surface": [
-                "id": id, "left": 290, "top": 240, "bottom": 260,
-                "items": [["label": "Date", "detail": ""]], "selected": 0,
-            ]]
+            return [
+                "type": "suggestionSurface",
+                "surface": [
+                    "id": id, "left": 290, "top": 240, "bottom": 260,
+                    "items": [["label": "Date", "detail": ""]], "selected": 0,
+                ],
+            ]
         }
-        return ["type": "previewSurface", "surface": [
-            "id": id, "left": 290, "top": 240, "bottom": 260,
-            "html": html, "css": "",
-        ]]
+        return [
+            "type": "previewSurface",
+            "surface": [
+                "id": id, "left": 290, "top": 240, "bottom": 260,
+                "html": html, "css": "",
+            ],
+        ]
     }
 
     private func setPreviewHTML(_ value: inout [String: Any], _ html: String) {
@@ -76,7 +86,7 @@ struct DocumentFloatingSurfaceTests {
         #expect(chosen == .ask)
     }
 
-    @Test("Unavailable selection actions stay anchored to their native bar")
+    @Test("Unavailable selection actions replace the toolbar beside the captured passage")
     func selectionFailureAnchor() async throws {
         _ = NSApplication.shared
         let webView = WKWebView()
@@ -99,7 +109,7 @@ struct DocumentFloatingSurfaceTests {
             in: webView,
             inquire: { _, _ in throw AgentChatNoteMaterialError.selectionUnavailable }
         ) { _, action, _ in
-            #expect(action == .choose)
+            #expect(action == .choose || action == .dismiss)
             return true
         }
         let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
@@ -111,15 +121,121 @@ struct DocumentFloatingSurfaceTests {
         }
         let popover = try #require(controller.selectionResultPopover)
         #expect(popover.isShown)
-        #expect(popover.positioningRect == glass.bounds)
-        #expect(glass.superview === viewport)
-        #expect(glass.contentView === bar)
+        #expect(
+            popover.positioningRect
+                == NSRect(
+                    x: 300, y: webView.isFlipped ? 180 : webView.bounds.height - 200,
+                    width: 1, height: 20))
+        #expect(glass.superview == nil)
+        #expect(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
         popover.close()
         let closeDeadline = ContinuousClock.now.advanced(by: .seconds(2))
         while controller.selectionResultPopover != nil && ContinuousClock.now < closeDeadline {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(controller.selectionResultPopover == nil)
+    }
+
+    @Test("Closing a result removes presentation while captured generation finishes without reopening")
+    func selectionResultDismissal() async throws {
+        _ = NSApplication.shared
+        let webView = WKWebView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let viewport = DocumentWebViewContainer(webView: webView)
+        window.contentView = viewport
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(webView)
+        let controller = DocumentFloatingSurfaceController()
+        var finish: CheckedContinuation<String, Never>?
+        let result = AgentSelectionResult(
+            title: "Polish", original: "Synthetic source", adopt: { _ in },
+            openReference: { _ in false },
+            generate: { await withCheckedContinuation { finish = $0 } },
+            continueInChat: { _ in })
+        defer {
+            controller.dismiss()
+            finish?.resume(returning: "Synthetic proposal")
+            webView.stopLoading()
+            window.close()
+        }
+        controller.present(
+            .selection(.init(id: 1, left: 300, top: 180, bottom: 200)),
+            in: webView,
+            inquire: { _, validate in
+                guard await validate() else { return nil }
+                result.regenerate()
+                return result
+            }
+        ) { _, _, _ in true }
+        let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+        let bar = try #require(glass.contentView as? SelectionActionBar)
+        bar.onInquiry?(.polish)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while (controller.selectionResultPopover?.isShown != true || finish == nil) && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let popover = try #require(controller.selectionResultPopover)
+        #expect(popover.isShown)
+        #expect(result.isGenerating)
+        #expect(glass.superview == nil)
+        popover.close()
+        #expect(result.isGenerating)
+        let continuation = try #require(finish)
+        finish = nil
+        continuation.resume(returning: "Synthetic proposal")
+        let completionDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while (result.isGenerating || controller.selectionResultPopover != nil) && ContinuousClock.now < completionDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(result.finalReply == "Synthetic proposal")
+        #expect(controller.selectionResultPopover == nil)
+        #expect(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+    }
+
+    @Test("A completed draft handoff removes the toolbar without a result popover")
+    func selectionDraftHandoff() async throws {
+        _ = NSApplication.shared
+        let webView = WKWebView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let viewport = DocumentWebViewContainer(webView: webView)
+        window.contentView = viewport
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(webView)
+        let controller = DocumentFloatingSurfaceController()
+        var captured = false
+        var dismissed = false
+        defer {
+            controller.dismiss()
+            webView.stopLoading()
+            window.close()
+        }
+        controller.present(
+            .selection(.init(id: 1, left: 300, top: 180, bottom: 200)),
+            in: webView,
+            inquire: { _, validate in
+                captured = await validate()
+                return nil
+            }
+        ) { _, action, _ in
+            if action == .dismiss { dismissed = true }
+            return true
+        }
+        let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+        let bar = try #require(glass.contentView as? SelectionActionBar)
+        bar.onInquiry?(.checkEvidence)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !dismissed && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(captured && dismissed)
+        #expect(controller.selectionResultPopover == nil)
+        #expect(glass.superview == nil)
     }
 
     @Test("Late cancelled inquiry cleanup preserves the replacement inquiry's cancellation")
@@ -218,8 +334,9 @@ struct DocumentFloatingSurfaceTests {
         func show(_ items: [DocumentSuggestionSurface.Item], selected: Int = 0, top: Double = 40) throws -> CGFloat {
             id += 1
             controller.present(
-                .suggestions(.init(
-                    id: id, left: 20, top: top, bottom: top + 20, items: items, selected: selected)),
+                .suggestions(
+                    .init(
+                        id: id, left: 20, top: top, bottom: top + 20, items: items, selected: selected)),
                 in: webView
             ) { _, _, _ in true }
             let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
@@ -370,9 +487,10 @@ struct DocumentFloatingSurfaceTests {
         controller.present(surface, in: webView) { _, _, _ in true }
         let obsolete = controller.previewWebView
         var latest = payload(id: 10)
-        setPreviewHTML(&latest,
+        setPreviewHTML(
+            &latest,
             "<h2 class='scholium-preview-title'>Latest target</h2><div class='scholium-preview-body scholium-document'>"
-            + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>")
+                + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>")
         controller.present(try #require(DocumentFloatingEvent.decode(latest)), in: webView) { _, _, _ in true }
         let current = try #require(controller.previewWebView)
         #expect(current === obsolete)

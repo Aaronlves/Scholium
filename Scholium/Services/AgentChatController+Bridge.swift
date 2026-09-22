@@ -598,7 +598,7 @@ extension AgentChatController {
     }
 
     func receive(_ event: [String: MCPJSONValue]) async {
-        if await continuationExecution?.receive(event) == true { return }
+        if await writingAssistanceExecution?.receive(event) == true { return }
         guard let method = event["method"]?.stringValue else { return }
         let params = event["params"]?.objectValue ?? [:]
         if method == "mcpServer/oauthLogin/completed" {
@@ -801,9 +801,12 @@ extension AgentChatController {
                 }
                 return
             }
-            if updateHotMessage(in: conversationID, messageID: id, marksUnread: true, { message in
-                message.text += text
-            }) {
+            if updateHotMessage(
+                in: conversationID, messageID: id, marksUnread: true,
+                { message in
+                    message.text += text
+                })
+            {
                 return
             }
             updateHot(in: conversationID, marksUnread: true) {

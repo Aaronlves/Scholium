@@ -221,7 +221,7 @@ struct NoteContentView: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @ObservedObject private var controller: DocumentController
     @ObservedObject private var documentSession: DocumentSessionModel
-    @ObservedObject private var writingContinuationPreferences = WritingContinuationPreferences.shared
+    @ObservedObject private var writingContinuationPreferences = WritingAssistancePreferences.shared
     let target: DocumentEditingTarget
     let note: WindowDocumentLocation
     let state: DocumentFeatureState
@@ -711,7 +711,7 @@ struct NoteContentView: View {
                 },
                 onAskAgent: actions.askAgent,
                 onPassageAction: { actions.passageAction($0, nil) },
-                writingContinuationEnabled: writingContinuationPreferences.enabled,
+                writingContinuationEnabled: writingContinuationPreferences.continuationEnabled,
                 writingContinuationContextKey: writingContinuationPreferences.model,
                 writingContinuationQuery: actions.writingContinuation
             )

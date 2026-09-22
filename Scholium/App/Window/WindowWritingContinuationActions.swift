@@ -8,8 +8,8 @@ extension WindowModel {
         at caret: Int,
         status: EditorWritingContinuationStatusHandler
     ) async -> EditorWritingContinuationResult {
-        let preferences = WritingContinuationPreferences.shared
-        guard preferences.enabled else { return .unavailable(.disabled) }
+        let preferences = WritingAssistancePreferences.shared
+        guard preferences.continuationEnabled else { return .unavailable(.disabled) }
         guard canEditCurrentNote, presentedDocumentMode != .read,
             let descriptor = currentDocumentDescriptor
         else { return .unavailable(.invalidContext) }
@@ -23,13 +23,13 @@ extension WindowModel {
         guard !chat.isRenewingSettings, !chat.capabilities.isChanging else {
             return .unavailable(.notReady)
         }
-        guard chat.models.contains(where: { $0.model == model && CodexWritingContinuation.supports($0) }) else {
+        guard chat.models.contains(where: { $0.model == model && CodexWritingAssistance.supports($0) }) else {
             return .unavailable(.modelUnavailable)
         }
-        guard chat.canRequestWritingContinuation(model: model) else {
+        guard chat.canRequestWritingAssistance(model: model) else {
             return .unavailable(.notReady)
         }
-        guard chat.continuationExecution == nil else { return .unavailable(.busy) }
+        guard chat.writingAssistanceExecution == nil else { return .unavailable(.busy) }
         let session = documentController.session(for: descriptor)
         let editor = session.editorSession
         guard session.conflict == nil, editor.hasWritingFocus, !editor.isComposing else {
@@ -43,7 +43,7 @@ extension WindowModel {
                 let context = WritingContinuationContext(snapshot: captured.snapshot, caret: caret)
             else { return .unavailable(.invalidContext) }
             func remainsCurrent() -> Bool {
-                !Task.isCancelled && preferences.enabled && preferences.model == model
+                !Task.isCancelled && preferences.continuationEnabled && preferences.model == model
                     && canEditCurrentNote
                     && currentDocumentDescriptor == descriptor
                     && windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity
@@ -89,7 +89,7 @@ extension WindowModel {
             }
             guard remainsCurrent() else { return .unavailable(.cancelled) }
             status(.generating)
-            let suffix = try await chat.writingContinuation(
+            let suffix = try await chat.writingAssistance(
                 .init(before: context.before, after: context.after, background: background, model: model))
             guard remainsCurrent() else { return .unavailable(.cancelled) }
             if !background.isEmpty, let backgroundResponse {
@@ -99,12 +99,12 @@ extension WindowModel {
             return suffix.isEmpty ? .unavailable(.noSuggestion) : .suggestion(suffix)
         } catch is CancellationError {
             return .unavailable(.cancelled)
-        } catch let error as CodexWritingContinuationError {
+        } catch let error as CodexWritingAssistanceError {
             return .unavailable(Self.editorUnavailableReason(for: error))
         } catch let error as CodexConnectionError {
             return .unavailable(Self.editorUnavailableReason(for: error))
         } catch {
-            guard !Task.isCancelled, preferences.enabled, preferences.model == model,
+            guard !Task.isCancelled, preferences.continuationEnabled, preferences.model == model,
                 currentDocumentDescriptor == descriptor
             else { return .unavailable(.cancelled) }
             return .unavailable(.serviceError)
@@ -112,7 +112,7 @@ extension WindowModel {
     }
 
     private static func editorUnavailableReason(
-        for error: CodexWritingContinuationError
+        for error: CodexWritingAssistanceError
     ) -> EditorWritingContinuationUnavailableReason {
         switch error {
         case .unavailable: .connectionError

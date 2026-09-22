@@ -126,6 +126,8 @@ extension WindowModel {
         to capabilities: WindowWorkspaceCapabilities,
         snapshot: WorkspaceSnapshot? = nil
     ) {
+        selectionResult?.result.stop()
+        selectionResult = nil
         discoveryController.bind(to: capabilities.discovery)
         libraryMutationController.bind(to: capabilities.libraryMutations)
         documentController.bind(
