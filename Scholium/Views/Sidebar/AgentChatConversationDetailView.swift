@@ -1216,7 +1216,7 @@ struct AgentChatConversationDetailView: View {
                 }
             )
             .frame(maxWidth: .infinity)
-            HStack {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Menu {
                     Button("Choose File…") { chooseFiles() }
                         .disabled(fileSelectionTask != nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
@@ -1237,7 +1237,11 @@ struct AgentChatConversationDetailView: View {
                         Text("Commands", bundle: .module)
                     }
                 } label: {
-                    ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.add.symbol, placement: .action)
+                    AgentChatComposerAccessoryLabel {
+                        Image(systemName: ScholiumSidebarAction.add.symbol)
+                            .font(.system(size: ScholiumGrid.Dimension.iconTrackWidth, weight: .regular))
+                            .symbolRenderingMode(.monochrome)
+                    }
                         .accessibilityLabel("Add to Chat")
                 }
                 .scholiumContentActionMenu()
@@ -1256,19 +1260,18 @@ struct AgentChatConversationDetailView: View {
                     selectModel: controller.setModel, selectEffort: controller.setEffort,
                     selectPermission: controller.setPermission, selectWebSearch: controller.setWebSearch
                 )
-                .font(.caption).menuIndicator(.visible)
+                .font(.caption).menuIndicator(.hidden)
                 Spacer(minLength: 0)
                 AgentChatComposerActionButton(
-                    state: controller.state, canSend: controller.canSend,
+                    state: controller.state,
+                    hasInput: controller.selected?.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                    canSend: controller.canSend,
                     queuesInput: inputBehavior == .queue,
                     submit: {
                         guard controller.selectedID == conversationID, presentation.completion.canSubmit(in: conversationID) else { return }
                         controller.submitDraft(whileWorking: inputBehavior)
                     },
-                    submitAlternate: {
-                        guard controller.selectedID == conversationID, presentation.completion.canSubmit(in: conversationID) else { return }
-                        controller.submitDraft(whileWorking: inputBehavior == .queue ? .steer : .queue)
-                    }, stop: controller.stop)
+                    stop: controller.stop)
             }
             .controlSize(.regular)
             .menuStyle(.borderlessButton)

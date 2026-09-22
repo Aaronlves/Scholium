@@ -97,6 +97,16 @@ struct AgentChatActivityRefinementTests {
         #expect(AgentChatContextPresentation.summary(nil) == AgentChatContextPresentation.summary(.init(lastTurnTokens: 5, totalTokens: 6, capacity: nil)))
     }
 
+    @Test("Reasoning effort maps monotonically to the quiet gauge")
+    func reasoningGauge() {
+        #expect(AgentChatControlLabels.effortGaugeLevel(nil) == 0.5)
+        let ordered = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
+            .map(AgentChatControlLabels.effortGaugeLevel)
+        #expect(ordered == ordered.sorted())
+        #expect(ordered.first == 0)
+        #expect(ordered.last == 1)
+    }
+
     @Test("Context ledger derives staged materials and controls without duplicating runtime usage")
     func contextLedger() {
         var conversation = AgentChatConversation(triptychID: UUID())

@@ -755,6 +755,65 @@ struct AgentChatVisualEvidenceTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1"))
+    func renderCompactComposerControls() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let root = repository.appendingPathComponent(".build/agent-chat-evolution/renders")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let model = AgentChatModel(
+            id: "extended", model: "extended",
+            name: "GPT-6 Astra Research Preview with Extended Context",
+            efforts: ["low", "medium", "xhigh"], defaultEffort: "medium", isDefault: true,
+            inputModalities: ["text", "image"])
+        for (name, width, usage) in [
+            ("known", CGFloat(340), AgentChatContextUsage(lastTurnTokens: 73_400, totalTokens: 180_000, capacity: 128_000)),
+            ("unavailable", CGFloat(280), nil),
+        ] {
+            for scheme in [ColorScheme.light, .dark] {
+                let content = VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    Text("请核对这段论证的前提，并保留原文中的限定。")
+                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .topLeading)
+                    HStack {
+                        Button(action: {}) {
+                            AgentChatComposerAccessoryLabel { Image(systemName: "plus") }
+                        }
+                            .buttonStyle(ScholiumContentActionButtonStyle())
+                        AgentChatContextMeter(usage: usage, open: {})
+                        AgentChatConfigurationMenu(
+                            models: [model], preferences: .init(model: model.model, effort: "xhigh"),
+                            selectedModel: model, permission: .ask, isEnabled: true, canSelectModel: true,
+                            selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in },
+                            selectWebSearch: { _ in })
+                        .font(.caption).menuIndicator(.hidden)
+                        Spacer(minLength: 0)
+                        AgentChatComposerActionButton(
+                            state: .ready, hasInput: true, canSend: true, queuesInput: false,
+                            submit: {}, stop: {})
+                    }
+                    .controlSize(.regular)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                }
+                .buttonStyle(.borderless)
+                .padding(ScholiumSidebarLayout.rowInset)
+                .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
+                .padding(ScholiumSidebarLayout.edgeInset)
+                .frame(width: width)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .environment(\.colorScheme, scheme)
+                let host = NSHostingView(rootView: content)
+                host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+                host.frame = NSRect(origin: .zero, size: host.fittingSize)
+                host.layoutSubtreeIfNeeded()
+                let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                let data = try #require(bitmap.representation(using: .png, properties: [:]))
+                try data.write(to: root.appendingPathComponent("composer-\(name)-" + (scheme == .light ? "light.png" : "dark.png")))
+            }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1"))
     func renderActivityHierarchy() throws {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()

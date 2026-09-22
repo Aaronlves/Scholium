@@ -167,14 +167,21 @@ struct AgentChatComposerInputTests {
         #expect(host.editor.string.isEmpty && host.editor.showsPlaceholder)
     }
 
-    @Test("A blocked follow-up retains Stop, and stopping cannot become Send")
+    @Test("One composer action follows input, runtime and configured delivery")
     func primaryAction() {
-        #expect(AgentChatComposerAction(state: .working, canSend: false, queuesInput: false) == .stop)
-        #expect(AgentChatComposerAction(state: .working, canSend: true, queuesInput: false) == .sendNow)
-        #expect(AgentChatComposerAction(state: .working, canSend: true, queuesInput: true) == .queue)
-        #expect(AgentChatComposerAction(state: .compacting, canSend: false, queuesInput: false) == .stop)
-        #expect(AgentChatComposerAction(state: .stopping, canSend: true, queuesInput: false) == .stopping)
-        #expect(AgentChatComposerAction(state: .disconnected, canSend: false, queuesInput: false) == .send)
+        #expect(AgentChatComposerAction(state: .ready, hasInput: false, queuesInput: false) == .send)
+        #expect(AgentChatComposerAction(state: .ready, hasInput: true, queuesInput: false) == .send)
+        #expect(AgentChatComposerAction(state: .working, hasInput: false, queuesInput: false) == .stop)
+        #expect(AgentChatComposerAction(state: .working, hasInput: true, queuesInput: false) == .steer)
+        #expect(AgentChatComposerAction(state: .working, hasInput: true, queuesInput: true) == .queue)
+        #expect(AgentChatComposerAction(state: .compacting, hasInput: true, queuesInput: false) == .stop)
+        #expect(AgentChatComposerAction(state: .stopping, hasInput: true, queuesInput: false) == .stopping)
+        #expect(AgentChatComposerAction(state: .disconnected, hasInput: true, queuesInput: false) == .send)
+
+        #expect(!AgentChatComposerAction.send.isEnabled(canSend: false))
+        #expect(AgentChatComposerAction.send.isEnabled(canSend: true))
+        #expect(AgentChatComposerAction.stop.isEnabled(canSend: false))
+        #expect(!AgentChatComposerAction.stopping.isEnabled(canSend: true))
     }
 
     @Test("Sizing probes preserve the live editor geometry and selection while measuring wrapping")

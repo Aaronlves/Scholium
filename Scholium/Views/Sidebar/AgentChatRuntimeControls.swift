@@ -76,11 +76,9 @@ struct AgentChatConfigurationMenu: View {
             } label: {
                 Text("Web Search", bundle: .module)
             }
-        } label: {
-            Text(verbatim: modelLabel).lineLimit(1).truncationMode(.tail)
-                .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
-        }
+        } label: { configurationTarget }
         .scholiumContentActionMenu()
+        .overlay { configurationGlyph.allowsHitTesting(false) }
         .disabled(!isEnabled)
         .help(Text(verbatim: "\(ScholiumL10n.string("Chat Settings", locale: locale)): \(modelLabel)"))
         .accessibilityLabel(Text("Chat Settings", bundle: .module))
@@ -88,10 +86,10 @@ struct AgentChatConfigurationMenu: View {
         .accessibilityValue(
             [
                 selectedModel?.name ?? preferences.model ?? ScholiumL10n.string("Runtime Default", locale: locale),
-                (selectedEffort ?? preferences.effort).map(AgentChatControlLabels.effort),
+                displayEffortLabel,
                 permissionLabel,
                 AgentChatControlLabels.webSearch(preferences.webSearch),
-            ].compactMap { $0 }.joined(separator: ", "))
+            ].joined(separator: ", "))
     }
 
     private var permissionLabel: String {
@@ -100,11 +98,36 @@ struct AgentChatConfigurationMenu: View {
             : ScholiumL10n.string("Full Access", locale: locale)
     }
 
+    private var configurationTarget: some View {
+        AgentChatComposerAccessoryLabel { Color.clear }
+            .accessibilityHidden(true)
+    }
+
+    private var configurationGlyph: some View {
+        AgentChatComposerAccessoryLabel {
+            AgentChatReasoningGauge(level: AgentChatControlLabels.effortGaugeLevel(effectiveEffort))
+        }
+            .accessibilityHidden(true)
+    }
+
     private var modelLabel: String {
-        [
-            selectedModel?.name ?? preferences.model ?? ScholiumL10n.string("Runtime Default", locale: locale),
-            (selectedEffort ?? preferences.effort).map(AgentChatControlLabels.effort),
-        ].compactMap { $0 }.joined(separator: " · ")
+        [modelName, displayEffortLabel].joined(separator: " · ")
+    }
+
+    private var modelName: String {
+        selectedModel?.name ?? preferences.model ?? ScholiumL10n.string("Runtime Default", locale: locale)
+    }
+
+    private var effortLabel: String? {
+        effectiveEffort.map(AgentChatControlLabels.effort)
+    }
+
+    private var effectiveEffort: String? {
+        selectedEffort ?? preferences.effort
+    }
+
+    private var displayEffortLabel: String {
+        effortLabel ?? ScholiumL10n.string("Default", locale: locale)
     }
 }
 
@@ -123,12 +146,77 @@ enum AgentChatControlLabels {
         }
     }
 
+    static func effortGaugeLevel(_ value: String?) -> Double {
+        switch value {
+        case "none": 0
+        case "minimal": 0.12
+        case "low": 0.28
+        case "medium": 0.5
+        case "high": 0.7
+        case "xhigh": 0.85
+        case "max", "ultra": 1
+        default: 0.5
+        }
+    }
+
     static func webSearch(_ value: AgentChatPreferences.WebSearch) -> String {
         switch value {
         case .runtimeDefault: String(localized: "Runtime Default", bundle: .module)
         case .disabled: String(localized: "Off", bundle: .module)
         case .cached: String(localized: "Cached", bundle: .module)
         case .live: String(localized: "Live", bundle: .module)
+        }
+    }
+}
+
+/// A restrained reasoning state: the arc stays constant and the needle alone
+/// changes position. The complete value remains in the owning Menu's Help and AX.
+private struct AgentChatReasoningGauge: View {
+    let level: Double
+
+    var body: some View {
+        Canvas { context, size in
+            let metrics = ScholiumMetrics.AgentChat.self
+            let center = CGPoint(
+                x: size.width / 2,
+                y: size.height / 2 + metrics.reasoningGaugeCenterOffset
+            )
+            let radius = min(size.width, size.height) / 2 - metrics.reasoningGaugeStrokeWidth
+            let start = metrics.reasoningGaugeStartAngle
+            let sweep = metrics.reasoningGaugeSweepAngle
+
+            var arc = Path()
+            arc.addArc(
+                center: center,
+                radius: radius,
+                startAngle: .degrees(start),
+                endAngle: .degrees(start + sweep),
+                clockwise: false
+            )
+            context.stroke(
+                arc,
+                with: .color(ScholiumColorRole.accent.color),
+                style: StrokeStyle(lineWidth: metrics.reasoningGaugeStrokeWidth, lineCap: .round)
+            )
+
+            let angle = (start + sweep * min(max(level, 0), 1)) * .pi / 180
+            let needleEnd = CGPoint(
+                x: center.x + cos(angle) * metrics.reasoningGaugeNeedleLength,
+                y: center.y + sin(angle) * metrics.reasoningGaugeNeedleLength
+            )
+            var needle = Path()
+            needle.move(to: center)
+            needle.addLine(to: needleEnd)
+            context.stroke(
+                needle,
+                with: .color(ScholiumColorRole.primaryText.color),
+                style: StrokeStyle(lineWidth: metrics.reasoningGaugeStrokeWidth, lineCap: .round)
+            )
+            let hub = metrics.reasoningGaugeHubDiameter
+            context.fill(
+                Path(ellipseIn: CGRect(x: center.x - hub / 2, y: center.y - hub / 2, width: hub, height: hub)),
+                with: .color(ScholiumColorRole.primaryText.color)
+            )
         }
     }
 }

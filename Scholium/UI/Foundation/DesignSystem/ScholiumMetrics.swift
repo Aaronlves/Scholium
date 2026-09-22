@@ -151,6 +151,20 @@ enum ScholiumMetrics {
         static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
     }
 
+    enum AgentChat {
+        /// Known and unavailable context states share one optical ring instead
+        /// of mixing the system progress indicator with an unrelated symbol.
+        static let contextRingStrokeWidth = ScholiumGrid.foundationUnit * 0.375
+        /// The reasoning gauge stays optically quiet beside the context ring:
+        /// one open accent arc, one primary needle and one small hub.
+        static let reasoningGaugeStrokeWidth = ScholiumGrid.foundationUnit * 0.375
+        static let reasoningGaugeNeedleLength = ScholiumGrid.foundationUnit * 1.75
+        static let reasoningGaugeHubDiameter = ScholiumGrid.foundationUnit * 0.75
+        static let reasoningGaugeCenterOffset = ScholiumGrid.foundationUnit * 0.5
+        static let reasoningGaugeStartAngle = 155.0
+        static let reasoningGaugeSweepAngle = 230.0
+    }
+
     enum DocumentWorkflow {
         static let sectionSpacing = ScholiumGrid.foundationUnit * 4.5
         static let identityContentInset = ScholiumGrid.foundationUnit * 6

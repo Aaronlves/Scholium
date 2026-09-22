@@ -48,7 +48,8 @@ A disconnected-state Connect Codex action starts initial setup or retries a real
 unresolved failure; restored connections require no repeated setup. Sign-in appears
 only when needed. Connection editing belongs in
 Settings, with manual paths editable only in its explicitly advanced connection group. Composer secondary controls
-are borderless; current model/reasoning remains visible beside the input. Full Access
+are borderless; a compact gauge shows current reasoning beside the input without a text label. The selected model
+remains available in Chat Settings without occupying the resting footer. Full Access
 retains an explicit visible status when enabled; selected permissions remain named in Chat Settings.
 The circular Send button uses native control styling; availability, keyboard sending and
 native state feedback remain authoritative. The whole message input rectangle, including
@@ -369,12 +370,12 @@ additional input to its bound running turn; Send Next retains queue order while
 idle. Inspection cannot dispatch or reorder input. Edit Message opens a native editor
 for the queued text without replacing the composer draft or its materials.
 Saving preserves queue identity, position and attached context. If already sent,
-the edit is not applied and remains available to copy. The composer places Add to Chat, the current model/reasoning selection and
-delivery in one bottom row, with a small Context indicator beside the model.
+the edit is not applied and remains available to copy. The composer places Add to Chat, a small Context indicator,
+the current reasoning gauge and delivery in one bottom row.
 The composer has one enclosing surface. Its quote, Note and file summaries sit
 directly within it; they do not add nested card backgrounds. Secondary controls
-have quiet resting states and shared transient feedback. Send and Stop retain
-their native primary-action prominence. Exact previews and removal remain
+have quiet resting states, one shared target size and shared transient feedback.
+One trailing primary action expresses the current composer lifecycle. Exact previews and removal remain
 available, and sent materials retain their own transcript grouping.
 Its hover Help and accessible value show last-reported occupancy, remaining
 percentage and used/total tokens. Unknown capacity has an explicit unavailable
@@ -382,9 +383,10 @@ state, never a zero reading. Clicking the indicator opens a content-sized native
 popover anchored to that button. Occupancy leads; remaining capacity and token
 counts are secondary. One Details disclosure contains cumulative token use and
 the complete prepared-context list in a bounded scroll area. Compact Context
-remains in the footer with runtime-owned availability. Chat Settings at the model label groups named Model,
+remains in the footer with runtime-owned availability. Chat Settings at the reasoning gauge groups named Model,
 Reasoning, Permission and Web Search pickers. Selected values remain visible in
-those menus; long model labels truncate with complete Help and accessible values.
+those menus; the current model and complete configuration remain in Help and
+accessible values rather than a persistent model label.
 Full Access retains a visible status beside the input when enabled. Add Material
 groups material and Skill selection. Execution controls do not belong in that menu.
 Transcript plans use one disclosure showing the current reported step while active
@@ -425,15 +427,16 @@ or leaves outgoing controls actionable.
 Request typography and spacing replace nested cards. One bottom row groups
 borderless previous-question and skip icons; delivery stays circular. No empty
 header action row is added. Scrolling leaves native field focus rings clear.
-Composing keeps Stop at the trailing edge throughout active work, including while
-a draft can be sent. Available follow-up delivery sits beside it, with a native
-send menu offering Send Now and Queue for Next Turn for that message. The primary
-send action and Return retain the configured default; choosing the other menu
-action neither changes that default nor stops the turn. Idle composing has one
-circular Send action. Compaction shows Stop; interruption shows disabled Stopping.
+Composing has one circular trailing action with a stable target. An idle empty
+composer shows disabled Send; entering sendable text enables it. During active work an
+empty draft changes that same action to Stop. A nonempty draft changes it to the
+configured follow-up action: Add to Current Turn or Queue for Next Turn. Return
+uses the same configured action. Compaction shows Stop; interruption shows
+disabled Stopping. Stop ends the active turn; it is not presented as a resumable
+pause.
 The native Research > Stop Agent command owns Command-Period for the current
 window, including when a request replaces the composer. It and the trailing Stop
-button share the same interruption action and availability. Command-Return means delivery only.
+state share the same interruption action and availability. Command-Return means delivery only.
 Symbols retain position and accessible names.
 
 Research questions appear one at a time with a position indicator and Previous
@@ -474,7 +477,8 @@ scope shows its unavailability without offering an unchecked grant. Waiting for
 confirmation replaces decision controls and preserves the inspected request.
 
 The latest actual activity is shown in the Agent process group in the transcript; Stop
-remains available through the composer's trailing Stop button. Plans and each tool call retain native
+remains available through the composer's lifecycle action when the draft is empty
+and through the Research menu and Command-Period throughout active work. Plans and each tool call retain native
 disclosure for detail; live queries, sources, exact targets and outcomes remain inspectable. Cards distinguish source material, questions, approval and
 operation evidence without enclosing every prose paragraph. Source links and
 material previews retain provenance under §8.7. Technical payloads remain behind
