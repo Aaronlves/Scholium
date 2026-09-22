@@ -152,17 +152,10 @@ enum ScholiumMetrics {
     }
 
     enum AgentChat {
-        /// Known and unavailable context states share one optical ring instead
-        /// of mixing the system progress indicator with an unrelated symbol.
-        static let contextRingStrokeWidth = ScholiumGrid.foundationUnit * 0.375
-        /// The reasoning gauge stays optically quiet beside the context ring:
-        /// one open accent arc, one primary needle and one small hub.
-        static let reasoningGaugeStrokeWidth = ScholiumGrid.foundationUnit * 0.375
-        static let reasoningGaugeNeedleLength = ScholiumGrid.foundationUnit * 1.75
-        static let reasoningGaugeHubDiameter = ScholiumGrid.foundationUnit * 0.75
-        static let reasoningGaugeCenterOffset = ScholiumGrid.foundationUnit * 0.5
-        static let reasoningGaugeStartAngle = 155.0
-        static let reasoningGaugeSweepAngle = 230.0
+        /// Composer controls keep a larger activation target while their
+        /// visible silhouettes share one compact optical diameter.
+        static let composerControlVisualDiameter = ScholiumGrid.foundationUnit * 4.5
+        static let composerControlStrokeWidth = ScholiumGrid.foundationUnit * 0.375
     }
 
     enum DocumentWorkflow {

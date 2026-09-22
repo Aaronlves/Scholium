@@ -17,10 +17,10 @@ enum AgentChatComposerAction: Equatable {
 
     var symbol: String {
         switch self {
-        case .send, .steer: "arrow.up"
-        case .queue: "text.badge.plus"
-        case .stop: "stop.fill"
-        case .stopping: "ellipsis"
+        case .send, .steer: "arrow.up.circle.fill"
+        case .queue: "plus.circle.fill"
+        case .stop: "stop.circle.fill"
+        case .stopping: "ellipsis.circle.fill"
         }
     }
     var label: String {
@@ -63,20 +63,11 @@ struct AgentChatComposerActionButton: View {
 
     private func primaryButton(for action: AgentChatComposerAction) -> some View {
         Button(action: { perform(action) }) {
-            Image(systemName: action.symbol)
-                .frame(
-                    width: ScholiumGrid.Dimension.iconTrackWidth,
-                    height: ScholiumGrid.Dimension.iconTrackWidth
-                )
+            AgentChatComposerIcon(content: .action(action.symbol))
                 .contentTransition(ScholiumMotion.symbolReplacementContentTransition(reduceMotion: reduceMotion))
         }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.circle)
-        .controlSize(.regular)
-        .frame(
-            width: ScholiumGrid.Dimension.preferredCustomTarget,
-            height: ScholiumGrid.Dimension.preferredCustomTarget
-        )
+        .buttonStyle(ScholiumContentActionButtonStyle())
+        .agentChatComposerControl()
         .disabled(!action.isEnabled(canSend: canSend))
         .help(help(for: action))
         .accessibilityLabel(action.label)

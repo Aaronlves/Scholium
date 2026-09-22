@@ -76,9 +76,12 @@ struct AgentChatConfigurationMenu: View {
             } label: {
                 Text("Web Search", bundle: .module)
             }
-        } label: { configurationTarget }
+        } label: {
+            AgentChatComposerIcon(content: .reasoning(AgentChatControlLabels.effortGaugeLevel(effectiveEffort)))
+        }
         .scholiumContentActionMenu()
-        .overlay { configurationGlyph.allowsHitTesting(false) }
+        .menuIndicator(.hidden)
+        .agentChatComposerControl()
         .disabled(!isEnabled)
         .help(Text(verbatim: "\(ScholiumL10n.string("Chat Settings", locale: locale)): \(modelLabel)"))
         .accessibilityLabel(Text("Chat Settings", bundle: .module))
@@ -96,18 +99,6 @@ struct AgentChatConfigurationMenu: View {
         permission == .ask
             ? ScholiumL10n.string("Ask for Approval", locale: locale)
             : ScholiumL10n.string("Full Access", locale: locale)
-    }
-
-    private var configurationTarget: some View {
-        AgentChatComposerAccessoryLabel { Color.clear }
-            .accessibilityHidden(true)
-    }
-
-    private var configurationGlyph: some View {
-        AgentChatComposerAccessoryLabel {
-            AgentChatReasoningGauge(level: AgentChatControlLabels.effortGaugeLevel(effectiveEffort))
-        }
-            .accessibilityHidden(true)
     }
 
     private var modelLabel: String {
@@ -165,58 +156,6 @@ enum AgentChatControlLabels {
         case .disabled: String(localized: "Off", bundle: .module)
         case .cached: String(localized: "Cached", bundle: .module)
         case .live: String(localized: "Live", bundle: .module)
-        }
-    }
-}
-
-/// A restrained reasoning state: the arc stays constant and the needle alone
-/// changes position. The complete value remains in the owning Menu's Help and AX.
-private struct AgentChatReasoningGauge: View {
-    let level: Double
-
-    var body: some View {
-        Canvas { context, size in
-            let metrics = ScholiumMetrics.AgentChat.self
-            let center = CGPoint(
-                x: size.width / 2,
-                y: size.height / 2 + metrics.reasoningGaugeCenterOffset
-            )
-            let radius = min(size.width, size.height) / 2 - metrics.reasoningGaugeStrokeWidth
-            let start = metrics.reasoningGaugeStartAngle
-            let sweep = metrics.reasoningGaugeSweepAngle
-
-            var arc = Path()
-            arc.addArc(
-                center: center,
-                radius: radius,
-                startAngle: .degrees(start),
-                endAngle: .degrees(start + sweep),
-                clockwise: false
-            )
-            context.stroke(
-                arc,
-                with: .color(ScholiumColorRole.accent.color),
-                style: StrokeStyle(lineWidth: metrics.reasoningGaugeStrokeWidth, lineCap: .round)
-            )
-
-            let angle = (start + sweep * min(max(level, 0), 1)) * .pi / 180
-            let needleEnd = CGPoint(
-                x: center.x + cos(angle) * metrics.reasoningGaugeNeedleLength,
-                y: center.y + sin(angle) * metrics.reasoningGaugeNeedleLength
-            )
-            var needle = Path()
-            needle.move(to: center)
-            needle.addLine(to: needleEnd)
-            context.stroke(
-                needle,
-                with: .color(ScholiumColorRole.primaryText.color),
-                style: StrokeStyle(lineWidth: metrics.reasoningGaugeStrokeWidth, lineCap: .round)
-            )
-            let hub = metrics.reasoningGaugeHubDiameter
-            context.fill(
-                Path(ellipseIn: CGRect(x: center.x - hub / 2, y: center.y - hub / 2, width: hub, height: hub)),
-                with: .color(ScholiumColorRole.primaryText.color)
-            )
         }
     }
 }

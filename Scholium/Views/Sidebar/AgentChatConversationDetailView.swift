@@ -1237,14 +1237,10 @@ struct AgentChatConversationDetailView: View {
                         Text("Commands", bundle: .module)
                     }
                 } label: {
-                    AgentChatComposerAccessoryLabel {
-                        Image(systemName: ScholiumSidebarAction.add.symbol)
-                            .font(.system(size: ScholiumGrid.Dimension.iconTrackWidth, weight: .regular))
-                            .symbolRenderingMode(.monochrome)
-                    }
-                        .accessibilityLabel("Add to Chat")
+                    AgentChatComposerIcon(content: .add)
                 }
                 .scholiumContentActionMenu()
+                .agentChatComposerControl()
                 .help("Add to Chat").accessibilityLabel("Add to Chat")
                 .accessibilityIdentifier("scholium.chat.addMaterial")
                 AgentChatContextMeter(usage: controller.selected?.contextUsage) { presentation.contextAnchor = .composer }
@@ -1260,7 +1256,6 @@ struct AgentChatConversationDetailView: View {
                     selectModel: controller.setModel, selectEffort: controller.setEffort,
                     selectPermission: controller.setPermission, selectWebSearch: controller.setWebSearch
                 )
-                .font(.caption).menuIndicator(.hidden)
                 Spacer(minLength: 0)
                 AgentChatComposerActionButton(
                     state: controller.state,

@@ -765,26 +765,28 @@ struct AgentChatVisualEvidenceTests {
             name: "GPT-6 Astra Research Preview with Extended Context",
             efforts: ["low", "medium", "xhigh"], defaultEffort: "medium", isDefault: true,
             inputModalities: ["text", "image"])
-        for (name, width, usage) in [
-            ("known", CGFloat(340), AgentChatContextUsage(lastTurnTokens: 73_400, totalTokens: 180_000, capacity: 128_000)),
-            ("unavailable", CGFloat(280), nil),
+        for (name, width, usage, effort) in [
+            ("known", CGFloat(340), AgentChatContextUsage(lastTurnTokens: 73_400, totalTokens: 180_000, capacity: 128_000), "xhigh"),
+            ("unavailable", CGFloat(280), nil, "low"),
         ] {
             for scheme in [ColorScheme.light, .dark] {
                 let content = VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Text("请核对这段论证的前提，并保留原文中的限定。")
                         .frame(maxWidth: .infinity, minHeight: 40, alignment: .topLeading)
-                    HStack {
-                        Button(action: {}) {
-                            AgentChatComposerAccessoryLabel { Image(systemName: "plus") }
+                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Menu {
+                            Button("Choose File…", action: {})
+                        } label: {
+                            AgentChatComposerIcon(content: .add)
                         }
-                            .buttonStyle(ScholiumContentActionButtonStyle())
+                        .scholiumContentActionMenu()
+                        .agentChatComposerControl()
                         AgentChatContextMeter(usage: usage, open: {})
                         AgentChatConfigurationMenu(
-                            models: [model], preferences: .init(model: model.model, effort: "xhigh"),
+                            models: [model], preferences: .init(model: model.model, effort: effort),
                             selectedModel: model, permission: .ask, isEnabled: true, canSelectModel: true,
                             selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in },
                             selectWebSearch: { _ in })
-                        .font(.caption).menuIndicator(.hidden)
                         Spacer(minLength: 0)
                         AgentChatComposerActionButton(
                             state: .ready, hasInput: true, canSend: true, queuesInput: false,

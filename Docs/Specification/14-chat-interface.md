@@ -48,7 +48,8 @@ A disconnected-state Connect Codex action starts initial setup or retries a real
 unresolved failure; restored connections require no repeated setup. Sign-in appears
 only when needed. Connection editing belongs in
 Settings, with manual paths editable only in its explicitly advanced connection group. Composer secondary controls
-are borderless; a compact gauge shows current reasoning beside the input without a text label. The selected model
+are borderless; a compact gauge shows current reasoning beside the input without a text label. Its
+accent arc extent and needle position encode the same selected effort. The selected model
 remains available in Chat Settings without occupying the resting footer. Full Access
 retains an explicit visible status when enabled; selected permissions remain named in Chat Settings.
 The circular Send button uses native control styling; availability, keyboard sending and
@@ -374,7 +375,8 @@ the edit is not applied and remains available to copy. The composer places Add t
 the current reasoning gauge and delivery in one bottom row.
 The composer has one enclosing surface. Its quote, Note and file summaries sit
 directly within it; they do not add nested card backgrounds. Secondary controls
-have quiet resting states, one shared target size and shared transient feedback.
+have quiet resting states, one shared target, matched optical size and line weight,
+and shared transient feedback.
 One trailing primary action expresses the current composer lifecycle. Exact previews and removal remain
 available, and sent materials retain their own transcript grouping.
 Its hover Help and accessible value show last-reported occupancy, remaining
