@@ -102,7 +102,8 @@ extension ScholiumUITests {
         typeCommittedText("shortcut", into: search, in: app)
         XCTAssertTrue(actionRows.staticTexts["QA"].exists, "Typing a query must retain the current draft page")
         let shortcutResult = window.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.settings.result.shortcut.")).firstMatch
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.settings.result.shortcut.")
+        ).firstMatch
         XCTAssertTrue(shortcutResult.waitForExistence(timeout: 5))
         shortcutResult.click()
         XCTAssertTrue(window.descendants(matching: .any)["scholium.hotkeys"].firstMatch.waitForExistence(timeout: 5))
@@ -133,8 +134,10 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 3) { !window.exists })
         let restored = openSettingsForTransactionTest()
         XCTAssertEqual(restored.title, "Writing Assistance", "Reopening must restore the selected category")
-        XCTAssertTrue(restored.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.selectionActions.row.")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            restored.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "scholium.selectionActions.row.")
+            ).firstMatch.waitForExistence(timeout: 5))
 
         relaunchSettingsTransactionApplication()
         let reopened = openSettingsForTransactionTest()

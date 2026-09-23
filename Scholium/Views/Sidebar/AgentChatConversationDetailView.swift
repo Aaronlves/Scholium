@@ -45,44 +45,44 @@ struct AgentChatConversationDetailView: View {
 
     var body: some View {
         conversationDetail
-        .sheet(item: $presentation.queueEditTarget) { target in
-            AgentChatQueuedMessageEditor(
-                message: target.message,
-                save: { controller.editQueuedMessage(target.message.id, text: $0, in: target.conversationID) },
-                close: { presentation.queueEditTarget = nil })
-        }
-        .sheet(item: $presentation.inspectedAgent) { child in
-            AgentChatChildInspector(child: child, openReference: openReference)
-        }
-        .sheet(item: $presentation.notePickerTarget) { target in
-            AgentChatNotePicker(notes: noteChoices) { note in try await prepareNote(note, in: target.id) }
-        }
-        .sheet(item: $presentation.pdfPagesTarget) { target in AgentChatPDFPagesView(controller: controller, target: target) }
-        .sheet(item: $presentation.comparisonRequest) { request in
-            if let preview = request.updatePreview {
-                AgentChatUpdateComparisonSheet(controller: controller, requestID: request.id, preview: preview)
+            .sheet(item: $presentation.queueEditTarget) { target in
+                AgentChatQueuedMessageEditor(
+                    message: target.message,
+                    save: { controller.editQueuedMessage(target.message.id, text: $0, in: target.conversationID) },
+                    close: { presentation.queueEditTarget = nil })
             }
-        }
-        .onDisappear { fileSelectionTask?.cancel() }
-        .onChange(of: focusRequest, initial: true) { _, request in
-            guard let request else { return }
-            presentation.messageIsFocused = isVisible
-            consumeFocusRequest(request)
-        }
-        .onChange(of: isVisible) { _, visible in
-            if visible, controller.contextPresentationID != nil { presentation.messageIsFocused = true }
-            if !visible {
-                presentation.completion.dismiss()
-                presentation.messageIsFocused = false
-                presentation.showsFiles = false
-                presentation.showsAgents = false
-                presentation.contextAnchor = nil
+            .sheet(item: $presentation.inspectedAgent) { child in
+                AgentChatChildInspector(child: child, openReference: openReference)
             }
-        }
-        .onChange(of: presentation.find.query) { _, _ in refreshFind(reset: true) }
-        .onChange(of: controller.selected?.messages) { _, _ in
-            if presentation.showsFind { refreshFind() }
-        }
+            .sheet(item: $presentation.notePickerTarget) { target in
+                AgentChatNotePicker(notes: noteChoices) { note in try await prepareNote(note, in: target.id) }
+            }
+            .sheet(item: $presentation.pdfPagesTarget) { target in AgentChatPDFPagesView(controller: controller, target: target) }
+            .sheet(item: $presentation.comparisonRequest) { request in
+                if let preview = request.updatePreview {
+                    AgentChatUpdateComparisonSheet(controller: controller, requestID: request.id, preview: preview)
+                }
+            }
+            .onDisappear { fileSelectionTask?.cancel() }
+            .onChange(of: focusRequest, initial: true) { _, request in
+                guard let request else { return }
+                presentation.messageIsFocused = isVisible
+                consumeFocusRequest(request)
+            }
+            .onChange(of: isVisible) { _, visible in
+                if visible, controller.contextPresentationID != nil { presentation.messageIsFocused = true }
+                if !visible {
+                    presentation.completion.dismiss()
+                    presentation.messageIsFocused = false
+                    presentation.showsFiles = false
+                    presentation.showsAgents = false
+                    presentation.contextAnchor = nil
+                }
+            }
+            .onChange(of: presentation.find.query) { _, _ in refreshFind(reset: true) }
+            .onChange(of: controller.selected?.messages) { _, _ in
+                if presentation.showsFind { refreshFind() }
+            }
     }
 
     private var header: some View {

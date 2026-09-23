@@ -33,8 +33,7 @@ through window zoom, full screen and resize. Content backgrounds continue behind
 native toolbar controls without a separate app-owned background band. The same background
 policy applies in full screen, without custom chrome or repainting. The Document
 scrolling plane may pass behind the native toolbar while initial readable content
-and fixed controls retain safe-area positioning. §18.4 owns the confined material transition.
-Only the selected Sidebar page
+and fixed controls retain safe-area positioning. Only the selected Sidebar page
 participates in pointer, tooltip, keyboard and accessibility interaction; retained
 pages cannot intercept another page. A popover remains an auxiliary surface.
 

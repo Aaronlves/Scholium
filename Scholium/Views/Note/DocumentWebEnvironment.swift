@@ -69,15 +69,19 @@ final class DocumentWebEnvironment: NSObject {
         else { return }
         let increasedContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         let values = Values(
-            colors: Dictionary(uniqueKeysWithValues: ScholiumColorRole.allCases.map { role in
-                (role.cssVariableName, String(
-                    format: "#%06x",
-                    role.resolvedRGBValue(
-                        for: webView.effectiveAppearance,
-                        increasedContrast: increasedContrast
+            colors: Dictionary(
+                uniqueKeysWithValues: ScholiumColorRole.allCases.map { role in
+                    (
+                        role.cssVariableName,
+                        String(
+                            format: "#%06x",
+                            role.resolvedRGBValue(
+                                for: webView.effectiveAppearance,
+                                increasedContrast: increasedContrast
+                            )
+                        )
                     )
-                ))
-            }),
+                }),
             toolbarInset: toolbarInset
         )
         guard projectedValues != values else { return }

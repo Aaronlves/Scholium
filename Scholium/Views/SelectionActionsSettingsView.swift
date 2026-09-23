@@ -203,7 +203,8 @@ struct SelectionActionsSettingsContent: View {
         .onChange(of: preferences.actions) { _, actions in state.synchronize(with: actions) }
         .sheet(isPresented: editingPresented) {
             if let id = state.editingActionID,
-                let action = state.actions.first(where: { $0.id == id }) {
+                let action = state.actions.first(where: { $0.id == id })
+            {
                 actionEditor(for: action)
             }
         }

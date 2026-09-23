@@ -3343,10 +3343,12 @@ struct FrontendArchitectureTests {
         for (appearanceName, increasedContrast, declarations) in appearances {
             let appearance = try #require(NSAppearance(named: appearanceName))
             for (role, systemColor) in backgrounds {
-                let expectedAppearance = try #require(NSAppearance(named: increasedContrast
-                    ? (appearanceName == .darkAqua
-                        ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
-                    : appearanceName))
+                let expectedAppearance = try #require(
+                    NSAppearance(
+                        named: increasedContrast
+                            ? (appearanceName == .darkAqua
+                                ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
+                            : appearanceName))
                 let native = try #require(rgbValue(of: systemColor, appearance: expectedAppearance))
                 #expect(role.resolvedRGBValue(for: appearance, increasedContrast: increasedContrast) == native)
             }
@@ -3367,11 +3369,13 @@ struct FrontendArchitectureTests {
         }
         let light = try #require(NSAppearance(named: .aqua))
         let dark = try #require(NSAppearance(named: .darkAqua))
-        #expect(ScholiumColorRole.documentBackground.resolvedRGBValue(
-            for: light, increasedContrast: false
-        ) != ScholiumColorRole.documentBackground.resolvedRGBValue(
-            for: dark, increasedContrast: false
-        ))
+        #expect(
+            ScholiumColorRole.documentBackground.resolvedRGBValue(
+                for: light, increasedContrast: false
+            )
+                != ScholiumColorRole.documentBackground.resolvedRGBValue(
+                    for: dark, increasedContrast: false
+                ))
     }
 
     @Test("Reduce Motion removes app-defined transitions")
