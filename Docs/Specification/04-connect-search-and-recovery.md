@@ -61,7 +61,7 @@ without moving focus or invalidating usable results.
 
 Document Find is a separate document-local operation over the current unsaved
 buffer. It supports literal text, case and whole-word options, count,
-Previous/Next, and standard keyboard routes. Edit and Source add Replace
+Previous/Next, and standard keyboard routes. Edit adds Replace
 Current/All as single Undo transactions. Find creates no Search provider,
 index, saved query, or navigation history.
 

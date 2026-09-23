@@ -1,7 +1,7 @@
 import Foundation
 
 /// Owns one transient continuation request, never the editor's source or identity.
-/// The page bridge supplies admission again at every asynchronous publication.
+/// The native session supplies admission again at every asynchronous publication.
 @MainActor
 final class EditorWritingContinuationController {
     enum Publication: Equatable {

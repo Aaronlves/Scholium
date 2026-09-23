@@ -17,7 +17,7 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
     var choose: ((Int) -> Void)?
     private var synchronizing = false
 
-    init(acceptsKeyboard: Bool) {
+    init(acceptsKeyboard: Bool, exposesAccessibility: Bool = true) {
         super.init(frame: .zero)
         drawsBackground = false
         borderType = .noBorder
@@ -42,8 +42,14 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
         table.pointToRow = { [weak self] row in self?.point(to: row) }
         table.acceptRow = { [weak self] row in self?.accept(row) }
         documentView = table
-        if !acceptsKeyboard {
-            // CodeMirror owns the only accessible listbox and active descendant.
+        if exposesAccessibility {
+            setAccessibilityElement(true)
+            table.setAccessibilityElement(true)
+            table.setAccessibilityLabel(ScholiumL10n.string("Suggestions"))
+            table.setAccessibilityIdentifier("scholium.documentSuggestions.list")
+        } else {
+            // A web host may already expose its own accessible suggestion list.
+            // Keyboard ownership alone never hides native choices from VoiceOver.
             setAccessibilityElement(false)
             setAccessibilityChildren([])
             table.setAccessibilityElement(false)
@@ -113,6 +119,7 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
         view.accept = { [weak self] in self?.accept(row) }
         view.setAccessibilityLabel(items[row].label)
         view.setAccessibilityValue(items[row].accessibilityValue)
+        view.setAccessibilityHelp(items[row].detail)
         return view
     }
 

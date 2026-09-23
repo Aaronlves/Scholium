@@ -189,7 +189,6 @@ if rg -n --glob '*.swift' \
   --glob '!**/Services/WindowSession.swift' \
   --glob '!**/Services/PerformanceProbe.swift' \
   --glob '!**/Localization/WebKitInterfaceLocalization.swift' \
-  --glob '!**/Views/Note/MarkdownEditorWebView.swift' \
   --glob '!**/Views/Note/ScholiumDocumentWebResources.swift' \
   --glob '!**/Styling/ScholiumWebFonts.swift' \
   --glob '!**/Styling/ScholiumWebFontResources.swift' \
@@ -199,7 +198,7 @@ if rg -n --glob '*.swift' \
   --glob '!**/Styling/ScholiumMathAssets.swift' \
   --glob '!**/Styling/ScholiumMermaidAssets.swift' \
   --glob '!**/Styling/ScholiumPreviewStyles.swift' \
-  --glob '!**/Styling/CSSSnippetStore.swift' \
+  --glob '!**/Styling/DocumentAppearanceStore.swift' \
   '\bFileManager\b|Data\(contentsOf:|String\(contentsOf:' \
   "${ROOT}/Scholium"; then
   echo "I/O wall guard failed: frontend filesystem I/O is outside its delivery allowlist." >&2

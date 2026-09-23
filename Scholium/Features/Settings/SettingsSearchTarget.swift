@@ -100,18 +100,12 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                     "比例", "段前间距", "段后间距",
                 ]),
             Self("appearance.styles", .document, "Text Styles", ["bold", "italic", "粗体", "斜体"]),
-            Self("appearance.source", .document, "Source Font", ["源码字体"]),
-            Self("appearance.sourceSize", .document, "Source font size", ["源码字号"], section: "appearance.source"),
+            Self("appearance.source", .document, "Code Font", ["code font", "代码字体", "技术文本字体"]),
+            Self("appearance.sourceSize", .document, "Code font size", ["code size", "代码字号"], section: "appearance.source"),
             Self("appearance.bodyBoldFont", .document, "Body Bold Font", ["正文粗体字体"], section: "appearance.styles"),
             Self("appearance.bodyItalicFont", .document, "Body Italic Font", ["正文斜体字体"], section: "appearance.styles"),
             Self("appearance.headingBoldFont", .document, "Heading Bold Font", ["标题粗体字体"], section: "appearance.styles"),
             Self("appearance.headingItalicFont", .document, "Heading Italic Font", ["标题斜体字体"], section: "appearance.styles"),
-            Self(
-                "appearance.css", .document, "CSS Snippets",
-                [
-                    "Advanced CSS", "letter spacing", "word spacing", "kerning", "ligatures",
-                    "Open CSS Folder", "CSS", "高级排版", "字距", "词距", "字偶距", "连字",
-                ], aliases: ["Import CSS Snippet…", "Open CSS Folder"]),
             Self(
                 "appearance.file", .document, "Configuration File",
                 ["reload appearance", "configuration guide", "配置文件", "重新载入外观"],

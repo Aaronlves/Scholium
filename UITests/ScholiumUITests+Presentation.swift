@@ -538,14 +538,14 @@ extension ScholiumUITests {
         XCTAssertTrue(mode.waitForExistence(timeout: 5))
         selectDocumentMode("Edit")
         XCTAssertTrue(
-            app.descendants(matching: .any)["Markdown editor, Edit mode"].waitForExistence(
+            app.descendants(matching: .any)["Document, Editing"].waitForExistence(
                 timeout: 8))
 
-        selectDocumentMode("Source")
+        selectDocumentMode("Edit")
         XCTAssertTrue(
-            app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
+            app.descendants(matching: .any)["Document, Editing"].waitForExistence(timeout: 8))
 
-        selectDocumentMode("Review")
+        selectDocumentMode("Read")
         waitForCurrentDocumentSurface()
 
         let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")

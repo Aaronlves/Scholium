@@ -337,7 +337,7 @@ struct WindowControllerArchitectureTests {
             target: .workspace(key),
             source: "clean\n",
             revision: DocumentFingerprint(content: "clean\n"),
-            mode: .livePreview
+            mode: .edit
         )
         await Task.yield()
         await Task.yield()
@@ -550,8 +550,8 @@ struct WindowControllerArchitectureTests {
         controller.installOpenedDocument(descriptor)
         let session = controller.session(for: descriptor)
         #expect(session.presentationMode == .read)
-        #expect(session.pendingEditorMode == .livePreview)
-        #expect(controller.currentPresentationMode == .livePreview)
+        #expect(session.pendingEditorMode == .edit)
+        #expect(controller.currentPresentationMode == .edit)
         #expect(session.scrollFraction == 0.64)
         let semanticAnchor = EditorScrollAnchor(
             sourceFingerprint: "revision-bound-fingerprint",
@@ -563,7 +563,7 @@ struct WindowControllerArchitectureTests {
         )
         session.scrollAnchor = semanticAnchor
 
-        controller.rememberPresentationMode(.livePreview)
+        controller.rememberPresentationMode(.edit)
         controller.rememberScrollPosition(
             0.31,
             for: reference.relativePath,
@@ -574,8 +574,8 @@ struct WindowControllerArchitectureTests {
 
         #expect(controller.session(for: descriptor) === session)
         #expect(session.presentationMode == .read)
-        #expect(session.pendingEditorMode == .livePreview)
-        #expect(controller.currentPresentationMode == .livePreview)
+        #expect(session.pendingEditorMode == .edit)
+        #expect(controller.currentPresentationMode == .edit)
         #expect(session.scrollFraction == 0)
         #expect(session.scrollAnchor == nil)
         #expect(
@@ -589,7 +589,7 @@ struct WindowControllerArchitectureTests {
                 ))
 
         controller.resetPresentationState()
-        #expect(controller.currentPresentationMode == .livePreview)
+        #expect(controller.currentPresentationMode == .edit)
         #expect(session.presentationMode == .read)
         #expect(session.scrollFraction == 0)
         #expect(session.scrollAnchor == nil)
@@ -600,22 +600,22 @@ struct WindowControllerArchitectureTests {
         let document = DocumentController()
         let shell = WindowShellState()
 
-        document.rememberPresentationMode(.livePreview)
+        document.rememberPresentationMode(.edit)
         shell.selectInspectorMode(.links)
 
         shell.selectWorkspace(.topicKnowledge)
         document.selectWorkspace(.topicKnowledge)
-        #expect(document.currentPresentationMode == .livePreview)
+        #expect(document.currentPresentationMode == .edit)
         #expect(shell.inspector.mode == .links)
 
-        document.rememberPresentationMode(.source)
+        document.rememberPresentationMode(.edit)
         shell.selectInspectorMode(.links)
         shell.selectWorkspace(.paperAnalysis)
         document.selectWorkspace(.paperAnalysis)
 
-        #expect(document.currentPresentationMode == .livePreview)
+        #expect(document.currentPresentationMode == .edit)
         #expect(shell.inspector.mode == .links)
-        #expect(document.presentationMode(for: .topicKnowledge) == .source)
+        #expect(document.presentationMode(for: .topicKnowledge) == .edit)
         #expect(shell.inspectorMode(for: .topicKnowledge) == .links)
     }
 
@@ -634,77 +634,55 @@ struct WindowControllerArchitectureTests {
 
         controller.installOpenedDocument(first)
         let firstSession = controller.session(for: first)
-        firstSession.preparePresentationMode(.source)
-        controller.rememberPresentationMode(.source)
+        firstSession.preparePresentationMode(.edit)
+        controller.rememberPresentationMode(.edit)
 
         controller.installOpenedDocument(second)
         let secondSession = controller.session(for: second)
-        #expect(controller.currentPresentationMode == .source)
+        #expect(controller.currentPresentationMode == .edit)
         #expect(secondSession.presentationMode == .read)
-        #expect(secondSession.pendingEditorMode == .source)
+        #expect(secondSession.pendingEditorMode == .edit)
 
-        secondSession.preparePresentationMode(.livePreview)
-        controller.rememberPresentationMode(.livePreview)
+        secondSession.preparePresentationMode(.edit)
+        controller.rememberPresentationMode(.edit)
         controller.installOpenedDocument(first)
 
-        #expect(controller.currentPresentationMode == .livePreview)
+        #expect(controller.currentPresentationMode == .edit)
         #expect(firstSession.presentationMode == .read)
-        #expect(firstSession.pendingEditorMode == .livePreview)
+        #expect(firstSession.pendingEditorMode == .edit)
     }
 
-    @Test("Observed scrolling never becomes a restore request or invalidates the session")
-    func observedScrollingIsNotRestoration() {
+    @Test("Observed native scrolling updates retained position without publishing a view invalidation")
+    func observedScrollingRetainsPosition() {
         let session = DocumentSessionModel(key: nil)
         var invalidationCount = 0
         let observation = session.objectWillChange.sink {
             invalidationCount += 1
         }
+        let anchor = EditorScrollAnchor(
+            sourceFingerprint: "scroll-fixture",
+            sourceUTF16Offset: 8,
+            blockUTF16LowerBound: 4,
+            blockUTF16UpperBound: 16,
+            relativeBlockPosition: 0.25,
+            fallbackFraction: 0.41
+        )
 
         session.observeScrollFraction(0.41)
-        session.observeScrollAnchor(
-            EditorScrollAnchor(
-                sourceFingerprint: "scroll-fixture",
-                sourceUTF16Offset: 8,
-                blockUTF16LowerBound: 4,
-                blockUTF16UpperBound: 16,
-                relativeBlockPosition: 0.25,
-                fallbackFraction: 0.41
-            ))
-
-        #expect(session.scrollRestoreRequest == nil)
-        #expect(invalidationCount == 0)
+        session.observeScrollAnchor(anchor)
         #expect(session.scrollFraction == 0.41)
+        #expect(session.scrollAnchor == anchor)
+        #expect(invalidationCount == 0)
 
-        let first = session.requestScrollRestore(
-            fingerprint: "scroll-fixture",
-            reason: .documentLoad
-        )
-        let invalidationsAfterRequest = invalidationCount
         session.observeScrollFraction(0.73)
+        #expect(session.scrollFraction == 0.73)
+        #expect(session.scrollAnchor == anchor)
+        #expect(invalidationCount == 0)
 
-        #expect(session.scrollRestoreRequest == first)
-        #expect(invalidationCount == invalidationsAfterRequest)
-        let second = session.requestScrollRestore(
-            fingerprint: "scroll-fixture",
-            reason: .modeHandoff
-        )
-        #expect(second.id == first.id + 1)
-        #expect(second.position.fraction == 0.73)
-        session.acknowledgeScrollRestoreRequest(
-            id: first.id,
-            fingerprint: first.fingerprint
-        )
-        #expect(session.scrollRestoreRequest == second)
-        session.acknowledgeScrollRestoreRequest(
-            id: second.id,
-            fingerprint: "stale-fingerprint"
-        )
-        #expect(session.scrollRestoreRequest == second)
-        session.acknowledgeScrollRestoreRequest(
-            id: second.id,
-            fingerprint: second.fingerprint
-        )
-        #expect(session.scrollRestoreRequest == nil)
+        session.resetScrollPosition()
+        #expect(session.scrollFraction == 0)
+        #expect(session.scrollAnchor == nil)
+        #expect(invalidationCount == 0)
         _ = observation
     }
 
@@ -777,7 +755,7 @@ struct WindowControllerArchitectureTests {
             target: .workspace(descriptor.sessionKey),
             source: source,
             revision: revision,
-            mode: .source
+            mode: .edit
         )
         try controller.finishEditing(
             session: session,
@@ -787,7 +765,7 @@ struct WindowControllerArchitectureTests {
         #expect(!session.isEditing)
         #expect(session.presentationMode == .read)
         #expect(session.retainsEditorSurface)
-        #expect(session.retainedEditorMode == .source)
+        #expect(session.retainedEditorMode == .edit)
         #expect(session.editingSource == source)
         #expect(session.originalEditingSource == source)
         #expect(session.editingRevision == revision)
@@ -809,13 +787,13 @@ struct WindowControllerArchitectureTests {
         let controller = DocumentController()
         controller.installOpenedDocument(original)
         let session = controller.session(for: original)
-        let bridgeDocumentID = session.editorSession.bridgeDocumentID
+        let editorDocumentID = session.editorSession.editorDocumentID
         controller.beginEditing(
             session: session,
             target: .workspace(original.sessionKey),
             source: "original exact buffer",
             revision: DocumentFingerprint(content: "original exact buffer"),
-            mode: .livePreview
+            mode: .edit
         )
         session.suppressAutosave = false
         session.editingSource = "dirty exact buffer"
@@ -835,7 +813,7 @@ struct WindowControllerArchitectureTests {
 
         #expect(controller.activeDocument == renamed)
         #expect(controller.session(for: renamed) === session)
-        #expect(session.editorSession.bridgeDocumentID == bridgeDocumentID)
+        #expect(session.editorSession.editorDocumentID == editorDocumentID)
         #expect(session.editingSource == "dirty exact buffer")
         #expect(session.scrollAnchor?.sourceFingerprint == "rename-stable-fingerprint")
         #expect(controller.editingDocumentPath == "Topics/New.md")
@@ -1337,7 +1315,7 @@ struct WindowControllerArchitectureTests {
                 if declarations.count != 1 {
                     violations.append("\(relativePath): expected one WindowModel root")
                 }
-            } else if source.contains("WindowModel") {
+            } else if source.range(of: #"\bWindowModel\b"#, options: .regularExpression) != nil {
                 violations.append("\(relativePath): references WindowModel")
             }
         }
@@ -1454,7 +1432,7 @@ struct WindowControllerArchitectureTests {
         ]
         #expect(searchSelectionSource.contains("openWorkspaceReference("))
         #expect(!searchSelectionSource.contains("isCurrentDocument"))
-        #expect(!searchSelectionSource.contains("requestPresentationMode = .source"))
+        #expect(!searchSelectionSource.contains("requestPresentationMode = .edit"))
 
         let searchOpeningStart = try #require(
             documentOpeningSource.range(
@@ -1469,7 +1447,7 @@ struct WindowControllerArchitectureTests {
             searchOpeningStart.lowerBound..<searchOpeningEnd.lowerBound
         ]
         #expect(searchOpeningSource.contains("let navigationMode = mode ?? presentedDocumentMode"))
-        #expect(!searchOpeningSource.contains("requestPresentationMode = .source"))
+        #expect(!searchOpeningSource.contains("requestPresentationMode = .edit"))
 
         let notificationStart = try #require(
             documentOpeningSource.range(of: "func openNotifiedAgentChange(")
@@ -1659,7 +1637,7 @@ struct WindowControllerArchitectureTests {
         #expect(libraryMutationSource.contains("requireOperations().moveToSystemTrash("))
         #expect(!libraryMutationSource.contains("DocumentController"))
         #expect(!windowModelSource.contains("if triptychSettings.properties.isEmpty"))
-        #expect(!windowModelSource.contains("cssSnippetStore.objectWillChange"))
+        #expect(!windowModelSource.contains("documentAppearanceStore.objectWillChange"))
 
         for shellOwnedState in [
             "@Published var sidebarVisible",

@@ -11,9 +11,9 @@
   Library navigation, Inspector Links/Related Material, Document mode transitions,
   system Trash, conflict and Recovery. Computer Use AX snapshots are not VoiceOver
   or physical-input acceptance.
-- Complete editor syntax continuity for rapid reversal, full-line prefix borrowing,
-  minimum width, system adaptations, IME and conflict/recovery. Accept ordinary
-  Edit entry and Settlement milestone feedback through applicable human checks.
+- Refine native editor selection, typography and Find all-hit highlighting;
+  complete minimum-width, adaptation, IME and conflict/recovery acceptance.
+  Accept ordinary Edit entry and Settlement feedback through human checks.
 - Exercise the intermittent Sidebar symptom under mixed physical pointer/keyboard
   use and window reactivation; Library native-row emphasis and swipe feedback,
   confirmation/cancellation, notification pointer behavior, Find/preview focus

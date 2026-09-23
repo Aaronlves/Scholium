@@ -147,11 +147,11 @@ private struct ActiveDocumentFloatingSurface: Equatable {
     let bottom: Double
 }
 
-/// Owns only native floating presentation in the originating WebKit viewport.
+/// Owns only native floating presentation in the originating document viewport.
 /// No source mirror, editing history, or independent completion state.
 @MainActor
 final class DocumentFloatingSurfaceController: NSObject {
-    private weak var owner: WKWebView?
+    private weak var owner: NSView?
     private var surface: ActiveDocumentFloatingSurface?
     private var glass: TrackingGlassView?
     private var preview: DocumentPreviewPopover?
@@ -170,7 +170,7 @@ final class DocumentFloatingSurfaceController: NSObject {
 
     func present(
         _ value: DocumentFloatingEvent,
-        in webView: WKWebView,
+        in webView: NSView,
         inquire: AgentSelectionInquiryHandler? = nil,
         event: @escaping (Int, DocumentFloatingAction, Int) async -> Bool
     ) {
@@ -179,7 +179,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             return
         }
         guard webView.window != nil, webView.bounds.width > 24, webView.bounds.height > 24,
-            let viewport = webView.superview as? DocumentWebViewContainer
+            let viewport = webView.superview
         else { return }
         let next: ActiveDocumentFloatingSurface
         switch value {
@@ -260,7 +260,11 @@ final class DocumentFloatingSurfaceController: NSObject {
         guard let glass else { return }
         switch value {
         case .suggestions(let value):
-            let content = suggestions ?? NativeFloatingChoiceList(acceptsKeyboard: false)
+            let exposesNativeChoices = !(webView is WKWebView)
+            let content =
+                suggestions
+                ?? NativeFloatingChoiceList(
+                    acceptsKeyboard: false, exposesAccessibility: exposesNativeChoices)
             let isNewList = suggestions == nil
             if isNewList {
                 suggestions = content
@@ -270,12 +274,13 @@ final class DocumentFloatingSurfaceController: NSObject {
             content.select = { [weak self] index in self?.send(.select, index: index) }
             content.update(items: value.items.map { .init(label: $0.label, detail: $0.detail) }, selected: value.selected)
             preferredWidth = isNewList ? content.preferredSize.width : max(preferredWidth, content.preferredSize.width)
-            // CodeMirror retains the single AX listbox, active descendant and keyboard path.
+            // Native editors keep typing focus while AppKit exposes the choices.
+            // A web host keeps its own AX suggestion tree.
             glass.setAccessibilityElement(true)
             glass.setAccessibilityRole(.group)
             glass.setAccessibilityLabel(ScholiumL10n.string("Suggestions"))
             glass.setAccessibilityIdentifier("scholium.documentSuggestions")
-            glass.setAccessibilityChildren([])
+            glass.setAccessibilityChildren(exposesNativeChoices ? [content] : [])
             layout(height: content.preferredSize.height)
         case .preview: break  // Owned by DocumentPreviewPopover above.
         case .selection:

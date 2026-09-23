@@ -1,48 +1,49 @@
 import Foundation
 import ScholiumContracts
 
-/// Maps CodeMirror's LF-normalized UTF-16 offsets to exact-source UTF-16
-/// offsets without rescanning the whole Markdown buffer for every change.
-/// Only CRLF pairs affect the mapping; LF-only documents are an O(1) identity.
+/// Maps the native editor's LF-normalized, initial-BOM-free UTF-16 positions
+/// to exact source. CRLF occupies two source units; a leading BOM has no caret.
 struct EditorSourceOffsetMap: Equatable, Sendable {
     private(set) var sourceUTF16Length: Int
     private(set) var crlfSourceOffsets: [Int]
+    private var initialBOMLength: Int
 
     init(source: String) {
         let units = Array(source.utf16)
         sourceUTF16Length = units.count
+        initialBOMLength = units.first == 0xFEFF ? 1 : 0
         crlfSourceOffsets = Self.crlfOffsets(in: units, baseOffset: 0)
     }
 
     var editorUTF16Length: Int {
-        sourceUTF16Length - crlfSourceOffsets.count
+        sourceUTF16Length - crlfSourceOffsets.count - initialBOMLength
     }
 
     func sourceUTF16Offset(forEditorUTF16Offset requestedOffset: Int) -> Int? {
         guard requestedOffset >= 0, requestedOffset <= editorUTF16Length else {
             return nil
         }
-        guard !crlfSourceOffsets.isEmpty else { return requestedOffset }
+        guard !crlfSourceOffsets.isEmpty else { return requestedOffset + initialBOMLength }
 
         var lower = 0
         var upper = crlfSourceOffsets.count
         while lower < upper {
             let middle = (lower + upper) / 2
-            let editorNewlineOffset = crlfSourceOffsets[middle] - middle
+            let editorNewlineOffset = crlfSourceOffsets[middle] - middle - initialBOMLength
             if editorNewlineOffset < requestedOffset {
                 lower = middle + 1
             } else {
                 upper = middle
             }
         }
-        return requestedOffset + lower
+        return requestedOffset + lower + initialBOMLength
     }
 
     func editorUTF16Offset(forSourceUTF16Offset requestedOffset: Int) -> Int? {
-        guard requestedOffset >= 0, requestedOffset <= sourceUTF16Length else {
+        guard requestedOffset >= initialBOMLength, requestedOffset <= sourceUTF16Length else {
             return nil
         }
-        guard !crlfSourceOffsets.isEmpty else { return requestedOffset }
+        guard !crlfSourceOffsets.isEmpty else { return requestedOffset - initialBOMLength }
 
         var lower = 0
         var upper = crlfSourceOffsets.count
@@ -57,7 +58,7 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
         if lower > 0, crlfSourceOffsets[lower - 1] + 1 == requestedOffset {
             return nil
         }
-        return requestedOffset - lower
+        return requestedOffset - lower - initialBOMLength
     }
 
     /// Updates the sorted CRLF index by shifting unaffected suffix entries and
@@ -127,6 +128,7 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
         }
 
         sourceUTF16Length = resultingLength
+        initialBOMLength = resultingLength > 0 && resultingCharacterAt(0) == 0xFEFF ? 1 : 0
         crlfSourceOffsets = Array(Set(retained + rescanned)).sorted()
     }
 

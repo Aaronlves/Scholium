@@ -133,7 +133,7 @@ extension WindowModel {
                         // opening a destination must not escape the saved base.
                         try await self.documentController.prepareSessionTransfer(document)
                         try await self.flushRegisteredEditorIfNeeded(capturingEditorState: false)
-                        if session.editorSession.hasAttachedWebView {
+                        if session.editorSession.hasAttachedNativeView {
                             // A commit rebases the editor identity. Capture its
                             // final source/history while input remains frozen.
                             try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)

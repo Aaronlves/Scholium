@@ -48,8 +48,8 @@ extension ScholiumUITests {
             clickInspectorVisibilityControl()
             XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
         }
-        selectDocumentMode("Source")
-        let editor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
+        selectDocumentMode("Edit")
+        let editor = app.descendants(matching: .any)["Document, Editing"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == firstSource })
         editor.click()
@@ -120,7 +120,7 @@ extension ScholiumUITests {
         XCTAssertFalse(
             card(containing: adjacentWords).exists,
             "Departing the seed Note must clear its previous material.")
-        selectDocumentMode("Source")
+        selectDocumentMode("Edit")
         XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == secondSource })
         editor.click()
         editor.typeKey(.end, modifierFlags: .command)
@@ -395,7 +395,7 @@ extension ScholiumUITests {
         let detailsContent = app.descendants(matching: .any)[
             "scholium.storageUnavailable.details"
         ]
-        let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
+        let renderedDocument = app.descendants(matching: .any)["Document, Reading"]
         let window = app.windows.firstMatch
 
         XCTAssertTrue(unavailable.exists)
@@ -886,7 +886,7 @@ extension ScholiumUITests {
         XCTAssertTrue(documentModeMenu.waitForExistence(timeout: 3))
         documentModeMenu.hover()
         XCTAssertTrue(app.menuItems["Edit"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.menuItems["Source"].exists)
+        XCTAssertFalse(app.menuItems["Source"].exists)
         app.typeKey(.escape, modifierFlags: [])
 
         let editor = enterLivePreview()
@@ -909,9 +909,9 @@ extension ScholiumUITests {
                 let value = editor.value as? String ?? ""
                 return value.contains("shortcut-probe") && !value.contains("*shortcut-probe*")
             }, "One Undo must undo exactly one shortcut transaction.")
-        selectDocumentMode("Review")
+        selectDocumentMode("Read")
         selectDocumentMode("Edit")
-        selectDocumentMode("Review")
+        selectDocumentMode("Read")
 
         let inspector = inspectorVisibilityControl()
         XCTAssertTrue(inspector.exists)
@@ -929,7 +929,7 @@ extension ScholiumUITests {
     @MainActor
     func testSearchOpensTheSelectedResultFromTheKeyboard() throws {
         waitForCurrentDocumentSurface()
-        selectDocumentMode("Review")
+        selectDocumentMode("Read")
 
         app.typeKey("f", modifierFlags: [.command, .shift])
         let advanced = app.windows["scholium.advancedSearchWindow"]
@@ -953,15 +953,15 @@ extension ScholiumUITests {
         XCTAssertTrue(advanced.exists, "Opening a result retains the advanced search window.")
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
         let renderedDocument = app.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.renderedDocument.")
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.document.")
         ).firstMatch
         XCTAssertTrue(
             renderedDocument.waitForExistence(timeout: 10),
             "The selected Search result did not finish revealing its rendered match."
         )
         let mode = documentModeControl()
-        XCTAssertEqual(documentModeState(mode), "Review")
-        XCTAssertFalse(app.descendants(matching: .any)["Markdown source editor"].exists)
+        XCTAssertEqual(documentModeState(mode), "Read")
+        XCTAssertFalse(app.descendants(matching: .any)["Document, Editing"].exists)
     }
 
     @MainActor

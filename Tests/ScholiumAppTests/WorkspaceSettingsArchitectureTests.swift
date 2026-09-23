@@ -510,13 +510,7 @@ struct WorkspaceSettingsArchitectureTests {
         let appearanceStart = try #require(
             source.range(of: "private struct AppearanceSettingsView: View")
         )
-        let rowStart = try #require(
-            source.range(
-                of: "private struct CSSSnippetRow: View",
-                range: appearanceStart.upperBound..<source.endIndex
-            )
-        )
-        let appearanceSource = String(source[appearanceStart.lowerBound..<rowStart.lowerBound])
+        let appearanceSource = String(source[appearanceStart.lowerBound...])
 
         #expect(appearanceSource.contains("store.createAppearance()"))
         #expect(appearanceSource.contains("store.duplicateAppearance"))
@@ -530,7 +524,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!appearanceSource.contains("Full width"))
         #expect(!appearanceSource.contains("Line width preset"))
         #expect(!appearanceSource.contains("Line width mode"))
-        #expect(appearanceSource.contains("Picker(\"Source Font\", selection: $profile.settings.source.fontFamily)"))
+        #expect(appearanceSource.contains("Picker(\"Code Font\", selection: $profile.settings.source.fontFamily)"))
         #expect(appearanceSource.contains("Picker(\"Heading Font\", selection: $profile.settings.headings.fontFamily)"))
         #expect(appearanceSource.contains("Section(\"Text Styles\")"))
         #expect(appearanceSource.contains(".scholiumSettingsFormStyle()"))
@@ -559,10 +553,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains("settingsEditorSection(\"Scale\")"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Alignment\")"))
         #expect(appearanceSource.contains("\"Paragraph spacing\""))
-        #expect(appearanceSource.contains("Section(\"CSS Snippets\")"))
         #expect(!appearanceSource.contains("CSS Snippets…"))
-        #expect(appearanceSource.contains("Open CSS Folder"))
-        #expect(appearanceSource.contains("store.reloadSnippets()"))
         #expect(appearanceSource.contains("Picker(\"Hyphenation\", selection: $profile.settings.hyphenation)"))
         #expect(appearanceSource.contains("DocumentHyphenation.allCases"))
         #expect(appearanceSource.contains("scholium.appearance.hyphenation"))

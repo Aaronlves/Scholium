@@ -31,10 +31,8 @@ enum ScholiumMathAssets {
           color: inherit;
           max-inline-size: 100%;
         }
-        .cm-editor.scholium-live-mode .scholium-math-rendered { cursor: text; }
         .scholium-math-inline { display: inline; }
-        .scholium-document,
-        .cm-editor.scholium-live-mode .cm-content {
+        .scholium-document {
           counter-reset: scholium-equation;
         }
         .scholium-math-display {
@@ -80,16 +78,6 @@ enum ScholiumMathAssets {
         .scholium-math-display .katex .mopen,
         .scholium-math-display .katex .mclose,
         .scholium-math-display .katex .mpunct { font-style: normal; }
-        .cm-live-math.scholium-math-display { inline-size: 100%; }
-        .cm-live-math-slot {
-          box-sizing: border-box;
-          inline-size: 100%;
-          pointer-events: none;
-        }
-        .cm-live-math-slot > .scholium-math-display {
-          margin-block: 0;
-          pointer-events: auto;
-        }
         .scholium-math-source {
           font-family: var(--scholium-document-source-font-family);
           font-size: var(--scholium-document-source-font-size);

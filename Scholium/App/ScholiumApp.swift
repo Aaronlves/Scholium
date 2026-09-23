@@ -521,7 +521,7 @@ final class WindowModel: ObservableObject {
     }
 
     // MARK: Services
-    let cssSnippetStore: CSSSnippetStore
+    let documentAppearanceStore: DocumentAppearanceStore
     var requestedTriptychID: UUID? {
         windowWorkspaceController.requestedTriptychID
     }
@@ -619,13 +619,7 @@ final class WindowModel: ObservableObject {
             requestedTriptychID: requestedTriptychID
         )
         self.requestedInitialDocument = requestedInitialDocument
-        if (requestedInitialDocument != nil
-            || ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"] != nil)
-            && !PerformanceProbe.shared.measuresEditorRetainedMemory
-        {
-            ScholiumWebKitProcessPrewarmer.shared.start()
-        }
-        cssSnippetStore = workspaceStore.cssSnippetStore
+        documentAppearanceStore = workspaceStore.documentAppearanceStore
         windowWorkspaceController.bindDependencies(
             WindowWorkspaceDependencies(
                 installSession: { [weak self] capabilities, snapshot in
@@ -654,12 +648,10 @@ final class WindowModel: ObservableObject {
             )
         {
             let requests = [
-                "com.scholium.qa.performance-editor-mode.live-preview",
-                "com.scholium.qa.performance-editor-mode.source",
+                "com.scholium.qa.performance-editor-mode.edit",
+                "com.scholium.qa.performance-editor-mode.read",
                 "com.scholium.qa.performance-editor-activation",
                 "com.scholium.qa.performance-editor-review",
-                "com.scholium.qa.performance-editor-cached-preview",
-                "com.scholium.qa.performance-editor-visible-projection",
                 "com.scholium.qa.performance-editor-cjk-correctness",
             ]
             for name in requests {

@@ -37,7 +37,7 @@ struct SettingsSearchRoutingTests {
             ("H6 间距", .document, "appearance.h6"),
             ("Zotero connection", .zotero, "zotero.chat"),
             ("Triptych name", .workspace, "workspace.name"),
-            ("Source font size", .document, "appearance.source"),
+            ("Code font size", .document, "appearance.source"),
             ("Reading line width", .document, "appearance.reading"),
             ("Body Bold Font", .document, "appearance.styles"),
             ("正文斜体字体", .document, "appearance.styles"),

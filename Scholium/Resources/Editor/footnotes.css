@@ -188,23 +188,6 @@
     text-decoration-color 120ms ease-out;
 }
 
-.cm-live-footnote-reference-widget { white-space: nowrap; }
-.cm-live-footnote-reference-widget .footnote-reference { cursor: pointer; }
-
-/* Named-definition prefixes and active references are the same exact-source
-   projection. Keep their metrics borrowed from the surrounding document line;
-   the inactive ordinal widget is the only intentionally smaller projection. */
-.cm-live-footnote-source-marker {
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  font-style: inherit;
-  font-weight: inherit;
-  font-variant-caps: inherit;
-  letter-spacing: inherit;
-  vertical-align: baseline;
-}
-
 .scholium-footnotes-slot {
   box-sizing: border-box;
   inline-size: 100%;

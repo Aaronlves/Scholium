@@ -42,18 +42,6 @@
 .scholium-table .scholium-table-align-center { text-align: center; }
 .scholium-table .scholium-table-align-right { text-align: right; }
 
-.cm-live-table-widget {
-  display: block;
-  inline-size: 100%;
-  margin-block: 0;
-  white-space: normal;
-}
-
-.cm-live-table-widget .scholium-table th,
-.cm-live-table-widget .scholium-table td {
-  cursor: text;
-}
-
 @media (forced-colors: active) {
   .scholium-table th,
   .scholium-table td { border-block-end-color: CanvasText; }

@@ -27,6 +27,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         static let documentMode = NSToolbarItem.Identifier(
             "scholium.toolbar.documentMode"
         )
+        static let documentTitle = NSToolbarItem.Identifier("scholium.toolbar.documentTitle")
         static let noteActions = NSToolbarItem.Identifier("scholium.toolbar.noteActions")
         static let settlement = NSToolbarItem.Identifier(
             "scholium.toolbar.settlement"
@@ -43,6 +44,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
 
     private var isInvalidated = false
     private var presentedSettlementTarget: DocumentSettlementTarget?
+    private let documentTitleItem: DocumentTitleToolbarItem
     private let appState: WindowModel
     private let windowActions: WorkspaceWindowActions
     private let splitViewController: NSSplitViewController
@@ -63,6 +65,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         splitViewController: NSSplitViewController
     ) {
         self.appState = appState
+        documentTitleItem = DocumentTitleToolbarItem(identifier: Item.documentTitle, model: appState)
         self.windowActions = windowActions
         self.splitViewController = splitViewController
         toolbar = NSToolbar(identifier: Self.toolbarIdentifier)
@@ -90,6 +93,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         refreshPresentation()
     }
 
+    func showDocumentTitle(in window: NSWindow) {
+        guard !isInvalidated else { return }
+        documentTitleItem.show(in: window)
+    }
+
     func controls(_ candidate: NSSplitViewController) -> Bool {
         splitViewController === candidate
     }
@@ -97,6 +105,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     func invalidate() {
         guard !isInvalidated else { return }
         isInvalidated = true
+        documentTitleItem.invalidate()
         chatObservation?.cancel()
         chatObservation = nil
         observedChat = nil
@@ -143,6 +152,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.libraryDivider,
             Item.back,
             Item.forward,
+            Item.documentTitle,
             .space,
             Item.documentMode,
             Item.noteActions,
@@ -162,6 +172,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.libraryDivider,
             Item.back,
             Item.forward,
+            Item.documentTitle,
             .flexibleSpace,
             Item.settlement,
             .space,
@@ -219,6 +230,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             )
             item.visibilityPriority = .user
             return item
+        case Item.documentTitle:
+            return documentTitleItem
         case Item.documentMode:
             return ScholiumDocumentModeToolbarItem(identifier: itemIdentifier, model: appState)
         case Item.noteActions:
@@ -518,6 +531,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             )
         }
 
+        documentTitleItem.refreshPresentation()
         (toolbarItem(Item.documentMode) as? ScholiumDocumentModeToolbarItem)?.refreshPresentation()
         (toolbarItem(Item.noteActions) as? DocumentNoteActionsToolbarItem)?.refreshPresentation()
 
@@ -601,6 +615,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         case Item.settlement: currentSettlementTarget != nil
         case Item.inspector: appState.canToggleResearchInspector
         case Item.inspectorModes: appState.currentNote != nil && appState.shellState.inspector.isVisible
+        case Item.documentTitle: appState.canPerformNoteAction(.rename)
         case Item.documentMode: ScholiumDocumentModeToolbarItem.isAvailable(in: appState)
         case Item.noteActions: appState.currentNote != nil && !appState.transferInProgress
         default: true
@@ -1121,8 +1136,7 @@ enum ScholiumNativeToolbarPresentation {
 }
 
 /// The toolbar reports the current Document mode with one stable icon button.
-/// Activating it toggles Review/Edit; Source is only entered from the menu and
-/// returns to Review on activation, matching Command-R.
+/// Activating it switches between Read and Edit, matching Command-R.
 struct ScholiumDocumentModeToolbarButtonPresentation: Equatable {
     let mode: NotePresentationMode
     let destination: NotePresentationMode
@@ -1131,8 +1145,8 @@ struct ScholiumDocumentModeToolbarButtonPresentation: Equatable {
         self.mode = mode
         destination =
             switch mode {
-            case .read: .livePreview
-            case .livePreview, .source: .read
+            case .read: .edit
+            case .edit: .read
             }
     }
 

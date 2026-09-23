@@ -5,7 +5,8 @@ import Testing
 struct ArchitectureBoundaryTests {
     @Test("Public Chat wire interpretation stays in Application")
     func chatTranscriptBoundary() throws {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
         let serviceRoot = root.appendingPathComponent("Scholium/Services", isDirectory: true)
         let controllerPaths = try swiftFiles(beneath: serviceRoot)
             .filter { file in
@@ -19,12 +20,16 @@ struct ArchitectureBoundaryTests {
         for path in controllerPaths + ["Scholium/Services/AgentChatChildController.swift"] {
             let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
             for token in [
-                "CodexChatActivity.parse", "CodexChatCapabilities.plan(", "CodexChatCapabilities.contextUsage(", "Phase.init(rawValue:", "item[\"type\"]",
+                "CodexChatActivity.parse", "CodexChatCapabilities.plan(",
+                "CodexChatCapabilities.contextUsage(", "Phase.init(rawValue:", "item[\"type\"]",
             ] {
-                #expect(!source.contains(token), "Public transcript interpretation escaped Application: \(path)")
+                #expect(
+                    !source.contains(token), "Public transcript interpretation escaped Application: \(path)")
             }
         }
-        let child = try String(contentsOf: root.appendingPathComponent("ScholiumContracts/AgentChatChildHistory.swift"), encoding: .utf8)
+        let child = try String(
+            contentsOf: root.appendingPathComponent("ScholiumContracts/AgentChatChildHistory.swift"),
+            encoding: .utf8)
         #expect(!child.contains("MCPJSONValue"))
     }
 
@@ -50,7 +55,7 @@ struct ArchitectureBoundaryTests {
         ].joined()
         #expect(compact.contains(expectedApplicationDependencies))
         let expectedAppDependencies = [
-            #"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication","#,
+            #"name:"ScholiumApp",dependencies:["ScholiumEditor","ScholiumContracts","ScholiumApplication","#,
             #".product(name:"ThinkingOrbs",package:"ThinkingOrbs"),]"#,
         ].joined()
         #expect(compact.contains(expectedAppDependencies))
@@ -85,6 +90,8 @@ struct ArchitectureBoundaryTests {
             "Scholium/Services/ScholiumAppBridgeRequestRouter.swift",
             "Scholium/Services/WindowSession.swift",
             "Scholium/Views/AgentIntegrationSettingsView.swift",
+            // Owns the independent external-file scene and its file capability.
+            "Scholium/Views/Note/ExternalMarkdownWindow.swift",
             "ScholiumAgentHelper/ScholiumAgentHelper.swift",
         ]
         for relativeRoot in roots {
@@ -123,7 +130,8 @@ struct ArchitectureBoundaryTests {
             }
         }
         #expect(coreImports.isEmpty, Comment(rawValue: coreImports.joined(separator: "\n")))
-        #expect(applicationImports.isEmpty, Comment(rawValue: applicationImports.joined(separator: "\n")))
+        #expect(
+            applicationImports.isEmpty, Comment(rawValue: applicationImports.joined(separator: "\n")))
     }
 
     @Test("WorkspaceStore completes event readiness before publishing capability activation")
@@ -177,7 +185,6 @@ struct ArchitectureBoundaryTests {
             "Scholium/Services/WindowSession.swift",
             "Scholium/Services/PerformanceProbe.swift",
             "Scholium/Localization/WebKitInterfaceLocalization.swift",
-            "Scholium/Views/Note/MarkdownEditorWebView.swift",
             "Scholium/Views/Note/ScholiumDocumentWebResources.swift",
             "Scholium/Styling/ScholiumWebFonts.swift",
             "Scholium/Styling/ScholiumWebFontResources.swift",
@@ -187,9 +194,12 @@ struct ArchitectureBoundaryTests {
             "Scholium/Styling/ScholiumMathAssets.swift",
             "Scholium/Styling/ScholiumMermaidAssets.swift",
             "Scholium/Styling/ScholiumPreviewStyles.swift",
-            "Scholium/Styling/CSSSnippetStore.swift",
+            "Scholium/Styling/DocumentAppearanceStore.swift",
         ]
-        let prohibited = ["URLSession", "SQLite", "FSEventStream", "Data(contentsOf:", "String(contentsOf:", "FileManager"]
+        let prohibited = [
+            "URLSession", "SQLite", "FSEventStream", "Data(contentsOf:", "String(contentsOf:",
+            "FileManager",
+        ]
         let verificationScript = try String(
             contentsOf: repositoryRoot.appendingPathComponent("Tools/Scripts/verify.sh"),
             encoding: .utf8
@@ -298,7 +308,9 @@ struct ArchitectureBoundaryTests {
 
         #expect(
             violations.isEmpty,
-            Comment(rawValue: "Application ownership violations:\n" + violations.sorted().joined(separator: "\n"))
+            Comment(
+                rawValue: "Application ownership violations:\n"
+                    + violations.sorted().joined(separator: "\n"))
         )
     }
 
@@ -415,90 +427,37 @@ struct ArchitectureBoundaryTests {
         }
     }
 
-    @Test("Markdown editor composes one typed host from bounded native and web components")
-    func markdownEditorBridgeBoundary() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let editor = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
-        let native = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorWebView.swift"
-            ),
-            encoding: .utf8
-        )
+    @Test("Markdown source belongs to a retained native session and no WebKit editor remains")
+    func markdownEditorNativeBoundary() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
         let session = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorSession.swift"
-            ),
-            encoding: .utf8
-        )
-        let bridge = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorBridgeAdapter.swift"
-            ),
-            encoding: .utf8
-        )
-        let testing = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorSessionTesting.swift"
-            ),
-            encoding: .utf8
-        )
-        let testingInteractions = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorSessionTestingInteractions.swift"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(editor.contains("webkitWindow.scholiumEditor = {"))
-        #expect(editor.contains("dispatch: dispatchEditorRequest,"))
-        #expect(editor.contains("resolveLinkCompletionQuery,"))
-        #expect(!editor.contains("bridgeVersion"))
-        #expect(!editor.contains("searchKeymap"))
-        #expect(!editor.contains("indentWithTab"))
-        #expect(!editor.contains("aria-valuetext"))
-        #expect(!editor.contains("calloutRoles"))
-        #expect(native.contains("callAsyncJavaScript"))
-        #expect(!native.contains("evaluateJavaScript"))
-        #expect(session.contains("final class MarkdownEditorSession"))
-        #expect(!native.contains("final class MarkdownEditorSession"))
-        #expect(bridge.contains("final class WKWebViewMarkdownEditorBridgeDispatcher"))
-        #expect(bridge.contains("callAsyncJavaScript"))
-        #expect(testing.hasPrefix("#if DEBUG"))
-        #expect(testingInteractions.hasPrefix("#if DEBUG"))
-        #expect(!session.contains("TestingPresentationSnapshot"))
-        for module in [
-            "protocol.ts", "link-target.ts", "semantic-projection.ts", "transformations.ts", "tables.ts",
-            "table-presentation.ts",
-            "interaction.ts", "clipboard.ts", "state.ts", "accessibility.ts", "bootstrap.ts", "performance.ts",
-            "live-selection.ts", "live-projection-index.ts",
-            "source-direction.ts", "preview-popover.ts", "scroll-coordinator.ts",
+            contentsOf: root.appendingPathComponent("Scholium/Views/Note/MarkdownEditorSession.swift"),
+            encoding: .utf8)
+        #expect(session.contains("let nativeEditor: EditorTextView"))
+        #expect(session.contains("loadExactUTF8("))
+        #expect(session.contains("exactUTF8ForSaving()"))
+        #expect(!session.contains("WKWebView"))
+        #expect(!session.contains("evaluateJavaScript"))
+        for path in [
+            "WebEditor/editor.ts", "Scholium/Resources/Editor/editor.bundle.js",
+            "Scholium/Views/Note/MarkdownEditorBridgeAdapter.swift",
+            "Scholium/Views/Note/MarkdownEditorWebViewPool.swift",
         ] {
-            #expect(
-                FileManager.default.fileExists(
-                    atPath: repositoryRoot.appendingPathComponent("WebEditor/\(module)").path
-                ),
-                Comment(rawValue: "Missing editor module: \(module)")
-            )
+            #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path))
         }
-        for retiredModule in ["projection.ts", "floating-surface-geometry.ts"] {
-            #expect(
-                !FileManager.default.fileExists(
-                    atPath: repositoryRoot.appendingPathComponent("WebEditor/\(retiredModule)").path
-                ),
-                Comment(rawValue: "Retired editor module still exists: \(retiredModule)")
-            )
+        let manifest = try String(
+            contentsOf: root.appendingPathComponent("WebEditor/package.json"), encoding: .utf8)
+        #expect(!manifest.contains("@codemirror/"))
+        #expect(!manifest.contains("@lezer/"))
+        #expect(manifest.contains("katex"))
+        #expect(manifest.contains("mermaid"))
+        for path in [
+            "ScholiumEditor/Model/ExactSourceProjection.swift", "WebEditor/reader.ts",
+            "WebEditor/math-runtime.ts", "WebEditor/mermaid-runtime.ts",
+        ] {
+            #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path))
         }
-        #expect(editor.contains("createPreviewPopoverController"))
-        #expect(editor.contains("createEditorScrollCoordinator"))
-        #expect(!editor.contains(#"document.createElement("aside")"#))
-        #expect(!editor.contains(#"scrollDOM.addEventListener("scroll""#))
     }
 
     private func swiftFiles(beneath root: URL) throws -> [URL] {

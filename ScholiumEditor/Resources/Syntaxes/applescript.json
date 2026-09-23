@@ -1,0 +1,34 @@
+{
+  "name": "applescript",
+  "displayName": "AppleScript",
+  "aliases": ["osascript", "scpt", "applescpt"],
+  "lineComment": "--",
+  "blockComment": ["(*", "*)"],
+  "strings": ["\""],
+  "keywords": [
+    "tell", "end", "on", "to", "of", "in", "if", "then", "else", "repeat",
+    "while", "until", "times", "with", "without", "set", "copy", "return",
+    "try", "error", "considering", "ignoring", "script", "property", "global",
+    "local", "my", "its", "continue", "exit", "from", "into", "given", "where",
+    "whose", "and", "or", "not", "as", "is", "equal", "equals", "contains",
+    "every", "some", "first", "second", "third", "last", "run", "using",
+    "terms", "timeout", "transaction", "prop", "through", "thru", "ref",
+    "reference"
+  ],
+  "commands": [
+    "activate", "beep", "delay", "log", "say", "quit", "launch", "open",
+    "close", "save", "count", "get", "make", "delete", "duplicate", "move",
+    "exists", "choose", "display", "dialog", "offset", "round", "random",
+    "path", "info"
+  ],
+  "types": [
+    "string", "text", "integer", "real", "number", "boolean", "list", "record",
+    "date", "alias", "file", "application", "data", "unicode", "class",
+    "constant", "handler", "item", "items"
+  ],
+  "variables": ["me", "it", "result", "current", "front", "window", "document"],
+  "values": [
+    "true", "false", "missing", "value", "yes", "no", "ask", "pi", "space",
+    "tab", "linefeed", "quote", "null"
+  ]
+}

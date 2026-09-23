@@ -422,6 +422,30 @@ struct DocumentFloatingSurfaceTests {
         #expect(list.table.selectedRowIndexes == IndexSet(integer: 0))
     }
 
+    @Test("Native suggestions expose pressable rows while retaining editor keyboard focus")
+    func nativeChoiceAccessibility() throws {
+        _ = NSApplication.shared
+        let list = NativeFloatingChoiceList(acceptsKeyboard: false)
+        list.frame = NSRect(x: 0, y: 0, width: 280, height: 120)
+        list.update(items: [.init(label: "Synthetic Note", detail: "A nonprivate fixture")], selected: 0)
+        list.layoutSubtreeIfNeeded()
+        #expect(list.isAccessibilityElement())
+        #expect(list.table.isAccessibilityElement())
+        #expect(!list.table.acceptsFirstResponder)
+        var accepted: Int?
+        list.choose = { accepted = $0 }
+        let row = try #require(list.table.rowView(atRow: 0, makeIfNecessary: true))
+        #expect(row.accessibilityLabel() == "Synthetic Note")
+        #expect(row.accessibilityHelp() == "A nonprivate fixture")
+        #expect(row.accessibilityPerformPress())
+        #expect(accepted == 0)
+
+        let webMirror = NativeFloatingChoiceList(acceptsKeyboard: false, exposesAccessibility: false)
+        #expect(!webMirror.isAccessibilityElement())
+        #expect(!webMirror.table.isAccessibilityElement())
+        #expect(webMirror.table.accessibilityChildren()?.isEmpty == true)
+    }
+
     @Test("Native preview preserves viewport and focus, clamps to narrow bounds, and rejects stale dismissal")
     func previewOwnership() async throws {
         _ = NSApplication.shared

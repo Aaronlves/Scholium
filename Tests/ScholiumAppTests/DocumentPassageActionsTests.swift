@@ -49,18 +49,17 @@ struct DocumentPassageActionsTests {
         #expect(candidate.hasSuffix("\r\n\r\nFollowing.\r\n"))
     }
 
-    @Test("Composition disables passage actions without removing native text services")
-    @MainActor func composition() {
-        let web = WindowAttachedWebView(frame: .zero)
-        web.onPassageAction = { _ in }
-        let context = MarkdownEditorContext(
-            selections: [.init(anchor: 1, head: 3)],
-            activeInlineConstructs: [], activeBlockConstructs: [], tablePosition: nil,
-            composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil)
-        let menu = web.makeEditorContextMenu(context: context, mode: .livePreview, canPaste: true)
-        let passage = menu.items.filter { $0.identifier?.rawValue.hasPrefix("scholium.passage.") == true }
-        #expect(passage.count == DocumentPassageAction.allCases.count)
-        #expect(passage.allSatisfy { !$0.isEnabled })
-        #expect(menu.items.contains { $0.identifier?.rawValue == "scholium.editor.copy" && $0.isEnabled })
+    @Test("Composition prevents passage capture and formatting")
+    @MainActor func composition() async throws {
+        let session = MarkdownEditorSession()
+        session.loadDocument("Paragraph", documentID: "fixture.md", mode: .edit)
+        session.nativeEditor.setMarkedText(
+            "pin", selectedRange: NSRange(location: 3, length: 0),
+            replacementRange: NSRange(location: 0, length: 0))
+        #expect(session.isComposing)
+        #expect(session.nativeContext().availableCommands.isEmpty)
+        await #expect(throws: MarkdownEditorSession.SessionError.self) {
+            try await session.passageSourceSnapshot(expectedSelections: session.currentValidSelectionRanges(), expectedGeneration: session.generation)
+        }
     }
 }

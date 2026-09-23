@@ -115,11 +115,16 @@ CORE_RESOURCE_BUNDLE="${SCRATCH}/release/Scholium_ScholiumCore.bundle"
 cp -R \
   "${CORE_RESOURCE_BUNDLE}" \
   "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle"
+for native_resource in Scholium_ScholiumEditor SwiftMath_SwiftMath; do
+  native_bundle="${SCRATCH}/release/${native_resource}.bundle"
+  [[ -d "${native_bundle}" ]] || { print -u2 "Missing native editor resource bundle: ${native_resource}"; exit 66; }
+  cp -R "${native_bundle}" "${STAGING_APP}/Contents/Resources/"
+done
 EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle/Contents/Resources"
 if [[ ! -d "${EDITOR_RESOURCES}" ]]; then
   EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
 fi
-for editor_resource in index.html editor.bundle.js reader.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css mermaid.bundle.js mermaid.css; do
+for editor_resource in reader.bundle.js callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css mermaid.bundle.js mermaid.css; do
   [[ -s "${EDITOR_RESOURCES}/${editor_resource}" ]] || {
     print -u2 "Missing packaged editor resource: ${editor_resource}"
     exit 66

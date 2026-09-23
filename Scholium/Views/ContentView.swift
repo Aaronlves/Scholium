@@ -1,28 +1,6 @@
 import ScholiumContracts
 import SwiftUI
 
-private enum DocumentTitleRenameError: LocalizedError {
-    case invalidName
-    case noteUnavailable
-    case titleChangedElsewhere
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidName:
-            String(localized: "That note name cannot be used.", table: "Localizable", bundle: .module)
-        case .noteUnavailable:
-            String(
-                localized: "This note is no longer available to rename.", table: "Localizable",
-                bundle: .module)
-        case .titleChangedElsewhere:
-            String(
-                localized:
-                    "The note was renamed elsewhere. Review its current title before renaming again.",
-                table: "Localizable", bundle: .module)
-        }
-    }
-}
-
 // MARK: - Content View
 
 struct ContentView: View {
@@ -36,7 +14,7 @@ struct ContentView: View {
     @ObservedObject private var documentController: DocumentController
     @ObservedObject private var documentTabController: DocumentTabController
     @ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController
-    @ObservedObject private var cssSnippetStore: CSSSnippetStore
+    @ObservedObject private var documentAppearanceStore: DocumentAppearanceStore
     @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
     @ObservedObject private var libraryMutationController: WindowLibraryMutationController
     let windowCoordinator: WorkspaceWindowCoordinator
@@ -59,7 +37,7 @@ struct ContentView: View {
         _workspaceProjectionController = ObservedObject(
             wrappedValue: appState.workspaceProjectionController
         )
-        _cssSnippetStore = ObservedObject(wrappedValue: appState.cssSnippetStore)
+        _documentAppearanceStore = ObservedObject(wrappedValue: appState.documentAppearanceStore)
         _windowWorkspaceController = ObservedObject(
             wrappedValue: appState.windowWorkspaceController
         )
@@ -354,9 +332,7 @@ struct ContentView: View {
             workspaceCatalog: appState.workspaceCatalog,
             canEdit: appState.canEditCurrentNote,
             documentTextScale: appState.documentTextScale,
-            appearanceCSS: appState.cssSnippetStore.appearanceCSS,
-            readCSS: appState.cssSnippetStore.readCSS,
-            livePreviewCSS: appState.cssSnippetStore.livePreviewCSS,
+            appearance: appState.documentAppearanceStore.selectedAppearanceProfile?.settings ?? .defaultSettings,
             initialScrollFraction: path.map { appState.scrollPosition(for: $0) } ?? 0,
             requestedPresentationMode: appState.requestPresentationMode,
             sourceLocationRequest: appState.documentController.sourceLocationRequest,
@@ -409,7 +385,6 @@ struct ContentView: View {
                 appState.openInternalLink($0, from: path)
             },
             openExternalURL: { appState.openExternalURL($0) },
-            enterCSSSafeMode: { appState.cssSnippetStore.enterSafeMode(after: $0) },
             rememberPresentationMode: {
                 appState.rememberPresentationMode($0)
             },
@@ -419,39 +394,6 @@ struct ContentView: View {
             },
             openingDocumentPresentationDidComplete: {
                 appState.openingDocumentPresentationDidComplete()
-            },
-            renameNote: { requestedNote, expectedTitle, requestedTitle in
-                guard
-                    let requestedStableID = requestedNote.workspaceSnapshot?
-                        .stableIdentity.resolvedID,
-                    let currentNote = appState.currentNote,
-                    currentNote.vaultID == requestedNote.vaultID,
-                    currentNote.workspaceSnapshot?.stableIdentity.resolvedID
-                        == requestedStableID
-                else {
-                    throw DocumentTitleRenameError.noteUnavailable
-                }
-                guard currentNote.displayName == expectedTitle else {
-                    throw DocumentTitleRenameError.titleChangedElsewhere
-                }
-                guard let target = NoteMutationTarget(currentNote),
-                    let destination = noteRenameDestination(
-                        sourceRelativePath: currentNote.relativePath,
-                        requestedName: requestedTitle
-                    )
-                else {
-                    throw DocumentTitleRenameError.invalidName
-                }
-                guard destination != currentNote.relativePath else {
-                    return currentNote.displayName
-                }
-                try await appState.libraryMutationController.moveNote(
-                    target,
-                    to: destination
-                )
-                return URL(fileURLWithPath: destination)
-                    .deletingPathExtension()
-                    .lastPathComponent
             },
             notify: { message, kind in
                 switch kind {

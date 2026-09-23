@@ -116,11 +116,10 @@ struct AgentChatNoteMaterialTests {
             session.preparePresentationMode(.read)
             window.rememberPresentationMode(.read)
             try await wait { window.presentedDocumentMode == .read }
-            session.renderedReadFingerprint = DocumentFingerprint(content: source).sha256
-            let passageRange = (source as NSString).range(of: "Literal")
-            session.readSelection = .init(
-                startLine: 7, endLine: 7, excerpt: "Literal",
-                utf16LowerBound: passageRange.location, utf16UpperBound: NSMaxRange(passageRange))
+            session.editorSession.loadDocument(source, documentID: session.editorSession.editorDocumentID, mode: .read)
+            let passageRange = (session.editorSession.nativeEditor.rawSource as NSString).range(of: "Literal")
+            session.editorSession.nativeEditor.setSelectedRange(passageRange)
+            session.editorSession.updateNativeInteraction()
             var releaseSelection: CheckedContinuation<Bool, Never>?
             defer { releaseSelection?.resume(returning: false) }
             var didContinueSelection = false
@@ -151,7 +150,8 @@ struct AgentChatNoteMaterialTests {
             #expect(didContinueSelection && chat.selected?.attachments.first?.text == "Literal")
             #expect(chat.preparingMaterials.isEmpty)
             chat.removeAttachment(try #require(chat.selected?.attachments.first?.id))
-            session.readSelection = nil
+            session.editorSession.nativeEditor.setSelectedRange(NSRange(location: 0, length: 0))
+            session.editorSession.updateNativeInteraction()
             session.editingSource = "Unsaved source that must never be replaced by the saved Note."
             await #expect(throws: AgentChatNoteMaterialError.self) { try await window.addNoteToChat(note, conversationID: other) }
             #expect(chat.conversations.first { $0.id == other }?.attachments.isEmpty == true)

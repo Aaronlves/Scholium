@@ -281,7 +281,7 @@ extension ScholiumUITests {
         let isUsable = waitUntil(timeout: 20) { self.documentSurfaceIsUsable() }
         XCTAssertTrue(
             isUsable,
-            "The current window did not expose an Edit, Source, or rendered document surface."
+            "The current window did not expose a native Read or Edit document surface."
         )
     }
 
@@ -309,11 +309,11 @@ extension ScholiumUITests {
                 format:
                     "label IN %@ OR title IN %@ OR "
                     + "(identifier BEGINSWITH %@ AND identifier != %@ AND identifier != %@)",
-                ["Markdown editor, Edit mode", "Markdown source editor"],
-                ["Markdown editor, Edit mode", "Markdown source editor"],
-                "scholium.renderedDocument.",
-                "scholium.renderedDocument.loading",
-                "scholium.renderedDocument.failed"
+                ["Document, Editing", "Document, Reading"],
+                ["Document, Editing", "Document, Reading"],
+                "scholium.document.",
+                "scholium.document.loading",
+                "scholium.document.failed"
             )
         ).firstMatch
         return usableSurface.exists
@@ -599,30 +599,11 @@ extension ScholiumUITests {
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         if documentModeState(mode) == title { return }
 
-        switch title {
-        case "Review":
-            app.typeKey("r", modifierFlags: [.command])
-        case "Edit":
-            if documentModeState(mode) == "Source" {
-                app.typeKey("r", modifierFlags: [.command])
-                XCTAssertTrue(
-                    waitUntil(timeout: 8) {
-                        self.documentModeState(mode) == "Review"
-                    })
-            }
-            app.typeKey("r", modifierFlags: [.command])
-        case "Source":
-            app.menuBars.menuBarItems["View"].click()
-            let documentModeMenu = app.menuItems["Document Mode"].firstMatch
-            XCTAssertTrue(documentModeMenu.waitForExistence(timeout: 3))
-            documentModeMenu.hover()
-            let source = app.menuItems["Source"].firstMatch
-            XCTAssertTrue(source.waitForExistence(timeout: 3))
-            source.click()
-        default:
+        guard title == "Read" || title == "Edit" else {
             XCTFail("Unsupported Document mode: \(title)")
             return
         }
+        app.typeKey("r", modifierFlags: [.command])
 
         XCTAssertTrue(
             waitUntil(timeout: 10) { self.documentModeState(mode) == title },
@@ -718,8 +699,8 @@ extension ScholiumUITests {
         selectDocumentMode("Edit", in: stableRoot)
 
         let editor =
-            stableRoot?.descendants(matching: .any)["Markdown editor, Edit mode"]
-            ?? app.descendants(matching: .any)["Markdown editor, Edit mode"]
+            stableRoot?.descendants(matching: .any)["Document, Editing"]
+            ?? app.descendants(matching: .any)["Document, Editing"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
         XCTAssertTrue(waitUntil(timeout: 8) { editor.isHittable })
         // The mode transition requests focus, but XCUITest must still prove

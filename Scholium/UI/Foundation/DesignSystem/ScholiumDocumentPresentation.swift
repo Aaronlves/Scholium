@@ -2,14 +2,13 @@ import Foundation
 import ScholiumContracts
 import SwiftUI
 
-/// The one mutable presentation contract shared by Read, Live Preview, and
-/// Source. It configures layout and scale only; no renderer may derive or
+/// Presentation for read-only HTML surfaces. It configures layout and scale
+/// only; no renderer may derive or
 /// rewrite authoritative Markdown from these values.
 struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
     let textScale: Double
     let contentTopInsetCSSPixels: CGFloat
     let regularInlineInsetCSSPixels: CGFloat
-    let sourceInlineInsetCSSPixels: CGFloat
     let compactInlineInsetCSSPixels: CGFloat
     let compactThresholdRootEms: CGFloat
 
@@ -17,7 +16,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
         textScale: Double,
         contentTopInsetCSSPixels: CGFloat = ScholiumMetrics.Document.contentTopInsetCSSPixels,
         regularInlineInsetCSSPixels: CGFloat = ScholiumGrid.Spacing.documentShellInsetCSSPixels,
-        sourceInlineInsetCSSPixels: CGFloat = ScholiumGrid.Spacing.sourceShellInsetCSSPixels,
         compactInlineInsetCSSPixels: CGFloat = ScholiumGrid.Document.compactShellInsetCSSPixels,
         compactThresholdRootEms: CGFloat = ScholiumGrid.Document.narrowWidthThresholdRootEms
     ) {
@@ -27,7 +25,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
         )
         self.contentTopInsetCSSPixels = max(0, contentTopInsetCSSPixels)
         self.regularInlineInsetCSSPixels = max(0, regularInlineInsetCSSPixels)
-        self.sourceInlineInsetCSSPixels = max(0, sourceInlineInsetCSSPixels)
         self.compactInlineInsetCSSPixels = max(0, compactInlineInsetCSSPixels)
         self.compactThresholdRootEms = max(0, compactThresholdRootEms)
     }
@@ -41,16 +38,11 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
                   --scholium-document-text-scale-factor: %.6f;
                   --scholium-document-content-top-inset: %.6fpx;
                   --scholium-rhythm-inline-regular: %.6fpx;
-                  --scholium-rhythm-inline-source: %.6fpx;
                   --scholium-rhythm-inline-narrow: %.6fpx;
                   --scholium-rhythm-paragraph-gap: %.6fpx;
                 }
                 @media (max-width: %.6frem) {
-                  :root {
-                    --scholium-rhythm-inline-source: var(--scholium-rhythm-inline-narrow);
-                  }
-                  .scholium-document,
-                  .cm-editor.scholium-live-mode .cm-content {
+                  .scholium-document {
                     padding-inline: max(
                       var(--scholium-rhythm-inline-narrow),
                       calc(50%% - var(--scholium-document-half-line-width))
@@ -63,7 +55,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
             textScale,
             Double(contentTopInsetCSSPixels),
             Double(regularInlineInsetCSSPixels),
-            Double(sourceInlineInsetCSSPixels),
             Double(compactInlineInsetCSSPixels),
             DocumentAppearanceSettings.defaultSettings.body.paragraphSpacingEm
                 * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
@@ -76,8 +67,6 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
 
 enum ScholiumDocumentRenderer: CaseIterable, Sendable {
     case read
-    case livePreview
-    case source
 }
 
 enum ScholiumDocumentWidthClass: CaseIterable, Sendable {
@@ -141,12 +130,10 @@ struct ScholiumDocumentContentInsets: Equatable, Sendable {
     let trailingViewportFraction: CGFloat
 }
 
-/// Provisional values shared by Read and editor renderers. They remain
-/// renderer-aware until the visual comparison freezes the rhythm contract.
+/// Shared read-only HTML typography and layout values.
 enum ScholiumDocumentRhythm {
     static let narrowWidthThresholdRootEms = ScholiumGrid.Document.narrowWidthThresholdRootEms
-    static let sourceWorkWidthCharacterUnits = 82
-    static let sourceLineHeight = 1.5
+    static let codeLineHeight = 1.5
     static let codeBlockInset: CGFloat = 16
     static let quoteInlineInset = ScholiumGrid.Spacing.sectionSeparation
 
@@ -155,11 +142,10 @@ enum ScholiumDocumentRhythm {
         widthClass: ScholiumDocumentWidthClass
     ) -> ScholiumDocumentContentInsets {
         let inline: CGFloat =
-            switch (renderer, widthClass) {
-            case (.source, .regular): ScholiumGrid.Spacing.sourceShellInsetCSSPixels
-            case (.read, .regular), (.livePreview, .regular):
+            switch widthClass {
+            case .regular:
                 ScholiumGrid.Spacing.documentShellInsetCSSPixels
-            case (_, .narrow): ScholiumGrid.Document.compactShellInsetCSSPixels
+            case .narrow: ScholiumGrid.Document.compactShellInsetCSSPixels
             }
         return .init(
             inline: inline,

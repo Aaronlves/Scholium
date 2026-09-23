@@ -158,9 +158,9 @@ struct HotkeyPreferencesTests {
     @Test("Invalid writes and conflicting persisted overrides cannot compete with menus")
     func conflictsFailClosed() {
         let reserved = ScholiumHotkeyCommand.italic.defaultBinding!
-        #expect(ScholiumHotkeyPreferences.data(setting: reserved, for: .toggleReviewEdit, in: Data()).isEmpty)
-        let saved = Data(#"{"overrides":{"toggleReviewEdit":{"key":"i","modifiers":8}},"disabled":[]}"#.utf8)
-        #expect(ScholiumHotkeyPreferences.binding(for: .toggleReviewEdit, data: saved) == nil)
+        #expect(ScholiumHotkeyPreferences.data(setting: reserved, for: .toggleReadEdit, in: Data()).isEmpty)
+        let saved = Data(#"{"overrides":{"toggleReadEdit":{"key":"i","modifiers":8}},"disabled":[]}"#.utf8)
+        #expect(ScholiumHotkeyPreferences.binding(for: .toggleReadEdit, data: saved) == nil)
         #expect(ScholiumHotkeyPreferences.binding(for: .italic, data: saved) == reserved)
     }
 
@@ -179,14 +179,14 @@ struct HotkeyPreferencesTests {
         }
         #expect(
             ScholiumHotkeyEventAdapter.command(for: try event("r", .command), defaults: defaults)
-                == .toggleReviewEdit
+                == .toggleReadEdit
         )
         #expect(
             ScholiumHotkeyEventAdapter.command(for: try event("r", []), defaults: defaults) == nil
         )
         let custom = ScholiumHotkeyBinding(key: "j", modifiers: [.command, .option])!
         defaults.set(
-            ScholiumHotkeyPreferences.data(setting: custom, for: .toggleReviewEdit, in: Data()),
+            ScholiumHotkeyPreferences.data(setting: custom, for: .toggleReadEdit, in: Data()),
             forKey: ScholiumHotkeyPreferences.defaultsKey)
         #expect(
             ScholiumHotkeyEventAdapter.command(for: try event("r", .command), defaults: defaults) == nil
@@ -194,7 +194,7 @@ struct HotkeyPreferencesTests {
         #expect(
             ScholiumHotkeyEventAdapter.command(
                 for: try event("j", [.command, .option]), defaults: defaults
-            ) == .toggleReviewEdit
+            ) == .toggleReadEdit
         )
     }
 
@@ -244,18 +244,18 @@ struct HotkeyPreferencesTests {
 
     @Test("Restoring a default never steals a reassigned shortcut")
     func restoringDefaultPreservesOtherCommand() {
-        var data = ScholiumHotkeyPreferences.data(setting: nil, for: .toggleReviewEdit, in: Data())
+        var data = ScholiumHotkeyPreferences.data(setting: nil, for: .toggleReadEdit, in: Data())
         data = ScholiumHotkeyPreferences.data(
-            setting: ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding,
+            setting: ScholiumHotkeyCommand.toggleReadEdit.defaultBinding,
             for: .showAttention, in: data)
         let restored = ScholiumHotkeyPreferences.data(
-            setting: ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding,
-            for: .toggleReviewEdit, in: data)
+            setting: ScholiumHotkeyCommand.toggleReadEdit.defaultBinding,
+            for: .toggleReadEdit, in: data)
         #expect(restored == data)
-        #expect(ScholiumHotkeyPreferences.binding(for: .toggleReviewEdit, data: restored) == nil)
+        #expect(ScholiumHotkeyPreferences.binding(for: .toggleReadEdit, data: restored) == nil)
         #expect(
             ScholiumHotkeyPreferences.binding(for: .showAttention, data: restored)
-                == ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding)
+                == ScholiumHotkeyCommand.toggleReadEdit.defaultBinding)
     }
 
 }

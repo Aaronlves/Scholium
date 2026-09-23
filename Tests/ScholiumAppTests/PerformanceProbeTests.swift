@@ -253,55 +253,6 @@ struct PerformanceProbeTests {
             ])
     }
 
-    @Test("Editor Web metrics remain fixture-bound and privacy-safe")
-    func editorWebMetricsRequireExpectedDocument() throws {
-        let fileManager = FileManager.default
-        let directory = URL(
-            fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
-            isDirectory: true
-        )
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: directory) }
-        let result = directory.appendingPathComponent("editor_cached_preview.jsonl")
-        let probe = PerformanceProbe(
-            environment: [
-                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
-                "SCHOLIUM_PERFORMANCE_METRIC": "editor_cached_preview",
-                "SCHOLIUM_PERFORMANCE_RUN_ID": "cached_preview_test",
-                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
-                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
-                "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
-            ],
-            bundleID: "com.scholium.qa",
-            now: { 50_000_000 }
-        )
-
-        probe.recordEditorWebDuration(
-            documentID: "Private.md",
-            metric: .editorCachedPreview,
-            durationMilliseconds: 8
-        )
-        #expect(!fileManager.fileExists(atPath: result.path))
-        probe.recordEditorWebDuration(
-            documentID: "Fixture.md",
-            metric: .editorCachedPreview,
-            durationMilliseconds: 8
-        )
-
-        let object = try #require(
-            try JSONSerialization.jsonObject(
-                with: Data(contentsOf: result)
-            ) as? [String: Any]
-        )
-        #expect(object["metric"] as? String == "editor_cached_preview")
-        #expect(object["duration_ms"] as? Double == 8)
-        #expect(
-            Set(object.keys) == [
-                "schema", "run_id", "sample", "metric", "duration_ms",
-                "completed_uptime_ns",
-            ])
-    }
-
     @Test("Warm Edit activation ends only at the matching visible editor")
     func warmEditActivationRequiresMatchingVisibleDocument() throws {
         let fileManager = FileManager.default
@@ -411,9 +362,9 @@ struct PerformanceProbeTests {
         probe.beginReadActivation(documentID: "Fixture.md")
         probe.markFirstReadDocumentSelected(documentID: "Fixture.md")
         probe.markReadTaskStarted(documentID: "Fixture.md")
-        probe.markReadHTMLReady(documentID: "Fixture.md")
-        probe.markReadNavigationStarted(documentID: "Fixture.md")
-        probe.markReadNavigationFinished(documentID: "Fixture.md")
+        probe.markReadSourceReady(documentID: "Fixture.md")
+        probe.markReadNativeLayoutStarted(documentID: "Fixture.md")
+        probe.markReadNativeLayoutFinished(documentID: "Fixture.md")
         probe.markReadReady(documentID: "Fixture.md")
 
         let line = try #require(
@@ -429,66 +380,13 @@ struct PerformanceProbeTests {
             object["document_selection_to_read_task_start_duration_ms"] as? Double
                 == 10
         )
-        #expect(object["read_task_start_to_html_ready_duration_ms"] as? Double == 20)
+        #expect(object["read_task_start_to_source_ready_duration_ms"] as? Double == 20)
         #expect(
-            object["read_html_ready_to_navigation_start_duration_ms"] as? Double
+            object["read_source_ready_to_layout_start_duration_ms"] as? Double
                 == 10
         )
-        #expect(object["read_navigation_duration_ms"] as? Double == 20)
-        #expect(object["read_navigation_to_ready_duration_ms"] as? Double == 20)
-    }
-
-    @Test("Painted key latency accepts only a finite sample for the requested fixture")
-    func editorKeyToPaintRequiresExpectedDocument() throws {
-        let fileManager = FileManager.default
-        let directory = URL(
-            fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
-            isDirectory: true
-        )
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: directory) }
-        let result = directory.appendingPathComponent("editor_key_to_paint.jsonl")
-        let probe = PerformanceProbe(
-            environment: [
-                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
-                "SCHOLIUM_PERFORMANCE_METRIC": "editor_key_to_paint",
-                "SCHOLIUM_PERFORMANCE_RUN_ID": "key_paint_test",
-                "SCHOLIUM_PERFORMANCE_SAMPLE": "4",
-                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
-                "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
-            ],
-            bundleID: "com.scholium.qa",
-            now: { 42_000_000 }
-        )
-
-        probe.recordEditorKeyToPaint(
-            documentID: "Private/Research.md",
-            durationMilliseconds: 12.5
-        )
-        probe.recordEditorKeyToPaint(documentID: "Fixture.md", durationMilliseconds: .nan)
-        #expect(!fileManager.fileExists(atPath: result.path))
-        probe.recordEditorKeyToPaint(documentID: "Fixture.md", durationMilliseconds: 12.5)
-
-        let line = try #require(
-            String(contentsOf: result, encoding: .utf8)
-                .split(separator: "\n")
-                .first
-        )
-        let object = try #require(
-            try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
-        )
-        #expect(object["metric"] as? String == "editor_key_to_paint")
-        #expect(object["sample"] as? Int == 4)
-        #expect(object["duration_ms"] as? Double == 12.5)
-        #expect(
-            Set(object.keys) == [
-                "schema",
-                "run_id",
-                "sample",
-                "metric",
-                "duration_ms",
-                "completed_uptime_ns",
-            ])
+        #expect(object["read_native_layout_duration_ms"] as? Double == 20)
+        #expect(object["read_layout_to_ready_duration_ms"] as? Double == 20)
     }
 
     @Test("Editor mode latency records only the requested visible mode without research content")
@@ -515,16 +413,16 @@ struct PerformanceProbeTests {
             now: { times.removeFirst() }
         )
 
-        probe.beginEditorModeTransition(documentID: "Private/Research.md", mode: .source)
-        probe.markEditorModeVisible(documentID: "Private/Research.md", mode: .source)
+        probe.beginEditorModeTransition(documentID: "Private/Research.md", mode: .read)
+        probe.markEditorModeVisible(documentID: "Private/Research.md", mode: .read)
         #expect(!fileManager.fileExists(atPath: result.path))
 
-        probe.beginEditorModeTransition(documentID: "Fixture.md", mode: .source)
-        probe.markEditorModeVisible(documentID: "Fixture.md", mode: .livePreview)
+        probe.beginEditorModeTransition(documentID: "Fixture.md", mode: .read)
+        probe.markEditorModeVisible(documentID: "Fixture.md", mode: .edit)
         #expect(!fileManager.fileExists(atPath: result.path))
-        probe.markEditorModeBridgeStarted(mode: .source)
-        probe.markEditorModeAcknowledged(documentID: "Fixture.md", mode: .source)
-        probe.markEditorModeVisible(documentID: "Fixture.md", mode: .source)
+        probe.markEditorModeLayoutStarted(mode: .read)
+        probe.markEditorModeApplied(documentID: "Fixture.md", mode: .read)
+        probe.markEditorModeVisible(documentID: "Fixture.md", mode: .read)
 
         let line = try #require(
             String(contentsOf: result, encoding: .utf8)
@@ -535,11 +433,11 @@ struct PerformanceProbeTests {
             try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
         )
         #expect(object["metric"] as? String == "editor_mode_transition")
-        #expect(object["observed_mode"] as? String == "source")
+        #expect(object["observed_mode"] as? String == "read")
         #expect(object["duration_ms"] as? Double == 30)
-        #expect(object["acknowledged_duration_ms"] as? Double == 20)
-        #expect(object["bridge_started_duration_ms"] as? Double == 5)
-        #expect(object["bridge_roundtrip_duration_ms"] as? Double == 15)
+        #expect(object["applied_duration_ms"] as? Double == 20)
+        #expect(object["native_layout_started_duration_ms"] as? Double == 5)
+        #expect(object["native_layout_work_duration_ms"] as? Double == 15)
         #expect(object["layout_duration_ms"] as? Double == 10)
         #expect(
             Set(object.keys) == [
@@ -550,9 +448,9 @@ struct PerformanceProbeTests {
                 "duration_ms",
                 "completed_uptime_ns",
                 "observed_mode",
-                "acknowledged_duration_ms",
-                "bridge_started_duration_ms",
-                "bridge_roundtrip_duration_ms",
+                "applied_duration_ms",
+                "native_layout_started_duration_ms",
+                "native_layout_work_duration_ms",
                 "layout_duration_ms",
             ])
     }
@@ -579,10 +477,10 @@ struct PerformanceProbeTests {
             bundleID: "com.scholium.qa"
         )
 
-        probe.markEditorModeReady(documentID: UUID().uuidString, mode: .livePreview)
+        probe.markEditorModeReady(documentID: UUID().uuidString, mode: .edit)
         #expect(!fileManager.fileExists(atPath: result.path))
-        probe.markEditorModeReady(documentID: "Fixture.md", mode: .livePreview)
-        probe.markEditorModeReady(documentID: "Fixture.md", mode: .source)
+        probe.markEditorModeReady(documentID: "Fixture.md", mode: .edit)
+        probe.markEditorModeReady(documentID: "Fixture.md", mode: .read)
 
         let objects = try String(contentsOf: result, encoding: .utf8)
             .split(separator: "\n")
@@ -593,7 +491,7 @@ struct PerformanceProbeTests {
                 )
             }
         #expect(objects.count == 2)
-        #expect(objects.compactMap { $0["mode"] as? String } == ["live_preview", "source"])
+        #expect(objects.compactMap { $0["mode"] as? String } == ["edit", "read"])
         #expect(
             objects.allSatisfy {
                 Set($0.keys) == ["sample", "transition", "mode"]

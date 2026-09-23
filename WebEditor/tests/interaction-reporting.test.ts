@@ -1,7 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {
   AnimationFrameCoalescer,
-  interactionAvailabilitySignature,
 } from "../interaction-reporting";
 
 describe("animation-frame interaction reporting", () => {
@@ -53,19 +52,4 @@ describe("animation-frame interaction reporting", () => {
     expect(observed).toEqual([2]);
   });
 
-  it("publishes availability when a collapsed selection becomes nonempty", () => {
-    const context = {
-      selections: [{anchor: 4, head: 4}],
-      activeInlineConstructs: [],
-      activeBlockConstructs: [],
-      composing: false,
-      availableCommands: [],
-    };
-    const collapsed = interactionAvailabilitySignature(context);
-    const selected = interactionAvailabilitySignature({
-      ...context,
-      selections: [{anchor: 4, head: 8}],
-    });
-    expect(selected).not.toBe(collapsed);
-  });
 });

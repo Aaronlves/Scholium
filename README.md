@@ -70,7 +70,7 @@ Building Scholium requires a complete Xcode installation with the compiler and
 SDK required by `Package.swift`. The repository resolver honors an explicit
 valid `DEVELOPER_DIR`, a complete `xcode-select` selection, or a conventional
 beta or release Xcode bundle. Node.js is needed only when rebuilding the
-TypeScript editor bundle.
+TypeScript Chat/preview renderer bundles.
 
 ## Build and test
 
@@ -266,7 +266,8 @@ ScholiumContracts/         Immutable values, protocols, and source semantics
 ScholiumCore/              Internal repositories, indexes, watchers, and I/O
 ScholiumApplication/       Application capabilities shared by App and helper
 Scholium/                  Native macOS app and human-facing interaction
-WebEditor/                 TypeScript and CodeMirror source
+ScholiumEditor/            Retained native Markdown editing and exact-source projection
+WebEditor/                 Local TypeScript Chat/preview rendering
 Tests/                     Contract, Core, Application, and App tests
 UITests/                   Isolated disposable macOS UI journeys
 Docs/SCHOLIUM_SPEC.md      Canonical target-authority manifest and reading routes

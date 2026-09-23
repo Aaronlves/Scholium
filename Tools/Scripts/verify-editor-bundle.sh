@@ -2,24 +2,20 @@
 set -euo pipefail
 
 repo_root="${0:A:h:h:h}"
-committed="$repo_root/Scholium/Resources/Editor/editor.bundle.js"
 committed_reader="$repo_root/Scholium/Resources/Editor/reader.bundle.js"
 callout_styles="$repo_root/Scholium/Resources/Editor/callouts.css"
 table_styles="$repo_root/Scholium/Resources/Editor/tables.css"
 footnote_styles="$repo_root/Scholium/Resources/Editor/footnotes.css"
-editor_styles="$repo_root/Scholium/Resources/Editor/editor.css"
 read_styles="$repo_root/Scholium/Views/Note/SafeMarkdownReadWebView.swift"
 color_system="$repo_root/Scholium/UI/Foundation/DesignSystem/ScholiumColorSystem.swift"
 web_tokens="$repo_root/Scholium/UI/Foundation/DesignSystem/ScholiumWebDesignTokens.swift"
 renderer="$repo_root/ScholiumContracts/SafeMarkdownRenderer.swift"
-live_callouts="$repo_root/WebEditor/live-structured-block-projections.ts"
 committed_math="$repo_root/Scholium/Resources/Editor/math.bundle.js"
 committed_math_css="$repo_root/Scholium/Resources/Editor/katex.min.css"
 committed_mermaid="$repo_root/Scholium/Resources/Editor/mermaid.bundle.js"
 committed_mermaid_css="$repo_root/Scholium/Resources/Editor/mermaid.css"
 committed_mermaid_notices="$repo_root/Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt"
 temporary_root="$repo_root/.build/editor-verification-$$"
-temporary="$temporary_root/editor.bundle.js"
 temporary_reader="$temporary_root/reader.bundle.js"
 temporary_math="$temporary_root/math.bundle.js"
 temporary_mermaid="$temporary_root/mermaid.bundle.js"
@@ -29,33 +25,27 @@ rm -rf "$temporary_root"
 mkdir -p "$temporary_root"
 
 if [[ ! -s "$callout_styles" ]] || \
-   ! rg -q '^\.scholium-callout' "$callout_styles" || \
-   ! rg -q '^\.cm-live-callout-disclosure' "$editor_styles" || \
-   ! rg -q 'class CalloutHeadingWidget' "$live_callouts"; then
+   ! rg -q '^\.scholium-callout' "$callout_styles"; then
   print -u2 "The app-owned Callout stylesheet is missing or incomplete: $callout_styles"
   exit 1
 fi
 
 if [[ ! -s "$table_styles" ]] || \
    ! rg -q '^\.scholium-table-scroll' "$table_styles" || \
-   ! rg -q '^\.scholium-table th' "$table_styles" || \
-   ! rg -q '^\.cm-live-table-widget' "$table_styles"; then
+   ! rg -q '^\.scholium-table th' "$table_styles"; then
   print -u2 "The shared semantic table stylesheet is missing or incomplete: $table_styles"
   exit 1
 fi
 
 if [[ ! -s "$footnote_styles" ]] || \
    ! rg -q '^\.footnote-reference' "$footnote_styles" || \
-   ! rg -q '^\.scholium-document \.footnotes' "$footnote_styles" || \
-   ! rg -q '^\.cm-live-footnote-reference-widget' "$footnote_styles" || \
-   rg -q '^\.cm-live-footnotes-widget' "$footnote_styles"; then
+   ! rg -q '^\.scholium-document \.footnotes' "$footnote_styles"; then
   print -u2 "The shared semantic footnote stylesheet is missing or incomplete: $footnote_styles"
   exit 1
 fi
 
 if [[ ! -s "$committed_mermaid_css" ]] || \
-   ! rg -q '^\.scholium-mermaid-output' "$committed_mermaid_css" || \
-   ! rg -q '^\.cm-live-mermaid-slot' "$committed_mermaid_css"; then
+   ! rg -q '^\.scholium-mermaid-output' "$committed_mermaid_css"; then
   print -u2 "The shared Mermaid stylesheet is missing or incomplete: $committed_mermaid_css"
   exit 1
 fi
@@ -86,10 +76,7 @@ if ! rg -q -- '--scholium-callout-title-ink' "$callout_styles" || \
 fi
 
 if ! rg -q -- '--scholium-document-prose-font-size:.*body\.fontSizePoints' "$web_tokens" || \
-   ! rg -q 'font-size: var\(--scholium-document-prose-font-size\)' "$editor_styles" || \
    ! rg -q 'font-size: var\(--scholium-document-prose-font-size\)' "$read_styles" || \
-   ! rg -U -q '^[[:space:]]*\.scholium-document h1,\n[[:space:]]*\.scholium-live-mode \.cm-live-h1 \{[^}]*font-size:' "$web_tokens" || \
-   rg -U -q '^\.cm-live-h[1-6].*\{[^}]*font-(size|weight):' "$editor_styles" || \
    ! rg -q '\.scholium-callout-body' "$callout_styles" || \
    ! rg -q 'font-size: 100%' "$callout_styles"; then
   print -u2 "The shared document typography roles are missing or incomplete."
@@ -97,18 +84,12 @@ if ! rg -q -- '--scholium-document-prose-font-size:.*body\.fontSizePoints' "$web
 fi
 
 "$repo_root/Tools/Scripts/run-editor-toolchain.sh" \
-  --output "$temporary" \
   --reader-output "$temporary_reader" \
   --math-output "$temporary_math" \
   --mermaid-output "$temporary_mermaid" \
   --mermaid-notices-output "$temporary_mermaid_notices" \
   --math-assets "$temporary_root" \
   --test
-
-if ! cmp -s "$temporary" "$committed"; then
-  print -u2 "The committed CodeMirror bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
-  exit 1
-fi
 
 if ! cmp -s "$temporary_reader" "$committed_reader"; then
   print -u2 "The committed Read bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
@@ -149,4 +130,4 @@ for font in "${temporary_fonts[@]}"; do
   fi
 done
 
-print "CodeMirror, Read, and shared document resources are reproducible and current."
+print "Reader, KaTeX, and Mermaid resources are reproducible and current."

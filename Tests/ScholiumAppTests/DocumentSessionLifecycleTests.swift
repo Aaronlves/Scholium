@@ -8,24 +8,17 @@ import Testing
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
-    @Test("Read and editor viewport observations remain isolated until an explicit handoff")
-    func readAndEditorScrollPositionsDoNotInterfere() {
+    @Test("Read and Edit retain one native viewport position")
+    func readAndEditorShareScrollPosition() {
         let session = DocumentSessionModel(key: nil)
-        session.observeScrollFraction(0.2, on: .read)
-        session.observeScrollFraction(0.8, on: .editor)
-
-        #expect(session.readScrollFraction == 0.2)
-        #expect(session.editorScrollFraction == 0.8)
-
-        session.preparePresentationMode(.livePreview)
-        session.beginEditing(in: .livePreview)
-        session.observeScrollFraction(0.9, on: .editor)
-        #expect(session.readScrollFraction == 0.2)
-        #expect(session.editorScrollFraction == 0.9)
-
-        session.adoptEditorScrollPositionForReview(anchor: nil)
-        #expect(session.readScrollFraction == 0.9)
-        #expect(session.editorScrollFraction == 0.9)
+        session.observeScrollFraction(0.2)
+        #expect(session.scrollFraction == 0.2)
+        session.preparePresentationMode(.edit)
+        session.beginEditing(in: .edit)
+        #expect(session.scrollFraction == 0.2)
+        session.observeScrollFraction(0.9)
+        session.finishEditing()
+        #expect(session.scrollFraction == 0.9)
     }
 
     @Test("Document top presents persistent feedback, Actions, then permission education")
@@ -67,27 +60,6 @@ struct DocumentSessionLifecycleTests {
             ) == .none)
     }
 
-    @Test("Repeated Review preparation preserves a finalized retained revision")
-    func repeatedReadProjectionPreparationPreservesReadiness() {
-        let session = DocumentSessionModel(key: nil)
-        let currentFingerprint = "current-revision"
-
-        session.renderedReadFingerprint = currentFingerprint
-        session.renderedReadReadyFingerprint = currentFingerprint
-        session.failedReadFingerprint = currentFingerprint
-
-        session.prepareReadProjection(for: currentFingerprint)
-
-        #expect(session.failedReadFingerprint == nil)
-        #expect(
-            session.renderedReadReadyFingerprint == currentFingerprint
-        )
-
-        session.prepareReadProjection(for: "new-revision")
-
-        #expect(session.renderedReadReadyFingerprint.isEmpty)
-    }
-
     @Test("Document presentation commits only valid lifecycle states")
     func documentPresentationStateMachine() {
         let session = DocumentSessionModel(key: nil)
@@ -96,50 +68,49 @@ struct DocumentSessionLifecycleTests {
             publications.append($0)
         }
 
-        session.preparePresentationMode(.source)
+        session.preparePresentationMode(.edit)
         #expect(session.presentationMode == .read)
-        #expect(session.pendingEditorMode == .source)
+        #expect(session.pendingEditorMode == .edit)
         #expect(!session.isEditing)
-        #expect(!session.retainsEditorSurface)
+        #expect(session.retainsEditorSurface)
 
-        session.beginEditing(in: .source)
-        #expect(session.presentationMode == .source)
-        #expect(session.activeEditorMode == .source)
+        session.beginEditing(in: .edit)
+        #expect(session.presentationMode == .edit)
+        #expect(session.activeEditorMode == .edit)
         #expect(session.pendingEditorMode == nil)
         #expect(session.isEditing)
         #expect(session.retainsEditorSurface)
 
-        session.switchEditorMode(to: .livePreview)
-        #expect(session.presentationMode == .livePreview)
-        #expect(session.activeEditorMode == .livePreview)
-        #expect(session.retainedEditorMode == .livePreview)
+        session.switchEditorMode(to: .edit)
+        #expect(session.presentationMode == .edit)
+        #expect(session.activeEditorMode == .edit)
+        #expect(session.retainedEditorMode == .edit)
 
         session.finishEditing()
         #expect(session.presentationMode == .read)
         #expect(session.pendingEditorMode == nil)
         #expect(!session.isEditing)
         #expect(session.retainsEditorSurface)
-        #expect(session.retainedEditorMode == .livePreview)
+        #expect(session.retainedEditorMode == .edit)
 
         #expect(publications.count == 4)
         _ = observation
     }
 
-    @Test("A failed managed editor retry replaces only its retained WebView request")
+    @Test("A native editor retry retains its view and checked source")
     func managedCreationEditorRetry() {
         let session = DocumentSessionModel(key: nil)
         session.beginManagedCreationEntry(bodyStartUTF16: 24)
-        session.beginEditing(in: .livePreview)
+        session.beginEditing(in: .edit)
+        session.editorSession.loadDocument("Draft", documentID: "retry.md", mode: .edit)
         session.editorSession.reportError("Editor failed")
-        let priorReconstruction = session.editorSession.viewReconstructionID
+        let retainedView = session.editorSession.nativeEditor
 
         #expect(session.isEnteringManagedCreation)
         #expect(session.editorSession.errorMessage == "Editor failed")
         session.editorSession.retryUnavailablePresentation()
-        #expect(
-            session.editorSession.viewReconstructionID
-                != priorReconstruction
-        )
+        #expect(session.editorSession.nativeEditor === retainedView)
+        #expect(session.editorSession.checkedSource == "Draft")
         #expect(session.editorSession.errorMessage == nil)
 
         session.completeManagedCreationEntry()
@@ -151,7 +122,7 @@ struct DocumentSessionLifecycleTests {
         let session = DocumentSessionModel(key: nil)
 
         session.beginManagedCreationEntry(bodyStartUTF16: 24)
-        session.beginEditing(in: .livePreview)
+        session.beginEditing(in: .edit)
         session.finishEditing()
         #expect(!session.isEnteringManagedCreation)
 
@@ -175,18 +146,11 @@ struct DocumentSessionLifecycleTests {
         session.editorSession.loadDocument(
             source,
             documentID: "focus-policy",
-            mode: .livePreview
+            mode: .edit
         )
         #expect(session.editorSession.preferredDocumentFocusTarget == .editor)
-        session.editorSession.updateInteraction(
-            selections: [MarkdownEditorSelectionRange(anchor: 12, head: 12)],
-            line: 3,
-            column: 2,
-            lineCount: 3,
-            documentVersion: 0,
-            focusTarget: .editor,
-            context: nil
-        )
+        session.editorSession.nativeEditor.setSelectedRange(NSRange(location: 12, length: 0))
+        session.editorSession.updateNativeInteraction()
         let previousOpening = session.editorSession.openingPresentationID
         session.prepareForDocumentActivation()
         #expect(session.editorSession.openingPresentationID != previousOpening)
@@ -223,7 +187,7 @@ struct DocumentSessionLifecycleTests {
         matching.editorSession.loadDocument(
             source,
             documentID: "matching",
-            mode: .livePreview
+            mode: .edit
         )
         #expect(matching.editorSession.preferredDocumentFocusTarget == .editor)
         #expect(matching.windowPresentationSnapshot.selections == presentation.selections)
@@ -241,7 +205,7 @@ struct DocumentSessionLifecycleTests {
         let first = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
         let second = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
         let firstSession = store.session(for: first)
-        firstSession.preparePresentationMode(.source)
+        firstSession.preparePresentationMode(.edit)
 
         _ = store.reconcileLeases(openTargets: [first], foregroundTarget: first)
         _ = store.reconcileLeases(openTargets: [second], foregroundTarget: second)
@@ -294,27 +258,12 @@ struct DocumentSessionLifecycleTests {
         case .composition:
             session.editorSession.loadDocument(
                 "clean",
-                documentID: session.editorSession.bridgeDocumentID,
-                mode: .livePreview
+                documentID: session.editorSession.editorDocumentID,
+                mode: .edit
             )
             let selection = MarkdownEditorSelectionRange(anchor: 0, head: 0)
-            session.editorSession.updateInteraction(
-                selections: [selection],
-                line: 1,
-                column: 1,
-                lineCount: 1,
-                documentVersion: session.editorSession.generation,
-                context: MarkdownEditorContext(
-                    selections: [selection],
-                    activeInlineConstructs: [],
-                    activeBlockConstructs: [],
-                    tablePosition: nil,
-                    composing: true,
-                    availableCommands: [],
-                    undoLabel: nil,
-                    redoLabel: nil
-                )
-            )
+            session.editorSession.nativeEditor.setMarkedText(
+                "pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: 0, length: 0))
         case .conflict:
             session.conflict = DocumentConflictSnapshot(
                 relativePath: "Pinned.md",
@@ -390,7 +339,6 @@ struct DocumentSessionLifecycleTests {
         let session = store.session(for: target)
         session.editingSource = "large exact source"
         session.originalEditingSource = "large exact source"
-        session.renderedReadHTML = String(repeating: "x", count: 4_096)
         session.previewCatalog = DocumentPreviewCatalog(
             graphGeneration: 1,
             source: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Closed.md"),
@@ -403,7 +351,6 @@ struct DocumentSessionLifecycleTests {
         #expect(reaped.map(\.target) == [target])
         #expect(store.retainedSession(for: target) == nil)
         #expect(session.editingSource.isEmpty)
-        #expect(session.renderedReadHTML.isEmpty)
         #expect(session.previewCatalog == nil)
     }
 
@@ -425,7 +372,7 @@ struct DocumentSessionLifecycleTests {
             )
             controller.selectDocument(.workspace(descriptor))
             let session = controller.session(for: key)
-            session.preparePresentationMode(.source)
+            session.preparePresentationMode(.edit)
             session.scrollFraction = Double(index) / 100
             controller.reconcileSessionLeases(
                 leasedDocuments: [.workspace(descriptor)],
@@ -461,7 +408,7 @@ struct DocumentSessionLifecycleTests {
         let original = descriptor(path: "Before.md")
         controller.selectDocument(.workspace(original))
         let first = controller.session(for: key)
-        first.preparePresentationMode(.source)
+        first.preparePresentationMode(.edit)
         first.scrollFraction = 0.6
         controller.reconcileSessionLeases(
             leasedDocuments: [.workspace(original)],
@@ -480,7 +427,7 @@ struct DocumentSessionLifecycleTests {
 
         #expect(reopened !== first)
         #expect(reopened.presentationMode == .read)
-        #expect(reopened.pendingEditorMode == .livePreview)
+        #expect(reopened.pendingEditorMode == .edit)
         #expect(reopened.scrollFraction == 0.6)
         #expect(reopened.editingSource.isEmpty)
     }

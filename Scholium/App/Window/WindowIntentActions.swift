@@ -38,7 +38,7 @@ extension WindowModel {
                     await self.openWorkspaceReference(
                         reference,
                         line: locator.line,
-                        mode: .source
+                        mode: .edit
                     )
                 } catch {
                     self.vaultError = error.localizedDescription
@@ -164,7 +164,7 @@ extension WindowModel {
     func requestOpenNote(
         _ path: String,
         sourceLine: Int,
-        mode: NotePresentationMode = .source
+        mode: NotePresentationMode = .edit
     ) {
         if let reference = documentReference(for: path),
             let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self)
@@ -267,7 +267,7 @@ extension WindowModel {
         let source: String
         if session.isEditing || session.editorSession.hasRecoverableBuffer {
             source = try await session.editorSession.currentText(
-                for: session.editorSession.bridgeDocumentID
+                for: session.editorSession.editorDocumentID
             )
         } else {
             source = note.rawContent

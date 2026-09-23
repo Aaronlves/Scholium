@@ -195,7 +195,7 @@ final class WorkspaceSettingsModel: ObservableObject {
     @Published private(set) var activeTriptychServicesID: UUID?
     @Published private(set) var settingsReconciliationRequiredTriptychIDs: Set<UUID> = []
 
-    let cssSnippetStore: CSSSnippetStore?
+    let documentAppearanceStore: DocumentAppearanceStore?
 
     private let agentBridgeAvailabilityProvider: @MainActor () -> AgentBridgeAvailability
 
@@ -215,7 +215,7 @@ final class WorkspaceSettingsModel: ObservableObject {
     /// Production construction borrows the application composition root.
     init(
         capabilities: WorkspaceSettingsCapabilities,
-        cssSnippetStore: CSSSnippetStore,
+        documentAppearanceStore: DocumentAppearanceStore,
         agentBridgeAvailability: @escaping @MainActor () -> AgentBridgeAvailability = {
             .unavailable("The App bridge is unavailable.")
         },
@@ -224,7 +224,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         self.selectedPane = selectedPane
         self.snapshot = WorkspaceSettingsSnapshot()
         self.capabilities = capabilities
-        self.cssSnippetStore = cssSnippetStore
+        self.documentAppearanceStore = documentAppearanceStore
         self.agentBridgeAvailabilityProvider = agentBridgeAvailability
         self.loadSnapshot = nil
         self.activateSnapshot = nil
@@ -248,7 +248,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         self.selectedPane = selectedPane
         self.snapshot = snapshot
         self.capabilities = nil
-        self.cssSnippetStore = nil
+        self.documentAppearanceStore = nil
         self.agentBridgeAvailabilityProvider = {
             .unavailable("The App bridge is unavailable in this preview.")
         }

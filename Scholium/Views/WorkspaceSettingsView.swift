@@ -2,7 +2,6 @@ import Accessibility
 import AppKit
 import ScholiumContracts
 import SwiftUI
-import UniformTypeIdentifiers
 
 enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
     case workspace
@@ -192,7 +191,7 @@ struct ScholiumSettingsView: View {
                 }
             )
         case .document:
-            if let store = settingsModel.cssSnippetStore {
+            if let store = settingsModel.documentAppearanceStore {
                 AppearanceSettingsView(store: store)
             } else {
                 ScholiumContentStateView(
@@ -434,16 +433,13 @@ private func settingsTriptychLabel(
 }
 
 private struct AppearanceSettingsView: View {
-    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
-    @ObservedObject var store: CSSSnippetStore
+    @ObservedObject var store: DocumentAppearanceStore
     @StateObject private var fontCatalog = ScholiumSettingsFontCatalog()
     @State private var draft: DocumentAppearanceProfile?
-    @State private var importError: String?
     @State private var showRename = false
     @State private var showDeleteConfirmation = false
     @State private var showRestoreDefaultConfirmation = false
     @State private var confirmsAppearanceRecovery = false
-    @State private var confirmsSnippetRecovery = false
     @State private var showDiscardChangesConfirmation = false
     private enum ProfileSelection {
         case existing(UUID)
@@ -462,14 +458,19 @@ private struct AppearanceSettingsView: View {
             } else {
                 Form {
                     appearanceRecoverySection
-                    Section("CSS Snippets") { cssSnippetsContent }.id("appearance.css")
                     configurationFileSection.id("appearance.file")
                 }
                 .scholiumSettingsFormStyle()
                 .scholiumSettingsSearchDestination()
             }
 
-            appearanceStatus
+            if let error = store.storeError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                    .accessibilityIdentifier("settings.appearance.store-error")
+            }
             appearanceSaveActions
         }
         .scholiumSettingsPaneSurface()
@@ -527,15 +528,7 @@ private struct AppearanceSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "Replace saved appearance profiles with a default profile and discard the current appearance draft. The previous configuration file is preserved separately. CSS snippets and research files are unchanged."
-            )
-        }
-        .confirmationDialog("Recover CSS Snippet Settings?", isPresented: $confirmsSnippetRecovery, titleVisibility: .visible) {
-            Button("Recover CSS Snippet Settings", role: .destructive) { store.restoreStyleSnippetDefaults() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "Restore snippet settings with all snippets disabled. The previous settings file is preserved separately. CSS files, appearance profiles and research files are unchanged."
+                "Replace saved appearance profiles with a default profile and discard the current appearance draft. The previous configuration file is preserved separately. Research files are unchanged."
             )
         }
         .confirmationDialog(
@@ -580,7 +573,6 @@ private struct AppearanceSettingsView: View {
             appearanceRecoverySection
             AppearanceReadingEditor(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
             TypographySettingsView(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
-            Section("CSS Snippets") { cssSnippetsContent }.id("appearance.css")
             configurationFileSection.id("appearance.file")
         }
         .scholiumSettingsFormStyle()
@@ -622,32 +614,6 @@ private struct AppearanceSettingsView: View {
                     }
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var appearanceStatus: some View {
-        if let reason = store.safeModeReason {
-            Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-        }
-        if let storeError = store.storeError {
-            Label(storeError, systemImage: "exclamationmark.triangle.fill")
-                .font(.body)
-                .foregroundStyle(.red)
-                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-                .accessibilityIdentifier("settings.css.store-error")
-        }
-        if let importError {
-            Label(importError, systemImage: "exclamationmark.triangle.fill")
-                .font(.body)
-                .foregroundStyle(.red)
-                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
         }
     }
 
@@ -700,66 +666,6 @@ private struct AppearanceSettingsView: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
-    }
-
-    private var cssSnippetsContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(
-                "Add .css files to the managed folder, or import one. Changes are detected automatically and apply to Review and Edit after validation; Source remains exact."
-            )
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-            Text("Callouts: .callout, .callout-title, .callout-body, and .callout-<role>.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Button {
-                    store.revealManagedFolder()
-                } label: {
-                    Label("Open CSS Folder", systemImage: "folder")
-                }
-
-                Button {
-                    store.reloadSnippets()
-                } label: {
-                    Label("Reload", systemImage: "arrow.clockwise")
-                }
-
-                Spacer(minLength: 0)
-
-                Button("Import CSS Snippet…") { importSnippet() }
-                    .disabled(!store.canModify)
-            }
-
-            Divider()
-
-            if let error = store.snippetError {
-                Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
-                Button("Recover CSS Snippet Settings…") { confirmsSnippetRecovery = true }
-                    .disabled(store.isRestoringSnippets)
-                    .accessibilityIdentifier("scholium.settings.css.recover")
-            }
-
-            ForEach(store.snippets) { snippet in
-                CSSSnippetRow(
-                    snippet: snippet,
-                    error: store.validationErrors[snippet.id],
-                    store: store
-                ).disabled(!store.canModify)
-            }
-
-            if store.snippets.isEmpty {
-                Text("No CSS snippets yet. Open the folder or import a file to add one.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button("Disable All Snippets") { store.disableAll() }
-                .disabled(store.enabledCount == 0 || !store.canModify)
-        }
     }
 
     private var appearancePicker: some View {
@@ -848,35 +754,6 @@ private struct AppearanceSettingsView: View {
         showRename = true
     }
 
-    private func importSnippet() {
-        let request = ScholiumFileSelectionRequest(
-            title: ScholiumL10n.string("Import CSS Snippet"),
-            prompt: ScholiumL10n.string("Import"),
-            kind: .files(
-                allowedContentTypes: [
-                    UTType(filenameExtension: "css") ?? .plainText
-                ]
-            )
-        )
-        Task { @MainActor in
-            do {
-                guard
-                    let url =
-                        try await fileSelectionPresenter
-                        .requiredForFileSelection()
-                        .selectURL(request)
-                else { return }
-                let secured = url.startAccessingSecurityScopedResource()
-                defer { if secured { url.stopAccessingSecurityScopedResource() } }
-                try await store.importSnippet(from: url)
-                importError = nil
-            } catch is CancellationError {
-                return
-            } catch {
-                importError = error.localizedDescription
-            }
-        }
-    }
 }
 
 private struct AppearanceReadingEditor: View {
@@ -928,24 +805,24 @@ private struct AppearanceReadingEditor: View {
             .accessibilityIdentifier("scholium.appearance.hyphenation")
             .id("appearance.hyphenation")
             Text(
-                "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Source and technical regions remain unchanged."
+                "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Code and technical regions remain unchanged."
             )
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }.id("appearance.reading")
-        Section("Source Font") {
-            Picker("Source Font", selection: $profile.settings.source.fontFamily) {
+        Section("Code Font") {
+            Picker("Code Font", selection: $profile.settings.source.fontFamily) {
                 ForEach(fontCatalog.families(retaining: profile.settings.source.fontFamily), id: \.self) {
                     Text(verbatim: $0).tag($0)
                 }
             }
             .accessibilityIdentifier("scholium.appearance.sourceFont")
-            LabeledContent("Source font size") {
+            LabeledContent("Code font size") {
                 HStack {
                     AppearanceNumberControl(
                         value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.25,
-                        title: "Source font size")
+                        title: "Code font size")
                     Text("pt").foregroundStyle(.secondary)
                         .frame(width: ScholiumMetrics.Settings.unitLabelWidth, alignment: .leading)
                 }
@@ -1398,81 +1275,6 @@ extension DocumentHyphenation {
         switch self {
         case .none: "Never"
         case .automatic: "Automatic"
-        }
-    }
-}
-
-private struct CSSSnippetRow: View {
-    let snippet: CSSSnippetRecord
-    let error: String?
-    @ObservedObject var store: CSSSnippetStore
-    @State private var showRename = false
-    @State private var nameDraft = ""
-
-    var body: some View {
-        HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
-            Toggle(
-                isOn: Binding(
-                    get: { snippet.isEnabled },
-                    set: { store.setEnabled($0, for: snippet.id) }
-                )
-            ) {
-                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
-                    Text(snippet.name)
-                        .lineLimit(1)
-                    if let error {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .lineLimit(2)
-                    } else {
-                        Text(snippet.isEnabled ? "Enabled" : "Disabled")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .toggleStyle(.checkbox)
-
-            Spacer(minLength: ScholiumMetrics.Settings.rowActionMinimumSpacing)
-
-            Button {
-                store.move(snippet.id, by: -1)
-            } label: {
-                Label("Move Earlier", systemImage: "chevron.up")
-            }
-            .labelStyle(.iconOnly)
-            .help("Move Earlier")
-
-            Button {
-                store.move(snippet.id, by: 1)
-            } label: {
-                Label("Move Later", systemImage: "chevron.down")
-            }
-            .labelStyle(.iconOnly)
-            .help("Move Later")
-
-            Menu {
-                Button("Rename…") {
-                    nameDraft = snippet.name
-                    showRename = true
-                }
-                Button("Duplicate") { store.duplicate(snippet.id) }
-                Button("Edit Managed Copy") { store.editManagedCopy(snippet.id) }
-                Button("Reload from Disk") { store.reload(snippet.id) }
-                Divider()
-                Button("Remove Snippet", role: .destructive) { store.remove(snippet.id) }
-            } label: {
-                Label("Snippet Actions", systemImage: "ellipsis.circle")
-            }
-            .labelStyle(.iconOnly)
-            .menuStyle(.borderlessButton)
-        }
-        .padding(.vertical, ScholiumMetrics.Settings.rowVerticalInset)
-        .alert("Rename CSS Snippet", isPresented: $showRename) {
-            TextField("Snippet name", text: $nameDraft)
-            Button("Cancel", role: .cancel) {}
-            Button("Rename") { store.rename(snippet.id, to: nameDraft) }
         }
     }
 }

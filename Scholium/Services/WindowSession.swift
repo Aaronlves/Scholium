@@ -77,7 +77,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     lazy var documentLocations = DocumentWindowLocationStore(workspaceStore: self)
     let applicationSupportURL: URL
     let applicationRuntime: WorkspaceRuntime
-    let cssSnippetStore: CSSSnippetStore
+    let documentAppearanceStore: DocumentAppearanceStore
     let zoteroBridge: ZoteroBridge
     private var requestRouter: ScholiumAppBridgeRequestRouter?
     var noteDisplayWindows: [UUID: AgentNoteDisplayWindow] = [:]
@@ -154,7 +154,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     workspaceRegistryStorageURL: workspaceURL
                 )))
         applicationRuntime = runtime
-        cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
+        documentAppearanceStore = DocumentAppearanceStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
         do {
             let bridgeContainerURL = try ScholiumPaths.appBridgeContainerURL(

@@ -164,7 +164,7 @@ final class DocumentController: ObservableObject {
         }
     }
     @Published private(set) var chromeProjection = DocumentChromeProjection.empty
-    @Published private(set) var currentPresentationMode: NotePresentationMode = .livePreview
+    @Published private(set) var currentPresentationMode: NotePresentationMode = .edit
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
@@ -179,7 +179,6 @@ final class DocumentController: ObservableObject {
     @Published var identityResolutionError: String?
 
     private let sessions = DocumentSessionStore()
-    private let readProjectionCache = DocumentReadProjectionCache()
     private let linkCompletionIndex = EditorLinkCompletionIndex()
     private let writingSuggestions = EditorWritingSuggestions()
     private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
@@ -210,7 +209,7 @@ final class DocumentController: ObservableObject {
     init(intentHandler: @escaping IntentHandler = { _ in }) {
         var initialPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
-            initialPresentationModes[workspace] = .livePreview
+            initialPresentationModes[workspace] = .edit
         }
         presentationModesByWorkspace = initialPresentationModes
         self.intentHandler = intentHandler
@@ -271,33 +270,6 @@ final class DocumentController: ObservableObject {
             source: source,
             sourceFingerprint: sourceFingerprint,
             graphGeneration: graphGeneration
-        )
-    }
-
-    func readProjectionHTML(
-        target: DocumentEditingTarget,
-        relativePath: String,
-        source: String,
-        fingerprint: DocumentFingerprint,
-        workspaceID: UUID?,
-        semantic: MarkdownSemanticDocument? = nil
-    ) async -> String {
-        let stableTarget: String
-        switch target {
-        case .workspace(let key):
-            stableTarget = "\(key.vaultID.uuidString.lowercased()):\(key.noteID.uuidString.lowercased())"
-        case .unavailable(let vaultID, let path):
-            stableTarget = "unavailable:\(vaultID.uuidString.lowercased()):\(path)"
-        }
-        return await readProjectionCache.html(
-            for: DocumentReadProjectionKey(
-                workspaceID: workspaceID,
-                stableTarget: stableTarget,
-                relativePath: relativePath,
-                fingerprint: fingerprint
-            ),
-            source: source,
-            semantic: semantic
         )
     }
 
@@ -618,13 +590,13 @@ final class DocumentController: ObservableObject {
     func canReceiveSessionTransfer(_ document: WindowSelectedDocument) -> Bool {
         guard let existing = sessions.retainedSession(for: document.editingTarget) else { return true }
         return !existing.hasUnsavedChanges && existing.conflict == nil
-            && !existing.isSavingEdit && !existing.editorSession.hasAttachedWebView
+            && !existing.isSavingEdit && !existing.editorSession.hasAttachedNativeView
     }
 
     func resumeAutosave(afterTransferOf document: WindowSelectedDocument, suspensionID: String? = nil) {
         guard let session = sessions.retainedSession(for: document.editingTarget) else { return }
         if selectedDocument?.editingTarget == document.editingTarget,
-            session.editorSession.hasAttachedWebView,
+            session.editorSession.hasAttachedNativeView,
             let suspensionID
         {
             let token = UUID()
@@ -639,7 +611,7 @@ final class DocumentController: ObservableObject {
                 }
                 do {
                     guard self.selectedDocument?.editingTarget == document.editingTarget,
-                        session.editorSession.hasAttachedWebView
+                        session.editorSession.hasAttachedNativeView
                     else {
                         self.scheduleAutosave(session: session, target: document.editingTarget)
                         return
@@ -678,7 +650,7 @@ final class DocumentController: ObservableObject {
                 }
                 guard !session.isSavingEdit else { throw DocumentControllerError.changedDuringSave }
             }
-            if session.editorSession.hasAttachedWebView {
+            if session.editorSession.hasAttachedNativeView {
                 try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
             }
             guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
@@ -705,7 +677,7 @@ final class DocumentController: ObservableObject {
         let document = transfer.document
         // A clean preloaded projection has no lease and can be discarded before adoption.
         if let existing = sessions.takeSession(for: document.editingTarget) {
-            precondition(!existing.hasUnsavedChanges && !existing.editorSession.hasAttachedWebView)
+            precondition(!existing.hasUnsavedChanges && !existing.editorSession.hasAttachedNativeView)
             existing.shutdown()
         }
         sessions.receiveSession(transfer.session, for: document.editingTarget)
@@ -766,7 +738,7 @@ final class DocumentController: ObservableObject {
         }
         for (target, session) in candidates {
             if capturingEditorState,
-                session.editorSession.hasAttachedWebView
+                session.editorSession.hasAttachedNativeView
             {
                 try await session.editorSession.captureStateForViewReconstruction()
             }
@@ -777,7 +749,7 @@ final class DocumentController: ObservableObject {
             // genuinely unchanged. Detached sessions can use their retained
             // mirror because no newer WebKit state exists.
             guard
-                session.isEditing && session.editorSession.hasAttachedWebView
+                session.isEditing && session.editorSession.hasAttachedNativeView
                     || session.hasUnsavedChanges
                     || session.isSavingEdit
                     || session.canRetrySave
@@ -792,11 +764,11 @@ final class DocumentController: ObservableObject {
     /// cannot rely on the currently selected view's registration.
     func flushBeforeClosing(_ document: WindowSelectedDocument) async throws {
         guard let session = sessions.retainedSession(for: document.editingTarget) else { return }
-        if session.editorSession.hasAttachedWebView {
+        if session.editorSession.hasAttachedNativeView {
             try await session.editorSession.captureStateForViewReconstruction()
         }
         guard
-            session.isEditing && session.editorSession.hasAttachedWebView
+            session.isEditing && session.editorSession.hasAttachedNativeView
                 || session.hasUnsavedChanges
                 || session.isSavingEdit
                 || session.canRetrySave
@@ -839,8 +811,8 @@ final class DocumentController: ObservableObject {
             retainedReferences[key] = descriptor.reference
             let selectedSession = session(for: key)
             reconcile(session: selectedSession, with: snapshot)
-            presentationModesByWorkspace[activeWorkspace] = .livePreview
-            currentPresentationMode = .livePreview
+            presentationModesByWorkspace[activeWorkspace] = .edit
+            currentPresentationMode = .edit
             selectedSession.beginManagedCreationEntry(
                 bodyStartUTF16: bodyStart
             )
@@ -853,7 +825,7 @@ final class DocumentController: ObservableObject {
                 target: .workspace(key),
                 source: snapshot.document.rawContent,
                 revision: snapshot.fingerprint,
-                mode: .livePreview
+                mode: .edit
             )
             installOpenedDocument(descriptor)
         } else {
@@ -965,7 +937,7 @@ final class DocumentController: ObservableObject {
     }
 
     func presentationMode(for workspace: WorkspaceVaultSlot) -> NotePresentationMode {
-        presentationModesByWorkspace[workspace] ?? .livePreview
+        presentationModesByWorkspace[workspace] ?? .edit
     }
 
     func selectWorkspace(_ workspace: WorkspaceVaultSlot) {
@@ -982,7 +954,7 @@ final class DocumentController: ObservableObject {
     ) {
         var restoredPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
-            restoredPresentationModes[workspace] = modesByWorkspace[workspace] ?? .livePreview
+            restoredPresentationModes[workspace] = modesByWorkspace[workspace] ?? .edit
         }
         presentationModesByWorkspace = restoredPresentationModes
         currentPresentationMode = presentationMode(for: activeWorkspace)
@@ -1116,10 +1088,10 @@ final class DocumentController: ObservableObject {
         activeWorkspace = .paperAnalysis
         var resetPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
-            resetPresentationModes[workspace] = .livePreview
+            resetPresentationModes[workspace] = .edit
         }
         presentationModesByWorkspace = resetPresentationModes
-        currentPresentationMode = .livePreview
+        currentPresentationMode = .edit
         for session in sessions.retainedSessions.values {
             session.resetPresentation()
             session.resetScrollPosition()
@@ -1149,10 +1121,10 @@ final class DocumentController: ObservableObject {
         activeWorkspace = .paperAnalysis
         var resetPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
-            resetPresentationModes[workspace] = .livePreview
+            resetPresentationModes[workspace] = .edit
         }
         presentationModesByWorkspace = resetPresentationModes
-        currentPresentationMode = .livePreview
+        currentPresentationMode = .edit
         selectedDocument = nil
         chromeProjection = .empty
         snapshots = [:]
@@ -1297,7 +1269,7 @@ final class DocumentController: ObservableObject {
             } else {
                 session.preparePresentationMode(.read)
             }
-        case .livePreview, .source:
+        case .edit:
             if case .workspace(let key) = target,
                 let capabilities = snapshots[key]?.capabilities,
                 !capabilities.canEditSource
@@ -1343,8 +1315,6 @@ final class DocumentController: ObservableObject {
     }
 
     func handleMemoryPressure(_ level: DocumentMemoryPressureLevel) {
-        sessions.editorWebViewPool.removeAll()
-        Task { await readProjectionCache.removeAll() }
         Task { await linkCompletionIndex.removeAll() }
         switch level {
         case .warning:
@@ -1379,13 +1349,6 @@ final class DocumentController: ObservableObject {
         session.originalEditingSource = source
         session.editingSource = source
         session.editingRevision = revision
-        if mode == .livePreview,
-            session.renderedReadFingerprint == DocumentFingerprint(content: source).sha256,
-            let range = session.readSelection?.exactUTF16Range,
-            range.lowerBound >= 0, range.upperBound <= source.utf16.count
-        {
-            session.editorSession.prepareReadSelection(range)
-        }
         session.editorSession.authorizeAutomaticFocus()
         session.beginEditing(in: mode)
         editingDocumentPath = relativePath(for: target)
@@ -1601,8 +1564,8 @@ final class DocumentController: ObservableObject {
             session.pendingEditorCommit = nil
             session.editorSession.loadDocument(
                 document.rawContent,
-                documentID: session.editorSession.bridgeDocumentID,
-                mode: session.retainedEditorMode
+                documentID: session.editorSession.editorDocumentID,
+                mode: session.isEditing ? .edit : .read
             )
             session.suppressAutosave = false
             // The exact conflict accepted by this reload has been resolved.
@@ -2150,8 +2113,8 @@ final class DocumentController: ObservableObject {
         if session.isEditing || !session.editorSession.documentID.isEmpty {
             session.editorSession.loadDocument(
                 diskSource,
-                documentID: session.editorSession.bridgeDocumentID,
-                mode: session.retainedEditorMode,
+                documentID: session.editorSession.editorDocumentID,
+                mode: session.isEditing ? .edit : .read,
                 initialSourceRange: managedBodyStart.map { $0..<$0 }
             )
         }

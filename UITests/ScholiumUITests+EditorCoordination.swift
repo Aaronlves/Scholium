@@ -8,7 +8,7 @@ extension ScholiumUITests {
     @MainActor
     func testSelectionActionResultReplacesBarAndPreservesPassage() throws {
         try enterLivePreviewAndAppend("\n\nSelection action fixture")
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let editor = app.descendants(matching: .any)["Document, Editing"].firstMatch
         let before = editor.value as? String
         // Select only the final synthetic paragraph, leaving the native editor focused.
         editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
@@ -66,17 +66,17 @@ extension ScholiumUITests {
                 "> [!\($0)] \($0) · 语义标题\n> Synthetic passage · 可编辑正文。"
             }.joined(separator: "\n\n") + "\n\n> [!cite]\n> Untitled source.\n\n> [!flag]- Folded limitation\n> Hidden fixture body.\n"
         try write(content, to: noteURL)
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let editor = app.descendants(matching: .any)["Document, Editing"].firstMatch
         XCTAssertTrue(waitUntil(timeout: 12) { (editor.value as? String)?.contains("Untitled source.") == true })
         attachWindowScreenshot("Callouts — Edit — authored order")
-        selectDocumentMode("Review")
+        selectDocumentMode("Read")
         waitForCurrentDocumentSurface()
         attachWindowScreenshot("Callouts — Review — matching structure")
         selectDocumentMode("Edit")
         waitForCurrentDocumentSurface()
         XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String)?.contains("Untitled source.") == true })
         XCTAssertEqual(try source(at: noteURL), content)
-        selectDocumentMode("Source")
+        selectDocumentMode("Edit")
         waitForCurrentDocumentSurface()
         XCTAssertEqual(try source(at: noteURL), content)
         app.terminate()
@@ -85,7 +85,7 @@ extension ScholiumUITests {
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         waitForCurrentDocumentSurface()
-        selectDocumentMode("Review")
+        selectDocumentMode("Read")
         waitForCurrentDocumentSurface()
         attachWindowScreenshot("Callouts — Dark Review — narrow width")
         selectDocumentMode("Edit")
@@ -97,8 +97,8 @@ extension ScholiumUITests {
     @MainActor
     func testNativeCompletionPreservesFocusAndUndo() throws {
         try enterLivePreviewAndAppend("\n\ncompletionprobe\n\n")
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
-        let viewport = app.webViews.firstMatch
+        let editor = app.descendants(matching: .any)["Document, Editing"].firstMatch
+        let viewport = app.textViews["scholium.document.editor"].firstMatch
         let frame = viewport.frame
         let inputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         let isASCII =
@@ -171,8 +171,8 @@ extension ScholiumUITests {
     @MainActor
     func testDocumentFindDisclosesReplacementAndReturnsToExactSelection() throws {
         try enterLivePreviewAndAppend("\n\nfindprobe findprobe.")
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
-        let viewport = app.webViews.firstMatch
+        let editor = app.descendants(matching: .any)["Document, Editing"].firstMatch
+        let viewport = app.textViews["scholium.document.editor"].firstMatch
         let documentFrame = viewport.frame
         app.typeKey("f", modifierFlags: [.command])
         let query = app.descendants(matching: .any)["scholium.documentFind.query"].firstMatch
@@ -241,7 +241,7 @@ extension ScholiumUITests {
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !query.exists })
 
-        selectDocumentMode("Review")
+        selectDocumentMode("Read")
         app.typeKey("f", modifierFlags: [.command])
         XCTAssertTrue(query.waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["scholium.documentFind.disclosure"].exists)
@@ -301,11 +301,10 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testDocumentModeAndLibrarySwitchHandoffsStayBoundedWithoutSourceExposure() throws {
+    func testNativeDocumentModeAndLibrarySwitchHandoffsRetainSource() throws {
         let mode = documentModeControl()
-        let rendered = app.descendants(matching: .any)["Rendered Markdown"]
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
-        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
+        let rendered = app.descendants(matching: .any)["Document, Reading"]
+        let editor = app.descendants(matching: .any)["Document, Editing"]
         let firstURL = triptychDirectory.appendingPathComponent(
             "01-analyses/QA Autosave A.md"
         )
@@ -322,11 +321,8 @@ extension ScholiumUITests {
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         let handoffToken = " MODE-HANDOFF-\(UUID().uuidString)"
         try enterLivePreviewAndAppend(handoffToken)
-        selectMode("Source")
-        XCTAssertTrue(sourceEditor.waitForExistence(timeout: 8))
-        selectMode("Review")
+        selectMode("Read")
         XCTAssertTrue(rendered.waitForExistence(timeout: 8))
-        XCTAssertFalse(sourceEditor.exists)
         XCTAssertTrue(
             try source(at: firstURL).contains(handoffToken),
             "Review must show the committed revision containing the pending edit.")
@@ -334,11 +330,7 @@ extension ScholiumUITests {
         let reviewToEditStart = DispatchTime.now().uptimeNanoseconds
         selectMode("Edit")
         let editDeadline = Date().addingTimeInterval(8)
-        var sourceExposureSamples = 0
         while Date() < editDeadline, !(editor.exists && editor.isHittable) {
-            if sourceEditor.exists && sourceEditor.isHittable {
-                sourceExposureSamples += 1
-            }
             RunLoop.current.run(until: Date().addingTimeInterval(0.01))
         }
         let reviewToEditMilliseconds =
@@ -346,15 +338,8 @@ extension ScholiumUITests {
                 DispatchTime.now().uptimeNanoseconds - reviewToEditStart
             ) / 1_000_000
         XCTAssertTrue(editor.exists && editor.isHittable)
-        XCTAssertEqual(
-            sourceExposureSamples,
-            0,
-            "Review must remain the visible handoff surface until Edit is bridge-acknowledged."
-        )
-        XCTAssertFalse(sourceEditor.exists)
-
         let editToReviewStart = DispatchTime.now().uptimeNanoseconds
-        selectMode("Review")
+        selectMode("Read")
         XCTAssertTrue(rendered.waitForExistence(timeout: 8))
         let editToReviewMilliseconds =
             Double(
@@ -369,7 +354,7 @@ extension ScholiumUITests {
             waitUntil(timeout: 8) {
                 self.documentTitle() == "QA Autosave B"
                     && self.app.descendants(matching: .any)[
-                        "Markdown editor, Edit mode"
+                        "Document, Editing"
                     ].exists
             })
         let firstToSecondMilliseconds =
@@ -400,7 +385,6 @@ extension ScholiumUITests {
                 Edit to Review: \(editToReviewMilliseconds) ms
                 Edit A to Review B through Library: \(firstToSecondMilliseconds) ms
                 Review B to restored Edit A through Library: \(secondToFirstMilliseconds) ms
-                Hittable Source samples during Review to Edit: \(sourceExposureSamples)
                 """)
         evidence.name = "Document mode and Library handoff timings"
         evidence.lifetime = .keepAlways
@@ -419,7 +403,7 @@ extension ScholiumUITests {
         XCTAssertNotEqual(changed, current)
         try write(changed, to: noteURL)
 
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
+        let editor = app.descendants(matching: .any)["Document, Editing"]
         XCTAssertTrue(
             waitUntil(timeout: 12) {
                 (editor.value as? String)?.contains(heading) == true
@@ -445,7 +429,7 @@ extension ScholiumUITests {
 
         let renamedRow = app.descendants(matching: .any)["scholium.noteRow.\(renamedPath)"]
         XCTAssertTrue(renamedRow.waitForExistence(timeout: 12))
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
+        let editor = app.descendants(matching: .any)["Document, Editing"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
 
         // A unique same-byte rename preserves the stable note identity. The
@@ -585,7 +569,7 @@ extension ScholiumUITests {
         XCTAssertTrue(conflictWindow.buttons["Reload from Disk"].exists)
         returnToEditing.click()
 
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
+        let editor = app.descendants(matching: .any)["Document, Editing"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         XCTAssertTrue((editor.value as? String ?? "").contains(localToken))
     }
@@ -620,7 +604,7 @@ extension ScholiumUITests {
             "The QA-only distributed fault route must reach the focused bridge document."
         )
 
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
+        let editor = app.descendants(matching: .any)["Document, Editing"]
         XCTAssertTrue(editor.waitForExistence(timeout: 12))
         XCTAssertTrue(
             waitUntil(timeout: 12) { (editor.value as? String ?? "").contains(token) },
@@ -773,7 +757,7 @@ extension ScholiumUITests {
 
         firstTab.click()
         XCTAssertTrue(waitUntil(timeout: 5) { self.documentTitle() == "QA Autosave A" })
-        selectDocumentMode("Review")
+        selectDocumentMode("Read")
         waitForCurrentDocumentSurface()
         secondTab.click()
         XCTAssertTrue(waitUntil(timeout: 5) { self.documentTitle() == "QA Autosave B" })
@@ -839,7 +823,7 @@ extension ScholiumUITests {
         ]
         XCTAssertTrue(conflictStatus.exists)
         XCTAssertTrue(accessibilityText(of: conflictStatus).contains("Autosave Paused"))
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
+        let editor = app.descendants(matching: .any)["Document, Editing"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         XCTAssertTrue((editor.value as? String ?? "").contains(localToken))
         XCTAssertTrue(try source(at: noteURL).contains(secondDiskToken))

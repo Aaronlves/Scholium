@@ -1,6 +1,15 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Rename Note…" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"重命名笔记…"}}}},
+    "Open Link" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"打开链接"}}}},
+    "Preparing continuation…" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Preparing continuation…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在准备续写…"}}}},
+    "Retrieving context…" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retrieving context…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在检索上下文…"}}}},
+    "Generating continuation…" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Generating continuation…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在生成续写…"}}}},
+    "AI continuation" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写"}}}},
+    "Note title" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"笔记标题"}}}},
+    "Document, Editing" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"文档正文，编辑"}}}},
+    "Document, Reading" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"文档正文，阅读"}}}},
     "Choose Original…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose Original…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "选择原始文件…"}}}},
     "Mode": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mode"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "模式"}}}},
     "Open Note: %@": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Note: %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开笔记：%@"}}}},
@@ -65,11 +74,22 @@
     "Recover Default Appearance": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover Default Appearance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复默认文稿外观"}}}},
     "Recover Default Appearance…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover Default Appearance…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复默认文稿外观…"}}}},
     "Appearance Recovery": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Appearance Recovery"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文稿外观恢复"}}}},
-    "Replace saved appearance profiles with a default profile and discard the current appearance draft. The previous configuration file is preserved separately. CSS snippets and research files are unchanged.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Replace saved appearance profiles with a default profile and discard the current appearance draft. The previous configuration file is preserved separately. CSS snippets and research files are unchanged."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "用默认配置替换已保存的外观配置，并舍弃当前外观草稿。原配置文件将另存副本。CSS 片段和研究文件保持不变。"}}}},
-    "Recover CSS Snippet Settings?": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover CSS Snippet Settings?"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复 CSS 片段设置？"}}}},
-    "Recover CSS Snippet Settings": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover CSS Snippet Settings"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复 CSS 片段设置"}}}},
-    "Recover CSS Snippet Settings…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover CSS Snippet Settings…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复 CSS 片段设置…"}}}},
-    "Restore snippet settings with all snippets disabled. The previous settings file is preserved separately. CSS files, appearance profiles and research files are unchanged.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore snippet settings with all snippets disabled. The previous settings file is preserved separately. CSS files, appearance profiles and research files are unchanged."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复片段设置，并停用所有片段。原设置文件将另存副本。CSS 文件、外观配置及研究文件保持不变。"}}}},
+    "Replace saved appearance profiles with a default profile and discard the current appearance draft. The previous configuration file is preserved separately. Research files are unchanged." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replace saved appearance profiles with a default profile and discard the current appearance draft. The previous configuration file is preserved separately. Research files are unchanged."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用默认配置替换已保存的外观配置，并舍弃当前外观草稿。原配置文件将另存副本。研究文件保持不变。"
+          }
+        }
+      }
+    },
     "Some shortcuts could not be loaded. Available shortcuts remain usable; restore defaults to repair the saved settings.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some shortcuts could not be loaded. Available shortcuts remain usable; restore defaults to repair the saved settings."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分快捷键无法载入，其余快捷键仍可使用；恢复默认值可以修复已保存的设置。"}}}},
     "Restore Writing Continuation Defaults": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore Writing Continuation Defaults"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复续写默认设置"}}}},
     "Some selection actions could not be loaded. Available actions are retained. Save your changes or restore defaults to replace these settings.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some selection actions could not be loaded. Available actions are retained. Save your changes or restore defaults to replace these settings."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分选区操作无法载入，可用操作已保留。保存修改或恢复默认值可替换这些设置。"}}}},
@@ -4339,34 +4359,18 @@
         }
       }
     },
-    "Add .css files to the managed folder, or import one. Changes are detected automatically and apply to Review and Edit after validation; Source remains exact." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Add .css files to the managed folder, or import one. Changes are detected automatically and apply to Review and Edit after validation; Source remains exact."
+    "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Code and technical regions remain unchanged." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Code and technical regions remain unchanged."
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将 .css 文件放入受管文件夹，或导入文件。验证后会自动检测变化并应用于 Review 和 Edit；Source 保持精确。"
-          }
-        }
-      }
-    },
-    "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Source and technical regions remain unchanged." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Automatic hyphenation uses language-aware dictionaries for supported prose. Chinese text is not syllabified; Source and technical regions remain unchanged."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动断词使用适用于支持文本的语言词典。中文不会按音节断开；Source 和技术区域保持不自动断词。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动断词使用语言词典处理支持的正文。中文不按音节断词；代码及技术文本保持不变。"
           }
         }
       }
@@ -5192,38 +5196,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "高级外观"
-          }
-        }
-      }
-    },
-    "Advanced CSS" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Advanced CSS"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "高级 CSS"
-          }
-        }
-      }
-    },
-    "Advanced CSS…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Advanced CSS…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "高级 CSS…"
           }
         }
       }
@@ -7234,71 +7206,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "核心协议"
-          }
-        }
-      }
-    },
-    "CSS Safe Mode: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "CSS Safe Mode: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSS 安全模式：%@"
-          }
-        }
-      }
-    },
-    "CSS Safe Mode: %arg" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "CSS Safe Mode: %arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSS 安全模式：%arg"
-          }
-        }
-      }
-    },
-    "CSS Snippets" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSS Snippets"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSS 片段"
-          }
-        }
-      }
-    },
-    "CSS Snippets…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSS Snippets…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CSS 片段…"
           }
         }
       }
@@ -11517,22 +11424,6 @@
         }
       }
     },
-    "Disable All Snippets" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Disable All Snippets"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "禁用所有片段"
-          }
-        }
-      }
-    },
     "Disabled" : {
       "localizations" : {
         "en" : {
@@ -13814,38 +13705,6 @@
         }
       }
     },
-    "Fine typography and document styling can be extended with CSS snippets." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Fine typography and document styling can be extended with CSS snippets."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可通过 CSS 片段扩展细致排版和文稿样式。"
-          }
-        }
-      }
-    },
-    "Fine typography is configured with Advanced CSS." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Fine typography is configured with Advanced CSS."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "细致排版通过 Advanced CSS 配置。"
-          }
-        }
-      }
-    },
     "Finish Recovery" : {
       "localizations" : {
         "zh-Hans" : {
@@ -14971,38 +14830,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "导入"
-          }
-        }
-      }
-    },
-    "Import CSS Snippet" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Import CSS Snippet"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导入 CSS 片段"
-          }
-        }
-      }
-    },
-    "Import CSS Snippet…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Import CSS Snippet…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导入 CSS 片段…"
           }
         }
       }
@@ -19084,32 +18911,6 @@
         }
       }
     },
-    "No snippets imported." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未导入 CSS 代码片段。"
-          }
-        }
-      }
-    },
-    "No CSS snippets yet. Open the folder or import a file to add one." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No CSS snippets yet. Open the folder or import a file to add one."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "还没有 CSS 片段。打开文件夹或导入文件即可添加。"
-          }
-        }
-      }
-    },
     "No source text returned" : {
       "localizations" : {
         "zh-Hans" : {
@@ -19782,22 +19583,6 @@
         }
       }
     },
-    "Open CSS Folder" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Open CSS Folder"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开 CSS 文件夹"
-          }
-        }
-      }
-    },
     "Open Linked Note" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20241,16 +20026,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可选"
-          }
-        }
-      }
-    },
-    "Optional CSS snippets are additive compatibility overrides; the selected appearance remains primary." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可选 CSS 代码片段是附加的兼容性覆盖；所选外观仍是主要配置。"
           }
         }
       }
@@ -22994,22 +22769,6 @@
         }
       }
     },
-    "Remove Snippet" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Remove Snippet"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除片段"
-          }
-        }
-      }
-    },
     "Remove This Triptych Registration?" : {
       "localizations" : {
         "en" : {
@@ -23252,22 +23011,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重命名外观…"
-          }
-        }
-      }
-    },
-    "Rename CSS Snippet" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Rename CSS Snippet"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重命名 CSS 片段"
           }
         }
       }
@@ -26662,16 +26405,6 @@
         }
       }
     },
-    "Show Source" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示源文本"
-          }
-        }
-      }
-    },
     "Show Spelling and Grammar" : {
       "localizations" : {
         "en" : {
@@ -27020,38 +26753,6 @@
         }
       }
     },
-    "Snippet Actions" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Snippet Actions"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "片段操作"
-          }
-        }
-      }
-    },
-    "Snippet name" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Snippet name"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "片段名称"
-          }
-        }
-      }
-    },
     "Software" : {
       "localizations" : {
         "en" : {
@@ -27200,18 +26901,18 @@
         }
       }
     },
-    "Source Font" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Source Font"
+    "Code Font" : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code Font"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "源码字体"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代码字体"
           }
         }
       }
@@ -27236,18 +26937,18 @@
         }
       }
     },
-    "Source font size" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Source font size"
+    "Code font size" : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code font size"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "源文本字号"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代码字号"
           }
         }
       }
@@ -27786,12 +27487,12 @@
         }
       }
     },
-    "Switch Review and Edit" : {
+    "Switch Read and Edit" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在审阅与编辑之间切换"
+            "value" : "在阅读与编辑之间切换"
           }
         }
       }
@@ -31399,22 +31100,12 @@
         }
       }
     },
-    "View → Edit / Review" : {
+    "View → Edit / Read" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "显示 → 编辑／审阅"
-          }
-        }
-      }
-    },
-    "View → Document Mode → Source" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示 → 文档模式 → 源文本"
+            "value" : "显示 → 编辑／阅读"
           }
         }
       }

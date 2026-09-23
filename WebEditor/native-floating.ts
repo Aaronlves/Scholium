@@ -83,7 +83,7 @@ type ActivePresentation = {
 
 /**
  * Creates typed presentation ports sharing only native-host arbitration and
- * the bounded event route back into the active CodeMirror/reader owner.
+ * the bounded event route back into the active reader owner.
  */
 export function createNativeFloatingPorts(
   post: (event: NativeFloatingEvent) => void,

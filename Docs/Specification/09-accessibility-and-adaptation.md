@@ -102,18 +102,19 @@ Library/Search/Notifications interaction. Their accessibility obligations are:
 YAML interaction; §18.6 owns state/action wording. Verify:
 
 - Managed creation announces once and places insertion at the exact body start.
-  Durable-source/editor failure exposes Retry Edit and Source rather than
+  Durable-source/editor failure retains exact source and exposes Retry Edit rather than
   inviting duplicate creation. Edit entry announces its valid restored or mapped
   selection without unexpectedly taking title focus.
 - Mode, window, external-change, conflict and recovery transitions preserve
   source, dirty input, composition, selection, Undo and reading context. Native
   focus returns to the initiator or next valid target.
-- The app-owned filename title is the first Review/Edit accessible heading.
-  Its Edit field is named **Note title**, exposes rename rejection and keeps
-  IME/text behavior. Authored headings retain semantic levels; Source exposes
-  only exact authored hierarchy. Visible title/heading padding and blank lines
-  remain pointer-addressable under §18.4.
-- Review selection, Edit formatting and system spelling/grammar
+- The toolbar title exposes the complete Note identity and a named activation
+  that opens its native rename popover in Read or Edit. The **Name** field keeps
+  native IME/text behavior; rejection is associated with the retained draft.
+  Keyboard dismissal restores the initiator or next valid target without changing
+  body selection. Authored headings retain their exact semantic hierarchy;
+  heading padding and blank lines remain pointer-addressable under §18.4.
+- Read selection, Edit formatting and system spelling/grammar
   routes remain accessible. Ask Agent preserves the original selection while
   handing focus to the existing Chat composer; its native action, menu and
   shortcut share one capture path. The first Escape dismisses an open selection
@@ -121,8 +122,8 @@ YAML interaction; §18.6 owns state/action wording. Verify:
   generation, Stop, retry, inspected version and exact replacement consequence.
   Dismissal restores Document focus; input-method composition takes
   precedence. Neither edits or sends. Source mapping failure names
-  Edit/Source as the available repair. Returning a verified Chat passage restores
-  native selection in Review or opens its exact Source range; a read-only
+  Edit as the available repair. Returning a verified Chat passage restores
+  native selection in Read or opens its exact range in Edit; a read-only
   rendering that cannot select the passage reports the limitation and retains
   the supplied-text preview.
 - Note Actions has a complete accessible name in both window types. Paragraph
@@ -275,7 +276,7 @@ Core App acceptance keeps four bounded human checks:
    reading order, announcements and focus continuity;
 2. one physical Full Keyboard Access journey through menu/toolbar, Library,
    editor, a sheet, cancellation and recovery;
-3. one installed Simplified Chinese input-method journey in Edit and Source,
+3. one installed Simplified Chinese input-method journey in Edit,
    including nondefault candidate selection, mixed-script selection, Undo,
    save, reopen and exact-source comparison; and
 4. one representative visual-adaptation set spanning populated content and one

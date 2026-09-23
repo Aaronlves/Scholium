@@ -12,14 +12,14 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     private var activeNavigation: WKNavigation?
     private var generation: UInt64 = 0
     var isShown: Bool { popover?.isShown == true }
-    private weak var owner: WKWebView?
+    private weak var owner: NSView?
     private var surface: DocumentPreviewSurface?
     private var popover: NSPopover?
     private var measurement: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var eventMonitor: Any?
 
-    func present(_ value: DocumentPreviewSurface, in owner: WKWebView) {
+    func present(_ value: DocumentPreviewSurface, in owner: NSView) {
         // Repeated pointer/focus reports retain both the loaded content and its
         // reading position. A different target gets a fresh measured presentation.
         if self.owner === owner, let surface,
@@ -142,7 +142,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         }
     }
 
-    private func observeContext(_ owner: WKWebView) {
+    private func observeContext(_ owner: NSView) {
         guard let window = owner.window else { return }
         for name in [NSWindow.willCloseNotification, NSWindow.didResizeNotification] {
             observers.append(

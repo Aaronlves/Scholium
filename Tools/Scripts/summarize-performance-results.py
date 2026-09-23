@@ -18,12 +18,9 @@ LATENCY_METRICS = (
     "indexed_search",
     "warm_read_activation",
     "first_read_activation",
-    "editor_key_to_paint",
     "editor_mode_transition",
-    "editor_cached_preview",
     "warm_edit_activation",
     "first_edit_activation",
-    "editor_visible_projection",
 )
 ALL_METRICS = LATENCY_METRICS + ("editor_retained_memory",)
 THRESHOLDS_MS = {
@@ -31,28 +28,19 @@ THRESHOLDS_MS = {
     "indexed_search": 200.0,
     "warm_read_activation": 300.0,
     "first_read_activation": 1_000.0,
-    "editor_key_to_paint": 100.0,
     "editor_mode_transition": 100.0,
-    "editor_cached_preview": 100.0,
     "warm_edit_activation": 200.0,
     "first_edit_activation": 750.0,
-    "editor_visible_projection": 3.0,
 }
 MAXIMUM_LIMITS_MS = {
-    "editor_key_to_paint": 200.0,
     "editor_mode_transition": 200.0,
-    "editor_cached_preview": 200.0,
     "warm_edit_activation": 300.0,
     "first_edit_activation": 1_000.0,
-    "editor_visible_projection": 5.0,
 }
 REQUIRED_EDITOR_METRICS = (
-    "editor_key_to_paint",
     "editor_mode_transition",
-    "editor_cached_preview",
     "warm_edit_activation",
     "first_edit_activation",
-    "editor_visible_projection",
     "editor_retained_memory",
 )
 EXPECTED_COUNTS = {
@@ -76,10 +64,10 @@ LAUNCH_DETAIL_KEYS = (
 FIRST_READ_PHASE_KEYS = (
     "activation_to_document_selection_duration_ms",
     "document_selection_to_read_task_start_duration_ms",
-    "read_task_start_to_html_ready_duration_ms",
-    "read_html_ready_to_navigation_start_duration_ms",
-    "read_navigation_duration_ms",
-    "read_navigation_to_ready_duration_ms",
+    "read_task_start_to_source_ready_duration_ms",
+    "read_source_ready_to_layout_start_duration_ms",
+    "read_native_layout_duration_ms",
+    "read_layout_to_ready_duration_ms",
 )
 ALLOWED_KEYS = {
     "schema",
@@ -90,9 +78,9 @@ ALLOWED_KEYS = {
     "completed_uptime_ns",
     "observed_count",
     "observed_mode",
-    "acknowledged_duration_ms",
-    "bridge_started_duration_ms",
-    "bridge_roundtrip_duration_ms",
+    "applied_duration_ms",
+    "native_layout_started_duration_ms",
+    "native_layout_work_duration_ms",
     "layout_duration_ms",
     "process_to_window_model_init_duration_ms",
     "window_model_init_to_workspace_ready_duration_ms",
@@ -103,10 +91,10 @@ ALLOWED_KEYS = {
     "vault_configuration_ready_to_projection_duration_ms",
     "activation_to_document_selection_duration_ms",
     "document_selection_to_read_task_start_duration_ms",
-    "read_task_start_to_html_ready_duration_ms",
-    "read_html_ready_to_navigation_start_duration_ms",
-    "read_navigation_duration_ms",
-    "read_navigation_to_ready_duration_ms",
+    "read_task_start_to_source_ready_duration_ms",
+    "read_source_ready_to_layout_start_duration_ms",
+    "read_native_layout_duration_ms",
+    "read_layout_to_ready_duration_ms",
 }
 MEMORY_ROLES = ("app", "gpu", "networking", "web_content")
 MEMORY_ALLOWED_KEYS = {
@@ -273,25 +261,25 @@ def load_metric(
         if expected_count is None and "observed_count" in record:
             raise SystemExit(f"{path}:{line_number}: unexpected observed count")
         if metric == "editor_mode_transition":
-            expected_mode = "source" if sample % 2 == 0 else "live_preview"
+            expected_mode = "read" if sample % 2 == 0 else "edit"
             if record.get("observed_mode") != expected_mode:
                 raise SystemExit(f"{path}:{line_number}: unexpected Editor mode sequence")
-            acknowledged = record.get("acknowledged_duration_ms")
-            bridge_started = record.get("bridge_started_duration_ms")
-            bridge_roundtrip = record.get("bridge_roundtrip_duration_ms")
+            applied = record.get("applied_duration_ms")
+            bridge_started = record.get("native_layout_started_duration_ms")
+            bridge_roundtrip = record.get("native_layout_work_duration_ms")
             layout = record.get("layout_duration_ms")
             if any(
                 not isinstance(value, (int, float))
                 or isinstance(value, bool)
                 or not math.isfinite(value)
                 or value < 0
-                for value in (acknowledged, bridge_started, bridge_roundtrip, layout)
+                for value in (applied, bridge_started, bridge_roundtrip, layout)
             ):
                 raise SystemExit(f"{path}:{line_number}: invalid Editor phase duration")
-            if abs(float(acknowledged) + float(layout) - float(duration)) > 0.001:
+            if abs(float(applied) + float(layout) - float(duration)) > 0.001:
                 raise SystemExit(f"{path}:{line_number}: Editor phases do not match duration")
             if abs(
-                float(bridge_started) + float(bridge_roundtrip) - float(acknowledged)
+                float(bridge_started) + float(bridge_roundtrip) - float(applied)
             ) > 0.001:
                 raise SystemExit(f"{path}:{line_number}: Editor bridge phases do not match acknowledgement")
         elif metric in LAUNCH_PHASE_METRICS:
@@ -312,9 +300,9 @@ def load_metric(
         elif any(
             phase in record
             for phase in (
-                "acknowledged_duration_ms",
-                "bridge_started_duration_ms",
-                "bridge_roundtrip_duration_ms",
+                "applied_duration_ms",
+                "native_layout_started_duration_ms",
+                "native_layout_work_duration_ms",
                 "layout_duration_ms",
             )
         ):
@@ -403,7 +391,7 @@ def load_editor_memory(
         transition = record.get("transition")
         if not isinstance(sample, int) or isinstance(sample, bool) or transition != sample:
             raise SystemExit(f"{path}:{line_number}: invalid memory sample index")
-        expected_mode = "live_preview" if sample % 2 == 0 else "source"
+        expected_mode = "edit" if sample % 2 == 0 else "read"
         if record.get("mode") != expected_mode:
             raise SystemExit(f"{path}:{line_number}: unexpected Editor mode sequence")
         counts = record.get("role_process_counts")
@@ -591,15 +579,12 @@ def self_test() -> None:
     assert p95_failure["passed"] is False
 
     available = {
-        "editor_key_to_paint": {},
         "editor_mode_transition": {},
         "editor_retained_memory": {},
     }
     assert missing_required_editor_metrics(available) == [
-        "editor_cached_preview",
         "warm_edit_activation",
         "first_edit_activation",
-        "editor_visible_projection",
     ]
 
     with tempfile.TemporaryDirectory(prefix="scholium-performance-self-test-") as directory:
@@ -615,19 +600,19 @@ def self_test() -> None:
             {
                 **base,
                 "sample": 0,
-                "observed_mode": "source",
-                "acknowledged_duration_ms": 7.0,
-                "bridge_started_duration_ms": 2.0,
-                "bridge_roundtrip_duration_ms": 5.0,
+                "observed_mode": "read",
+                "applied_duration_ms": 7.0,
+                "native_layout_started_duration_ms": 2.0,
+                "native_layout_work_duration_ms": 5.0,
                 "layout_duration_ms": 3.0,
             },
             {
                 **base,
                 "sample": 1,
-                "observed_mode": "live_preview",
-                "acknowledged_duration_ms": 8.0,
-                "bridge_started_duration_ms": 3.0,
-                "bridge_roundtrip_duration_ms": 5.0,
+                "observed_mode": "edit",
+                "applied_duration_ms": 8.0,
+                "native_layout_started_duration_ms": 3.0,
+                "native_layout_work_duration_ms": 5.0,
                 "layout_duration_ms": 2.0,
             },
         ]
@@ -649,10 +634,10 @@ def self_test() -> None:
                 "completed_uptime_ns": 1,
                 "activation_to_document_selection_duration_ms": 1.0,
                 "document_selection_to_read_task_start_duration_ms": 1.0,
-                "read_task_start_to_html_ready_duration_ms": 2.0,
-                "read_html_ready_to_navigation_start_duration_ms": 1.0,
-                "read_navigation_duration_ms": 3.0,
-                "read_navigation_to_ready_duration_ms": 2.0,
+                "read_task_start_to_source_ready_duration_ms": 2.0,
+                "read_source_ready_to_layout_start_duration_ms": 1.0,
+                "read_native_layout_duration_ms": 3.0,
+                "read_layout_to_ready_duration_ms": 2.0,
             }) + "\n",
             encoding="utf-8",
         )
@@ -668,7 +653,7 @@ def self_test() -> None:
         assert first_read["passed"] is True
 
         incomplete_first_read = json.loads(first_read_path.read_text(encoding="utf-8"))
-        incomplete_first_read.pop("read_task_start_to_html_ready_duration_ms")
+        incomplete_first_read.pop("read_task_start_to_source_ready_duration_ms")
         first_read_path.write_text(
             json.dumps(incomplete_first_read) + "\n",
             encoding="utf-8",
@@ -769,7 +754,7 @@ def self_test() -> None:
                     "schema": "scholium-process-memory-v1",
                     "sample": sample,
                     "transition": sample,
-                    "mode": "live_preview" if sample % 2 == 0 else "source",
+                    "mode": "edit" if sample % 2 == 0 else "read",
                     "sample_uptime_ns": sample + 1,
                     "scope": "app_plus_attributed_webkit_services",
                     "process_count": 4,
@@ -865,9 +850,9 @@ def main() -> None:
         if metric == "editor_mode_transition":
             retained_records = records[arguments.warmups :]
             for phase in (
-                "acknowledged_duration_ms",
-                "bridge_started_duration_ms",
-                "bridge_roundtrip_duration_ms",
+                "applied_duration_ms",
+                "native_layout_started_duration_ms",
+                "native_layout_work_duration_ms",
                 "layout_duration_ms",
             ):
                 values = [float(record[phase]) for record in retained_records]

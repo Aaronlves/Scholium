@@ -73,7 +73,8 @@ struct FrontendArchitectureTests {
         let restore = try #require(source.range(of: "func restoreWorkspaceIfNeeded() async"))
         let fixtureEnd = try #require(
             source.range(
-                of: "await windowWorkspaceController.refreshRegistrations()\n        await refreshWorkspaceAssignment()",
+                of:
+                    "await windowWorkspaceController.refreshRegistrations()\n        await refreshWorkspaceAssignment()",
                 range: restore.upperBound..<source.endIndex
             ))
         let fixtureBranch = source[restore.lowerBound..<fixtureEnd.lowerBound]
@@ -277,97 +278,30 @@ struct FrontendArchitectureTests {
         #expect(!registration.contains("#if DEBUG"))
         #expect(!registration.contains("Bundle.main.bundleIdentifier"))
         #expect(requests.contains("PerformanceProbe.shared.isEnabled"))
-        #expect(requests.contains("exercisesLargeCJKCorrectness"))
+        #expect(requests.contains("!session.editorSession.isComposing"))
+        #expect(source.contains("guard PerformanceProbe.shared.exercisesLargeCJKCorrectness,"))
+        #expect(source.contains("recordLargeCJKCorrectness("))
         #expect(requests.contains("requestDocumentMode(mode)"))
         #expect(!requests.contains("#if DEBUG"))
     }
 
-    @Test("EditorHost presentation preserves mounted Read and editor surfaces")
+    @Test("Read and Edit share one retained native document surface")
     func editorHostRetainsMountedSurfaces() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let hostSource = try String(
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let note = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/Views/Note/NoteContentView.swift"),
+            encoding: .utf8)
+        let host = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/DocumentEditorHost.swift"
-            ),
-            encoding: .utf8
-        )
-        let noteSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/NoteContentView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(hostSource.contains("if retainsEditor"))
-        #expect(hostSource.contains("if presentsEditor && !showsEditor && !allowsPendingReadRecovery"))
-        #expect(hostSource.contains("allowsPendingReadRecovery"))
-        #expect(hostSource.contains("presentedDocumentID == documentID || editorIsReady"))
-        #expect(hostSource.contains("scholiumDocumentSurfaceVisibility"))
-        #expect(hostSource.contains(".accessibilityHidden(!showsEditor)"))
-        #expect(
-            noteSource.contains("@ObservedObject private var documentSession: DocumentSessionModel")
-        )
-        #expect(noteSource.contains("retainsEditor: documentSession.retainsEditorSurface"))
-        #expect(noteSource.contains("editorIsReady: editorSession.isLoaded"))
-        #expect(
-            noteSource.contains(
-                "editorSession.presentedMode == documentSession.activeEditorMode"
-            ))
-        #expect(noteSource.contains("mode: documentSession.retainedEditorMode"))
-        #expect(noteSource.contains("renderedReadReadyFingerprint"))
-        #expect(noteSource.contains("private var readProjectionTaskIdentity: String"))
-        #expect(noteSource.contains("noteFingerprint.sha256"))
-        #expect(noteSource.contains("if note.document.hasExactEmptyBody"))
-        #expect(noteSource.contains("scholium.emptyRenderedReview"))
-        #expect(noteSource.contains("This note has no body content."))
-        #expect(noteSource.contains("documentSession.isEnteringManagedCreation"))
-        #expect(noteSource.contains("Retry Edit"))
-        #expect(noteSource.contains("managedCreationBodyStartUTF16"))
-        #expect(noteSource.contains(".id(editorSession.viewReconstructionID)"))
-        #expect(noteSource.contains("note.relativePath):"))
-        #expect(!noteSource.contains("guard presentationMode == .read else { return }"))
-
-        let sessionSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Features/Document/DocumentSessionStore.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(
-            sessionSource.contains(
-                "@Published private(set) var presentation = DocumentPresentationState()"
-            ))
-        #expect(!sessionSource.contains("@Published var isEditing"))
-        #expect(!sessionSource.contains("@Published var retainsEditorSurface"))
-        #expect(!sessionSource.contains("@Published private(set) var presentationMode"))
-        let presentationSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Features/Document/DocumentPresentationState.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(presentationSource.contains("enum MarkdownEditorMode"))
-        #expect(presentationSource.contains("case review(editorIntent: MarkdownEditorMode?)"))
-        #expect(presentationSource.contains("case editing(MarkdownEditorMode)"))
-
-        let webViewSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorWebView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(webViewSource.contains("var lastModeInput: MarkdownEditorMode"))
-        #expect(!webViewSource.contains("var mode: MarkdownEditorMode"))
-        #expect(webViewSource.contains("case .documentChanged(let change):\n                guard surfaceVisibility.isActive"))
-        #expect(webViewSource.contains("case .requestEditorFocus(let envelope):\n                guard surfaceVisibility.isActive"))
-        #expect(webViewSource.contains("case .requestImagePaste(let envelope):\n                guard surfaceVisibility.isActive"))
-        let readyStart = try #require(webViewSource.range(of: "private func signalReady()"))
-        let readySuffix = webViewSource[readyStart.lowerBound...]
-        let readyEnd = try #require(readySuffix.range(of: "private func validEnvelope"))
-        let readyBody = readySuffix[..<readyEnd.lowerBound]
-        #expect(!readyBody.contains("loadDocument("))
+                "Scholium/Views/Note/NativeMarkdownEditorView.swift"), encoding: .utf8)
+        #expect(note.contains("NativeMarkdownEditorView("))
+        #expect(note.contains("mode: isEditing ? .edit : .read"))
+        #expect(!note.contains("SafeMarkdownReadWebView("))
+        #expect(!note.contains("MarkdownEditorWebView("))
+        #expect(host.contains("session.attachNativeView()"))
+        #expect(host.contains("session.detachNativeView(attachmentID:"))
+        #expect(!host.contains("WKWebView"))
     }
 
     @Test("Retained document surfaces are hidden at the native WebKit boundary")
@@ -416,96 +350,28 @@ struct FrontendArchitectureTests {
             webViewSource.contains(
                 #"scholium.renderedDocument.\(expectedDocumentID)"#
             ))
-        #expect(webViewSource.contains("case \"floatingSurface\":\n                guard surfaceVisibility.isActive"))
-        #expect(webViewSource.contains("case \"internalLink\":\n                guard surfaceVisibility.isActive"))
-        #expect(webViewSource.contains("case \"passageContextMenu\":\n                guard surfaceVisibility.isActive"))
-        #expect(noteSource.contains("if !webProjectionIsReady"))
-        #expect(!noteSource.contains(".accessibilityHidden(webProjectionIsReady)"))
+        #expect(
+            webViewSource.contains(
+                "case \"floatingSurface\":\n                guard surfaceVisibility.isActive"))
+        #expect(
+            webViewSource.contains(
+                "case \"internalLink\":\n                guard surfaceVisibility.isActive"))
+        #expect(
+            webViewSource.contains(
+                "case \"passageContextMenu\":\n                guard surfaceVisibility.isActive"))
+        let nativeHost = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NativeMarkdownEditorView.swift"), encoding: .utf8)
+        let nativeSession = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorSession.swift"), encoding: .utf8)
+        #expect(noteSource.contains("NativeMarkdownEditorView("))
+        #expect(nativeHost.contains(#"scholium.document.\(session.performanceDocumentID)"#))
+        #expect(nativeSession.contains("Document, Reading"))
+        #expect(nativeSession.contains("Document, Editing"))
         #expect(uiSupport.contains("identifier BEGINSWITH %@"))
-        #expect(uiSupport.contains("scholium.renderedDocument.loading"))
-        #expect(uiSupport.contains("scholium.renderedDocument.failed"))
-    }
-
-    @Test(
-        "EditorHost waits on initial entry but preserves an established editor during mode reconfiguration"
-    )
-    func editorHostPresentationGate() {
-        var gate = DocumentEditorPresentationGate()
-
-        gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsReady: false))
-
-        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: false))
-        #expect(
-            !gate.allowsReadHitTesting(
-                documentID: "A",
-                presentsEditor: true,
-                editorIsReady: false,
-                allowsPendingRecovery: false
-            ))
-        #expect(
-            gate.allowsReadHitTesting(
-                documentID: "A",
-                presentsEditor: true,
-                editorIsReady: false,
-                allowsPendingRecovery: true
-            ))
-
-        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: true)
-        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: true))
-        #expect(
-            !gate.allowsReadHitTesting(
-                documentID: "A",
-                presentsEditor: true,
-                editorIsReady: true,
-                allowsPendingRecovery: true
-            ))
-
-        #expect(!gate.showsEditor(documentID: "B", presentsEditor: true, editorIsReady: false))
-
-        // A bridge-confirmed editor remains the visible surface while the
-        // retained CodeMirror state atomically changes Edit <-> Source.
-        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
-        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: false))
-
-        #expect(
-            gate.allowsReadHitTesting(
-                documentID: "A", presentsEditor: true, editorIsReady: false,
-                allowsPendingRecovery: true
-            ))
-
-        gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsReady: false))
-
-        #expect(
-            gate.allowsEditorFocus(
-                isEditing: true,
-                isReturningToReview: false,
-                editorIsReady: true,
-                presentedModeMatchesIntent: true
-            ))
-        #expect(
-            !gate.allowsEditorFocus(
-                isEditing: true,
-                isReturningToReview: true,
-                editorIsReady: true,
-                presentedModeMatchesIntent: true
-            ))
-        #expect(
-            !gate.allowsEditorFocus(
-                isEditing: true,
-                isReturningToReview: false,
-                editorIsReady: false,
-                presentedModeMatchesIntent: true
-            ))
-        #expect(
-            !gate.allowsEditorFocus(
-                isEditing: true,
-                isReturningToReview: false,
-                editorIsReady: true,
-                presentedModeMatchesIntent: false
-            ))
+        #expect(uiSupport.contains("scholium.document.loading"))
+        #expect(uiSupport.contains("scholium.document.failed"))
     }
 
     @Test("Autosave failure and conflict stay in the Document surface")
@@ -733,7 +599,9 @@ struct FrontendArchitectureTests {
 
         #expect(appSource.contains("id: \"scholium-bootstrap\""))
         #expect(appSource.contains("for: BootstrapWindowRoute.self"))
-        #expect(appSource.components(separatedBy: "WindowGroup(").count == 3)
+        #expect(appSource.components(separatedBy: "WindowGroup(").count == 4)
+        #expect(appSource.contains(#"id: "scholium-external-markdown""#))
+        #expect(appSource.contains("for: ExternalMarkdownWindowRoute.self"))
         #expect(!appSource.contains("id: \"scholium-stage4-design-proofs\""))
         #expect(!appSource.contains("id: \"scholium-editor\""))
         #expect(!appSource.contains("Window(\"Editor\""))
@@ -905,7 +773,8 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("contentUnderlapsTitlebar"))
         #expect(!splitSource.contains("placeholderHost.safeAreaRegions = []"))
         #expect(!splitSource.contains("host.safeAreaRegions = []"))
-        #expect(documentTabSource.contains("let titlebarSafeInset = showsTabs ? safeAreaInsets.top : 0"))
+        #expect(
+            documentTabSource.contains("let titlebarSafeInset = showsTabs ? safeAreaInsets.top : 0"))
         #expect(documentTabSource.contains("y: titlebarSafeInset + inset"))
         #expect(documentTabSource.contains("y: headerHeight"))
         #expect(contentSource.contains(".ignoresSafeArea(.container, edges: .top)"))
@@ -1029,22 +898,23 @@ struct FrontendArchitectureTests {
         "The semantic Library sidebar receives the readable minimum without replacing AppKit behavior"
     )
     func librarySidebarReadableMinimum() throws {
-        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView, EmptyView>.Controller(
-            initialLibraryVisible: true,
-            initialApparatusVisible: false,
-            documentTabs: [],
-            selectedDocumentTabID: nil,
-            selectDocumentTab: { _ in },
-            closeDocumentTab: { _ in },
-            libraryVisibilityDidChange: { _ in },
-            researchInspectorVisibilityDidChange: { _ in },
-            splitControllerDidAttach: { _ in },
-            splitControllerDidDetach: { _ in },
-            library: EmptyView(),
-            chat: EmptyView(), sidebarContent: .triptych,
-            document: EmptyView(),
-            apparatus: EmptyView()
-        )
+        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView, EmptyView>
+            .Controller(
+                initialLibraryVisible: true,
+                initialApparatusVisible: false,
+                documentTabs: [],
+                selectedDocumentTabID: nil,
+                selectDocumentTab: { _ in },
+                closeDocumentTab: { _ in },
+                libraryVisibilityDidChange: { _ in },
+                researchInspectorVisibilityDidChange: { _ in },
+                splitControllerDidAttach: { _ in },
+                splitControllerDidDetach: { _ in },
+                library: EmptyView(),
+                chat: EmptyView(), sidebarContent: .triptych,
+                document: EmptyView(),
+                apparatus: EmptyView()
+            )
 
         _ = controller.view
         let libraryItem = try #require(controller.splitViewItems.first)
@@ -1137,127 +1007,48 @@ struct FrontendArchitectureTests {
         #expect(!windowManagementSource.contains("preferredPresentationSlot"))
     }
 
-    @Test("Document toolbar exposes one current-state Review and Edit button")
-    @MainActor
+    @Test("Document toolbar switches between exactly Read and Edit")
     func documentReviewEditToolbarButton() throws {
-        let review = ScholiumDocumentModeToolbarButtonPresentation(mode: .read)
-        let edit = ScholiumDocumentModeToolbarButtonPresentation(mode: .livePreview)
-        let source = ScholiumDocumentModeToolbarButtonPresentation(mode: .source)
-
-        #expect(review.destination == .livePreview)
+        let read = ScholiumDocumentModeToolbarButtonPresentation(mode: .read)
+        let edit = ScholiumDocumentModeToolbarButtonPresentation(mode: .edit)
+        #expect(NotePresentationMode.allCases == [.read, .edit])
+        #expect(read.destination == .edit)
         #expect(edit.destination == .read)
-        #expect(source.destination == .read)
-        #expect(review.symbol == NotePresentationMode.read.symbol)
-        #expect(edit.symbol == NotePresentationMode.livePreview.symbol)
-        #expect(source.symbol == NotePresentationMode.source.symbol)
-        #expect(review.toolTip == NotePresentationMode.read.title)
-        #expect(review.accessibilityLabel == "Document Mode, Review")
-        #expect(edit.accessibilityLabel == "Document Mode, Edit")
-        #expect(NotePresentationMode.livePreview.symbol == "square.and.pencil")
-
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let toolbarSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(toolbarSource.contains("ScholiumDocumentModeToolbarButtonPresentation"))
-        #expect(
-            ScholiumWorkspaceToolbarController.Item.documentMode.rawValue
-                == "scholium.toolbar.documentMode"
-        )
-        let modeItemSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumDocumentModeToolbarItem.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(toolbarSource.contains("ScholiumDocumentModeToolbarItem("))
-        #expect(modeItemSource.contains("named: presentation.symbol"))
-        #expect(modeItemSource.contains("toolTip = presentation.toolTip"))
-        #expect(modeItemSource.contains("label = presentation.accessibilityLabel"))
-        #expect(modeItemSource.contains("mode: model.documentController.chromeProjection.mode"))
-        #expect(modeItemSource.contains("model.requestDocumentMode("))
-        #expect(!toolbarSource.contains("NSSegmentedControl(frame: .zero)"))
-        #expect(!toolbarSource.contains("scholium.documentModeToggle"))
-        #expect(!toolbarSource.contains("scholium.documentModeMenu"))
-        let compactModeItemSource = modeItemSource.replacingOccurrences(
-            of: #"\s+"#,
-            with: "",
-            options: .regularExpression
-        )
-        #expect(compactModeItemSource.contains("possibleLabels=Set(NotePresentationMode.allCases.map"))
-
-        let appSource = try WindowCompositionSource.text(at: repository)
-        let menuStart = try #require(appSource.range(of: "Menu(\"Document Mode\")"))
-        let menuEnd = try #require(
-            appSource.range(
-                of: "Divider()",
-                range: menuStart.upperBound..<appSource.endIndex
-            )
-        )
-        let documentModeMenu = appSource[
-            menuStart.lowerBound..<menuEnd.lowerBound
-        ]
-        #expect(documentModeMenu.contains("Button(\"Source\")"))
-        #expect(
-            !documentModeMenu.contains(
-                ".scholiumKeyboardShortcut(.toggleReviewEdit)"
-            ))
-        #expect(
-            appSource.components(
-                separatedBy: ".scholiumKeyboardShortcut(.toggleReviewEdit)"
-            ).count - 1 == 1
-        )
-
-        let commandObservation = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/Window/WindowCommandObservation.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(
-            commandObservation.contains(
-                "changes(documentController.$currentPresentationMode)"
-            )
-        )
-        #expect(
-            commandObservation.contains(
-                "changes(documentController.$chromeProjection)"
-            )
-        )
+        #expect(read.symbol == "book")
+        #expect(edit.symbol == "square.and.pencil")
+        #expect(read.toolTip == NotePresentationMode.read.title)
+        #expect(edit.toolTip == NotePresentationMode.edit.title)
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumCommands.swift"),
+            encoding: .utf8)
+        let start = try #require(source.range(of: "Menu(\"Document Mode\")"))
+        let end = try #require(source.range(of: "Divider()", range: start.upperBound..<source.endIndex))
+        let menu = source[start.lowerBound..<end.lowerBound]
+        #expect(menu.contains("Button(\"Read\")"))
+        #expect(menu.contains("Button(\"Edit\")"))
+        #expect(!menu.contains("Button(\"Source\")"))
     }
 
-    @Test("Markdown formatting shortcuts share the editor transaction owner")
+    @Test("Markdown formatting shortcuts reach the native transaction owner")
     func markdownFormattingShortcutsHaveOneOwner() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
         let appSource = try WindowCompositionSource.text(at: repository)
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
-
+        let commands = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/MarkdownEditorSession+Commands.swift"), encoding: .utf8)
         #expect(appSource.contains("CommandGroup(replacing: .textFormatting)"))
         #expect(!appSource.contains("CommandGroup(after: .textFormatting)"))
-        #expect(appSource.contains("Button(\"Italic\") { editorActions?.perform(.emphasis) }"))
         #expect(appSource.contains(".scholiumKeyboardShortcut(.italic)"))
-        for key in ["Mod-b", "Mod-i", "Mod-k", "Mod-f", "Mod-g", "Shift-Mod-g", "Mod-e"] {
-            #expect(!editorSource.contains("key: \"" + key + "\""))
-        }
-        // Only the explicitly gated Debug fault command is local to the menu.
-        #expect(appSource.components(separatedBy: ".keyboardShortcut(").count - 1 == 1)
-
-        #expect(editorSource.contains("markdownCommandTransformation(editor.state, operation.command, argument)"))
+        #expect(commands.contains("nativeEditor.performDocumentCommand(named:"))
+        #expect(!commands.contains("evaluateJavaScript"))
     }
 
-    @Test("Native split foreground underlap is explicit while backgrounds fill the titlebar", arguments: [false, true])
+    @Test(
+        "Native split foreground underlap is explicit while backgrounds fill the titlebar",
+        arguments: [false, true])
     func nativeSurfaceContainer(contentExtendsUnderToolbar: Bool) throws {
         let contentController = NSViewController()
         contentController.view = NSView()
@@ -1331,30 +1122,33 @@ struct FrontendArchitectureTests {
         #expect(libraryItem.behavior == .sidebar)
         #expect(!(libraryItem.viewController is ScholiumSurfaceContainerViewController))
         #expect(documentItem.automaticallyAdjustsSafeAreaInsets)
-        let documentContainer = try #require(documentItem.viewController as? ScholiumSurfaceContainerViewController)
-        let apparatusContainer = try #require(splitController.splitViewItems[2].viewController as? ScholiumSurfaceContainerViewController)
+        let documentContainer = try #require(
+            documentItem.viewController as? ScholiumSurfaceContainerViewController)
+        let apparatusContainer = try #require(
+            splitController.splitViewItems[2].viewController as? ScholiumSurfaceContainerViewController)
         #expect(documentContainer.contentExtendsUnderToolbar)
         #expect(!apparatusContainer.contentExtendsUnderToolbar)
     }
 
     @Test("Research Inspector separates divider resizing from explicit visibility")
     func researchInspectorSeparatesResizeAndVisibility() throws {
-        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView, EmptyView>.Controller(
-            initialLibraryVisible: true,
-            initialApparatusVisible: false,
-            documentTabs: [],
-            selectedDocumentTabID: nil,
-            selectDocumentTab: { _ in },
-            closeDocumentTab: { _ in },
-            libraryVisibilityDidChange: { _ in },
-            researchInspectorVisibilityDidChange: { _ in },
-            splitControllerDidAttach: { _ in },
-            splitControllerDidDetach: { _ in },
-            library: EmptyView(),
-            chat: EmptyView(), sidebarContent: .triptych,
-            document: EmptyView(),
-            apparatus: EmptyView()
-        )
+        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView, EmptyView>
+            .Controller(
+                initialLibraryVisible: true,
+                initialApparatusVisible: false,
+                documentTabs: [],
+                selectedDocumentTabID: nil,
+                selectDocumentTab: { _ in },
+                closeDocumentTab: { _ in },
+                libraryVisibilityDidChange: { _ in },
+                researchInspectorVisibilityDidChange: { _ in },
+                splitControllerDidAttach: { _ in },
+                splitControllerDidDetach: { _ in },
+                library: EmptyView(),
+                chat: EmptyView(), sidebarContent: .triptych,
+                document: EmptyView(),
+                apparatus: EmptyView()
+            )
 
         _ = controller.view
         let item = try #require(controller.splitViewItems.last)
@@ -1502,16 +1296,21 @@ struct FrontendArchitectureTests {
         #expect(filterMenuSource.contains(".scholiumSidebarHeaderControl("))
         #expect(headerControlSource.contains(".menuStyle(.button)"))
         #expect(headerControlSource.contains(".menuIndicator(.hidden)"))
-        #expect(headerControlSource.contains(".foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)"))
+        #expect(
+            headerControlSource.contains(".foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)")
+        )
         #expect(headerControlSource.contains(".buttonStyle(.plain)"))
         #expect(!headerControlSource.contains(".scholiumContentControlPointerFeedback("))
         #expect(!headerControlSource.contains("ScholiumGrid.Apparatus"))
         #expect(!headerControlSource.contains("ScholiumGrid.Document"))
         #expect(!headerControlSource.contains("ScholiumTypography."))
         #expect(!headerControlSource.contains("ScholiumColorRole."))
-        #expect(ScholiumSidebarLayout.textInset == ScholiumSidebarLayout.edgeInset + ScholiumSidebarLayout.rowInset)
+        #expect(
+            ScholiumSidebarLayout.textInset == ScholiumSidebarLayout.edgeInset
+                + ScholiumSidebarLayout.rowInset)
         #expect(ScholiumSidebarLayout.controlWidth >= ScholiumSidebarLayout.controlHeight)
-        #expect(ScholiumSidebarLayout.controlHeight >= ScholiumMetrics.Accessibility.preferredCustomTarget)
+        #expect(
+            ScholiumSidebarLayout.controlHeight >= ScholiumMetrics.Accessibility.preferredCustomTarget)
         #expect(!sidebarSource.contains(".tint("))
         #expect(!filterMenuSource.contains(".tint("))
         #expect(componentsSource.contains("struct ScholiumQuietRowButtonStyle"))
@@ -1530,7 +1329,9 @@ struct FrontendArchitectureTests {
         #expect(workspaceNavigatorSource.contains("control.segmentStyle = .roundRect"))
         #expect(workspaceNavigatorSource.contains("control.segmentDistribution = .fillEqually"))
         #expect(!workspaceNavigatorSource.contains("setWidth("))
-        #expect(workspaceNavigatorSource.contains("control.controlSize = usesAccessibilitySize ? .large : .regular"))
+        #expect(
+            workspaceNavigatorSource.contains(
+                "control.controlSize = usesAccessibilitySize ? .large : .regular"))
         #expect(workspaceNavigatorSource.contains("selectWorkspace"))
         #expect(!workspaceNavigatorSource.contains("@FocusState"))
         #expect(!workspaceNavigatorSource.contains("Button(action:"))
@@ -1563,7 +1364,9 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("rectangle.compress.vertical"))
         #expect(!sidebarSource.contains("rectangle.expand.vertical"))
         #expect(!sidebarSource.contains(".tracking(0.7)"))
-        #expect(outlineSource.contains("outlineView.rowSizeStyle = usesAccessibilitySize ? .large : .default"))
+        #expect(
+            outlineSource.contains("outlineView.rowSizeStyle = usesAccessibilitySize ? .large : .default")
+        )
         #expect(!outlineSource.contains("outlineView.rowSizeStyle = .custom"))
         #expect(designSystemSource.contains(".scholiumIconControl()"))
         #expect(
@@ -1643,8 +1446,12 @@ struct FrontendArchitectureTests {
         #expect(sidebarSource.contains(".contextMenu"))
         #expect(sidebarSource.contains("rootCreationActions"))
         #expect(sidebarSource.contains("scholium.libraryCreate"))
-        #expect(sidebarSource.contains("Label(\"New Note\", systemImage: ScholiumSidebarAction.newNote.symbol)"))
-        #expect(sidebarSource.contains("Label(\"New Folder\", systemImage: ScholiumSidebarAction.newFolder.symbol)"))
+        #expect(
+            sidebarSource.contains(
+                "Label(\"New Note\", systemImage: ScholiumSidebarAction.newNote.symbol)"))
+        #expect(
+            sidebarSource.contains(
+                "Label(\"New Folder\", systemImage: ScholiumSidebarAction.newFolder.symbol)"))
         #expect(sidebarSource.contains("dynamicTypeSize.isAccessibilitySize"))
         #expect(!sidebarSource.contains("@FocusState private var sourceListFocused"))
         #expect(!sidebarSource.contains(".focused($sourceListFocused)"))
@@ -1750,7 +1557,9 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("Reveal Current Note"))
         #expect(!sidebarSource.contains("Library Navigation"))
         #expect(!treeRowsSource.contains("case .rename: \"Rename…\""))
-        #expect(treeRowsSource.contains("SidebarNoteCommandGroup(kind: .editing, commands: [.duplicate, .move])"))
+        #expect(
+            treeRowsSource.contains(
+                "SidebarNoteCommandGroup(kind: .editing, commands: [.duplicate, .move])"))
         #expect(!sidebarSource.contains("Move or Rename…"))
         #expect(!treeRowsSource.contains("struct SidebarTreeBranch"))
         #expect(!sidebarSource.contains("filteredNotes.count"))
@@ -1812,7 +1621,9 @@ struct FrontendArchitectureTests {
         #expect(filterMenuSource.contains("Button(\"Clear All Filters\""))
         let integrityStart = try #require(filterMenuSource.range(of: "Section(\"Integrity\")"))
         let contentStart = try #require(filterMenuSource.range(of: "Section(\"Content\")"))
-        #expect(!filterMenuSource[integrityStart.lowerBound..<contentStart.lowerBound].contains("Link Annotations"))
+        #expect(
+            !filterMenuSource[integrityStart.lowerBound..<contentStart.lowerBound].contains(
+                "Link Annotations"))
         #expect(!sidebarSource.contains("Section(\"Integrity\")"))
         #expect(!sidebarSource.contains("Section(\"Review\")"))
 
@@ -1907,32 +1718,16 @@ struct FrontendArchitectureTests {
         #expect(!attentionSource.contains("notification.actionDetail"))
     }
 
-    @Test("Document appearance stays in the shared production renderer")
+    @Test("Native document appearance comes from the retained session")
     func documentAppearanceUsesProductionRenderer() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let noteSource = try String(
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let host = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/NoteContentView.swift"
-            ),
-            encoding: .utf8
-        )
-        let appearanceSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Styling/DocumentAppearanceStyles.swift"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(appearanceSource.contains(".scholium-document p {"))
-        #expect(!appearanceSource.contains(".scholium-document h1 + p"))
-        #expect(!appearanceSource.contains(".scholium-document h2 + p"))
-        #expect(noteSource.contains("DocumentEditorHost("))
-        #expect(noteSource.contains("SafeMarkdownReadWebView("))
-        #expect(noteSource.contains("MarkdownEditorWebView("))
-        #expect(noteSource.contains("documentPresentation.css + \"\\n\" + state.appearanceCSS"))
+                "Scholium/Views/Note/NativeMarkdownEditorView.swift"), encoding: .utf8)
+        #expect(host.contains("session.applyAppearance(appearance, textScale:"))
+        #expect(host.contains("appearance != appearance"))
+        #expect(!host.contains("evaluateJavaScript"))
     }
 
     @Test("Workspace surfaces preserve native navigation and exact content layout")
@@ -1969,7 +1764,8 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(!content.contains(".scholiumSurface(.navigation)"))
-        #expect(!sidebarSource.contains(".background(ScholiumColorRole.navigationSurfaceBackground.color)"))
+        #expect(
+            !sidebarSource.contains(".background(ScholiumColorRole.navigationSurfaceBackground.color)"))
         #expect(content.contains("ScholiumNoDocumentDetailView()"))
         #expect(content.contains("ScholiumContentStateView("))
         #expect(content.contains("\"No Document Selected\""))
@@ -2035,13 +1831,13 @@ struct FrontendArchitectureTests {
         let store = DocumentSessionStore()
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
         let original = store.session(for: key)
-        original.preparePresentationMode(.source)
+        original.preparePresentationMode(.edit)
         original.editingSource = "exact markdown bytes\n"
 
         let afterProjectionChange = store.session(for: key)
         #expect(afterProjectionChange === original)
         #expect(afterProjectionChange.presentationMode == .read)
-        #expect(afterProjectionChange.pendingEditorMode == .source)
+        #expect(afterProjectionChange.pendingEditorMode == .edit)
         #expect(afterProjectionChange.editingSource == "exact markdown bytes\n")
 
         let conflict = DocumentConflictSnapshot(
@@ -2437,7 +2233,8 @@ struct FrontendArchitectureTests {
         )
         let appSource = try WindowCompositionSource.text(at: repository)
 
-        #expect(splitSource.contains("private let tabViewController = ScholiumNativeDocumentTabController()"))
+        #expect(
+            splitSource.contains("private let tabViewController = ScholiumNativeDocumentTabController()"))
         #expect(splitSource.contains("tabViewController.tabStyle = .unspecified"))
         #expect(splitSource.contains("DocumentTabContainerView(strip: tabStrip, document: tabContent)"))
         #expect(!splitSource.contains("TabSelectorViews"))
@@ -2597,7 +2394,9 @@ struct FrontendArchitectureTests {
     }
 
     // Needs a font server the bundled typefaces can register with.
-    @Test("Bundled native typefaces register with AppKit", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
+    @Test(
+        "Bundled native typefaces register with AppKit",
+        .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
     func bundledNativeTypefacesRegister() {
         ScholiumFontRegistry.registerBundledFonts()
 
@@ -2625,7 +2424,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let retiredProjection = repository.appendingPathComponent(
-            "Scholium/Views/Note/NativeMarkdownEditorView.swift"
+            "Scholium/Views/Note/MarkdownEditorWebView.swift"
         )
         let retiredSemanticProjection = repository.appendingPathComponent(
             "ScholiumContracts/MarkdownSemantics.swift"
@@ -2651,7 +2450,8 @@ struct FrontendArchitectureTests {
             #expect(!source.contains("MarkdownSemanticProjection"))
         }
         #expect(!productionDocument.contains("NativeMarkdownReadView("))
-        #expect(!productionDocument.contains("NativeMarkdownEditorView("))
+        #expect(productionDocument.contains("NativeMarkdownEditorView("))
+        #expect(!productionDocument.contains("MarkdownEditorWebView("))
     }
 
     @Test("Custom control metrics preserve native-control ownership")
@@ -2752,7 +2552,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Spacing.sectionSeparation == 16)
         #expect(ScholiumGrid.Spacing.regionContentInset == 20)
         #expect(ScholiumGrid.Spacing.documentShellInsetCSSPixels == 32)
-        #expect(ScholiumGrid.Spacing.sourceShellInsetCSSPixels == 40)
         #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
@@ -2804,362 +2603,6 @@ struct FrontendArchitectureTests {
                 "workspaceWindowActions?.activateSidebar(.chat)"
             )
         )
-    }
-
-    @Test("Live Preview omits Source chrome and consumes shared document layout")
-    func livePreviewPresentationContract() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
-        let editorStyles = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/Resources/Editor/editor.css"),
-            encoding: .utf8
-        )
-        let syntaxPresentationSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/syntax-presentation.ts"),
-            encoding: .utf8
-        )
-        let livePresentationLayoutSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/live-presentation-layout.ts"),
-            encoding: .utf8
-        )
-        let cursorGeometrySource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/live-cursor-geometry.ts"),
-            encoding: .utf8
-        )
-        let structuredProjectionSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/live-structured-block-projections.ts"),
-            encoding: .utf8
-        )
-        let semanticLayoutSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/live-semantic-layout.ts"),
-            encoding: .utf8
-        )
-        let semanticProjectionSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/semantic-projection.ts"),
-            encoding: .utf8
-        )
-        let noteSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/NoteContentView.swift"),
-            encoding: .utf8
-        )
-
-        let extensionsStart = try #require(editorSource.range(of: "const editorExtensions = ["))
-        let extensionSuffix = editorSource[extensionsStart.upperBound...]
-        let extensionsEnd = try #require(extensionSuffix.range(of: "];"))
-        let staticExtensions = editorSource[
-            extensionsStart.lowerBound..<extensionsEnd.upperBound
-        ]
-        for sourceOnlyExtension in [
-            "lineNumbers()",
-            "sourceCollapsedActiveLine",
-            "foldGutter()",
-        ] {
-            #expect(!staticExtensions.contains(sourceOnlyExtension))
-            #expect(editorSource.contains(sourceOnlyExtension))
-        }
-        #expect(!editorSource.contains("highlightActiveLineGutter()"))
-        #expect(!editorSource.contains("highlightActiveLine()"))
-        #expect(editorSource.contains("const sourceMode = ["))
-        let sourceModeStart = try #require(editorSource.range(of: "const sourceMode = ["))
-        let sourceModeSuffix = editorSource[sourceModeStart.upperBound...]
-        let sourceModeEnd = try #require(sourceModeSuffix.range(of: "];"))
-        let sourceModeExtensions = editorSource[
-            sourceModeStart.lowerBound..<sourceModeEnd.upperBound
-        ]
-        let liveModeStart = try #require(editorSource.range(of: "const livePreviewMode = ["))
-        let liveModeSuffix = editorSource[liveModeStart.upperBound...]
-        let liveModeEnd = try #require(liveModeSuffix.range(of: "];"))
-        let liveModeExtensions = editorSource[
-            liveModeStart.lowerBound..<liveModeEnd.upperBound
-        ]
-        #expect(sourceModeExtensions.contains("EditorView.lineWrapping"))
-        #expect(sourceModeExtensions.contains("sourceTextDirection"))
-        #expect(sourceModeExtensions.contains("sourceHighlighting"))
-        #expect(!liveModeExtensions.contains("sourceTextDirection"))
-        #expect(sourceModeExtensions.contains("editorModeFacet.of(\"source\")"))
-        #expect(sourceModeExtensions.contains("EditorView.editorAttributes.of"))
-        #expect(!sourceModeExtensions.contains("defaultHighlightStyle"))
-        for liveOnlyExtension in [
-            "liveProjectionIndex.extension",
-            "documentTitle.extension",
-            "liveSemanticLayout.extension",
-            "liveSelection.extension",
-            "liveMermaidProjection.extension",
-            "liveStructuredBlockProjections.tableExtension",
-            "liveDisplayMathProjection.extension",
-            "syntaxPresentation",
-            "liveStructuredBlockProjections.calloutExtension",
-            "liveFootnoteProjection.extension",
-            "livePreview",
-            "liveProjectionNavigation.extension",
-            "previewPopover.extension",
-            "livePresentationLayout",
-        ] {
-            // Check an installed extension entry, not a mode-name string inside
-            // a shared callback (for example the text-transfer position adapter).
-            func installs(_ block: Substring) -> Bool {
-                block.split(separator: "\n").contains {
-                    let entry = $0.trimmingCharacters(in: .whitespaces)
-                    return entry == liveOnlyExtension + "," || entry == "Prec.high(" + liveOnlyExtension + "),"
-                }
-            }
-            #expect(installs(liveModeExtensions))
-            #expect(!installs(sourceModeExtensions))
-            #expect(!installs(staticExtensions))
-        }
-        #expect(staticExtensions.contains("modeCompartment.of(sourceMode)"))
-        #expect(staticExtensions.contains("bidiIsolates()"))
-        #expect(staticExtensions.contains("EditorView.perLineTextDirection.of(true)"))
-        #expect(editorSource.contains(#"combine: (modes) => modes[0] ?? "source""#))
-        #expect(
-            editorSource.contains(
-                "modeCompartment.reconfigure(nextMode === \"livePreview\" ? livePreviewMode : sourceMode)"
-            ))
-        #expect(!editorSource.contains("highlightSelectionMatches()"))
-        #expect(!editorSource.contains("update.focusChanged"))
-
-        #expect(editorStyles.contains(".scholium-live-mode .cm-lineNumbers"))
-        #expect(editorStyles.contains(".scholium-source-mode .cm-activeLine"))
-        #expect(editorStyles.contains(".scholium-source-mode .cm-source-heading"))
-        #expect(editorStyles.contains(".scholium-live-mode .cm-activeLine"))
-        #expect(editorStyles.contains("#editor .cm-editor.scholium-live-mode .cm-scroller"))
-        #expect(editorStyles.contains("#editor .cm-editor.scholium-source-mode .cm-scroller"))
-        #expect(editorStyles.contains("cm-live-semantic-gap-after-frontmatter"))
-        #expect(!syntaxPresentationSource.contains("scholium-syntax-motion"))
-        #expect(syntaxPresentationSource.contains("readLiveCursorGeometry"))
-        #expect(syntaxPresentationSource.contains("writeLiveCursorGeometry"))
-        #expect(cursorGeometrySource.contains("domAtPos"))
-        #expect(cursorGeometrySource.contains("cm-cursor-primary"))
-        #expect(syntaxPresentationSource.contains("getComputedTiming"))
-        #expect(syntaxPresentationSource.contains("{opacity: previous.opacity, color: previous.color}"))
-        #expect(syntaxPresentationSource.contains("color: open ? activeColor : secondaryColor"))
-        #expect(!syntaxPresentationSource.contains("applyLayoutAnchor"))
-        #expect(!syntaxPresentationSource.contains("viewportLineBlocks"))
-        #expect(livePresentationLayoutSource.contains("readLayoutCorrection"))
-        #expect(livePresentationLayoutSource.contains("viewportLineBlocks"))
-        #expect(!livePresentationLayoutSource.contains("view.lineBlockAtHeight"))
-        #expect(livePresentationLayoutSource.contains("lineBlockAt(anchor.from)"))
-        #expect(!livePresentationLayoutSource.contains("getBoundingClientRect"))
-        #expect(livePresentationLayoutSource.contains("preserveLivePresentationLayout"))
-        #expect(livePresentationLayoutSource.contains("captureLayoutAnchor"))
-        #expect(livePresentationLayoutSource.contains("queueMicrotask"))
-        #expect(cursorGeometrySource.contains("readLiveCursorSurfaceGeometry"))
-        #expect(cursorGeometrySource.contains("surface: LiveCursorSurfaceGeometry"))
-        #expect(syntaxPresentationSource.contains("this.stop()"))
-        #expect(syntaxPresentationSource.contains("node.style.marginInlineStart"))
-        #expect(!syntaxPresentationSource.contains("fromWidth"))
-        #expect(!syntaxPresentationSource.contains("fromMarginInlineStart"))
-        #expect(syntaxPresentationSource.contains("scholium-frontmatter-delimiter-line"))
-        #expect(editorSource.contains("data-scholium-yaml-delimiter"))
-        #expect(semanticProjectionSource.contains("[\"CommentBlock\", \"html\"]"))
-        #expect(structuredProjectionSource.contains("calloutMotion"))
-        #expect(semanticLayoutSource.contains("classes.add(\"cm-live-quote-nested\")"))
-        #expect(!semanticLayoutSource.contains("cm-live-quote-depth-"))
-        #expect(semanticLayoutSource.contains("index.quoteRanges"))
-        #expect(semanticLayoutSource.contains("--scholium-live-quote-depth"))
-        #expect(!semanticLayoutSource.contains("authoredQuoteDepth"))
-        #expect(editorStyles.contains(".cm-cursor"))
-        #expect(editorStyles.contains(".cm-live-footnote-source-marker"))
-        #expect(editorStyles.contains(".cm-syntax-token {"))
-        #expect(
-            editorStyles.contains(
-                ".cm-syntax-token[data-syntax-open=\"true\"][data-syntax-displace=\"true\"]"
-            )
-        )
-        #expect(editorStyles.contains("font-family: inherit;"))
-        #expect(editorStyles.contains("var(--scholium-document-technical-surface)"))
-        #expect(ScholiumMathAssets.css.contains(".scholium-math-display"))
-        #expect(!ScholiumMathAssets.css.contains("background: var(--scholium-document-technical-surface);"))
-        #expect(!editorStyles.contains(".cm-cursor-primary"))
-        #expect(!editorStyles.contains(".cm-live-authored-extra-space"))
-        #expect(!editorSource.contains("liveAuthoredExtraSpaces"))
-        #expect(!editorSource.contains("editor.dom.classList.toggle"))
-        #expect(!editorSource.contains("editor.scrollDOM.classList.toggle"))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "padding-block: calc(var(--scholium-document-content-top-inset) + var(--scholium-document-toolbar-inset, 0px) + var(--scholium-document-reading-top-gap)) var(--scholium-rhythm-trailing-scroll)"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "calc(50% - var(--scholium-document-half-line-width))"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after)"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".scholium-note-title"
-            ))
-        #expect(
-            !ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".cm-editor.scholium-live-mode .cm-live-paragraph-end:not(.cm-live-list)"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".scholium-document li > ul"
-            ))
-
-        #expect(noteSource.contains("ScholiumDocumentPresentationConfiguration"))
-        #expect(editorStyles.contains("var(--scholium-document-half-line-width)"))
-        #expect(editorStyles.contains("var(--scholium-document-content-top-inset)"))
-        #expect(editorStyles.contains("var(--scholium-document-text-scale)"))
-        #expect(
-            ScholiumDocumentPresentationConfiguration(textScale: 1).css.contains(
-                "@media (max-width:"
-            ))
-    }
-
-    @Test("Edit vertical geometry is owned by direct CodeMirror StateFields")
-    func editVerticalGeometryUsesDirectStateFields() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        func source(_ path: String) throws -> String {
-            try String(
-                contentsOf: repository.appendingPathComponent(path),
-                encoding: .utf8
-            )
-        }
-        let editorSource = try source("WebEditor/editor.ts")
-        let documentTitle = try source("WebEditor/document-title.ts")
-        let semanticLayout = try source("WebEditor/live-semantic-layout.ts")
-        let mermaidProjection = try source("WebEditor/live-mermaid-projection.ts")
-        let structuredBlocks = try source(
-            "WebEditor/live-structured-block-projections.ts"
-        )
-        let displayMath = try source("WebEditor/live-display-math-projection.ts")
-        let footnotes = try source("WebEditor/live-footnote-projection.ts")
-        #expect(semanticLayout.components(separatedBy: "StateField.define").count == 3)
-        #expect(mermaidProjection.contains("StateField.define<LiveMermaidProjectionState>"))
-        #expect(structuredBlocks.contains("StateField.define<LiveTableProjectionState>"))
-        #expect(structuredBlocks.contains("StateField.define<LiveCalloutProjectionState>"))
-        #expect(displayMath.contains("StateField.define<LiveDisplayMathProjectionState>"))
-        #expect(footnotes.contains("StateField.define<LiveFootnoteReferenceState>"))
-        #expect(!editorSource.contains("liveFrontmatterGuardField"))
-        #expect(!editorSource.contains("positionDocumentTitle"))
-        #expect(!editorSource.contains("minHeight"))
-        #expect(editorSource.contains("buildFrontmatterPresentation"))
-        #expect(editorSource.contains("documentTitle.extension"))
-        #expect(documentTitle.contains("StateField.define<DecorationSet>"))
-        #expect(documentTitle.contains("EditorView.decorations.from(field)"))
-
-        let buildStart = try #require(
-            editorSource.range(of: "function buildLiveDecorations(")
-        )
-        let buildEnd = try #require(
-            editorSource.range(
-                of: "function replacingDecorationsInRanges(",
-                range: buildStart.upperBound..<editorSource.endIndex
-            )
-        )
-        let viewportProjection = editorSource[
-            buildStart.lowerBound..<buildEnd.lowerBound
-        ]
-        #expect(!viewportProjection.contains("block: true"))
-        #expect(!viewportProjection.contains("cm-live-semantic-gap"))
-        #expect(!viewportProjection.contains("cm-live-blank-line"))
-        #expect(!viewportProjection.contains("cm-live-heading-marker-line"))
-        #expect(!viewportProjection.contains("cm-live-code-fence-line"))
-        #expect(!editorSource.contains("cm-live-list-gap"))
-        #expect(!editorSource.contains("for (const nestedList of"))
-    }
-
-    @Test("Basic editor input paths do not materialize the complete CodeMirror document")
-    func editorInputHotPathsAvoidCompleteDocumentCopies() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
-
-        func section(
-            in source: String = editorSource,
-            from start: String,
-            to end: String
-        ) throws -> Substring {
-            let startRange = try #require(source.range(of: start))
-            let endRange = try #require(
-                source.range(
-                    of: end,
-                    range: startRange.upperBound..<source.endIndex
-                ))
-            return source[startRange.lowerBound..<endRange.lowerBound]
-        }
-
-        let stateReporting = try section(
-            from: "const stateReporter = EditorView.updateListener.of",
-            to: "const linkActivation = EditorView.domEventHandlers"
-        )
-        #expect(stateReporting.contains("update.state.field(exactSourceState)"))
-        #expect(stateReporting.contains("exactInsert: mirror.slice(fromB, toB)"))
-        #expect(!stateReporting.contains("doc.toString()"))
-        #expect(!stateReporting.contains("normalizedDocumentText("))
-
-        let linkActivation = try section(
-            from: "const linkActivation = EditorView.domEventHandlers",
-            to: "const saveKeymap = keymap.of"
-        )
-        #expect(linkActivation.contains("linkTargetAt(editor.state.doc, position)"))
-        #expect(!linkActivation.contains("doc.toString()"))
-
-        let structuralKeymap = try section(
-            from: "const structuralInteractionKeymap = keymap.of",
-            to: "const liveProjectionNavigation = createLiveProjectionNavigation"
-        )
-        #expect(structuralKeymap.contains("continueList(view.state.doc"))
-        #expect(structuralKeymap.contains("tableTabAction(view.state.doc"))
-        #expect(structuralKeymap.contains("indentList(view.state.doc"))
-        #expect(!structuralKeymap.contains("doc.toString()"))
-
-        #expect(!editorSource.contains("const editorMarkdownCommandKeymap"))
-
-        let sessionSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorSession.swift"
-            ),
-            encoding: .utf8
-        )
-        let nativeDeltaReceiver = try section(
-            in: sessionSource,
-            from: "func acceptEditorChanges(",
-            to: "func webContentProcessTerminated()"
-        )
-        #expect(nativeDeltaReceiver.contains("checkedSourceBuffer.apply(changes)"))
-        #expect(nativeDeltaReceiver.contains("sourceChangeHandler?()"))
-        #expect(!nativeDeltaReceiver.contains("MarkdownEditorDeltaApplier.apply"))
-        #expect(!nativeDeltaReceiver.contains("sourceChangeHandler?(nextSource)"))
-
-        let controllerSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Features/Document/DocumentController.swift"
-            ),
-            encoding: .utf8
-        )
-        let activityReceiver = try section(
-            in: controllerSource,
-            from: "func editorSourceDidChange(",
-            to: "func scheduleAutosave("
-        )
-        #expect(!activityReceiver.contains("editingSource ="))
-        let autosaveScheduler = try section(
-            in: controllerSource,
-            from: "func scheduleAutosave(",
-            to: "func persistEditingSource("
-        )
-        #expect(autosaveScheduler.contains("autosaveDeadline"))
-        #expect(!autosaveScheduler.contains("autosaveTask?.cancel"))
     }
 
     @Test("Autosave commits source before derived refresh and toolbar consumes cached headings")
@@ -3319,7 +2762,8 @@ struct FrontendArchitectureTests {
     func researchSearchSurfaces() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let source = try String(contentsOf: root.appendingPathComponent("Scholium/Views/ContentView.swift"), encoding: .utf8)
+        let source = try String(
+            contentsOf: root.appendingPathComponent("Scholium/Views/ContentView.swift"), encoding: .utf8)
         #expect(source.contains("ResearchSearchSurface("))
         #expect(source.contains("windowCoordinator.presentAdvancedSearch"))
         #expect(!source.contains("SpotlightSearchOverlay"))
@@ -3350,7 +2794,8 @@ struct FrontendArchitectureTests {
                                 ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
                             : appearanceName))
                 let native = try #require(rgbValue(of: systemColor, appearance: expectedAppearance))
-                #expect(role.resolvedRGBValue(for: appearance, increasedContrast: increasedContrast) == native)
+                #expect(
+                    role.resolvedRGBValue(for: appearance, increasedContrast: increasedContrast) == native)
             }
             for role in ScholiumColorRole.allCases {
                 let value = role.resolvedRGBValue(
@@ -3482,331 +2927,38 @@ struct FrontendArchitectureTests {
             ).opacity == 0.78)
     }
 
-    @Test("Document grid remains renderer-aware and is shared at runtime")
+    @Test("WebKit chat and preview typography consumes shared document roles")
     func documentGridContract() throws {
-        for renderer in ScholiumDocumentRenderer.allCases {
-            for widthClass in ScholiumDocumentWidthClass.allCases {
-                let insets = ScholiumDocumentRhythm.contentInsets(
-                    for: renderer,
-                    widthClass: widthClass
-                )
-                #expect(insets.inline >= 0)
-                #expect((0...1).contains(insets.trailingViewportFraction))
-            }
-        }
-
-        #expect(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline == 32)
-        #expect(
-            ScholiumDocumentRhythm.contentInsets(for: .livePreview, widthClass: .regular).inline
-                == 32)
-        #expect(
-            ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline == 40)
-        #expect(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline == 20)
-        let defaults = DocumentAppearanceSettings.defaultSettings
-        #expect(
-            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h1-size: 140%"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h2-size: 122%"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h3-size: 114%"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h4-size: 108%"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h5-size: 102%"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h6-size: 98%"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-rhythm-heading-line-height: 1.35"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-heading-weight: 500"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "font-weight: var(--scholium-document-heading-weight)"
-            ))
-        #expect(defaults.headings.level2.scale == 1.22)
-
         let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
-        let documentMarkup = ScholiumWebDesignTokens.documentMarkupCSSDeclarations
-        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         for declaration in ScholiumWebDesignTokens.rhythmCSSDeclarations.split(separator: "\n") {
-            let normalized = declaration.trimmingCharacters(in: .whitespaces)
-            #expect(sharedCSS.contains(normalized))
+            #expect(sharedCSS.contains(declaration.trimmingCharacters(in: .whitespaces)))
         }
-        #expect(editorHTML.contains(sharedCSS))
         #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(sharedCSS))
-        #expect(
-            documentMarkup.contains(
-                "--scholium-mark-highlight-background: color-mix(in srgb, var(--scholium-color-attention) 20%, transparent)"
-            ))
-        #expect(
-            documentMarkup.contains(
-                "--scholium-document-accent: color-mix(in srgb, var(--scholium-color-accent) 66%, var(--scholium-color-primary-text))"
-            ))
-        #expect(
-            documentMarkup.contains(
-                "--scholium-mark-highlight-edge: color-mix(in srgb, var(--scholium-color-attention) 52%, transparent)"
-            ))
-        #expect(sharedCSS.contains(documentMarkup))
+        #expect(sharedCSS.contains(ScholiumWebDesignTokens.documentMarkupCSSDeclarations))
         #expect(sharedCSS.contains("box-decoration-break: clone"))
-        #expect(sharedCSS.contains("-webkit-box-decoration-break: clone"))
-        #expect(sharedCSS.contains("color: inherit"))
-        #expect(sharedCSS.contains("background-color: var(--scholium-mark-highlight-background)"))
-        #expect(sharedCSS.contains("box-shadow: inset 0 -0.16em 0 var(--scholium-mark-highlight-edge)"))
-        #expect(sharedCSS.contains("var(--scholium-color-attention) 30%"))
         #expect(sharedCSS.contains("color: var(--scholium-document-accent);"))
-        #expect(sharedCSS.contains("--scholium-content-focus-ring: var(--scholium-color-accent);"))
-        #expect(sharedCSS.contains("--scholium-document-line-width: 66ch"))
-        #expect(sharedCSS.contains("--scholium-document-half-line-width: 33ch"))
-        #expect(sharedCSS.contains("--scholium-source-half-work-width: 41ch"))
-        #expect(sharedCSS.contains("text-autospace: normal;"))
-        #expect(sharedCSS.contains("text-spacing-trim: trim-both;"))
-        #expect(sharedCSS.contains("hyphens: none;"))
-        #expect(sharedCSS.contains("text-wrap-style: auto;"))
-        #expect(sharedCSS.contains(".scholium-document {\n  text-wrap-style: pretty;"))
-        #expect(sharedCSS.contains(".cm-editor.scholium-live-mode .cm-content {\n  text-wrap-style: stable;"))
-        #expect(!sharedCSS.contains("text-wrap: balance"))
-        #expect(sharedCSS.contains("text-autospace: no-autospace;"))
-        let sharedDocumentRoot = try #require(
-            sharedCSS.components(
-                separatedBy: ".cm-editor.scholium-source-mode .cm-content"
-            ).first
-        )
-        #expect(!sharedDocumentRoot.contains("max-inline-size:"))
-        #expect(sharedCSS.contains("inline-size: 100%;"))
-        #expect(sharedCSS.contains("calc(50% - var(--scholium-document-half-line-width))"))
-        #expect(sharedCSS.contains(".cm-editor.scholium-source-mode .cm-content"))
-        #expect(sharedCSS.contains(".cm-editor.scholium-source-mode .cm-scroller"))
-        #expect(sharedCSS.contains("var(--scholium-color-primary-text) 90%"))
-        #expect(sharedCSS.contains("var(--scholium-color-document-background)"))
-        #expect(sharedCSS.contains("color: var(--scholium-color-primary-text);"))
-        #expect(ScholiumColorRole.allCases.filter { $0 == .primaryText }.count == 1)
-        let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
-        #expect(presentationCSS.contains("var(--scholium-rhythm-inline-narrow)"))
-        #expect(presentationCSS.contains("var(--scholium-document-half-line-width)"))
-        #expect(presentationCSS.contains(".cm-editor.scholium-live-mode .cm-content"))
     }
 
-    @Test("Read and Live Preview inject one protected callout presentation")
+    @Test("WebKit chat and previews retain protected semantic Callout presentation")
     func readModeInjectsProtectedCalloutPresentation() throws {
-        let css = SafeMarkdownReadWebView.Coordinator.baseCSS
-        let calloutCSS = ScholiumCalloutStyles.css
-        let editorHTML = MarkdownEditorWebView.editorHTML ?? ""
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let projectionSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "WebEditor/live-structured-block-projections.ts"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(css.contains(".scholium-callout"))
-        #expect(!css.contains("(ScholiumCalloutStyles.css)"))
-        #expect(css.contains(calloutCSS))
-        #expect(editorHTML.contains(calloutCSS))
-        #expect(editorHTML.contains(".cm-live-callout-role-label"))
-        #expect(projectionSource.contains("if (foldable || !opening[4]) decorations.push(Decoration.widget({"))
-        #expect(!projectionSource.contains("if (foldable || label) decorations.push"))
-        #expect(projectionSource.contains("scholium-callout-default-title"))
-        #expect(calloutCSS.contains("--scholium-callout-title-ink"))
-        #expect(!calloutCSS.contains("border-block: 1px"))
-        #expect(!calloutCSS.contains("order: 2;"))
-        #expect(!calloutCSS.contains("display: grid;\n  grid-template-columns: minmax(6.4em"))
-        #expect(calloutCSS.contains(".cm-live-callout-active-line .scholium-callout-default-title"))
+        let css = ScholiumCalloutStyles.css
+        #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(css))
+        #expect(css.contains("--scholium-callout-title-ink"))
+        #expect(css.contains(".scholium-callout-fold-mark"))
+        #expect(!css.contains(".cm-"))
         for role in ["orient", "cite", "connect", "state", "illustrate", "quote", "flag", "neutral"] {
-            #expect(calloutCSS.contains(".scholium-callout-\(role),\n.cm-live-callout-role-\(role)"))
-            #expect(ScholiumWebDesignTokens.rootCSSDeclarations.contains("--scholium-callout-\(role)-title:"))
+            #expect(css.contains(".scholium-callout-\(role)"))
+            #expect(
+                ScholiumWebDesignTokens.rootCSSDeclarations.contains("--scholium-callout-\(role)-title:"))
         }
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "cm-live-quote.cm-live-quote-nested"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "border-inline-start: 1px solid var(--scholium-color-separator);"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".scholium-document blockquote blockquote:not(.scholium-callout-quotation)"
-            ))
-        #expect(
-            !ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".scholium-document blockquote.scholium-quote-depth-2"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "Nested quotations are real children of their parent quotation"
-            ))
-        #expect(
-            !ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "cm-live-quote.cm-live-quote-depth-2"
-            ))
     }
 
-    @Test("Ordinary quotation uses the document Accent alias in Read and Live Preview")
-    func ordinaryQuotationUsesDocumentAccentAlias() throws {
-        let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
-        let editorHTML = MarkdownEditorWebView.editorHTML ?? ""
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let editorCSS = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Resources/Editor/editor.css"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(sharedCSS.contains(".scholium-document blockquote,"))
-        #expect(sharedCSS.contains(".cm-editor.scholium-live-mode .cm-live-quote"))
-        #expect(
-            sharedCSS.contains(
-                "border-inline-start: 3px solid var(--scholium-document-accent);"
-            ))
-        #expect(
-            !sharedCSS.contains(
-                "color-mix(in srgb, AccentColor"
-            ))
-        #expect(editorHTML.contains(sharedCSS))
-        #expect(
-            editorCSS.contains(
-                "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote"
-            ))
-        #expect(
-            editorCSS.contains(
-                "--scholium-live-quote-depth: 1;"
-            ))
-        #expect(editorCSS.contains("margin-inline: 0;"))
-        #expect(editorCSS.contains("repeating-linear-gradient("))
-        #expect(editorCSS.contains("var(--scholium-live-quote-depth)"))
-        #expect(!editorCSS.contains("cm-live-quote-depth-2 {\n  margin-inline-start:"))
-    }
-
-    @Test("Edit H1 remains an authored first-level body heading")
-    func liveH1OwnsFirstLevelBodyHeadingTier() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "WebEditor/live-semantic-layout.ts"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(
-            !editorSource.contains(
-                #"if (headingLevel === 1) classes.add("cm-live-document-title");"#
-            ))
-        #expect(
-            !editorSource.contains(
-                "const isDocumentTitle = headingLevel === 1 && line.from === firstBodyLineFrom;"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "text-align: start;"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".scholium-live-mode .cm-live-h1 {"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);"
-            ))
-    }
-
-    @Test("Editor reveal settles hidden WebKit geometry before scroll restoration")
-    func editorRevealOwnsAStyleBarrier() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
-        let scrollSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/scroll-coordinator.ts"),
-            encoding: .utf8
-        )
-        let fractionOperation = try #require(
-            scrollSource.range(of: "function setFraction(requestedFraction: number) {")
-        )
-        let fractionTail = scrollSource[fractionOperation.lowerBound...]
-        let fractionBarrier = try #require(
-            fractionTail.range(
-                of: "options.flushPresentationGeometry();"
-            ))
-        let fractionExtent = try #require(
-            fractionTail.range(
-                of: "const extent = Math.max(0, editor.scrollDOM.scrollHeight"
-            ))
-        #expect(fractionBarrier.lowerBound < fractionExtent.lowerBound)
-
-        let anchorOperation = try #require(
-            scrollSource.range(of: "function setAnchor(anchor: EditorScrollAnchor) {")
-        )
-        let anchorTail = scrollSource[anchorOperation.lowerBound...]
-        let anchorBarrier = try #require(
-            anchorTail.range(
-                of: "options.flushPresentationGeometry();"
-            ))
-        let anchorGeometry = try #require(
-            anchorTail.range(of: "requestedScrollTop(anchor)")
-        )
-        #expect(anchorBarrier.lowerBound < anchorGeometry.lowerBound)
-        let requestedScrollTop = try #require(
-            scrollSource.range(of: "function requestedScrollTop(anchor: EditorScrollAnchor) {")
-        )
-        #expect(
-            scrollSource[requestedScrollTop.lowerBound...].contains(
-                "editor.lineBlockAt(blockProbe)"
-            ))
-        let dynamicStyle = try #require(
-            editorSource.range(of: "function setDynamicStyle(id: string, css: string) {")
-        )
-        let dynamicStyleTail = editorSource[dynamicStyle.lowerBound...]
-        let capturedGeometry = try #require(
-            dynamicStyleTail.range(of: "scrollCoordinator.captureGeometry()")
-        )
-        let styleMutation = try #require(
-            dynamicStyleTail.range(of: "style.textContent = css")
-        )
-        let measuredRestoration = try #require(
-            dynamicStyleTail.range(of: "scrollCoordinator.scheduleGeometryReport(geometry)")
-        )
-        #expect(capturedGeometry.lowerBound < styleMutation.lowerBound)
-        #expect(styleMutation.lowerBound < measuredRestoration.lowerBound)
-        #expect(scrollSource.contains("editor.requestMeasure({"))
-        #expect(scrollSource.contains("editor.scrollDOM.scrollTop = scrollTop"))
-        #expect(
-            editorSource.contains(
-                "flushPresentationGeometry: flushPresentationStyleAndGeometry"
-            ))
-        #expect(editorSource.contains("getComputedStyle(element).fontSize"))
-        #expect(editorSource.contains("element.getBoundingClientRect().width"))
-        #expect(!editorSource.contains("SCHOLIUM_UI_TEST_EDITOR_PRESENTATION_MARKER"))
+    @Test("WebKit quotation presentation uses the document Accent alias")
+    func ordinaryQuotationUsesDocumentAccentAlias() {
+        let css = ScholiumWebDesignTokens.documentPresentationCSS
+        #expect(css.contains(".scholium-document blockquote"))
+        #expect(css.contains("border-inline-start: 3px solid var(--scholium-document-accent);"))
+        #expect(!css.contains("color-mix(in srgb, AccentColor"))
     }
 
     @Test("App-owned Annotation and legacy archives stay absent after clean cutover")
@@ -3821,10 +2973,6 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
         let readSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
@@ -3833,8 +2981,6 @@ struct FrontendArchitectureTests {
         )
         #expect(!source.contains("PageAnnotation"))
         #expect(!source.contains("AnnotationRecord"))
-        #expect(!editorSource.contains("setPageAnnotations"))
-        #expect(!editorSource.contains("PageAnnotationMarginWidget"))
         #expect(!readSource.contains("applyPageAnnotations"))
         #expect(!source.contains("Write Activities"))
         #expect(!source.contains("Earlier Review Archive"))
@@ -3842,9 +2988,8 @@ struct FrontendArchitectureTests {
         #expect(!source.contains("entry.functionSnapshot == nil"))
     }
 
-    @Test("Read and Live Preview share one offline mathematics runtime and font set")
+    @Test("WebKit chat and previews share one offline mathematics runtime and font set")
     func sharedMathematicsRuntime() throws {
-        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let css = ScholiumMathAssets.css
 
         #expect(ScholiumMathAssets.runtimeJavaScript.contains("scholiumMath"))
@@ -3861,21 +3006,20 @@ struct FrontendArchitectureTests {
         #expect(css.contains("counter-increment: scholium-equation"))
         #expect(css.contains("content: \"(\" counter(scholium-equation) \")\""))
         #expect(css.contains(".scholium-math-display .katex { font-style: italic; }"))
-        #expect(editorHTML.contains(css))
 
         let plainReadHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body: "<p>Ordinary prose</p>"
         )
         let mathReadHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
-            body: #"<span class="scholium-math scholium-math-inline" data-math-source="eA==" data-math-kind="inline"></span>"#
+            body:
+                #"<span class="scholium-math scholium-math-inline" data-math-source="eA==" data-math-kind="inline"></span>"#
         )
         #expect(!plainReadHTML.contains(css))
         #expect(mathReadHTML.contains(css))
     }
 
-    @Test("Read and Editor fonts use one allowlisted offline WebKit resource route")
+    @Test("WebKit fonts use one allowlisted offline WebKit resource route")
     func sharedOfflineFontResources() throws {
-        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body: "<p>Ordinary prose</p>"
         )
@@ -3889,7 +3033,6 @@ struct FrontendArchitectureTests {
         #expect(!regular.data.isEmpty)
         #expect(ScholiumWebFonts.css.contains(regularURL.absoluteString))
         #expect(!ScholiumWebFonts.css.contains("data:font/ttf;base64,"))
-        #expect(editorHTML.contains("font-src scholium-font: data:"))
         #expect(readHTML.contains("font-src scholium-font: data:"))
         #expect(
             ScholiumWebFontResources.resource(
@@ -3901,49 +3044,12 @@ struct FrontendArchitectureTests {
             ) == nil)
     }
 
-    @Test("Initial WebKit prewarm is nonpersistent, source-free, and bounded")
-    func initialWebKitPrewarmIsBounded() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Styling/ScholiumWebKitRuntime.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(source.contains("WKWebsiteDataStore.nonPersistent()"))
-        #expect(source.contains("default-src 'none'"))
-        #expect(source.contains("font-src scholium-font:"))
-        #expect(source.contains("ScholiumWebFonts.css"))
-        #expect(source.contains("Task.sleep(for: .seconds(5))"))
-        #expect(source.contains("func takeReadWebView() -> WKWebView?"))
-        #expect(!source.contains("WKProcessPool"))
-        #expect(!source.contains("URLSession"))
-
-        let readSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(readSource.contains("takeReadWebView()"))
-    }
-
-    @Test("Review and Edit share one offline fail-closed Mermaid runtime")
+    @Test("WebKit readers retain one offline fail-closed Mermaid runtime")
     func sharedMermaidRuntime() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let editorWebViewSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/MarkdownEditorWebView.swift"
-            ),
-            encoding: .utf8
-        )
-        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body: #"<pre><code class="language-mermaid">flowchart LR\nA --&gt; B</code></pre>"#,
         )
@@ -3959,12 +3065,6 @@ struct FrontendArchitectureTests {
         #expect(css.contains(".scholium-mermaid-output"))
         #expect(css.contains("overflow-x: auto"))
         #expect(css.contains("contain: paint"))
-        #expect(editorHTML.contains(css))
-        #expect(
-            !editorWebViewSource.contains(
-                "source: ScholiumMermaidAssets.runtimeJavaScript"
-            ))
-        #expect(editorWebViewSource.contains("case .requestMermaidRuntime"))
         #expect(readHTML.contains(css))
         #expect(readRuntime.contains("readerWindow.scholiumMermaidReady"))
         #expect(readRuntime.contains("post('requestMermaidRuntime')"))
@@ -3990,14 +3090,12 @@ struct FrontendArchitectureTests {
         #expect(customizedCSS.contains("font-family: \"LXGW WenKai\""))
         #expect(customizedCSS.contains("font-family: \"Songti SC\""))
         #expect(customizedCSS.contains("font-family: \"STKaiti\""))
-        #expect(customizedCSS.contains(".cm-editor.scholium-live-mode .cm-line.cm-live-heading .cm-live-cjk"))
         #expect(customizedCSS.contains("hyphens: auto;"))
         #expect(customizedCSS.contains("text-wrap-style: auto;"))
     }
 
-    @Test("Read and Live Preview share semantic table presentation")
+    @Test("WebKit chat and previews share semantic table presentation")
     func sharedTablePresentation() throws {
-        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let css = ScholiumTableStyles.css
 
         #expect(css.contains(".scholium-table-scroll"))
@@ -4008,22 +3106,18 @@ struct FrontendArchitectureTests {
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
                 ".scholium-table :not(pre) > code"
             ))
-        #expect(editorHTML.contains(css))
         #expect(
             SafeMarkdownReadWebView.Coordinator.documentHTML(
                 body: "<div class=\"scholium-table-scroll\"></div>"
             ).contains(css))
     }
 
-    @Test("Review owns rendered footnotes while Edit reuses only the reference role")
+    @Test("WebKit reference and footnote styles stay accessible")
     func footnotePresentationRespectsModeOwnership() throws {
-        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let css = ScholiumFootnoteStyles.css
 
         #expect(css.contains(".footnote-reference"))
         #expect(css.contains(".footnotes"))
-        #expect(css.contains(".cm-live-footnote-reference-widget"))
-        #expect(!css.contains(".cm-live-footnotes-widget"))
         #expect(css.contains(".footnote-content:has(> p:only-child)"))
         #expect(css.contains(".scholium-document .footnotes"))
         #expect(css.contains(".scholium-document .footnotes li::marker"))
@@ -4032,94 +3126,37 @@ struct FrontendArchitectureTests {
         #expect(css.contains("border-radius: 0;"))
         #expect(!css.contains("--scholium-content-hover-surface"))
         #expect(css.contains("@media (prefers-reduced-motion: reduce)"))
-        #expect(editorHTML.contains(css))
         #expect(
             SafeMarkdownReadWebView.Coordinator.documentHTML(
                 body: "<section class=\"footnotes\"></section>"
             ).contains(css))
     }
 
-    @Test("Review owns the end section while Edit shares preview and exact-source activation")
+    @Test("WebKit reader preserves reference previews and return navigation")
     func footnoteInteractionStaysWithinEachModeBoundary() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
-        let footnoteSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "WebEditor/live-footnote-projection.ts"
-            ),
-            encoding: .utf8
-        )
-        let referenceStart = try #require(
-            footnoteSource.range(of: "class FootnoteReferenceWidget")
-        )
-        let referenceEnd = try #require(
-            footnoteSource.range(
-                of: "function decorations(",
-                range: referenceStart.upperBound..<footnoteSource.endIndex
-            )
-        )
-        let editReference = String(
-            footnoteSource[referenceStart.lowerBound..<referenceEnd.lowerBound])
-        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let runtime = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"), encoding: .utf8)
+        let html = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body:
-                #"<p>Claim<button class="footnote-reference" data-footnote="1">1</button>.</p><section class="footnotes"><ol><li data-footnote="1"><div class="footnote-content">Basis.</div><button class="footnote-return">Return</button></li></ol></section>"#,
+                #"<p><button class="footnote-reference" data-footnote="1">1</button></p><section class="footnotes"><button class="footnote-return">Return</button></section>"#
         )
-        let readRuntime = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
-            encoding: .utf8
-        )
-        let previewController = try String(
-            contentsOf: repository.appendingPathComponent(
-                "WebEditor/preview-popover.ts"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(footnoteSource.contains("reference.definitionContentFrom"))
-        #expect(!editReference.contains("footnote-return"))
-        #expect(editReference.contains(#"marker.type = "button""#))
-        #expect(!editReference.contains(#"marker.setAttribute("aria-controls""#))
-        #expect(editReference.contains(#"marker.setAttribute("aria-expanded""#))
-        #expect(previewController.contains("function showFootnoteReference("))
-        #expect(previewController.contains("options.footnotes().definitions"))
-        #expect(previewController.contains("options.renderFootnoteContent(content, body)"))
-        #expect(
-            editReference.contains(
-                #"ignoreEvent(event: Event) { return event.type !== "mousedown"; }"#))
-        #expect(editorSource.contains("projectedWidgetPointerStart"))
-        #expect(editorSource.contains("createLiveSelectionController"))
-        #expect(!editorSource.contains("beginProjectedPointerSelection"))
-        #expect(!editorSource.contains("liveBlockActivationField"))
-        #expect(!footnoteSource.contains("class FootnoteSectionWidget"))
-        #expect(!footnoteSource.contains("cm-live-footnotes-widget"))
-        #expect(!footnoteSource.contains("cm-live-footnote-definition-source"))
-        #expect(footnoteSource.contains("cm-live-footnote-source-marker"))
-        #expect(readHTML.contains("class=\"footnote-reference\""))
-        #expect(readHTML.contains("class=\"footnote-return\""))
-        #expect(readRuntime.contains("showFootnotePopover"))
-        #expect(readRuntime.contains("activeFootnoteButton"))
-        #expect(readRuntime.contains("setFootnoteExpanded"))
-        #expect(readRuntime.contains("eventElement?.closest<HTMLButtonElement>('.footnote-reference')"))
-        #expect(readRuntime.contains("eventElement?.closest<HTMLElement>('.footnote-return')"))
+        #expect(html.contains("class=\"footnote-reference\""))
+        #expect(html.contains("class=\"footnote-return\""))
+        #expect(runtime.contains("showFootnotePopover"))
+        #expect(runtime.contains("activeFootnoteButton"))
+        #expect(runtime.contains("setFootnoteExpanded"))
+        #expect(runtime.contains("eventElement?.closest<HTMLButtonElement>('.footnote-reference')"))
+        #expect(runtime.contains("eventElement?.closest<HTMLElement>('.footnote-return')"))
     }
 
-    @Test("Read and Live Preview share the bounded preview presentation")
+    @Test("WebKit readers retain bounded native preview presentation")
     func sharedPreviewPresentation() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let previewControllerSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/preview-popover.ts"),
-            encoding: .utf8
-        )
-        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let css = ScholiumPreviewStyles.css
         #expect(!css.contains(".scholium-preview-popover"))
         #expect(css.contains("prefers-contrast: more"))
@@ -4129,7 +3166,6 @@ struct FrontendArchitectureTests {
         #expect(!css.contains("Canvas"))
         #expect(!css.contains("backdrop-filter"))
         #expect(!css.contains("prefers-reduced-transparency: reduce"))
-        #expect(editorHTML.contains(css))
 
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body:
@@ -4145,16 +3181,6 @@ struct FrontendArchitectureTests {
         #expect(readRuntime.contains("showFootnotePopover"))
         #expect(readRuntime.contains("renderEmbeddedNotes"))
         #expect(readRuntime.contains("scholium-embedded-note-viewport"))
-        #expect(previewControllerSource.contains("ViewPlugin.define"))
-        #expect(previewControllerSource.contains("populatePreviewDocument"))
-        #expect(previewControllerSource.contains("scheduleHide"))
-        #expect(previewControllerSource.contains("document.removeEventListener"))
-        #expect(previewControllerSource.contains("options.nativeFloating.show(previewSurface(anchor, root)"))
-        #expect(previewControllerSource.contains(#"addEventListener("scroll", handleViewportExit"#))
-        #expect(previewControllerSource.contains(#"addEventListener("resize", handleViewportExit"#))
-        #expect(!previewControllerSource.contains(#"addEventListener("blur", handleViewportExit"#))
-        #expect(previewControllerSource.contains("root?.remove()"))
-        #expect(!previewControllerSource.contains("mode()"))
     }
 
     private func rgbValue(of color: NSColor, appearance: NSAppearance) -> UInt32? {

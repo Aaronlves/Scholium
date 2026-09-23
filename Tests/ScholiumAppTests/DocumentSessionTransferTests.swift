@@ -25,7 +25,7 @@ struct DocumentSessionTransferTests {
         let second = document("Second.md")
         controller.selectDocument(first)
         let session = controller.session(for: first.editingTarget)
-        session.beginEditing(in: .source)
+        session.beginEditing(in: .edit)
         session.originalEditingSource = "Saved"
         session.editingSource = "Unsaved draft"
         session.scrollFraction = 0.62
@@ -34,7 +34,7 @@ struct DocumentSessionTransferTests {
         controller.selectDocument(second)
         #expect(controller.selectRetainedDocument(first))
         #expect(controller.session(for: first.editingTarget) === session)
-        #expect(controller.currentPresentationMode == .source)
+        #expect(controller.currentPresentationMode == .edit)
         #expect(session.editingSource == "Unsaved draft")
         #expect(session.scrollFraction == 0.62)
         #expect(session.editError == "Retained save failure")
@@ -61,17 +61,15 @@ struct DocumentSessionTransferTests {
         let note = document("A.md")
         source.selectDocument(note)
         let original = source.session(for: note.editingTarget)
-        original.beginEditing(in: .source)
+        original.beginEditing(in: .edit)
         original.originalEditingSource = "\u{FEFF}# A\r\n"
         original.editingSource = "\u{FEFF}# A\r\n\r\n论点 🦉 e\u{301}"
         original.editError = "Fixture save failure"
         original.canRetrySave = true
         original.scrollFraction = 0.61
-        original.editorSession.loadDocument(original.editingSource, documentID: "A.md", mode: .source)
-        original.editorSession.updateInteraction(
-            selections: [.init(anchor: 9, head: 12)], line: 3, column: 2, lineCount: 3,
-            documentVersion: 0, focusTarget: .editor, context: nil
-        )
+        original.editorSession.loadDocument(original.editingSource, documentID: "A.md", mode: .edit)
+        original.editorSession.nativeEditor.setSelectedRange(NSRange(location: 9, length: 3))
+        original.editorSession.updateNativeInteraction()
         let presentation = original.windowPresentationSnapshot
         try await source.prepareSessionTransfer(note)
         let transfer = try #require(source.takeSessionForTransfer(note))
@@ -85,7 +83,7 @@ struct DocumentSessionTransferTests {
         #expect(received.originalEditingSource == "\u{FEFF}# A\r\n")
         #expect(received.editError == "Fixture save failure")
         #expect(received.canRetrySave)
-        #expect(received.presentationMode == .source)
+        #expect(received.presentationMode == .edit)
         #expect(received.windowPresentationSnapshot == presentation)
         #expect(destination.selectedDocument == note)
         #expect(source.retainedSessionCount == 0)

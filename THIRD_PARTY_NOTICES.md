@@ -4,7 +4,12 @@ This file records the dependencies used to build Scholium. Exact JavaScript vers
 
 ## Runtime libraries
 
-- CodeMirror 6 packages (`@codemirror/autocomplete`, `commands`, `lang-markdown`, `language`, `search`, `state`, and `view`) and their CodeMirror/Lezer runtime dependencies: MIT License.
+- ScholiumEditor derives from Edmund v0.8.0 (Apache License 2.0), with
+  Scholium-owned native integration and exact-source changes; see
+  `ThirdParty/Edmund/NOTICE.md` and `ThirdParty/Edmund/LICENSE`.
+- SwiftMath 1.7.3: MIT License. Its bundled math fonts include SIL Open Font
+  License and GUST Font License material; all supplied notices are retained in
+  `Tools/Packaging/Licenses/SwiftMath-*` and the font resource bundle.
 - KaTeX 0.18.1 and its bundled KaTeX fonts: MIT License.
 - Mermaid 11.16.0 and the runtime packages included in its offline browser
   bundle: permissive licenses reproduced package-by-package in

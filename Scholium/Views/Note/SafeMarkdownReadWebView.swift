@@ -96,23 +96,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> DocumentWebViewContainer {
-        let webView: WKWebView
-        let contentController: WKUserContentController
-        if pageExtension == nil, let prepared = ScholiumWebKitProcessPrewarmer.shared.takeReadWebView() {
-            webView = prepared
-            contentController = prepared.configuration.userContentController
-        } else {
-            contentController = WKUserContentController()
-            let configuration = WKWebViewConfiguration()
-            configuration.userContentController = contentController
-            configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
-            configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-            ScholiumWebFontResources.install(in: configuration)
-            webView =
-                pageExtension?.makeWebView(configuration: configuration)
-                ?? WKWebView(frame: .zero, configuration: configuration)
-        }
+        let contentController = WKUserContentController()
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController = contentController
+        configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        ScholiumWebFontResources.install(in: configuration)
+        let webView =
+            pageExtension?.makeWebView(configuration: configuration)
+            ?? WKWebView(frame: .zero, configuration: configuration)
         contentController.add(
             context.coordinator,
             contentWorld: Self.bridgeContentWorld,
@@ -538,9 +531,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             let expectedSignature = signature
             if !publishesLoadingTransition {
-                PerformanceProbe.shared.markReadNavigationStarted(
-                    documentID: documentID
-                )
                 let navigation = webView.loadHTMLString(html, baseURL: nil)
                 guard activeWebView === webView,
                     loadedSignature == expectedSignature,
@@ -563,9 +553,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     self.activeLoadSignature == expectedSignature,
                     self.loadGeneration == expectedLoadGeneration
                 else { return }
-                PerformanceProbe.shared.markReadNavigationStarted(
-                    documentID: self.documentID
-                )
                 let navigation = webView.loadHTMLString(html, baseURL: nil)
                 guard self.activeWebView === webView,
                     self.loadedSignature == expectedSignature,
@@ -941,9 +928,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 loadedSignature == expectedSignature
             else { return }
             let expectedLoadGeneration = loadGeneration
-            PerformanceProbe.shared.markReadNavigationFinished(
-                documentID: documentID
-            )
             pageIsReady = true
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
             applyLinkPreviewsIfNeeded(in: webView)

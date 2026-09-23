@@ -155,23 +155,22 @@ extension WindowModel {
                 else { throw RelatedMaterialsError.changedSource }
             }
             try validateSourceOwner()
-            if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedWebView {
+            if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedNativeView {
                 let current = try await sourceSession.editorSession.currentText()
                 guard current.utf8.elementsEqual(document.rawContent.utf8) else { throw RelatedMaterialsError.changedSource }
             }
             try validateDestination()
             try validateSourceOwner()
             if let edit = plan.edits.first {
-                if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedWebView {
+                if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedNativeView {
                     let sourceEditor = sourceSession.editorSession
-                    guard let webView = sourceEditor.webView, plan.edits.count == 1 else { throw RelatedMaterialsError.changedSource }
+                    guard plan.edits.count == 1 else { throw RelatedMaterialsError.changedSource }
                     let bytes = Array(document.rawContent.utf8)
                     let from = String(decoding: bytes[..<edit.startUTF8], as: UTF8.self).utf16.count
                     let to = String(decoding: bytes[..<edit.endUTF8], as: UTF8.self).utf16.count
-                    _ = try await sourceEditor.send(
-                        .replacePassage(
-                            expectedText: document.rawContent, fromUTF16: from, toUTF16: to,
-                            replacement: edit.replacement, preserveSelection: true), in: webView)
+                    try sourceEditor.replacePassage(
+                        expectedText: document.rawContent, fromUTF16: from, toUTF16: to,
+                        replacement: edit.replacement, preserveSelection: true)
                     try await owner.documentController.flushForExternalOperation(
                         session: sourceSession, target: .workspace(key),
                         onCommitted: { committed in
@@ -191,7 +190,7 @@ extension WindowModel {
             let saved = try await capabilities.documents.load(card.candidate.note)
             try RelatedParagraphLink.verify(plan, saved: saved)
             if !plan.edits.isEmpty { savedNewAnchor = true }
-            if let sourceSession, !sourceSession.editorSession.hasAttachedWebView {
+            if let sourceSession, !sourceSession.editorSession.hasAttachedNativeView {
                 guard let savedSnapshot = try await owner.documentController.noteSnapshot(card.candidate.note),
                     savedSnapshot.fingerprint == saved.fingerprint,
                     savedSnapshot.stableIdentity.resolvedID == sourceID
@@ -200,7 +199,7 @@ extension WindowModel {
                 owner.documentController.recordCommittedSnapshot(
                     savedSnapshot, vaultName: card.reference.vaultName, vaultRole: card.reference.vaultRole)
             }
-            if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedWebView {
+            if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedNativeView {
                 let current = try await sourceSession.editorSession.currentText()
                 guard current.utf8.elementsEqual(saved.rawContent.utf8), !sourceSession.hasUnsavedChanges else {
                     throw RelatedMaterialsError.changedSource
