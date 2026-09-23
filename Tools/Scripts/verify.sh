@@ -166,6 +166,7 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/Services/AgentChatController+Conversation.swift"|\
     "${ROOT}/Scholium/Services/AgentChatController+Execution.swift"|\
     "${ROOT}/Scholium/Services/AgentChatController+Materials.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatFaviconStore.swift"|\
     "${ROOT}/Scholium/Services/AgentChatExecutionState.swift"|\
     "${ROOT}/Scholium/Services/AgentChatCapabilitiesController.swift"|\
     "${ROOT}/Scholium/Services/AgentChatChildController.swift"|\
@@ -190,6 +191,7 @@ if rg -n --glob '*.swift' \
   --glob '!**/Services/PerformanceProbe.swift' \
   --glob '!**/Localization/WebKitInterfaceLocalization.swift' \
   --glob '!**/Views/Note/ScholiumDocumentWebResources.swift' \
+  --glob '!**/Views/Sidebar/AgentChatWebsiteIcon.swift' \
   --glob '!**/Styling/ScholiumWebFonts.swift' \
   --glob '!**/Styling/ScholiumWebFontResources.swift' \
   --glob '!**/Styling/ScholiumCalloutStyles.swift' \
