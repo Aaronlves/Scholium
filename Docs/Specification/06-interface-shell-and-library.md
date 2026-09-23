@@ -57,8 +57,8 @@ history, document mode, Settlement, and Inspector modes. A disabled action canno
 execute through another route. Document-specific popovers close when
 their document or required source revision changes; detaching a window ends its toolbar
 interactions and prevents stale state from updating it. Back/Forward begin the Document
-toolbar region, after the sidebar tracking boundary and before its secondary-text document
-name. They remain available with the sidebar collapsed and traverse document visits, not
+toolbar region after the sidebar tracking boundary. They remain available with
+the sidebar collapsed and traverse document visits, not
 heading jumps. Visibility and workspace session state are installed before first
 presentation, then native state is authoritative. Each workspace retains Library filters
 and disclosure. Document tabs and selection belong to the window; browsing another
@@ -68,7 +68,7 @@ and buffer.
 
 The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
-current-Document identity and mode,
+current-Document mode,
 Settlement, Note Actions, confirmed Agent Changes when present, Inspector
 projection, and Inspector visibility. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,

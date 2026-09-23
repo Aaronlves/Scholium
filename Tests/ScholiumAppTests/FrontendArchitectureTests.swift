@@ -942,7 +942,6 @@ struct FrontendArchitectureTests {
                 ScholiumWorkspaceToolbarController.Item.libraryDivider,
                 ScholiumWorkspaceToolbarController.Item.back,
                 ScholiumWorkspaceToolbarController.Item.forward,
-                ScholiumWorkspaceToolbarController.Item.documentTitle,
                 .flexibleSpace,
                 ScholiumWorkspaceToolbarController.Item.settlement,
                 .space,
@@ -957,7 +956,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(!sidebarSource.contains("private var brandHeader"))
         #expect(!sidebarSource.contains("Text(\"Scholium\")"))
-        #expect(toolbarSource.contains("title.textColor = .secondaryLabelColor"))
+        #expect(!toolbarSource.contains("scholium.toolbar.documentTitle"))
         #expect(appSource.contains(".navigationTitle(workspaceWindowTitle)"))
         #expect(appSource.contains(".navigationSubtitle(workspaceWindowSubtitle)"))
         #expect(appSource.contains("showsTriptychSubtitle(in: route.windowID)"))
@@ -1079,9 +1078,6 @@ struct FrontendArchitectureTests {
         let sidebarIndex = try #require(identifiers.firstIndex(of: Item.sidebar))
         let backIndex = try #require(identifiers.firstIndex(of: Item.back))
         let forwardIndex = try #require(identifiers.firstIndex(of: Item.forward))
-        let documentTitleIndex = try #require(
-            identifiers.firstIndex(of: Item.documentTitle)
-        )
         let modeIndex = try #require(identifiers.firstIndex(of: Item.documentMode))
         let documentControlSpaceIndex = try #require(
             identifiers.indices.last { $0 < modeIndex && identifiers[$0] == .space }
@@ -1099,8 +1095,7 @@ struct FrontendArchitectureTests {
         #expect(sidebarIndex < backIndex)
         #expect(backIndex < forwardIndex)
         #expect(libraryDividerIndex < backIndex)
-        #expect(forwardIndex < documentTitleIndex)
-        #expect(documentTitleIndex < documentFlexibleSpaceIndex)
+        #expect(forwardIndex < documentFlexibleSpaceIndex)
         #expect(documentFlexibleSpaceIndex < settlementIndex)
         #expect(settlementIndex < documentControlSpaceIndex)
         #expect(documentControlSpaceIndex < modeIndex)
@@ -1998,10 +1993,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(
-            ScholiumWorkspaceToolbarController.Item.documentTitle.rawValue
-                == "scholium.toolbar.documentTitle"
-        )
+        #expect(!toolbar.contains("scholium.toolbar.documentTitle"))
         #expect(!toolbar.contains("scholium.toolbar.search"))
         #expect(!sidebarSource.contains("scholium.sidebarSearch"))
         #expect(!toolbar.contains("scholium.toolbar.agentChanges"))

@@ -24,9 +24,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         )
         // These identifiers are structural bounds for the Document toolbar.
         static let libraryDivider = NSToolbarItem.Identifier.sidebarTrackingSeparator
-        static let documentTitle = NSToolbarItem.Identifier(
-            "scholium.toolbar.documentTitle"
-        )
         static let documentMode = NSToolbarItem.Identifier(
             "scholium.toolbar.documentMode"
         )
@@ -146,7 +143,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.libraryDivider,
             Item.back,
             Item.forward,
-            Item.documentTitle,
             .space,
             Item.documentMode,
             Item.noteActions,
@@ -166,7 +162,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.libraryDivider,
             Item.back,
             Item.forward,
-            Item.documentTitle,
             .flexibleSpace,
             Item.settlement,
             .space,
@@ -223,18 +218,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 dividerIndex: 0
             )
             item.visibilityPriority = .user
-            return item
-        case Item.documentTitle:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            let title = NSTextField(labelWithString: "")
-            title.font = .systemFont(ofSize: NSFont.systemFontSize)
-            title.textColor = .secondaryLabelColor
-            title.lineBreakMode = .byTruncatingTail
-            title.setAccessibilityIdentifier("scholium.toolbar.documentTitle")
-            title.widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
-            item.view = title
-            item.isNavigational = true
-            item.visibilityPriority = .high
             return item
         case Item.documentMode:
             return ScholiumDocumentModeToolbarItem(identifier: itemIdentifier, model: appState)
@@ -533,16 +516,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 systemImage: "arrow.right",
                 isEnabled: isCommandEnabled(Item.forward)
             )
-        }
-
-        if let item = toolbarItem(Item.documentTitle), let title = item.view as? NSTextField {
-            let name = appState.currentNote.map { $0.title ?? $0.displayName } ?? "Scholium"
-            title.stringValue = name
-            title.setAccessibilityLabel(name)
-            title.toolTip = name
-            title.textColor = .secondaryLabelColor
-            item.label = name
-            item.paletteLabel = name
         }
 
         (toolbarItem(Item.documentMode) as? ScholiumDocumentModeToolbarItem)?.refreshPresentation()
