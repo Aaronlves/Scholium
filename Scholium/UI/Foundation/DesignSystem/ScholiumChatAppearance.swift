@@ -12,12 +12,16 @@ enum ScholiumChatAppearance {
     static var messageNSForeground: NSColor { ScholiumColorRole.primaryText.nsColor }
     static let messageLineHeight: CGFloat = 1.55
     static var messageLoadingHeight: CGFloat { ceil(messageNSFont.pointSize * messageLineHeight) }
-    static let messageSpacing: CGFloat = 20
+    static let messageSpacing = ScholiumGrid.Spacing.sectionSeparation
     static let contentSpacing: CGFloat = 8
     static let userLeadingInset: CGFloat = 16
     static let bubbleHorizontalInset: CGFloat = 12
     static let bubbleVerticalInset: CGFloat = 10
     static let bubbleRadius: CGFloat = 16
+    static let linkIconScale: CGFloat = 0.82
+    static let linkIconLeadingGapEm: CGFloat = 0.06
+    static let linkIconTrailingGapEm: CGFloat = 0.24
+    static var sourceIconSize: CGFloat { messageNSFont.pointSize * linkIconScale }
 
     /// A complete chat rhythm overrides document-reading padding as well as
     /// margins. Em units keep structure proportional to the native body font.
@@ -28,7 +32,7 @@ enum ScholiumChatAppearance {
             font: \(messageNSFont.pointSize)px/\(messageLineHeight) -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
             color: var(--scholium-color-primary-text); text-align: start;
             text-wrap-style: auto;
-            overflow-wrap: anywhere;
+            overflow-wrap: break-word;
         }
         .scholium-document p { margin: 0 0 .75em; padding: 0; }
         .scholium-document :is(h1, h2, h3, h4, h5, h6) {

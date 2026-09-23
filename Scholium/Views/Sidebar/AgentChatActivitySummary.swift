@@ -20,9 +20,9 @@ struct AgentChatActivitySummary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             if let noteTarget {
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     AgentChatActivityText(text: title)
-                        .fixedSize(horizontal: true, vertical: false)
+                        .fixedSize(horizontal: false, vertical: true)
                     Button {
                         openNote(noteTarget.url)
                     } label: {
@@ -48,7 +48,7 @@ struct AgentChatActivitySummary: View {
                     )
                 }
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     AgentChatActivityText(text: title)
                     if showsStatus {
                         Spacer(minLength: 4)

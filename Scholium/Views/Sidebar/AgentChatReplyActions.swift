@@ -131,6 +131,11 @@ struct AgentChatSourcesView: View {
     @State private var expandedSources: Set<String> = []
     @ObservedObject private var faviconStore = AgentChatFaviconStore.shared
 
+    private var sourceTextInset: CGFloat {
+        max(ScholiumGrid.Dimension.iconTrackWidth, ScholiumChatAppearance.sourceIconSize)
+            + ScholiumGrid.Spacing.labelAccessoryGap
+    }
+
     private var contentHeight: CGFloat {
         let expandedHeight = sources.filter { expandedSources.contains($0.id) }.reduce(CGFloat.zero) { height, source in
             switch context?.evidence(for: source.url) {
@@ -139,7 +144,7 @@ struct AgentChatSourcesView: View {
             default: return height
             }
         }
-        return min(380, max(180, 64 + CGFloat(sources.count) * 100 + expandedHeight))
+        return min(380, max(180, 64 + CGFloat(sources.count) * 68 + expandedHeight))
     }
 
     var body: some View {
@@ -153,7 +158,7 @@ struct AgentChatSourcesView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(sources) { source in
                         VStack(alignment: .leading, spacing: 4) {
-                            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                                 if source.symbol == .globe,
                                     let image = AgentChatWebsiteIcon.image(for: source.url)
                                         ?? faviconStore.image(for: source.url)
@@ -162,14 +167,16 @@ struct AgentChatSourcesView: View {
                                         .resizable()
                                         .interpolation(.high)
                                         .frame(
-                                            width: ScholiumGrid.Dimension.iconTrackWidth,
-                                            height: ScholiumGrid.Dimension.iconTrackWidth
+                                            width: ScholiumChatAppearance.sourceIconSize,
+                                            height: ScholiumChatAppearance.sourceIconSize
                                         )
+                                        .frame(width: max(ScholiumGrid.Dimension.iconTrackWidth, ScholiumChatAppearance.sourceIconSize))
                                         .accessibilityHidden(true)
                                 } else {
                                     Image(systemName: source.symbol.systemName)
-                                        .font(.caption)
+                                        .font(.system(size: ScholiumChatAppearance.sourceIconSize))
                                         .foregroundStyle(.secondary)
+                                        .frame(width: max(ScholiumGrid.Dimension.iconTrackWidth, ScholiumChatAppearance.sourceIconSize))
                                         .accessibilityHidden(true)
                                 }
                                 if source.isNote || source.isWeb || source.isZotero {
@@ -205,13 +212,17 @@ struct AgentChatSourcesView: View {
                                         get: { expandedSources.contains(source.id) },
                                         set: { expanded in
                                             if expanded { expandedSources.insert(source.id) } else { expandedSources.remove(source.id) }
-                                        }))
+                                        })
+                                )
+                                .padding(.leading, sourceTextInset)
                             }
                             if source.isNote {
                                 Text(source.destination).font(.caption).foregroundStyle(.secondary)
+                                    .padding(.leading, sourceTextInset)
                             } else {
                                 Text(source.url.absoluteString).font(.caption).foregroundStyle(.secondary)
                                     .lineLimit(1).textSelection(.enabled).help(source.url.absoluteString)
+                                    .padding(.leading, sourceTextInset)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }

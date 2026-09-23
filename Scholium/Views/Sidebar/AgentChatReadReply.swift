@@ -220,10 +220,11 @@ struct AgentChatReadReply: View {
                 .scholium-document a.scholium-chat-link::before {
                     content: "";
                     display: inline-block;
-                    inline-size: .88em;
-                    block-size: .88em;
-                    margin-inline-end: .28em;
-                    vertical-align: -.08em;
+                    inline-size: \(ScholiumChatAppearance.linkIconScale)em;
+                    block-size: \(ScholiumChatAppearance.linkIconScale)em;
+                    margin-inline-start: \(ScholiumChatAppearance.linkIconLeadingGapEm)em;
+                    margin-inline-end: \(ScholiumChatAppearance.linkIconTrailingGapEm)em;
+                    vertical-align: -.06em;
                     background: var(--scholium-color-secondary-text);
                     -webkit-mask: var(--scholium-chat-link-symbol) center / contain no-repeat;
                     mask: var(--scholium-chat-link-symbol) center / contain no-repeat;
