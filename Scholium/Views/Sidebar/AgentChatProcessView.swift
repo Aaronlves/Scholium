@@ -100,7 +100,7 @@ struct AgentChatProcessView<Row: View>: View {
             VStack(alignment: .leading, spacing: 4) {
                 if let status {
                     AgentChatTurnStatus(
-                        presentation: status, animates: animates)
+                        presentation: status, isVisible: animates)
                 } else {
                     Text(verbatim: processTitle).font(.callout).foregroundStyle(.secondary)
                 }

@@ -7,6 +7,13 @@ struct ResearchGroupEntrance {
     private var starts: [VaultQualifiedNoteID: Date] = [:]
     private(set) var deadline: Date?
 
+    /// A newly mounted pane presents retained results in their completed state.
+    /// Only groups published while the pane is mounted receive an entrance.
+    mutating func showExisting(_ notes: [VaultQualifiedNoteID]) {
+        visible = Set(notes)
+        finish()
+    }
+
     mutating func update(_ notes: [VaultQualifiedNoteID], at now: Date, reduceMotion: Bool) {
         let incoming = Set(notes)
         starts = starts.filter { incoming.contains($0.key) }

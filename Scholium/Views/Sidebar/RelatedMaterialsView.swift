@@ -14,6 +14,7 @@ struct RelatedMaterialsView: View {
     let insertParagraph: (RelatedMaterialCard) -> Void
     @State private var pointerInReferences = false
     @State private var entrance = ResearchGroupEntrance()
+    @State private var hasMountedResults = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -84,7 +85,12 @@ struct RelatedMaterialsView: View {
             if !session.isLoading { scheduleFollowing(immediate: true) }
         }
         .onChange(of: session.noteGroups.map(\.id), initial: true) { _, ids in
-            entrance.update(ids, at: .now, reduceMotion: reduceMotion)
+            if hasMountedResults {
+                entrance.update(ids, at: .now, reduceMotion: reduceMotion)
+            } else {
+                entrance.showExisting(ids)
+                hasMountedResults = true
+            }
         }
         .onChange(of: reduceMotion) { _, enabled in
             if enabled { entrance.finish() }

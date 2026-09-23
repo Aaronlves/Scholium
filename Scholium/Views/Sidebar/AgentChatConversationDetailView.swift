@@ -430,7 +430,7 @@ struct AgentChatConversationDetailView: View {
                 preservesReading: isAwayFromLatest || readingSession.isRetainingPosition || presentation.transcriptIsScrolling,
                 hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
                 inspectedActivityIDs: expandedActivityIDs,
-                animates: isVisible && !reduceMotion && controller.approvals.isEmpty,
+                animates: isVisible && controller.approvals.isEmpty,
                 inspect: { readingSession.pause() },
                 userExpansion: Binding(
                     get: { readingSession.processExpansions[item.id] },
@@ -455,14 +455,14 @@ struct AgentChatConversationDetailView: View {
                 let status = turnPresentation(message.turnID, projection: projection)
                 AgentChatTurnStatus(
                     presentation: status,
-                    animates: isVisible && !reduceMotion)
+                    isVisible: isVisible)
             }
             messageView(message)
             if message.role == .user && projection.carriesTurnStatus(item) {
                 let status = turnPresentation(message.turnID, projection: projection)
                 AgentChatTurnStatus(
                     presentation: status,
-                    animates: isVisible && !reduceMotion)
+                    isVisible: isVisible)
             }
         }
     }
@@ -751,7 +751,7 @@ struct AgentChatConversationDetailView: View {
                     let presentation = turnPresentation(controller.currentTurnID, projection: projection)
                     AgentChatTurnStatus(
                         presentation: presentation,
-                        animates: isVisible && !reduceMotion
+                        isVisible: isVisible
                     )
                     .accessibilityIdentifier("scholium.chat.currentActivity")
                 } else if controller.state == .branching {

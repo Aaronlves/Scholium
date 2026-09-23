@@ -60,39 +60,42 @@ struct AgentChatTurnPresentation: Equatable {
 
 struct AgentChatTurnStatus: View {
     let presentation: AgentChatTurnPresentation
-    var animates = true
+    var isVisible = true
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.locale) private var locale
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.controlActiveState) private var activeState
 
     var body: some View {
-        TimelineView(
-            .animation(
-                minimumInterval: 1,
-                paused: !presentation.isWorking || !animates || reduceMotion || !isEnabled || activeState == .inactive
-            )
-        ) { context in
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(presentation.statusLabel(at: context.date, locale: locale))
-                }
-                if presentation.pendingAnswers > 0 {
-                    Text("\(presentation.pendingAnswers) answers pending", bundle: .module)
-                }
+        if presentation.isWorking && isVisible && isEnabled && activeState != .inactive {
+            // A changing text value is not visual motion. Keep it current under Reduce Motion.
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                status(at: context.date)
             }
-            .font(.callout).monospacedDigit().foregroundStyle(.secondary)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(verbatim: accessibilityLabel))
-            .accessibilityValue(
-                [
-                    presentation.elapsedLabel(at: context.date, locale: locale),
-                    presentation.pendingAnswers > 0
-                        ? String(format: ScholiumL10n.string("%lld answers pending", locale: locale), presentation.pendingAnswers) : nil,
-                ]
-                .compactMap { $0 }.joined(separator: ", ")
-            )
+        } else {
+            status(at: .now)
         }
+    }
+
+    private func status(at now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(presentation.statusLabel(at: now, locale: locale))
+            }
+            if presentation.pendingAnswers > 0 {
+                Text("\(presentation.pendingAnswers) answers pending", bundle: .module)
+            }
+        }
+        .font(.callout).monospacedDigit().foregroundStyle(.secondary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: accessibilityLabel))
+        .accessibilityValue(
+            [
+                presentation.elapsedLabel(at: now, locale: locale),
+                presentation.pendingAnswers > 0
+                    ? String(format: ScholiumL10n.string("%lld answers pending", locale: locale), presentation.pendingAnswers) : nil,
+            ]
+            .compactMap { $0 }.joined(separator: ", ")
+        )
     }
 
     private var accessibilityLabel: String {

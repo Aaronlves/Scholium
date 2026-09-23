@@ -87,7 +87,7 @@ struct AgentChatVisualEvidenceTests {
                         presentation: .init(
                             state: state,
                             timing: .init(startedAt: Date(timeIntervalSinceNow: -12), durationMilliseconds: 38_500)),
-                        animates: false)
+                        isVisible: false)
                 }
                 Divider()
                 AgentChatMarkdown(text: "这一区分还需要结合上下文核对。The distinction needs further support.\n\n**原文与解释**\n\n- 保留原文措辞。\n- 将重构与原文明说的理由区分开。")

@@ -51,4 +51,18 @@ struct ResearchGroupEntranceTests {
         #expect(entrance.deadline == nil)
         #expect(entrance.progress(for: a, at: now) == 1)
     }
+
+    @Test func remountedPaneShowsRetainedGroupsWithoutReplayingEntrance() {
+        let now = Date(timeIntervalSince1970: 100)
+        let retained = note("Retained.md")
+        let new = note("New.md")
+        var entrance = ResearchGroupEntrance()
+        entrance.showExisting([retained])
+        #expect(entrance.deadline == nil)
+        #expect(entrance.progress(for: retained, at: now) == 1)
+
+        entrance.update([retained, new], at: now, reduceMotion: false)
+        #expect(entrance.progress(for: retained, at: now) == 1)
+        #expect(entrance.progress(for: new, at: now) == 0)
+    }
 }
