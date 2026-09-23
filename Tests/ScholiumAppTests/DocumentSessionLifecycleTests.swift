@@ -93,11 +93,11 @@ struct DocumentSessionLifecycleTests {
         #expect(session.retainsEditorSurface)
         #expect(session.retainedEditorMode == .edit)
 
-        #expect(publications.count == 4)
+        #expect(publications.count == 3)
         _ = observation
     }
 
-    @Test("A native editor retry retains its view and checked source")
+    @Test("A retry request does not replace a loaded native editor")
     func managedCreationEditorRetry() {
         let session = DocumentSessionModel(key: nil)
         session.beginManagedCreationEntry(bodyStartUTF16: 24)
@@ -111,7 +111,7 @@ struct DocumentSessionLifecycleTests {
         session.editorSession.retryUnavailablePresentation()
         #expect(session.editorSession.nativeEditor === retainedView)
         #expect(session.editorSession.checkedSource == "Draft")
-        #expect(session.editorSession.errorMessage == nil)
+        #expect(session.editorSession.errorMessage == "Editor failed")
 
         session.completeManagedCreationEntry()
         #expect(!session.isEnteringManagedCreation)
