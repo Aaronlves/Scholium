@@ -76,9 +76,7 @@ struct StyleOperationsTests {
         #expect(initial.appearanceProfiles.count == 1)
         #expect(initial.selectedAppearanceProfileID == original.id)
         #expect(original.name == "Custom")
-        #expect(original.settings.lineWidthCharacterUnits == 66)
-        #expect(original.settings.body.fontSizePoints == 12)
-        #expect(original.settings.body.lineHeight == 1.7)
+        #expect(original.settings == DocumentAppearanceSettings.defaultSettings)
         #expect(original.settings.hyphenation == .none)
 
         var edited = original

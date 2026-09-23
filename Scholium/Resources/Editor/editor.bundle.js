@@ -35886,7 +35886,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const active = selection.selection(state).ranges.some((range) => selectionIntersectsPhysicalLine(range, line.from, line.to, lineQueryTo));
       const ownsCollapsedCaret = selection.selection(state).ranges.some((range) => range.empty && range.head >= line.from && range.head <= line.to);
       const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
-      const followsFrontmatter = index.frontmatterRange !== null && index.frontmatterRange.to < state.doc.length && line.from === index.frontmatterRange.to && !/^\s*$/.test(line.text);
       const blocks = projectionRangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
       const codeBlock = projectionRangesIntersecting(
         index.literals.codeBlocks,
@@ -35937,7 +35936,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const list = blocks.filter((block) => block.kind === "listItem").filter((block) => block.markerRanges.some((range) => range.from >= line.from && range.from <= line.to)).sort((left, right) => (right.listDepth ?? 0) - (left.listDepth ?? 0))[0] ?? null;
       const listMarker = list?.markerRanges.find((range) => range.from >= line.from && range.from <= line.to && !state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null;
       const classes = /* @__PURE__ */ new Set();
-      if (followsFrontmatter) classes.add("cm-live-frontmatter-body-start");
       if (/^\s*$/.test(state.doc.sliceString(line.from, line.to)) && outsideFrontmatter && !codeBlock) {
         classes.add("cm-live-blank-line");
         if (ownsCollapsedCaret) classes.add("cm-live-blank-line-active");
@@ -36167,12 +36165,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const index = projections.index(state);
       if (index.hasUnclosedFrontmatter) return [];
       const topLevelBlocks = semanticSpacingBlocks(index.syntax.blocks, index.frontmatterRange?.to);
+      const frontmatterEnd = index.frontmatterRange?.to ?? 0;
       const ranges = [];
       let previous = null;
       for (const current of topLevelBlocks) {
-        const previousSpacing = previous ? semanticBlockSpacing(previous) : "none";
+        const previousSpacing = previous ? semanticBlockSpacing(previous) : frontmatterEnd > 0 ? "frontmatter" : "none";
         const nextSpacing = semanticBlockSpacing(current);
-        const previousLineNumber = previous ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number : 0;
+        const previousLineNumber = previous ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number : frontmatterEnd > 0 ? state.doc.lineAt(frontmatterEnd - 1).number : 0;
         const currentLineNumber = state.doc.lineAt(current.from).number;
         let authoredSeparatorLine = null;
         for (let number2 = currentLineNumber - 1; number2 > previousLineNumber; number2 -= 1) {

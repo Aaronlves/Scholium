@@ -49,9 +49,13 @@ enum ScholiumWebDesignTokens {
             --scholium-document-source-font-size: \(number(defaults.source.fontSizePoints))pt;
             --scholium-document-source-font-family: "\(defaults.source.fontFamily)", ui-monospace, monospace;
             --scholium-source-half-work-width: \(ScholiumDocumentRhythm.sourceWorkWidthCharacterUnits / 2)ch;
-            --scholium-document-title-size: 180%;
-            --scholium-document-title-line-height: 1.15;
-            --scholium-document-title-after: 0.65em;
+            --scholium-document-title-size: 210%;
+            --scholium-document-title-line-height: 1.25;
+            --scholium-document-title-after: 0.7em;
+            --scholium-document-reading-top-gap: 0.75em;
+            --scholium-document-frontmatter-font-size: min(var(--scholium-document-prose-font-size), max(11pt, calc(var(--scholium-document-prose-font-size) * 0.84)));
+            --scholium-document-frontmatter-line-height: 1.6;
+            --scholium-document-frontmatter-ink: color-mix(in srgb, var(--scholium-color-primary-text) 78%, var(--scholium-color-secondary-text));
             \(headingLevelDeclarations)
             --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
             --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
@@ -70,8 +74,7 @@ enum ScholiumWebDesignTokens {
             --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
             --scholium-rhythm-semantic-block-gap: 1em;
             --scholium-rhythm-rule-block-gap: 0.5em;
-            --scholium-rhythm-frontmatter-inline-inset: 1.5em;
-            --scholium-rhythm-frontmatter-after: 0.75em;
+            --scholium-rhythm-frontmatter-after: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor) * 0.75);
             --scholium-list-marker-track: 1.25em;
             --scholium-list-marker-gap: 0.35em;
             --scholium-list-indent: calc(
@@ -189,7 +192,7 @@ enum ScholiumWebDesignTokens {
           min-width: 0;
           inline-size: 100%;
           margin: 0;
-          padding-block: calc(var(--scholium-document-content-top-inset) + var(--scholium-document-toolbar-inset, 0px)) var(--scholium-rhythm-trailing-scroll);
+          padding-block: calc(var(--scholium-document-content-top-inset) + var(--scholium-document-toolbar-inset, 0px) + var(--scholium-document-reading-top-gap)) var(--scholium-rhythm-trailing-scroll);
           padding-inline: max(
             var(--scholium-rhythm-inline-regular),
             calc(50% - var(--scholium-document-half-line-width))
@@ -298,12 +301,15 @@ enum ScholiumWebDesignTokens {
           .scholium-document .scholium-frontmatter-source,
           .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-line
         ) {
-          font-family: var(--scholium-document-source-font-family);
+          font-family: var(--scholium-document-body-font-family);
           font-size: calc(
-            var(--scholium-document-source-font-size)
+            var(--scholium-document-frontmatter-font-size)
             * var(--scholium-document-text-scale-factor)
           );
-          line-height: 1.7;
+          font-weight: 400;
+          font-style: normal;
+          color: var(--scholium-document-frontmatter-ink);
+          line-height: var(--scholium-document-frontmatter-line-height);
           text-indent: 0;
           background: transparent;
           border: 0;
@@ -313,7 +319,7 @@ enum ScholiumWebDesignTokens {
         .scholium-document .scholium-frontmatter-source {
           display: block;
           margin: 0;
-          padding-inline: var(--scholium-rhythm-frontmatter-inline-inset, 1.5em);
+          padding-inline: 0;
         }
         .scholium-document .scholium-frontmatter-source {
           margin-block-end: var(--scholium-rhythm-frontmatter-after, 0.75em);
@@ -334,16 +340,19 @@ enum ScholiumWebDesignTokens {
           min-block-size: 1lh;
           opacity: 0;
         }
-        .cm-editor .scholium-frontmatter-line * { color: inherit; }
+        #editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line {
+          padding-inline: 0;
+        }
+        .cm-editor.scholium-live-mode .scholium-frontmatter-line * { color: inherit; }
         .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-delimiter-line {
           /* The authored YAML envelope already owns these source rows. Keep
              their space stable in Live mode; the fence is presentation-only
              and disappears through opacity rather than layout collapse. */
           block-size: auto;
-          min-block-size: 1.7em;
-          line-height: 1.7;
+          min-block-size: calc(1em * var(--scholium-document-frontmatter-line-height));
+          line-height: var(--scholium-document-frontmatter-line-height);
           font-size: calc(
-            var(--scholium-document-source-font-size)
+            var(--scholium-document-frontmatter-font-size)
             * var(--scholium-document-text-scale-factor)
           );
           overflow: visible;
@@ -366,19 +375,14 @@ enum ScholiumWebDesignTokens {
           .scholium-document .scholium-frontmatter-source,
           #editor .cm-editor.scholium-live-mode .cm-content
         ) .cm-live-yaml-key {
-          color: var(--scholium-color-primary-text);
-        }
-        :is(
-          .scholium-document .scholium-frontmatter-source,
-          #editor .cm-editor.scholium-live-mode .cm-content
-        ) :is(.cm-live-yaml-value, .cm-live-yaml-scalar, .cm-live-yaml-collection) {
           color: var(--scholium-color-secondary-text);
+          font-weight: 500;
         }
         :is(
           .scholium-document .scholium-frontmatter-source,
           #editor .cm-editor.scholium-live-mode .cm-content
-        ) .cm-live-yaml-string {
-          color: var(--scholium-document-accent);
+        ) :is(.cm-live-yaml-value, .cm-live-yaml-scalar, .cm-live-yaml-collection, .cm-live-yaml-string) {
+          color: var(--scholium-document-frontmatter-ink);
         }
         .scholium-note-title {
           box-sizing: border-box;
@@ -389,7 +393,7 @@ enum ScholiumWebDesignTokens {
           font-size: var(--scholium-document-title-size);
           font-style: normal;
           font-variant-caps: normal;
-          font-weight: 600;
+          font-weight: 500;
           line-height: var(--scholium-document-title-line-height);
           letter-spacing: 0;
           text-align: start;

@@ -174,40 +174,6 @@ body,
   display: none;
 }
 
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-delimiter,
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-comment {
-  color: var(--scholium-color-secondary-text);
-}
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-delimiter {
-  opacity: 0;
-  transition: opacity 140ms cubic-bezier(.2, 0, .2, 1);
-}
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-delimiter-line-active .cm-live-yaml-delimiter {
-  opacity: 1;
-}
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-key {
-  color: var(--scholium-color-primary-text);
-}
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-value,
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-scalar,
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-collection {
-  color: var(--scholium-color-secondary-text);
-}
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-string {
-  color: var(--scholium-document-accent, var(--scholium-color-accent));
-}
-
-/* YAML is authored source, but its quiet projection gets a small inset so it
-   reads as document context rather than as the first body paragraph. The
-   body-start padding is generated appearance space; it never inserts a source
-   row and remains shared with Review's frontmatter wrapper. */
-#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line {
-  padding-inline: var(--scholium-rhythm-frontmatter-inline-inset, 1.5em);
-}
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-frontmatter-body-start {
-  padding-block-start: var(--scholium-rhythm-frontmatter-after, 0.75em);
-}
-
 .scholium-source-mode .cm-activeLine,
 .scholium-source-mode .cm-activeLineGutter {
   background: color-mix(in srgb, var(--scholium-color-raised-surface-background) 58%, transparent);
@@ -457,6 +423,7 @@ body,
 .cm-live-semantic-gap-after-half { --scholium-live-gap-after: var(--scholium-rhythm-rule-block-gap, 0.5em); }
 .cm-live-semantic-gap-before-half { --scholium-live-gap-before: var(--scholium-rhythm-rule-block-gap, 0.5em); }
 .cm-live-semantic-gap-after-paragraph { --scholium-live-gap-after: var(--scholium-rhythm-paragraph-gap); }
+.cm-live-semantic-gap-after-frontmatter { --scholium-live-gap-after: var(--scholium-rhythm-frontmatter-after); }
 .cm-live-semantic-gap-before-paragraph { --scholium-live-gap-before: var(--scholium-rhythm-paragraph-gap); }
 .cm-live-semantic-gap-after-standard { --scholium-live-gap-after: var(--scholium-rhythm-semantic-block-gap, 1em); }
 .cm-live-semantic-gap-before-standard { --scholium-live-gap-before: var(--scholium-rhythm-semantic-block-gap, 1em); }
@@ -464,8 +431,8 @@ body,
 .cm-live-semantic-gap-before-callout { --scholium-live-gap-before: var(--scholium-callout-block-gap, 1.4em); }
 
 .cm-live-codeblock {
-  /* Technical source uses the same user-owned Source Text face and size as
-     YAML. Keeping the line box constant prevents the active-block handoff
+  /* Technical source uses the user-owned Source Text face and size.
+     Keeping the line box constant prevents the active-block handoff
      from looking like a font-size animation. */
   font-family: var(--scholium-document-source-font-family);
   font-size: var(--scholium-document-source-font-size);

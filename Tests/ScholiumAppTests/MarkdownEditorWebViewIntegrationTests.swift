@@ -2287,9 +2287,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Technical source uses Source Text typography without shrinking on activation")
+    @Test("Reading metadata and technical source retain their own typography during activation")
     func technicalSourceTypographyUsesSourceText() async throws {
-        let source = "---\nsummary: Fixture\n---\n# Technical\n\n```swift\nlet value = true\n```\n\n$$\nx + y\n$$\n"
+        let source = "---\nsummary: Fixture\nquoted: 'Fixture'\n---\n# Technical\n\n```swift\nlet value = true\n```\n\n$$\nx + y\n$$\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -2305,12 +2305,22 @@ struct MarkdownEditorWebViewIntegrationTests {
                       .find(line => (line.textContent || '').includes('let value'));
                     const math = document.querySelector('.cm-line.cm-live-math-source');
                     const yamlStyle = style(yaml);
+                    const bodyStyle = style(document.querySelector('.cm-content'));
+                    const headingStyle = style(document.querySelector('.cm-live-h1'));
                     const codeStyle = style(code);
                     const mathStyle = style(math);
                     return {
                       yamlFont: yamlStyle?.fontFamily || '',
                       yamlSize: yamlStyle?.fontSize || '',
                       yamlLineHeight: yamlStyle?.lineHeight || '',
+                      bodyFont: bodyStyle?.fontFamily || '',
+                      bodySize: parseFloat(bodyStyle?.fontSize || '0'),
+                      yamlPoints: parseFloat(yamlStyle?.fontSize || '0'),
+                      plainValueColor: style(document.querySelector('.cm-live-yaml-value'))?.color || '',
+                      quotedValueColor: style(document.querySelector('.cm-live-yaml-string'))?.color || '',
+                      headingSize: parseFloat(headingStyle?.fontSize || '0'),
+                      headingBefore: parseFloat(headingStyle?.paddingTop || '0'),
+                      metadataGap: document.querySelector('.cm-live-semantic-gap-after-frontmatter')?.getBoundingClientRect().height || 0,
                       codeFont: codeStyle?.fontFamily || '',
                       codeSize: codeStyle?.fontSize || '',
                       codeLineHeight: codeStyle?.lineHeight || '',
@@ -2324,8 +2334,21 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         let inactive = try await typography()
-        #expect(inactive["codeFont"] as? String == inactive["yamlFont"] as? String)
-        #expect(inactive["codeSize"] as? String == inactive["yamlSize"] as? String)
+        #expect(inactive["yamlFont"] as? String == inactive["bodyFont"] as? String)
+        #expect(inactive["codeFont"] as? String != inactive["yamlFont"] as? String)
+        #expect(try #require(inactive["yamlPoints"] as? Double) < #require(inactive["bodySize"] as? Double))
+        #expect(inactive["plainValueColor"] as? String == inactive["quotedValueColor"] as? String)
+        let expectedHeadingBefore = try #require(inactive["headingSize"] as? Double)
+            * DocumentAppearanceSettings.defaultSettings.headings.level1.spaceBeforeEm
+        #expect(abs(try #require(inactive["headingBefore"] as? Double) - expectedHeadingBefore) < 1)
+        #expect(try #require(inactive["metadataGap"] as? Double) > 0)
+
+        let yamlCaret = try #require(source.range(of: "Fixture")?.lowerBound).utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: yamlCaret, toUTF16: yamlCaret)
+        try await harness.waitUntilSelection(head: yamlCaret, stage: "active YAML typography")
+        let activeYAML = try await typography()
+        #expect(activeYAML["yamlFont"] as? String == inactive["yamlFont"] as? String)
+        #expect(activeYAML["yamlLineHeight"] as? String == inactive["yamlLineHeight"] as? String)
 
         let codeCaret =
             try #require(source.range(of: "let value")?.lowerBound)
@@ -2343,9 +2366,28 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.revealSourceRange(fromUTF16: mathCaret, toUTF16: mathCaret)
         try await harness.waitUntilSelection(head: mathCaret, stage: "active math typography")
         let activeMath = try await typography()
-        #expect(activeMath["mathFont"] as? String == inactive["yamlFont"] as? String)
-        #expect(activeMath["mathSize"] as? String == inactive["yamlSize"] as? String)
+        #expect(activeMath["mathFont"] as? String == inactive["codeFont"] as? String)
+        #expect(activeMath["mathSize"] as? String == inactive["codeSize"] as? String)
         #expect(activeMath["mathLineHeight"] as? String == inactive["codeLineHeight"] as? String)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Metadata boundary spacing preserves the first technical block's own inset")
+    func frontmatterBoundaryKeepsTechnicalInset() async throws {
+        let source = "---\nsummary: Fixture\n---\n```swift\nlet value = true\n```\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let geometry = try #require(try await harness.callPageJavaScript(
+            """
+            const code = document.querySelector('.cm-live-codeblock-start');
+            const gap = document.querySelector('.cm-live-semantic-gap-after-frontmatter');
+            return {inset: parseFloat(getComputedStyle(code).paddingTop), gap: gap?.getBoundingClientRect().height || 0};
+            """
+        ) as? [String: Any])
+        #expect(geometry["inset"] as? Double == Double(ScholiumDocumentRhythm.codeBlockInset))
+        #expect(try #require(geometry["gap"] as? Double) > 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }

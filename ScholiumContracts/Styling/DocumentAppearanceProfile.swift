@@ -91,9 +91,9 @@ public struct DocumentBodyAppearance: Codable, Hashable, Sendable {
         fontFamily: DocumentAppearanceFontFamily = .alegreya,
         cjkStrongFontFamily: String? = nil,
         cjkEmphasisFontFamily: String? = nil,
-        fontSizePoints: Double = 12,
-        lineHeight: Double = 1.7,
-        paragraphSpacingEm: Double = 0.7,
+        fontSizePoints: Double = 12.5,
+        lineHeight: Double = 1.78,
+        paragraphSpacingEm: Double = 0.85,
         firstLineIndentEm: Double = 0,
         alignment: DocumentTextAlignment = .start
     ) {
@@ -151,36 +151,36 @@ public struct DocumentHeadingAppearance: Codable, Hashable, Sendable {
         cjkEmphasisFontFamily: String? = nil,
         style: DocumentHeadingStyle = .upright,
         weight: Int = 500,
-        lineHeight: Double = 1.35,
+        lineHeight: Double = 1.4,
         level1: DocumentHeadingLevelAppearance = .init(
-            scale: 1.4,
-            spaceBeforeEm: 0.9,
-            spaceAfterEm: 0.35
+            scale: 1.48,
+            spaceBeforeEm: 1.1,
+            spaceAfterEm: 0.42
         ),
         level2: DocumentHeadingLevelAppearance = .init(
-            scale: 1.22,
-            spaceBeforeEm: 0.8,
-            spaceAfterEm: 0.3
+            scale: 1.26,
+            spaceBeforeEm: 1,
+            spaceAfterEm: 0.36
         ),
         level3: DocumentHeadingLevelAppearance = .init(
             scale: 1.14,
-            spaceBeforeEm: 0.7,
-            spaceAfterEm: 0.28
+            spaceBeforeEm: 0.85,
+            spaceAfterEm: 0.3
         ),
         level4: DocumentHeadingLevelAppearance = .init(
-            scale: 1.08,
-            spaceBeforeEm: 0.6,
-            spaceAfterEm: 0.24
+            scale: 1.07,
+            spaceBeforeEm: 0.75,
+            spaceAfterEm: 0.28
         ),
         level5: DocumentHeadingLevelAppearance = .init(
-            scale: 1.02,
-            spaceBeforeEm: 0.5,
-            spaceAfterEm: 0.2
+            scale: 1.01,
+            spaceBeforeEm: 0.65,
+            spaceAfterEm: 0.24
         ),
         level6: DocumentHeadingLevelAppearance = .init(
             scale: 0.98,
-            spaceBeforeEm: 0.4,
-            spaceAfterEm: 0.18
+            spaceBeforeEm: 0.55,
+            spaceAfterEm: 0.22
         )
     ) {
         self.fontFamily = fontFamily
@@ -266,7 +266,7 @@ public struct DocumentSourceAppearance: Codable, Hashable, Sendable {
 }
 
 public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
-    public static let defaultLineWidthCharacterUnits: Double = 66
+    public static let defaultLineWidthCharacterUnits: Double = 64
     public static let lineWidthCharacterUnitsRange: ClosedRange<Double> = 48...96
     public static let defaultCJKBodyFontFamily = "STFangsong"
     public static let defaultCJKEmphasisFontFamily = "Kaiti SC"

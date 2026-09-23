@@ -61,7 +61,7 @@ interface LiveSemanticBlockSpacingState {
   readonly decorations: DecorationSet;
 }
 
-type SemanticBlockSpacing = "none" | "half" | "paragraph" | "standard" | "callout";
+type SemanticBlockSpacing = "none" | "half" | "paragraph" | "standard" | "callout" | "frontmatter";
 
 const spacingPriority: Partial<Record<SemanticBlockProjection["kind"], number>> = {
   callout: 10, displayMath: 9, table: 8, code: 7, html: 6,
@@ -193,10 +193,6 @@ export function createLiveSemanticLayout(options: {
     const ownsCollapsedCaret = selection.selection(state).ranges.some((range) =>
       range.empty && range.head >= line.from && range.head <= line.to);
     const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
-    const followsFrontmatter = index.frontmatterRange !== null
-      && index.frontmatterRange.to < state.doc.length
-      && line.from === index.frontmatterRange.to
-      && !/^\s*$/.test(line.text);
     const blocks = projectionRangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
     const codeBlock = projectionRangesIntersecting(
       index.literals.codeBlocks,
@@ -265,7 +261,6 @@ export function createLiveSemanticLayout(options: {
         && range.from <= line.to
         && !state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null;
     const classes = new Set<string>();
-    if (followsFrontmatter) classes.add("cm-live-frontmatter-body-start");
     if (/^\s*$/.test(state.doc.sliceString(line.from, line.to))
         && outsideFrontmatter && !codeBlock) {
       classes.add("cm-live-blank-line");
@@ -537,16 +532,17 @@ export function createLiveSemanticLayout(options: {
     const index = projections.index(state);
     if (index.hasUnclosedFrontmatter) return [];
     const topLevelBlocks = semanticSpacingBlocks(index.syntax.blocks, index.frontmatterRange?.to);
+    const frontmatterEnd = index.frontmatterRange?.to ?? 0;
     const ranges: Range<Decoration>[] = [];
     let previous: SemanticBlockProjection | null = null;
     for (const current of topLevelBlocks) {
       const previousSpacing = previous
         ? semanticBlockSpacing(previous)
-        : "none";
+        : frontmatterEnd > 0 ? "frontmatter" : "none";
       const nextSpacing = semanticBlockSpacing(current);
       const previousLineNumber = previous
         ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number
-        : 0;
+        : frontmatterEnd > 0 ? state.doc.lineAt(frontmatterEnd - 1).number : 0;
       const currentLineNumber = state.doc.lineAt(current.from).number;
       let authoredSeparatorLine: number | null = null;
       for (let number = currentLineNumber - 1; number > previousLineNumber; number -= 1) {

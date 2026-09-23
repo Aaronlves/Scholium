@@ -2939,8 +2939,7 @@ struct FrontendArchitectureTests {
         #expect(editorStyles.contains(".scholium-live-mode .cm-activeLine"))
         #expect(editorStyles.contains("#editor .cm-editor.scholium-live-mode .cm-scroller"))
         #expect(editorStyles.contains("#editor .cm-editor.scholium-source-mode .cm-scroller"))
-        #expect(editorStyles.contains("cm-live-frontmatter-body-start"))
-        #expect(editorStyles.contains("scholium-rhythm-frontmatter-inline-inset"))
+        #expect(editorStyles.contains("cm-live-semantic-gap-after-frontmatter"))
         #expect(!syntaxPresentationSource.contains("scholium-syntax-motion"))
         #expect(syntaxPresentationSource.contains("readLiveCursorGeometry"))
         #expect(syntaxPresentationSource.contains("writeLiveCursorGeometry"))
@@ -2993,7 +2992,7 @@ struct FrontendArchitectureTests {
         #expect(!editorSource.contains("editor.scrollDOM.classList.toggle"))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "padding-block: calc(var(--scholium-document-content-top-inset) + var(--scholium-document-toolbar-inset, 0px)) var(--scholium-rhythm-trailing-scroll)"
+                "padding-block: calc(var(--scholium-document-content-top-inset) + var(--scholium-document-toolbar-inset, 0px) + var(--scholium-document-reading-top-gap)) var(--scholium-rhythm-trailing-scroll)"
             ))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(

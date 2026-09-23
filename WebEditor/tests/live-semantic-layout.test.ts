@@ -57,6 +57,23 @@ function snapshot(state: EditorState) {
 }
 
 describe("semantic block spacing ownership", () => {
+  it.each(["# Heading", "Body.", "```ts\nconst x = 1;\n```", "> [!state] Claim\n> Body."])(
+    "keeps metadata spacing outside the first block: %s", body => {
+      const prefix = "---\nsummary: Fixture\n\ncustom: value\n---\n";
+      const {state} = layoutState(prefix + body);
+      const boundary = spacingEntries(state).find(entry => entry.from === prefix.length);
+      expect(boundary?.decoration.spec.widget?.previous).toBe("frontmatter");
+      expect(state.doc.toString()).toBe(prefix + body);
+    });
+
+  it("uses the authored blank after metadata without borrowing a blank inside YAML", () => {
+    const prefix = "---\nsummary: Fixture\n\ncustom: value\n---\n";
+    const {state} = layoutState(prefix + "\n# Heading");
+    const boundary = spacingEntries(state).find(entry => entry.from === prefix.length);
+    expect(boundary?.decoration.spec.attributes?.class).toContain("cm-live-semantic-blank-gap");
+    expect(boundary?.decoration.spec.widget).toBeUndefined();
+  });
+
   it("preserves equal-priority, partial-overlap and nested-source ownership", () => {
     const blocks = [block("paragraph", 0, 10), block("callout", 0, 20),
       block("blockQuote", 0, 20), block("table", 10, 30),

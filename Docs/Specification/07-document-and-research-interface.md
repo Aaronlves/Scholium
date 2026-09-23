@@ -199,11 +199,11 @@ Hyphenation is a Never/Automatic reading setting. Automatic uses WebKit for
 tagged supported prose; Chinese, Source and technical regions remain
 unhyphenated. Advanced CSS remains for letter spacing, word spacing, kerning and
 ligatures after generated CSS.
-Frontmatter remains at its authored beginning in
-the source, while the shared scrolling document plane projects the app-owned
-filename title first, then the quiet source-located YAML, then the authored
-body (including its first H1). Review and Edit use the same YAML presentation;
-Source retains the exact text. It is never replaced by a field editor or
+The shared scrolling document plane shows the app-owned filename title,
+quiet source-located YAML, then authored body (including its first H1);
+frontmatter retains its authored source position. Review and Edit share quiet
+reading type and neutral ink for YAML; Source retains exact text.
+YAML is never replaced by a field editor or
 reordered in the source, and no disclosure or timed collapse exists. Outside
 an active YAML selection, its fence lines are visually suppressed; entering or
 selecting YAML restores the exact delimiters at their source locations.

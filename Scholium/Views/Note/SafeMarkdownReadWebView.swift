@@ -530,8 +530,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let html = Self.documentHTML(
                 body: body,
                 frontmatter: sourceDocument.rawFrontmatter,
-                frontmatterHasAuthoredBodyBlankLine: sourceDocument.body.first == "\n"
-                    || sourceDocument.body.first == "\r",
+                frontmatterHasAuthoredBodyBlankLine: !sourceDocument.body.isEmpty
+                    && sourceDocument.body.prefix { !$0.isNewline }.allSatisfy(\.isWhitespace),
                 documentTitle: documentTitle,
                 includesMathRuntime: includesMathRuntime || pageExtension?.requiresMathRuntime == true,
                 localization: interfaceLocalization

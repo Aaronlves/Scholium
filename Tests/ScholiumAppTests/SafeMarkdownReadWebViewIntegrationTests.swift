@@ -679,10 +679,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Review places the app title before quiet authored YAML and the body")
-    func reviewFrontmatterFollowsDocumentTitle() async throws {
+    @Test("Review places the app title before quiet authored YAML and the body", arguments: ["", "\n", " \t\n"])
+    func reviewFrontmatterFollowsDocumentTitle(bodyBlankLine: String) async throws {
         let source =
-            "---\ntitle: Fixture\nsummary: Read in place\n---\n# First section\n\n"
+            "---\ntitle: Fixture\nsummary: Read in place\n---\n" + bodyBlankLine + "# First section\n\n"
             + (1...40).map { "Research paragraph \($0) remains available." }
             .joined(separator: "\n\n") + "\n"
         let document = NoteDocument(relativePath: "Frontmatter.md", rawContent: source)
@@ -719,6 +719,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                   headingTop: headingBounds?.top ?? -1,
                   yamlKeyCount: frontmatter.querySelectorAll('.cm-live-yaml-key').length,
                   yamlStringCount: frontmatter.querySelectorAll('.cm-live-yaml-string').length,
+                  preservesBodyBlankLine: frontmatter.classList.contains('scholium-frontmatter-followed-by-blank-line'),
                   delimitersQuiet: delimiters.every(element => {
                     const style = getComputedStyle(element);
                     return element.getBoundingClientRect().height > 0.5
@@ -744,6 +745,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(frontmatterBottom <= headingTop)
         #expect(yamlKeyCount == 2)
         #expect(yamlStringCount == 0)
+        #expect(result["preservesBodyBlankLine"] as? Bool == !bodyBlankLine.isEmpty)
         #expect(delimitersQuiet)
         await harness.closeAndDrain()
     }
