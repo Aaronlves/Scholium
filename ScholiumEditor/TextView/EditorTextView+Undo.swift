@@ -191,5 +191,6 @@ extension EditorTextView {
         isUndoRedoing = false
         lastEditType = .other
         lastEditBlockIndex = nil
+        scheduleCalloutSelectionProjection()
     }
 }

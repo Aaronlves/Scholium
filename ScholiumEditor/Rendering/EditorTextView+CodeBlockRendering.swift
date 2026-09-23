@@ -41,12 +41,16 @@ extension EditorTextView {
         guard span.fullRange.upperBound <= result.length,
             !span.delimiterRanges.isEmpty
         else { return }
-        let box = BlockDecoration(
-            .box(
-                background: codeBlockBackground, borderColor: nil,
-                borderEdges: [], borderWidth: 0, bottomPad: 0),
-            drawsBelowSelection: true)
-        result.addAttribute(.blockDecoration, value: box, range: span.fullRange)
+        func box(top: Bool = false, bottom: Bool = false) -> BlockDecoration {
+            BlockDecoration(
+                .box(
+                    background: codeBlockBackground, borderColor: nil,
+                    borderEdges: [], borderWidth: 0, bottomPad: 0),
+                drawsBelowSelection: true,
+                cornerRadius: appliedNativeAppearance?.codeBlockCornerRadius ?? 0,
+                roundsTop: top, roundsBottom: bottom)
+        }
+        result.addAttribute(.blockDecoration, value: box(), range: span.fullRange)
         result.addAttribute(.paragraphStyle, value: codeBlockParagraphStyle, range: span.fullRange)
 
         // Label plumbing: the opening fence line carries the display language
@@ -56,9 +60,19 @@ extension EditorTextView {
         let ns = result.string as NSString
         let trimmed = language?.trimmingCharacters(in: .whitespaces) ?? ""
         let firstLine = ns.lineRange(for: NSRange(location: span.fullRange.location, length: 0))
+        let lastLine = ns.lineRange(
+            for: NSRange(location: span.fullRange.upperBound - 1, length: 0))
+        let firstRange = NSIntersectionRange(firstLine, span.fullRange)
+        let lastRange = NSIntersectionRange(lastLine, span.fullRange)
+        result.addAttribute(
+            .blockDecoration, value: box(top: true, bottom: firstLine.location == lastLine.location),
+            range: firstRange)
+        if lastLine.location != firstLine.location {
+            result.addAttribute(.blockDecoration, value: box(bottom: true), range: lastRange)
+        }
         result.addAttribute(
             .codeBlockLabel, value: trimmed.capitalized,
-            range: NSIntersectionRange(firstLine, span.fullRange))
+            range: firstRange)
         if !trimmed.isEmpty, firstLine.upperBound < span.fullRange.upperBound {
             let secondLine = ns.lineRange(for: NSRange(location: firstLine.upperBound, length: 0))
             result.addAttribute(
@@ -80,10 +94,11 @@ extension EditorTextView {
 }
 
 extension EditorTextView {
-    /// Paint only the already-laid-out viewport, in the text view's background
-    /// pass. AppKit then paints its normal selection and the glyph fragments;
+    /// Paint code and Callout fills in the text view's background pass, over
+    /// only the already-laid-out viewport. AppKit then paints its normal
+    /// selection and the glyph fragments;
     /// no independent selection geometry or highlight color is introduced.
-    func drawCodeBlockBackgrounds(in dirtyRect: NSRect) {
+    func drawBlockBackgrounds(in dirtyRect: NSRect) {
         guard let layout = textLayoutManager,
             let context = NSGraphicsContext.current?.cgContext
         else { return }

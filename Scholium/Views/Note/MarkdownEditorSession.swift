@@ -49,6 +49,7 @@ enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
 final class MarkdownEditorSession: NSObject, ObservableObject {
     enum SessionError: LocalizedError {
         case unavailable
+        case compositionInProgress
         case invalidResult
         case selectionTooLong
         case staleRequest
@@ -57,6 +58,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         var errorDescription: String? {
             switch self {
             case .unavailable: "The Markdown editor is not ready."
+            case .compositionInProgress: "Finish the current input before saving."
             case .invalidResult: "The Markdown editor could not validate its source."
             case .selectionTooLong: "Select at most 2,000 characters for one source-anchored comment."
             case .staleRequest: "The editor request belonged to a replaced document or session."
@@ -314,7 +316,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// Provisional IME input never replaces the last checked source.
     @discardableResult
     func reconcileNativeSource() throws -> MarkdownEditorTextSnapshot {
-        guard isLoaded, !isComposing else { throw SessionError.unavailable }
+        guard isLoaded else { throw SessionError.unavailable }
+        guard !isComposing else { throw SessionError.compositionInProgress }
         guard !isReconciling else { return .init(text: checkedSource, generation: generation) }
         isReconciling = true
         defer { isReconciling = false }

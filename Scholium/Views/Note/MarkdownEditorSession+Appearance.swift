@@ -50,6 +50,7 @@ struct NativeDocumentStyle {
         var styles: [String: CalloutStyle] = [:]
         var titleFonts: [String: NSFont] = [:]
         var padding: [String: CGFloat] = [:]
+        var headerGaps: [String: CGFloat] = [:]
         for role in CalloutSemanticRole.allCases {
             let appearance = settings.callout(Self.appearanceRole(role))
             let aliases =
@@ -57,6 +58,13 @@ struct NativeDocumentStyle {
                 + Callout.defaultStyles.keys.filter { CalloutSemanticVocabulary.role(for: $0) == role }
             let color = Self.calloutColor(role.rawValue, dark: false)
             let darkColor = Self.calloutColor(role.rawValue, dark: true)
+            let surfaceStrength =
+                NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? 0.09 : 0.045
+            let hasSurface: Bool =
+                switch role {
+                case .orient, .connect, .illustrate, .quote: false
+                case .cite, .state, .flag, .neutral: true
+                }
             let titleScale = role == .quote ? appearance.attributionScale ?? 1 : 1
             let title = Self.weighted(
                 body, size: body.pointSize * CGFloat(appearance.fontScale * titleScale),
@@ -65,15 +73,23 @@ struct NativeDocumentStyle {
             for name in [role.rawValue] + aliases {
                 styles[name] = CalloutStyle(
                     iconName: "", colorHex: color, darkColorHex: darkColor,
-                    backgroundAlpha: 0, borderEdges: [], borderWidth: 0)
+                    backgroundColorHex: hasSurface
+                        ? Self.neutralCalloutSurfaceHex(dark: false, strength: surfaceStrength) : nil,
+                    darkBackgroundColorHex: hasSurface
+                        ? Self.neutralCalloutSurfaceHex(dark: true, strength: surfaceStrength) : nil,
+                    backgroundAlpha: 0,
+                    borderEdges: [], borderWidth: 0)
                 titleFonts[name] = title
-                padding[name] = body.pointSize * CGFloat(appearance.paddingBlockEm ?? 0)
+                padding[name] = body.pointSize * CGFloat(appearance.fontScale * appearance.resolvedPaddingBlockEm)
+                headerGaps[name] = body.pointSize * CGFloat(appearance.fontScale * appearance.resolvedHeaderBodyGapEm)
             }
         }
         return NativeDocumentAppearance(
             identifier: identifier, theme: theme, readingWidth: width,
             calloutStyles: styles, calloutTitleFonts: titleFonts,
-            calloutVerticalPadding: padding
+            calloutVerticalPadding: padding, calloutHeaderGaps: headerGaps,
+            codeBlockCornerRadius: ScholiumCornerRole.documentCodeBlock.radius,
+            calloutCornerRadius: ScholiumCornerRole.documentCalloutSurface.radius
         ) { block, attributed in
             style(block, attributed: attributed)
         }
@@ -145,7 +161,13 @@ struct NativeDocumentStyle {
                 if attributes[.editorEmphasis] as? Bool == true { traits.insert(.italicFontMask) }
                 if !traits.isEmpty { font = NSFontManager.shared.convert(font, toHaveTrait: traits) }
                 result.addAttribute(.font, value: font, range: range)
-                if attributes[.link] == nil, attributes[.editorLinkURL] == nil, attributes[.editorWikiTarget] == nil {
+                if attributes[.editorSyntaxInk] != nil {
+                    result.addAttribute(
+                        .foregroundColor, value: ScholiumColorRole.secondaryText.nsColor,
+                        range: range)
+                } else if attributes[.link] == nil, attributes[.editorLinkURL] == nil,
+                    attributes[.editorWikiTarget] == nil
+                {
                     if !isHeader {
                         let secondary = callout.map { [.orient, .cite, .connect].contains($0) } ?? false
                         result.addAttribute(
@@ -218,24 +240,28 @@ struct NativeDocumentStyle {
                 paragraph.paragraphSpacingBefore = baseSize * CGFloat(headingAppearance.spaceBeforeEm)
                 paragraph.paragraphSpacing = baseSize * CGFloat(headingAppearance.spaceAfterEm)
             } else if let calloutAppearance {
-                let padding = CGFloat(calloutAppearance.paddingInlineEm ?? 0) * baseSize
-                let start = CGFloat(calloutAppearance.startInsetEm ?? calloutAppearance.inlineInsetEm) * baseSize + padding
-                let end = CGFloat(calloutAppearance.endInsetEm ?? calloutAppearance.inlineInsetEm) * baseSize + padding
-                let indent = isHeader ? 0 : CGFloat(calloutAppearance.contentIndentEm ?? 0) * baseSize
-                paragraph.firstLineHeadIndent = start + indent
-                paragraph.headIndent = start + indent
-                paragraph.tailIndent = -end
-                paragraph.paragraphSpacingBefore =
-                    isHeader
-                    ? baseSize * CGFloat(calloutAppearance.blockGapEm + (calloutAppearance.paddingBlockEm ?? 0)) : 0
-                paragraph.paragraphSpacing =
+                // The native renderer owns the source-marker gutter and the
+                // box's clickable vertical padding. Shift that intact layout
+                // to the same content inset used by Read; replacing its
+                // paragraph spacing used to put the *outer* block gap inside
+                // the painted Callout and made the box much too tall.
+                let quoteWidth = ("> " as NSString).size(withAttributes: [.font: body]).width
+                let nativeInset = 2 + quoteWidth
+                let start =
                     baseSize
                     * CGFloat(
-                        isHeader
-                            ? calloutAppearance.titleGapEm ?? 0 : calloutAppearance.paragraphSpacingEm)
-                if range.upperBound == result.length {
-                    paragraph.paragraphSpacing += baseSize * CGFloat(calloutAppearance.blockGapEm)
-                }
+                        (calloutAppearance.startInsetEm ?? calloutAppearance.inlineInsetEm)
+                            + calloutAppearance.resolvedPaddingInlineEm)
+                let end =
+                    baseSize
+                    * CGFloat(
+                        (calloutAppearance.endInsetEm ?? calloutAppearance.inlineInsetEm)
+                            + calloutAppearance.resolvedPaddingInlineEm)
+                let bodyIndent = isHeader ? 0 : baseSize * CGFloat(calloutAppearance.contentIndentEm ?? 0)
+                let shift = start - nativeInset + bodyIndent
+                paragraph.firstLineHeadIndent += shift
+                paragraph.headIndent += shift
+                paragraph.tailIndent = -end
             } else if block.kind == .paragraph {
                 paragraph.firstLineHeadIndent = baseSize * CGFloat(settings.body.firstLineIndentEm)
                 paragraph.paragraphSpacing = baseSize * CGFloat(settings.body.paragraphSpacingEm)
@@ -371,5 +397,19 @@ struct NativeDocumentStyle {
             ScholiumColorRole.calloutTitleRGBValue(
                 role, isDark: dark,
                 increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast))
+    }
+
+    private static func neutralCalloutSurfaceHex(dark: Bool, strength: Double) -> String {
+        let contrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        let ink = ScholiumColorRole.primaryText.resolvedRGBValue(
+            isDark: dark, increasedContrast: contrast)
+        let paper = ScholiumColorRole.documentBackground.resolvedRGBValue(
+            isDark: dark, increasedContrast: contrast)
+        func channel(_ shift: UInt32) -> UInt32 {
+            let foreground = Double((ink >> shift) & 0xFF)
+            let background = Double((paper >> shift) & 0xFF)
+            return UInt32((foreground * strength + background * (1 - strength)).rounded())
+        }
+        return String(format: "#%02X%02X%02X", channel(16), channel(8), channel(0))
     }
 }

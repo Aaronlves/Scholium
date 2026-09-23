@@ -32,6 +32,42 @@ nonisolated(unsafe) private let reusableCalloutPathOverlayCache:
 
 extension EditorTextView {
 
+    /// The selection action bar has no prose action for a bare Callout marker.
+    /// Use the same parser and feature switches as the renderer so custom
+    /// titles and body text retain their normal selection actions.
+    public func selectionContainsOnlyCalloutMarker(_ selection: NSRange) -> Bool {
+        guard selection.length > 0,
+            let index = blockIndexForRawOffset(selection.location),
+            blocks.indices.contains(index),
+            case .quoteRun(isCallout: true) = blocks[index].kind
+        else { return false }
+        let block = blocks[index]
+        guard selection.upperBound <= block.range.upperBound else { return false }
+        let local = NSRange(
+            location: selection.location - block.range.location,
+            length: selection.length)
+        // Selection changes can arrive on every Shift-arrow key press. Parse
+        // only the short header, never the entire (potentially long) Callout.
+        let source = block.content as NSString
+        let newline = source.range(of: "\n")
+        let header = source.substring(
+            to: newline.location == NSNotFound ? source.length : newline.location)
+        for span in SyntaxHighlighter.parse(
+            header, linkDefinitions: linkDefState.defsText,
+            features: markdownFeatures)
+        {
+            guard case .blockquote = span.kind,
+                let info = calloutInfo(forBlockquote: span, markdown: header)
+            else { continue }
+            if local.location >= span.fullRange.location,
+                local.upperBound <= info.marker.closeBracket.upperBound
+            {
+                return true
+            }
+        }
+        return false
+    }
+
     /// A detected callout on a block-quote span, with ranges mapped to absolute
     /// offsets within the block string.
     struct CalloutInfo {
@@ -118,13 +154,15 @@ extension EditorTextView {
     }
 
     /// Applies callout styling: the box, the icon + title header image, and the
-    /// recursively-rendered body. Only called for an *inactive* callout — when
-    /// the cursor is inside, the caller renders the raw `>` source instead so the
-    /// markers stay editable.
+    /// recursively rendered body. A caret expands only its own source line;
+    /// the box and the other projected rows remain in place.
     func styleCalloutContent(
         _ result: NSMutableAttributedString,
         span: SyntaxHighlighter.Span,
-        info: CalloutInfo
+        info: CalloutInfo,
+        activeHeader: Bool,
+        bodyCursor: Int?,
+        selectionRange: NSRange?
     ) {
         guard span.fullRange.upperBound <= result.length else { return }
         let c = resolvedCalloutColors(info.style)
@@ -134,14 +172,19 @@ extension EditorTextView {
 
         // The box is drawn by DecoratedTextLayoutFragment behind every
         // paragraph of the callout; the fragments tile into one continuous box.
-        func box(bottomPad: CGFloat) -> BlockDecoration {
+        func box(
+            bottomPad: CGFloat, roundsTop: Bool = false, roundsBottom: Bool = false
+        ) -> BlockDecoration {
             BlockDecoration(
                 .box(
                     background: c.background,
                     borderColor: c.border,
                     borderEdges: info.style.borderEdges,
                     borderWidth: info.style.borderWidth,
-                    bottomPad: bottomPad))
+                    bottomPad: bottomPad),
+                drawsBelowSelection: true,
+                cornerRadius: appliedNativeAppearance?.calloutCornerRadius ?? 0,
+                roundsTop: roundsTop, roundsBottom: roundsBottom)
         }
         result.addAttribute(
             .blockDecoration, value: box(bottomPad: 0),
@@ -155,6 +198,9 @@ extension EditorTextView {
         // land on the callout, the next block tiles clear, and the box covers
         // it — no dead zone, no trailing paragraph spacing.
         let ns = result.string as NSString
+        let firstLine = NSIntersectionRange(
+            ns.lineRange(for: NSRange(location: span.fullRange.location, length: 0)),
+            span.fullRange)
         var lastLineStart = span.fullRange.location
         let nl = ns.range(
             of: "\n", options: .backwards,
@@ -163,8 +209,22 @@ extension EditorTextView {
         let lastLine = NSRange(
             location: lastLineStart,
             length: span.fullRange.upperBound - lastLineStart)
+        let headerGap =
+            firstLine.location == lastLine.location
+            ? 0
+            : appliedNativeAppearance?.calloutHeaderGaps[info.marker.type]
+                ?? bodyFont.pointSize * 0.3
+        if firstLine.location != lastLine.location {
+            result.addAttribute(
+                .blockDecoration, value: box(bottomPad: headerGap, roundsTop: true),
+                range: firstLine)
+        }
         result.addAttribute(
-            .blockDecoration, value: box(bottomPad: bottomPadding),
+            .blockDecoration,
+            value: box(
+                bottomPad: bottomPadding,
+                roundsTop: firstLine.location == lastLine.location,
+                roundsBottom: true),
             range: lastLine)
 
         // End of the header (first) line, before any body lines.
@@ -177,12 +237,41 @@ extension EditorTextView {
         let headerLine = NSRange(
             location: span.fullRange.location,
             length: headerLineEnd - span.fullRange.location)
+        let headerPrefix = NSRange(
+            location: span.fullRange.location,
+            length: max(0, header.location - span.fullRange.location))
+        if headerPrefix.length > 0 {
+            result.addAttribute(
+                .foregroundColor, value: activeHeader ? syntaxDimColor : .clear,
+                range: headerPrefix)
+            if activeHeader {
+                result.addAttribute(.editorSyntaxInk, value: true, range: headerPrefix)
+            }
+        }
         let accentHex = info.style.accentHex(dark: isDarkAppearance)
         let accentCacheKey =
             NSColor(hex: accentHex) == nil
             ? renderingCacheColorKey(c.accent)
             : accentHex
-        if header.length > 0, header.upperBound <= result.length {
+        if activeHeader {
+            // The authored marker replaces the generated label only while the
+            // caret is in the header. The semantic box and body remain stable.
+            let markerRange = NSRange(
+                location: info.marker.openBracket.location,
+                length: info.marker.closeBracket.upperBound - info.marker.openBracket.location)
+            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: markerRange)
+            result.addAttribute(.editorSyntaxInk, value: true, range: markerRange)
+            if let titleRange = info.customTitleRange {
+                result.addAttribute(
+                    .font,
+                    value: hostTitleFont ?? NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask),
+                    range: titleRange)
+                result.addAttribute(.foregroundColor, value: c.accent, range: titleRange)
+            }
+            let ps = calloutParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
+            ps.paragraphSpacingBefore = topPadding
+            result.addAttribute(.paragraphStyle, value: ps, range: headerLine)
+        } else if header.length > 0, header.upperBound <= result.length {
             if let titleRange = info.customTitleRange, titleRange.upperBound <= result.length {
                 // Custom title: hide the `[!type]` marker and render the title as
                 // real bold + tinted text so a long title WRAPS inside the box.
@@ -244,20 +333,9 @@ extension EditorTextView {
                 // icon + name as one compact overlay image.
                 result.addAttribute(.font, value: hiddenFont, range: header)
                 result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
-                // Collapsible: a chevron in the drawn header image marks the fold
-                // state (▸ folded / ▾ expanded). ponytail: indicator only — Edit
-                // never actually collapses the body (real fold is Read mode's
-                // native <details>); custom-title callouts show no chevron since
-                // their title is live text we can't inject into.
-                let headerTitle: String
-                switch info.fold {
-                case .folded: headerTitle = "▸ " + info.title
-                case .expanded: headerTitle = "▾ " + info.title
-                case nil: headerTitle = info.title
-                }
                 if let overlay = calloutHeaderOverlay(
                     iconName: info.style.iconName,
-                    title: headerTitle, color: c.accent,
+                    title: info.title, color: c.accent,
                     hostTitleFont: hostTitleFont,
                     colorKey: accentCacheKey,
                     iconNudge: info.style.iconBaselineNudge)
@@ -276,7 +354,9 @@ extension EditorTextView {
         // Render the body (the lines after the header) recursively: strip one
         // `>` level, re-style the inner markdown, and splice it back so nested
         // code/quotes/callouts/lists/etc. render inside the box.
-        renderCalloutBody(result, span: span, headerLineEnd: headerLineEnd)
+        renderCalloutBody(
+            result, span: span, headerLineEnd: headerLineEnd,
+            cursorPosition: bodyCursor, selectionRange: selectionRange)
     }
 
     /// Renders a callout's body — every line after the header — by stripping one
@@ -287,7 +367,9 @@ extension EditorTextView {
     private func renderCalloutBody(
         _ result: NSMutableAttributedString,
         span: SyntaxHighlighter.Span,
-        headerLineEnd: Int
+        headerLineEnd: Int,
+        cursorPosition: Int?,
+        selectionRange: NSRange?
     ) {
         let end = span.fullRange.upperBound
         // Body starts after the header line's trailing newline.
@@ -324,8 +406,18 @@ extension EditorTextView {
             let prefixLen = p - cursor
             if prefixLen > 0 {
                 let pr = NSRange(location: cursor, length: prefixLen)
-                result.addAttribute(.font, value: hiddenFont, range: pr)
-                result.addAttribute(.foregroundColor, value: NSColor.clear, range: pr)
+                let selectedPrefix =
+                    selectionRange.map {
+                        NSIntersectionRange($0, pr).length > 0
+                    } ?? false
+                if selectedPrefix || (cursorPosition.map { $0 >= cursor && $0 <= lineEnd } ?? false) {
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pr)
+                    result.addAttribute(.editorSyntaxInk, value: true, range: pr)
+                } else {
+                    // Reserve the same source-prefix width when inactive so
+                    // revealing `>` never moves the prose or its soft wraps.
+                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: pr)
+                }
             }
 
             let sStart = units.count
@@ -356,12 +448,33 @@ extension EditorTextView {
         // `>`-prefix membership: a line without the deeper prefix is its own
         // block, so swift-markdown's lazy continuation can't pull a `> ` line
         // into an adjacent `> > ` callout/quote. The body is only rendered for an
-        // inactive callout (the cursor is elsewhere), so inner blocks render
-        // fully — no cursor reveal needed.
+        // active line keeps its exact prefix, and only its inner source syntax
+        // expands. Other rows retain their projected reading presentation.
         let sub = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
+        let strippedCursor = cursorPosition.map { position in
+            realIndex.firstIndex(where: { $0 >= position }) ?? units.count
+        }
+        let strippedSelection: NSRange? = selectionRange.flatMap { selected in
+            guard selected.length > 0,
+                let first = realIndex.firstIndex(where: { NSLocationInRange($0, selected) }),
+                let last = realIndex.lastIndex(where: { NSLocationInRange($0, selected) })
+            else { return nil }
+            return NSRange(location: first, length: last - first + 1)
+        }
         for b in BlockParser.parse(stripped) {
             guard b.range.upperBound <= sub.length else { continue }
-            let styled = styleBlock(b.content, cursorPosition: nil)
+            let localCursor = strippedCursor.flatMap { position -> Int? in
+                position >= b.range.location && position <= b.range.upperBound
+                    ? position - b.range.location : nil
+            }
+            let localSelection = strippedSelection.flatMap { selected -> NSRange? in
+                let overlap = NSIntersectionRange(selected, b.range)
+                guard overlap.length > 0 else { return nil }
+                return NSRange(location: overlap.location - b.range.location, length: overlap.length)
+            }
+            let styled = styleBlock(
+                b.content, cursorPosition: localCursor,
+                selectionRange: localSelection)
             styled.enumerateAttributes(
                 in: NSRange(location: 0, length: styled.length),
                 options: []
@@ -385,7 +498,7 @@ extension EditorTextView {
         lineMap: [(real: NSRange, stripped: NSRange)],
         into result: NSMutableAttributedString
     ) {
-        let step = 2 + quoteMarkerWidth  // one nesting level of horizontal inset
+        let step = 2 + quoteMarkerWidth  // one nesting level of box inset
         let subLen = sub.length
 
         // Character attributes (everything except paragraph style / decoration),
@@ -420,7 +533,10 @@ extension EditorTextView {
                 (sub.attribute(.paragraphStyle, at: ss, effectiveRange: nil)
                     as? NSParagraphStyle) ?? bodyParagraphStyle
             let ps = innerPS.mutableCopy() as! NSMutableParagraphStyle
-            ps.firstLineHeadIndent += step
+            // The real `> ` remains full-width even when its ink is hidden.
+            // Only the first visual row contains those source characters;
+            // continuation rows need their width added to the hanging indent.
+            ps.firstLineHeadIndent += 2
             ps.headIndent += step
             if ps.tailIndent == 0 { ps.tailIndent = -10 }
             result.addAttribute(.paragraphStyle, value: ps, range: lm.real)
@@ -451,7 +567,10 @@ extension EditorTextView {
                 return BlockDecoration(
                     d.kind, inset: d.inset + step,
                     hugsTextTop: d.hugsTextTop,
-                    drawsBelowSelection: d.drawsBelowSelection)
+                    drawsBelowSelection: d.drawsBelowSelection,
+                    cornerRadius: d.cornerRadius,
+                    roundsTop: d.roundsTop,
+                    roundsBottom: d.roundsBottom)
             }
             return d
         }
@@ -485,7 +604,7 @@ extension EditorTextView {
 
     /// Top breathing room — raised on the header line's minimum line height
     /// (clickable text space), not dead block padding.
-    private var calloutTopPad: CGFloat { bodyFont.pointSize * 0.8 }
+    private var calloutTopPad: CGFloat { bodyFont.pointSize * 0.65 }
     /// Bottom breathing room. Delivered by growing the last line's layout
     /// fragment frame (a box `bottomPad`), so it is genuine clickable text
     /// space below the last line — not trailing paragraph spacing, which
@@ -493,7 +612,7 @@ extension EditorTextView {
     /// Tuned so the *rendered* bottom gap matches the rendered top gap: the
     /// header overlay sits low in its line, so the top renders ~0.4·pointSize
     /// larger than `calloutTopPad`, and this makes the bottom match it.
-    var calloutBottomPad: CGFloat { bodyFont.pointSize * 1.14 }
+    var calloutBottomPad: CGFloat { bodyFont.pointSize * 0.65 }
 
     // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 
@@ -567,9 +686,8 @@ extension EditorTextView {
 
     // MARK: Header image (icon + title)
 
-    /// Draws "icon  Title" into one image, tinted to the callout color, and
-    /// wraps it in a `FragmentOverlay`. Returns `nil` if the Lucide icon can't
-    /// be resolved. The top breathing room is NOT in the image — the caller
+    /// Draws the semantic title with an optional icon into one image and wraps
+    /// it in a `FragmentOverlay`. The top breathing room is NOT in the image — the caller
     /// raises the header line's minimum line height instead.
     private func calloutHeaderOverlay(
         iconName: String, title: String, color: NSColor,
@@ -589,16 +707,15 @@ extension EditorTextView {
             return cached
         }
 
-        guard let symbol = LucideIcons.image(iconName, color: color, pointSize: pointSize)
-        else { return nil }
+        let symbol = LucideIcons.image(iconName, color: color, pointSize: pointSize)
 
         let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: color]
         let titleStr = NSAttributedString(string: title, attributes: titleAttrs)
         let titleSize = titleStr.size()
 
-        let gap = pointSize * 0.3
-        let symW = symbol.size.width
-        let symH = symbol.size.height
+        let gap = symbol == nil ? 0 : pointSize * 0.3
+        let symW = symbol?.size.width ?? 0
+        let symH = symbol?.size.height ?? 0
         let contentHeight = ceil(max(symH, titleSize.height))
         let width = ceil(symW + gap + titleSize.width)
 
@@ -611,7 +728,7 @@ extension EditorTextView {
             // mostly-lowercase, capital-initial titles.
             let baseline = titleY + abs(titleFont.descender)
             let opticalCenter = baseline + (titleFont.xHeight + titleFont.capHeight) / 4
-            symbol.draw(in: NSRect(x: 0, y: opticalCenter - symH / 2 + iconNudge, width: symW, height: symH))
+            symbol?.draw(in: NSRect(x: 0, y: opticalCenter - symH / 2 + iconNudge, width: symW, height: symH))
             return true
         }
         // Re-rasterize at the screen's backing scale on every draw rather than

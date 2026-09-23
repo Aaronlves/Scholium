@@ -6,6 +6,10 @@ public extension NSAttributedString.Key {
     static let editorStrong = NSAttributedString.Key("EditorStrong")
     static let editorEmphasis = NSAttributedString.Key("EditorEmphasis")
     static let editorTechnicalFont = NSAttributedString.Key("EditorTechnicalFont")
+    /// Exact Markdown punctuation and identifiers that remain visible in Edit.
+    /// The host assigns one accessible semantic gray without inferring a role
+    /// from a resolved color, which varies with appearance and contrast.
+    static let editorSyntaxInk = NSAttributedString.Key("EditorSyntaxInk")
     /// Stores a link's destination (URL string) on its visible text so a
     /// cmd+click can follow it. Kept separate from the system `.link` attribute
     /// to avoid NSTextView's built-in link styling/cursor behavior.
@@ -221,6 +225,7 @@ extension EditorTextView {
     ///     tests — which fall back to the whitespace-and-unit estimate.
     func styleBlock(
         _ markdown: String, cursorPosition: Int? = nil,
+        selectionRange: NSRange? = nil,
         hideComments: Bool = false,
         listDepth: Int? = nil
     ) -> NSAttributedString {
@@ -254,6 +259,7 @@ extension EditorTextView {
                 cursorPosition.map {
                     $0 >= span.fullRange.location && $0 <= span.fullRange.upperBound
                 } ?? false
+            var isCalloutSpan = false
 
             // --- Content styling (applied first) ---
             switch span.kind {
@@ -413,8 +419,29 @@ extension EditorTextView {
                 // ever detects as a callout: a callout nested inside a plain
                 // quote stays literal (see SyntaxHighlighter+Walker's
                 // visitBlockQuote), so no deeper span is ever callout-shaped.
-                if let callout = calloutInfo(forBlockquote: span, markdown: markdown), !cursorInToken {
-                    styleCalloutContent(result, span: span, info: callout)
+                if let callout = calloutInfo(forBlockquote: span, markdown: markdown) {
+                    isCalloutSpan = true
+                    let headerEnd = (markdown as NSString).range(
+                        of: "\n", options: [], range: span.fullRange
+                    ).location
+                    let selectedSourceHeader = NSRange(
+                        location: span.fullRange.location,
+                        length: callout.marker.closeBracket.upperBound - span.fullRange.location)
+                    let selectedHeader =
+                        selectionRange.map {
+                            NSIntersectionRange($0, selectedSourceHeader).length > 0
+                        } ?? false
+                    let activeHeader =
+                        selectedHeader
+                        || (cursorInToken
+                            && cursorPosition.map {
+                                $0 <= (headerEnd == NSNotFound ? span.fullRange.upperBound : headerEnd)
+                            } == true)
+                    styleCalloutContent(
+                        result, span: span, info: callout,
+                        activeHeader: activeHeader,
+                        bodyCursor: cursorInToken && !activeHeader ? cursorPosition : nil,
+                        selectionRange: selectionRange)
                 } else {
                     // Plain block quote (any nesting depth). Indent and draw
                     // this level's own bar regardless of active/inactive — the
@@ -687,6 +714,7 @@ extension EditorTextView {
                 // shrink it into a superscript and hide the `[^`/`]` (below). When
                 // active, it stays full size and editable with dimmed delimiters.
                 result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.contentRange)
+                result.addAttribute(.editorSyntaxInk, value: true, range: span.contentRange)
                 if !cursorInToken {
                     let ctx = contextFont(at: span.contentRange.location)
                     let small =
@@ -716,6 +744,7 @@ extension EditorTextView {
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)
                 } else {
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
+                    result.addAttribute(.editorSyntaxInk, value: true, range: span.fullRange)
                 }
 
             case .tag:
@@ -736,6 +765,7 @@ extension EditorTextView {
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)
                 } else {
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
+                    result.addAttribute(.editorSyntaxInk, value: true, range: span.fullRange)
                 }
 
             case .lineBreak:
@@ -766,6 +796,10 @@ extension EditorTextView {
             // --- Delimiter treatment (applied after content styling so it takes precedence) ---
             for dr in span.delimiterRanges {
                 guard dr.upperBound <= result.length else { continue }
+                // Callout quote prefixes are handled per source line while
+                // recursively styling the body. The generic whole-span
+                // activation would reveal every `>` at once.
+                if isCalloutSpan { continue }
 
                 if case .thematicBreak = span.kind {
                     // Thematic break: fully handled in content styling above
@@ -859,6 +893,7 @@ extension EditorTextView {
                     result.addAttribute(.font, value: hiddenFont, range: dr)
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
                 }
+                result.addAttribute(.editorSyntaxInk, value: true, range: dr)
             }
         }
 
@@ -959,7 +994,10 @@ extension EditorTextView {
     /// Re-styles a single block in the text storage in place (no string mutation).
     /// `cursorInBlock` is the cursor offset within the block, or nil to hide
     /// all inline delimiters (non-active block).
-    func restyleBlock(_ blockIndex: Int, cursorInBlock: Int? = nil) {
+    func restyleBlock(
+        _ blockIndex: Int, cursorInBlock: Int? = nil,
+        selectionInBlock: NSRange? = nil
+    ) {
         guard let ts = textStorage,
             blockIndex < blocks.count
         else { return }
@@ -979,6 +1017,7 @@ extension EditorTextView {
             case .edit:
                 styled = styleBlock(
                     block.content, cursorPosition: cursorInBlock,
+                    selectionRange: selectionInBlock,
                     listDepth: depth)
             case .reading:
                 styled = styleBlock(

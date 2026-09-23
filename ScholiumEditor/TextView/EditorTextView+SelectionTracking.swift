@@ -17,8 +17,8 @@ extension EditorTextView {
             deferredPointerRestyle = false
             recomposeAllDirty()
         }
-        // Do not collapse or re-install the native range/affinity. A nonempty
-        // selection keeps its current appearance until editing or a caret move.
+        // Do not collapse or re-install the native range/affinity. The stable
+        // selection pass below only changes Callout marker ink after mouse-up.
         selectionDidChange(Notification(name: NSTextView.didChangeSelectionNotification, object: self))
         if deferredPointerLayout {
             deferredPointerLayout = false
@@ -37,6 +37,51 @@ extension EditorTextView {
         guard isTrackingPointerSelection else { return false }
         deferredPointerLayout = true
         return true
+    }
+
+    /// Reveal selected Callout source markers after AppKit finishes changing a
+    /// range. Repaint previously revealed blocks when the selection moves or
+    /// collapses; the native selection, affinity, source, and Undo stay owned
+    /// by NSTextView. Never touch attributes during a drag or IME composition.
+    func scheduleCalloutSelectionProjection() {
+        guard !pendingCalloutSelectionProjection else { return }
+        pendingCalloutSelectionProjection = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pendingCalloutSelectionProjection = false
+            guard self.viewMode == .edit,
+                !self.isTrackingPointerSelection,
+                !self.isUpdating,
+                !self.isUndoRedoing,
+                !self.isComposingSource,
+                (self.textStorage as? EditorTextStorage)?.pendingEdit == nil
+            else { return }
+
+            let selection = self.selectedRange()
+            var selectedIDs = Set<UUID>()
+            if selection.length > 0 {
+                for block in self.blocks {
+                    guard case .quoteRun(isCallout: true) = block.kind else { continue }
+                    if NSIntersectionRange(selection, block.range).length > 0 {
+                        selectedIDs.insert(block.id)
+                    }
+                }
+            }
+            let affected = selectedIDs.union(self.selectionRevealedCalloutIDs)
+            guard !affected.isEmpty else { return }
+            var dirty = IndexSet()
+            for (index, block) in self.blocks.enumerated() where affected.contains(block.id) {
+                dirty.insert(index)
+            }
+            self.selectionRevealedCalloutIDs = selectedIDs
+            guard !dirty.isEmpty else { return }
+            self.preservingViewportAnchor {
+                self.recomposeDirty(
+                    dirty, cursorInRaw: selection.location,
+                    selectionInRaw: selection.length > 0 ? selection : nil,
+                    settingSelection: false)
+            }
+        }
     }
 
     @objc func selectionDidChange(_ notification: Notification) {
@@ -80,7 +125,9 @@ extension EditorTextView {
             return
         }
         // Don't restyle while an input method is composing (see didChangeText).
-        guard !isComposingSource, shouldRestyleForCaretMovement else { return }
+        guard !isComposingSource else { return }
+        scheduleCalloutSelectionProjection()
+        guard shouldRestyleForCaretMovement else { return }
 
         let sel = selectedRange()
         let rawOffset = sel.location

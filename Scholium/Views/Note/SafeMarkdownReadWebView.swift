@@ -1596,7 +1596,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   <meta charset="utf-8">
                   <meta name="viewport" content="width=device-width, initial-scale=1">
                   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; connect-src 'none'; font-src scholium-font: data:">
-                  <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumAttachmentStyles.css)\n\(mathCSS)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebSymbolAssets.cssVariables)\n\(baseCSS)</style>
+                  <style>\(documentResourceCSS(mathCSS: mathCSS))</style>
                   <style id="scholium-presentation-css"></style>
                   <style id="scholium-user-css"></style>
                 </head>
@@ -1780,6 +1780,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private static func base64JSON<T: Encodable>(_ value: T) -> String {
             guard let data = try? JSONEncoder().encode(value) else { return "W10=" }
             return data.base64EncodedString()
+        }
+
+        static func documentResourceCSS(mathCSS: String = ScholiumMathAssets.css) -> String {
+            [
+                ScholiumWebFonts.css, ScholiumTableStyles.css, ScholiumFootnoteStyles.css,
+                ScholiumAttachmentStyles.css, mathCSS, ScholiumMermaidAssets.css,
+                ScholiumPreviewStyles.css, ScholiumWebSymbolAssets.cssVariables, baseCSS,
+            ].joined(separator: "\n")
         }
 
         static let baseCSS = """

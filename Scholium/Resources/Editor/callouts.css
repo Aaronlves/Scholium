@@ -6,6 +6,7 @@
   --scholium-callout-ink: var(--scholium-color-primary-text, CanvasText);
   --scholium-callout-secondary-ink: var(--scholium-color-secondary-text, CanvasText);
   --scholium-callout-inline-inset: .9em;
+  --scholium-callout-header-gap: .3em;
   --scholium-callout-surface: color-mix(in srgb,
     var(--scholium-color-primary-text, CanvasText) 4.5%,
     var(--scholium-color-document-background, Canvas));
@@ -70,7 +71,7 @@
   white-space: nowrap;
 }
 .scholium-callout-body {
-  margin-block-start: .35em;
+  margin-block-start: var(--scholium-callout-header-gap);
   font-size: 100%;
   line-height: inherit;
 }
@@ -169,7 +170,9 @@
 .scholium-callout[open] > summary .scholium-callout-fold-mark::before { transform: rotate(45deg); }
 @media (prefers-contrast: more) {
   .scholium-callout {
-    --scholium-callout-surface: var(--scholium-color-document-background, Canvas);
+    --scholium-callout-surface: color-mix(in srgb,
+      var(--scholium-color-primary-text, CanvasText) 9%,
+      var(--scholium-color-document-background, Canvas));
   }
 }
 @media print {

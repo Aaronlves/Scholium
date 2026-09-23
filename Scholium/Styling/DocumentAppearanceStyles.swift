@@ -254,8 +254,11 @@ enum DocumentAppearanceStyles {
         var css = """
             \(selector) {
               --scholium-callout-block-gap: \(number(callout.blockGapEm))em;
+              --scholium-callout-header-gap: \(number(callout.resolvedHeaderBodyGapEm))em;
               margin-block: var(--scholium-callout-block-gap);
               margin-inline: \(number(callout.inlineInsetEm))em;
+              padding-block: \(number(callout.resolvedPaddingBlockEm))em;
+              padding-inline: \(number(callout.resolvedPaddingInlineEm))em;
               font-size: \(number(callout.fontScale))em;
             }
             \(selector) .scholium-callout-body { line-height: \(callout.lineHeight.map(number) ?? "inherit"); }
@@ -285,13 +288,7 @@ enum DocumentAppearanceStyles {
         case .illustration:
             break
         case .caution, .source:
-            css += """
-
-                \(selector) {
-                  padding-block: \(number(callout.paddingBlockEm ?? defaults.paddingBlockEm ?? 0.72))em;
-                  padding-inline: \(number(callout.paddingInlineEm ?? defaults.paddingInlineEm ?? 0.88))em;
-                }
-                """
+            break
         case .folded:
             css += """
 

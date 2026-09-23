@@ -10,11 +10,16 @@ public struct NativeDocumentAppearance {
     public let calloutStyles: [String: CalloutStyle]
     public let calloutTitleFonts: [String: NSFont]
     public let calloutVerticalPadding: [String: CGFloat]
+    public let calloutHeaderGaps: [String: CGFloat]
+    public let codeBlockCornerRadius: CGFloat
+    public let calloutCornerRadius: CGFloat
 
     public init(
         identifier: Int, theme: EditorTheme, readingWidth: CGFloat,
         calloutStyles: [String: CalloutStyle],
         calloutTitleFonts: [String: NSFont], calloutVerticalPadding: [String: CGFloat],
+        calloutHeaderGaps: [String: CGFloat],
+        codeBlockCornerRadius: CGFloat, calloutCornerRadius: CGFloat,
         blockStyle: @escaping (Block, NSAttributedString) -> NSAttributedString
     ) {
         self.identifier = identifier
@@ -23,6 +28,9 @@ public struct NativeDocumentAppearance {
         self.calloutStyles = calloutStyles
         self.calloutTitleFonts = calloutTitleFonts
         self.calloutVerticalPadding = calloutVerticalPadding
+        self.calloutHeaderGaps = calloutHeaderGaps
+        self.codeBlockCornerRadius = codeBlockCornerRadius
+        self.calloutCornerRadius = calloutCornerRadius
         self.blockStyle = blockStyle
     }
 }

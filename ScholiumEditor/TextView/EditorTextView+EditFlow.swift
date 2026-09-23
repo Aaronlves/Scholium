@@ -136,6 +136,11 @@ extension EditorTextView {
         }
         syncRawSourceFromDisplay()
 
+        // A committed IME edit or replacement may have moved an earlier
+        // Callout selection without producing a separate stable selection
+        // notification. Reconcile marker ink after source and blocks agree.
+        scheduleCalloutSelectionProjection()
+
         scrollCursorToCenter()
     }
 

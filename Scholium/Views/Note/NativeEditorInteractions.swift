@@ -12,7 +12,9 @@ final class NativeEditorInteractions {
     var onRequestSave: () -> Void = {}
     var onRequestFind: (DocumentFindShortcut) -> Void = { _ in }
     var linkCompletionQuery: @MainActor (EditorLinkCompletionKind, String) async -> [EditorLinkCompletion]
-    var linkPreviews: [DocumentLinkPreview]
+    var previewCatalog: DocumentPreviewCatalog?
+    var previewRelativePath: String
+    var previewAppearance: DocumentAppearanceSettings
     var onPasteImage: (EditorPastedImageSource) -> Bool
     var onAskAgent: AgentSelectionInquiryHandler?
     var onPassageAction: ((DocumentPassageAction, MarkdownSourceSelectionSnapshot?) -> Void)?
@@ -30,6 +32,8 @@ final class NativeEditorInteractions {
     private var subscriptions = Set<AnyCancellable>()
     private var queryTask: Task<Void, Never>?
     private var previewTask: Task<Void, Never>?
+    private var previewHideTask: Task<Void, Never>?
+    private var cachedPreviews: (source: String, catalog: DocumentPreviewCatalog?, values: [NativeDocumentPreview])?
     private var pointerMonitor: Any?
     private var surfaceID = 0
     private var suggestions: [EditorLinkCompletion] = []
@@ -41,10 +45,13 @@ final class NativeEditorInteractions {
     private var selectedSuggestion = 0
     private var hoverOffset: Int?
     private var hoverPreviewVisible = false
+    private var previewPointerInside = false
 
     init(
         linkCompletionQuery: @escaping @MainActor (EditorLinkCompletionKind, String) async -> [EditorLinkCompletion] = { _, _ in [] },
-        linkPreviews: [DocumentLinkPreview] = [],
+        previewCatalog: DocumentPreviewCatalog? = nil,
+        previewRelativePath: String = "document.md",
+        previewAppearance: DocumentAppearanceSettings = .defaultSettings,
         onPasteImage: @escaping (EditorPastedImageSource) -> Bool = { _ in false },
         onAskAgent: AgentSelectionInquiryHandler? = nil,
         onPassageAction: ((DocumentPassageAction, MarkdownSourceSelectionSnapshot?) -> Void)? = nil,
@@ -53,7 +60,9 @@ final class NativeEditorInteractions {
         writingContinuationQuery: @escaping EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
     ) {
         self.linkCompletionQuery = linkCompletionQuery
-        self.linkPreviews = linkPreviews
+        self.previewCatalog = previewCatalog
+        self.previewRelativePath = previewRelativePath
+        self.previewAppearance = previewAppearance
         self.onPasteImage = onPasteImage
         self.onAskAgent = onAskAgent
         self.onPassageAction = onPassageAction
@@ -77,7 +86,12 @@ final class NativeEditorInteractions {
             dismissSuggestions()
         }
         linkCompletionQuery = other.linkCompletionQuery
-        linkPreviews = other.linkPreviews
+        if previewCatalog != other.previewCatalog || previewRelativePath != other.previewRelativePath {
+            cachedPreviews = nil
+        }
+        previewCatalog = other.previewCatalog
+        previewRelativePath = other.previewRelativePath
+        previewAppearance = other.previewAppearance
         onPasteImage = other.onPasteImage
         onAskAgent = other.onAskAgent
         onPassageAction = other.onPassageAction
@@ -117,6 +131,9 @@ final class NativeEditorInteractions {
         continuation.cancel()
         previewTask?.cancel()
         previewTask = nil
+        previewHideTask?.cancel()
+        previewHideTask = nil
+        cachedPreviews = nil
         subscriptions.removeAll()
         if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
         pointerMonitor = nil
@@ -160,9 +177,31 @@ final class NativeEditorInteractions {
         cancelHover()
         guard let session, !session.isComposing, ranges.count == 1 else { return }
         if !ranges[0].isNonempty {
+            // Navigation keys can land on a source-located disclosure without
+            // moving the pointer. Keep that keyboard route on the same native
+            // preview as hover. A resolved link takes precedence over link
+            // completion suggestions while its caret moves through the source.
+            if let event = NSApp.currentEvent, event.type == .keyDown,
+                event.window === session.nativeEditor.window,
+                [UInt16(48), 123, 124, 125, 126].contains(event.keyCode),
+                let snapshot = try? session.reconcileNativeSource(),
+                let offset = EditorSourceOffsetMap(source: snapshot.text)
+                    .sourceUTF16Offset(forEditorUTF16Offset: ranges[0].head),
+                let preview = preview(at: offset, in: snapshot.text)
+            {
+                showPreview(preview)
+                return
+            }
             scheduleCompletions(explicit: false)
             return
         }
+        let range = NSRange(
+            location: min(ranges[0].anchor, ranges[0].head),
+            length: abs(ranges[0].head - ranges[0].anchor))
+        // Explain/Polish operate on prose, not a selected structural marker.
+        // Keeping the bar away also leaves this newly revealed source syntax
+        // unobscured while the researcher edits the Callout type.
+        if session.nativeEditor.selectionContainsOnlyCalloutMarker(range) { return }
         guard let rect, onAskAgent != nil else { return }
         let generation = session.generation
         let sessionID = session.sessionID
@@ -183,6 +222,7 @@ final class NativeEditorInteractions {
 
     private func scheduleCompletions(explicit: Bool) {
         guard isCurrentHost, let session, (try? session.reconcileNativeSource()) != nil else { return }
+        guard explicit || !hoverPreviewVisible else { return }
         guard session.hasWritingFocus, session.presentedMode == .edit,
             !session.isComposing, session.nativeCommandIsPermitted(.wikilink),
             session.currentValidSelectionRanges().count == 1,
@@ -385,7 +425,7 @@ final class NativeEditorInteractions {
         }
         if let selection = ranges.first,
             let offset = EditorSourceOffsetMap(source: session.checkedSource).sourceUTF16Offset(forEditorUTF16Offset: selection.head),
-            let preview = linkPreviews.first(where: { $0.sourceSpan.utf16LowerBound <= offset && offset <= $0.sourceSpan.utf16UpperBound })
+            let preview = preview(at: offset, in: session.checkedSource)
         {
             menu.addItem(
                 PassageMenuItem(title: preview.title, enabled: true) { [weak self, weak session] in
@@ -400,33 +440,47 @@ final class NativeEditorInteractions {
     private func cancelHover() {
         previewTask?.cancel()
         previewTask = nil
+        previewHideTask?.cancel()
+        previewHideTask = nil
+        previewPointerInside = false
         hoverOffset = nil
         if hoverPreviewVisible { floating.dismiss() }
         hoverPreviewVisible = false
+    }
+
+    private func schedulePreviewHide() {
+        previewTask?.cancel()
+        previewTask = nil
+        hoverOffset = nil
+        guard hoverPreviewVisible, !previewPointerInside else { return }
+        previewHideTask?.cancel()
+        previewHideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled, let self, !self.previewPointerInside else { return }
+            self.cancelHover()
+        }
     }
 
     private func pointerMoved(_ event: NSEvent) {
         if event.window === floating.previewWebView?.window { return }
         guard isCurrentHost, let session, event.window === session.nativeEditor.window, session.nativeEditor.window?.isKeyWindow == true,
             session.currentValidSelectionRanges().allSatisfy({ !$0.isNonempty }), !session.isComposing,
-            (try? session.reconcileNativeSource()) != nil, !session.isDirty
+            (try? session.reconcileNativeSource()) != nil
         else {
-            cancelHover()
+            schedulePreviewHide()
             return
         }
         let point = session.nativeEditor.convert(event.locationInWindow, from: nil)
         guard session.nativeEditor.visibleRect.contains(point) else {
-            cancelHover()
+            schedulePreviewHide()
             return
         }
         let index = session.nativeEditor.characterIndexForInsertion(at: point)
         guard index != hoverOffset else { return }
         hoverOffset = index
         previewTask?.cancel()
-        guard let offset = EditorSourceOffsetMap(source: session.checkedSource).sourceUTF16Offset(forEditorUTF16Offset: index),
-            let preview = linkPreviews.first(where: { $0.sourceSpan.utf16LowerBound <= offset && offset < $0.sourceSpan.utf16UpperBound })
-        else {
-            cancelHover()
+        guard let offset = EditorSourceOffsetMap(source: session.checkedSource).sourceUTF16Offset(forEditorUTF16Offset: index) else {
+            schedulePreviewHide()
             return
         }
         let generation = session.generation
@@ -437,14 +491,33 @@ final class NativeEditorInteractions {
                 self.hoverOffset == index, session.nativeEditor.window?.isKeyWindow == true,
                 session.sessionID == sessionID, session.generation == generation
             else { return }
+            guard let preview = self.preview(at: offset, in: session.checkedSource) else {
+                self.schedulePreviewHide()
+                return
+            }
+            self.previewHideTask?.cancel()
+            self.previewHideTask = nil
             self.showPreview(preview)
         }
     }
 
-    private func showPreview(_ preview: DocumentLinkPreview) {
-        guard let session, !session.isDirty,
+    private func preview(at offset: Int, in source: String) -> NativeDocumentPreview? {
+        if cachedPreviews?.source != source || cachedPreviews?.catalog != previewCatalog {
+            cachedPreviews = (
+                source, previewCatalog,
+                NativeDocumentPreviewBuilder.build(
+                    source: source, relativePath: previewRelativePath, catalog: previewCatalog)
+            )
+        }
+        return cachedPreviews?.values.first {
+            $0.span.utf16LowerBound <= offset && offset < $0.span.utf16UpperBound
+        }
+    }
+
+    private func showPreview(_ preview: NativeDocumentPreview) {
+        guard let session,
             let map = try? ExactSourceProjection(utf8: Data(session.checkedSource.utf8)),
-            let range = try? map.projectedUTF16Range(forSourceUTF16Range: preview.sourceSpan.nsRange),
+            let range = try? map.projectedUTF16Range(forSourceUTF16Range: preview.span.nsRange),
             let window = session.nativeEditor.window
         else { return }
         let screen = session.nativeEditor.firstRect(forCharacterRange: range, actualRange: nil)
@@ -452,13 +525,34 @@ final class NativeEditorInteractions {
         let geometry = viewportGeometry(rect)
         surfaceID += 1
         hoverPreviewVisible = true
+        let css = [
+            SafeMarkdownReadWebView.Coordinator.documentResourceCSS(),
+            DocumentAppearanceStyles.css(for: previewAppearance),
+            ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+        ].joined(separator: "\n")
         floating.present(
             .preview(
                 .init(
                     id: surfaceID, left: geometry.left, top: geometry.top, bottom: geometry.bottom,
-                    html: preview.htmlBody, css: ScholiumDocumentPresentationConfiguration(textScale: 1).css)),
+                    html: preview.html, css: css)),
             in: session.scrollView
-        ) { _, _, _ in true }
+        ) { [weak self] _, action, _ in
+            guard let self else { return false }
+            switch action {
+            case .enter:
+                self.previewPointerInside = true
+                self.previewHideTask?.cancel()
+                self.previewHideTask = nil
+            case .leave:
+                self.previewPointerInside = false
+                self.schedulePreviewHide()
+            case .dismiss:
+                self.hoverPreviewVisible = false
+                self.previewPointerInside = false
+            case .select, .choose: break
+            }
+            return true
+        }
     }
 
     private func viewportGeometry(_ rect: NSRect) -> (left: Double, top: Double, bottom: Double) {

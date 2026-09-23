@@ -295,8 +295,8 @@ first visible character is entered.
 
 Recognized Markdown syntax remains visible while a caret is inside its editable
 construct or immediately at either boundary; moving outside hides it. A range selection
-reveals constructs it actually overlaps. Recognized active delimiters use an accessible system-Accent-derived syntax
-color while authored content keeps its semantic styling. Short inline delimiters
+reveals constructs it actually overlaps. Recognized active delimiters use one accessible semantic
+gray while authored content keeps its semantic styling. Short inline delimiters
 and short heading/quotation prefixes expand and retract with restrained motion.
 Callout markers, code fences, long destinations and technical source never
 animate their width or indentation; they remain quiet or fade. Activation color
@@ -325,6 +325,12 @@ column layout, and quotation titles retain their authored position above the
 passage. Untitled Callouts share a default role title while inactive; activating
 the Edit header replaces that projection with exact source. Active syntax and
 addressable source rows remain the bounded editing exceptions described above.
+Surface-bearing roles use a neutral text-derived wash, while open roles keep
+their transparent indentation; title color does not tint the prose background.
+Read and Edit share the content inset and header/body rhythm from Appearance.
+In Edit, revealing a body line's `>` uses a reserved syntax gutter so its prose
+start and soft wraps do not move. Header source may expand in place without
+moving the Callout container or its body.
 
 Edit Callouts retain their exact authored markers when active, but do not repeat
 generated role names such as `Caution`, `Statement`, or `Quotation` as visible

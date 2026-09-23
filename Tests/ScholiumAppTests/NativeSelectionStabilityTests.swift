@@ -115,6 +115,50 @@ struct NativeSelectionStabilityTests {
         #expect(!view.deferredPointerLayout)
         #expect(view.blocks[index].isStyled)
     }
+
+    @Test("Callout selection reveals source after drag without moving the native range")
+    func calloutSelection() async throws {
+        let bytes = Data("开头 😀\r\n\r\n> [!WARNING] 提示\r\n> 中文 Body\r\n> 下一行\r\n\r\n结尾".utf8)
+        let session = nativeSelectionTestSession(bytes)
+        let view = session.nativeEditor
+        await settleQueue()
+        let source = view.rawSource as NSString
+        let marker = source.range(of: "> [!WARNING]")
+        let bodyPrefix = source.range(of: "> 中文")
+        let selection = NSRange(location: marker.location, length: marker.length)
+        #expect(view.selectionContainsOnlyCalloutMarker(selection))
+        #expect(!view.selectionContainsOnlyCalloutMarker(source.range(of: "提示")))
+        #expect(!view.selectionContainsOnlyCalloutMarker(source.range(of: "中文 Body")))
+        let before = try #require(view.textStorage?.copy() as? NSAttributedString)
+        let origin = session.scrollView.contentView.bounds.origin
+        let undoCount = view.undoStack.count
+
+        view.beginPointerSelection()
+        view.setSelectedRanges(
+            [NSValue(range: selection)], affinity: .upstream, stillSelecting: true)
+        await settleQueue()
+        #expect(view.textStorage?.isEqual(to: before) == true)
+        view.setSelectedRanges(
+            [NSValue(range: selection)], affinity: .upstream, stillSelecting: false)
+        view.endPointerSelection()
+        await settleQueue()
+
+        let selected = try #require(view.textStorage)
+        #expect(view.selectedRange() == selection)
+        #expect(view.selectionAffinity == .upstream)
+        #expect(selected.attribute(.editorSyntaxInk, at: marker.location, effectiveRange: nil) != nil)
+        #expect(selected.attribute(.editorSyntaxInk, at: marker.location + 2, effectiveRange: nil) != nil)
+        #expect(selected.attribute(.fragmentOverlay, at: marker.location + 2, effectiveRange: nil) == nil)
+        #expect(selected.attribute(.editorSyntaxInk, at: bodyPrefix.location, effectiveRange: nil) == nil)
+        #expect(session.scrollView.contentView.bounds.origin == origin)
+        #expect(view.undoStack.count == undoCount)
+        #expect(try view.exactUTF8ForSaving() == bytes)
+
+        view.setSelectedRange(NSRange(location: source.range(of: "结尾").location, length: 0))
+        await settleQueue()
+        #expect(view.textStorage?.attribute(.fragmentOverlay, at: marker.location + 2, effectiveRange: nil) != nil)
+        #expect(try view.exactUTF8ForSaving() == bytes)
+    }
 }
 
 @MainActor

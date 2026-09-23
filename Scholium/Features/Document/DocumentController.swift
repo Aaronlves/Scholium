@@ -1422,6 +1422,15 @@ final class DocumentController: ObservableObject {
                 }
                 guard !Task.isCancelled else { return }
                 guard session.autosaveDeadline == deadline else { continue }
+                // The last checked source remains dirty while marked text is
+                // provisional. Keep this task admitted until composition ends;
+                // a committed edit will also move the deadline forward.
+                if session.editorSession.isComposing {
+                    session.autosaveDeadline = clock.now.advanced(
+                        by: .milliseconds(max(100, Self.autosaveDelayMilliseconds))
+                    )
+                    continue
+                }
                 session.finishAutosave(token: autosaveToken)
                 await self.persistEditingSource(session: session, target: target)
                 return
@@ -1449,6 +1458,10 @@ final class DocumentController: ObservableObject {
             }
         } catch is CancellationError {
             return
+        } catch MarkdownEditorSession.SessionError.compositionInProgress {
+            // Composition may begin after the timer fires but before the
+            // full-buffer snapshot or post-commit acknowledgement runs.
+            scheduleAutosave(session: session, target: target)
         } catch {
             if let repositoryError = error as? VaultRepositoryError,
                 case .fileDoesNotExist = repositoryError,

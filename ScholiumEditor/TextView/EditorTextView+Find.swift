@@ -72,7 +72,7 @@ extension EditorTextView {
     /// force whole-document layout on every frame.
     public override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
-        drawCodeBlockBackgrounds(in: rect)
+        drawBlockBackgrounds(in: rect)
         // Line numbers in the column's margin ride this same pass (they are
         // beside the text, never under it). See EditorTextView+LineNumbers.
         // Whether they actually fit — and so whether the gutter has them

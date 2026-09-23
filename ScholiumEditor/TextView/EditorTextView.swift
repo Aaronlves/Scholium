@@ -180,6 +180,10 @@ public class EditorTextView: NSTextView {
     /// Coalesces the async active-block restyle scheduled from a caret move
     /// (internal so EditorTextView+SelectionTracking can clear it).
     var pendingRecompose = false
+    /// Callout blocks whose source markers were revealed for the last stable
+    /// nonempty selection. IDs survive incremental block index shifts.
+    var selectionRevealedCalloutIDs: Set<UUID> = []
+    var pendingCalloutSelectionProjection = false
     /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
     var progressiveStylingScheduled = false
     /// Coalesces scroll-driven promotion onto the next run-loop turn, off the
@@ -320,13 +324,16 @@ public class EditorTextView: NSTextView {
             if newValue == .reading { closeTableCellEditor(commit: true) }
             let origin = enclosingScrollView?.contentView.bounds.origin
             currentViewMode = newValue
+            selectionRevealedCalloutIDs.removeAll()
             isEditable = (newValue != .reading)
             if newValue == .reading { rawTableEditing = false }
             // Attribute-only restyling retains selection and the same Undo owner.
             if !blocks.isEmpty {
                 recomposeDirty(
                     IndexSet(integersIn: 0..<blocks.count),
-                    cursorInRaw: selectedRange().location)
+                    cursorInRaw: selectedRange().location,
+                    selectionInRaw: newValue == .edit && selectedRange().length > 0
+                        ? selectedRange() : nil)
             }
             if let origin, let scroll = enclosingScrollView {
                 scroll.contentView.scroll(to: origin)
@@ -1398,6 +1405,7 @@ public class EditorTextView: NSTextView {
     /// `LineEnding.detect` text whose `\r\n`s had already been rewritten and
     /// silently turn every CRLF file into LF.
     public func loadContent(_ content: String, unwrapHardWrapping: Bool = false) {
+        selectionRevealedCalloutIDs.removeAll()
         exactSourceProjection = nil
         exactSourceFailure = nil
         committedExactSource = nil

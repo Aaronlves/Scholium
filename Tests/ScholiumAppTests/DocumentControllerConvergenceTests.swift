@@ -191,6 +191,77 @@ struct DocumentControllerConvergenceTests {
         #expect(session.autosaveToken == nextToken && session.autosaveTask != nil)
     }
 
+    @Test("Autosave waits for Chinese composition and then saves exact source")
+    func autosaveWaitsForComposition() async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/ime-autosave-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
+        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let original = "\u{FEFF}题目\r\n正文"
+        let file = vaults[1].appendingPathComponent("Input.md")
+        try Data(original.utf8).write(to: file)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "IME fixture")
+            let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
+            let snapshot = try #require(vault.documents.first { $0.id.relativePath == "Input.md" })
+            let controller = DocumentController()
+            controller.bind(to: capabilities.documents)
+            controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
+            let descriptor = try #require(controller.activeDocument)
+            let target = DocumentEditingTarget.workspace(descriptor.sessionKey)
+            let session = controller.session(for: descriptor)
+            defer { session.cancelScheduledWork() }
+            controller.beginEditing(
+                session: session, target: target, source: original,
+                revision: snapshot.fingerprint, mode: .edit)
+            session.editorSession.loadDocument(
+                original, documentID: session.editorSession.editorDocumentID, mode: .edit)
+            let editor = session.editorSession.nativeEditor
+            editor.insertText("!", replacementRange: NSRange(location: (editor.rawSource as NSString).length, length: 0))
+            let checked = try session.editorSession.reconcileNativeSource()
+            #expect(checked.text == "\u{FEFF}题目\r\n正文!")
+            session.cancelAutosave()
+            session.suppressAutosave = false
+            controller.scheduleAutosave(session: session, target: target)
+            editor.setMarkedText(
+                "zhong", selectedRange: NSRange(location: 5, length: 0),
+                replacementRange: NSRange(location: (editor.rawSource as NSString).length, length: 0))
+            #expect(session.editorSession.isComposing)
+            #expect(session.editorSession.checkedSource == checked.text)
+
+            // An earlier dirty edit's timer may expire while the candidate UI
+            // is still open. This must remain pending, without a false error.
+            try await Task.sleep(for: .milliseconds(950))
+            #expect(session.autosaveTask != nil)
+            #expect(editor.hasMarkedText())
+            #expect(session.editError == nil && controller.lastSaveError == nil)
+            #expect(try Data(contentsOf: file) == Data(original.utf8))
+
+            // The snapshot can also race with composition beginning just after
+            // the timer fires. It is transient and must schedule another save.
+            session.cancelAutosave()
+            await controller.persistEditingSource(session: session, target: target)
+            #expect(session.autosaveTask != nil)
+            #expect(session.editError == nil && controller.lastSaveError == nil)
+            editor.insertText("中文", replacementRange: editor.markedRange())
+            let final = "\u{FEFF}题目\r\n正文!中文"
+            #expect(try await session.editorSession.currentText() == final)
+            session.cancelAutosave()
+            await controller.persistEditingSource(session: session, target: target)
+            #expect(session.editError == nil && controller.lastSaveError == nil)
+            #expect(try Data(contentsOf: file) == Data(final.utf8))
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
     @Test("External publication reconciles inactive retained editors without changing selection", arguments: [false, true])
     func inactiveExternalPublication(dirty: Bool) throws {
         let vault = UUID()

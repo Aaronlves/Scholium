@@ -615,7 +615,9 @@ struct NoteContentView: View {
             },
             interactions: NativeEditorInteractions(
                 linkCompletionQuery: queryEditorLinkCompletions,
-                linkPreviews: documentSession.previewCatalog?.links ?? [],
+                previewCatalog: documentSession.previewCatalog,
+                previewRelativePath: note.relativePath,
+                previewAppearance: state.appearance,
                 onPasteImage: handlePastedImage,
                 onAskAgent: actions.askAgent,
                 onPassageAction: { actions.passageAction($0, $1) },

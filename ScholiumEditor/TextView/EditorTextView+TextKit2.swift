@@ -124,15 +124,24 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
     /// Opaque code fills belong below AppKit's selection layer, not inside
     /// the glyph fragment that AppKit composites above that selection.
     public let drawsBelowSelection: Bool
+    /// Only the outside edges of a multi-paragraph box are rounded; interior
+    /// fragments stay square so the fill tiles without scalloped seams.
+    public let cornerRadius: CGFloat
+    public let roundsTop: Bool
+    public let roundsBottom: Bool
 
     public init(
         _ kind: Kind, inset: CGFloat = 0, hugsTextTop: Bool = false,
-        drawsBelowSelection: Bool = false
+        drawsBelowSelection: Bool = false, cornerRadius: CGFloat = 0,
+        roundsTop: Bool = false, roundsBottom: Bool = false
     ) {
         self.kind = kind
         self.inset = inset
         self.hugsTextTop = hugsTextTop
         self.drawsBelowSelection = drawsBelowSelection
+        self.cornerRadius = cornerRadius
+        self.roundsTop = roundsTop
+        self.roundsBottom = roundsBottom
     }
 
     public override func isEqual(_ object: Any?) -> Bool {
@@ -140,6 +149,9 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         return kind == other.kind && inset == other.inset
             && hugsTextTop == other.hugsTextTop
             && drawsBelowSelection == other.drawsBelowSelection
+            && cornerRadius == other.cornerRadius
+            && roundsTop == other.roundsTop
+            && roundsBottom == other.roundsBottom
     }
 
     public override var hash: Int {
@@ -176,6 +188,9 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         hasher.combine(inset)
         hasher.combine(hugsTextTop)
         hasher.combine(drawsBelowSelection)
+        hasher.combine(cornerRadius)
+        hasher.combine(roundsTop)
+        hasher.combine(roundsBottom)
         return hasher.finalize()
     }
 }
@@ -795,7 +810,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 for: decoration, at: point,
                 bottomInset: precedingBottomPad, topInset: topInset)
             context.setFillColor(background.cgColor)
-            context.fill(rect)
+            context.addPath(boxPath(for: rect, decoration: decoration))
+            context.fillPath()
             precedingBottomPad += bottomPad
         }
     }
@@ -1065,6 +1081,50 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             height: max(0, decorationDrawHeight - bottomInset - topInset))
     }
 
+    private func boxPath(for rect: CGRect, decoration: BlockDecoration) -> CGPath {
+        // Straight internal edges overlap fractionally so adjacent fragments
+        // do not expose an antialiased line of the document background.
+        var rect = rect
+        if !decoration.roundsTop {
+            rect.origin.y -= 0.5
+            rect.size.height += 0.5
+        }
+        if !decoration.roundsBottom {
+            rect.size.height += 0.5
+        }
+        let radius = max(0, min(decoration.cornerRadius, rect.width / 2, rect.height / 2))
+        let top = decoration.roundsTop ? radius : 0
+        let bottom = decoration.roundsBottom ? radius : 0
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: rect.minX + top, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - top, y: rect.minY))
+        if top > 0 {
+            path.addQuadCurve(
+                to: CGPoint(x: rect.maxX, y: rect.minY + top),
+                control: CGPoint(x: rect.maxX, y: rect.minY))
+        }
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bottom))
+        if bottom > 0 {
+            path.addQuadCurve(
+                to: CGPoint(x: rect.maxX - bottom, y: rect.maxY),
+                control: CGPoint(x: rect.maxX, y: rect.maxY))
+        }
+        path.addLine(to: CGPoint(x: rect.minX + bottom, y: rect.maxY))
+        if bottom > 0 {
+            path.addQuadCurve(
+                to: CGPoint(x: rect.minX, y: rect.maxY - bottom),
+                control: CGPoint(x: rect.minX, y: rect.maxY))
+        }
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + top))
+        if top > 0 {
+            path.addQuadCurve(
+                to: CGPoint(x: rect.minX + top, y: rect.minY),
+                control: CGPoint(x: rect.minX, y: rect.minY))
+        }
+        path.closeSubpath()
+        return path
+    }
+
     private func drawDecoration(
         _ decoration: BlockDecoration, at point: CGPoint,
         in context: CGContext, bottomInset: CGFloat = 0,
@@ -1086,9 +1146,13 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 bottomInset: bottomInset, topInset: topInset)
             if !drawsFillsBelowSelection {
                 context.setFillColor(background.cgColor)
-                context.fill(columnRect)
+                context.addPath(boxPath(for: columnRect, decoration: decoration))
+                context.fillPath()
             }
             if let borderColor, !edges.isEmpty {
+                context.saveGState()
+                context.addPath(boxPath(for: columnRect, decoration: decoration))
+                context.clip()
                 context.setFillColor(borderColor.cgColor)
                 if edges.contains(.left) {
                     context.fill(
@@ -1114,6 +1178,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                             x: columnRect.minX, y: columnRect.maxY - borderWidth,
                             width: columnRect.width, height: borderWidth))
                 }
+                context.restoreGState()
             }
 
         case .leftBar(let color, let width):

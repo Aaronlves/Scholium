@@ -119,10 +119,20 @@ extension EditorTextView {
 
         ts.beginEditing()
         for idx in syncSet where idx < blocks.count {
+            let selectionInBlock: NSRange? = selectionInRaw.flatMap { selection in
+                guard viewMode == .edit, selection.length > 0 else { return nil }
+                let overlap = NSIntersectionRange(selection, blocks[idx].range)
+                guard overlap.length > 0 else { return nil }
+                return NSRange(
+                    location: overlap.location - blocks[idx].range.location,
+                    length: overlap.length)
+            }
             let cursorInBlock: Int? =
-                (idx == newActiveIndex)
+                (selectionInRaw?.length ?? 0) == 0 && idx == newActiveIndex
                 ? max(0, cursorInRaw - blocks[idx].range.location) : nil
-            restyleBlock(idx, cursorInBlock: cursorInBlock)
+            restyleBlock(
+                idx, cursorInBlock: cursorInBlock,
+                selectionInBlock: selectionInBlock)
             blocks[idx].isStyled = true
         }
         ts.endEditing()
@@ -218,6 +228,7 @@ extension EditorTextView {
             recomposeDirty(
                 IndexSet(blocks.indices),
                 cursorInRaw: currentCursorInRaw(),
+                selectionInRaw: selectedRange().length > 0 ? selectedRange() : nil,
                 settingSelection: false)
         }
     }
