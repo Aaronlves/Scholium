@@ -772,7 +772,7 @@ struct NoteContentView: View {
                 .accessibilityHidden(true)
             }
         }
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: .trailing) {
             documentOutlineOverlay
         }
     }
@@ -789,6 +789,9 @@ struct NoteContentView: View {
 
             Group {
                 if canShow {
+                    let railContentHeight =
+                        CGFloat(outlineEntries.count) * ScholiumMetrics.Document.outlineMarkerTarget
+                        + ScholiumMetrics.Document.outlineRailVerticalInset * 2
                     DocumentOutlineRail(
                         entries: outlineEntries,
                         activeEntryID: outlineSelectionEntryID
@@ -797,20 +800,24 @@ struct NoteContentView: View {
                                 sourceUTF16Offset: outlineScrollAnchor?.sourceUTF16Offset,
                                 scrollFraction: outlineScrollFraction
                             ),
+                        documentViewportHeight: proxy.size.height,
                         select: navigateToOutlineEntry
                     )
                     .frame(
-                        height: max(
-                            0,
-                            proxy.size.height - ScholiumGrid.Spacing.regionContentInset
+                        height: min(
+                            max(0, proxy.size.height - ScholiumGrid.Spacing.regionContentInset * 2),
+                            min(
+                                railContentHeight,
+                                ScholiumMetrics.Document.outlineRailMaximumHeight
+                            )
                         ),
-                        alignment: .topLeading
+                        alignment: .trailing
                     )
-                    .padding(.top, ScholiumGrid.Spacing.regionContentInset)
-                    .padding(.leading, ScholiumGrid.Spacing.inlineControlGap)
+                    .padding(.trailing, ScholiumGrid.Spacing.inlineControlGap)
                     .transition(reduceMotion ? .identity : .opacity)
                 }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .trailing)
             .animation(
                 ScholiumMotion.disclosure(reduceMotion: reduceMotion),
                 value: canShow
@@ -818,7 +825,7 @@ struct NoteContentView: View {
             .accessibilityHidden(!canShow)
             .allowsHitTesting(canShow)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
     }
 
     private func navigateToOutlineEntry(_ entry: DocumentOutlineEntry) {

@@ -1,3 +1,5 @@
+import CoreGraphics
+import SwiftUI
 import Testing
 
 @testable import ScholiumApp
@@ -79,5 +81,71 @@ struct DocumentOutlineRailTests {
                 scrollFraction: 1
             ) == "first"
         )
+    }
+
+    @Test("Overflow fades appear only where the rail has hidden markers")
+    func overflowEdges() {
+        let fitting = DocumentOutlineScrollEdges(
+            visibleRect: CGRect(x: 0, y: 0, width: 32, height: 200),
+            contentHeight: 200
+        )
+        #expect(!fitting.hasAbove && !fitting.hasBelow)
+
+        let top = DocumentOutlineScrollEdges(
+            visibleRect: CGRect(x: 0, y: 0, width: 32, height: 200),
+            contentHeight: 400
+        )
+        #expect(!top.hasAbove && top.hasBelow)
+
+        let middle = DocumentOutlineScrollEdges(
+            visibleRect: CGRect(x: 0, y: 100, width: 32, height: 200),
+            contentHeight: 400
+        )
+        #expect(middle.hasAbove && middle.hasBelow)
+
+        let bottom = DocumentOutlineScrollEdges(
+            visibleRect: CGRect(x: 0, y: 200, width: 32, height: 200),
+            contentHeight: 400
+        )
+        #expect(bottom.hasAbove && !bottom.hasBelow)
+    }
+
+    @Test("Preview placement meets the marker's inward edge in either layout direction")
+    func previewPlacement() {
+        let marker = CGRect(x: 0, y: 2, width: 32, height: 12)
+        let previewSize = CGSize(width: 72, height: 40)
+        let gap: CGFloat = 4
+        let leftToRight = DocumentOutlinePreviewPlacement.origin(
+            markerBounds: marker,
+            railHeight: 200,
+            documentViewportHeight: 600,
+            previewSize: previewSize,
+            gap: gap,
+            layoutDirection: .leftToRight
+        )
+        #expect(leftToRight.x + previewSize.width == marker.minX - gap)
+        #expect(leftToRight.y + previewSize.height / 2 == marker.midY)
+
+        let rightToLeft = DocumentOutlinePreviewPlacement.origin(
+            markerBounds: marker,
+            railHeight: 200,
+            documentViewportHeight: 600,
+            previewSize: previewSize,
+            gap: gap,
+            layoutDirection: .rightToLeft
+        )
+        #expect(rightToLeft.x == marker.maxX + gap)
+        #expect(rightToLeft.y + previewSize.height / 2 == marker.midY)
+
+        let lastMarker = CGRect(x: 0, y: 190, width: 32, height: 12)
+        let nearBottom = DocumentOutlinePreviewPlacement.origin(
+            markerBounds: lastMarker,
+            railHeight: 200,
+            documentViewportHeight: 200,
+            previewSize: previewSize,
+            gap: gap,
+            layoutDirection: .leftToRight
+        )
+        #expect(nearBottom.y + previewSize.height == 200)
     }
 }

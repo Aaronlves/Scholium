@@ -64,15 +64,18 @@ enum DocumentOutlineProjection {
 struct DocumentOutlineRail: View {
     let entries: [DocumentOutlineEntry]
     let activeEntryID: DocumentOutlineEntry.ID?
+    let documentViewportHeight: CGFloat
     let select: (DocumentOutlineEntry) -> Void
 
     @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
     @FocusState private var focusedEntryID: DocumentOutlineEntry.ID?
     @State private var pointerRow: CGFloat?
     @State private var hapticRow: Int?
     @State private var lastHoverHapticTime: TimeInterval = 0
     @State private var dismissedPreviewID: DocumentOutlineEntry.ID?
+    @State private var scrollEdges = DocumentOutlineScrollEdges()
 
     var body: some View {
         GeometryReader { proxy in
@@ -96,12 +99,31 @@ struct DocumentOutlineRail: View {
             }
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
+            .onScrollGeometryChange(for: DocumentOutlineScrollEdges.self) { geometry in
+                DocumentOutlineScrollEdges(
+                    visibleRect: geometry.visibleRect,
+                    contentHeight: geometry.contentSize.height
+                )
+            } action: { _, edges in
+                scrollEdges = edges
+            }
+            .overlay(alignment: .top) {
+                if scrollEdges.hasAbove {
+                    overflowFade(at: .top)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if scrollEdges.hasBelow {
+                    overflowFade(at: .bottom)
+                }
+            }
         }
         .frame(width: ScholiumMetrics.Document.outlineRailWidth)
         .onChange(of: entries) { _, _ in
             pointerRow = nil
             hapticRow = nil
             dismissedPreviewID = nil
+            scrollEdges = DocumentOutlineScrollEdges()
         }
         .onChange(of: previewCandidateID) { _, candidate in
             if candidate != dismissedPreviewID { dismissedPreviewID = nil }
@@ -111,26 +133,18 @@ struct DocumentOutlineRail: View {
                 if let entry = previewEntry, let anchor = bounds[entry.id] {
                     let rect = proxy[anchor]
                     if rect.intersects(CGRect(origin: .zero, size: proxy.size)) {
-                        Text(verbatim: entry.title.isEmpty ? ScholiumL10n.string("Heading") : entry.title)
-                            .font(.caption)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-                            .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-                            .scholiumFloatingSurface(
-                                in: RoundedRectangle(
-                                    cornerRadius: ScholiumMetrics.Document.outlinePreviewCornerRadius,
-                                    style: .continuous
-                                )
-                            )
-                            .frame(width: ScholiumMetrics.Document.outlinePreviewWidth, alignment: .leading)
-                            .position(
-                                x: rect.maxX + ScholiumGrid.Spacing.labelAccessoryGap
-                                    + ScholiumMetrics.Document.outlinePreviewWidth / 2,
-                                y: rect.midY
-                            )
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
+                        DocumentOutlinePreviewLayout(
+                            markerBounds: rect,
+                            railSize: proxy.size,
+                            documentViewportHeight: documentViewportHeight,
+                            maximumWidth: ScholiumMetrics.Document.outlinePreviewWidth,
+                            gap: ScholiumGrid.Spacing.labelAccessoryGap,
+                            layoutDirection: layoutDirection
+                        ) {
+                            DocumentOutlineTitlePreview(title: entry.title)
+                        }
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                     }
                 }
             }
@@ -183,7 +197,7 @@ struct DocumentOutlineRail: View {
                 .frame(
                     width: ScholiumMetrics.Document.outlineRailWidth,
                     height: ScholiumMetrics.Document.outlineMarkerTarget,
-                    alignment: .leading
+                    alignment: .trailing
                 )
                 .contentShape(Rectangle())
                 .animation(ScholiumMotion.outlineInteraction(reduceMotion: reduceMotion), value: influence)
@@ -218,6 +232,19 @@ struct DocumentOutlineRail: View {
 
     private func dismissPreview() {
         dismissedPreviewID = previewCandidateID
+    }
+
+    @ViewBuilder
+    private func overflowFade(at edge: Edge) -> some View {
+        let paper = ScholiumColorRole.documentBackground.color
+        LinearGradient(
+            colors: edge == .top ? [paper, paper.opacity(0)] : [paper.opacity(0), paper],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: ScholiumMetrics.Document.outlineRailEdgeFadeHeight)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func updatePointer(at y: CGFloat) {
@@ -266,6 +293,98 @@ struct DocumentOutlineRail: View {
         let opacity = max(isActive ? active : resting, resting + (hovered - resting) * influence)
         return ScholiumColorRole.primaryText.color(increasedContrast: increasedContrast)
             .opacity(opacity)
+    }
+}
+
+private struct DocumentOutlineTitlePreview: View {
+    let title: String
+
+    var body: some View {
+        Text(verbatim: title.isEmpty ? ScholiumL10n.string("Heading") : title)
+            .font(.caption)
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+            .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+            .scholiumFloatingSurface(
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumMetrics.Document.outlinePreviewCornerRadius,
+                    style: .continuous
+                )
+            )
+    }
+}
+
+private struct DocumentOutlinePreviewLayout: Layout {
+    let markerBounds: CGRect
+    let railSize: CGSize
+    let documentViewportHeight: CGFloat
+    let maximumWidth: CGFloat
+    let gap: CGFloat
+    let layoutDirection: LayoutDirection
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        railSize
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let preview = subviews.first else { return }
+        let previewSize = preview.sizeThatFits(ProposedViewSize(width: maximumWidth, height: nil))
+        let origin = DocumentOutlinePreviewPlacement.origin(
+            markerBounds: markerBounds,
+            railHeight: railSize.height,
+            documentViewportHeight: documentViewportHeight,
+            previewSize: previewSize,
+            gap: gap,
+            layoutDirection: layoutDirection
+        )
+        preview.place(
+            at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+            proposal: ProposedViewSize(previewSize)
+        )
+    }
+}
+
+struct DocumentOutlinePreviewPlacement {
+    static func origin(
+        markerBounds: CGRect,
+        railHeight: CGFloat,
+        documentViewportHeight: CGFloat,
+        previewSize: CGSize,
+        gap: CGFloat,
+        layoutDirection: LayoutDirection
+    ) -> CGPoint {
+        let x =
+            layoutDirection == .leftToRight
+            ? markerBounds.minX - gap - previewSize.width
+            : markerBounds.maxX + gap
+        let centerY: CGFloat
+        if previewSize.height >= documentViewportHeight {
+            centerY = railHeight / 2
+        } else {
+            let halfHeight = previewSize.height / 2
+            let outsideRail = max(0, documentViewportHeight - railHeight) / 2
+            centerY = min(
+                max(markerBounds.midY, halfHeight - outsideRail),
+                railHeight + outsideRail - halfHeight
+            )
+        }
+        return CGPoint(x: x, y: centerY - previewSize.height / 2)
+    }
+}
+
+struct DocumentOutlineScrollEdges: Equatable {
+    var hasAbove = false
+    var hasBelow = false
+
+    init() {}
+
+    init(visibleRect: CGRect, contentHeight: CGFloat) {
+        let tolerance: CGFloat = 1
+        let overflows = contentHeight > visibleRect.height + tolerance
+        hasAbove = overflows && visibleRect.minY > tolerance
+        hasBelow = overflows && visibleRect.maxY < contentHeight - tolerance
     }
 }
 

@@ -241,16 +241,17 @@ section and lower levels becoming progressively quieter. Review and Edit
 preserve those relative visual and accessible levels; Source exposes only the
 exact authored hierarchy and no projected title.
 
-Review, Edit and Source may show a compact Document Outline on the Document's
-logical leading edge. This source-ordered projection of authored H1-H2 headings
-has equal rows: H1 uses longer resting ticks than H2, and accessible labels
-identify both levels. H3-H6 are omitted. The resting rail has no filled track
-or persistent labels. Pointer proximity lengthens nearby ticks with broad,
-softly settling, reversible falloff. Distinct activation targets never overlap;
-overflow scrolls independently. The current section has a stronger stroke.
+Document modes may show a Document Outline over the Document's
+logical trailing edge, without changing prose geometry. H1-H2 ticks share a
+trailing endpoint; H1 extends inward. H3-H6 are omitted.
+Disjoint rows retain complete accessible labels. The vertically centered rail
+shrinks for few headings or a short window. Overflow scrolls
+independently; Paper fades appear only at edges with hidden ticks. The resting
+rail has no filled track or persistent labels. Pointer proximity lengthens
+nearby ticks with reversible falloff. The current section has a stronger stroke.
 
 Pointer proximity or keyboard focus immediately reveals the authored title
-beside the marker in a compact, noninteractive floating preview. It uses small
+inward from the marker in a compact, noninteractive floating preview. It uses small
 system text and the shared native floating-surface material, with tight insets
 and a small rounded-rectangle shape instead of an arrowed capsule. The system
 owns its highlights, elevation and adaptation. Scanning updates title and

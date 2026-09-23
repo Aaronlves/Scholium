@@ -226,6 +226,8 @@ enum ScholiumMetrics {
         static let outlineRailMinimumWidth: CGFloat = ScholiumGrid.foundationUnit * 180
         static let outlineRailWidth: CGFloat = ScholiumGrid.foundationUnit * 8
         static let outlineRailVerticalInset = ScholiumGrid.Spacing.sectionSeparation
+        static let outlineRailMaximumHeight = outlineMarkerTarget * 14 + outlineRailVerticalInset * 2
+        static let outlineRailEdgeFadeHeight = outlineMarkerTarget * 1.5
         /// The compact rail keeps its visual rhythm denser than a regular
         /// custom control under the compact-outline precision exception in
         /// specification section 20. Each 32 x 12pt target is disjoint, spans
