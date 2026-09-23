@@ -152,9 +152,12 @@ struct AgentChatNoteMaterialTests {
             chat.removeAttachment(try #require(chat.selected?.attachments.first?.id))
             session.editorSession.nativeEditor.setSelectedRange(NSRange(location: 0, length: 0))
             session.editorSession.updateNativeInteraction()
+            // The retained native text, rather than a stale Swift mirror, owns
+            // the material captured from an open document.
             session.editingSource = "Unsaved source that must never be replaced by the saved Note."
-            await #expect(throws: AgentChatNoteMaterialError.self) { try await window.addNoteToChat(note, conversationID: other) }
-            #expect(chat.conversations.first { $0.id == other }?.attachments.isEmpty == true)
+            try await window.addNoteToChat(note, conversationID: other)
+            let openMaterial = try #require(chat.conversations.first { $0.id == other }?.attachments.first)
+            #expect(openMaterial.text == source && openMaterial.source == .editorSnapshot)
             #expect(session.editingSource.hasPrefix("Unsaved source"))
             #expect(try Data(contentsOf: file) == Data(source.utf8))
             await chat.disconnect()

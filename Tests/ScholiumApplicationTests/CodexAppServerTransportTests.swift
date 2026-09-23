@@ -64,9 +64,11 @@ struct CodexAppServerTransportTests {
                 Issue.record("A revoked queued response must be cancelled before it reaches stdin")
             } catch is CancellationError {}
             #expect(await secondAdmission.callCount == 1)
-            #expect(try await runtime.request("clientResponses") == .array([
-                .object(["id": .string("first"), "result": .string("admitted")])
-            ]))
+            #expect(
+                try await runtime.request("clientResponses")
+                    == .array([
+                        .object(["id": .string("first"), "result": .string("admitted")])
+                    ]))
         }
     }
 
@@ -93,9 +95,11 @@ struct CodexAppServerTransportTests {
             try await runtime.start(executable: fixture.executable, home: fixture.root, workingDirectory: fixture.root)
             #expect(try await runtime.request("clientResponses") == .array([]))
             try await runtime.respond(id: .string("new-session"), result: .string("fresh")) { true }
-            #expect(try await runtime.request("clientResponses") == .array([
-                .object(["id": .string("new-session"), "result": .string("fresh")])
-            ]))
+            #expect(
+                try await runtime.request("clientResponses")
+                    == .array([
+                        .object(["id": .string("new-session"), "result": .string("fresh")])
+                    ]))
         }
     }
 
@@ -330,72 +334,72 @@ private struct TransportFixture: Sendable {
     }
 
     private static let script = #"""
-    #!/usr/bin/python3
-    import json, os, signal, sys
+        #!/usr/bin/python3
+        import json, os, signal, sys
 
-    def emit(value, fragmented=False):
-        data = (json.dumps(value, ensure_ascii=False) + "\n").encode("utf-8")
-        step = 997 if fragmented else len(data)
-        for offset in range(0, len(data), step):
-            remaining = data[offset:offset + step]
-            while remaining:
-                remaining = remaining[os.write(1, remaining):]
+        def emit(value, fragmented=False):
+            data = (json.dumps(value, ensure_ascii=False) + "\n").encode("utf-8")
+            step = 997 if fragmented else len(data)
+            for offset in range(0, len(data), step):
+                remaining = data[offset:offset + step]
+                while remaining:
+                    remaining = remaining[os.write(1, remaining):]
 
-    recorded = []
-    held = None
-    client_response = None
-    client_responses = []
-    for line in sys.stdin.buffer:
-        message = json.loads(line)
-        method = message.get("method")
-        identifier = message.get("id")
-        params = message.get("params", {})
-        if method is None:
-            client_response = message.get("result", message.get("error"))
-            client_responses.append(message)
-            continue
-        if method == "exit":
-            os._exit(17)
-        if method == "closeStdout":
-            emit({"method": "fixture/stdoutClosing", "pid": os.getpid()})
-            os.close(1)
-            while True:
-                signal.pause()
-        if method == "ignoreTermination":
-            signal.signal(signal.SIGTERM, signal.SIG_IGN)
-            emit({"method": "fixture/ignoringTermination", "pid": os.getpid()})
-            while True:
-                signal.pause()
-        if method in ("malformed", "oversized"):
-            data = b"{not json}\n" if method == "malformed" else b"x" * (8 * 1024 * 1024 + 1)
-            while data:
-                data = data[os.write(1, data):]
-            while True:
-                signal.pause()
-        if method == "record":
-            recorded.append(params["index"])
-        elif method == "askClient":
-            emit({"id": "fixture-question", "method": "fixture/question"})
-        elif method == "release":
-            if held is not None:
-                emit({"id": held, "result": "released"})
-                held = None
-        elif method == "hold":
-            held = identifier
-            emit({"method": "fixture/holding"})
-        elif identifier is not None:
-            result = params
-            if method == "recorded":
-                result = recorded
-            elif method == "clientResponse":
-                result = client_response
-            elif method == "clientResponses":
-                result = client_responses
-            elif method == "pid":
-                result = os.getpid()
-            elif method == "fragment":
-                sys.stderr.buffer.write(b"synthetic diagnostic\n" * 16384)
-                sys.stderr.buffer.flush()
-            emit({"id": identifier, "result": result}, fragmented=method == "fragment")
-    """#
+        recorded = []
+        held = None
+        client_response = None
+        client_responses = []
+        for line in sys.stdin.buffer:
+            message = json.loads(line)
+            method = message.get("method")
+            identifier = message.get("id")
+            params = message.get("params", {})
+            if method is None:
+                client_response = message.get("result", message.get("error"))
+                client_responses.append(message)
+                continue
+            if method == "exit":
+                os._exit(17)
+            if method == "closeStdout":
+                emit({"method": "fixture/stdoutClosing", "pid": os.getpid()})
+                os.close(1)
+                while True:
+                    signal.pause()
+            if method == "ignoreTermination":
+                signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                emit({"method": "fixture/ignoringTermination", "pid": os.getpid()})
+                while True:
+                    signal.pause()
+            if method in ("malformed", "oversized"):
+                data = b"{not json}\n" if method == "malformed" else b"x" * (8 * 1024 * 1024 + 1)
+                while data:
+                    data = data[os.write(1, data):]
+                while True:
+                    signal.pause()
+            if method == "record":
+                recorded.append(params["index"])
+            elif method == "askClient":
+                emit({"id": "fixture-question", "method": "fixture/question"})
+            elif method == "release":
+                if held is not None:
+                    emit({"id": held, "result": "released"})
+                    held = None
+            elif method == "hold":
+                held = identifier
+                emit({"method": "fixture/holding"})
+            elif identifier is not None:
+                result = params
+                if method == "recorded":
+                    result = recorded
+                elif method == "clientResponse":
+                    result = client_response
+                elif method == "clientResponses":
+                    result = client_responses
+                elif method == "pid":
+                    result = os.getpid()
+                elif method == "fragment":
+                    sys.stderr.buffer.write(b"synthetic diagnostic\n" * 16384)
+                    sys.stderr.buffer.flush()
+                emit({"id": identifier, "result": result}, fragmented=method == "fragment")
+        """#
 }

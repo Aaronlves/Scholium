@@ -20,7 +20,10 @@ public actor CodexAppServer {
     public nonisolated let events: AsyncStream<[String: MCPJSONValue]>
     private let continuation: AsyncStream<[String: MCPJSONValue]>.Continuation
     private struct Outbound: Sendable {
-        enum Destination: Sendable { case request(Int), message(UUID) }
+        enum Destination: Sendable {
+            case request(Int)
+            case message(UUID)
+        }
         let destination: Destination
         let data: Data
         var admission: (@Sendable () async -> Bool)? = nil
@@ -206,7 +209,10 @@ public actor CodexAppServer {
         let data = try encode(value)
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (reply: CheckedContinuation<Void, Error>) in
-                if Task.isCancelled { reply.resume(throwing: CancellationError()); return }
+                if Task.isCancelled {
+                    reply.resume(throwing: CancellationError())
+                    return
+                }
                 writes[id] = reply
                 outgoing.yield(Outbound(destination: .message(id), data: data, admission: admission))
             }

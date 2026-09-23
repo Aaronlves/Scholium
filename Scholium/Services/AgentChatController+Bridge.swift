@@ -923,8 +923,7 @@ extension AgentChatController {
                                 self.executions[owner]?.turnID == turn,
                                 self.executions[owner]?.approvals.contains(where: { $0.id == localID }) == true
                             else { return false }
-                            return !decision.isGrant || (
-                                self.executions[owner]?.state == .working && self.executions[owner]?.admissionID == admission)
+                            return !decision.isGrant || (self.executions[owner]?.state == .working && self.executions[owner]?.admissionID == admission)
                         }
                     } catch {
                         guard self.connectionID == connection,

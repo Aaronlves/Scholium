@@ -811,6 +811,7 @@ struct FrontendArchitectureTests {
                 ScholiumWorkspaceToolbarController.Item.libraryDivider,
                 ScholiumWorkspaceToolbarController.Item.back,
                 ScholiumWorkspaceToolbarController.Item.forward,
+                ScholiumWorkspaceToolbarController.Item.documentTitle,
                 .flexibleSpace,
                 ScholiumWorkspaceToolbarController.Item.settlement,
                 .space,
@@ -825,7 +826,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(!sidebarSource.contains("private var brandHeader"))
         #expect(!sidebarSource.contains("Text(\"Scholium\")"))
-        #expect(!toolbarSource.contains("scholium.toolbar.documentTitle"))
+        #expect(toolbarSource.contains("DocumentTitleToolbarItem(identifier: Item.documentTitle"))
         #expect(appSource.contains(".navigationTitle(workspaceWindowTitle)"))
         #expect(appSource.contains(".navigationSubtitle(workspaceWindowSubtitle)"))
         #expect(appSource.contains("showsTriptychSubtitle(in: route.windowID)"))
@@ -1789,7 +1790,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(!toolbar.contains("scholium.toolbar.documentTitle"))
+        #expect(toolbar.contains("scholium.toolbar.documentTitle"))
         #expect(!toolbar.contains("scholium.toolbar.search"))
         #expect(!sidebarSource.contains("scholium.sidebarSearch"))
         #expect(!toolbar.contains("scholium.toolbar.agentChanges"))

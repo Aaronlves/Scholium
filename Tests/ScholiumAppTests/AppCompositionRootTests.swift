@@ -442,6 +442,8 @@ struct AppCompositionRootTests {
             documentID: "retained-focus",
             mode: .edit
         )
+        // This model-only fixture has no window responder to report focus.
+        retainedSession.editorSession.authorizeAutomaticFocus(target: .editor)
         retainedSession.editorSession.nativeEditor.setSelectedRange(NSRange(location: 5, length: 0))
         retainedSession.editorSession.updateNativeInteraction()
 

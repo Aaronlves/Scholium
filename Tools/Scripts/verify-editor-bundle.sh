@@ -69,7 +69,7 @@ if ! rg -q '^\.scholium-callout-fold-mark' "$callout_styles" || \
 fi
 
 if ! rg -q -- '--scholium-callout-title-ink' "$callout_styles" || \
-   ! rg -q 'calloutTitleColor' "$color_system" || \
+   ! rg -q 'calloutTitleRGBValue' "$color_system" || \
    rg -q 'orientationTitleBecomesBody' "$renderer"; then
   print -u2 "Shared semantic Callout color or authored-title precedence is missing."
   exit 1

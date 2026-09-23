@@ -316,8 +316,8 @@ struct DocumentControllerConvergenceTests {
         )
     }
 
-    @Test("External source replaces a clean managed buffer before editor readiness")
-    func managedCreationConvergesBeforeEditorReadiness() throws {
+    @Test("External source replaces a clean loaded managed buffer")
+    func managedCreationConvergesAfterNativeLoad() throws {
         let vaultID = UUID()
         let noteID = UUID()
         let initialSource = "---\ntags: [draft]\n---\n"
@@ -346,7 +346,7 @@ struct DocumentControllerConvergenceTests {
             documentID: session.editorSession.editorDocumentID,
             mode: .edit
         )
-        #expect(!session.editorSession.isLoaded)
+        #expect(session.editorSession.isLoaded)
         #expect(session.editorSession.checkedSource == initialSource)
 
         let external = note(
@@ -365,6 +365,7 @@ struct DocumentControllerConvergenceTests {
         #expect(session.originalEditingSource == externalSource)
         #expect(session.editingRevision == external.fingerprint)
         #expect(session.editorSession.checkedSource == externalSource)
+        #expect(session.editorSession.isLoaded)
         #expect(session.managedCreationBodyStartUTF16 == external.document.bodyUTF16Offset)
     }
 
