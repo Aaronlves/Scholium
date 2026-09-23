@@ -10,6 +10,27 @@ struct AgentChatReplySource: Identifiable, Equatable {
     var isNote: Bool { AgentChatReference.parse(url) != nil }
     var isWeb: Bool { ["https", "http"].contains(url.scheme?.lowercased() ?? "") && url.host != nil }
     var isZotero: Bool { (try? ZoteroReference(url: url)) != nil }
+    var symbol: ScholiumSystemSymbol {
+        if isNote { return .docText }
+        if isZotero { return .booksVertical }
+        if isWeb {
+            switch url.pathExtension.lowercased() {
+            case "pdf": return .docRichtext
+            case "md", "markdown", "txt", "doc", "docx", "rtf", "odt":
+                return .docText
+            case "xls", "xlsx", "ods", "numbers", "csv", "tsv":
+                return .tablecells
+            case "ppt", "pptx", "odp", "key":
+                return .presentation
+            case "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "avif", "tiff", "tif", "bmp", "svg", "ico":
+                return .photo
+            case "zip", "gz", "gzip", "tar", "tgz", "bz2", "xz", "7z", "rar":
+                return .archive
+            default: return .globe
+            }
+        }
+        return .link
+    }
     var destination: String {
         if isNote { return ScholiumL10n.string("Note") }
         if isZotero { return ScholiumL10n.string("Zotero") }
@@ -108,6 +129,7 @@ struct AgentChatSourcesView: View {
     let close: () -> Void
     let open: (AgentChatReplySource) -> Void
     @State private var expandedSources: Set<String> = []
+    @ObservedObject private var faviconStore = AgentChatFaviconStore.shared
 
     private var contentHeight: CGFloat {
         let expandedHeight = sources.filter { expandedSources.contains($0.id) }.reduce(CGFloat.zero) { height, source in
@@ -131,34 +153,50 @@ struct AgentChatSourcesView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(sources) { source in
                         VStack(alignment: .leading, spacing: 4) {
-                            Label(
-                                source.destination,
-                                systemImage: source.isNote
-                                    ? ScholiumSidebarItem.note.symbol : source.isWeb ? ScholiumSidebarItem.webpage.symbol : ScholiumSidebarItem.file.symbol
-                            )
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            if source.isNote || source.isWeb || source.isZotero {
-                                Button {
-                                    open(source)
-                                } label: {
-                                    Text(source.title)
-                                        .scholiumContentControlInk(
-                                            resting: .primaryText,
-                                            emphasized: .accent
+                            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                                if source.symbol == .globe,
+                                    let image = AgentChatWebsiteIcon.image(for: source.url)
+                                        ?? faviconStore.image(for: source.url)
+                                {
+                                    Image(nsImage: image)
+                                        .resizable()
+                                        .interpolation(.high)
+                                        .frame(
+                                            width: ScholiumGrid.Dimension.iconTrackWidth,
+                                            height: ScholiumGrid.Dimension.iconTrackWidth
                                         )
-                                        .underline()
+                                        .accessibilityHidden(true)
+                                } else {
+                                    Image(systemName: source.symbol.systemName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .accessibilityHidden(true)
                                 }
-                                .buttonStyle(.link)
-                                .scholiumActivationPointer()
-                                .scholiumContentControlPointerFeedback(
-                                    in: RoundedRectangle(
-                                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                        style: .continuous
+                                if source.isNote || source.isWeb || source.isZotero {
+                                    Button {
+                                        open(source)
+                                    } label: {
+                                        Text(source.title)
+                                            .scholiumContentControlInk(
+                                                resting: .primaryText,
+                                                emphasized: .accent
+                                            )
+                                            .underline()
+                                    }
+                                    .buttonStyle(.link)
+                                    .scholiumActivationPointer()
+                                    .scholiumContentControlPointerFeedback(
+                                        in: RoundedRectangle(
+                                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                            style: .continuous
+                                        )
                                     )
-                                )
-                                .contextMenu { AgentChatNoteMenu(url: source.url) }
-                            } else {
-                                Text(source.title).textSelection(.enabled)
+                                    .accessibilityLabel(Text(source.title))
+                                    .accessibilityValue(Text(source.destination))
+                                    .contextMenu { AgentChatNoteMenu(url: source.url) }
+                                } else {
+                                    Text(source.title).textSelection(.enabled)
+                                }
                             }
                             if let context {
                                 AgentChatSourceEvidenceView(
@@ -169,15 +207,18 @@ struct AgentChatSourcesView: View {
                                             if expanded { expandedSources.insert(source.id) } else { expandedSources.remove(source.id) }
                                         }))
                             }
-                            if !source.isNote {
+                            if source.isNote {
+                                Text(source.destination).font(.caption).foregroundStyle(.secondary)
+                            } else {
                                 Text(source.url.absoluteString).font(.caption).foregroundStyle(.secondary)
-                                    .lineLimit(2).textSelection(.enabled).help(source.url.absoluteString)
+                                    .lineLimit(1).textSelection(.enabled).help(source.url.absoluteString)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
         }
+        .task { await faviconStore.load(sources) }
         .padding().frame(width: 340, height: contentHeight)
         .font(.body).foregroundStyle(.primary)
         .tint(nil as Color?)

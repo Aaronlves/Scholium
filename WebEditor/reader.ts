@@ -1,4 +1,5 @@
 import {createReplyProjection} from './chat-reply-projection';
+import {decorateChatReplyLinks} from './chat-link-presentation';
 import {installChatReply} from "./chat-reply";
 import {createSelectionActions} from "./selection-actions";
 import {createReaderArrival} from "./arrival-highlight";
@@ -83,6 +84,7 @@ async function initializeReader(value: unknown): Promise<void> {
   let presentationUpdateSequence = 0;
   const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
   decorateAttachmentLinks(documentRoot);
+  if (config.replyProjection) decorateChatReplyLinks(documentRoot);
   readerWindow.scholiumReadNavigation?.destroy();
   readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
   window.addEventListener('pagehide', () => readerWindow.scholiumReadNavigation?.destroy(), {once: true});
@@ -369,6 +371,7 @@ async function initializeReader(value: unknown): Promise<void> {
           || typeof update.presentationCSS !== 'string' || typeof update.userCSS !== 'string') return false;
       const restoreSelection = replyProjection!.apply(update.html);
       decorateAttachmentLinks(documentRoot);
+      decorateChatReplyLinks(documentRoot);
       fingerprint = update.fingerprint;
       presentationStyle.textContent = update.presentationCSS;
       userStyle.textContent = update.userCSS;

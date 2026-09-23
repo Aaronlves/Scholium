@@ -159,6 +159,7 @@ enum ScholiumMetrics {
         /// visible silhouettes share one compact optical diameter.
         static let composerControlVisualDiameter = ScholiumGrid.foundationUnit * 4.5
         static let composerControlStrokeWidth = ScholiumGrid.foundationUnit * 0.375
+        static let materialTitleMaximumWidth = ScholiumGrid.foundationUnit * 35
     }
 
     enum DocumentWorkflow {

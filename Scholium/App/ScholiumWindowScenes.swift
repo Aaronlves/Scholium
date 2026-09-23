@@ -102,6 +102,15 @@ struct ScholiumApp: App {
             ScholiumCommands()
         }
 
+        WindowGroup(id: "scholium-external-markdown", for: ExternalMarkdownWindowRoute.self) { route in
+            if let value = route.wrappedValue {
+                ExternalMarkdownWindowView(url: value.fileURL)
+            }
+        }
+        .defaultSize(width: 880, height: 700)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+
         Settings {
             ScholiumSettingsWindowContent()
                 .frame(minWidth: 780, minHeight: 560)

@@ -411,14 +411,17 @@ extension WindowModel {
     }
 
     @MainActor
-    func openChatAttachment(_ attachment: AgentChatAttachment) async {
+    func openChatAttachment(
+        _ attachment: AgentChatAttachment, disposition: WindowOpenDisposition = .replaceCurrent
+    ) async {
         _ = openChatSource(
             noteID: attachment.noteID, vaultID: attachment.vaultID,
-            line: attachment.sourceLine, revision: attachment.fingerprint.sha256, sourceRange: attachment.sourceRange, excerpt: attachment.text)
+            line: attachment.sourceLine, revision: attachment.fingerprint.sha256,
+            sourceRange: attachment.sourceRange, excerpt: attachment.text, disposition: disposition)
     }
 
     @MainActor @discardableResult
-    func openChatReference(_ url: URL, disposition: WindowOpenDisposition = .newTab) -> Bool {
+    func openChatReference(_ url: URL, disposition: WindowOpenDisposition = .replaceCurrent) -> Bool {
         guard let reference = AgentChatReference.parse(url) else { return false }
         return openChatSource(
             noteID: reference.noteID, vaultID: reference.vaultID,
@@ -427,7 +430,7 @@ extension WindowModel {
 
     @MainActor private func openChatSource(
         noteID: UUID, vaultID: UUID?, line: Int?, revision: String?, sourceRange: SearchSourceRange? = nil, excerpt: String? = nil,
-        disposition: WindowOpenDisposition = .newTab
+        disposition: WindowOpenDisposition = .replaceCurrent
     ) -> Bool {
         let matches =
             workspaceCatalog?.notes.filter {
@@ -466,7 +469,9 @@ extension WindowModel {
             }
             let alreadyCurrent = self.currentDocumentDescriptor?.sessionKey == target
             if !alreadyCurrent {
-                try await self.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
+                try await self.activateWorkspaceReference(
+                    reference,
+                    tabActivation: .place(disposition == .newTab ? .newTab : .replaceSelected))
             }
             let canEdit = self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true
             let status = try await self.chatSourceLocationStatus(

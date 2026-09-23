@@ -9,6 +9,8 @@ enum ScholiumSystemSymbol: String, CaseIterable, Sendable {
     case bold
     case strikethrough
     case link
+    case globe
+    case booksVertical = "books.vertical"
     case curlyBracesSquare = "curlybraces.square"
     case textQuote = "text.quote"
     case textBubble = "text.bubble"

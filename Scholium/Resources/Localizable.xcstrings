@@ -1,6 +1,14 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Choose Original…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose Original…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "选择原始文件…"}}}},
+    "Mode": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mode"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "模式"}}}},
+    "Open Note: %@": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Note: %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开笔记：%@"}}}},
+    "Open Markdown: %@": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Markdown: %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开 Markdown：%@"}}}},
+    "Opening Original Markdown…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Opening Original Markdown…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在打开原始 Markdown…"}}}},
+    "Outside Triptych": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Outside Triptych"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "库外文件"}}}},
+    "Preview material: %@": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Preview material: %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "预览材料：%@"}}}},
+    "Quick Look Supplied Snapshot": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Quick Look Supplied Snapshot"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "快速查看已提供的快照"}}}},
     "Replacing selection…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Replacing selection…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在替换选中内容…"}}}},
     "Writing Assistance": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Writing Assistance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "写作辅助"}}}},
     "Triptych Details": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Triptych Details"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "脉络详情"}}}},

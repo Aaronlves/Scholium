@@ -24,6 +24,7 @@ struct AgentChatReferenceNavigationTests {
         let file = analyses.appendingPathComponent("Source.md")
         try Data(source.utf8).write(to: file)
         try Data("# Peer\n".utf8).write(to: analyses.appendingPathComponent("Peer.md"))
+        try Data("# Third\n".utf8).write(to: analyses.appendingPathComponent("Third.md"))
         let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
         do {
             let configured = try await store.configureTriptychCapabilities(
@@ -37,15 +38,27 @@ struct AgentChatReferenceNavigationTests {
             let fingerprint = DocumentFingerprint(content: source)
             let peer = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Peer.md" })
             let peerID = try #require(peer.reference.stableNoteID.flatMap(UUID.init(uuidString:)))
+            let third = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Third.md" })
+            let thirdID = try #require(third.reference.stableNoteID.flatMap(UUID.init(uuidString:)))
             #expect(window.openChatReference(AgentChatReference.url(noteID: peerID)))
             await window.waitForPendingDocumentTransitionsForTesting()
             let url = AgentChatReference.url(noteID: noteID, line: 3, revision: fingerprint, vaultID: note.reference.vaultID)
-            #expect(window.openChatReference(url))
+            #expect(window.openChatReference(url, disposition: .newTab))
             await window.waitForPendingDocumentTransitionsForTesting()
             #expect(window.currentDocumentDescriptor?.sessionKey == DocumentSessionKey(vaultID: note.reference.vaultID, noteID: noteID))
             #expect(window.documentController.sourceLocationRequest?.line == 3)
             #expect(window.documentTabController.tabs.count == 2)
             #expect(window.documentTabController.tabs.contains { $0.document.workspaceDescriptor?.sessionKey.noteID == peerID })
+            #expect(window.openChatReference(AgentChatReference.url(noteID: thirdID)))
+            await window.waitForPendingDocumentTransitionsForTesting()
+            #expect(window.currentDocumentDescriptor?.sessionKey.noteID == thirdID)
+            #expect(window.documentTabController.tabs.count == 2)
+            #expect(
+                !window.documentTabController.tabs.contains {
+                    $0.document.workspaceDescriptor?.sessionKey.noteID == noteID
+                })
+            #expect(window.openChatReference(url, disposition: .newTab))
+            await window.waitForPendingDocumentTransitionsForTesting()
             let exact = (source as NSString).range(of: "source")
             let passage = SearchSourceRange(
                 utf16LowerBound: exact.location, utf16UpperBound: NSMaxRange(exact),
@@ -118,6 +131,7 @@ struct AgentChatReferenceNavigationTests {
             #expect(window.shellState.operationIssues.last?.message == unverifiedNotice)
             #expect(session.editingSource == unsaved && session.hasUnsavedChanges)
             #expect(try Data(contentsOf: file) == Data(source.utf8))
+
             await store.shutdownApplicationRuntime()
         } catch {
             await store.shutdownApplicationRuntime()

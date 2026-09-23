@@ -12,6 +12,7 @@ struct AgentChatReadReply: View {
     var fitsContent = false
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.chatReadingInteraction) private var readingInteraction
+    @Environment(\.openChatNoteInNewTab) private var openNewTab
     @Environment(\.openChatNoteInSeparateWindow) private var openSeparate
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
@@ -24,6 +25,7 @@ struct AgentChatReadReply: View {
     @State private var objectsSource: String?
     @State private var failure: String?
     @State private var preview = ScholiumContentPreview()
+    @ObservedObject private var faviconStore = AgentChatFaviconStore.shared
 
     var body: some View {
         Group {
@@ -123,6 +125,7 @@ struct AgentChatReadReply: View {
                 hasMeasuredLayout = false
             }
             renderer.submit(source)
+            await faviconStore.load(AgentChatReplySource.collect(source))
         }
     }
 
@@ -188,6 +191,9 @@ struct AgentChatReadReply: View {
             guard AgentChatReplySource.collect(source).contains(where: { $0.url == url && $0.isNote }) else { return }
             let menu = NSMenu()
             menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open Note")) { openLink(url) })
+            if let openNewTab {
+                menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open in New Tab")) { openNewTab(url) })
+            }
             if let openSeparate {
                 menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open in Separate Window")) { openSeparate(url) })
             }
@@ -206,9 +212,30 @@ struct AgentChatReadReply: View {
     private var css: String {
         AgentChatDiagram.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased)
             + ScholiumChatAppearance.messageBodyCSS
-            + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
+            + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased)
+            + AgentChatWebsiteIcon.presentationCSS
+            + faviconStore.presentationCSS(for: AgentChatReplySource.collect(source)) + """
                 html, body { overflow: hidden; }
                 .scholium-document a { color: var(--scholium-document-accent); text-decoration-color: currentColor; }
+                .scholium-document a.scholium-chat-link::before {
+                    content: "";
+                    display: inline-block;
+                    inline-size: .88em;
+                    block-size: .88em;
+                    margin-inline-end: .28em;
+                    vertical-align: -.08em;
+                    background: var(--scholium-color-secondary-text);
+                    -webkit-mask: var(--scholium-chat-link-symbol) center / contain no-repeat;
+                    mask: var(--scholium-chat-link-symbol) center / contain no-repeat;
+                }
+                .scholium-chat-link[data-scholium-chat-link-symbol="globe"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-globe); }
+                .scholium-chat-link[data-scholium-chat-link-symbol="doc-text"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-doc-text); }
+                .scholium-chat-link[data-scholium-chat-link-symbol="doc-richtext"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-doc-richtext); }
+                .scholium-chat-link[data-scholium-chat-link-symbol="books-vertical"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-books-vertical); }
+                .scholium-chat-link[data-scholium-chat-link-symbol="tablecells"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-tablecells); }
+                .scholium-chat-link[data-scholium-chat-link-symbol="rectangle-on-rectangle"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-rectangle-on-rectangle); }
+                .scholium-chat-link[data-scholium-chat-link-symbol="photo"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-photo); }
+                .scholium-chat-link[data-scholium-chat-link-symbol="doc-zipper"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-doc-zipper); }
                 .scholium-document a:hover {
                     color: var(--scholium-color-accent);
                     background: var(--scholium-content-hover-surface);

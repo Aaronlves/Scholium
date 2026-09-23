@@ -122,7 +122,7 @@ struct AgentChatActivityDetails: View {
                     Button {
                         openNote(AgentChatReference.url(noteID: id))
                     } label: {
-                        Text(file.path)
+                        Label(file.path, systemImage: ScholiumSidebarItem.note.symbol)
                             .scholiumContentControlInk(
                                 resting: .primaryText,
                                 emphasized: .accent

@@ -1,14 +1,26 @@
+import AppKit
 import ScholiumContracts
 import SwiftUI
 
-/// Compact context attachment, with exact snapshot detail on demand. The
-/// conversation and runtime continue to receive the untouched source bytes.
+/// Compact source attachment. The conversation and runtime continue to
+/// receive the untouched captured bytes.
 struct AgentChatMaterialChip: View {
     let attachment: AgentChatAttachment
     var isEmbeddedInComposer = false
     let remove: (() -> Void)?
     let open: () -> Void
-    @State private var showsPreview = false
+    @Environment(\.openChatNoteInNewTab) private var openInNewTab
+    @Environment(\.openChatNoteInSeparateWindow) private var openInSeparateWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+    @FocusState private var noteIsFocused: Bool
+    @FocusState private var removeIsFocused: Bool
+
+    private var revealsRemove: Bool {
+        remove != nil && (isHovered || noteIsFocused || removeIsFocused)
+    }
+
+    private var noteURL: URL { AgentChatReference.url(noteID: attachment.noteID) }
 
     private var title: String {
         URL(fileURLWithPath: attachment.relativePath).deletingPathExtension().lastPathComponent
@@ -29,80 +41,154 @@ struct AgentChatMaterialChip: View {
 
     var body: some View {
         AgentChatMaterialContainer(isEmbeddedInComposer: isEmbeddedInComposer) {
-            HStack(alignment: .top, spacing: 8) {
-                Button {
-                    showsPreview.toggle()
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Label(title, systemImage: attachment.extent == .wholeNote ? ScholiumSidebarItem.note.symbol : ScholiumSidebarItem.passage.symbol)
-                            .lineLimit(1).font(
-                                .subheadline)
-                        if attachment.extent == .wholeNote {
-                            Text(extent).font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            Text(excerpt).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            ZStack(alignment: .topTrailing) {
+                Button(action: open) {
+                    HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Image(systemName: attachment.extent == .wholeNote ? ScholiumSidebarItem.note.symbol : ScholiumSidebarItem.passage.symbol)
+                            .font(.subheadline)
+                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                            Text(title)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: ScholiumMetrics.AgentChat.materialTitleMaximumWidth, alignment: .leading)
+                                .mask {
+                                    if revealsRemove {
+                                        LinearGradient(
+                                            stops: [
+                                                .init(color: .black, location: 0),
+                                                .init(color: .black, location: 0.6),
+                                                .init(color: .clear, location: 1),
+                                            ],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    } else {
+                                        Color.black
+                                    }
+                                }
+                            if attachment.extent != .wholeNote {
+                                Text(excerpt)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .frame(maxWidth: ScholiumMetrics.AgentChat.materialTitleMaximumWidth, alignment: .leading)
+                            }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
                 .help(attachment.relativePath)
-                .accessibilityLabel(Text("Preview material: \(title)"))
+                .accessibilityLabel(Text("Open Note: \(title)"))
                 .accessibilityValue(Text("\(extent), \(source): \(excerpt.prefix(120))"))
+                .accessibilityActions {
+                    if let remove {
+                        Button("Remove Material", action: remove)
+                    }
+                }
+                .focused($noteIsFocused)
+                .overlay {
+                    AgentChatNoteSecondaryClick(
+                        open: open,
+                        openNewTab: openInNewTab.map { action in { action(noteURL) } },
+                        openSeparate: openInSeparateWindow.map { action in { action(noteURL) } },
+                        hoverChanged: { isHovered = $0 }
+                    )
+                }
                 if let remove {
                     Button(action: remove) {
                         ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.remove.symbol, placement: .action)
-                            .scholiumContentControlInk(
-                                resting: .secondaryText,
-                                emphasized: .primaryText
-                            )
+                            .foregroundStyle(ScholiumColorRole.primaryText.color)
                     }
-                    .buttonStyle(ScholiumContentActionButtonStyle())
+                    .buttonStyle(.borderless)
+                    .scholiumActivationPointer()
                     .help("Remove Material").accessibilityLabel(Text("Remove material: \(title)"))
+                    .focused($removeIsFocused)
+                    .opacity(revealsRemove ? 1 : 0)
+                    .allowsHitTesting(revealsRemove)
                 }
             }
-        }
-        .frame(width: 200)
-        .fixedSize(horizontal: false, vertical: true)
-        .popover(isPresented: $showsPreview, arrowEdge: .leading) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(title).font(.headline)
-                    Spacer()
-                    Button {
-                        showsPreview = false
-                    } label: {
-                        ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.close.symbol, placement: .action)
-                    }
-                    .buttonStyle(ScholiumContentActionButtonStyle()).help("Close").accessibilityLabel("Close")
-                }
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(extent).font(.caption).foregroundStyle(.secondary)
-                        Text(source).font(.caption).foregroundStyle(.secondary)
-                        if let role = attachment.vaultRole {
-                            Text(LocalizedStringKey(role.displayName)).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Text(attachment.relativePath).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(4)
-                }
-                GroupBox {
-                    ScrollView { Text(attachment.text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                        .frame(maxHeight: 280).padding(4)
-                }
-                Button("Open Source") {
-                    showsPreview = false
-                    open()
-                }
-            }
-            .padding().frame(width: 320)
-            .tint(nil as Color?)
-        }
-        .contextMenu {
-            AgentChatNoteMenu(url: AgentChatReference.url(noteID: attachment.noteID))
+            .fixedSize(horizontal: true, vertical: false)
+            .animation(ScholiumMotion.disclosure(reduceMotion: reduceMotion), value: revealsRemove)
         }
         .accessibilityIdentifier("scholium.chat.material.\(attachment.id)")
+    }
+}
+
+private struct AgentChatNoteSecondaryClick: NSViewRepresentable {
+    let open: () -> Void
+    let openNewTab: (() -> Void)?
+    let openSeparate: (() -> Void)?
+    let hoverChanged: (Bool) -> Void
+
+    func makeNSView(context: Context) -> AgentChatNoteSecondaryClickView {
+        AgentChatNoteSecondaryClickView(
+            open: open, openNewTab: openNewTab, openSeparate: openSeparate,
+            hoverChanged: hoverChanged)
+    }
+
+    func updateNSView(_ view: AgentChatNoteSecondaryClickView, context: Context) {
+        view.open = open
+        view.openNewTab = openNewTab
+        view.openSeparate = openSeparate
+        view.hoverChanged = hoverChanged
+    }
+}
+
+private final class AgentChatNoteSecondaryClickView: NSView {
+    var open: () -> Void
+    var openNewTab: (() -> Void)?
+    var openSeparate: (() -> Void)?
+    var hoverChanged: (Bool) -> Void
+    private var hoverTrackingArea: NSTrackingArea?
+
+    init(
+        open: @escaping () -> Void,
+        openNewTab: (() -> Void)?,
+        openSeparate: (() -> Void)?,
+        hoverChanged: @escaping (Bool) -> Void
+    ) {
+        self.open = open
+        self.openNewTab = openNewTab
+        self.openSeparate = openSeparate
+        self.hoverChanged = hoverChanged
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError("Code-only view") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        hoverTrackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        if let hoverTrackingArea { addTrackingArea(hoverTrackingArea) }
+    }
+
+    override func mouseEntered(with event: NSEvent) { hoverChanged(true) }
+    override func mouseExited(with event: NSEvent) { hoverChanged(false) }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard NSApp.currentEvent?.type == .rightMouseDown else { return nil }
+        return super.hitTest(point)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        let menu = NSMenu()
+        menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open Note"), invoke: open))
+        if let openNewTab {
+            menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open in New Tab"), invoke: openNewTab))
+        }
+        if let openSeparate {
+            menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open in Separate Window"), invoke: openSeparate))
+        }
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 }
 

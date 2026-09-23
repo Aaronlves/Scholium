@@ -18,6 +18,28 @@ struct AgentChatLocalMaterialTests {
         }
     }
 
+    @Test("Outside Markdown previews the retained UTF-8 snapshot after its source changes")
+    func outsideMarkdownPreview() async throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = repository.appendingPathComponent(".build/agent-chat-evolution/outside-markdown-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let outside = root.appendingPathComponent("outside")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let source = outside.appendingPathComponent("paper.md")
+        let original = Data("# 研究札记\r\n\r\nExact 😀.\r\n".utf8)
+        try original.write(to: source)
+        let store = AgentChatMaterialStore(root: root.appendingPathComponent("retained"))
+        let material = try await store.stage(source)
+        #expect(material.kind == .text && material.issue == nil)
+        #expect(material.text == String(decoding: original, as: UTF8.self))
+        let preview = try await store.validatedURL(for: material)
+        #expect(preview.pathExtension == "md" && preview != source)
+        #expect(try Data(contentsOf: preview) == original)
+
+        try Data("Changed external source".utf8).write(to: source)
+        #expect(try Data(contentsOf: await store.validatedURL(for: material)) == original)
+    }
+
     @Test("Scanned PDF pages replace only the captured draft and send the selected page images")
     func scannedPDFPages() async throws {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

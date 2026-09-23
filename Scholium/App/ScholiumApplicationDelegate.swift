@@ -15,7 +15,10 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard windowLifecycleRegistry.hasRegisteredWindows else {
+        guard
+            windowLifecycleRegistry.hasRegisteredWindows
+                || ExternalMarkdownWindowRegistry.shared.hasOpenWindows
+        else {
             return .terminateNow
         }
         guard !terminationInFlight else { return .terminateLater }
@@ -23,6 +26,7 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
         Task { @MainActor in
             do {
                 try await windowLifecycleRegistry.flushAll()
+                try await ExternalMarkdownWindowRegistry.shared.flushAll()
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
                 terminationInFlight = false

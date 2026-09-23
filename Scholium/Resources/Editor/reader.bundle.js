@@ -85,6 +85,171 @@
     return { apply, commit };
   }
 
+  // attachment-presentation.ts
+  var attachmentSymbols = {
+    pdf: "doc-richtext",
+    doc: "doc-text",
+    docx: "doc-text",
+    odt: "doc-text",
+    rtf: "doc-text",
+    txt: "doc-text",
+    xls: "tablecells",
+    xlsx: "tablecells",
+    ods: "tablecells",
+    numbers: "tablecells",
+    csv: "tablecells",
+    tsv: "tablecells",
+    ppt: "rectangle-on-rectangle",
+    pptx: "rectangle-on-rectangle",
+    odp: "rectangle-on-rectangle",
+    key: "rectangle-on-rectangle",
+    png: "photo",
+    jpg: "photo",
+    jpeg: "photo",
+    gif: "photo",
+    webp: "photo",
+    heic: "photo",
+    heif: "photo",
+    avif: "photo",
+    tiff: "photo",
+    tif: "photo",
+    bmp: "photo",
+    svg: "photo",
+    ico: "photo",
+    zip: "doc-zipper",
+    gz: "doc-zipper",
+    gzip: "doc-zipper",
+    tar: "doc-zipper",
+    tgz: "doc-zipper",
+    bz2: "doc-zipper",
+    xz: "doc-zipper",
+    "7z": "doc-zipper",
+    rar: "doc-zipper"
+  };
+  function attachmentSymbol(destination) {
+    if (/[\u0000-\u001f\u007f]/.test(destination)) return null;
+    let path = destination.trim();
+    if (path.startsWith("<") && path.endsWith(">")) path = path.slice(1, -1);
+    else if (path.startsWith("<") || path.endsWith(">")) return null;
+    if (!path || path.startsWith("#")) return null;
+    if (/^scholium-note:/i.test(path)) {
+      path = path.slice("scholium-note:".length);
+    }
+    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(path)?.[1].toLowerCase();
+    if (scheme === "file") {
+      try {
+        const url = new URL(path);
+        if (url.hostname && url.hostname !== "localhost") return null;
+        path = url.pathname;
+      } catch {
+        return null;
+      }
+    } else if (scheme) {
+      return null;
+    }
+    path = path.split(/[?#]/, 1)[0];
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      return null;
+    }
+    if (path.startsWith("#") || /\.(?:md|markdown)[?#]/i.test(path)) return null;
+    if (!path || /[\u0000-\u001f\u007f]/.test(path) || path.startsWith("//") || path.endsWith("/") || /^[a-z][a-z\d+.-]*:/i.test(path)) return null;
+    const filename = path.slice(path.lastIndexOf("/") + 1);
+    const dot = filename.lastIndexOf(".");
+    if (dot <= 0 || dot === filename.length - 1) return null;
+    const extension = filename.slice(dot + 1).toLowerCase();
+    if (extension === "md" || extension === "markdown") return null;
+    return Object.hasOwn(attachmentSymbols, extension) ? attachmentSymbols[extension] : "paperclip";
+  }
+  function decorateAttachmentLinks(root) {
+    root.querySelectorAll("a").forEach((anchor) => {
+      const excluded = anchor.matches(".wiki-link, .scholium-embed") || anchor.closest(".scholium-embedded-note") !== null;
+      const symbol = excluded ? null : attachmentSymbol(anchor.getAttribute("href") ?? "");
+      if (symbol) {
+        anchor.classList.add("scholium-attachment-link");
+        anchor.dataset.scholiumAttachmentSymbol = symbol;
+      } else {
+        if (anchor.classList.contains("scholium-attachment-link")) {
+          anchor.classList.remove("scholium-attachment-link");
+        }
+        delete anchor.dataset.scholiumAttachmentSymbol;
+      }
+    });
+  }
+
+  // chat-link-presentation.ts
+  var noteID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function chatWebsiteIconKey(href) {
+    let url;
+    try {
+      url = new URL(href);
+    } catch {
+      return null;
+    }
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    const host = url.hostname.toLowerCase();
+    return host === "openai.com" || host.endsWith(".openai.com") || host === "chatgpt.com" || host.endsWith(".chatgpt.com") ? "openai" : null;
+  }
+  function chatLinkSymbol(href) {
+    let destination = href;
+    if (href.toLowerCase().startsWith("scholium-note:") && !href.toLowerCase().startsWith("scholium-note://")) {
+      try {
+        destination = decodeURIComponent(href.slice("scholium-note:".length));
+      } catch {
+        return null;
+      }
+    }
+    let url;
+    try {
+      url = new URL(destination);
+    } catch {
+      return null;
+    }
+    const scheme = url.protocol.toLowerCase();
+    if (scheme === "scholium-note:") {
+      return noteID.test(url.hostname) && (url.pathname === "" || url.pathname === "/") && !url.username && !url.password && !url.hash ? "doc-text" : null;
+    }
+    if (scheme === "zotero:") return "books-vertical";
+    if (scheme !== "https:" && scheme !== "http:") return null;
+    if (!url.hostname) return null;
+    if (/\.(?:md|markdown)$/i.test(url.pathname)) return "doc-text";
+    const fileSymbol = attachmentSymbol(url.pathname);
+    return fileSymbol && fileSymbol !== "paperclip" ? fileSymbol : "globe";
+  }
+  function decorateChatReplyLinks(root) {
+    root.querySelectorAll("a").forEach((anchor) => {
+      const embedded = anchor.matches(".scholium-embed") || anchor.closest(".scholium-embedded-note") !== null;
+      const symbol = embedded ? null : chatLinkSymbol(anchor.getAttribute("href") ?? "");
+      if (symbol) {
+        anchor.dataset.scholiumChatLinkSymbol = symbol;
+        anchor.classList.add("scholium-chat-link");
+        const websiteHost = symbol === "globe" ? chatWebsiteHost(anchor.getAttribute("href") ?? "") : null;
+        if (websiteHost) anchor.dataset.scholiumChatWebsiteHost = websiteHost;
+        else delete anchor.dataset.scholiumChatWebsiteHost;
+        const websiteIcon = symbol === "globe" ? chatWebsiteIconKey(anchor.getAttribute("href") ?? "") : null;
+        if (websiteIcon) anchor.dataset.scholiumChatWebsiteIcon = websiteIcon;
+        else delete anchor.dataset.scholiumChatWebsiteIcon;
+      } else {
+        delete anchor.dataset.scholiumChatLinkSymbol;
+        delete anchor.dataset.scholiumChatWebsiteHost;
+        delete anchor.dataset.scholiumChatWebsiteIcon;
+        anchor.classList.remove("scholium-chat-link");
+      }
+      anchor.classList.remove("scholium-attachment-link");
+      delete anchor.dataset.scholiumAttachmentSymbol;
+    });
+  }
+  function chatWebsiteHost(href) {
+    let url;
+    try {
+      url = new URL(href);
+    } catch {
+      return null;
+    }
+    return (url.protocol === "https:" || url.protocol === "http:") && url.hostname ? url.hostname.toLowerCase() : null;
+  }
+
   // chat-reply.ts
   function installChatReply(root, post) {
     const quote = () => {
@@ -836,99 +1001,6 @@
     }
   };
 
-  // attachment-presentation.ts
-  var attachmentSymbols = {
-    pdf: "doc-richtext",
-    doc: "doc-text",
-    docx: "doc-text",
-    odt: "doc-text",
-    rtf: "doc-text",
-    txt: "doc-text",
-    xls: "tablecells",
-    xlsx: "tablecells",
-    ods: "tablecells",
-    numbers: "tablecells",
-    csv: "tablecells",
-    tsv: "tablecells",
-    ppt: "rectangle-on-rectangle",
-    pptx: "rectangle-on-rectangle",
-    odp: "rectangle-on-rectangle",
-    key: "rectangle-on-rectangle",
-    png: "photo",
-    jpg: "photo",
-    jpeg: "photo",
-    gif: "photo",
-    webp: "photo",
-    heic: "photo",
-    heif: "photo",
-    avif: "photo",
-    tiff: "photo",
-    tif: "photo",
-    bmp: "photo",
-    svg: "photo",
-    ico: "photo",
-    zip: "doc-zipper",
-    gz: "doc-zipper",
-    gzip: "doc-zipper",
-    tar: "doc-zipper",
-    tgz: "doc-zipper",
-    bz2: "doc-zipper",
-    xz: "doc-zipper",
-    "7z": "doc-zipper",
-    rar: "doc-zipper"
-  };
-  function attachmentSymbol(destination) {
-    if (/[\u0000-\u001f\u007f]/.test(destination)) return null;
-    let path = destination.trim();
-    if (path.startsWith("<") && path.endsWith(">")) path = path.slice(1, -1);
-    else if (path.startsWith("<") || path.endsWith(">")) return null;
-    if (!path || path.startsWith("#")) return null;
-    if (/^scholium-note:/i.test(path)) {
-      path = path.slice("scholium-note:".length);
-    }
-    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(path)?.[1].toLowerCase();
-    if (scheme === "file") {
-      try {
-        const url = new URL(path);
-        if (url.hostname && url.hostname !== "localhost") return null;
-        path = url.pathname;
-      } catch {
-        return null;
-      }
-    } else if (scheme) {
-      return null;
-    }
-    path = path.split(/[?#]/, 1)[0];
-    try {
-      path = decodeURIComponent(path);
-    } catch {
-      return null;
-    }
-    if (path.startsWith("#") || /\.(?:md|markdown)[?#]/i.test(path)) return null;
-    if (!path || /[\u0000-\u001f\u007f]/.test(path) || path.startsWith("//") || path.endsWith("/") || /^[a-z][a-z\d+.-]*:/i.test(path)) return null;
-    const filename = path.slice(path.lastIndexOf("/") + 1);
-    const dot = filename.lastIndexOf(".");
-    if (dot <= 0 || dot === filename.length - 1) return null;
-    const extension = filename.slice(dot + 1).toLowerCase();
-    if (extension === "md" || extension === "markdown") return null;
-    return Object.hasOwn(attachmentSymbols, extension) ? attachmentSymbols[extension] : "paperclip";
-  }
-  function decorateAttachmentLinks(root) {
-    root.querySelectorAll("a").forEach((anchor) => {
-      const excluded = anchor.matches(".wiki-link, .scholium-embed") || anchor.closest(".scholium-embedded-note") !== null;
-      const symbol = excluded ? null : attachmentSymbol(anchor.getAttribute("href") ?? "");
-      if (symbol) {
-        anchor.classList.add("scholium-attachment-link");
-        anchor.dataset.scholiumAttachmentSymbol = symbol;
-      } else {
-        if (anchor.classList.contains("scholium-attachment-link")) {
-          anchor.classList.remove("scholium-attachment-link");
-        }
-        delete anchor.dataset.scholiumAttachmentSymbol;
-      }
-    });
-  }
-
   // reader.ts
   var readerWindow = window;
   function requiredElement(id) {
@@ -959,6 +1031,7 @@
     let presentationUpdateSequence = 0;
     const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
     decorateAttachmentLinks(documentRoot);
+    if (config.replyProjection) decorateChatReplyLinks(documentRoot);
     readerWindow.scholiumReadNavigation?.destroy();
     readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
     window.addEventListener("pagehide", () => readerWindow.scholiumReadNavigation?.destroy(), { once: true });
@@ -1226,6 +1299,7 @@
         if (update.version !== version || update.documentID !== documentID || update.loadGeneration !== loadGeneration || update.previousFingerprint !== fingerprint || typeof update.fingerprint !== "string" || !update.fingerprint || update.fingerprint.length > 256 || typeof update.html !== "string" || update.html.length > 16777216 || typeof update.presentationCSS !== "string" || typeof update.userCSS !== "string") return false;
         const restoreSelection = replyProjection.apply(update.html);
         decorateAttachmentLinks(documentRoot);
+        decorateChatReplyLinks(documentRoot);
         fingerprint = update.fingerprint;
         presentationStyle.textContent = update.presentationCSS;
         userStyle.textContent = update.userCSS;

@@ -41,6 +41,7 @@ struct ContentView: View {
     @ObservedObject private var libraryMutationController: WindowLibraryMutationController
     let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
 
     init(
         appState: WindowModel,
@@ -77,6 +78,21 @@ struct ContentView: View {
                 workspaceShell
             }
         }
+        .environment(
+            \.openChatExternalMarkdown,
+            { url in
+                openWindow(
+                    id: "scholium-external-markdown",
+                    value: ExternalMarkdownWindowRoute(fileURL: url)
+                )
+            }
+        )
+        .environment(
+            \.openChatNoteInNewTab,
+            { url in
+                _ = appState.openChatReference(url, disposition: .newTab)
+            }
+        )
         .environment(
             \.openChatNoteInSeparateWindow,
             { url in

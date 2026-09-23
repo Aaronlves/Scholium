@@ -154,6 +154,7 @@ while IFS= read -r file; do
   case "${file}" in
     "${ROOT}/Scholium/App/ScholiumApp.swift"|\
     "${ROOT}/Scholium/App/ScholiumWindowScenes.swift"|\
+    "${ROOT}/Scholium/Views/Note/ExternalMarkdownWindow.swift"|\
     "${ROOT}/Scholium/App/ApplicationBootstrapController.swift"|\
     "${ROOT}/Scholium/App/Window/WindowWorkspaceController.swift"|\
     "${ROOT}/Scholium/Services/MCPAppBridgeRequestRouter.swift"|\

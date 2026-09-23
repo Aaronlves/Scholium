@@ -341,10 +341,10 @@ and destination conversation. Library Notes also expose Add to Chat through thei
 context menu and named accessibility action; the existing picker remains available.
 All routes prepare inspectable context in the destination draft, without sending
 a message or navigating away from the current document.
-Chat source opening reuses an existing document tab or opens a new tab, preserving
-the previous document and Chat reading position. Triptych roles and workspace
-ownership remain unchanged. Material snapshots retain their preview; local files
-use Quick Look rather than creating persistent document tabs.
+Chat Note clicks replace the current tab; context actions add a tab or separate
+window. Outside Markdown opens its original in an independent shared-editor
+window with guarded saves. Neither uses a Chat Markdown popover. Supplied
+snapshots stay unchanged; other files retain details and Quick Look.
 
 The Note picker searches the current Triptych's known Note identities by title
 and path. Selection alone reads or transmits nothing; Add captures the whole
@@ -411,8 +411,8 @@ Preparation retains the chosen conversation, supports cancellation and never
 sends automatically. Before delivery, local snapshots are checked against their
 retained fingerprints; missing or changed staged bytes preserve the draft and
 require repair, rather than creating uncertain delivery for an unsent request.
-Preview opens the retained local snapshot through the system's file preview;
-it never substitutes the current external file. Removing an unsent material
+Quick Look opens the retained copy; outside Markdown opens its original.
+Neither changes the supplied snapshot. Removing an unsent material
 does not delete the original file or invalidate material retained by a message
 or another conversation branch.
 
@@ -435,13 +435,13 @@ read responses or identified public runtime events before that reply. Note reads
 retain exact revision, returned line range, continuation state and a bounded exact
 excerpt. Disjoint ranges and different revisions never become one complete read;
 coverage of a cited location must be established separately. Missing observations
-stay unknown and are never reconstructed from prose or file-operation counts.
+stay unknown, never reconstructed from prose or file-operation counts.
 Runtime webpage open/find events describe reported access, not verified full-text
 reading or philosophical support. Unsupported result formats remain unknown.
-Supplied PDF text, page images and ordinary images retain their existing snapshot,
+Supplied PDF text, page images and ordinary images retain their snapshot,
 page coverage and preview owner; supplying a material is not proof it was used.
-Sources neither fetches content nor creates citations on opening, and never executes
-an arbitrary locator. Public observations remain nonauthorizing conversation data.
+Sources fetches no documents, creates no citations and executes no arbitrary
+locator. Favicon requests (§14) prove no source access. Observations remain nonauthorizing.
 Reply, child-reply and Sources links open the validated item/PDF/annotation
 references owned by §15.4 through the system. An unobserved Zotero lookup remains
 unknown even when its locator opens successfully. Zotero results do not become

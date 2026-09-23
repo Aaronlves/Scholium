@@ -162,6 +162,14 @@ webpages, Notes and other supplied locators; it is not restricted to workspace N
 It retains source titles and destinations without inventing previews or attributing
 uncited search results to the answer. Supported destinations open through their
 existing owner; other locators remain selectable without executing arbitrary URLs.
+Actionable website, Note, document and Zotero links in reply prose have small
+type cues beside their exact labels. Source titles and native Note targets use
+the same cues. A website favicon may identify its public HTTPS domain in Chat;
+Scholium requests only that domain's icon, without sending the link path or query,
+and caches a bounded result for the app session. A bundled icon may cover a site
+whose normal favicon endpoint is unavailable. Missing icons use the system globe.
+Icons are decorative and change neither link routes nor source authority.
+Unsupported locators receive no false file symbol.
 Source rows disclose observed read ranges, revision and bounded excerpts without
 promoting a different version or an uncovered cited line to verified reading.
 Runtime web access remains separately named. A compact Materials for This Turn
@@ -281,16 +289,22 @@ Reload is explicit.
 Add Material offers Choose Note and Add Selection as distinct actions. Choose
 Note opens a native searchable list with title, vault role and path, followed by
 explicit Add or Cancel. Empty, unavailable and failed capture states retain the
-query and selected identity. Material previews identify whole Note versus
-passage and saved source versus editor snapshot; previewing exact supplied text
-does not open or replace the working Document. Open Source remains separate.
+query and selected identity. Note chips show a bounded, truncated title; a
+passage also shows a short excerpt. Their main action opens the Note in the
+current Document, and one context menu offers a new tab or separate window.
+The remove action overlays the title's trailing edge on pointer hover or
+keyboard focus; the title fades beneath it without reserved width.
+The accessible value retains whole Note versus passage and saved source versus
+editor snapshot. Chat does not present a Markdown popover preview.
 
 Choose File accepts supported papers, text files and images. File chips show
-the filename and supplied representation; a preview exposes the source location,
-page coverage or preparation problem, with system Quick Look for the retained
-file. Image previews use a system-generated thumbnail of the retained snapshot,
-with Quick Look for full inspection. Preparation has a cancellable native
-progress state. Failed material and
+the filename and supplied representation. Clicking a Markdown file opens its
+original path in an independent Markdown window; its retained supplied snapshot
+can still be inspected with Quick Look from the context menu. Other file details
+expose source location, page coverage or preparation problems, with system Quick
+Look for the retained file. Image previews use a system-generated thumbnail of
+the retained snapshot, with Quick Look for full inspection. Preparation has a
+cancellable native progress state. Failed material and
 unsupported model input remain visible beside the composer with a repair action;
 they do not erase the question or disappear on Send. Paste and drop use the same
 preparation path as the named picker.

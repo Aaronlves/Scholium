@@ -4,6 +4,8 @@ export const webSystemSymbolKeys = [
   "bold",
   "strikethrough",
   "link",
+  "globe",
+  "books-vertical",
   "curlybraces-square",
   "text-quote",
   "text-bubble",

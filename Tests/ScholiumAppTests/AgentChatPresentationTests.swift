@@ -29,9 +29,43 @@ struct AgentChatPresentationTests {
         )
         #expect(sources.count == 4)
         #expect(sources[0].isNote && !sources[0].isWeb)
+        #expect(sources[0].symbol == .docText)
         #expect(sources[1].isWeb && sources[1].destination == "example.org")
+        #expect(sources[1].symbol == .globe)
         #expect(!sources[2].isWeb && !sources[2].isNote)
         #expect(!sources[3].isWeb && !sources[3].isNote)
+    }
+
+    @Test("Sources distinguish website pages from linked documents")
+    func sourceSymbols() {
+        let sources = AgentChatReplySource.collect(
+            "[Paper](https://example.org/paper.pdf) [Markdown](https://example.org/notes.md) "
+                + "[Table](https://example.org/data.csv) [Image](https://example.org/figure.png) "
+                + "[Archive](https://example.org/data.zip) [Catalog](zotero://select/library/items/ABCD1234)"
+        )
+        #expect(sources.map(\.symbol) == [.docRichtext, .docText, .tablecells, .photo, .archive, .booksVertical])
+    }
+
+    @Test("Bundled OpenAI identity resolves only for its own website")
+    @MainActor
+    func openAIWebsiteIcon() throws {
+        #expect(AgentChatWebsiteIcon.image(for: try #require(URL(string: "https://openai.com/research"))) != nil)
+        #expect(AgentChatWebsiteIcon.image(for: try #require(URL(string: "https://developers.openai.com/docs"))) != nil)
+        #expect(AgentChatWebsiteIcon.image(for: try #require(URL(string: "https://openai.com.evil.test"))) == nil)
+        #expect(AgentChatWebsiteIcon.presentationCSS.contains("data:image/svg+xml;base64,"))
+    }
+
+    @Test("Favicon requests exclude local and non-HTTPS links")
+    @MainActor
+    func faviconRequestBoundary() throws {
+        #expect(AgentChatFaviconStore.fetchableHost(for: try #require(URL(string: "https://github.com/owner/repo?private=1"))) == "github.com")
+        for link in [
+            "http://github.com/", "https://localhost/", "https://127.0.0.1/",
+            "https://[::1]/", "https://intranet.local/", "https://example.org/",
+            "https://reader:secret@github.com/", "https://github.com.evil.test/",
+        ] {
+            #expect(AgentChatFaviconStore.fetchableHost(for: try #require(URL(string: link))) == nil)
+        }
     }
 
     @Test("Public commentary and each tool call group only within their confirmed turn; final and unknown phases stay visible")

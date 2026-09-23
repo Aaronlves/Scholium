@@ -3,6 +3,17 @@ import QuickLookThumbnailing
 import ScholiumContracts
 import SwiftUI
 
+private struct OpenChatExternalMarkdownKey: EnvironmentKey {
+    static let defaultValue: (@MainActor @Sendable (URL) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var openChatExternalMarkdown: (@MainActor @Sendable (URL) -> Void)? {
+        get { self[OpenChatExternalMarkdownKey.self] }
+        set { self[OpenChatExternalMarkdownKey.self] = newValue }
+    }
+}
+
 struct AgentChatLocalMaterialChip: View {
     let material: AgentChatLocalMaterial
     var isEmbeddedInComposer = false
@@ -10,6 +21,7 @@ struct AgentChatLocalMaterialChip: View {
     let remove: (() -> Void)?
     let replace: (() -> Void)?
     var usePages: (() -> Void)? = nil
+    @Environment(\.openChatExternalMarkdown) private var openExternalMarkdown
     @State private var showsDetails = false
     @State private var previewURL: URL?
     @State private var previewError: String?
@@ -17,11 +29,22 @@ struct AgentChatLocalMaterialChip: View {
     @State private var previewTask: Task<Void, Never>?
     @State private var thumbnail: NSImage?
 
+    private var markdownOriginal: URL? {
+        guard case .file(let url) = material.source, material.kind == .text,
+            ["md", "markdown"].contains(url.pathExtension.lowercased())
+        else { return nil }
+        return url
+    }
+
     var body: some View {
         AgentChatMaterialContainer(isEmbeddedInComposer: isEmbeddedInComposer) {
             HStack(alignment: .top, spacing: 8) {
                 Button {
-                    showsDetails = true
+                    if let markdownOriginal {
+                        openExternalMarkdown?(markdownOriginal)
+                    } else {
+                        showsDetails = true
+                    }
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Label(
@@ -35,7 +58,18 @@ struct AgentChatLocalMaterialChip: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
-                .accessibilityLabel("Preview material: \(AgentChatLocalMaterialLabels.title(material))")
+                .accessibilityLabel(
+                    markdownOriginal == nil
+                        ? Text("Preview material: \(AgentChatLocalMaterialLabels.title(material))")
+                        : Text("Open Markdown: \(AgentChatLocalMaterialLabels.title(material))")
+                )
+                .disabled(markdownOriginal != nil && openExternalMarkdown == nil)
+                .contextMenu {
+                    if markdownOriginal != nil {
+                        Button("Quick Look Supplied Snapshot", action: openPreview)
+                            .disabled(material.storedFileName == nil)
+                    }
+                }
                 if let remove {
                     Button(action: remove) {
                         ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.remove.symbol, placement: .action)
