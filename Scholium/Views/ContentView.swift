@@ -218,10 +218,6 @@ struct ContentView: View {
                     alignment: .topLeading
                 )
         }
-        // Expose each split item's background without adding a pane-specific
-        // toolbar fill. Full-screen material remains controlled by the system.
-        .toolbarBackground(.clear, for: .windowToolbar)
-        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .ignoresSafeArea(.container, edges: .top)
         .background {

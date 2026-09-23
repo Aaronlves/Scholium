@@ -90,8 +90,6 @@ enum ScholiumWebDesignTokens {
             """
     }()
 
-    private static let colorResolver = ScholiumColorResolver(variables: .editorialPaper)
-
     static let rootCSSDeclarations = colorDeclarations(
         isDark: false,
         increasedContrast: false
@@ -125,18 +123,18 @@ enum ScholiumWebDesignTokens {
         isDark: Bool,
         increasedContrast: Bool
     ) -> String {
-        let palette = colorResolver.resolve(
-            isDark: isDark,
-            increasedContrast: increasedContrast
-        )
         let colors = ScholiumColorRole.allCases.map { role in
             // The initial page gets AppKit's resolved Accent too. The native
             // container refreshes its projection when the system changes.
-            let value = String(format: "#%06x", palette[role])
+            let value = String(format: "#%06x", role.resolvedRGBValue(
+                isDark: isDark, increasedContrast: increasedContrast
+            ))
             return "\(role.cssVariableName): \(value);"
         }.joined(separator: "\n")
         let callouts = ["orient", "cite", "connect", "state", "illustrate", "quote", "flag", "neutral"].map { role in
-            let value = colorResolver.calloutTitleColor(role, isDark: isDark, increasedContrast: increasedContrast)
+            let value = ScholiumColorRole.calloutTitleRGBValue(
+                role, isDark: isDark, increasedContrast: increasedContrast
+            )
             return "--scholium-callout-\(role)-title: \(String(format: "#%06x", value));"
         }.joined(separator: "\n")
         // Transport native text colors into WebKit without adding palette inputs.

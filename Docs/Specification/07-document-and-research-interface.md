@@ -19,8 +19,9 @@ Editor failure retains the Note and offers **Retry Edit** and **Source**. An
 exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
-Document content softens only behind native toolbar bounds; initial content remains
-unobscured. Paper, selection, focus, Undo, composition and restoration remain unchanged.
+The system toolbar keeps scrolling Document text out of its controls; initial
+content remains unobscured. System background, selection, focus, Undo,
+composition and restoration remain unchanged.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.
 A nonempty body selection offers Explain, Polish and More Actions in
@@ -246,7 +247,7 @@ logical trailing edge, without changing prose geometry. H1-H2 ticks share a
 trailing endpoint; H1 extends inward. H3-H6 are omitted.
 Disjoint rows retain complete accessible labels. The vertically centered rail
 shrinks for few headings or a short window. Overflow scrolls
-independently; Paper fades appear only at edges with hidden ticks. The resting
+independently; system-background fades appear only at edges with hidden ticks. The resting
 rail has no filled track or persistent labels. Pointer proximity lengthens
 nearby ticks with reversible falloff. The current section has a stronger stroke.
 

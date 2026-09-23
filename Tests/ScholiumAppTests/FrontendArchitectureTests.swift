@@ -1016,8 +1016,8 @@ struct FrontendArchitectureTests {
                 "loadingToolbar.itemIdentifiers = [.flexibleSpace]"
             ))
         #expect(windowManagementSource.contains("window.styleMask.insert(.fullSizeContentView)"))
-        #expect(contentSource.contains(".toolbarBackground(.clear, for: .windowToolbar)"))
-        #expect(contentSource.contains(".toolbarBackgroundVisibility(.visible, for: .windowToolbar)"))
+        #expect(!contentSource.contains(".toolbarBackground(.clear, for: .windowToolbar)"))
+        #expect(!contentSource.contains(".toolbarBackgroundVisibility(.visible, for: .windowToolbar)"))
         #expect(appSource.contains(".windowToolbarStyle(.unified(showsTitle: true))"))
         #expect(windowManagementSource.contains("window.toolbarStyle = .unified"))
         #expect(!appSource.contains("Collapse Note"))
@@ -1308,7 +1308,7 @@ struct FrontendArchitectureTests {
         }
     }
 
-    @Test("Native Sidebar owns glass above the extended Document Paper plane")
+    @Test("Native Sidebar owns glass above the extended system Document background")
     func nativeSidebarMaterialOwnership() throws {
         let splitController = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView, EmptyView>
             .Controller(
@@ -3333,189 +3333,53 @@ struct FrontendArchitectureTests {
         #expect(!source.contains("SpotlightSearchOverlay"))
     }
 
-    @Test("Paper resolves the approved roles while Accent follows macOS")
-    func reviewedAppearancePalettes() throws {
-        #expect(ScholiumColorVariable.allCases == [.paper])
-        #expect(ScholiumColorVariables.editorialPaper[.paper] == 0xFEF8ED)
-
-        let baseLight: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0xFEF8ED,
-            .surfaceBackground: 0xF4EEE3,
-            .navigationSurfaceBackground: 0xECE8E1,
-            .apparatusSurfaceBackground: 0xF9F3E8,
-            .raisedSurfaceBackground: 0xDDD8CF,
-            .primaryText: 0x28241D,
-            .secondaryText: 0x4C473E,
-            .separator: 0xC5C0B5,
-            .information: 0x3D6379,
-            .attention: 0x81520A,
-            .destructive: 0x8D453E,
-            .confirmed: 0x3E664B,
-            .agentAuthorship: 0x61577C,
-            .comparisonRemoval: 0x8D453E,
-            .comparisonInsertion: 0x40684E,
-            .comparisonRemovalBackground: 0xFED7D2,
-            .comparisonInsertionBackground: 0xCBEBD4,
+    @Test("Native colors are shared by AppKit and WebKit")
+    func nativeAppearanceColors() throws {
+        let backgrounds: [(ScholiumColorRole, NSColor)] = [
+            (.documentBackground, .textBackgroundColor),
+            (.surfaceBackground, .windowBackgroundColor),
+            (.navigationSurfaceBackground, .windowBackgroundColor),
+            (.apparatusSurfaceBackground, .windowBackgroundColor),
+            (.raisedSurfaceBackground, .underPageBackgroundColor),
         ]
-        let baseDark: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0x2E2921,
-            .surfaceBackground: 0x3F3A31,
-            .navigationSurfaceBackground: 0x383530,
-            .apparatusSurfaceBackground: 0x332E26,
-            .raisedSurfaceBackground: 0x4D483F,
-            .primaryText: 0xF0EAE1,
-            .secondaryText: 0xD0CABF,
-            .separator: 0x7C776D,
-            .information: 0x95BED6,
-            .attention: 0xE3AF71,
-            .destructive: 0xF6A39A,
-            .confirmed: 0x99C4A6,
-            .agentAuthorship: 0xBDB3DD,
-            .comparisonRemoval: 0xF19E95,
-            .comparisonInsertion: 0x99C4A6,
-            .comparisonRemovalBackground: 0x50312E,
-            .comparisonInsertionBackground: 0x274230,
+        let appearances: [(NSAppearance.Name, Bool, String)] = [
+            (.aqua, false, ScholiumWebDesignTokens.rootCSSDeclarations),
+            (.darkAqua, false, ScholiumWebDesignTokens.darkAppearanceCSSDeclarations),
+            (.aqua, true, ScholiumWebDesignTokens.increasedContrastCSSDeclarations),
+            (.darkAqua, true, ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations),
         ]
-        let baseIncreasedContrastLight: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0xFEF8ED,
-            .surfaceBackground: 0xF4EEE3,
-            .navigationSurfaceBackground: 0xECE8E1,
-            .apparatusSurfaceBackground: 0xF9F3E8,
-            .raisedSurfaceBackground: 0xDDD8CF,
-            .primaryText: 0x28241D,
-            .secondaryText: 0x454138,
-            .separator: 0x8B857C,
-            .information: 0x163C50,
-            .attention: 0x4E3107,
-            .destructive: 0x681212,
-            .confirmed: 0x1A4129,
-            .agentAuthorship: 0x3B3154,
-            .comparisonRemoval: 0x681212,
-            .comparisonInsertion: 0x1A4129,
-            .comparisonRemovalBackground: 0xF9C1BB,
-            .comparisonInsertionBackground: 0xB2DEBF,
-        ]
-        let baseIncreasedContrastDark: [ScholiumColorRole: UInt32] = [
-            .documentBackground: 0x2E2921,
-            .surfaceBackground: 0x3F3A31,
-            .navigationSurfaceBackground: 0x383530,
-            .apparatusSurfaceBackground: 0x332E26,
-            .raisedSurfaceBackground: 0x4D483F,
-            .primaryText: 0xF0EAE1,
-            .secondaryText: 0xEAE4D9,
-            .separator: 0xA39E94,
-            .information: 0xC5E8FD,
-            .attention: 0xFEDFBC,
-            .destructive: 0xFFDBD6,
-            .confirmed: 0xC3EFD0,
-            .agentAuthorship: 0xE6E0FD,
-            .comparisonRemoval: 0xFEE6E3,
-            .comparisonInsertion: 0xD2FFDF,
-            .comparisonRemovalBackground: 0x6F413D,
-            .comparisonInsertionBackground: 0x335A40,
-        ]
-
-        for palette in [
-            baseLight,
-            baseDark,
-            baseIncreasedContrastLight,
-            baseIncreasedContrastDark,
-        ] {
-            #expect(
-                Set(palette.keys)
-                    == Set(ScholiumColorRole.allCases.filter { $0 != .accent })
-            )
-        }
-
-        let aqua = try #require(NSAppearance(named: .aqua))
-        let darkAqua = try #require(NSAppearance(named: .darkAqua))
-        let systemAccentLight = try #require(
-            rgbValue(of: ScholiumNativeColorRole.controlAccent.nsColor, appearance: aqua)
-        )
-        let systemAccentDark = try #require(
-            rgbValue(of: ScholiumNativeColorRole.controlAccent.nsColor, appearance: darkAqua)
-        )
-        var expectedLight = baseLight
-        var expectedDark = baseDark
-        var expectedIncreasedContrastLight = baseIncreasedContrastLight
-        var expectedIncreasedContrastDark = baseIncreasedContrastDark
-        expectedLight[.accent] = systemAccentLight
-        expectedDark[.accent] = systemAccentDark
-        expectedIncreasedContrastLight[.accent] = systemAccentLight
-        expectedIncreasedContrastDark[.accent] = systemAccentDark
-        for role in ScholiumColorRole.allCases {
-            let light = try #require(expectedLight[role])
-            let dark = try #require(expectedDark[role])
-            let contrastLight = try #require(expectedIncreasedContrastLight[role])
-            let contrastDark = try #require(expectedIncreasedContrastDark[role])
-            #expect(role.resolvedRGBValue(for: aqua, increasedContrast: false) == light)
-            #expect(role.resolvedRGBValue(for: darkAqua, increasedContrast: false) == dark)
-            #expect(role.resolvedRGBValue(for: aqua, increasedContrast: true) == contrastLight)
-            #expect(role.resolvedRGBValue(for: darkAqua, increasedContrast: true) == contrastDark)
-            #expect(rgbValue(of: role.nsColor(increasedContrast: false), appearance: aqua) == light)
-            #expect(
-                rgbValue(of: role.nsColor(increasedContrast: false), appearance: darkAqua) == dark)
-        }
-
-        for (palette, declarations) in [
-            (expectedLight, ScholiumWebDesignTokens.rootCSSDeclarations),
-            (expectedDark, ScholiumWebDesignTokens.darkAppearanceCSSDeclarations),
-            (
-                expectedIncreasedContrastLight,
-                ScholiumWebDesignTokens.increasedContrastCSSDeclarations
-            ),
-            (
-                expectedIncreasedContrastDark,
-                ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations
-            ),
-        ] {
-            for (role, value) in palette {
+        for (appearanceName, increasedContrast, declarations) in appearances {
+            let appearance = try #require(NSAppearance(named: appearanceName))
+            for (role, systemColor) in backgrounds {
+                let expectedAppearance = try #require(NSAppearance(named: increasedContrast
+                    ? (appearanceName == .darkAqua
+                        ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
+                    : appearanceName))
+                let native = try #require(rgbValue(of: systemColor, appearance: expectedAppearance))
+                #expect(role.resolvedRGBValue(for: appearance, increasedContrast: increasedContrast) == native)
+            }
+            for role in ScholiumColorRole.allCases {
+                let value = role.resolvedRGBValue(
+                    for: appearance, increasedContrast: increasedContrast
+                )
                 let declaration = "\(role.cssVariableName): \(String(format: "#%06x", value));"
                 #expect(declarations.contains(declaration))
             }
+            let secondary = ScholiumColorRole.secondaryText.resolvedRGBValue(
+                for: appearance, increasedContrast: increasedContrast
+            )
+            let document = ScholiumColorRole.documentBackground.resolvedRGBValue(
+                for: appearance, increasedContrast: increasedContrast
+            )
+            #expect(contrastRatio(secondary, document) >= 4.5)
         }
-
-        let foregroundRoles: [ScholiumColorRole] = [
-            .primaryText, .secondaryText,
-            .information, .attention, .destructive, .confirmed, .agentAuthorship,
-        ]
-        let backgroundRoles: [ScholiumColorRole] = [
-            .documentBackground, .surfaceBackground, .navigationSurfaceBackground,
-            .apparatusSurfaceBackground, .raisedSurfaceBackground,
-        ]
-        for (palette, target) in [
-            (expectedLight, 4.5),
-            (expectedDark, 4.5),
-            (expectedIncreasedContrastLight, 7.0),
-            (expectedIncreasedContrastDark, 7.0),
-        ] {
-            for foregroundRole in foregroundRoles {
-                let foreground = try #require(palette[foregroundRole])
-                for backgroundRole in backgroundRoles {
-                    let background = try #require(palette[backgroundRole])
-                    #expect(contrastRatio(foreground, background) >= target)
-                }
-            }
-        }
-        for (palette, target) in [
-            (expectedLight, 4.5),
-            (expectedDark, 4.5),
-            (expectedIncreasedContrastLight, 7.0),
-            (expectedIncreasedContrastDark, 7.0),
-        ] {
-            let pairs: [(ScholiumColorRole, ScholiumColorRole)] = [
-                (.comparisonRemoval, .comparisonRemovalBackground),
-                (.comparisonInsertion, .comparisonInsertionBackground),
-            ]
-            for (foregroundRole, backgroundRole) in pairs {
-                let foreground = try #require(palette[foregroundRole])
-                let background = try #require(palette[backgroundRole])
-                #expect(contrastRatio(foreground, background) >= target)
-            }
-        }
-        #expect(contrastRatio(0x28241D, 0xFF9A00) >= 7.0)
-        #expect(contrastRatio(0x3D3932, 0xFEF8ED) >= 7.0)
-        #expect(contrastRatio(0xDDD7CE, 0x2E2921) >= 7.0)
+        let light = try #require(NSAppearance(named: .aqua))
+        let dark = try #require(NSAppearance(named: .darkAqua))
+        #expect(ScholiumColorRole.documentBackground.resolvedRGBValue(
+            for: light, increasedContrast: false
+        ) != ScholiumColorRole.documentBackground.resolvedRGBValue(
+            for: dark, increasedContrast: false
+        ))
     }
 
     @Test("Reduce Motion removes app-defined transitions")

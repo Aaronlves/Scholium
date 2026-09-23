@@ -887,7 +887,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         window.toolbarStyle = .unified
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
-        window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
+        window.backgroundColor = .windowBackgroundColor
     }
 
     private func installToolbarIfPossible() {

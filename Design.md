@@ -10,8 +10,8 @@ belong to §§18.1–18.7; accessibility and adaptation requirements belong to �
 Scholium is a native Mac research environment centered on the document.
 **Scholarly Editorialism** means a quiet reading and writing space, clear
 editorial hierarchy, and tools that remain subordinate to the researcher's work.
-Only the configured main workspace adds Scholium's Paper background; Accent
-follows the researcher's macOS system preference.
+Workspace backgrounds and Accent follow the researcher's macOS appearance
+and system preferences.
 Its controls, navigation, typography outside document content, geometry,
 feedback, and auxiliary windows follow macOS.
 
@@ -29,12 +29,12 @@ Document and Apparatus content. It excludes separate windows and transient
 menus, popovers, sheets, dialogs and previews, even when opened from that window.
 
 The interface has a content layer and a navigation/operation layer. The main
-Document provides a calm, opaque Paper background for sustained reading;
-adjacent research content shares that background identity. The background may
-continue beneath native chrome so the workspace feels continuous. The initial
-readable Document content remains within the native safe area; its scrolling
-plane may continue beneath the native toolbar so material can soften
-content at the overlap.
+Document provides a calm, opaque system text background for sustained reading.
+The Sidebar keeps its native material and the Apparatus uses a system window
+background. These semantic backgrounds may continue beneath native chrome.
+Initial readable Document content remains within the native safe area; its
+scrolling plane may continue beneath the native toolbar, whose system
+background protects controls when content passes below it.
 
 Liquid Glass belongs to the system's navigation and floating controls. Let
 native containers establish their material, grouping, scroll-edge separation,
@@ -43,7 +43,7 @@ do not paint a second brand surface over it or turn research prose into glass
 cards. Native does not require applying a glass style to every button.
 
 All auxiliary presentation uses system backgrounds, colors, control accent,
-typography and materials, without inheriting the main workspace's Paper or Accent.
+typography and materials, without inheriting a main-workspace tint.
 This includes onboarding, Settings, connection management, advanced search,
 notifications, file comparison, recovery and transient research previews.
 Containing source text or being anchored to the main window creates no exception.
@@ -55,18 +55,12 @@ it uses the system material and retains native input and accessibility.
 
 ### 19.2 Background and Accent
 
-The main workspace has one app-owned identity input:
-
-- **Paper** `#FEF8ED`: the light document-background anchor, adapted for appearance.
-Accent is not a Scholium Variable. Native controls, document links and other
-main-workspace emphasis use the macOS system Accent, including its user choice
-and system appearance/accessibility adaptation.
-
-Paper and system Accent express identity; they do not replace system label, separator,
-control, selection, focus, warning or destructive semantics. Ordinary actions
-retain native prominence. Do not tint every clickable item or impose a separate
-neutral-selection skin. System accessibility and appearance preferences take
-precedence over an exact color match.
+The main workspace has no app-owned background or Accent color input. Its
+Document, Sidebar, Apparatus, native controls, document links and emphasis use
+macOS semantic colors and materials, including appearance and accessibility
+adaptation. Functional states use system color meanings. Ordinary actions
+retain native prominence; do not tint every clickable item or impose a separate
+neutral-selection skin.
 
 The main Document renderer shares its host's background and Accent meanings. Authored formatting, including highlights, remains document presentation;
 it is not another application theme or a workflow-state palette.

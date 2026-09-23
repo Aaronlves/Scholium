@@ -236,9 +236,11 @@ struct DocumentOutlineRail: View {
 
     @ViewBuilder
     private func overflowFade(at edge: Edge) -> some View {
-        let paper = ScholiumColorRole.documentBackground.color
+        let background = ScholiumColorRole.documentBackground.color
         LinearGradient(
-            colors: edge == .top ? [paper, paper.opacity(0)] : [paper.opacity(0), paper],
+            colors: edge == .top
+                ? [background, background.opacity(0)]
+                : [background.opacity(0), background],
             startPoint: .top,
             endPoint: .bottom
         )

@@ -366,8 +366,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             documentItem = NSSplitViewItem(
                 viewController: documentBackgroundController
             )
-            // Let the warm Paper plane continue beneath AppKit's floating
-            // Sidebar while its safe area keeps Document content unobscured.
+            // Let the system Document background continue beneath AppKit's
+            // floating Sidebar while its safe area keeps content unobscured.
             documentItem.automaticallyAdjustsSafeAreaInsets = true
             documentItem.canCollapse = false
             documentItem.canCollapseFromWindowResize = false

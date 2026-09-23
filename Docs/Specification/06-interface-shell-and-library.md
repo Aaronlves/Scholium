@@ -30,7 +30,7 @@ initial Inspector reveal but never continuously reasserts divider positions.
 The main/auxiliary color and material boundary follows §19.1. Native safe areas
 protect Sidebar, tabs, Apparatus, and the initial readable Document content
 through window zoom, full screen and resize. Content backgrounds continue behind
-native toolbar controls without a separate background band. The same background
+native toolbar controls without a separate app-owned background band. The same background
 policy applies in full screen, without custom chrome or repainting. The Document
 scrolling plane may pass behind the native toolbar while initial readable content
 and fixed controls retain safe-area positioning. §18.4 owns the confined material transition.
