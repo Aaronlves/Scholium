@@ -7,7 +7,7 @@ import WebKit
 @MainActor
 final class DocumentWebEnvironment: NSObject {
     private struct Values: Equatable {
-        let accent: String
+        let colors: [String: String]
         let toolbarInset: CGFloat
     }
 
@@ -32,6 +32,12 @@ final class DocumentWebEnvironment: NSObject {
             self,
             selector: #selector(systemColorsDidChange),
             name: NSColor.systemColorsDidChangeNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(systemColorsDidChange),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil
         )
     }
@@ -61,17 +67,25 @@ final class DocumentWebEnvironment: NSObject {
         guard let webView, let hostView, webView.superview === hostView,
             !webView.isLoading
         else { return }
+        let increasedContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         let values = Values(
-            accent: String(
-                format: "#%06x",
-                ScholiumColorRole.systemAccentRGBValue(for: webView.effectiveAppearance)
-            ),
+            colors: Dictionary(uniqueKeysWithValues: ScholiumColorRole.allCases.map { role in
+                (role.cssVariableName, String(
+                    format: "#%06x",
+                    role.resolvedRGBValue(
+                        for: webView.effectiveAppearance,
+                        increasedContrast: increasedContrast
+                    )
+                ))
+            }),
             toolbarInset: toolbarInset
         )
         guard projectedValues != values else { return }
         projectedValues = values
         projectionRevision &+= 1
         let revision = projectionRevision
+        var cssValues = values.colors
+        cssValues["--scholium-document-toolbar-inset"] = "\(values.toolbarInset)px"
         webView.callAsyncJavaScript(
             """
             const root = document.documentElement;
@@ -83,12 +97,7 @@ final class DocumentWebEnvironment: NSObject {
             }
             return true;
             """,
-            arguments: [
-                "values": [
-                    ScholiumColorRole.accent.cssVariableName: values.accent,
-                    "--scholium-document-toolbar-inset": "\(values.toolbarInset)px",
-                ]
-            ],
+            arguments: ["values": cssValues],
             in: nil,
             in: .defaultClient
         ) { [weak self] result in

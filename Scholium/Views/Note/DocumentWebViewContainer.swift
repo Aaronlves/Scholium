@@ -14,7 +14,6 @@ final class DocumentWebViewContainer: NSView {
     let webView: WKWebView
     private let keyEquivalentRoute: ScholiumDocumentKeyEquivalentRoute
     private var chromeObservation: NSKeyValueObservation?
-    private let toolbarTransition = DocumentToolbarTransition()
     private lazy var webEnvironment = DocumentWebEnvironment(webView: webView, hostView: self)
     var toolbarUnderlapEnabled = false {
         didSet { if oldValue != toolbarUnderlapEnabled { needsLayout = true } }
@@ -36,8 +35,6 @@ final class DocumentWebViewContainer: NSView {
         webView.frame = bounds
         webView.autoresizingMask = [.width, .height]
         addSubview(webView)
-        toolbarTransition.isHidden = true
-        addSubview(toolbarTransition)
         webEnvironment.refreshAppearance()
     }
 
@@ -78,8 +75,6 @@ final class DocumentWebViewContainer: NSView {
     override func layout() {
         super.layout()
         let overlap = toolbarUnderlapEnabled ? toolbarOverlap : .zero
-        toolbarTransition.frame = overlap
-        toolbarTransition.isHidden = overlap.isEmpty
         // Retained surfaces need the same geometry before scroll restoration
         // and reveal; visibility must not change document padding.
         webEnvironment.updateToolbarInset(overlap.height)
@@ -128,6 +123,6 @@ final class DocumentWebViewContainer: NSView {
     override func accessibilityChildren() -> [Any]? {
         // WKWebView's own AX tree does not include arbitrary native subviews.
         // The native parent exposes both owners without mirroring their content.
-        isHidden ? [] : subviews.filter { $0 !== toolbarTransition }
+        isHidden ? [] : subviews
     }
 }

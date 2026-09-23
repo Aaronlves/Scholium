@@ -10,6 +10,9 @@ struct DocumentWebEnvironmentTests {
     @Test("Reload reapplies native values without owning document content or DOM selection")
     func reloadAndSelection() async throws {
         let web = WKWebView()
+        let light = try #require(NSAppearance(named: .aqua))
+        let dark = try #require(NSAppearance(named: .darkAqua))
+        web.appearance = light
         let host = NSView()
         host.addSubview(web)
         let environment = DocumentWebEnvironment(webView: web, hostView: host)
@@ -19,6 +22,10 @@ struct DocumentWebEnvironmentTests {
         try await navigation.load(web, text: "First document")
         environment.refreshAppearance()
         #expect(try await toolbarInset(in: web) == "52.0px")
+        #expect(try await documentBackground(in: web) == cssDocumentBackground(for: light))
+        web.appearance = dark
+        environment.refreshAppearance()
+        #expect(try await documentBackground(in: web) == cssDocumentBackground(for: dark))
         _ = try await web.callAsyncJavaScript(
             """
             const range = document.createRange();
@@ -43,6 +50,7 @@ struct DocumentWebEnvironmentTests {
                 "return document.body.textContent", arguments: [:], in: nil, contentWorld: .page
             ) as? String
         #expect(text == "Second document")
+        #expect(try await documentBackground(in: web) == cssDocumentBackground(for: dark))
     }
 
     @Test("An old host cannot project into recycled WebKit and observers do not retain the owner")
@@ -78,6 +86,20 @@ struct DocumentWebEnvironmentTests {
             "return document.documentElement.style.getPropertyValue('--scholium-document-toolbar-inset')",
             arguments: [:], in: nil, contentWorld: .defaultClient
         ) as? String
+    }
+
+    private func documentBackground(in web: WKWebView) async throws -> String? {
+        try await web.callAsyncJavaScript(
+            "return document.documentElement.style.getPropertyValue('--scholium-color-document-background')",
+            arguments: [:], in: nil, contentWorld: .defaultClient
+        ) as? String
+    }
+
+    private func cssDocumentBackground(for appearance: NSAppearance) -> String {
+        let rgb = ScholiumColorRole.documentBackground.resolvedRGBValue(
+            for: appearance, increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        )
+        return String(format: "#%06x", rgb)
     }
 
     private final class Navigation: NSObject, WKNavigationDelegate {
