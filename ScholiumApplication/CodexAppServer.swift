@@ -1,5 +1,6 @@
 import Foundation
 import ScholiumContracts
+import Subprocess
 
 public enum CodexConnectionError: LocalizedError, Sendable {
     case disconnected, timedOut, invalidMessage
@@ -18,9 +19,18 @@ public enum CodexConnectionError: LocalizedError, Sendable {
 public actor CodexAppServer {
     public nonisolated let events: AsyncStream<[String: MCPJSONValue]>
     private let continuation: AsyncStream<[String: MCPJSONValue]>.Continuation
-    private var process: Process?
-    private var input: FileHandle?
-    private var reader: Task<Void, Never>?
+    private struct Outbound: Sendable {
+        enum Destination: Sendable { case request(Int), message(UUID) }
+        let destination: Destination
+        let data: Data
+        var admission: (@Sendable () async -> Bool)? = nil
+    }
+    private var connectionTask: Task<Void, Never>?
+    private var outgoing: AsyncStream<Outbound>.Continuation?
+    private var startup: [CheckedContinuation<Void, Error>] = []
+    private var writes: [UUID: CheckedContinuation<Void, Error>] = [:]
+    private var isReady = false
+    private var isClosing = false
     private var buffer = Data()
     private var nextID = 0
     private var pending: [Int: CheckedContinuation<MCPJSONValue, Error>] = [:]
@@ -34,55 +44,94 @@ public actor CodexAppServer {
         continuation = stream.continuation
     }
 
-    public func start(executable: URL, home: URL, workingDirectory: URL) throws {
-        guard process == nil else { return }
-        try FileManager.default.createDirectory(
-            at: home, withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700])
-        let child = Process()
-        let stdout = Pipe()
-        let stdin = Pipe()
-        let stderr = Pipe()
-        child.executableURL = executable
-        child.arguments = [
-            "app-server", "--stdio", "-c", "analytics.enabled=false",
-            "-c", "project_doc_max_bytes=32768", "-c", "project_root_markers=[]",
-        ]
-        child.environment = Self.processEnvironment(ProcessInfo.processInfo.environment, home: home)
-        child.currentDirectoryURL = workingDirectory
-        child.standardInput = stdin
-        child.standardOutput = stdout
-        child.standardError = stderr
-        let token = UUID()
-        generation = token
-        try child.run()
-        process = child
-        input = stdin.fileHandleForWriting
-        let output = stdout.fileHandleForReading
-        let chunks = AsyncStream<Data>.makeStream()
-        // FileHandle reads are blocking: keep them off Swift's cooperative pool.
-        DispatchQueue.global(qos: .utility).async {
-            while true {
-                let data = output.availableData
-                guard !data.isEmpty else { break }
-                chunks.continuation.yield(data)
+    deinit {
+        outgoing?.finish()
+        connectionTask?.cancel()
+        continuation.finish()
+    }
+
+    public func start(executable: URL, home: URL, workingDirectory: URL) async throws {
+        // A replacement never overlaps the preceding child's teardown.
+        while isClosing, let task = connectionTask { await task.value }
+        try Task.checkCancellation()
+        if isReady { return }
+        if connectionTask == nil {
+            try FileManager.default.createDirectory(
+                at: home, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            let token = UUID()
+            generation = token
+            let queue = AsyncStream<Outbound>.makeStream()
+            outgoing = queue.continuation
+            let environment = Self.processEnvironment(ProcessInfo.processInfo.environment, home: home)
+            // Own exactly one task for the connection. All process handles stay inside run.
+            connectionTask = Task { [weak self] in
+                do {
+                    var options = PlatformOptions()
+                    options.teardownSequence = [.gracefulShutDown(allowedDurationToNextStep: .seconds(2))]
+                    _ = try await Subprocess.run(
+                        .path(.init(executable.path)),
+                        arguments: [
+                            "app-server", "--stdio", "-c", "analytics.enabled=false",
+                            "-c", "project_doc_max_bytes=32768", "-c", "project_root_markers=[]",
+                        ],
+                        environment: .custom(Dictionary(uniqueKeysWithValues: environment.map { (.init(stringLiteral: $0.key), $0.value) })),
+                        workingDirectory: .init(workingDirectory.path),
+                        platformOptions: options,
+                        input: .inputWriter, output: .sequence, error: .discarded
+                    ) { execution in
+                        try Task.checkCancellation()
+                        await self?.started(token: token)
+                        try await withThrowingTaskGroup(of: Void.self) { group in
+                            group.addTask { [weak self] in
+                                for try await chunk in execution.standardOutput {
+                                    try Task.checkCancellation()
+                                    try await self?.receive(Data(buffer: chunk), token: token)
+                                }
+                                // EOF must also tear down a child that closed stdout but stayed alive.
+                                throw CodexConnectionError.disconnected
+                            }
+                            group.addTask { [weak self] in
+                                for await frame in queue.stream {
+                                    try Task.checkCancellation()
+                                    guard await self?.admitted(frame, token: token) == true else { continue }
+                                    let count = try await execution.standardInputWriter.write(frame.data)
+                                    guard count == frame.data.count else { throw CodexConnectionError.disconnected }
+                                    await self?.written(frame, token: token)
+                                }
+                                throw CodexConnectionError.disconnected
+                            }
+                            // The first failed/ended stream cancels the other, including an idle writer.
+                            defer { group.cancelAll() }
+                            try await group.next()
+                        }
+                    }
+                    await self?.ended(token: token, error: CodexConnectionError.disconnected)
+                } catch {
+                    await self?.ended(token: token, error: error)
+                }
             }
-            try? output.close()
-            chunks.continuation.finish()
         }
-        reader = Task { [weak self] in
-            for await data in chunks.stream {
-                guard !Task.isCancelled else { break }
-                await self?.receive(data, token: token)
-            }
-            await self?.ended(token: token)
+        let token = generation
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { startup.append($0) }
+        } onCancel: {
+            Task { await self.cancelStartup(token: token) }
         }
-        // Drain stderr without logging research text or credentials.
-        let errors = stderr.fileHandleForReading
-        DispatchQueue.global(qos: .utility).async {
-            while !errors.availableData.isEmpty {}
-            try? errors.close()
-        }
+        try Task.checkCancellation()
+    }
+
+    private func started(token: UUID) {
+        guard token == generation, !isClosing else { return }
+        isReady = true
+        let waiters = startup
+        startup.removeAll()
+        for waiter in waiters { waiter.resume() }
+    }
+
+    private func cancelStartup(token: UUID) async {
+        guard token == generation else { return }
+        await close()
     }
 
     /// Preserve the caller's network route without inheriting unrelated credentials.
@@ -101,9 +150,10 @@ public actor CodexAppServer {
         -> MCPJSONValue
     {
         try Task.checkCancellation()
-        guard input != nil else { throw CodexConnectionError.disconnected }
+        guard isReady, let outgoing else { throw CodexConnectionError.disconnected }
         nextID += 1
         let id = nextID
+        let data = try encode(["id": .integer(id), "method": .string(method), "params": .object(params)])
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { reply in
                 if Task.isCancelled {
@@ -111,29 +161,30 @@ public actor CodexAppServer {
                     return
                 }
                 pending[id] = reply
-                do {
-                    try write(["id": .integer(id), "method": .string(method), "params": .object(params)])
-                    timeouts[id] = Task { [weak self] in
-                        do { try await Task.sleep(for: .seconds(90)) } catch { return }
-                        await self?.fail(id: id, error: CodexConnectionError.timedOut)
-                    }
-                } catch { fail(id: id, error: error) }
+                outgoing.yield(Outbound(destination: .request(id), data: data))
+                timeouts[id] = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(90)) } catch { return }
+                    await self?.fail(id: id, error: CodexConnectionError.timedOut)
+                }
             }
         } onCancel: {
             Task { await self.fail(id: id, error: CancellationError()) }
         }
     }
 
-    public func notify(_ method: String, params: [String: MCPJSONValue] = [:]) throws {
-        try write(["method": .string(method), "params": .object(params)])
+    public func notify(_ method: String, params: [String: MCPJSONValue] = [:]) async throws {
+        try await write(["method": .string(method), "params": .object(params)])
     }
 
-    public func respond(id: MCPJSONValue, result: MCPJSONValue) throws {
-        try write(["id": id, "result": result])
+    public func respond(
+        id: MCPJSONValue, result: MCPJSONValue,
+        ifAdmitted admission: @escaping @Sendable () async -> Bool
+    ) async throws {
+        try await write(["id": id, "result": result], admission: admission)
     }
 
-    public func reject(id: MCPJSONValue) throws {
-        try write([
+    public func reject(id: MCPJSONValue) async throws {
+        try await write([
             "id": id,
             "error": .object([
                 "code": .integer(-32601),
@@ -142,25 +193,70 @@ public actor CodexAppServer {
         ])
     }
 
-    private func write(_ value: [String: MCPJSONValue]) throws {
-        guard let input else { throw CodexConnectionError.disconnected }
-        let data = try JSONEncoder().encode(MCPJSONValue.object(value))
-        try input.write(contentsOf: data + Data([10]))
+    private func encode(_ value: [String: MCPJSONValue]) throws -> Data {
+        try JSONEncoder().encode(MCPJSONValue.object(value)) + Data([10])
     }
 
-    private func receive(_ data: Data, token: UUID) {
-        guard generation == token else { return }
+    private func write(
+        _ value: [String: MCPJSONValue], admission: (@Sendable () async -> Bool)? = nil
+    ) async throws {
+        try Task.checkCancellation()
+        guard isReady, let outgoing else { throw CodexConnectionError.disconnected }
+        let id = UUID()
+        let data = try encode(value)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (reply: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled { reply.resume(throwing: CancellationError()); return }
+                writes[id] = reply
+                outgoing.yield(Outbound(destination: .message(id), data: data, admission: admission))
+            }
+        } onCancel: {
+            Task { await self.cancelWrite(id: id) }
+        }
+    }
+
+    private func cancelWrite(id: UUID) {
+        writes.removeValue(forKey: id)?.resume(throwing: CancellationError())
+    }
+
+    private func shouldWrite(_ frame: Outbound, token: UUID) -> Bool {
+        guard token == generation, isReady else { return false }
+        switch frame.destination {
+        case .request(let id): return pending[id] != nil
+        case .message(let id): return writes[id] != nil
+        }
+    }
+
+    private func admitted(_ frame: Outbound, token: UUID) async -> Bool {
+        guard shouldWrite(frame, token: token) else { return false }
+        // The turn owner revalidates a queued answer or grant immediately before I/O.
+        if let admission = frame.admission, await !admission() {
+            if case .message(let id) = frame.destination { cancelWrite(id: id) }
+            return false
+        }
+        return shouldWrite(frame, token: token)
+    }
+
+    private func written(_ frame: Outbound, token: UUID) {
+        guard token == generation else { return }
+        if case .message(let id) = frame.destination { writes.removeValue(forKey: id)?.resume() }
+    }
+
+    private func receive(_ data: Data, token: UUID) throws {
+        guard generation == token, !isClosing else { throw CodexConnectionError.disconnected }
+        var scanStart = buffer.endIndex
         buffer.append(data)
-        while let newline = buffer.firstIndex(of: 10) {
+        // The preceding buffer has no newline; scan only newly received bytes.
+        while let newline = buffer[scanStart...].firstIndex(of: 10) {
             let frame = buffer.prefix(upTo: newline)
             buffer.removeSubrange(...newline)
+            scanStart = buffer.startIndex
             guard !frame.isEmpty else { continue }
             guard frame.count <= Self.maximumFrameBytes,
                 let value = try? JSONDecoder().decode(MCPJSONValue.self, from: Data(frame)),
                 let object = value.objectValue
             else {
-                ended(token: token)
-                return
+                throw CodexConnectionError.invalidMessage
             }
             if object["method"] != nil {
                 continuation.yield(object)
@@ -177,7 +273,7 @@ public actor CodexAppServer {
                 }
             }
         }
-        if buffer.count > Self.maximumFrameBytes { ended(token: token) }
+        if buffer.count > Self.maximumFrameBytes { throw CodexConnectionError.invalidMessage }
     }
 
     private func fail(id: Int, error: Error) {
@@ -185,28 +281,36 @@ public actor CodexAppServer {
         pending.removeValue(forKey: id)?.resume(throwing: error)
     }
 
-    private func ended(token: UUID) {
+    private func ended(token: UUID, error: Error) {
         guard token == generation else { return }
-        close()
-        continuation.yield(["method": .string("scholium/disconnected")])
+        let unexpected = isReady && !isClosing
+        clearPending(startupError: error)
+        connectionTask = nil
+        isClosing = false
+        generation = UUID()
+        if unexpected { continuation.yield(["method": .string("scholium/disconnected")]) }
     }
 
-    public func close() {
-        generation = UUID()
-        let child = process
-        process = nil
-        try? input?.close()
-        input = nil
-        reader?.cancel()
-        reader = nil
+    private func clearPending(startupError: Error) {
+        isReady = false
+        outgoing?.finish()
+        outgoing = nil
+        let waiters = startup
+        startup.removeAll()
+        for waiter in waiters { waiter.resume(throwing: startupError) }
         buffer.removeAll()
         for id in Array(pending.keys) { fail(id: id, error: CodexConnectionError.disconnected) }
-        if let child, child.isRunning {
-            child.terminate()
-            Task.detached {
-                try? await Task.sleep(for: .seconds(2))
-                if child.isRunning { kill(child.processIdentifier, SIGKILL) }
-            }
-        }
+        let unfinished = writes.values
+        writes.removeAll()
+        for waiter in unfinished { waiter.resume(throwing: CodexConnectionError.disconnected) }
+    }
+
+    public func close() async {
+        guard let task = connectionTask else { return }
+        isClosing = true
+        clearPending(startupError: CancellationError())
+        task.cancel()
+        // run owns signal escalation, handle closure and reaping; finish all before returning.
+        await task.value
     }
 }

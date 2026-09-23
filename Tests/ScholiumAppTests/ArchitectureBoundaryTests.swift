@@ -44,7 +44,11 @@ struct ArchitectureBoundaryTests {
         #expect(compact.contains(#"name:"ScholiumAgentHelper",dependencies:["ScholiumApplication"]"#))
         #expect(package.contains(#".library(name: "ScholiumContracts""#))
         #expect(!package.contains(#".library(name: "ScholiumCore""#))
-        #expect(compact.contains(#"name:"ScholiumApplication",dependencies:["ScholiumContracts","ScholiumCore"]"#))
+        let expectedApplicationDependencies = [
+            #"name:"ScholiumApplication",dependencies:["ScholiumContracts","ScholiumCore","#,
+            #".product(name:"Subprocess",package:"swift-subprocess"),]"#,
+        ].joined()
+        #expect(compact.contains(expectedApplicationDependencies))
         let expectedAppDependencies = [
             #"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication","#,
             #".product(name:"ThinkingOrbs",package:"ThinkingOrbs"),]"#,

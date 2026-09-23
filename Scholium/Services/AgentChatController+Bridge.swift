@@ -882,7 +882,7 @@ extension AgentChatController {
     ) {
         do {
             guard let turn = params["turnId"]?.stringValue, executions[owner]?.turnID == turn,
-                executions[owner]?.admissionID != nil
+                let admission = executions[owner]?.admissionID
             else { throw CodexConnectionError.invalidMessage }
             let itemID: String
             if method == "mcpServer/elicitation/request" {
@@ -917,7 +917,16 @@ extension AgentChatController {
                         self.executions[owner]?.turnID == turn,
                         !decision.isGrant || self.executions[owner]?.state == .working
                     else { return }
-                    do { try await runtime.respond(id: requestID, result: result) } catch {
+                    do {
+                        try await runtime.respond(id: requestID, result: result) { @MainActor [weak self] in
+                            guard let self, self.connectionID == connection,
+                                self.executions[owner]?.turnID == turn,
+                                self.executions[owner]?.approvals.contains(where: { $0.id == localID }) == true
+                            else { return false }
+                            return !decision.isGrant || (
+                                self.executions[owner]?.state == .working && self.executions[owner]?.admissionID == admission)
+                        }
+                    } catch {
                         guard self.connectionID == connection,
                             let index = self.executions[owner]?.approvals.firstIndex(where: { $0.id == localID })
                         else { return }
@@ -939,7 +948,8 @@ extension AgentChatController {
         in owner: UUID, runtime: CodexAppServer
     ) {
         do {
-            guard let turn = params["turnId"]?.stringValue, executions[owner]?.turnID == turn
+            guard let turn = params["turnId"]?.stringValue, executions[owner]?.turnID == turn,
+                let admission = executions[owner]?.admissionID
             else { throw CodexConnectionError.invalidMessage }
             let questions = try CodexChatQuestions.parse(params)
             let localID = UUID()
@@ -969,7 +979,16 @@ extension AgentChatController {
                     guard let self, connection != nil, self.connectionID == connection,
                         self.executions[owner]?.turnID == turn, self.executions[owner]?.state == .working
                     else { return }
-                    do { try await runtime.respond(id: requestID, result: result) } catch {
+                    do {
+                        try await runtime.respond(id: requestID, result: result) { @MainActor [weak self] in
+                            guard let self, self.connectionID == connection,
+                                self.executions[owner]?.turnID == turn,
+                                self.executions[owner]?.state == .working,
+                                self.executions[owner]?.admissionID == admission
+                            else { return false }
+                            return self.executions[owner]?.approvals.contains(where: { $0.id == localID }) == true
+                        }
+                    } catch {
                         guard self.connectionID == connection,
                             let index = self.executions[owner]?.approvals.firstIndex(where: { $0.id == localID })
                         else { return }

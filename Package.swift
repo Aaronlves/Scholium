@@ -15,6 +15,7 @@ let package = Package(
         .package(url: "https://github.com/haplollc/ThinkingOrbs.git", from: "1.1.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "6.2.2"),
         .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.8.0"),
+        .package(url: "https://github.com/swiftlang/swift-subprocess.git", exact: "1.0.0"),
     ],
     targets: [
         .target(
@@ -38,7 +39,10 @@ let package = Package(
         ),
         .target(
             name: "ScholiumApplication",
-            dependencies: ["ScholiumContracts", "ScholiumCore"],
+            dependencies: [
+                "ScholiumContracts", "ScholiumCore",
+                .product(name: "Subprocess", package: "swift-subprocess"),
+            ],
             path: "ScholiumApplication"
         ),
         .executableTarget(

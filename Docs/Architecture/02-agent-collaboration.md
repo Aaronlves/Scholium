@@ -93,10 +93,10 @@ viewed markers and Settlement cannot alter source or receipt recovery eligibilit
 
 ## Native Chat client
 
-Application's official runtime adapter owns one stdio process, bounded framing,
-correlation, timeouts, replies and teardown. It implements no model/tool loop.
-Runtime authentication/configuration retains its selected-directory ownership;
-credentials and raw stderr do not enter logs.
+Application owns bounded framing, correlation, timeouts and replies, without an
+Agent loop. Swift Subprocess manages its single stdio process, I/O and teardown.
+Runtime authentication/configuration retains selected-directory ownership;
+credentials and raw stderr never enter logs.
 
 One Triptych Chat controller is shared across windows. It owns conversation
 inventory, public messages, drafts and permission; each conversation owns one

@@ -15,6 +15,8 @@ This file records the dependencies used to build Scholium. Exact JavaScript vers
   Swift CMark attribution.
 - Swift CMark 0.8.0 and its incorporated sources: BSD-2-Clause and the
   additional permissive notices reproduced in its `COPYING` file.
+- Swift Subprocess 1.0.0: Apache License 2.0.
+- Swift System (transitive): Apache License 2.0 with Swift Runtime Library Exception.
 
 ## Build tools
 
