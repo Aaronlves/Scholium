@@ -77,6 +77,7 @@ struct ArchitectureBoundaryTests {
             "Scholium/Services/AgentChatController+Conversation.swift",
             "Scholium/Services/AgentChatController+Execution.swift",
             "Scholium/Services/AgentChatController+Materials.swift",
+            "Scholium/Services/AgentChatFaviconStore.swift",
             "Scholium/Services/AgentChatExecutionState.swift",
             "Scholium/Services/AgentChatRegistry.swift",
             // Feature composition roots; presentation leaves still consume Contracts only.
@@ -85,6 +86,7 @@ struct ArchitectureBoundaryTests {
             "Scholium/Services/ScholiumAppBridgeRequestRouter.swift",
             "Scholium/Services/WindowSession.swift",
             "Scholium/Views/AgentIntegrationSettingsView.swift",
+            "Scholium/Views/Note/ExternalMarkdownWindow.swift",
             "ScholiumAgentHelper/ScholiumAgentHelper.swift",
         ]
         for relativeRoot in roots {
@@ -179,6 +181,7 @@ struct ArchitectureBoundaryTests {
             "Scholium/Localization/WebKitInterfaceLocalization.swift",
             "Scholium/Views/Note/MarkdownEditorWebView.swift",
             "Scholium/Views/Note/ScholiumDocumentWebResources.swift",
+            "Scholium/Views/Sidebar/AgentChatWebsiteIcon.swift",
             "Scholium/Styling/ScholiumWebFonts.swift",
             "Scholium/Styling/ScholiumWebFontResources.swift",
             "Scholium/Styling/ScholiumCalloutStyles.swift",
