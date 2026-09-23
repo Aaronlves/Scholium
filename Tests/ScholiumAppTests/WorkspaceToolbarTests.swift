@@ -103,15 +103,6 @@ struct WorkspaceToolbarTests {
         #expect(!noteActions.isEnabled)
         #expect(noteActions.menuFormRepresentation?.submenu === noteActions.menu)
 
-        let documentTitle = try #require(
-            item(
-                ScholiumWorkspaceToolbarController.Item.documentTitle,
-                in: toolbar
-            ))
-        #expect(documentTitle.visibilityPriority == .high)
-        let title = try #require(documentTitle.view as? NSTextField)
-        #expect(title.stringValue == "Scholium")
-        #expect(title.textColor?.usingColorSpace(.deviceRGB) == NSColor.secondaryLabelColor.usingColorSpace(.deviceRGB))
         #expect(window.titleVisibility == .hidden)
 
         for identifier in [

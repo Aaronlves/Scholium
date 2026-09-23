@@ -702,21 +702,6 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func documentTitleElement(in root: XCUIElement? = nil) -> XCUIElement {
-        let window =
-            root
-            ?? app.windows.matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
-            ).firstMatch
-        guard let title = documentTitle(in: window) else {
-            return window.staticTexts.firstMatch
-        }
-        return window.staticTexts.matching(
-            NSPredicate(format: "value == %@ OR label == %@", title, title)
-        ).firstMatch
-    }
-
-    @MainActor
     func waitForDocumentTitle(
         _ expectedTitle: String,
         in root: XCUIElement? = nil,
