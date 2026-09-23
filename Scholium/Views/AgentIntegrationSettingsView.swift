@@ -14,25 +14,6 @@ enum AgentSettingsCategory: String, CaseIterable, Identifiable {
         }
     }
 
-    static func matchingSearch(_ searchQuery: String) -> Self? {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).localizedLowercase
-        guard !query.isEmpty else { return nil }
-        if ["external", "bridge", "host", "claude", "外部", "桥接", "宿主"].contains(where: query.contains) {
-            return .externalAccess
-        }
-        if ["skill", "tool", "protocol", "authentication", "技能", "工具", "协议", "授权"].contains(
-            where: query.contains)
-        {
-            return .capabilities
-        }
-        if [
-            "connection", "chat", "login", "sign", "codex", "path", "return", "queue", "steer", "连接",
-            "聊天", "登录", "路径", "回车", "排队",
-        ].contains(where: query.contains) {
-            return .connection
-        }
-        return nil
-    }
 }
 
 struct AgentIntegrationSettingsView: View {
@@ -101,6 +82,9 @@ struct AgentIntegrationSettingsView: View {
                             Section("Skills and Tools") {
                                 Text("Open a Triptych to manage its Skills and Tools.", bundle: .module)
                                     .foregroundStyle(.secondary)
+                                Button("Open Workspace Settings") {
+                                    SettingsNavigationRequest.select(.workspace)
+                                }
                             }
                         }
                     }
@@ -145,9 +129,10 @@ struct AgentIntegrationSettingsView: View {
         case "agents.protocol", "agents.skills", "agents.tools": matching = .capabilities
         case "agents.external": matching = .externalAccess
         case "agents.connection", "agents.behavior", "agents.paths": matching = .connection
-        default: matching = AgentSettingsCategory.matchingSearch(searchQuery)
+        default: matching = nil
         }
-        navigation.updateSearch(query: searchQuery, matching: matching)
+        navigation.updateQuery(searchQuery)
+        if let matching { navigation.reveal(matching) }
     }
 }
 
@@ -202,14 +187,6 @@ private struct ExternalAgentHostsSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                }
-            }
-
-            Section("Core Protocol") {
-                Button {
-                    SettingsNavigationRequest.select(.agents, agentCategory: .capabilities)
-                } label: {
-                    Text("Open Skills and Tools", bundle: .module)
                 }
             }
 

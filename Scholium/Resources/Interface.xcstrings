@@ -1,7 +1,7 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "Explain, Polish and AI continuation share this model and use the connected Codex account. Selected passages or writing context may be processed remotely and consume its allowance. Turning off automatic continuation leaves Explain and Polish available. Local terminology completion remains available.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Explain, Polish and AI continuation share this model and use the connected Codex account. Selected passages or writing context may be processed remotely and consume its allowance. Turning off automatic continuation leaves Explain and Polish available. Local terminology completion remains available."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "解释、润色和 AI 续写共用此模型及已连接的 Codex 账户。选中段落或写作上下文可能在远程处理，并消耗账户额度。关闭自动续写后仍可使用解释和润色。本地术语补全始终可用。"}}}},
+    "Explain, Polish and AI continuation use this model and the connected Codex account. Selected passages or writing context may be processed remotely and use its allowance. Turning off continuation keeps Explain, Polish and local terminology completion available.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Explain, Polish and AI continuation use this model and the connected Codex account. Selected passages or writing context may be processed remotely and use its allowance. Turning off continuation keeps Explain, Polish and local terminology completion available."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "解释、润色和 AI 续写使用同一模型及已连接的 Codex 账户。选中段落或写作上下文可能在远程处理，并消耗账户额度。关闭续写后，仍可使用解释、润色及本地术语补全。"}}}},
     "Open a Triptych and connect Codex in Agents & Chat to choose a writing assistance model.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open a Triptych and connect Codex in Agents & Chat to choose a writing assistance model."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开脉络，并在“智能体与聊天”中连接 Codex，以选择写作辅助模型。"}}}},
     "Writing Assistance Model": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Writing Assistance Model"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "写作辅助模型"}}}},
     "Direct outgoing connection.": {
@@ -69,11 +69,11 @@
       }
     },
 
-    "In Edit or Source, pause after typing an unfinished sentence. AI shows only the current sentence's suffix; press Tab to accept. It never inserts text automatically.": {
+    "In Edit or Source, pause after an unfinished sentence. AI suggests only the current sentence's suffix; press Tab to insert it. It never inserts automatically.": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "In Edit or Source, pause after typing an unfinished sentence. AI shows only the current sentence's suffix; press Tab to accept. It never inserts text automatically." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "在“编辑”或“源文本”中，输入未完成的句子后暂停片刻。AI 只显示当前句子的补全；按 Tab 接受。它不会自动写入正文。" } }
+        "en": { "stringUnit": { "state": "translated", "value": "In Edit or Source, pause after an unfinished sentence. AI suggests only the current sentence's suffix; press Tab to insert it. It never inserts automatically." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "在“编辑”或“源文本”中，输入未完成的句子后暂停片刻。AI 只建议当前句子的补全；按 Tab 插入，不会自动写入正文。" } }
       }
     },
     "settings.tab.document": {"comment": "Settings tab for document content presentation and appearance profiles, including typography.", "extractionState": "extracted_with_value", "localizations": {"en": {"stringUnit": {"state": "new", "value": "Document Appearance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文稿外观"}}}},

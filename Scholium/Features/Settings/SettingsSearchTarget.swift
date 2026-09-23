@@ -38,8 +38,11 @@ struct SettingsSearchTarget: Identifiable, Equatable {
         [
             Self(
                 "workspace.registration", .workspace, "Registered Triptychs",
-                ["Workspace", "Triptych", "registration", "工作区", "三联体", "注册"]),
-            Self("workspace.name", .workspace, "Name", ["Triptych name", "三联体名称", "工作区名称"]),
+                ["Workspace", "Triptych", "registration", "工作区", "三联体", "注册"],
+                aliases: ["Open Workspace Settings"]),
+            Self(
+                "workspace.name", .workspace, "Name", ["Triptych name", "三联体名称", "工作区名称"],
+                aliases: ["Triptych Details"]),
             Self(
                 "workspace.folders", .workspace, "Research Folders",
                 [
@@ -123,7 +126,8 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 ["selection", "prompt", "instruction", "选段操作", "选区操作", "指令"]),
             Self(
                 "agents.connection", .agents, "Chat in Scholium",
-                ["Agents & Chat", "connect", "sign in", "Codex", "聊天", "智能体", "连接", "登录"]),
+                ["Agents & Chat", "connect", "sign in", "Codex", "聊天", "智能体", "连接", "登录"],
+                aliases: ["Open Connection and Chat"]),
             Self(
                 "agents.behavior", .agents, "Return while Agent is working",
                 ["return", "queue", "steer", "send", "回车", "排队", "发送行为"]),
@@ -150,7 +154,8 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 ], aliases: ["Copy Codex Setup Command", "Copy Claude Setup Command"]),
             Self(
                 "zotero.desktop", .zotero, "Local Zotero API",
-                ["Zotero", "citation", "library", "local API", "文献", "引用", "本地 API"]),
+                ["Zotero", "citation", "library", "local API", "文献", "引用", "本地 API"],
+                aliases: ["Zotero Desktop"]),
             Self(
                 "zotero.chat", .zotero, "Zotero in Chat",
                 ["Zotero connection", "Zotero in Chat", "聊天 Zotero"]),

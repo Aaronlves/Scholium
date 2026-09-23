@@ -56,6 +56,19 @@ struct AgentChatCapabilitiesSettingsView: View {
         !capabilityFilter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var hasSkillSectionContent: Bool {
+        capabilities.isConnected || capabilities.workspaceURL != nil || capabilities.workspaceError != nil
+            || capabilities.methodError != nil || !capabilities.methodErrors.isEmpty
+            || capabilities.hasMethods || !userSkills.isEmpty
+    }
+
+    private var hasToolSectionContent: Bool {
+        zoteroOnly || capabilities.isConnected || !toolNames.isEmpty
+            || capabilities.toolConfigurationError != nil || capabilities.toolConfigurationNotice != nil
+            || capabilities.authenticationError != nil || capabilities.authenticationNotice != nil
+            || capabilities.authenticatingTool != nil || capabilities.toolError != nil
+    }
+
     var body: some View {
         Group {
             statusSection
@@ -64,107 +77,110 @@ struct AgentChatCapabilitiesSettingsView: View {
                     capabilityFilterSection
                 }
                 CoreProtocolSettingsSection(coreProtocolURL: coreProtocolURL)
-                Section("Skills") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if let workspace = capabilities.workspaceURL {
-                            Text("This Triptych").font(.caption).foregroundStyle(.secondary)
-                            Text(
-                                "Chat uses AGENTS.md and the skills folder in this Triptych’s .scholium workspace."
-                            )
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            Button("Open Chat Workspace in Finder") { NSWorkspace.shared.open(workspace) }
-                        }
-                        if let error = capabilities.workspaceError {
-                            Text(error).foregroundStyle(.secondary).textSelection(.enabled)
-                        }
-                        if let error = capabilities.methodError {
-                            Text(error).foregroundStyle(.secondary).textSelection(.enabled)
-                        }
-                        ForEach(capabilities.methodErrors, id: \.self) {
-                            Text($0).foregroundStyle(.secondary).textSelection(.enabled)
-                        }
-                        if capabilities.hasMethods && userSkills.isEmpty {
-                            Text("No Skills Found").foregroundStyle(.secondary)
-                        }
-                        if !filteredUserSkills.isEmpty {
-                            ForEach(Array(filteredUserSkills.enumerated()), id: \.element.id) { index, method in
-                                if index > 0 {
-                                    Divider().padding(.leading, 8)
+                if hasSkillSectionContent {
+                    Section("Skills") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            if let workspace = capabilities.workspaceURL {
+                                Text("This Triptych").font(.caption).foregroundStyle(.secondary)
+                                Text(
+                                    "Chat uses AGENTS.md and the skills folder in this Triptych’s .scholium workspace."
+                                )
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                Button("Open Chat Workspace in Finder") { NSWorkspace.shared.open(workspace) }
+                            }
+                            if let error = capabilities.workspaceError {
+                                Text(error).foregroundStyle(.secondary).textSelection(.enabled)
+                            }
+                            if let error = capabilities.methodError {
+                                Text(error).foregroundStyle(.secondary).textSelection(.enabled)
+                            }
+                            ForEach(capabilities.methodErrors, id: \.self) {
+                                Text($0).foregroundStyle(.secondary).textSelection(.enabled)
+                            }
+                            if capabilities.hasMethods && userSkills.isEmpty {
+                                Text("No Skills Found").foregroundStyle(.secondary)
+                            }
+                            if !filteredUserSkills.isEmpty {
+                                ForEach(Array(filteredUserSkills.enumerated()), id: \.element.id) { index, method in
+                                    if index > 0 {
+                                        Divider().padding(.leading, 8)
+                                    }
+                                    methodRow(method)
                                 }
-                                methodRow(method)
+                            } else if hasCapabilityFilter && !userSkills.isEmpty {
+                                Text("No Skills Match Filter")
+                                    .foregroundStyle(.secondary)
                             }
-                        } else if hasCapabilityFilter && !userSkills.isEmpty {
-                            Text("No Skills Match Filter")
-                                .foregroundStyle(.secondary)
                         }
                     }
+                    .id("agents.skills")
                 }
-                .id("agents.skills")
             }
-            Section {
-
-                VStack(alignment: .leading, spacing: 10) {
-                    if zoteroOnly {
-                        zoteroCapability
-                    } else {
-                        zoteroSummary
-                        Button("Add Tool…") { toolEdit = capabilities.editTool() }
-                            .focused($focusedToolAction, equals: "add")
-                            .disabled(!capabilities.canConfigureTools || toolEdit != nil)
-                    }
-                    if let error = capabilities.toolConfigurationError,
-                        ownsTool(capabilities.toolConfigurationErrorTool),
-                        capabilities.toolConfigurationErrorTool == nil || toolEdit == nil
-                    {
-                        Text(error).foregroundStyle(.secondary).textSelection(.enabled)
-                    }
-                    if let notice = capabilities.toolConfigurationNotice,
-                        ownsTool(capabilities.toolConfigurationNoticeTool)
-                    {
-                        Text(notice).foregroundStyle(.secondary)
-                    }
-                    if let error = capabilities.authenticationError,
-                        ownsTool(capabilities.authenticationFeedbackTool)
-                    {
-                        Text(error).foregroundStyle(.secondary).textSelection(.enabled)
-                    }
-                    if let notice = capabilities.authenticationNotice,
-                        ownsTool(capabilities.authenticationFeedbackTool)
-                    {
-                        Text(notice).foregroundStyle(.secondary)
-                    }
-                    if let name = capabilities.authenticatingTool, ownsTool(name) {
-                        Text(name).font(.caption).foregroundStyle(.secondary)
-                        if let url = capabilities.authorizationURL {
-                            Link("Continue Sign-In", destination: url)
+            if hasToolSectionContent {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if zoteroOnly {
+                            zoteroCapability
                         } else {
-                            ProgressView("Preparing Sign-In…").controlSize(.small)
+                            zoteroSummary
+                            Button("Add Tool…") { toolEdit = capabilities.editTool() }
+                                .focused($focusedToolAction, equals: "add")
+                                .disabled(!capabilities.canConfigureTools || toolEdit != nil)
                         }
-                    }
-                    if let error = capabilities.toolError {
-                        Text(error).foregroundStyle(.secondary).textSelection(.enabled)
-                    }
-                    if !zoteroOnly && capabilities.hasTools && capabilities.tools.isEmpty
-                        && capabilities.toolConnections.isEmpty
-                    {
-                        Text("No Connected Tools").foregroundStyle(.secondary)
-                    }
-                    if !zoteroOnly {
-                        if !filteredToolNames.isEmpty {
-                            ForEach(filteredToolNames, id: \.self) { name in
-                                toolRow(name)
+                        if let error = capabilities.toolConfigurationError,
+                            ownsTool(capabilities.toolConfigurationErrorTool),
+                            capabilities.toolConfigurationErrorTool == nil || toolEdit == nil
+                        {
+                            Text(error).foregroundStyle(.secondary).textSelection(.enabled)
+                        }
+                        if let notice = capabilities.toolConfigurationNotice,
+                            ownsTool(capabilities.toolConfigurationNoticeTool)
+                        {
+                            Text(notice).foregroundStyle(.secondary)
+                        }
+                        if let error = capabilities.authenticationError,
+                            ownsTool(capabilities.authenticationFeedbackTool)
+                        {
+                            Text(error).foregroundStyle(.secondary).textSelection(.enabled)
+                        }
+                        if let notice = capabilities.authenticationNotice,
+                            ownsTool(capabilities.authenticationFeedbackTool)
+                        {
+                            Text(notice).foregroundStyle(.secondary)
+                        }
+                        if let name = capabilities.authenticatingTool, ownsTool(name) {
+                            Text(name).font(.caption).foregroundStyle(.secondary)
+                            if let url = capabilities.authorizationURL {
+                                Link("Continue Sign-In", destination: url)
+                            } else {
+                                ProgressView("Preparing Sign-In…").controlSize(.small)
                             }
-                        } else if hasCapabilityFilter && !toolNames.isEmpty {
-                            Text("No Connected Tools Match Filter")
-                                .foregroundStyle(.secondary)
+                        }
+                        if let error = capabilities.toolError {
+                            Text(error).foregroundStyle(.secondary).textSelection(.enabled)
+                        }
+                        if !zoteroOnly && capabilities.hasTools && capabilities.tools.isEmpty
+                            && capabilities.toolConnections.isEmpty
+                        {
+                            Text("No Connected Tools").foregroundStyle(.secondary)
+                        }
+                        if !zoteroOnly {
+                            if !filteredToolNames.isEmpty {
+                                ForEach(filteredToolNames, id: \.self) { name in
+                                    toolRow(name)
+                                }
+                            } else if hasCapabilityFilter && !toolNames.isEmpty {
+                                Text("No Connected Tools Match Filter")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
+                } header: {
+                    Text(zoteroOnly ? "Zotero in Chat" : "Connected Tools", bundle: .module)
                 }
-            } header: {
-                Text(zoteroOnly ? "Zotero in Chat" : "Connected Tools", bundle: .module)
+                .id(zoteroOnly ? "zotero.chat" : "agents.tools")
             }
-            .id(zoteroOnly ? "zotero.chat" : "agents.tools")
             if let toolEdit {
                 Section {
                     AgentChatToolEditor(capabilities: capabilities, edit: toolEdit) {
@@ -206,7 +222,7 @@ struct AgentChatCapabilitiesSettingsView: View {
     private var statusSection: some View {
         Section {
             HStack {
-                Text(zoteroOnly ? "Chat Zotero Capability" : "Skills and Tools", bundle: .module).font(
+                Text(zoteroOnly ? "Chat Connection" : "Runtime Status", bundle: .module).font(
                     .headline)
                 Spacer()
                 if capabilities.isRefreshing || capabilities.isChanging {
@@ -220,10 +236,16 @@ struct AgentChatCapabilitiesSettingsView: View {
             }
             if let confirmationError { Text(confirmationError).foregroundStyle(.secondary) }
             if !capabilities.isConnected {
-                Text(
-                    "Connect Codex in Connection and Chat to configure Skills and Tools.", bundle: .module
-                )
-                .foregroundStyle(.secondary)
+                if zoteroOnly {
+                    Text("Connect Codex in Agents & Chat to use Zotero in Chat.", bundle: .module)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Connect Codex in Connection and Chat to configure Skills and Tools.", bundle: .module)
+                        .foregroundStyle(.secondary)
+                }
+                Button("Open Connection and Chat") {
+                    SettingsNavigationRequest.select(.agents, agentCategory: .connection)
+                }
             } else if controller.hasActiveExecutions {
                 Text("Wait for the Agent to finish before changing Skills or Tools.", bundle: .module)
                     .foregroundStyle(.secondary)
@@ -352,9 +374,8 @@ struct AgentChatCapabilitiesSettingsView: View {
 
     private var zoteroCapability: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Zotero", bundle: .module)
             Text(zoteroStatusText, bundle: .module)
-                .font(.caption).foregroundStyle(.secondary)
+                .foregroundStyle(.secondary)
             Text(
                 "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text, imports and confirmed item changes. No separate runtime installation is required.",
                 bundle: .module

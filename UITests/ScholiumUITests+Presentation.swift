@@ -108,12 +108,16 @@ extension ScholiumUITests {
         capture("settings-writing")
         select("agents")
         capture("settings-agents")
+        window.radioButtons["Connection and Chat"].click()
         let taskSearch = window.searchFields["scholium.settings.search"]
         typeCommittedText("Core Protocol", into: taskSearch, in: app)
         let protectedSkill = window.staticTexts["Protected Skill"]
+        XCTAssertFalse(protectedSkill.exists, "Typing must not switch the Agent segment")
+        let protocolResult = window.buttons["scholium.settings.result.agents.protocol"]
+        XCTAssertTrue(protocolResult.waitForExistence(timeout: 5))
+        protocolResult.click()
         XCTAssertTrue(protectedSkill.waitForExistence(timeout: 5))
         window.radioButtons["External Access"].click()
-        let protocolResult = window.buttons["scholium.settings.result.agents.protocol"]
         XCTAssertTrue(protocolResult.waitForExistence(timeout: 5))
         protocolResult.click()
         XCTAssertTrue(waitUntil(timeout: 5) { protectedSkill.isHittable }, "Repeating a result must reveal its owning Agent segment")
@@ -124,21 +128,24 @@ extension ScholiumUITests {
         XCTAssertFalse(
             window.buttons["Show Core Protocol in Finder…"].exists,
             "External access must lead to the sole protocol viewing location")
-        let skillsLink = window.buttons["Open Skills and Tools"]
-        scrollUntilHittable(skillsLink, in: settingsContentScrollView(in: window))
-        skillsLink.click()
+        window.radioButtons["Skills and Tools"].click()
         XCTAssertTrue(protectedSkill.waitForExistence(timeout: 5))
         XCTAssertEqual(window.buttons.matching(identifier: "Show Core Protocol in Finder…").count, 1)
         window.radioButtons["Connection and Chat"].click()
         select("zotero")
         typeCommittedText("Connected Tools", into: taskSearch, in: app)
-        let zoteroLink = window.buttons["Open Zotero Settings"]
-        XCTAssertTrue(zoteroLink.waitForExistence(timeout: 5))
-        scrollUntilHittable(zoteroLink, in: settingsContentScrollView(in: window))
-        zoteroLink.click()
+        let toolsResult = window.buttons["scholium.settings.result.agents.tools"]
+        XCTAssertTrue(toolsResult.waitForExistence(timeout: 5))
+        toolsResult.click()
+        let connectionLink = window.buttons["Open Connection and Chat"]
+        XCTAssertTrue(connectionLink.waitForExistence(timeout: 5))
+        connectionLink.click()
         XCTAssertTrue(
-            waitUntil(timeout: 5) { window.title == "Zotero" && taskSearch.value as? String == "" },
-            "An explicit settings link must work when its remembered category is already equal")
+            waitUntil(timeout: 5) {
+                window.title == "Agents & Chat" && ((taskSearch.value as? String) ?? "").isEmpty
+                    && self.selectionControlIsSelected(window.radioButtons["Connection and Chat"])
+            },
+            "The unavailable Skills page must lead to its connection setup")
         select("shortcuts")
         capture("settings-shortcuts")
         select("zotero")
@@ -150,7 +157,8 @@ extension ScholiumUITests {
         let search = window.searchFields["scholium.settings.search"]
         typeCommittedText("no-such-setting-qa", into: search, in: app)
         XCTAssertEqual(search.value as? String, "no-such-setting-qa")
-        XCTAssertFalse(window.buttons["Save Appearance"].exists)
+        XCTAssertTrue(window.descendants(matching: .any)["scholium.settings.noResults"].firstMatch.exists)
+        XCTAssertTrue(window.buttons["Save Appearance"].exists, "No matches must retain the browsing page")
         capture("settings-empty-search")
         search.buttons["cancel"].click()
         XCTAssertTrue(size.waitForExistence(timeout: 5))
@@ -189,6 +197,9 @@ extension ScholiumUITests {
         capture("settings-appearance-minimum-width")
         let searchForDetails = window.searchFields["scholium.settings.search"]
         typeCommittedText("H6 spacing", into: searchForDetails, in: app)
+        let h6Result = window.buttons["scholium.settings.result.appearance.h6"]
+        XCTAssertTrue(h6Result.waitForExistence(timeout: 5))
+        h6Result.click()
         let h6Spacing = window.textFields["H6 space after"]
         XCTAssertTrue(h6Spacing.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil(timeout: 5) { h6Spacing.isHittable }, "Search must reveal the specific heading controls without manual scrolling")

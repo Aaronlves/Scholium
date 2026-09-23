@@ -73,13 +73,13 @@ enum ScholiumL10n {
         }
         static var contextAndAllowance: LocalizedStringResource {
             LocalizedStringResource(
-                "Explain, Polish and AI continuation share this model and use the connected Codex account. Selected passages or writing context may be processed remotely and consume its allowance. Turning off automatic continuation leaves Explain and Polish available. Local terminology completion remains available.",
+                "Explain, Polish and AI continuation use this model and the connected Codex account. Selected passages or writing context may be processed remotely and use its allowance. Turning off continuation keeps Explain, Polish and local terminology completion available.",
                 table: "Interface", bundle: .module
             )
         }
         static var trigger: LocalizedStringResource {
             LocalizedStringResource(
-                "In Edit or Source, pause after typing an unfinished sentence. AI shows only the current sentence's suffix; press Tab to accept. It never inserts text automatically.",
+                "In Edit or Source, pause after an unfinished sentence. AI suggests only the current sentence's suffix; press Tab to insert it. It never inserts automatically.",
                 table: "Interface", bundle: .module
             )
         }

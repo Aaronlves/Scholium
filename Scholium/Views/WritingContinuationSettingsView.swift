@@ -11,6 +11,10 @@ struct WritingContinuationSettingsContent: View {
                 Text(ScholiumL10n.WritingAssistance.enable)
             }
             .accessibilityIdentifier("scholium.settings.writingContinuation.enabled")
+            Text(ScholiumL10n.WritingAssistance.trigger)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if let error = preferences.loadError {
                 Label(error, systemImage: "exclamationmark.triangle")
@@ -25,16 +29,14 @@ struct WritingContinuationSettingsContent: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Text(ScholiumL10n.WritingAssistance.contextAndAllowance)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         } header: {
-            Text("Writing Assistance")
+            Text("Writing Continuation")
         } footer: {
-            VStack(alignment: .leading) {
-                Text("This Mac", bundle: .module)
-                Text(ScholiumL10n.WritingAssistance.trigger)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(ScholiumL10n.WritingAssistance.contextAndAllowance)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text("This Mac", bundle: .module)
         }
         .id("writing.continuation")
     }

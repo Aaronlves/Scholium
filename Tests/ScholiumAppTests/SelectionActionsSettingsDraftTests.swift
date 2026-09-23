@@ -37,7 +37,7 @@ struct SelectionActionsSettingsDraftTests {
         }
     }
 
-    @Test("Cancelling one inline action preserves other unapplied changes")
+    @Test("Cancelling one action editor preserves other unapplied changes")
     func cancelIsScopedToEditedAction() throws {
         try withPreferences { preferences in
             let draft = SelectionActionsSettingsDraft(preferences: preferences)
@@ -56,6 +56,22 @@ struct SelectionActionsSettingsDraftTests {
             #expect(!draft.actions.contains { $0.id == addition.id })
             #expect(draft.actions[1].prompt == "Another unapplied instruction")
             #expect(preferences.actions == saved)
+        }
+    }
+
+    @Test("Finishing the action sheet retains a draft until the page is saved")
+    func finishingEditorDoesNotCommit() throws {
+        try withPreferences { preferences in
+            let draft = SelectionActionsSettingsDraft(preferences: preferences)
+            let saved = preferences.actions
+            draft.beginEditing(draft.actions[0])
+            draft.actions[0].prompt = "Edited instruction in sheet"
+            draft.finishEditing()
+            #expect(draft.editingActionID == nil)
+            #expect(draft.actions[0].prompt == "Edited instruction in sheet")
+            #expect(preferences.actions == saved)
+            draft.save()
+            #expect(preferences.actions[0].prompt == "Edited instruction in sheet")
         }
     }
 }

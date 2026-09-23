@@ -1,21 +1,25 @@
 import SwiftUI
 
-/// Search temporarily reveals a child category without replacing the user's
-/// browsing selection. The owning view persists only explicit browsing choices.
+/// A query remembers the browsing segment; only an explicit result can reveal
+/// another segment. Clearing the query restores the browsing selection.
 struct SettingsSearchNavigation<Category: Equatable> {
     var category: Category
     private(set) var categoryBeforeSearch: Category?
 
     var isSearching: Bool { categoryBeforeSearch != nil }
 
-    mutating func updateSearch(query: String, matching categoryMatch: Category?) {
+    mutating func updateQuery(_ query: String) {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             if let categoryBeforeSearch { category = categoryBeforeSearch }
             categoryBeforeSearch = nil
             return
         }
         if categoryBeforeSearch == nil { categoryBeforeSearch = category }
-        if let categoryMatch { category = categoryMatch }
+    }
+
+    mutating func reveal(_ resultCategory: Category) {
+        guard isSearching else { return }
+        category = resultCategory
     }
 }
 

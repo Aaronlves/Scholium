@@ -3,6 +3,14 @@
   "strings" : {
     "Replacing selection…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Replacing selection…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在替换选中内容…"}}}},
     "Writing Assistance": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Writing Assistance"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "写作辅助"}}}},
+    "Triptych Details": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Triptych Details"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "脉络详情"}}}},
+    "Zotero Desktop": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Zotero Desktop"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Zotero 桌面端"}}}},
+    "Runtime Status": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Runtime Status"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "运行状态"}}}},
+    "Chat Connection": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Chat Connection"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "聊天连接"}}}},
+    "Open Connection and Chat": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Connection and Chat"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开连接与聊天"}}}},
+    "Open Workspace Settings": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Workspace Settings"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开工作区设置"}}}},
+    "Save Selection Actions on the page to keep these changes.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Save Selection Actions on the page to keep these changes."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "返回设置页面后，点击“保存选区操作”以保存这些更改。"}}}},
+    "Connect Codex in Agents & Chat to use Zotero in Chat.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connect Codex in Agents & Chat to use Zotero in Chat."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "在“智能体与聊天”中连接 Codex，以在聊天中使用 Zotero。"}}}},
     "AI returned no usable writing suggestion.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI returned no usable writing suggestion."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 未返回可用的写作建议。"}}}},
     "AI-generated suggestion for discussion:": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI-generated suggestion for discussion:"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "供讨论的 AI 生成建议："}}}},
     "Another writing request is still running or stopping.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Another writing request is still running or stopping."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "另一项写作请求仍在运行或停止中。"}}}},
@@ -58,7 +66,6 @@
     "Restore Writing Continuation Defaults": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore Writing Continuation Defaults"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复续写默认设置"}}}},
     "Some selection actions could not be loaded. Available actions are retained. Save your changes or restore defaults to replace these settings.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some selection actions could not be loaded. Available actions are retained. Save your changes or restore defaults to replace these settings."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分选区操作无法载入，可用操作已保留。保存修改或恢复默认值可替换这些设置。"}}}},
     "Some writing assistance settings could not be loaded. Defaults are used for unavailable values; saved settings remain unchanged until edited or restored.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some writing assistance settings could not be loaded. Defaults are used for unavailable values; saved settings remain unchanged until edited or restored."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分写作辅助设置无法载入，不可用值暂用默认值；编辑或恢复之前，已保存的设置保持不变。"}}}},
-    "Open Skills and Tools": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Skills and Tools"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开技能与工具"}}}},
     "Filter Skills and Tools": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Filter Skills and Tools"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "筛选技能与工具"}}}},
     "Filters the currently loaded runtime inventory; it does not change configuration.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Filters the currently loaded runtime inventory; it does not change configuration."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "筛选当前已载入的运行时能力清单；不会更改配置。"}}}},
     "No Skills Match Filter": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "No Skills Match Filter"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "没有匹配筛选条件的技能"}}}},
@@ -25149,12 +25156,12 @@
         }
       }
     },
-    "Scholium connects only to Zotero Desktop on localhost and never accesses its private database. Chat imports and item changes require explicit confirmation. No account or API key is required." : {
+    "Scholium uses Zotero Desktop's localhost API, not its private database. Chat imports and item changes require explicit confirmation. No account or API key is needed." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 仅通过 localhost 连接 Zotero Desktop，且不访问其私有数据库。Chat 导入和条目修改需要明确确认。无需账户或 API 密钥。"
+            "value" : "Scholium 使用 Zotero Desktop 的 localhost API，不访问其私有数据库。Chat 导入和条目修改需要明确确认；无需账户或 API 密钥。"
           }
         }
       }

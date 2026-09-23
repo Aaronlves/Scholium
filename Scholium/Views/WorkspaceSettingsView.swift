@@ -92,7 +92,8 @@ struct ScholiumSettingsView: View {
                     return
                 }
                 if destinationBeforeSearch == nil { destinationBeforeSearch = destination }
-                if let first = searchResults.first { reveal(first) }
+                // Typing filters destinations; only choosing a result navigates.
+                searchTarget = nil
             }
     }
 
@@ -104,25 +105,32 @@ struct ScholiumSettingsView: View {
             List(selection: sidebarSelection) {
                 if isSearching {
                     Section("Search Results") {
-                        ForEach(searchResults) { result in
-                            Button {
-                                reveal(result)
-                            } label: {
-                                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
-                                    Text(result.title)
-                                    Text(result.destination.title).font(.caption).foregroundStyle(.secondary)
+                        if searchResults.isEmpty {
+                            Text("No Search Results")
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("scholium.settings.noResults")
+                        } else {
+                            ForEach(searchResults) { result in
+                                Button {
+                                    reveal(result)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
+                                        Text(result.title)
+                                        Text(result.destination.title).font(.caption).foregroundStyle(.secondary)
+                                    }
                                 }
+                                .buttonStyle(.borderless)
+                                .accessibilityIdentifier("scholium.settings.result.\(result.id)")
                             }
-                            .buttonStyle(.borderless)
-                            .accessibilityIdentifier("scholium.settings.result.\(result.id)")
                         }
                     }
-                }
-                Section {
-                    ForEach(ScholiumSettingsDestination.allCases) { item in
-                        Label(item.title, systemImage: item.symbol)
-                            .tag(item)
-                            .accessibilityIdentifier("scholium.settings.category.\(item.rawValue)")
+                } else {
+                    Section {
+                        ForEach(ScholiumSettingsDestination.allCases) { item in
+                            Label(item.title, systemImage: item.symbol)
+                                .tag(item)
+                                .accessibilityIdentifier("scholium.settings.category.\(item.rawValue)")
+                        }
                     }
                 }
             }
@@ -136,14 +144,10 @@ struct ScholiumSettingsView: View {
 
     private var selectedPage: some View {
         ScholiumSettingsPaneHost(
-            selection: isSearching && searchResults.isEmpty ? nil : destination,
+            selection: destination,
             identifier: "scholium.settings.pages"
         ) { item in
-            if let item {
-                settingsDetail(for: item)
-            } else {
-                ContentUnavailableView.search(text: searchQuery)
-            }
+            settingsDetail(for: item)
         }
         .environment(\.scholiumSettingsSearchTarget, searchTarget?.sectionID)
         .environment(\.scholiumSettingsSearchRevision, searchRevision)
@@ -214,7 +218,7 @@ struct ZoteroSettingsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Section("Zotero") {
+        Section("Zotero Desktop") {
             LabeledContent("Local API") {
                 Label(statusTitle, systemImage: statusSymbol)
                     .foregroundStyle(.primary)
@@ -235,10 +239,11 @@ struct ZoteroSettingsView: View {
                 }
             }
             Text(
-                "Scholium connects only to Zotero Desktop on localhost and never accesses its private database. Chat imports and item changes require explicit confirmation. No account or API key is required."
+                "Scholium uses Zotero Desktop's localhost API, not its private database. Chat imports and item changes require explicit confirmation. No account or API key is needed."
             )
-            .font(.body)
+            .font(.callout)
             .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
             if info.status == .apiDisabled {
                 Text(
                     "In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again."
@@ -1491,18 +1496,18 @@ private struct WorkspacePathEditor<Registration: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             Form {
                 registration()
-                Section("Name") {
-                    TextField("Name", text: $triptychName)
-                        .labelsHidden()
-                        .accessibilityIdentifier("scholium.triptychName")
-
-                }.id("workspace.name")
-
-                Section("Research Folders") {
+                Section("Triptych Details") {
+                    LabeledContent("Name") {
+                        TextField("Name", text: $triptychName)
+                            .labelsHidden()
+                            .accessibilityIdentifier("scholium.triptychName")
+                    }
+                    .id("workspace.name")
                     WorkspaceFolderRow(
                         title: "Analyses",
                         url: $paperAnalysisURL
                     )
+                    .id("workspace.folders")
                     WorkspaceFolderRow(
                         title: "Topics",
                         url: $topicKnowledgeURL
@@ -1511,7 +1516,7 @@ private struct WorkspacePathEditor<Registration: View>: View {
                         title: "Works",
                         url: $outputURL
                     )
-                }.id("workspace.folders")
+                }
 
                 Section("Portable Triptych Data") {
                     PortableControlFolderRow(
