@@ -41,7 +41,8 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
         switch self {
         case .documentBackground: .textBackgroundColor
         case .surfaceBackground, .navigationSurfaceBackground,
-             .apparatusSurfaceBackground: .windowBackgroundColor
+            .apparatusSurfaceBackground:
+            .windowBackgroundColor
         case .raisedSurfaceBackground: .underPageBackgroundColor
         case .primaryText: .labelColor
         // The native secondary label is below 4.5:1 on a light text surface.
@@ -102,15 +103,16 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     static func calloutTitleRGBValue(
         _ role: String, isDark: Bool, increasedContrast: Bool
     ) -> UInt32 {
-        let color: NSColor = switch role {
-        case "orient": .systemBlue
-        case "cite": .systemIndigo
-        case "connect": .systemTeal
-        case "state": .systemPurple
-        case "illustrate": .systemBrown
-        case "flag": .systemGray
-        default: .secondaryLabelColor
-        }
+        let color: NSColor =
+            switch role {
+            case "orient": .systemBlue
+            case "cite": .systemIndigo
+            case "connect": .systemTeal
+            case "state": .systemPurple
+            case "illustrate": .systemBrown
+            case "flag": .systemGray
+            default: .secondaryLabelColor
+            }
         let appearance = Self.appearance(
             matching: NSAppearance(named: isDark ? .darkAqua : .aqua)!,
             increasedContrast: increasedContrast
@@ -129,7 +131,8 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
         matching appearance: NSAppearance, increasedContrast: Bool
     ) -> NSAppearance {
         let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let name: NSAppearance.Name = increasedContrast
+        let name: NSAppearance.Name =
+            increasedContrast
             ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
             : (dark ? .darkAqua : .aqua)
         return NSAppearance(named: name) ?? appearance

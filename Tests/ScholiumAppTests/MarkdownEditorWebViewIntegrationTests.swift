@@ -2338,7 +2338,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(inactive["codeFont"] as? String != inactive["yamlFont"] as? String)
         #expect(try #require(inactive["yamlPoints"] as? Double) < #require(inactive["bodySize"] as? Double))
         #expect(inactive["plainValueColor"] as? String == inactive["quotedValueColor"] as? String)
-        let expectedHeadingBefore = try #require(inactive["headingSize"] as? Double)
+        let expectedHeadingBefore =
+            try #require(inactive["headingSize"] as? Double)
             * DocumentAppearanceSettings.defaultSettings.headings.level1.spaceBeforeEm
         #expect(abs(try #require(inactive["headingBefore"] as? Double) - expectedHeadingBefore) < 1)
         #expect(try #require(inactive["metadataGap"] as? Double) > 0)
@@ -2379,13 +2380,14 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let geometry = try #require(try await harness.callPageJavaScript(
-            """
-            const code = document.querySelector('.cm-live-codeblock-start');
-            const gap = document.querySelector('.cm-live-semantic-gap-after-frontmatter');
-            return {inset: parseFloat(getComputedStyle(code).paddingTop), gap: gap?.getBoundingClientRect().height || 0};
-            """
-        ) as? [String: Any])
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const code = document.querySelector('.cm-live-codeblock-start');
+                const gap = document.querySelector('.cm-live-semantic-gap-after-frontmatter');
+                return {inset: parseFloat(getComputedStyle(code).paddingTop), gap: gap?.getBoundingClientRect().height || 0};
+                """
+            ) as? [String: Any])
         #expect(geometry["inset"] as? Double == Double(ScholiumDocumentRhythm.codeBlockInset))
         #expect(try #require(geometry["gap"] as? Double) > 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -7342,12 +7344,14 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
             #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
 
-            let regularSourceInset = try #require(try await harness.callPageJavaScript(
-                "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-source-mode .cm-scroller')).paddingInlineStart);"
-            ) as? Double)
-            let gutterGap = try #require(try await harness.callPageJavaScript(
-                "return document.querySelector('.scholium-source-mode .cm-content').getBoundingClientRect().left - document.querySelector('.scholium-source-mode .cm-gutters').getBoundingClientRect().right;"
-            ) as? Double)
+            let regularSourceInset = try #require(
+                try await harness.callPageJavaScript(
+                    "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-source-mode .cm-scroller')).paddingInlineStart);"
+                ) as? Double)
+            let gutterGap = try #require(
+                try await harness.callPageJavaScript(
+                    "return document.querySelector('.scholium-source-mode .cm-content').getBoundingClientRect().left - document.querySelector('.scholium-source-mode .cm-gutters').getBoundingClientRect().right;"
+                ) as? Double)
             #expect(regularSourceInset > 40)
             #expect(gutterGap >= 0 && gutterGap < 32)
             let selectionBeforeLineWidthChange = harness.session.context?.selections
@@ -7372,9 +7376,10 @@ struct MarkdownEditorWebViewIntegrationTests {
                 $0.label == "Markdown source editor"
                     && $0.presentation.rootLineWidth == "48ch"
             }
-            let customSourceInset = try #require(try await harness.callPageJavaScript(
-                "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-source-mode .cm-scroller')).paddingInlineStart);"
-            ) as? Double)
+            let customSourceInset = try #require(
+                try await harness.callPageJavaScript(
+                    "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-source-mode .cm-scroller')).paddingInlineStart);"
+                ) as? Double)
             #expect(abs(customSourceInset - regularSourceInset) < 1)
             #expect(customSourceGrid.presentation.documentFontFamily.contains("Menlo"))
             #expect(customSourceGrid.isFocused)
