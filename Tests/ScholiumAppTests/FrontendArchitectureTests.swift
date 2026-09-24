@@ -778,6 +778,10 @@ struct FrontendArchitectureTests {
             contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
             encoding: .utf8
         )
+        let workspaceShellStart = try #require(
+            contentSource.range(of: "    private var workspaceShell: some View {")
+        )
+        let rootBodySource = contentSource[..<workspaceShellStart.lowerBound]
         let appSource = try WindowCompositionSource.text(at: repositoryRoot)
         let sidebarSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
@@ -911,7 +915,7 @@ struct FrontendArchitectureTests {
         #expect(contentSource.contains(".ignoresSafeArea(.container, edges: .top)"))
         #expect(!splitSource.contains("workspaceWindowDidBecomeKey"))
         #expect(splitSource.contains("researchInspectorVisibilityDidChange"))
-        #expect(!contentSource.contains("availableSize: geometry.size"))
+        #expect(!rootBodySource.contains("GeometryReader { geometry in"))
         #expect(!contentSource.contains("updateWindowWidth(geometry.size.width)"))
         #expect(!contentSource.contains(".frame(minWidth: 360"))
         #expect(windowManagementSource.contains("final class WorkspaceWindowCoordinator"))

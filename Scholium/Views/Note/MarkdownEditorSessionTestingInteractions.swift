@@ -217,6 +217,22 @@
             lineContaining lineText: String
         ) async throws -> TestingPointerProjectionResult {
             guard let webView else { throw SessionError.unavailable }
+            let scrolled = try await webView.callAsyncJavaScript(
+                """
+                const line = [...document.querySelectorAll('.cm-line')]
+                    .find(candidate => candidate.textContent?.includes(lineText));
+                if (!(line instanceof HTMLElement)) return false;
+                line.scrollIntoView({block: 'center', behavior: 'auto'});
+                return true;
+                """,
+                arguments: ["lineText": lineText],
+                in: nil,
+                contentWorld: .page
+            )
+            guard scrolled as? Bool == true else { throw SessionError.invalidResult }
+            // Scrolling can trigger a CodeMirror viewport measurement. Resolve
+            // the drag points after that layout turn, as visible-text clicks do.
+            try await Task.sleep(for: .milliseconds(100))
             let rawPosition = try await webView.callAsyncJavaScript(
                 """
                 const locate = requested => {
@@ -238,10 +254,6 @@
                     }
                     return null;
                 };
-                const line = [...document.querySelectorAll('.cm-line')]
-                    .find(candidate => candidate.textContent?.includes(lineText));
-                if (!(line instanceof HTMLElement)) return null;
-                line.scrollIntoView({block: 'center', behavior: 'auto'});
                 const start = locate(startText);
                 const end = locate(endText);
                 if (!start || !end) return null;
@@ -250,7 +262,6 @@
                 arguments: [
                     "startText": startText,
                     "endText": endText,
-                    "lineText": lineText,
                 ],
                 in: nil,
                 contentWorld: .page
@@ -263,7 +274,6 @@
             else {
                 throw SessionError.invalidResult
             }
-            try await Task.sleep(for: .milliseconds(100))
             try await testingDragPagePoints(
                 from: (startX, startY),
                 to: (endX, endY),

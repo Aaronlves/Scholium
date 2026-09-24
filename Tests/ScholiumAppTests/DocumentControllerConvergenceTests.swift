@@ -869,17 +869,17 @@ struct DocumentControllerConvergenceTests {
         let boundaries = [
             (
                 name: "DocumentFeatureView",
-                start: "struct DocumentFeatureView: View {",
-                end: "private struct DocumentSessionFallback: View {"
+                start: "struct DocumentFeatureView<",
+                end: "private struct DocumentSessionFallback<"
             ),
             (
                 name: "DocumentSessionFallback",
-                start: "private struct DocumentSessionFallback: View {",
-                end: "struct NoteContentView: View {"
+                start: "private struct DocumentSessionFallback<",
+                end: "struct NoteContentView<"
             ),
             (
                 name: "NoteContentView",
-                start: "struct NoteContentView: View {",
+                start: "struct NoteContentView<",
                 end: "// MARK: - Source comparison"
             ),
         ]
