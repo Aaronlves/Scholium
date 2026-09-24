@@ -73,6 +73,10 @@ LAUNCH_DETAIL_KEYS = (
     "startup_safety_ready_to_vault_configuration_ready_duration_ms",
     "vault_configuration_ready_to_projection_duration_ms",
 )
+SEARCH_PHASE_KEYS = (
+    "search_input_to_dispatch_duration_ms",
+    "search_dispatch_to_ready_duration_ms",
+)
 FIRST_READ_PHASE_KEYS = (
     "activation_to_document_selection_duration_ms",
     "document_selection_to_read_task_start_duration_ms",
@@ -94,6 +98,8 @@ ALLOWED_KEYS = {
     "bridge_started_duration_ms",
     "bridge_roundtrip_duration_ms",
     "layout_duration_ms",
+    "search_input_to_dispatch_duration_ms",
+    "search_dispatch_to_ready_duration_ms",
     "process_to_window_model_init_duration_ms",
     "window_model_init_to_workspace_ready_duration_ms",
     "workspace_ready_to_projection_duration_ms",
@@ -343,6 +349,23 @@ def load_metric(
                 raise SystemExit(f"{path}:{line_number}: missing retained launch detail")
         elif any(value is not None for value in launch_details):
             raise SystemExit(f"{path}:{line_number}: unexpected launch detail duration")
+        search_phases = tuple(record.get(phase) for phase in SEARCH_PHASE_KEYS)
+        if metric == "indexed_search":
+            if any(value is not None for value in search_phases):
+                if any(
+                    not isinstance(value, (int, float))
+                    or isinstance(value, bool)
+                    or not math.isfinite(value)
+                    or value < 0
+                    for value in search_phases
+                ):
+                    raise SystemExit(f"{path}:{line_number}: invalid Search phase duration")
+                if abs(sum(float(value) for value in search_phases) - float(duration)) > 0.001:
+                    raise SystemExit(f"{path}:{line_number}: Search phases do not match duration")
+            elif record["sample"] >= warmups:
+                raise SystemExit(f"{path}:{line_number}: missing retained Search phase")
+        elif any(value is not None for value in search_phases):
+            raise SystemExit(f"{path}:{line_number}: unexpected Search phase duration")
         first_read_phases = tuple(record.get(phase) for phase in FIRST_READ_PHASE_KEYS)
         if metric == "first_read_activation":
             if any(
@@ -638,6 +661,32 @@ def self_test() -> None:
         loaded, measured = load_metric(path, "editor_mode_transition", "self_test", 0, 2)
         assert len(loaded) == 2 and measured == [10.0, 10.0]
 
+        search_path = Path(directory) / "indexed_search.jsonl"
+        search_record = {
+            "schema": "scholium-performance-v1",
+            "metric": "indexed_search",
+            "run_id": "self_test",
+            "sample": 0,
+            "duration_ms": 10.0,
+            "completed_uptime_ns": 1,
+            "observed_count": 1,
+            "search_input_to_dispatch_duration_ms": 7.0,
+            "search_dispatch_to_ready_duration_ms": 3.0,
+        }
+        search_path.write_text(json.dumps(search_record) + "\n", encoding="utf-8")
+        loaded, measured = load_metric(
+            search_path, "indexed_search", "self_test", 0, 1
+        )
+        assert len(loaded) == 1 and measured == [10.0]
+        search_record.pop("search_dispatch_to_ready_duration_ms")
+        search_path.write_text(json.dumps(search_record) + "\n", encoding="utf-8")
+        try:
+            load_metric(search_path, "indexed_search", "self_test", 0, 1)
+        except SystemExit as error:
+            assert "invalid Search phase duration" in str(error)
+        else:
+            raise AssertionError("The summary accepted an incomplete Search record.")
+
         first_read_path = Path(directory) / "first_read_activation.jsonl"
         first_read_path.write_text(
             json.dumps({
@@ -888,6 +937,16 @@ def main() -> None:
                         "maximum_ms": max(values),
                         "mean_ms": statistics.fmean(values),
                     }
+        if metric == "indexed_search":
+            retained_records = records[arguments.warmups :]
+            for phase in SEARCH_PHASE_KEYS:
+                values = [float(record[phase]) for record in retained_records]
+                summaries[metric][phase] = {
+                    "p50_ms": nearest_rank(values, 0.50),
+                    "p95_ms": nearest_rank(values, 0.95),
+                    "maximum_ms": max(values),
+                    "mean_ms": statistics.fmean(values),
+                }
         if metric == "first_read_activation":
             retained_records = records[arguments.warmups :]
             for phase in FIRST_READ_PHASE_KEYS:

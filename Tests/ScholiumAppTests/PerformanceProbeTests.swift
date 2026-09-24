@@ -7,6 +7,48 @@ import Testing
 @Suite("Performance probe")
 @MainActor
 struct PerformanceProbeTests {
+    @Test("Search phases preserve the committed-input and visible-result boundary")
+    func searchRecordsDispatchPhase() throws {
+        let runID = "search_phase_\(UUID().uuidString)"
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/performance-\(runID)/app-state/raw")
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer {
+            try? FileManager.default.removeItem(
+                at: directory.deletingLastPathComponent().deletingLastPathComponent()
+            )
+        }
+        let result = directory.appendingPathComponent("indexed_search.jsonl")
+        var times: [UInt64] = [1_000_000, 11_000_000, 31_000_000]
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "indexed_search",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_QUERY": "Fixture",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_COUNT": "1",
+            ],
+            bundleID: "com.scholium.qa",
+            now: { times.removeFirst() }
+        )
+        probe.beginSearch(query: "Fixture")
+        probe.markSearchDispatched(query: "Fixture")
+        probe.markSearchResultsReady(query: "Fixture", resultCount: 1)
+
+        let line = try #require(String(contentsOf: result, encoding: .utf8).split(separator: "\n").first)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+        )
+        #expect(object["duration_ms"] as? Double == 30)
+        #expect(object["search_input_to_dispatch_duration_ms"] as? Double == 10)
+        #expect(object["search_dispatch_to_ready_duration_ms"] as? Double == 20)
+    }
+
     @Test("Read and first-use Edit metrics establish Review before selection")
     func reviewSetupIsMetricBound() throws {
         let directory = URL(

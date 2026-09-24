@@ -38,6 +38,7 @@ final class PerformanceProbe {
     private let configuration: Configuration?
     private let now: () -> UInt64
     private var searchStartNanoseconds: UInt64?
+    private var searchDispatchNanoseconds: UInt64?
     private var readStartNanoseconds: UInt64?
     private var editorModeTransition:
         (
@@ -184,12 +185,24 @@ final class PerformanceProbe {
         guard let configuration, configuration.metric == .indexedSearch else { return }
         guard query == configuration.expectedQuery else {
             searchStartNanoseconds = nil
+            searchDispatchNanoseconds = nil
             searchIsArmed = true
             return
         }
         guard searchIsArmed else { return }
         searchIsArmed = false
         searchStartNanoseconds = now()
+        searchDispatchNanoseconds = nil
+    }
+
+    func markSearchDispatched(query: String) {
+        guard let configuration,
+            configuration.metric == .indexedSearch,
+            query == configuration.expectedQuery,
+            searchStartNanoseconds != nil,
+            searchDispatchNanoseconds == nil
+        else { return }
+        searchDispatchNanoseconds = now()
     }
 
     func markSearchResultsReady(query: String, resultCount: Int) {
@@ -199,7 +212,20 @@ final class PerformanceProbe {
             configuration.expectedCount.map({ $0 == resultCount }) ?? true,
             let start = searchStartNanoseconds
         else { return }
-        record(startNanoseconds: start, observedCount: resultCount)
+        let ready = now()
+        var phases: [String: Double] = [:]
+        if let dispatch = searchDispatchNanoseconds,
+            dispatch >= start, ready >= dispatch
+        {
+            phases["search_input_to_dispatch_duration_ms"] = milliseconds(dispatch - start)
+            phases["search_dispatch_to_ready_duration_ms"] = milliseconds(ready - dispatch)
+        }
+        record(
+            startNanoseconds: start,
+            observedCount: resultCount,
+            completedNanoseconds: ready,
+            phaseDurations: phases
+        )
     }
 
     func beginReadActivation(documentID: String) {
@@ -566,6 +592,7 @@ final class PerformanceProbe {
         guard append(object, to: configuration.resultURL) else { return }
         recordedSampleCount += 1
         searchStartNanoseconds = nil
+        searchDispatchNanoseconds = nil
         readStartNanoseconds = nil
     }
 

@@ -426,7 +426,7 @@ struct ResearchSearchView<Library: View>: View {
         case .submit:
             if acceptCompletion(preferFirst: false) { return true }
             if controller.search.isRunning || controller.search.selectedResultID == nil {
-                scheduleSearch()
+                scheduleSearch(immediately: true)
             } else {
                 openSelectedResult()
             }
@@ -969,12 +969,15 @@ struct ResearchSearchView<Library: View>: View {
         }
     }
 
-    private func scheduleSearch() {
+    private func scheduleSearch(immediately: Bool = false) {
         searchTask?.cancel()
         controller.selectSearchResult(nil)
         searchTask = Task {
-            do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            if !immediately {
+                do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+            }
             guard !Task.isCancelled, isActive else { return }
+            PerformanceProbe.shared.markSearchDispatched(query: queryDraft)
             await context.refresh()
         }
     }

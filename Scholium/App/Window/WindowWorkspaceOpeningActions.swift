@@ -186,7 +186,7 @@ extension WindowModel {
             let workspaceSnapshot = session.snapshot
             let workspaceVaultSnapshots = workspaceSnapshot.vaults
             guard
-                let vaultSnapshot = workspaceVaultSnapshots.first(where: {
+                workspaceVaultSnapshots.contains(where: {
                     $0.vault.id == registered.id
                 })
             else {
@@ -195,11 +195,6 @@ extension WindowModel {
             // Stage the complete target runtime and inventory before replacing
             // any visible window state. A failed vault open must leave the
             // current Triptych document and editor intact.
-            let targetNotes = vaultSnapshot.documents
-                .map(WindowDocumentLocation.workspace)
-                .sorted {
-                    $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
-                }
             let targetConfig = await windowWorkspaceController.vaultConfig(
                 rootURL: URL(
                     fileURLWithPath: registered.canonicalPath,
@@ -210,7 +205,6 @@ extension WindowModel {
 
             resetWindowSession()
 
-            workspaceProjectionController.replaceVaultSnapshots(workspaceVaultSnapshots)
             if let slot = workspaceSlot(for: registered) {
                 discoveryController.synchronizeLibrarySelection(
                     workspaceSlot: slot,
@@ -223,7 +217,6 @@ extension WindowModel {
             currentRegisteredVault = registered
             currentVaultRole = registered.role
             vaultConfig = targetConfig
-            workspaceProjectionController.replaceVisibleNotes(targetNotes)
             let commit = workspaceProjectionController.activate(
                 snapshot: workspaceSnapshot,
                 runtimeIdentity: capabilities.runtimeIdentity,
