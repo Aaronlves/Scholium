@@ -36,11 +36,12 @@ fi
 export DEVELOPER_DIR
 "${ROOT}/Tools/Scripts/require-unlocked-ui-host.sh"
 mkdir -p "${ROOT}/.build"
-SCRATCH="$(mktemp -d "${ROOT}/.build/packaged-core-smoke.XXXXXX")"
+SCRATCH="$(mktemp -d "${ROOT}/.build/pc.XXXXXX")"
 MOUNT="${SCRATCH}/mounted-dmg"
 COPIED_APP="${SCRATCH}/copied/Scholium.app"
 PRODUCTION_STATE="${HOME}/Library/Application Support/Scholium/State-v1"
 DMG_ATTACHED=false
+ISOLATED_HOMES=()
 
 state_signature() {
   local state="$1"
@@ -59,16 +60,25 @@ state_signature() {
 
 cleanup() {
   local exit_code=$?
-  local app pid
+  set +e
+  print -u2 "Cleaning up packaged Core smoke (status ${exit_code})."
+  local app
   for app in "${MOUNT}/Scholium.app" "${COPIED_APP}"; do
-    for pid in $(pgrep -f "^${app}/Contents/MacOS/Scholium( |$)" 2>/dev/null || true); do
-      kill "${pid}" 2>/dev/null || true
+    pkill -TERM -f "^${app}/Contents/MacOS/Scholium( |$)" 2>/dev/null || true
+    for _ in {1..40}; do
+      pgrep -f "^${app}/Contents/MacOS/Scholium( |$)" >/dev/null 2>&1 || break
+      sleep 0.25
     done
   done
   if [[ "${DMG_ATTACHED}" == true ]]; then
-    if diskutil eject "${MOUNT}" >/dev/null 2>&1; then
-      DMG_ATTACHED=false
-    else
+    for _ in {1..10}; do
+      if diskutil eject "${MOUNT}" >/dev/null 2>&1; then
+        DMG_ATTACHED=false
+        break
+      fi
+      sleep 0.5
+    done
+    if [[ "${DMG_ATTACHED}" == true ]]; then
       print -u2 "Could not eject the packaged DMG at ${MOUNT}."
       exit_code=1
     fi
@@ -77,6 +87,18 @@ cleanup() {
     print -u2 "The packaged Core smoke mutated production machine state."
     exit_code=1
   fi
+  local isolated_home
+  for isolated_home in "${ISOLATED_HOMES[@]}"; do
+    case "${isolated_home}" in
+      "${HOME}/Library/Application Support/Scholium/Test Runs/packaged-core-"*)
+        rm -rf "${isolated_home}"
+        ;;
+      *)
+        print -u2 "Refusing to remove an unexpected isolated Home: ${isolated_home}"
+        exit_code=1
+        ;;
+    esac
+  done
   if (( exit_code == 0 )); then
     rm -rf "${SCRATCH}"
   else
@@ -145,11 +167,12 @@ set_test_environment() {
 run_smoke() {
   local stage="$1"
   local app="$2"
-  local fixture="${SCRATCH}/fixture-${stage}"
-  local isolated_home="${SCRATCH}/home-${stage}"
+  local fixture="${SCRATCH}/f-${stage}"
   local run_id="packaged-core-${stage}-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  local isolated_home="${HOME}/Library/Application Support/Scholium/Test Runs/${run_id}"
   local run_file="${DRIVER_PRODUCTS}/ScholiumPackagedCore-${stage}.xctestrun"
   ditto --norsrc --noextattr --noqtn --noacl "${ROOT}/TestVaults" "${fixture}"
+  ISOLATED_HOMES+=("${isolated_home}")
   mkdir -p "${isolated_home}"
   cp "${BASE_XCTESTRUN}" "${run_file}"
   set_test_environment "${run_file}" SCHOLIUM_PACKAGED_CORE_SMOKE 1

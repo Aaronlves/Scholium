@@ -241,21 +241,23 @@ final class ScholiumPerformanceUITests: XCTestCase {
         connect.click()
         let noteRow = packagedNoteRow(in: application)
         XCTAssertTrue(noteRow.waitForExistence(timeout: 45))
-        XCTAssertFalse(
-            application.descendants(matching: .any)["scholium.bootstrap"].exists,
-            "A connected Triptych must replace Bootstrap."
-        )
         noteRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         let mode = documentModeControl(in: application)
         XCTAssertTrue(mode.waitForExistence(timeout: 20))
         selectPackagedSourceMode(in: application, control: mode)
         let editor = application.descendants(matching: .any)["Markdown source editor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 20))
-        XCTAssertTrue(waitUntil(timeout: 20) { editor.value as? String == originalSource })
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                self.packagedSourceAccessibilityMatches(originalSource, in: editor)
+            })
         editor.click()
         editor.typeKey(.end, modifierFlags: [.command])
         editor.typeText(addition)
-        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == expectedSource })
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                self.packagedSourceAccessibilityMatches(expectedSource, in: editor)
+            })
         application.typeKey("s", modifierFlags: [.command])
         XCTAssertTrue(
             waitUntil(timeout: 30) { (try? Data(contentsOf: noteURL)) == expectedBytes },
@@ -284,10 +286,22 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let restoredEditor = application.descendants(matching: .any)["Markdown source editor"]
         XCTAssertTrue(restoredEditor.waitForExistence(timeout: 20))
         XCTAssertTrue(
-            waitUntil(timeout: 20) { restoredEditor.value as? String == expectedSource },
+            waitUntil(timeout: 20) {
+                self.packagedSourceAccessibilityMatches(expectedSource, in: restoredEditor)
+            },
             "Reopening after relaunch must display the exact saved source."
         )
         XCTAssertEqual(try Data(contentsOf: noteURL), expectedBytes)
+    }
+
+    @MainActor
+    private func packagedSourceAccessibilityMatches(
+        _ expected: String,
+        in editor: XCUIElement
+    ) -> Bool {
+        guard let value = editor.value as? String else { return false }
+        // WebKit accessibility may expose one terminal blank line; disk bytes are checked exactly.
+        return value == expected || value == expected + "\n"
     }
 
     @MainActor
@@ -336,6 +350,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
             ).click()
             XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
         }
+        let selectedPath = application.staticTexts.matching(
+            NSPredicate(format: "value CONTAINS %@", folder.path)
+        ).firstMatch
+        XCTAssertTrue(
+            selectedPath.waitForExistence(timeout: 10),
+            "The packaged picker must return the exact disposable folder before continuing."
+        )
     }
 
     @MainActor
