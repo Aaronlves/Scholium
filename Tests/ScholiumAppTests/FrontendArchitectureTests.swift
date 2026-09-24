@@ -241,7 +241,7 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
         let source = try WindowCompositionSource.text(at: repository)
         let tokenOwner = try #require(
-            source.range(of: "private var performanceModeNotificationTokens")
+            source.range(of: "private var performanceNotificationTokens")
         )
         let registrationStart = try #require(
             source.range(
@@ -273,6 +273,10 @@ struct FrontendArchitectureTests {
         #expect(
             registration.contains(
                 "--scholium-performance-editor-mode-notifications"
+            ))
+        #expect(
+            registration.contains(
+                "--scholium-performance-library-reveal-notifications"
             ))
         #expect(!registration.contains("#if DEBUG"))
         #expect(!registration.contains("Bundle.main.bundleIdentifier"))
