@@ -6,6 +6,65 @@ import WebKit
 @Suite(.serialized)
 @MainActor
 struct DocumentToolbarUnderlapTests {
+    @Test("The Document surface excludes toolbar hits and keeps body input")
+    func fullDocumentSurfaceYieldsToolbarInput() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+            styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.toolbar = NSToolbar(identifier: "DocumentToolbarSurfaceTests")
+        window.toolbarStyle = .unified
+        window.titlebarAppearsTransparent = true
+
+        let web = WKWebView(frame: NSRect(x: 0, y: 0, width: 700, height: 500))
+        let viewport = DocumentWebViewContainer(webView: web)
+        viewport.toolbarUnderlapEnabled = true
+        let document = NSViewController()
+        document.view = NSView(frame: viewport.frame)
+        viewport.autoresizingMask = [.width, .height]
+        document.view.addSubview(viewport)
+        let surface = ScholiumSurfaceContainerViewController(
+            contentViewController: document,
+            backgroundRole: .document,
+            contentExtendsUnderToolbar: true
+        )
+        window.contentViewController = surface
+        defer { window.close() }
+        window.setContentSize(NSSize(width: 700, height: 500))
+        window.layoutIfNeeded()
+        surface.view.layoutSubtreeIfNeeded()
+        document.view.layoutSubtreeIfNeeded()
+        #expect(viewport.bounds.width > 500)
+        #expect(viewport.bounds.height > 300)
+
+        let overlap = viewport.toolbarOverlap
+        #expect(overlap.height > 0)
+        let toolbarLocation = viewport.convert(
+            NSPoint(x: overlap.midX, y: overlap.midY), to: nil
+        )
+        let toolbarPoint = surface.view.convert(toolbarLocation, from: nil)
+        let cursorArea = try #require(surface.view.trackingAreas.first {
+            $0.options.contains(.cursorUpdate)
+        })
+        #expect(cursorArea.rect.contains(toolbarPoint))
+        let toolbarHit = surface.view.hitTest(
+            surface.view.convert(toolbarPoint, to: surface.view.superview)
+        )
+        #expect(toolbarHit == nil)
+
+        let bodyLocation = viewport.convert(
+            NSPoint(x: viewport.bounds.midX, y: overlap.maxY + 20), to: nil
+        )
+        let bodyPoint = surface.view.convert(bodyLocation, from: nil)
+        #expect(!cursorArea.rect.contains(bodyPoint))
+        let bodyHit = try #require(surface.view.hitTest(
+            surface.view.convert(bodyPoint, to: surface.view.superview)
+        ))
+        #expect(bodyHit === web || bodyHit.isDescendant(of: web))
+    }
+
     @Test("WebKit may scroll behind native toolbar without owning its input")
     func underlapRoutesToolbarInputToWindow() throws {
         _ = NSApplication.shared

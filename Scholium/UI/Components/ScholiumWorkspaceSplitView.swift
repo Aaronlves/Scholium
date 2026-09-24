@@ -1,6 +1,77 @@
 import AppKit
 import SwiftUI
 
+/// The Document can paint behind an invisible toolbar background, but the
+/// native titlebar still owns input and the cursor across that entire region.
+/// Keep SwiftUI overlays and the semantic background out of hit testing there,
+/// then replace WebKit's text cursor only in the native chrome overlap.
+@MainActor
+private final class ScholiumSurfaceContainerView: NSView {
+    let relinquishesToolbarInput: Bool
+    private var chromeObservation: NSKeyValueObservation?
+    private var toolbarCursorArea: NSTrackingArea?
+
+    init(relinquishesToolbarInput: Bool) {
+        self.relinquishesToolbarInput = relinquishesToolbarInput
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        chromeObservation = window?.observe(\.contentLayoutRect, options: [.initial, .new]) {
+            [weak self] _, _ in
+            MainActor.assumeIsolated { self?.updateTrackingAreas() }
+        }
+        updateTrackingAreas()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let toolbarCursorArea { removeTrackingArea(toolbarCursorArea) }
+        toolbarCursorArea = nil
+        guard relinquishesToolbarInput else { return }
+        let chrome = toolbarChrome.intersection(bounds)
+        guard !chrome.isEmpty else { return }
+        let area = NSTrackingArea(
+            rect: chrome,
+            options: [.cursorUpdate, .activeInKeyWindow],
+            owner: self
+        )
+        addTrackingArea(area)
+        toolbarCursorArea = area
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        if relinquishesToolbarInput,
+            toolbarChrome.contains(convert(event.locationInWindow, from: nil))
+        {
+            NSCursor.arrow.set()
+            return
+        }
+        super.cursorUpdate(with: event)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard relinquishesToolbarInput else { return super.hitTest(point) }
+        let localPoint = convert(point, from: superview)
+        if bounds.contains(localPoint), toolbarChrome.contains(localPoint) { return nil }
+        return super.hitTest(point)
+    }
+
+    private var toolbarChrome: NSRect {
+        guard let window, let contentView = window.contentView else { return .zero }
+        let content = contentView.convert(contentView.bounds, to: nil)
+        let lowerEdge = window.contentLayoutRect.maxY
+        let chrome = NSRect(
+            x: content.minX, y: lowerEdge,
+            width: content.width, height: max(0, content.maxY - lowerEdge)
+        )
+        return convert(chrome, from: nil)
+    }
+}
+
 /// One opaque semantic content plane for a native split item. The same
 /// background view fills the complete region beneath the transparent titlebar,
 /// while foreground content explicitly chooses toolbar underlap or the live safe area. The
@@ -37,7 +108,9 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
     }
 
     override func loadView() {
-        let containerView = NSView()
+        let containerView = ScholiumSurfaceContainerView(
+            relinquishesToolbarInput: contentExtendsUnderToolbar
+        )
 
         addChild(contentViewController)
         backgroundView.translatesAutoresizingMaskIntoConstraints = false
