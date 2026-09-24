@@ -171,17 +171,17 @@ run_smoke() {
   local run_id="packaged-core-${stage}-$(date -u +%Y%m%dT%H%M%SZ)-$$"
   local isolated_home="${HOME}/Library/Application Support/Scholium/Test Runs/${run_id}"
   local run_file="${DRIVER_PRODUCTS}/ScholiumPackagedCore-${stage}.xctestrun"
-  ditto --norsrc --noextattr --noqtn --noacl "${ROOT}/TestVaults" "${fixture}"
+  ditto --norsrc --noextattr --noqtn --noacl "${ROOT}/TestVaults" "${fixture}" || return 1
   ISOLATED_HOMES+=("${isolated_home}")
-  mkdir -p "${isolated_home}"
-  cp "${BASE_XCTESTRUN}" "${run_file}"
-  set_test_environment "${run_file}" SCHOLIUM_PACKAGED_CORE_SMOKE 1
-  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH "${app}"
-  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT "${fixture}"
-  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT "${isolated_home}"
-  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID "${run_id}"
+  mkdir -p "${isolated_home}" || return 1
+  cp "${BASE_XCTESTRUN}" "${run_file}" || return 1
+  set_test_environment "${run_file}" SCHOLIUM_PACKAGED_CORE_SMOKE 1 || return 1
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH "${app}" || return 1
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT "${fixture}" || return 1
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT "${isolated_home}" || return 1
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID "${run_id}" || return 1
 
-  "${DEVELOPER_DIR}/usr/bin/xcodebuild" \
+  if ! "${DEVELOPER_DIR}/usr/bin/xcodebuild" \
     -xctestrun "${run_file}" \
     -destination "platform=macOS,arch=$(uname -m)" \
     -parallel-testing-enabled NO \
@@ -189,7 +189,10 @@ run_smoke() {
     -resultBundlePath "${SCRATCH}/packaged-core-${stage}.xcresult" \
     test-without-building \
     -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testPackagedCoreSmoke \
-    >"${SCRATCH}/packaged-core-${stage}.log"
+    >"${SCRATCH}/packaged-core-${stage}.log"; then
+    print -u2 "The ${stage} packaged Core journey failed; see ${SCRATCH}/packaged-core-${stage}.log."
+    return 1
+  fi
   for _ in {1..40}; do
     pgrep -f "^${app}/Contents/MacOS/Scholium( |$)" >/dev/null 2>&1 || break
     sleep 0.25
@@ -201,6 +204,6 @@ run_smoke() {
   print "Packaged Core smoke (${stage}): Bootstrap, Triptych, exact save, relaunch/readback"
 }
 
-run_smoke mounted "${MOUNTED_APP}"
-run_smoke copied "${COPIED_APP}"
+if ! run_smoke mounted "${MOUNTED_APP}"; then exit 1; fi
+if ! run_smoke copied "${COPIED_APP}"; then exit 1; fi
 print "Production machine state: unchanged"
