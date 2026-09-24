@@ -153,6 +153,9 @@ extension WindowModel {
     func adoptWorkspaceActivation(_ activation: WorkspaceActivation) {
         guard let replacement = windowWorkspaceController.adopt(activation) else { return }
         PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
+        // A restored Triptych may bypass installWindowWorkspaceSession; at
+        // adoption its validated startup state is already safe to expose.
+        PerformanceProbe.shared.markStartupSafetyReady()
 
         let previousAssignment = replacement.previousAssignment
         let previousVault = currentRegisteredVault
@@ -160,6 +163,7 @@ extension WindowModel {
             to: activation.capabilities,
             snapshot: activation.snapshot
         )
+        PerformanceProbe.shared.markVaultConfigurationReady()
         editorFlushCoordinator.activateTriptych(activation.workspaceID) { [weak self] in
             guard let self else { return }
             try await self.documentController.flushLeasedOrPinnedSessions()

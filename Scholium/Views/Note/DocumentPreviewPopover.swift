@@ -6,6 +6,7 @@ import WebKit
 @MainActor
 final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDelegate {
     var onEvent: ((DocumentFloatingAction) -> Void)?
+    var onShown: (() -> Void)?
     // One renderer per document host. Hidden content is never an active preview.
     private var renderer: PreviewWebView?
     var webView: WKWebView? { surface == nil ? nil : renderer }
@@ -139,6 +140,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
                 width: 1, height: max(1, surface.bottom - surface.top))
             popover.show(relativeTo: anchor, of: owner, preferredEdge: owner.isFlipped ? .maxY : .minY)
             (webView as? PreviewWebView)?.allowsFocus = true
+            if popover.isShown { self.onShown?() }
         }
     }
 

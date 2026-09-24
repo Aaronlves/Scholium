@@ -160,6 +160,7 @@ final class DocumentFloatingSurfaceController: NSObject {
     private var suggestionsBelow: Bool?
     var previewWebView: WKWebView? { preview?.webView }
     var isPreviewShown: Bool { preview?.isShown == true }
+    var onPreviewShown: (() -> Void)?
     private var event: ((Int, DocumentFloatingAction, Int) async -> Bool)?
     private var selectionBar: SelectionActionBar?
     var selectionResultPopover: NSPopover? { resultPopover }
@@ -211,6 +212,7 @@ final class DocumentFloatingSurfaceController: NSObject {
         if case .preview(let value) = value {
             let content = preview ?? DocumentPreviewPopover()
             preview = content
+            content.onShown = { [weak self] in self?.onPreviewShown?() }
             content.onEvent = { [weak self] action in
                 self?.send(action)
                 if action == .dismiss { self?.dismiss() }

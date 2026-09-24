@@ -273,10 +273,7 @@ fi
 FIXTURE_COPY="${APP_SCRATCH}/rdf1"
 RAW="${SCRATCH}/raw"
 DERIVED="${SCRATCH}/derived-data"
-APP_RESULT_ROOT="${RAW}"
-if [[ "${ARTIFACT_KIND}" == packaged_release ]]; then
-  APP_RESULT_ROOT="${APP_SCRATCH}/raw"
-fi
+APP_RESULT_ROOT="${APP_SCRATCH}/raw"
 
 cleanup() {
   local exit_code=$?
@@ -297,6 +294,11 @@ cleanup() {
     exit_code=1
   fi
   if [[ "${APP_SCRATCH}" != "${SCRATCH}/app-state" ]]; then
+    if (( exit_code != 0 )) && [[ -d "${APP_RESULT_ROOT}" ]]; then
+      mkdir -p "${SCRATCH}/partial-app-raw"
+      cp -R "${APP_RESULT_ROOT}/." "${SCRATCH}/partial-app-raw/" || \
+        print -u2 "Could not retain every partial app-side performance record."
+    fi
     rm -rf "${APP_SCRATCH}"
   fi
   if (( exit_code == 0 )); then

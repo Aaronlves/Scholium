@@ -63,11 +63,8 @@ export function createPreviewPopoverController(
     nativeFloating: NativePreviewPort;
     previews(): readonly LinkPreview[];
     footnotes(): FootnotePresentation;
+    holdOpenForPerformancePreview(): boolean;
     renderFootnoteContent(content: string, parent: HTMLElement): void;
-    postPerformanceSample(
-      metric: "editor_cached_preview",
-      durationMilliseconds: number,
-    ): void;
   },
 ): PreviewPopoverController {
   let nativeID = 0;
@@ -151,7 +148,7 @@ export function createPreviewPopoverController(
   }
 
   function scheduleHide() {
-    if (hasPinnedPreview() || nativeHovered) return;
+    if (hasPinnedPreview() || nativeHovered || options.holdOpenForPerformancePreview()) return;
     window.clearTimeout(hideTimer);
     hideTimer = window.setTimeout(hide, 180);
   }
@@ -171,7 +168,6 @@ export function createPreviewPopoverController(
       scheduleAfterNextPaint(() => {
         if (revision !== presentationRevision) return;
         recordEditorMetric("cached-preview", startedAt, {documentLength: activeEditor.state.doc.length});
-        options.postPerformanceSample("editor_cached_preview", Math.max(0, performance.now() - startedAt));
       });
     }
   }

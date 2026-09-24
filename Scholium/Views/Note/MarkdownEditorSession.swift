@@ -890,6 +890,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func showPreview(
         for preview: DocumentLinkPreview,
+        previews: [DocumentLinkPreview],
+        performanceDocumentID: String,
         in source: String
     ) async {
         guard canAttemptPreview, isReady, isLoaded, let webView else { return }
@@ -905,11 +907,26 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 forSourceUTF16Offset: preview.sourceSpan.utf16UpperBound
             ), to > from
         else { return }
-        _ = try? await send(
-            .revealSourceRange(fromUTF16: from, toUTF16: from),
-            in: webView
-        )
-        _ = try? await send(.showPreview, in: webView)
+        let insertion = from + (to - from) / 2
+        do {
+            // The regular preview update is asynchronous. Acknowledge its
+            // delivery before the measured action uses it.
+            setLinkPreviews(previews, in: source)
+            _ = try await send(.setLinkPreviews(pendingLinkPreviews), in: webView)
+            _ = try await send(
+                .revealSourceRange(fromUTF16: insertion, toUTF16: insertion),
+                in: webView
+            )
+            // Wait for the selection and its native anchor to be laid out.
+            _ = try await webView.callAsyncJavaScript(
+                "await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return true;",
+                arguments: [:], in: nil, contentWorld: .page
+            )
+            PerformanceProbe.shared.beginEditorCachedPreview(documentID: performanceDocumentID)
+            _ = try await send(.showPreview, in: webView)
+        } catch {
+            return
+        }
     }
 
     func measureVisibleProjection() {

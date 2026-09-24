@@ -460,6 +460,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     validEnvelope(request.envelope), let webView = message.webView,
                     !request.event.allowsAgentInquiry || onAskAgent != nil
                 else { return }
+                session.floatingSurfaces.onPreviewShown = { [documentID = performanceDocumentID] in
+                    PerformanceProbe.shared.markEditorCachedPreviewVisible(documentID: documentID)
+                }
                 session.floatingSurfaces.present(request.event, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
                     // Autosave rebases the disk fingerprint, not the live buffer
                     // revision. Validate that revision at event dispatch instead.
@@ -530,12 +533,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 case "editor_key_to_paint":
                     PerformanceProbe.shared.recordEditorKeyToPaint(
                         documentID: performanceDocumentID,
-                        durationMilliseconds: performance.durationMilliseconds
-                    )
-                case "editor_cached_preview":
-                    PerformanceProbe.shared.recordEditorWebDuration(
-                        documentID: performanceDocumentID,
-                        metric: .editorCachedPreview,
                         durationMilliseconds: performance.durationMilliseconds
                     )
                 case "editor_visible_projection":

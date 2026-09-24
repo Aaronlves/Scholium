@@ -107,7 +107,8 @@ struct PerformanceProbeTests {
             "SCHOLIUM_PERFORMANCE_STARTED_NS": "1000000",
         ]
         var times: [UInt64] = [
-            2_000_000, 6_000_000, 11_000_000, 20_000_000,
+            2_000_000, 4_000_000, 6_000_000,
+            8_000_000, 11_000_000, 20_000_000,
         ]
         let probe = PerformanceProbe(
             environment: environment,
@@ -120,7 +121,9 @@ struct PerformanceProbeTests {
         )
         #expect(probe.isEnabled)
         probe.markWarmLibraryWindowModelInitializationStarted()
+        probe.markStartupSafetyReady()
         probe.markWarmLibraryWorkspaceReady()
+        probe.markVaultConfigurationReady()
         probe.markWarmLibraryProjectionReady()
         probe.markLibraryReady(noteCount: 267)
         #expect(fileManager.fileExists(atPath: result.path))
@@ -208,7 +211,8 @@ struct PerformanceProbeTests {
         defer { try? fileManager.removeItem(at: directory) }
         let result = directory.appendingPathComponent("warm_library_launch.jsonl")
         var times: [UInt64] = [
-            2_000_000, 6_000_000, 11_000_000, 20_000_000,
+            2_000_000, 4_000_000, 6_000_000,
+            8_000_000, 11_000_000, 20_000_000,
         ]
         let probe = PerformanceProbe(
             environment: [
@@ -225,7 +229,9 @@ struct PerformanceProbeTests {
         )
 
         probe.markWarmLibraryWindowModelInitializationStarted()
+        probe.markStartupSafetyReady()
         probe.markWarmLibraryWorkspaceReady()
+        probe.markVaultConfigurationReady()
         probe.markWarmLibraryProjectionReady()
         probe.markLibraryReady(noteCount: 267)
 
@@ -242,6 +248,9 @@ struct PerformanceProbeTests {
         #expect(object["window_model_init_to_workspace_ready_duration_ms"] as? Double == 4)
         #expect(object["workspace_ready_to_projection_duration_ms"] as? Double == 5)
         #expect(object["projection_to_layout_duration_ms"] as? Double == 9)
+        #expect(object["workspace_ready_to_startup_safety_ready_duration_ms"] as? Double == 0)
+        #expect(object["startup_safety_ready_to_vault_configuration_ready_duration_ms"] as? Double == 2)
+        #expect(object["vault_configuration_ready_to_projection_duration_ms"] as? Double == 3)
         #expect(
             Set(object.keys) == [
                 "schema", "run_id", "sample", "metric", "duration_ms",
@@ -250,11 +259,14 @@ struct PerformanceProbeTests {
                 "window_model_init_to_workspace_ready_duration_ms",
                 "workspace_ready_to_projection_duration_ms",
                 "projection_to_layout_duration_ms",
+                "workspace_ready_to_startup_safety_ready_duration_ms",
+                "startup_safety_ready_to_vault_configuration_ready_duration_ms",
+                "vault_configuration_ready_to_projection_duration_ms",
             ])
     }
 
-    @Test("Editor Web metrics remain fixture-bound and privacy-safe")
-    func editorWebMetricsRequireExpectedDocument() throws {
+    @Test("Cached preview records only its native visible boundary")
+    func cachedPreviewRequiresExpectedVisibleDocument() throws {
         let fileManager = FileManager.default
         let directory = URL(
             fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
@@ -263,6 +275,7 @@ struct PerformanceProbeTests {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: directory) }
         let result = directory.appendingPathComponent("editor_cached_preview.jsonl")
+        var clock: UInt64 = 50_000_000
         let probe = PerformanceProbe(
             environment: [
                 "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
@@ -273,20 +286,23 @@ struct PerformanceProbeTests {
                 "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
             ],
             bundleID: "com.scholium.qa",
-            now: { 50_000_000 }
+            now: { clock }
         )
 
-        probe.recordEditorWebDuration(
-            documentID: "Private.md",
-            metric: .editorCachedPreview,
-            durationMilliseconds: 8
-        )
+        probe.beginEditorCachedPreview(documentID: "Private.md")
+        probe.markEditorCachedPreviewVisible(documentID: "Private.md")
         #expect(!fileManager.fileExists(atPath: result.path))
         probe.recordEditorWebDuration(
             documentID: "Fixture.md",
             metric: .editorCachedPreview,
-            durationMilliseconds: 8
+            durationMilliseconds: 1
         )
+        #expect(!fileManager.fileExists(atPath: result.path))
+        probe.beginEditorCachedPreview(documentID: "Fixture.md")
+        clock += 8_000_000
+        probe.markEditorCachedPreviewVisible(documentID: "Private.md")
+        #expect(!fileManager.fileExists(atPath: result.path))
+        probe.markEditorCachedPreviewVisible(documentID: "Fixture.md")
 
         let object = try #require(
             try JSONSerialization.jsonObject(

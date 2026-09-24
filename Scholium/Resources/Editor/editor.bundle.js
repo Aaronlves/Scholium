@@ -32590,7 +32590,7 @@ ${fence}
       hideTimer = void 0;
     }
     function scheduleHide() {
-      if (hasPinnedPreview() || nativeHovered) return;
+      if (hasPinnedPreview() || nativeHovered || options.holdOpenForPerformancePreview()) return;
       window.clearTimeout(hideTimer);
       hideTimer = window.setTimeout(hide, 180);
     }
@@ -32618,7 +32618,6 @@ ${fence}
         scheduleAfterNextPaint(() => {
           if (revision !== presentationRevision) return;
           recordEditorMetric("cached-preview", startedAt, { documentLength: activeEditor.state.doc.length });
-          options.postPerformanceSample("editor_cached_preview", Math.max(0, performance.now() - startedAt));
         });
       }
     }
@@ -39874,11 +39873,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     nativeFloating: nativeFloating.preview,
     previews: () => linkPreviews,
     footnotes: () => liveProjectionIndex.index(editor.state).footnotes,
+    holdOpenForPerformancePreview: () => webkitWindow.scholiumPerformanceMetric === "editor_cached_preview",
     renderFootnoteContent: (content2, parent) => appendMarkdownBlocks(content2, parent, {
       mathematics: editingDialect?.mathematics,
       resolveCallout: calloutDefinition2
-    }),
-    postPerformanceSample: postConfiguredPerformanceSample
+    })
   });
   var sourceActiveLineDecoration = Decoration.line({ class: "cm-activeLine" });
   var SourceActiveLineGutterMarker = class extends GutterMarker {

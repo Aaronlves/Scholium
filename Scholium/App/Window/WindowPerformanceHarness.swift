@@ -1,8 +1,60 @@
 import Foundation
+import notify
 
 /// The measurement harness's editor commands. QA builds drive presentation
 /// changes through notifications so a run can be timed from outside the app.
 extension WindowModel {
+    /// Positions a frozen RDF-1 row through the same native Library reveal
+    /// path used by ordinary in-app navigation. Setup does not select a new
+    /// document; the later visible row click starts the Read measurement.
+    func handlePerformanceLibraryReveal(_ name: String) {
+        guard PerformanceProbe.shared.isEnabled,
+            PerformanceProbe.shared.requiresInitialReviewPresentation,
+            ProcessInfo.processInfo.arguments.contains(
+                "--scholium-performance-library-reveal-notifications"
+            ),
+            let vaultID = currentRegisteredVault?.id,
+            discoveryController.library.sourceScope == .library
+        else { return }
+
+        let relativePath: String
+        switch name {
+        case "com.scholium.qa.performance-library-reveal-cluster-00":
+            relativePath = "Cluster-00/analysis-note-001.md"
+        case "com.scholium.qa.performance-library-reveal-cluster-01":
+            relativePath = "Cluster-01/analysis-note-002.md"
+        case "com.scholium.qa.performance-library-reveal-long":
+            relativePath = "Long/Canonical-5000-Word-Work.md"
+        default:
+            return
+        }
+
+        // A previous document click can still have a pending automatic reveal.
+        // The explicit benchmark setup owns the next Library position.
+        libraryRevealTask?.cancel()
+        libraryRevealTask = nil
+        discoveryController.prepareLibraryNoteReveal(
+            relativePath: relativePath,
+            folderAncestors: libraryFolderAncestors(forDocumentPath: relativePath),
+            clearFilters: false,
+            alignment: .center,
+            in: LibraryDisclosureScope(vaultID: vaultID, sourceScope: .library)
+        )
+        let request = discoveryController.libraryRevealRequest
+        Task { @MainActor [weak self] in
+            for _ in 0..<400 {
+                guard let self else { return }
+                let current = self.discoveryController.libraryRevealRequest
+                if current == nil {
+                    _ = notify_post("\(name).complete")
+                    return
+                }
+                guard current == request else { return }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+    }
+
     /// Drives the retained-editor performance scenario through the current
     /// document session instead of a one-shot SwiftUI presentation request.
     /// The editor bridge still performs the real mode transition and reports
@@ -103,6 +155,8 @@ extension WindowModel {
                 if let preview = session.previewCatalog?.links.first {
                     await session.editorSession.showPreview(
                         for: preview,
+                        previews: session.previewCatalog?.links ?? [],
+                        performanceDocumentID: descriptor.reference.relativePath,
                         in: session.editingSource
                     )
                     return

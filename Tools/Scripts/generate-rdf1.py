@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 
 
-FIXTURE_VERSION = "rdf-1-v3"
+FIXTURE_VERSION = "rdf-1-v4"
 TOTAL_NOTES = 800
 LONG_NOTE_WORDS = 5_000
 CJK_STRESS_CHARACTERS = 100_000
@@ -24,6 +24,7 @@ LONG_NOTE_PATH = "Long/Canonical-5000-Word-Work.md"
 CJK_STRESS_NOTE_PATH = "Long/Canonical-100000-CJK-Work.md"
 TOKEN_PATTERN = re.compile(r"\b[\w'-]+\b", re.UNICODE)
 CJK_CHARACTER_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+WIKILINK_PATTERN = re.compile(r"\[\[([^\]#|]+)(?:[#|][^\]]*)?\]\]")
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -99,6 +100,14 @@ rdf1_id: {role}-{index:03d}
 ---"""
 
 
+def note_stem(role: str, index: int) -> str:
+    if role == "work" and index == 1:
+        return Path(LONG_NOTE_PATH).stem
+    if role == "work" and index == 2:
+        return Path(CJK_STRESS_NOTE_PATH).stem
+    return f"{role}-note-{index:03d}"
+
+
 def regular_body(role: str, index: int, count: int) -> tuple[str, int, int]:
     title = f"RDF-1 {role.title()} Note {index:03d}"
     next_index = index % count + 1
@@ -118,7 +127,7 @@ This synthetic note measures deterministic Scholium performance without containi
 
 The fixture discusses deliberative control, normative reasons, objections, replies, source fidelity, and explicit uncertainty. Its prose is intentionally repetitive enough to exercise indexing while remaining clearly non-scholarly.
 
-{relation}[[RDF-1 {role.title()} Note {next_index:03d}]]
+{relation}[[{note_stem(role, next_index)}]]
 """
     return body, 1, 1 if relation else 0
 
@@ -129,7 +138,7 @@ def long_note_body() -> str:
         "uncertainty distinction relation agency value reason response context"
     ).split()
     words = [vocabulary[index % len(vocabulary)] for index in range(LONG_NOTE_WORDS)]
-    words[0:4] = ["[[RDF-1", "Work", "Note", "003]]"]
+    words[0] = f"[[{note_stem('work', 3)}]]"
     paragraphs = [" ".join(words[start : start + 100]) for start in range(0, len(words), 100)]
     body = "\n\n".join(paragraphs) + "\n"
     assert body_word_count(body) == LONG_NOTE_WORDS
@@ -329,6 +338,7 @@ def verify(output: Path) -> dict[str, object]:
         raise SystemExit(f"RDF-1 must contain exactly {TOTAL_NOTES} manifest entries.")
 
     listed_paths: set[Path] = set()
+    stems_by_vault: dict[str, set[str]] = {}
     tree_rows: list[str] = []
     for entry in entries:
         relative = Path(str(entry["vault_directory"])) / str(entry["relative_path"])
@@ -336,6 +346,11 @@ def verify(output: Path) -> dict[str, object]:
         if relative in listed_paths:
             raise SystemExit(f"Duplicate RDF-1 manifest path: {relative}")
         listed_paths.add(relative)
+        stem = Path(str(entry["relative_path"])).stem
+        vault_stems = stems_by_vault.setdefault(str(entry["vault"]), set())
+        if stem in vault_stems:
+            raise SystemExit(f"Duplicate RDF-1 Note stem in {entry['vault']}: {stem}")
+        vault_stems.add(stem)
         if not note_path.is_file():
             raise SystemExit(f"Missing RDF-1 note: {note_path}")
         data = note_path.read_bytes()
@@ -353,6 +368,15 @@ def verify(output: Path) -> dict[str, object]:
         missing = sorted(str(path) for path in listed_paths - actual_paths)
         unlisted = sorted(str(path) for path in actual_paths - listed_paths)
         raise SystemExit(f"RDF-1 path mismatch; missing={missing}, unlisted={unlisted}")
+
+    for entry in entries:
+        note_path = output / str(entry["vault_directory"]) / str(entry["relative_path"])
+        targets = WIKILINK_PATTERN.findall(note_path.read_text(encoding="utf-8"))
+        if len(targets) != entry["markdown_links"]:
+            raise SystemExit(f"RDF-1 Wikilink count mismatch: {note_path}")
+        for target in targets:
+            if target not in stems_by_vault[str(entry["vault"])]:
+                raise SystemExit(f"RDF-1 Wikilink has no same-vault Note stem: {note_path}: {target}")
 
     tree_sha = sha256_bytes("\n".join(tree_rows).encode("utf-8"))
     if tree_sha != manifest["triptych"]["tree_sha256"]:

@@ -589,7 +589,7 @@ final class WindowModel: ObservableObject {
     /// the stored generation itself has to live with the class.
     var identityRefreshGeneration: UInt64 = 0
     let documentPresentationDidChange = PassthroughSubject<Void, Never>()
-    private var performanceModeNotificationTokens: [Int32] = []
+    private var performanceNotificationTokens: [Int32] = []
 
     init(
         workspaceStore: WorkspaceStore,
@@ -670,7 +670,28 @@ final class WindowModel: ObservableObject {
                     }
                 }
                 if status == NOTIFY_STATUS_OK {
-                    performanceModeNotificationTokens.append(token)
+                    performanceNotificationTokens.append(token)
+                }
+            }
+        }
+        if PerformanceProbe.shared.isEnabled,
+            ProcessInfo.processInfo.arguments.contains(
+                "--scholium-performance-library-reveal-notifications"
+            )
+        {
+            for name in [
+                "com.scholium.qa.performance-library-reveal-cluster-00",
+                "com.scholium.qa.performance-library-reveal-cluster-01",
+                "com.scholium.qa.performance-library-reveal-long",
+            ] {
+                var token: Int32 = 0
+                let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.handlePerformanceLibraryReveal(name)
+                    }
+                }
+                if status == NOTIFY_STATUS_OK {
+                    performanceNotificationTokens.append(token)
                 }
             }
         }
@@ -680,7 +701,7 @@ final class WindowModel: ObservableObject {
 
     deinit {
         libraryRevealTask?.cancel()
-        for token in performanceModeNotificationTokens {
+        for token in performanceNotificationTokens {
             notify_cancel(token)
         }
     }

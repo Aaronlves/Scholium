@@ -2,7 +2,7 @@ import Foundation
 import ScholiumContracts
 
 /// Records synthetic-fixture performance boundaries only when an explicit
-/// `/tmp` JSONL destination and one supported metric are supplied. Records
+/// isolated JSONL destination and one supported metric are supplied. Records
 /// contain timing and count metadata only—never queries, paths, or note text.
 @MainActor
 final class PerformanceProbe {
@@ -52,6 +52,7 @@ final class PerformanceProbe {
             documentID: String,
             startNanoseconds: UInt64
         )?
+    private var cachedPreviewStart: (documentID: String, nanoseconds: UInt64)?
     private var warmLibraryWindowModelInitializationNanoseconds: UInt64?
     private var warmLibraryWorkspaceReadyNanoseconds: UInt64?
     private var startupSafetyReadyNanoseconds: UInt64?
@@ -399,7 +400,7 @@ final class PerformanceProbe {
     ) {
         guard let configuration,
             configuration.metric == metric,
-            metric == .editorCachedPreview || metric == .editorVisibleProjection,
+            metric == .editorVisibleProjection,
             documentID == configuration.expectedDocument,
             durationMilliseconds.isFinite,
             durationMilliseconds > 0,
@@ -417,6 +418,26 @@ final class PerformanceProbe {
         ]
         guard append(object, to: configuration.resultURL) else { return }
         recordedSampleCount += 1
+    }
+
+    func beginEditorCachedPreview(documentID: String) {
+        guard let configuration,
+            configuration.metric == .editorCachedPreview,
+            documentID == configuration.expectedDocument,
+            recordedSampleCount < configuration.sampleCount
+        else { return }
+        cachedPreviewStart = (documentID, now())
+    }
+
+    func markEditorCachedPreviewVisible(documentID: String) {
+        guard let configuration,
+            configuration.metric == .editorCachedPreview,
+            documentID == configuration.expectedDocument,
+            let start = cachedPreviewStart,
+            start.documentID == documentID
+        else { return }
+        cachedPreviewStart = nil
+        record(startNanoseconds: start.nanoseconds, observedCount: nil)
     }
 
     func beginEditActivation(documentID: String) {
@@ -583,12 +604,17 @@ final class PerformanceProbe {
                 completedNanoseconds - projection
             ),
         ]
-        if let startupSafetyReady = startupSafetyReadyNanoseconds,
+        if let actualStartupSafetyReady = startupSafetyReadyNanoseconds,
             let vaultConfigurationReady = vaultConfigurationReadyNanoseconds,
-            startupSafetyReady >= workspaceReady,
-            vaultConfigurationReady >= startupSafetyReady,
+            actualStartupSafetyReady >= windowModelInitialization,
+            actualStartupSafetyReady <= projection,
+            vaultConfigurationReady >= max(actualStartupSafetyReady, workspaceReady),
             projection >= vaultConfigurationReady
         {
+            // Restoring an existing Triptych completes safety work before
+            // workspace adoption. In that path it contributes zero time to
+            // the workspace-ready-to-projection interval.
+            let startupSafetyReady = max(actualStartupSafetyReady, workspaceReady)
             phases["workspace_ready_to_startup_safety_ready_duration_ms"] =
                 milliseconds(startupSafetyReady - workspaceReady)
             phases["startup_safety_ready_to_vault_configuration_ready_duration_ms"] =

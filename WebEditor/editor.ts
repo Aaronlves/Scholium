@@ -242,7 +242,7 @@ const post = (message: Record<string, unknown>) => nativeHandler()?.postMessage(
 });
 
 function postConfiguredPerformanceSample(
-  metric: "editor_cached_preview" | "editor_visible_projection",
+  metric: "editor_visible_projection",
   durationMilliseconds: number,
 ) {
   if (webkitWindow.scholiumPerformanceMetric !== metric
@@ -1784,11 +1784,12 @@ const previewPopover = createPreviewPopoverController({
   nativeFloating: nativeFloating.preview,
   previews: () => linkPreviews,
   footnotes: () => liveProjectionIndex.index(editor.state).footnotes,
+  holdOpenForPerformancePreview: () =>
+    webkitWindow.scholiumPerformanceMetric === "editor_cached_preview",
   renderFootnoteContent: (content, parent) => appendMarkdownBlocks(content, parent, {
     mathematics: editingDialect?.mathematics,
     resolveCallout: calloutDefinition,
   }),
-  postPerformanceSample: postConfiguredPerformanceSample,
 });
 
 const sourceActiveLineDecoration = Decoration.line({class: "cm-activeLine"});

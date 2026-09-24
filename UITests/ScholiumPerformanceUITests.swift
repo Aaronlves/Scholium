@@ -11,11 +11,6 @@ final class ScholiumPerformanceUITests: XCTestCase {
     private let packagedIsolationArgument =
         "--scholium-performance-driver-isolation"
 
-    private enum WarmReadScrollDirection {
-        case towardEarlierRows
-        case towardLaterRows
-    }
-
     private enum Metric: String {
         case warmLibraryLaunch = "warm_library_launch"
         case indexedSearch = "indexed_search"
@@ -416,7 +411,6 @@ final class ScholiumPerformanceUITests: XCTestCase {
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
         application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
-        application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "memory-\(runID)"
         application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = "1380"
         application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
         application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
@@ -515,7 +509,6 @@ final class ScholiumPerformanceUITests: XCTestCase {
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
         application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
-        application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "cjk-\(runID)"
         application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = "1380"
         application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
         application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = relativePath
@@ -665,10 +658,16 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "--scholium-performance-editor-mode-notifications"
             )
         }
+        if metric == .warmReadActivation || metric == .firstReadActivation
+            || metric == .firstEditActivation
+        {
+            application.launchArguments.append(
+                "--scholium-performance-library-reveal-notifications"
+            )
+        }
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
         application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
-        application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "performance-\(runID)-\(sample)"
         application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = "1380"
         application.launchEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = resultsPath
         application.launchEnvironment["SCHOLIUM_PERFORMANCE_METRIC"] = metric.rawValue
@@ -797,7 +796,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 )
             }
             if metric == .editorCachedPreview {
-                Thread.sleep(forTimeInterval: 0.5)
+                let refreshing = application.descendants(matching: .any)[
+                    "scholium.refreshStatus"
+                ]
+                XCTAssertTrue(
+                    waitUntil(timeout: 90) { !refreshing.exists },
+                    "Cached preview setup did not finish the synthetic Library graph refresh."
+                )
             }
             return
         }
@@ -846,23 +851,19 @@ final class ScholiumPerformanceUITests: XCTestCase {
             )
             clearSearchField(field, application: application)
             if sample + 1 == total {
-                let close = application.buttons["scholium.closeSearchButton"]
+                let close = application.windows["scholium.advancedSearchWindow"]
+                    .buttons[XCUIIdentifierCloseWindow]
                 XCTAssertTrue(close.waitForExistence(timeout: 5))
                 close.click()
             }
         case .warmReadActivation:
-            let target = application.descendants(matching: .any)[
-                "scholium.noteRow.Cluster-00/analysis-note-001.md"
-            ]
-            XCTAssertTrue(target.waitForExistence(timeout: 15))
-            scrollReadTargetIntoView(
-                target,
+            let target = revealNativeLibraryRow(
+                "Cluster-00/analysis-note-001.md",
                 in: application,
                 sample: sample,
-                role: "measured",
-                direction: .towardEarlierRows
+                role: "measured"
             )
-            target.click()
+            target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
             XCTAssertTrue(
                 waitForRenderedDocument(
                     "Cluster-00/analysis-note-001.md",
@@ -876,18 +877,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "Sample \(sample): Read did not publish exactly one performance record."
             )
             if sample + 1 < total {
-                let alternate = application.descendants(matching: .any)[
-                    "scholium.noteRow.Cluster-01/analysis-note-002.md"
-                ]
-                XCTAssertTrue(alternate.waitForExistence(timeout: 15))
-                scrollReadTargetIntoView(
-                    alternate,
+                let alternate = revealNativeLibraryRow(
+                    "Cluster-01/analysis-note-002.md",
                     in: application,
                     sample: sample,
-                    role: "alternate",
-                    direction: .towardLaterRows
+                    role: "alternate"
                 )
-                alternate.click()
+                alternate.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
                 XCTAssertTrue(
                     waitForRenderedDocument(
                         "Cluster-01/analysis-note-002.md",
@@ -942,11 +938,26 @@ final class ScholiumPerformanceUITests: XCTestCase {
             )
         case .editorCachedPreview:
             requestPerformanceEditorAction("cached-preview")
+            let preview = application.descendants(matching: .any)["scholium.documentPreview"]
+            let content = application.descendants(matching: .any)["scholium.documentPreview.content"]
+            let accessible =
+                preview.waitForExistence(timeout: 30)
+                && content.waitForExistence(timeout: 5)
+            if !accessible {
+                attachPerformanceFailureState(
+                    named: "cached-preview-sample-\(sample)",
+                    application: application
+                )
+            }
             XCTAssertTrue(
-                waitUntil(timeout: 30) {
+                accessible,
+                "Sample \(sample): the visible native preview and content were not accessible."
+            )
+            XCTAssertTrue(
+                waitUntil(timeout: 5) {
                     self.lineCount(at: resultsPath) == sample + 1
                 },
-                "Sample \(sample): cached preview did not publish exactly one performance record."
+                "Sample \(sample): the native cached preview did not publish a visible performance record."
             )
         case .editorVisibleProjection:
             requestPerformanceEditorAction("visible-projection")
@@ -986,13 +997,18 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
     @MainActor
     private func prepareWarmReadLibraryTargets(in application: XCUIApplication) throws {
-        for folder in ["Cluster-00", "Cluster-01"] {
-            let row = application.descendants(matching: .any)["scholium.folderRow.\(folder)"]
-            XCTAssertTrue(row.waitForExistence(timeout: 10))
-            if (row.value as? String) != "Expanded" {
-                row.click()
-            }
-        }
+        _ = revealNativeLibraryRow(
+            "Cluster-00/analysis-note-001.md",
+            in: application,
+            sample: 0,
+            role: "warm setup first"
+        )
+        _ = revealNativeLibraryRow(
+            "Cluster-01/analysis-note-002.md",
+            in: application,
+            sample: 0,
+            role: "warm setup alternate"
+        )
         XCTAssertTrue(
             application.descendants(matching: .any)[
                 "scholium.noteRow.Cluster-00/analysis-note-001.md"
@@ -1077,39 +1093,19 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "Sample \(sample): cold launch did not settle on an empty Workspace."
         )
 
-        let folder = application.descendants(matching: .any)[
-            "scholium.folderRow.Long"
-        ]
-        XCTAssertTrue(folder.waitForExistence(timeout: 15))
-        scrollReadTargetIntoView(
-            folder,
-            in: application,
-            sample: sample,
-            role: "first-use folder",
-            direction: .towardLaterRows
-        )
-        if (folder.value as? String) != "Expanded" {
-            folder.click()
-        }
-
         let documentID = "Long/Canonical-5000-Word-Work.md"
-        let target = application.descendants(matching: .any)[
-            "scholium.noteRow.\(documentID)"
-        ]
-        XCTAssertTrue(target.waitForExistence(timeout: 15))
-        scrollReadTargetIntoView(
-            target,
+        let target = revealNativeLibraryRow(
+            documentID,
             in: application,
             sample: sample,
-            role: "first-use document",
-            direction: .towardLaterRows
+            role: "first-use document"
         )
         XCTAssertTrue(
             noDocumentState.exists,
             "Sample \(sample): setup selected a document before the measured action."
         )
 
-        target.click()
+        target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         XCTAssertTrue(
             waitForRenderedDocument(documentID, in: application, timeout: 60),
             "Sample \(sample): the first selected Review document did not render."
@@ -1117,47 +1113,78 @@ final class ScholiumPerformanceUITests: XCTestCase {
         return documentID
     }
 
-    /// Reconciles the native Sidebar viewport before a measured Note click.
-    /// `PerformanceProbe.beginReadActivation` starts inside the click action,
-    /// so these setup swipes never enter the Read duration. Offscreen
-    /// NSOutlineView rows expose document rather than viewport coordinates;
-    /// the caller therefore supplies the frozen RDF-1 row-order direction.
     @MainActor
-    private func scrollReadTargetIntoView(
-        _ target: XCUIElement,
+    private func nativeLibraryRow(
+        _ identifier: String,
+        in application: XCUIApplication
+    ) -> XCUIElement {
+        application.outlines["scholium.noteList"]
+            .descendants(matching: .outlineRow)
+            .containing(.any, identifier: identifier)
+            .firstMatch
+    }
+
+    @MainActor
+    private func revealNativeLibraryRow(
+        _ documentID: String,
         in application: XCUIApplication,
         sample: Int,
-        role: String,
-        direction: WarmReadScrollDirection
-    ) {
-        let noteList = application.descendants(matching: .any)[
-            "scholium.noteList"
-        ].firstMatch
+        role: String
+    ) -> XCUIElement {
+        let notificationName: String
+        switch documentID {
+        case "Cluster-00/analysis-note-001.md":
+            notificationName = "com.scholium.qa.performance-library-reveal-cluster-00"
+        case "Cluster-01/analysis-note-002.md":
+            notificationName = "com.scholium.qa.performance-library-reveal-cluster-01"
+        case "Long/Canonical-5000-Word-Work.md":
+            notificationName = "com.scholium.qa.performance-library-reveal-long"
+        default:
+            XCTFail("Sample \(sample): unsupported RDF-1 Library target \(documentID).")
+            return nativeLibraryRow("scholium.noteRow.\(documentID)", in: application)
+        }
+        var acknowledgmentToken: Int32 = 0
+        XCTAssertEqual(
+            notify_register_check("\(notificationName).complete", &acknowledgmentToken),
+            UInt32(NOTIFY_STATUS_OK),
+            "Sample \(sample): native Library reveal acknowledgment could not be registered."
+        )
+        defer { notify_cancel(acknowledgmentToken) }
+        var changed: Int32 = 0
+        XCTAssertEqual(notify_check(acknowledgmentToken, &changed), UInt32(NOTIFY_STATUS_OK))
+        XCTAssertEqual(
+            notify_post(notificationName),
+            UInt32(NOTIFY_STATUS_OK),
+            "Sample \(sample): native Library reveal request could not be posted."
+        )
         XCTAssertTrue(
-            noteList.waitForExistence(timeout: 10),
-            "Sample \(sample): the native Note list did not remain accessible."
+            waitUntil(timeout: 25) {
+                var didChange: Int32 = 0
+                return notify_check(acknowledgmentToken, &didChange)
+                    == UInt32(NOTIFY_STATUS_OK) && didChange != 0
+            },
+            "Sample \(sample): the \(role) native Library reveal was not consumed."
         )
 
-        func isVisiblyHittable() -> Bool {
-            guard target.isHittable else { return false }
-            let intersection = target.frame.intersection(noteList.frame)
-            return !intersection.isNull
-                && intersection.width >= 8
-                && intersection.height >= 8
-        }
-
-        for _ in 0..<12 where !isVisiblyHittable() {
-            switch direction {
-            case .towardEarlierRows:
-                noteList.swipeDown(velocity: .slow)
-            case .towardLaterRows:
-                noteList.swipeUp(velocity: .slow)
-            }
-        }
+        let target = nativeLibraryRow("scholium.noteRow.\(documentID)", in: application)
+        let scrollView = application.scrollViews
+            .containing(.outline, identifier: "scholium.noteList")
+            .firstMatch
         XCTAssertTrue(
-            isVisiblyHittable(),
-            "Sample \(sample): the \(role) Read target did not become visibly hittable."
+            scrollView.waitForExistence(timeout: 10),
+            "Sample \(sample): the native Note list scroll viewport did not remain accessible."
         )
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                guard target.exists else { return false }
+                let intersection = target.frame.intersection(scrollView.frame)
+                return !intersection.isNull
+                    && intersection.width >= 8
+                    && intersection.height >= 8
+            },
+            "Sample \(sample): the \(role) Read target was not revealed by native Library navigation."
+        )
+        return target
     }
 
     @MainActor
@@ -1177,9 +1204,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
         in application: XCUIApplication,
         timeout: TimeInterval
     ) -> Bool {
-        let row = application.descendants(matching: .any)[
-            "scholium.noteRow.\(documentID)"
-        ]
+        let row = application.outlines["scholium.noteList"]
+            .descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.noteRow.\(documentID)")
+            .firstMatch
         return waitUntil(timeout: timeout) {
             guard row.isSelected else { return false }
             if self.waitForRenderedDocument(
