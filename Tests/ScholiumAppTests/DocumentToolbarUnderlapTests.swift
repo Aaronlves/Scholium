@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 import WebKit
+
 @testable import ScholiumApp
 
 @Suite(.serialized)
@@ -45,9 +46,10 @@ struct DocumentToolbarUnderlapTests {
             NSPoint(x: overlap.midX, y: overlap.midY), to: nil
         )
         let toolbarPoint = surface.view.convert(toolbarLocation, from: nil)
-        let cursorArea = try #require(surface.view.trackingAreas.first {
-            $0.options.contains(.cursorUpdate)
-        })
+        let cursorArea = try #require(
+            surface.view.trackingAreas.first {
+                $0.options.contains(.cursorUpdate)
+            })
         #expect(cursorArea.rect.contains(toolbarPoint))
         let toolbarHit = surface.view.hitTest(
             surface.view.convert(toolbarPoint, to: surface.view.superview)
@@ -59,9 +61,10 @@ struct DocumentToolbarUnderlapTests {
         )
         let bodyPoint = surface.view.convert(bodyLocation, from: nil)
         #expect(!cursorArea.rect.contains(bodyPoint))
-        let bodyHit = try #require(surface.view.hitTest(
-            surface.view.convert(bodyPoint, to: surface.view.superview)
-        ))
+        let bodyHit = try #require(
+            surface.view.hitTest(
+                surface.view.convert(bodyPoint, to: surface.view.superview)
+            ))
         #expect(bodyHit === web || bodyHit.isDescendant(of: web))
     }
 
