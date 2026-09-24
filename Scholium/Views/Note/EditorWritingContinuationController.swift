@@ -12,6 +12,7 @@ final class EditorWritingContinuationController {
     private(set) var requestID: String?
     private(set) var editorCaret: Int?
     private var operationID: UUID?
+    private var resultPublishing = false
     private var task: Task<Void, Never>?
 
     @discardableResult
@@ -26,6 +27,7 @@ final class EditorWritingContinuationController {
         cancel()
         let operationID = UUID()
         self.operationID = operationID
+        resultPublishing = false
         self.requestID = requestID
         self.editorCaret = editorCaret
         let task = Task { @MainActor [weak self] in
@@ -44,7 +46,7 @@ final class EditorWritingContinuationController {
                 else { return }
                 Task { @MainActor [weak self] in
                     guard !Task.isCancelled,
-                        self?.operationID == operationID, isCurrent()
+                        self?.operationID == operationID, self?.resultPublishing == false, isCurrent()
                     else { return }
                     await publish(.status(status))
                 }
@@ -52,6 +54,7 @@ final class EditorWritingContinuationController {
             guard !Task.isCancelled,
                 self.operationID == operationID, isCurrent()
             else { return }
+            self.resultPublishing = true
             await publish(.result(result))
         }
         self.task = task
@@ -62,6 +65,7 @@ final class EditorWritingContinuationController {
         task?.cancel()
         task = nil
         operationID = nil
+        resultPublishing = false
         requestID = nil
         editorCaret = nil
     }

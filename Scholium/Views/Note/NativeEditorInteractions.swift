@@ -31,10 +31,12 @@ final class NativeEditorInteractions {
     private let continuation = EditorWritingContinuationController()
     private var subscriptions = Set<AnyCancellable>()
     private var queryTask: Task<Void, Never>?
+    private var queryOperationID: UUID?
     private var previewTask: Task<Void, Never>?
     private var previewHideTask: Task<Void, Never>?
     private var cachedPreviews: (source: String, catalog: DocumentPreviewCatalog?, values: [NativeDocumentPreview])?
     private var pointerMonitor: Any?
+    private var focusObservers: [NSObjectProtocol] = []
     private var surfaceID = 0
     private var suggestions: [EditorLinkCompletion] = []
     private var suggestionRange: NSRange?
@@ -43,6 +45,12 @@ final class NativeEditorInteractions {
     private var suggestionGeneration = -1
     private var suggestionSelection: [MarkdownEditorSelectionRange] = []
     private var selectedSuggestion = 0
+    private var ghostCandidate: EditorLinkCompletion?
+    private var ghostRange: NSRange?
+    private var ghostSessionID: UUID?
+    private var ghostGeneration = -1
+    private var ghostSelection: [MarkdownEditorSelectionRange] = []
+    private var ghostStatusVisible = false
     private var hoverOffset: Int?
     private var hoverPreviewVisible = false
     private var previewPointerInside = false
@@ -76,6 +84,8 @@ final class NativeEditorInteractions {
         continuation.cancel()
         previewTask?.cancel()
         if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+        for observer in focusObservers { NotificationCenter.default.removeObserver(observer) }
+        session?.nativeEditor.clearInlineGhost()
         floating.reset()
     }
 
@@ -123,12 +133,25 @@ final class NativeEditorInteractions {
             MainActor.assumeIsolated { self?.pointerMoved(event) }
             return event
         }
+        focusObservers = [
+            NotificationCenter.default.addObserver(
+                forName: NSText.didEndEditingNotification, object: session.nativeEditor, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.dismissSuggestions() }
+            },
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: nil, queue: .main
+            ) { [weak self, weak session] _ in
+                MainActor.assumeIsolated {
+                    guard let session, session.nativeEditor.window?.isKeyWindow == false else { return }
+                    self?.dismissSuggestions()
+                }
+            },
+        ]
     }
 
     func detach() {
-        queryTask?.cancel()
-        queryTask = nil
-        continuation.cancel()
+        dismissSuggestions()
         previewTask?.cancel()
         previewTask = nil
         previewHideTask?.cancel()
@@ -137,6 +160,8 @@ final class NativeEditorInteractions {
         subscriptions.removeAll()
         if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
         pointerMonitor = nil
+        for observer in focusObservers { NotificationCenter.default.removeObserver(observer) }
+        focusObservers = []
         session?.nativeEditor.onNativeKeyDown = nil
         session?.nativeEditor.onNativeMenu = nil
         session?.nativeEditor.onNativePasteboard = nil
@@ -148,8 +173,15 @@ final class NativeEditorInteractions {
 
     private func keyDown(_ event: NSEvent) -> Bool {
         guard isCurrentHost, let session, !session.isComposing else { return false }
-        if event.keyCode == 53, !suggestions.isEmpty || queryTask != nil {
+        if ghostCandidate != nil && !session.nativeEditor.hasInlineGhost { dismissSuggestions() }
+        if event.keyCode == 53, !suggestions.isEmpty || queryTask != nil || ghostCandidate != nil || ghostStatusVisible {
             dismissSuggestions()
+            return true
+        }
+        if event.keyCode == 48, ghostCandidate != nil,
+            event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+        {
+            acceptGhost()
             return true
         }
         if !suggestions.isEmpty, session.presentedMode == .edit,
@@ -257,76 +289,224 @@ final class NativeEditorInteractions {
             start = line.location + prefix[..<opening.lowerBound].utf16.count
         } else {
             query = String(prefix.reversed().prefix(while: { $0.isLetter || $0.isNumber || $0 == "_" }).reversed())
-            guard explicit || query.count >= 2 else { return }
+            guard explicit || query.count >= 2 || writingContinuationEnabled else { return }
             start = caret - query.utf16.count
         }
         let generation = session.generation
         let sessionID = session.sessionID
         let ranges = session.currentValidSelectionRanges()
         queryTask?.cancel()
+        let operationID = UUID()
+        queryOperationID = operationID
         queryTask = Task { @MainActor [weak self, weak session] in
             guard let self, let session else { return }
+            defer {
+                if self.queryOperationID == operationID {
+                    self.queryTask = nil
+                    self.queryOperationID = nil
+                }
+            }
             if !explicit { try? await Task.sleep(for: .milliseconds(180)) }
             guard !Task.isCancelled else { return }
-            var candidates = await self.linkCompletionQuery(kind, query)
+            let candidates = kind == .term && query.count < 2 ? [] : await self.linkCompletionQuery(kind, query)
             guard !Task.isCancelled, session.sessionID == sessionID, session.generation == generation,
                 self.isCurrentHost, self.session === session, session.presentedMode == .edit, session.hasWritingFocus,
                 session.currentValidSelectionRanges() == ranges, !session.isComposing
             else { return }
-            if kind == .term, self.writingContinuationEnabled, caret == text.length || text.character(at: caret) == 10 {
-                let sourceOffset = EditorSourceOffsetMap(source: session.checkedSource).sourceUTF16Offset(forEditorUTF16Offset: caret)
-                if let sourceOffset {
-                    var result = EditorWritingContinuationResult.unavailable(nil)
-                    let continuationTask = self.continuation.start(
-                        requestID: UUID().uuidString, sourceCaret: sourceOffset, editorCaret: caret,
-                        query: self.writingContinuationQuery,
-                        isCurrent: { [weak self, weak session] in
-                            guard let self, let session else { return false }
-                            return self.isCurrentHost && self.session === session && session.sessionID == sessionID
-                                && session.generation == generation && session.currentValidSelectionRanges() == ranges
-                                && session.hasWritingFocus && !session.isComposing && session.presentedMode == .edit
-                        },
-                        publish: { [weak self] publication in
-                            switch publication {
-                            case .status(let status): self?.showContinuationStatus(status)
-                            case .result(let value): result = value
-                            }
-                        })
-                    await continuationTask.value
-                    guard !Task.isCancelled, session.sessionID == sessionID, session.generation == generation,
-                        self.isCurrentHost, self.session === session, session.presentedMode == .edit, session.hasWritingFocus,
-                        session.currentValidSelectionRanges() == ranges, !session.isComposing
-                    else { return }
-                    if case .suggestion(let text) = result {
-                        candidates.insert(
-                            .init(
-                                label: text, insertion: text, detail: "AI continuation", path: "", displayText: nil,
-                                isAmbiguous: false, writingAction: "continuation", replacementUTF16Count: 0), at: 0)
-                    } else if case .unavailable(let reason?) = result, reason.showsInEditor {
-                        AccessibilityNotification.Announcement(ScholiumL10n.string(String.LocalizationValue(reason.localizationKey))).post()
-                    }
+            if kind == .term {
+                self.showLocalGhost(
+                    candidates, queryRange: NSRange(location: start, length: caret - start),
+                    sessionID: sessionID, generation: generation, ranges: ranges)
+            } else {
+                self.suggestions = Array(candidates.filter { !$0.isAmbiguous && !$0.insertion.isEmpty }.prefix(100))
+                self.suggestionKind = kind
+                self.suggestionRange = NSRange(location: start, length: caret - start)
+                self.suggestionSessionID = sessionID
+                self.suggestionGeneration = generation
+                self.suggestionSelection = ranges
+                self.selectedSuggestion = 0
+                self.showSuggestions()
+                return
+            }
+            guard self.writingContinuationEnabled,
+                Self.aiEligible(prefix: prefix, next: caret == text.length ? nil : text.character(at: caret))
+            else { return }
+            // Local words appear promptly. AI is admitted only after a longer
+            // pause, and its waiting phase replaces the preview at the caret.
+            try? await Task.sleep(for: .milliseconds(420))
+            guard !Task.isCancelled, session.sessionID == sessionID, session.generation == generation,
+                self.isCurrentHost, self.session === session, session.hasWritingFocus,
+                session.currentValidSelectionRanges() == ranges, !session.isComposing
+            else { return }
+            self.clearGhost()
+            let sourceOffset = EditorSourceOffsetMap(source: session.checkedSource).sourceUTF16Offset(forEditorUTF16Offset: caret)
+            if let sourceOffset {
+                var result = EditorWritingContinuationResult.unavailable(nil)
+                self.showContinuationStatus(.preparing, at: caret)
+                let continuationTask = self.continuation.start(
+                    requestID: UUID().uuidString, sourceCaret: sourceOffset, editorCaret: caret,
+                    query: self.writingContinuationQuery,
+                    isCurrent: { [weak self, weak session] in
+                        guard let self, let session else { return false }
+                        return self.isCurrentHost && self.session === session && session.sessionID == sessionID
+                            && session.generation == generation && session.currentValidSelectionRanges() == ranges
+                            && session.hasWritingFocus && !session.isComposing && session.presentedMode == .edit
+                    },
+                    publish: { [weak self] publication in
+                        switch publication {
+                        case .status(let status): self?.showContinuationStatus(status, at: caret)
+                        case .result(let value): result = value
+                        }
+                    })
+                await continuationTask.value
+                guard !Task.isCancelled, session.sessionID == sessionID, session.generation == generation,
+                    self.isCurrentHost, self.session === session, session.presentedMode == .edit, session.hasWritingFocus,
+                    session.currentValidSelectionRanges() == ranges, !session.isComposing
+                else { return }
+                self.clearGhost()
+                if case .suggestion(let text) = result {
+                    self.showAIGhost(text, at: caret, sessionID: sessionID, generation: generation, ranges: ranges)
+                } else if case .unavailable(let reason?) = result, reason.showsInEditor {
+                    let reasonText = ScholiumL10n.string(String.LocalizationValue(reason.localizationKey))
+                    self.showGhostStatus(reasonText, at: caret)
                 }
             }
-            self.queryTask = nil
-            self.suggestions = Array(candidates.filter { !$0.isAmbiguous && !$0.insertion.isEmpty }.prefix(100))
-            self.suggestionKind = kind
-            self.suggestionRange = NSRange(location: start, length: caret - start)
-            self.suggestionSessionID = sessionID
-            self.suggestionGeneration = generation
-            self.suggestionSelection = ranges
-            self.selectedSuggestion = 0
-            self.showSuggestions()
         }
     }
 
-    private func showContinuationStatus(_ status: EditorWritingContinuationStatus) {
+    private func showContinuationStatus(_ status: EditorWritingContinuationStatus, at caret: Int) {
         let label: String.LocalizationValue =
             switch status {
             case .preparing: "Preparing continuation…"
             case .retrieving: "Retrieving context…"
             case .generating: "Generating continuation…"
             }
-        AccessibilityNotification.Announcement(ScholiumL10n.string(label)).post()
+        showGhostStatus(ScholiumL10n.string(label), at: caret)
+    }
+
+    static func aiEligible(prefix: String, next: unichar?) -> Bool {
+        guard next == nil || next == 10 else { return false }
+        let prose = prefix.replacingOccurrences(
+            of: #"^(?:[ \t]*>[ \t]*)+"#, with: "", options: .regularExpression
+        )
+        .trimmingCharacters(in: .whitespaces)
+        guard prose.contains(where: { $0.isLetter || $0.isNumber }),
+            prose.range(
+                of: #"^(?:#{1,6}[ \t]|[-+*][ \t]|\d{1,9}[.)][ \t]|\[!|\||!\[|\[[^]]+\]:)"#,
+                options: .regularExpression) == nil
+        else { return false }
+        let last = prose.replacingOccurrences(of: #"[\s\"'”’）】\]]+$"#, with: "", options: .regularExpression).last
+        return last.map { !".!?。！？…".contains($0) } ?? false
+    }
+
+    private func showLocalGhost(
+        _ candidates: [EditorLinkCompletion], queryRange: NSRange,
+        sessionID: UUID, generation: Int, ranges: [MarkdownEditorSelectionRange]
+    ) {
+        guard let session, let candidate = candidates.first(where: { !$0.isAmbiguous && $0.writingAction == "term" }),
+            let count = candidate.replacementUTF16Count, count > 0, count <= queryRange.length
+        else { return }
+        let source = session.nativeEditor.rawSource as NSString
+        // A paint-only preview cannot reflow authored characters after the
+        // caret, so offer it only at a logical line end.
+        guard queryRange.upperBound == source.length || source.character(at: queryRange.upperBound) == 10 else { return }
+        let prefix = source.substring(with: NSRange(location: queryRange.upperBound - count, length: count))
+        guard candidate.insertion.hasPrefix(prefix) else { return }
+        let units = Self.visibleSourceUnits(String(candidate.insertion.dropFirst(prefix.count)))
+        let suffix = String(units.map(\.visible))
+        guard let visible = session.nativeEditor.showInlineGhost(suffix, at: queryRange.upperBound) else { return }
+        let acceptedSource = prefix + units.prefix(visible.count).map(\.source).joined()
+        ghostCandidate = .init(
+            label: candidate.label, insertion: acceptedSource, detail: candidate.detail,
+            path: candidate.path, displayText: nil, isAmbiguous: false,
+            writingAction: "term", replacementUTF16Count: count)
+        ghostRange = queryRange
+        ghostSessionID = sessionID
+        ghostGeneration = generation
+        ghostSelection = ranges
+        AccessibilityNotification.Announcement(
+            String.localizedStringWithFormat(
+                ScholiumL10n.string("Completion: %@. Press Tab to accept."), visible)
+        ).post()
+    }
+
+    /// Authored library terms are Markdown-escaped in source. Keep the preview
+    /// typographic while retaining the exact source fragment for every shown
+    /// grapheme, including an escaped punctuation mark at an elision boundary.
+    static func visibleSourceUnits(_ source: String) -> [(visible: Character, source: String)] {
+        var result: [(visible: Character, source: String)] = []
+        var iterator = source.makeIterator()
+        while let character = iterator.next() {
+            if character == "\\", let escaped = iterator.next() {
+                result.append((escaped, "\\" + String(escaped)))
+            } else {
+                result.append((character, String(character)))
+            }
+        }
+        return result
+    }
+
+    private func showAIGhost(
+        _ text: String, at caret: Int, sessionID: UUID,
+        generation: Int, ranges: [MarkdownEditorSelectionRange]
+    ) {
+        guard let session, let visible = session.nativeEditor.showInlineGhost(text, at: caret, isAI: true) else { return }
+        ghostCandidate = .init(
+            label: visible, insertion: visible, detail: "AI continuation", path: "",
+            displayText: nil, isAmbiguous: false,
+            writingAction: "continuation", replacementUTF16Count: 0)
+        ghostRange = NSRange(location: caret, length: 0)
+        ghostSessionID = sessionID
+        ghostGeneration = generation
+        ghostSelection = ranges
+        AccessibilityNotification.Announcement(
+            String.localizedStringWithFormat(
+                ScholiumL10n.string("AI continuation: %@. Press Tab to accept."), visible)
+        ).post()
+    }
+
+    private func showGhostStatus(_ message: String, at caret: Int) {
+        clearGhost()
+        guard let session else { return }
+        ghostStatusVisible = session.nativeEditor.showInlineGhost(message, at: caret, isAI: true, isStatus: true) != nil
+        AccessibilityNotification.Announcement(message).post()
+    }
+
+    private func clearGhost() {
+        ghostCandidate = nil
+        ghostRange = nil
+        ghostStatusVisible = false
+        session?.nativeEditor.clearInlineGhost()
+    }
+
+    private func acceptGhost() {
+        guard isCurrentHost, let session else { return }
+        do { _ = try session.reconcileNativeSource() } catch {
+            session.reportError(error.localizedDescription)
+            dismissSuggestions()
+            return
+        }
+        guard let candidate = ghostCandidate, let range = ghostRange,
+            session.sessionID == ghostSessionID, session.generation == ghostGeneration,
+            session.currentValidSelectionRanges() == ghostSelection,
+            !session.isComposing, session.presentedMode == .edit
+        else {
+            dismissSuggestions()
+            return
+        }
+        do {
+            let edit = try NativeEditorCompletion.edit(
+                candidate, kind: .term, queryRange: range, source: session.nativeEditor.rawSource)
+            dismissSuggestions()
+            try session.nativeEditor.replaceProjectedRanges(
+                [(edit.range, edit.insertion)],
+                selection: NSRange(location: edit.range.location + edit.insertion.utf16.count, length: 0))
+            _ = try session.reconcileNativeSource()
+            session.updateNativeInteraction()
+        } catch {
+            session.reportError(error.localizedDescription)
+            dismissSuggestions()
+        }
     }
 
     private func showSuggestions() {
@@ -391,7 +571,9 @@ final class NativeEditorInteractions {
     private func dismissSuggestions() {
         queryTask?.cancel()
         queryTask = nil
+        queryOperationID = nil
         continuation.cancel()
+        clearGhost()
         suggestions = []
         suggestionRange = nil
         floating.dismiss()

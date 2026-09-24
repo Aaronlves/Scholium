@@ -7,6 +7,8 @@
     "Retrieving context…" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retrieving context…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在检索上下文…"}}}},
     "Generating continuation…" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Generating continuation…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在生成续写…"}}}},
     "AI continuation" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写"}}}},
+    "AI continuation: %@. Press Tab to accept." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation: %@. Press Tab to accept."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写：%@。按 Tab 接受。"}}}},
+    "Completion: %@. Press Tab to accept." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Completion: %@. Press Tab to accept."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "补全：%@。按 Tab 接受。"}}}},
     "Note title" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"笔记标题"}}}},
     "Document, Editing" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"文档正文，编辑"}}}},
     "Document, Reading" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"文档正文，阅读"}}}},

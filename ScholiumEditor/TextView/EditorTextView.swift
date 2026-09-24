@@ -42,6 +42,10 @@ public class EditorTextView: NSTextView {
     /// never permission to fall back to the upstream filesystem writer.
     public var onNativePasteboard: ((NSPasteboard) -> Bool)?
 
+    /// Display-only writing aid. It is never an attributed-string run or an
+    /// input-method prediction, so it cannot enter source, selection or Undo.
+    var inlineGhostPresentation: InlineGhostPresentation?
+
     // MARK: - Find
 
     /// Character ranges of the current search's matches, in raw/display index
@@ -72,6 +76,7 @@ public class EditorTextView: NSTextView {
     /// them rebuild anything here, the next lookup does it lazily.
     public var rawSource: String = "" {
         didSet {
+            clearInlineGhost()
             synchronizeExactSourceCheckpoint()
             // An exact transaction may change authored newline bytes without
             // changing this LF projection. Its state token must still advance.
@@ -321,6 +326,7 @@ public class EditorTextView: NSTextView {
             // Composition belongs to the input method. Keep the current surface
             // until it commits instead of restyling provisional text underneath it.
             guard currentViewMode != newValue, !isComposingSource else { return }
+            clearInlineGhost()
             if newValue == .reading { closeTableCellEditor(commit: true) }
             let origin = enclosingScrollView?.contentView.bounds.origin
             currentViewMode = newValue
@@ -889,6 +895,7 @@ public class EditorTextView: NSTextView {
     /// Re-render when the system appearance (light ↔ dark) changes.
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        clearInlineGhost()
         // Before the colors: the general theme for the new appearance may carry
         // a different font, and `applyChromeColors` bakes the font into
         // `typingAttributes`.

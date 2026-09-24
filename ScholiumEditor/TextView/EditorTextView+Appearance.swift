@@ -50,6 +50,7 @@ extension EditorTextView {
             let appearance = pendingNativeAppearance
         else { return }
         pendingNativeAppearance = nil
+        clearInlineGhost()
         appliedNativeAppearance = appearance
         blockAppearance = appearance.blockStyle
         calloutStyleOverrides = appearance.calloutStyles

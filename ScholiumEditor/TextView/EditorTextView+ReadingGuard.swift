@@ -11,6 +11,7 @@ extension EditorTextView {
     // menu validation. A read-only surface must not acquire provisional text.
     public override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         guard isEditable, viewMode != .reading else { return }
+        clearInlineGhost()
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
         scheduleSourceStateNotification()
     }

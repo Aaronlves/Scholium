@@ -153,6 +153,7 @@ extension EditorTextView {
             maxContentWidth: maxContentWidthPoints)
         let widthChanged = abs(textContainerInset.width - target) > 0.5
         if widthChanged {
+            clearInlineGhost()
             textContainerInset = NSSize(width: target, height: textContainerInset.height)
         }
         // Tracks the clip height, so it has to be rechecked on every resize —
@@ -195,6 +196,7 @@ extension EditorTextView {
         if let clipHeight = enclosingScrollView?.contentView.bounds.height {
             size.height = max(size.height, clipHeight)
         }
+        if abs(frame.width - size.width) > 0.5 { clearInlineGhost() }
         super.setFrameSize(size)
         updateContentInset()
         // A narrower column can push a table cell into wrapping, or a wider one
