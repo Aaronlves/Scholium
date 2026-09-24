@@ -215,11 +215,9 @@ enum ScholiumWebDesignTokens {
           text-autospace: normal;
           text-spacing-trim: trim-both;
         }
-        /* Read may use the engine's best available paragraph treatment;
-           editable Live Preview stays stable while the source is changing. */
-        .scholium-document {
-          text-wrap-style: pretty;
-        }
+        /* Keep Review and inactive Edit on the same wrapping geometry.
+           Edit also needs stable wrapping while the source is changing. */
+        .scholium-document,
         .cm-editor.scholium-live-mode .cm-content {
           text-wrap-style: stable;
         }

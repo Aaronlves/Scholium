@@ -266,7 +266,7 @@ public struct DocumentSourceAppearance: Codable, Hashable, Sendable {
 }
 
 public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
-    public static let defaultLineWidthCharacterUnits: Double = 64
+    public static let defaultLineWidthCharacterUnits: Double = 72
     public static let lineWidthCharacterUnitsRange: ClosedRange<Double> = 48...96
     public static let defaultCJKBodyFontFamily = "STFangsong"
     public static let defaultCJKEmphasisFontFamily = "Kaiti SC"
