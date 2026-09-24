@@ -320,16 +320,22 @@ final class ScholiumPerformanceUITests: XCTestCase {
         if let confirmFolder {
             confirmFolder.click()
         } else {
-            application.typeKey(.return, modifierFlags: [])
+            pathField.typeKey(.return, modifierFlags: [])
+        }
+        // Go to Folder can use the first Return to accept a completion. The
+        // panel route is ready only after the sheet has actually closed.
+        if !waitUntil(timeout: 2) { !goToFolder.exists } {
+            pathField.typeKey(.return, modifierFlags: [])
         }
         XCTAssertTrue(waitUntil(timeout: 5) { !goToFolder.exists })
-        guard panel.exists else { return }
-        let choose = panel.buttons["OKButton"]
-        XCTAssertTrue(choose.waitForExistence(timeout: 5))
-        choose.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
-        ).click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+        if panel.exists {
+            let choose = panel.buttons["OKButton"]
+            XCTAssertTrue(choose.waitForExistence(timeout: 5))
+            choose.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+        }
     }
 
     @MainActor

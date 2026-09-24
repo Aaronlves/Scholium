@@ -836,16 +836,23 @@ extension ScholiumUITests {
             } else {
                 pathField.typeKey(.return, modifierFlags: [])
             }
+            // The system Go to Folder field can first accept its path
+            // completion without dismissing the sheet. Confirm that resolved
+            // folder in a second step when the sheet remains visible.
+            if !waitUntil(timeout: 2) { !goToFolderSheet.exists } {
+                pathField.typeKey(.return, modifierFlags: [])
+            }
             XCTAssertTrue(waitUntil(timeout: 5) { !goToFolderSheet.exists })
         }
 
-        let authorize = panel.buttons["OKButton"]
-        XCTAssertTrue(authorize.waitForExistence(timeout: 5))
-        authorize.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
-        ).click()
-
-        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+        if panel.exists {
+            let authorize = panel.buttons["OKButton"]
+            XCTAssertTrue(authorize.waitForExistence(timeout: 5))
+            authorize.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+        }
     }
 
     func source(at url: URL) throws -> String {
