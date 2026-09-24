@@ -262,10 +262,10 @@ final class DocumentWindowLocationStore {
         let transfer = try source.takeDocumentForTransfer(tabID: tab.id)
         do {
             let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-            while transfer.session.editorSession.hasAttachedNativeView, ContinuousClock.now < deadline {
+            while transfer.session.editorSession.hasAttachedWebView, ContinuousClock.now < deadline {
                 try await Task.sleep(for: .milliseconds(10))
             }
-            guard !transfer.session.editorSession.hasAttachedNativeView else { throw DocumentControllerError.editorUnavailable }
+            guard !transfer.session.editorSession.hasAttachedWebView else { throw DocumentControllerError.editorUnavailable }
             destination.finishIncomingTransfer(transfer, tab: tab)
         } catch {
             source.documentController.receiveSessionTransfer(transfer, selecting: wasSelected)

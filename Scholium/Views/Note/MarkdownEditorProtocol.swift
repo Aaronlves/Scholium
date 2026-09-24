@@ -1,7 +1,12 @@
 import Foundation
 import ScholiumContracts
 
+let markdownEditorProtocolVersion = 40
+let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
+// Two exact-source strings may each require six JSON bytes per source byte.
+// Transport size is distinct from the source capacity enforced on each field.
+let markdownEditorMaximumSourceEnvelopeBytes = MarkdownEditorDeltaApplier.maximumResultUTF8Bytes * 12 + 512_000
 
 enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case bold, emphasis, strikethrough, highlight, inlineCode, markdownComment
@@ -41,20 +46,38 @@ func markdownEditorSelectionRangesAreValid(
         && ranges.allSatisfy { $0.isValid(forEditorUTF16Length: length) }
 }
 
-/// Native ranges use UTF-16 scalar boundaries, including positions within a
-/// combining sequence, but never the interior of a surrogate pair.
-func markdownEditorSelectionRangesAreValid(
-    _ ranges: [MarkdownEditorSelectionRange],
-    forProjectedText text: String
-) -> Bool {
-    let units = text as NSString
-    guard markdownEditorSelectionRangesAreValid(ranges, forEditorUTF16Length: units.length) else { return false }
-    func isBoundary(_ offset: Int) -> Bool {
-        offset == 0 || offset == units.length
-            || !(0xD800...0xDBFF).contains(units.character(at: offset - 1))
-            || !(0xDC00...0xDFFF).contains(units.character(at: offset))
+struct MarkdownEditorSelectionSnapshot: Codable, Hashable, Sendable {
+    let documentID: String
+    let fingerprint: String
+    let generation: Int
+    let ranges: [MarkdownEditorSelectionRange]
+
+    func isValid(
+        documentID expectedDocumentID: String,
+        fingerprint expectedFingerprint: String,
+        generation expectedGeneration: Int,
+        editorUTF16Length: Int
+    ) -> Bool {
+        documentID == expectedDocumentID
+            && fingerprint == expectedFingerprint
+            && generation == expectedGeneration
+            && markdownEditorSelectionRangesAreValid(
+                ranges,
+                forEditorUTF16Length: editorUTF16Length
+            )
     }
-    return ranges.allSatisfy { isBoundary($0.anchor) && isBoundary($0.head) }
+}
+
+struct MarkdownEditorRecoverySnapshot: Codable, Hashable, Sendable {
+    let documentID: String
+    let fingerprint: String
+    let generation: Int
+    let ranges: [MarkdownEditorSelectionRange]
+    let source: String
+    let stateJSON: String?
+    let undoHistoryPreserved: Bool
+    let dirty: Bool
+    let focusTarget: WindowDocumentFocusTarget?
 }
 
 /// A revision-bound position shared by the Read and editable projections.
@@ -81,6 +104,14 @@ struct EditorScrollAnchor: Codable, Hashable, Sendable {
             && fallbackFraction.isFinite
             && (0...1).contains(fallbackFraction)
     }
+}
+
+struct MarkdownEditorWireScrollAnchor: Codable, Hashable, Sendable {
+    let sourceUTF16Offset: Int
+    let blockUTF16LowerBound: Int
+    let blockUTF16UpperBound: Int
+    let relativeBlockPosition: Double
+    let fallbackFraction: Double
 }
 
 struct MarkdownEditorTablePosition: Codable, Hashable, Sendable {
@@ -150,6 +181,12 @@ struct EditorInteractionAvailability: Hashable, Sendable {
     }
 }
 
+struct MarkdownEditorPerformanceSample: Codable, Hashable, Sendable {
+    let name: String
+    let durationMilliseconds: Double
+    let observed: [String: Double]
+}
+
 enum DocumentFindAction: String, Codable, Hashable, Sendable {
     case present, update, next, previous, replaceCurrent, replaceAll
 }
@@ -169,4 +206,285 @@ struct DocumentFindQuery: Codable, Hashable, Sendable {
 struct DocumentFindResult: Codable, Hashable, Sendable {
     let current: Int
     let total: Int
+}
+
+enum MarkdownEditorOperation: Codable, Hashable, Sendable {
+    case initialize(
+        text: String,
+        mode: MarkdownEditorMode,
+        dialect: MarkdownEditingDialect,
+        initialSelection: MarkdownEditorSelectionRange?
+    )
+    case setMode(MarkdownEditorMode)
+    case setDocumentTitle(String)
+    case setPresentationCSS(String)
+    case setUserCSS(String)
+    case setLinkPreviews([MarkdownEditorLinkPreview])
+    case setWritingContinuation(enabled: Bool, contextKey: String)
+    case showPreview
+    case measureVisibleProjection
+    case showPreviewAt(x: Double, y: Double)
+    case announceStatus(String)
+    case goToLine(Int, focusesEditor: Bool)
+    case revealSourceRange(fromUTF16: Int, toUTF16: Int)
+    case setScrollFraction(Double)
+    case setScrollAnchor(MarkdownEditorWireScrollAnchor)
+    case queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance, captureRecovery
+    case documentFind(DocumentFindQuery)
+    case clearDocumentFind
+    case suspendForDetachment(suspensionID: String)
+    case resumeAfterDetachment(suspensionID: String)
+    case restoreRecovery(MarkdownEditorRecoverySnapshot)
+    case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
+    case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String, preserveSelection: Bool)
+    case insertReference(selection: MarkdownEditorSelectionRange, generation: Int, target: String)
+    case command(MarkdownEditorCommand, argument: String?)
+    case markClean, focus, focusTitle, blur
+
+    /// Only operations that can replace or mutate authoritative source need
+    /// transport ordering. Snapshot reads and presentation intents must not
+    /// queue behind one another or behind an obsolete content generation.
+    var serializesSourceMutation: Bool {
+        switch self {
+        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .command,
+            .suspendForDetachment, .resumeAfterDetachment:
+            true
+        case .documentFind(let query):
+            query.action == .replaceCurrent || query.action == .replaceAll
+        default:
+            false
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
+        case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
+            enabled, contextKey
+    }
+    private enum Kind: String, Codable {
+        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setWritingContinuation, showPreview,
+            measureVisibleProjection, showPreviewAt,
+            announceStatus
+        case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
+        case captureRecovery, suspendForDetachment, resumeAfterDetachment, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, insertReference,
+            command, documentFind, clearDocumentFind,
+            markClean, focus,
+            focusTitle, blur
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(Kind.self, forKey: .type) {
+        case .initialize:
+            self = try .initialize(
+                text: container.decode(String.self, forKey: .text),
+                mode: container.decode(MarkdownEditorMode.self, forKey: .mode),
+                dialect: container.decode(MarkdownEditingDialect.self, forKey: .dialect),
+                initialSelection: container.decodeIfPresent(
+                    MarkdownEditorSelectionRange.self,
+                    forKey: .initialSelection
+                )
+            )
+        case .setMode: self = try .setMode(container.decode(MarkdownEditorMode.self, forKey: .mode))
+        case .setDocumentTitle:
+            self = try .setDocumentTitle(container.decode(String.self, forKey: .value))
+        case .setPresentationCSS: self = try .setPresentationCSS(container.decode(String.self, forKey: .value))
+        case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
+        case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))
+        case .setWritingContinuation:
+            self = try .setWritingContinuation(
+                enabled: container.decode(Bool.self, forKey: .enabled),
+                contextKey: container.decode(String.self, forKey: .contextKey))
+        case .showPreview: self = .showPreview
+        case .measureVisibleProjection: self = .measureVisibleProjection
+        case .showPreviewAt:
+            self = try .showPreviewAt(
+                x: container.decode(Double.self, forKey: .x),
+                y: container.decode(Double.self, forKey: .y)
+            )
+        case .announceStatus: self = try .announceStatus(container.decode(String.self, forKey: .value))
+        case .goToLine: self = try .goToLine(container.decode(Int.self, forKey: .line), focusesEditor: container.decode(Bool.self, forKey: .focusesEditor))
+        case .revealSourceRange:
+            self = try .revealSourceRange(
+                fromUTF16: container.decode(Int.self, forKey: .fromUTF16),
+                toUTF16: container.decode(Int.self, forKey: .toUTF16)
+            )
+        case .setScrollFraction: self = try .setScrollFraction(container.decode(Double.self, forKey: .fraction))
+        case .setScrollAnchor: self = try .setScrollAnchor(container.decode(MarkdownEditorWireScrollAnchor.self, forKey: .anchor))
+        case .queryText: self = .queryText
+        case .querySelection: self = .querySelection
+        case .queryContext: self = .queryContext
+        case .queryScrollAnchor: self = .queryScrollAnchor
+        case .queryPerformance: self = .queryPerformance
+        case .documentFind: self = try .documentFind(container.decode(DocumentFindQuery.self, forKey: .value))
+        case .clearDocumentFind: self = .clearDocumentFind
+        case .captureRecovery: self = .captureRecovery
+        case .suspendForDetachment:
+            self = try .suspendForDetachment(suspensionID: container.decode(String.self, forKey: .suspensionID))
+        case .resumeAfterDetachment:
+            self = try .resumeAfterDetachment(suspensionID: container.decode(String.self, forKey: .suspensionID))
+        case .restoreRecovery: self = try .restoreRecovery(container.decode(MarkdownEditorRecoverySnapshot.self, forKey: .snapshot))
+        case .acknowledgeCommittedSnapshot:
+            self = try .acknowledgeCommittedSnapshot(
+                expected: container.decode(String.self, forKey: .expectedText),
+                committed: container.decode(String.self, forKey: .committedText),
+                fingerprint: container.decode(String.self, forKey: .committedFingerprint)
+            )
+        case .replacePassage:
+            self = try .replacePassage(
+                expectedText: container.decode(String.self, forKey: .expectedText),
+                fromUTF16: container.decode(Int.self, forKey: .fromUTF16),
+                toUTF16: container.decode(Int.self, forKey: .toUTF16),
+                replacement: container.decode(String.self, forKey: .replacement),
+                preserveSelection: container.decode(Bool.self, forKey: .preserveSelection))
+        case .insertReference:
+            self = try .insertReference(
+                selection: container.decode(MarkdownEditorSelectionRange.self, forKey: .selection),
+                generation: container.decode(Int.self, forKey: .generation),
+                target: container.decode(String.self, forKey: .target))
+        case .command:
+            self = try .command(
+                container.decode(MarkdownEditorCommand.self, forKey: .command),
+                argument: container.decodeIfPresent(String.self, forKey: .argument)
+            )
+        case .markClean: self = .markClean
+        case .focus: self = .focus
+        case .focusTitle: self = .focusTitle
+        case .blur: self = .blur
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .initialize(let text, let mode, let dialect, let initialSelection):
+            try container.encode(Kind.initialize, forKey: .type)
+            try container.encode(text, forKey: .text)
+            try container.encode(mode, forKey: .mode)
+            try container.encode(dialect, forKey: .dialect)
+            try container.encodeIfPresent(
+                initialSelection,
+                forKey: .initialSelection
+            )
+        case .setMode(let mode): try pair(.setMode, mode, .mode, into: &container)
+        case .setDocumentTitle(let value):
+            try pair(.setDocumentTitle, value, .value, into: &container)
+        case .setPresentationCSS(let value): try pair(.setPresentationCSS, value, .value, into: &container)
+        case .setUserCSS(let value): try pair(.setUserCSS, value, .value, into: &container)
+        case .setLinkPreviews(let value): try pair(.setLinkPreviews, value, .value, into: &container)
+        case .setWritingContinuation(let enabled, let contextKey):
+            try container.encode(Kind.setWritingContinuation, forKey: .type)
+            try container.encode(enabled, forKey: .enabled)
+            try container.encode(contextKey, forKey: .contextKey)
+        case .showPreview: try container.encode(Kind.showPreview, forKey: .type)
+        case .measureVisibleProjection:
+            try container.encode(Kind.measureVisibleProjection, forKey: .type)
+        case .showPreviewAt(let x, let y):
+            try container.encode(Kind.showPreviewAt, forKey: .type)
+            try container.encode(x, forKey: .x)
+            try container.encode(y, forKey: .y)
+        case .announceStatus(let value): try pair(.announceStatus, value, .value, into: &container)
+        case .goToLine(let line, let focusesEditor):
+            try pair(.goToLine, line, .line, into: &container)
+            try container.encode(focusesEditor, forKey: .focusesEditor)
+        case .revealSourceRange(let fromUTF16, let toUTF16):
+            try container.encode(Kind.revealSourceRange, forKey: .type)
+            try container.encode(fromUTF16, forKey: .fromUTF16)
+            try container.encode(toUTF16, forKey: .toUTF16)
+        case .setScrollFraction(let fraction): try pair(.setScrollFraction, fraction, .fraction, into: &container)
+        case .setScrollAnchor(let anchor): try pair(.setScrollAnchor, anchor, .anchor, into: &container)
+        case .queryText: try container.encode(Kind.queryText, forKey: .type)
+        case .querySelection: try container.encode(Kind.querySelection, forKey: .type)
+        case .queryContext: try container.encode(Kind.queryContext, forKey: .type)
+        case .queryScrollAnchor: try container.encode(Kind.queryScrollAnchor, forKey: .type)
+        case .queryPerformance: try container.encode(Kind.queryPerformance, forKey: .type)
+        case .documentFind(let value): try pair(.documentFind, value, .value, into: &container)
+        case .clearDocumentFind: try container.encode(Kind.clearDocumentFind, forKey: .type)
+        case .captureRecovery: try container.encode(Kind.captureRecovery, forKey: .type)
+        case .suspendForDetachment(let suspensionID):
+            try pair(.suspendForDetachment, suspensionID, .suspensionID, into: &container)
+        case .resumeAfterDetachment(let suspensionID):
+            try pair(.resumeAfterDetachment, suspensionID, .suspensionID, into: &container)
+        case .restoreRecovery(let snapshot): try pair(.restoreRecovery, snapshot, .snapshot, into: &container)
+        case .acknowledgeCommittedSnapshot(let expected, let committed, let fingerprint):
+            try container.encode(Kind.acknowledgeCommittedSnapshot, forKey: .type)
+            try container.encode(expected, forKey: .expectedText)
+            try container.encode(committed, forKey: .committedText)
+            try container.encode(fingerprint, forKey: .committedFingerprint)
+        case .replacePassage(let expectedText, let fromUTF16, let toUTF16, let replacement, let preserveSelection):
+            try container.encode(Kind.replacePassage, forKey: .type)
+            try container.encode(expectedText, forKey: .expectedText)
+            try container.encode(fromUTF16, forKey: .fromUTF16)
+            try container.encode(toUTF16, forKey: .toUTF16)
+            try container.encode(replacement, forKey: .replacement)
+            try container.encode(preserveSelection, forKey: .preserveSelection)
+        case .insertReference(let selection, let generation, let target):
+            try container.encode(Kind.insertReference, forKey: .type)
+            try container.encode(selection, forKey: .selection)
+            try container.encode(generation, forKey: .generation)
+            try container.encode(target, forKey: .target)
+        case .command(let command, let argument):
+            try container.encode(Kind.command, forKey: .type)
+            try container.encode(command, forKey: .command)
+            try container.encodeIfPresent(argument, forKey: .argument)
+        case .markClean: try container.encode(Kind.markClean, forKey: .type)
+        case .focus: try container.encode(Kind.focus, forKey: .type)
+        case .focusTitle: try container.encode(Kind.focusTitle, forKey: .type)
+        case .blur: try container.encode(Kind.blur, forKey: .type)
+        }
+    }
+
+    private func pair<Value: Encodable>(
+        _ kind: Kind,
+        _ value: Value,
+        _ key: CodingKeys,
+        into container: inout KeyedEncodingContainer<CodingKeys>
+    ) throws {
+        try container.encode(kind, forKey: .type)
+        try container.encode(value, forKey: key)
+    }
+}
+
+struct MarkdownEditorRequest: Codable, Hashable, Sendable {
+    let protocolVersion: Int
+    let requestID: UUID
+    let sessionID: UUID
+    let documentID: String
+    let startingFingerprint: String
+    let knownGeneration: Int
+    let expiresAt: Int64
+    let operation: MarkdownEditorOperation
+
+    init(
+        requestID: UUID = UUID(), sessionID: UUID, documentID: String,
+        startingFingerprint: String, knownGeneration: Int, expiresAt: Int64,
+        operation: MarkdownEditorOperation
+    ) {
+        protocolVersion = markdownEditorProtocolVersion
+        self.requestID = requestID
+        self.sessionID = sessionID
+        self.documentID = documentID
+        self.startingFingerprint = startingFingerprint
+        self.knownGeneration = knownGeneration
+        self.expiresAt = expiresAt
+        self.operation = operation
+    }
+}
+
+struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
+    let requestID: UUID
+    let resultingGeneration: Int
+    let sourceChanged: Bool
+    let selections: [MarkdownEditorSelectionRange]
+    let undoLabel: String?
+    let text: String?
+    let context: MarkdownEditorContext?
+    let selection: MarkdownEditorSelectionSnapshot?
+    let recovery: MarkdownEditorRecoverySnapshot?
+    let scrollAnchor: MarkdownEditorWireScrollAnchor?
+    let performanceSamples: [MarkdownEditorPerformanceSample]?
+    let find: DocumentFindResult?
+    let commitSuperseded: Bool?
+    let accepted: Bool
+    let error: String?
 }

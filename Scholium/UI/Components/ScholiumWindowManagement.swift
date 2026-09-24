@@ -515,15 +515,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         )
     }
 
-    func showDocumentTitle() {
-        guard let window, appState.canPerformNoteAction(.rename) else { return }
-        if appState.isDetachedDocumentWindow {
-            detachedToolbar?.showDocumentTitle(in: window)
-        } else {
-            toolbarController?.showDocumentTitle(in: window)
-        }
-    }
-
     func update(reduceMotion: Bool) {
         self.reduceMotion = reduceMotion
     }
@@ -942,8 +933,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func removeToolbar() {
-        let detachedNativeToolbar = detachedToolbar?.toolbar
-        detachedToolbar?.invalidate()
         detachedToolbar = nil
         guard let window else {
             toolbarController?.invalidate()
@@ -953,7 +942,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         let isConfiguredToolbar =
             window.toolbar?.identifier
             == ScholiumWorkspaceToolbarController.toolbarIdentifier
-        if window.toolbar === loadingToolbar || window.toolbar === detachedNativeToolbar || isConfiguredToolbar {
+        if window.toolbar === loadingToolbar || isConfiguredToolbar {
             window.toolbar = nil
         }
         toolbarController?.invalidate()

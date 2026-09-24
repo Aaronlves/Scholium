@@ -53,8 +53,8 @@ struct AppCompositionRootTests {
                 == ObjectIdentifier(workspaceStore.applicationRuntime)
         )
 
-        #expect(ObjectIdentifier(first.documentAppearanceStore) == ObjectIdentifier(workspaceStore.documentAppearanceStore))
-        #expect(ObjectIdentifier(second.documentAppearanceStore) == ObjectIdentifier(workspaceStore.documentAppearanceStore))
+        #expect(ObjectIdentifier(first.cssSnippetStore) == ObjectIdentifier(workspaceStore.cssSnippetStore))
+        #expect(ObjectIdentifier(second.cssSnippetStore) == ObjectIdentifier(workspaceStore.cssSnippetStore))
         #expect(
             workspaceStore.applicationSupportURL
                 == isolatedHome.appendingPathComponent(
@@ -282,7 +282,7 @@ struct AppCompositionRootTests {
             )
         }
         let session = window.documentController.session(for: second.editingTarget)
-        session.beginEditing(in: .edit)
+        session.beginEditing(in: .source)
         session.originalEditingSource = "Saved source"
         session.editingSource = "Unsaved active draft"
         session.editError = "Active document save failure"
@@ -440,12 +440,17 @@ struct AppCompositionRootTests {
         retainedSession.editorSession.loadDocument(
             source,
             documentID: "retained-focus",
-            mode: .edit
+            mode: .livePreview
         )
-        // This model-only fixture has no window responder to report focus.
-        retainedSession.editorSession.authorizeAutomaticFocus(target: .editor)
-        retainedSession.editorSession.nativeEditor.setSelectedRange(NSRange(location: 5, length: 0))
-        retainedSession.editorSession.updateNativeInteraction()
+        retainedSession.editorSession.updateInteraction(
+            selections: [MarkdownEditorSelectionRange(anchor: 5, head: 5)],
+            line: 1,
+            column: 6,
+            lineCount: 1,
+            documentVersion: 0,
+            focusTarget: .editor,
+            context: nil
+        )
 
         _ = try await retainedWindow.windowCloseCoordinator.prepare()
         let savedOpenPresentation = try #require(
@@ -1090,8 +1095,8 @@ struct AppCompositionRootTests {
                 && reveal.relativePath == "Shared.md"
         }
 
-        firstSession.preparePresentationMode(.edit)
-        firstWindow!.rememberPresentationMode(.edit)
+        firstSession.preparePresentationMode(.livePreview)
+        firstWindow!.rememberPresentationMode(.livePreview)
         firstSession.scrollFraction = 0.42
         firstWindow!.requestTriptychWorkspace(.topicKnowledge)
         try await waitUntil("the first window entered the retained Topics workspace") {
@@ -1106,8 +1111,8 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.documentRevisions["Shared.md"] != original.fingerprint)
         #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
         #expect(firstSession.presentationMode == .read)
-        #expect(firstSession.pendingEditorMode == .edit)
-        #expect(firstWindow!.currentPresentationMode == .edit)
+        #expect(firstSession.pendingEditorMode == .livePreview)
+        #expect(firstWindow!.currentPresentationMode == .livePreview)
         #expect(firstSession.scrollFraction == 0.42)
 
         let retainedSelection = try #require(firstWindow!.documentController.selectedDocument)
@@ -1160,7 +1165,7 @@ struct AppCompositionRootTests {
             firstWindow?.currentRegisteredVault?.id == analysesVault.id
                 && firstWindow?.selectedDocument == originalID
         }
-        #expect(firstWindow!.currentPresentationMode == .edit)
+        #expect(firstWindow!.currentPresentationMode == .livePreview)
         #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
 
         let cleanSource = originalSource + "\nCommitted from the first window.\n"
@@ -1179,7 +1184,7 @@ struct AppCompositionRootTests {
         #expect(secondSession.conflict == nil)
         let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact editor bytes.\r\n"
         firstSession.suppressAutosave = true
-        firstSession.beginEditing(in: .edit)
+        firstSession.beginEditing(in: .livePreview)
         firstSession.editingSource = exactDirtyBuffer
         firstSession.suppressAutosave = false
         let externalSource = "# Shared\n\nCommitted from the clean peer.\n"
@@ -1371,7 +1376,7 @@ struct AppCompositionRootTests {
             target: selected.editingTarget,
             source: note.document.rawContent,
             revision: note.fingerprint,
-            mode: .edit
+            mode: .source
         )
         session.suppressAutosave = true
         let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact source.\r\n"

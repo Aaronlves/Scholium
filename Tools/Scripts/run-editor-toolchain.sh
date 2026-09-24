@@ -6,6 +6,7 @@ script_name="${0:t}"
 source_dir="$repo_root/WebEditor"
 run_tests=false
 check_only=false
+output=""
 reader_output=""
 math_output=""
 mermaid_output=""
@@ -13,13 +14,18 @@ mermaid_notices_output=""
 math_assets=""
 
 usage() {
-  print -u2 "Usage: ${script_name} --reader-output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
+  print -u2 "Usage: ${script_name} --output <absolute-path> --reader-output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
   print -u2 "       ${script_name} --check-only"
   exit 64
 }
 
 while (( $# > 0 )); do
   case "$1" in
+    --output)
+      (( $# >= 2 )) || usage
+      output="$2"
+      shift 2
+      ;;
     --reader-output)
       (( $# >= 2 )) || usage
       reader_output="$2"
@@ -60,16 +66,21 @@ while (( $# > 0 )); do
 done
 
 if $check_only; then
-  if [[ -n "$reader_output" || -n "$math_output" || -n "$mermaid_output" \
+  if [[ -n "$output" || -n "$reader_output" || -n "$math_output" || -n "$mermaid_output" \
     || -n "$mermaid_notices_output" || -n "$math_assets" ]] || $run_tests; then
     usage
   fi
 else
+  [[ -n "$output" && "$output" == /* ]] || usage
   [[ -n "$reader_output" && "$reader_output" == /* ]] || usage
   [[ -n "$math_output" && "$math_output" == /* ]] || usage
   [[ -n "$mermaid_output" && "$mermaid_output" == /* ]] || usage
   [[ -n "$mermaid_notices_output" && "$mermaid_notices_output" == /* ]] || usage
   [[ -n "$math_assets" && "$math_assets" == /* ]] || usage
+  [[ -d "${output:h}" ]] || {
+    print -u2 "The editor bundle output directory does not exist: ${output:h}"
+    exit 66
+  }
   [[ -d "${reader_output:h}" ]] || {
     print -u2 "The reader bundle output directory does not exist: ${reader_output:h}"
     exit 66
@@ -110,16 +121,31 @@ rsync -a --delete \
   --exclude 'node_modules' \
   "$source_dir/" "$stage/"
 
+if $run_tests; then
+  fixture_dir="$stage_root/Tests/ScholiumContractsTests/Fixtures"
+  mkdir -p "$fixture_dir"
+  cp "$repo_root/Tests/ScholiumContractsTests/Fixtures/semantic-parity-fixtures.json" "$fixture_dir/"
+  cp "$repo_root/Tests/ScholiumContractsTests/Fixtures/base-syntax-parity-fixtures.json" "$fixture_dir/"
+  cp "$repo_root/Tests/ScholiumContractsTests/Fixtures/frontmatter-presentation-fixtures.json" "$fixture_dir/"
+fi
+
 cd "$stage"
 npm ci --ignore-scripts
 npm run typecheck
 if $check_only; then
-  print "Web document resources typecheck: passed"
+  print "WebEditor typecheck: passed"
   exit 0
 fi
 if $run_tests; then
   npm test
 fi
+
+./node_modules/.bin/esbuild editor.ts \
+  --bundle \
+  --format=iife \
+  --platform=browser \
+  --target=safari17 \
+  --outfile="$output"
 
 ./node_modules/.bin/esbuild reader.ts \
   --bundle \

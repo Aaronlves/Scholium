@@ -1,0 +1,496 @@
+import type {EditorState, Text} from "@codemirror/state";
+import {syntaxTree} from "@codemirror/language";
+import {linkAnnotationAfter} from "./link-annotation";
+
+export type BaseBlockKind =
+  | "paragraph"
+  | "heading"
+  | "blockQuote"
+  | "code"
+  | "unorderedList"
+  | "orderedList"
+  | "listItem"
+  | "table"
+  | "thematicBreak"
+  | "html";
+
+export type BaseInlineKind =
+  | "strong"
+  | "emphasis"
+  | "strikethrough"
+  | "highlight"
+  | "code"
+  | "link"
+  | "image";
+
+export type PresentationBlockKind = BaseBlockKind
+  | "callout"
+  | "footnoteDefinition"
+  | "displayMath"
+  | "comment";
+
+export type PresentationInlineKind = BaseInlineKind
+  | "wikilink"
+  | "blockAnchor"
+  | "inlineMath"
+  | "footnoteReference"
+  | "inlineFootnote"
+  | "comment";
+
+export interface SemanticSourceRange { from: number; to: number }
+
+export interface SemanticBlockProjection extends SemanticSourceRange {
+  kind: PresentationBlockKind;
+  nodeName: string;
+  depth: number;
+  parent: {kind: PresentationBlockKind; from: number; to: number} | null;
+  headingLevel: number | null;
+  listDepth: number | null;
+  markerRanges: SemanticSourceRange[];
+  taskMarkerRange: SemanticSourceRange | null;
+}
+
+export interface SemanticInlineProjection extends SemanticSourceRange {
+  kind: PresentationInlineKind;
+  nodeName: string;
+  markerRanges: SemanticSourceRange[];
+  visibleRanges: SemanticSourceRange[];
+  targetRange: SemanticSourceRange | null;
+  aliasRange: SemanticSourceRange | null;
+  linkRange: SemanticSourceRange | null;
+  annotationRange: SemanticSourceRange | null;
+  annotationContentRange: SemanticSourceRange | null;
+}
+
+export interface SemanticProjectionRanges {
+  blocks: SemanticBlockProjection[];
+  inlines: SemanticInlineProjection[];
+  literals: Array<SemanticSourceRange & {nodeName: string}>;
+}
+
+export function mapSemanticProjectionRanges(
+  previous: SemanticProjectionRanges,
+  mapPosition: (position: number) => number,
+) {
+  const mapRange = (range: SemanticSourceRange) => ({
+    from: mapPosition(range.from),
+    to: mapPosition(range.to),
+  });
+  const blocks = previous.blocks.map((block): SemanticBlockProjection => ({
+    ...block,
+    from: mapPosition(block.from),
+    to: mapPosition(block.to),
+    parent: block.parent ? {
+      kind: block.parent.kind,
+      from: mapPosition(block.parent.from),
+      to: mapPosition(block.parent.to),
+    } : null,
+    markerRanges: block.markerRanges.map(mapRange),
+    taskMarkerRange: block.taskMarkerRange ? mapRange(block.taskMarkerRange) : null,
+  }));
+  const inlines = previous.inlines.map((inline): SemanticInlineProjection => ({
+    ...inline,
+    from: mapPosition(inline.from),
+    to: mapPosition(inline.to),
+    markerRanges: inline.markerRanges.map(mapRange),
+    visibleRanges: inline.visibleRanges.map(mapRange),
+    targetRange: inline.targetRange ? mapRange(inline.targetRange) : null,
+    aliasRange: inline.aliasRange ? mapRange(inline.aliasRange) : null,
+    linkRange: inline.linkRange ? mapRange(inline.linkRange) : null,
+    annotationRange: inline.annotationRange ? mapRange(inline.annotationRange) : null,
+    annotationContentRange: inline.annotationContentRange ? mapRange(inline.annotationContentRange) : null,
+  }));
+  const literals = previous.literals.map((literal) => ({
+    ...literal,
+    from: mapPosition(literal.from),
+    to: mapPosition(literal.to),
+  }));
+  return {blocks, inlines, literals};
+}
+
+interface ProjectionSyntaxNode {
+  readonly name: string;
+  readonly from: number;
+  readonly to: number;
+  readonly firstChild: ProjectionSyntaxNode | null;
+  readonly nextSibling: ProjectionSyntaxNode | null;
+}
+
+const blockKinds = new Map<string, PresentationBlockKind>([
+  ["Paragraph", "paragraph"],
+  ["Blockquote", "blockQuote"],
+  ["FencedCode", "code"],
+  ["CodeBlock", "code"],
+  ["BulletList", "unorderedList"],
+  ["OrderedList", "orderedList"],
+  ["ListItem", "listItem"],
+  ["Table", "table"],
+  ["HorizontalRule", "thematicBreak"],
+  ["HTMLBlock", "html"],
+  // CommonMark exposes a block HTML comment as CommentBlock while Swift
+  // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
+  // on one raw-HTML presentation path so Review and Edit cannot drift.
+  ["CommentBlock", "html"],
+  ["Callout", "callout"],
+  ["FootnoteDefinition", "footnoteDefinition"],
+  ["BlockMath", "displayMath"],
+  ["ObsidianCommentBlock", "comment"],
+  ["UnclosedObsidianCommentBlock", "comment"],
+]);
+
+const inlineKinds = new Map<string, PresentationInlineKind>([
+  ["StrongEmphasis", "strong"],
+  ["Emphasis", "emphasis"],
+  ["Strikethrough", "strikethrough"],
+  ["InlineCode", "code"],
+  ["Link", "link"],
+  ["Autolink", "link"],
+  ["Image", "image"],
+  ["Highlight", "highlight"],
+  ["WikiLink", "wikilink"],
+  ["InlineMath", "inlineMath"],
+  ["FootnoteReference", "footnoteReference"],
+  ["InlineFootnote", "inlineFootnote"],
+  ["ObsidianComment", "comment"],
+]);
+
+function childRanges(
+  root: ProjectionSyntaxNode,
+  names: ReadonlySet<string>,
+  stopAt: ReadonlySet<string> = new Set(),
+) {
+  const ranges: SemanticSourceRange[] = [];
+  const visit = (node: ProjectionSyntaxNode) => {
+    if (names.has(node.name)) ranges.push({from: node.from, to: node.to});
+    if (node !== root && stopAt.has(node.name)) return;
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+  };
+  visit(root);
+  return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+}
+
+function complementRanges(
+  from: number,
+  to: number,
+  excluded: readonly SemanticSourceRange[],
+) {
+  const visible: SemanticSourceRange[] = [];
+  let position = from;
+  for (const range of excluded) {
+    if (range.from > position) visible.push({from: position, to: range.from});
+    position = Math.max(position, range.to);
+  }
+  if (position < to) visible.push({from: position, to});
+  return visible;
+}
+
+function presentationBlockMarkerRanges(
+  state: EditorState,
+  node: ProjectionSyntaxNode,
+  kind: PresentationBlockKind,
+  markerNames: ReadonlySet<string>,
+  stopAt: ReadonlySet<string>,
+) {
+  const ranges = childRanges(node, markerNames, stopAt);
+  if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
+
+  // Lezer's HeaderMark covers only the `#` run. In rendered Markdown, the
+  // required separator after an opening ATX marker is syntax too: HTML
+  // collapses it at the start of the heading, whereas CodeMirror preserves it
+  // under `white-space: break-spaces`. Keep that separator in the catalog's
+  // exact presentation marker range so both adapters start the visible title
+  // at the same source boundary. A trailing closing HeaderMark is untouched.
+  return ranges.map((range) => {
+    if (range.from !== node.from) return range;
+    let to = range.to;
+    while (to < node.to) {
+      const character = state.doc.sliceString(to, to + 1);
+      if (character !== " " && character !== "\t") break;
+      to += 1;
+    }
+    return {from: range.from, to};
+  });
+}
+
+function inlinePresentation(
+  node: ProjectionSyntaxNode,
+  kind: PresentationInlineKind,
+  source: string,
+): SemanticInlineProjection | null {
+  const markerNames = new Set<string>();
+  switch (kind) {
+  case "strong":
+  case "emphasis": markerNames.add("EmphasisMark"); break;
+  case "strikethrough": markerNames.add("StrikethroughMark"); break;
+  case "code": markerNames.add("CodeMark"); break;
+  case "link":
+  case "image": markerNames.add("LinkMark"); break;
+  case "highlight": markerNames.add("HighlightMark"); break;
+  case "wikilink":
+    markerNames.add("WikiLinkOpenMark");
+    markerNames.add("WikiEmbedMark");
+    markerNames.add("WikiLinkAliasMark");
+    markerNames.add("WikiLinkCloseMark");
+    break;
+  case "inlineMath": markerNames.add("MathMark"); break;
+  case "footnoteReference":
+    markerNames.add("FootnoteOpenMark");
+    markerNames.add("FootnoteCloseMark");
+    break;
+  case "inlineFootnote":
+    markerNames.add("InlineFootnoteOpenMark");
+    markerNames.add("FootnoteCloseMark");
+    break;
+  case "comment": break;
+  }
+  const markerRanges = childRanges(node, markerNames);
+  let targetRange: SemanticSourceRange | null = null;
+  let aliasRange: SemanticSourceRange | null = null;
+  let linkRange: SemanticSourceRange | null = null;
+  let annotationRange: SemanticSourceRange | null = null;
+  let annotationContentRange: SemanticSourceRange | null = null;
+  let projectionTo = node.to;
+  let visibleRanges = complementRanges(node.from, node.to, markerRanges);
+  if (kind === "link" || kind === "image") {
+    const explicitVisible = childRanges(node, new Set(["URL"]));
+    // The Markdown parser can retain a recoverable Link node for an unfinished
+    // `[label](` prefix. Without a URL child there is no proven destination,
+    // so it remains ordinary editable source instead of becoming an active
+    // projection or link target.
+    if (explicitVisible.length === 0) return null;
+    targetRange = explicitVisible[0];
+    if (node.name === "Autolink") {
+      visibleRanges = explicitVisible;
+    } else {
+      const linkMarks = markerRanges;
+      visibleRanges = linkMarks.length >= 2
+        ? [{from: linkMarks[0].to, to: linkMarks[1].from}]
+        : [];
+    }
+  } else if (kind === "wikilink") {
+    const alias = childRanges(node, new Set(["WikiLinkAlias"]));
+    const target = childRanges(node, new Set(["WikiLinkTarget"]));
+    targetRange = target[0] ?? null;
+    aliasRange = alias[0] ?? null;
+    visibleRanges = alias.length > 0 ? alias : target;
+    linkRange = {from: node.from, to: node.to};
+    const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
+    const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
+    if (annotation) {
+      annotationRange = {from: annotation.from, to: annotation.to};
+      annotationContentRange = {from: annotation.contentFrom, to: annotation.contentTo};
+      projectionTo = annotation.to;
+    }
+  } else if (kind === "inlineMath") {
+    visibleRanges = childRanges(node, new Set(["MathContent"]));
+  } else if (kind === "footnoteReference") {
+    visibleRanges = childRanges(node, new Set(["FootnoteIdentifier"]));
+  } else if (kind === "inlineFootnote") {
+    visibleRanges = childRanges(node, new Set(["FootnoteContent"]));
+  } else if (kind === "comment") {
+    visibleRanges = [];
+  }
+  return {
+    kind,
+    nodeName: node.name,
+    from: node.from,
+    to: projectionTo,
+    markerRanges,
+    visibleRanges,
+    targetRange,
+    aliasRange,
+    linkRange,
+    annotationRange,
+    annotationContentRange,
+  };
+}
+
+export function rangeKey(from: number, to: number) {
+  return `${from}:${to}`;
+}
+
+/**
+ * Returns only the syntax-bearing start of the physical line containing
+ * `position`. Interaction reporting must never materialize an arbitrarily
+ * long `Line.text` merely to recognize a short block marker.
+ */
+export function boundedLinePrefix(doc: Text, position: number, limit = 512) {
+  const line = doc.lineAt(Math.max(0, Math.min(position, doc.length)));
+  return doc.sliceString(line.from, Math.min(line.to, line.from + limit));
+}
+
+export function boundedProjectionRanges(
+  documentLength: number,
+  visibleRanges: readonly {from: number; to: number}[],
+  margin = 2_000,
+) {
+  const expanded = visibleRanges.map((range) => ({
+    from: Math.max(0, range.from - margin),
+    to: Math.min(documentLength, range.to + margin),
+  })).sort((left, right) => left.from - right.from || left.to - right.to);
+  const merged: Array<{from: number; to: number}> = [];
+  for (const range of expanded) {
+    const previous = merged.at(-1);
+    if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
+    else merged.push({...range});
+  }
+  return merged;
+}
+
+export function semanticProjectionRanges(
+  state: EditorState,
+  visibleRanges: readonly {from: number; to: number}[],
+  margin = 2_000,
+  tree: ReturnType<typeof syntaxTree> = syntaxTree(state),
+): SemanticProjectionRanges {
+  const result: SemanticProjectionRanges = {
+    blocks: [],
+    inlines: [],
+    literals: [],
+  };
+  if (visibleRanges.length === 0) return result;
+  const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
+  const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
+  const blockStack: SemanticBlockProjection[] = [];
+  const source = state.doc.toString();
+  tree.iterate({
+    from,
+    to,
+    enter(reference) {
+      const node = reference.node as unknown as ProjectionSyntaxNode;
+      const heading = /^(?:ATX|Setext)Heading([1-6])$/.exec(node.name);
+      const kind = heading ? "heading" : blockKinds.get(node.name);
+      if (kind) {
+        const parent = blockStack.at(-1) ?? null;
+        const markerNames = new Set<string>();
+        if (kind === "heading") markerNames.add("HeaderMark");
+        if (kind === "blockQuote") markerNames.add("QuoteMark");
+        if (kind === "listItem") {
+          markerNames.add("ListMark");
+          markerNames.add("TaskMarker");
+        }
+        if (kind === "code") markerNames.add("CodeMark");
+        if (kind === "callout") {
+          markerNames.add("CalloutQuoteMark");
+          markerNames.add("CalloutRoleMark");
+        }
+        if (kind === "displayMath") markerNames.add("MathMark");
+        const markerRanges = presentationBlockMarkerRanges(
+          state,
+          node,
+          kind,
+          markerNames,
+          kind === "listItem" ? new Set(["ListItem"]) : new Set(),
+        );
+        const block: SemanticBlockProjection = {
+          kind,
+          nodeName: node.name,
+          from: node.from,
+          to: node.to,
+          depth: blockStack.length,
+          parent: parent ? {kind: parent.kind, from: parent.from, to: parent.to} : null,
+          headingLevel: heading ? Number(heading[1]) : null,
+          listDepth: kind === "listItem"
+            ? blockStack.filter((block) => block.kind === "listItem").length
+            : null,
+          markerRanges,
+          taskMarkerRange: kind === "listItem"
+            ? markerRanges.find((range) => state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null
+            : null,
+        };
+        result.blocks.push(block);
+        blockStack.push(block);
+      }
+
+      if (node.name === "Task") {
+        const taskMarker = childRanges(node, new Set(["TaskMarker"]))[0];
+        if (taskMarker) {
+          let contentFrom = taskMarker.to;
+          while (contentFrom < node.to) {
+            const character = state.doc.sliceString(contentFrom, contentFrom + 1);
+            if (character !== " " && character !== "\t") break;
+            contentFrom += 1;
+          }
+          if (contentFrom < node.to) {
+            const parent = blockStack.at(-1) ?? null;
+            const paragraph: SemanticBlockProjection = {
+              kind: "paragraph",
+              nodeName: "TaskContent",
+              from: contentFrom,
+              to: node.to,
+              depth: blockStack.length,
+              parent: parent ? {kind: parent.kind, from: parent.from, to: parent.to} : null,
+              headingLevel: null,
+              listDepth: null,
+              markerRanges: [],
+              taskMarkerRange: null,
+            };
+            result.blocks.push(paragraph);
+          }
+        }
+      }
+
+      const inlineKind = inlineKinds.get(node.name);
+      if (inlineKind) {
+        const inline = inlinePresentation(node, inlineKind, source);
+        if (inline) result.inlines.push(inline);
+      }
+      if ([
+        "HTMLTag", "CommentBlock", "Comment", "ObsidianComment",
+        "UnclosedObsidianComment",
+      ].includes(node.name)) {
+        result.literals.push({from: node.from, to: node.to, nodeName: node.name});
+        return false;
+      }
+    },
+    leave(reference) {
+      const node = reference.node as unknown as ProjectionSyntaxNode;
+      const heading = /^(?:ATX|Setext)Heading([1-6])$/.test(node.name);
+      if (!heading && !blockKinds.has(node.name)) return;
+      const current = blockStack.at(-1);
+      if (current?.from === node.from && current.to === node.to && current.nodeName === node.name) {
+        blockStack.pop();
+      }
+    },
+  });
+  // Source-owned Obsidian paragraph identities are a suffix of a parsed
+  // paragraph. Never recognize a lookalike inside inline or block literals.
+  const paragraphIsProtected = (block: SemanticBlockProjection) =>
+    source.slice(block.from, block.to).includes("%%")
+      || source.slice(block.from, block.to).includes("<!--")
+      || result.inlines.some((inline) =>
+        ["inlineMath", "inlineFootnote"].includes(inline.kind)
+          && inline.from < block.to && inline.to > block.from)
+      || result.blocks.some((candidate) =>
+        ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind)
+          && candidate.from < block.to && candidate.to > block.from);
+  for (const block of result.blocks) {
+    if (block.kind !== "paragraph" || paragraphIsProtected(block)) continue;
+    const paragraph = source.slice(block.from, block.to);
+    const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
+    if (!match) continue;
+    const markerFrom = block.from + match.index + match[0].indexOf("^");
+    const markerTo = markerFrom + match[1].length + 1;
+    if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
+      const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
+      if (!preceding || preceding.kind !== "paragraph"
+          || source.slice(preceding.to, block.from).trim() !== ""
+          || paragraphIsProtected(preceding)) continue;
+    }
+    if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom)
+        || result.blocks.some((candidate) =>
+          ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind)
+            && candidate.from <= markerFrom && candidate.to >= markerTo)
+        || result.literals.some((literal) => literal.from < markerTo && literal.to > markerFrom)) continue;
+    result.inlines.push({
+      kind: "blockAnchor", nodeName: "ParagraphAnchor", from: markerFrom, to: markerTo,
+      markerRanges: [{from: markerFrom, to: markerTo}], visibleRanges: [],
+      targetRange: null, aliasRange: null, linkRange: null,
+      annotationRange: null, annotationContentRange: null,
+    });
+  }
+  result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
+  result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
+  result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
+  return result;
+}

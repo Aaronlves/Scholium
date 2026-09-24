@@ -39,7 +39,7 @@ struct DocumentControllerConvergenceTests {
             defer { session.cancelScheduledWork() }
             controller.beginEditing(
                 session: session, target: target, source: base,
-                revision: DocumentFingerprint(content: base), mode: .edit)
+                revision: DocumentFingerprint(content: base), mode: .source)
             session.editingSource = draft
             session.conflict = .init(
                 relativePath: "Source.md", editorSource: draft,
@@ -100,7 +100,7 @@ struct DocumentControllerConvergenceTests {
         let session = controller.session(for: target)
         controller.beginEditing(
             session: session, target: target, source: original.document.rawContent,
-            revision: original.fingerprint, mode: .edit)
+            revision: original.fingerprint, mode: .source)
         let captured = AsyncStream<Void>.makeStream()
         let acknowledgement = AsyncStream<Void>.makeStream()
         defer {
@@ -161,7 +161,7 @@ struct DocumentControllerConvergenceTests {
         let session = controller.session(for: target)
         controller.beginEditing(
             session: session, target: target, source: original.document.rawContent,
-            revision: original.fingerprint, mode: .edit)
+            revision: original.fingerprint, mode: .source)
         defer { session.cancelScheduledWork() }
         session.editingSource = "Pending edit\n"
         session.activeSaveToken = UUID()
@@ -191,77 +191,6 @@ struct DocumentControllerConvergenceTests {
         #expect(session.autosaveToken == nextToken && session.autosaveTask != nil)
     }
 
-    @Test("Autosave waits for Chinese composition and then saves exact source")
-    func autosaveWaitsForComposition() async throws {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent(".build/ime-autosave-\(UUID())")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
-        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
-        let original = "\u{FEFF}题目\r\n正文"
-        let file = vaults[1].appendingPathComponent("Input.md")
-        try Data(original.utf8).write(to: file)
-        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
-        do {
-            let capabilities = try await store.configureTriptychCapabilities(
-                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
-                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "IME fixture")
-            let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
-            let snapshot = try #require(vault.documents.first { $0.id.relativePath == "Input.md" })
-            let controller = DocumentController()
-            controller.bind(to: capabilities.documents)
-            controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
-            let descriptor = try #require(controller.activeDocument)
-            let target = DocumentEditingTarget.workspace(descriptor.sessionKey)
-            let session = controller.session(for: descriptor)
-            defer { session.cancelScheduledWork() }
-            controller.beginEditing(
-                session: session, target: target, source: original,
-                revision: snapshot.fingerprint, mode: .edit)
-            session.editorSession.loadDocument(
-                original, documentID: session.editorSession.editorDocumentID, mode: .edit)
-            let editor = session.editorSession.nativeEditor
-            editor.insertText("!", replacementRange: NSRange(location: (editor.rawSource as NSString).length, length: 0))
-            let checked = try session.editorSession.reconcileNativeSource()
-            #expect(checked.text == "\u{FEFF}题目\r\n正文!")
-            session.cancelAutosave()
-            session.suppressAutosave = false
-            controller.scheduleAutosave(session: session, target: target)
-            editor.setMarkedText(
-                "zhong", selectedRange: NSRange(location: 5, length: 0),
-                replacementRange: NSRange(location: (editor.rawSource as NSString).length, length: 0))
-            #expect(session.editorSession.isComposing)
-            #expect(session.editorSession.checkedSource == checked.text)
-
-            // An earlier dirty edit's timer may expire while the candidate UI
-            // is still open. This must remain pending, without a false error.
-            try await Task.sleep(for: .milliseconds(950))
-            #expect(session.autosaveTask != nil)
-            #expect(editor.hasMarkedText())
-            #expect(session.editError == nil && controller.lastSaveError == nil)
-            #expect(try Data(contentsOf: file) == Data(original.utf8))
-
-            // The snapshot can also race with composition beginning just after
-            // the timer fires. It is transient and must schedule another save.
-            session.cancelAutosave()
-            await controller.persistEditingSource(session: session, target: target)
-            #expect(session.autosaveTask != nil)
-            #expect(session.editError == nil && controller.lastSaveError == nil)
-            editor.insertText("中文", replacementRange: editor.markedRange())
-            let final = "\u{FEFF}题目\r\n正文!中文"
-            #expect(try await session.editorSession.currentText() == final)
-            session.cancelAutosave()
-            await controller.persistEditingSource(session: session, target: target)
-            #expect(session.editError == nil && controller.lastSaveError == nil)
-            #expect(try Data(contentsOf: file) == Data(final.utf8))
-            await store.shutdownApplicationRuntime()
-        } catch {
-            await store.shutdownApplicationRuntime()
-            throw error
-        }
-    }
-
     @Test("External publication reconciles inactive retained editors without changing selection", arguments: [false, true])
     func inactiveExternalPublication(dirty: Bool) throws {
         let vault = UUID()
@@ -275,7 +204,7 @@ struct DocumentControllerConvergenceTests {
         let session = controller.session(for: firstDocument.editingTarget)
         controller.beginEditing(
             session: session, target: firstDocument.editingTarget, source: original.document.rawContent,
-            revision: original.fingerprint, mode: .edit)
+            revision: original.fingerprint, mode: .source)
         if dirty { session.editingSource = "Researcher's draft\n" }
         controller.installOpenedDocument(other, vaultName: "Works", vaultRole: .draftProject)
         let selected = try #require(controller.selectedDocument)
@@ -355,7 +284,7 @@ struct DocumentControllerConvergenceTests {
             source: source
         )
         let controller = DocumentController()
-        controller.requestedPresentationMode = .edit
+        controller.requestedPresentationMode = .source
         controller.selectUnavailableDocument(vaultID: vaultID, relativePath: "Previous.md")
         controller.requestSourceLocation(line: 99)
 
@@ -372,11 +301,11 @@ struct DocumentControllerConvergenceTests {
                     vaultID: vaultID,
                     noteID: noteID
                 )))
-        #expect(controller.currentPresentationMode == .edit)
+        #expect(controller.currentPresentationMode == .livePreview)
         #expect(controller.requestedPresentationMode == nil)
         #expect(controller.sourceLocationRequest == nil)
-        #expect(session.presentationMode == .edit)
-        #expect(session.activeEditorMode == .edit)
+        #expect(session.presentationMode == .livePreview)
+        #expect(session.activeEditorMode == .livePreview)
         #expect(session.retainsEditorSurface)
         #expect(session.editingSource == source)
         #expect(session.originalEditingSource == source)
@@ -387,8 +316,8 @@ struct DocumentControllerConvergenceTests {
         )
     }
 
-    @Test("External source replaces a clean loaded managed buffer")
-    func managedCreationConvergesAfterNativeLoad() throws {
+    @Test("External source replaces a clean managed buffer before editor readiness")
+    func managedCreationConvergesBeforeEditorReadiness() throws {
         let vaultID = UUID()
         let noteID = UUID()
         let initialSource = "---\ntags: [draft]\n---\n"
@@ -414,10 +343,10 @@ struct DocumentControllerConvergenceTests {
                 )))
         session.editorSession.loadDocument(
             initialSource,
-            documentID: session.editorSession.editorDocumentID,
-            mode: .edit
+            documentID: session.editorSession.bridgeDocumentID,
+            mode: .livePreview
         )
-        #expect(session.editorSession.isLoaded)
+        #expect(!session.editorSession.isLoaded)
         #expect(session.editorSession.checkedSource == initialSource)
 
         let external = note(
@@ -436,7 +365,6 @@ struct DocumentControllerConvergenceTests {
         #expect(session.originalEditingSource == externalSource)
         #expect(session.editingRevision == external.fingerprint)
         #expect(session.editorSession.checkedSource == externalSource)
-        #expect(session.editorSession.isLoaded)
         #expect(session.managedCreationBodyStartUTF16 == external.document.bodyUTF16Offset)
     }
 
@@ -533,16 +461,31 @@ struct DocumentControllerConvergenceTests {
             target: target,
             source: originalSource,
             revision: original.fingerprint,
-            mode: .edit
+            mode: .livePreview
         )
         session.editorSession.loadDocument(
             originalSource,
-            documentID: session.editorSession.editorDocumentID,
-            mode: .edit
+            documentID: session.editorSession.bridgeDocumentID,
+            mode: .livePreview
         )
         let selection = MarkdownEditorSelectionRange(anchor: 0, head: 0)
-        session.editorSession.nativeEditor.setMarkedText(
-            "pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: 0, length: 0))
+        session.editorSession.updateInteraction(
+            selections: [selection],
+            line: 1,
+            column: 1,
+            lineCount: 1,
+            documentVersion: session.editorSession.generation,
+            context: MarkdownEditorContext(
+                selections: [selection],
+                activeInlineConstructs: [],
+                activeBlockConstructs: [],
+                tablePosition: nil,
+                composing: true,
+                availableCommands: [],
+                undoLabel: nil,
+                redoLabel: nil
+            )
+        )
         #expect(!session.hasUnsavedChanges)
         #expect(session.editorSession.isComposing)
 
@@ -643,7 +586,7 @@ struct DocumentControllerConvergenceTests {
         )
         let descriptor = try #require(controller.activeDocument)
         let session = controller.session(for: descriptor)
-        session.preparePresentationMode(.edit)
+        session.preparePresentationMode(.source)
 
         controller.installOpenedDocument(
             note(
@@ -660,7 +603,7 @@ struct DocumentControllerConvergenceTests {
         #expect(renamed.reference.relativePath == "Chapters/Renamed Draft.md")
         #expect(controller.session(for: renamed) === session)
         #expect(session.presentationMode == .read)
-        #expect(session.pendingEditorMode == .edit)
+        #expect(session.pendingEditorMode == .livePreview)
     }
 
     @Test("Clean deleted documents close while dirty exact buffers remain recoverable")
@@ -710,7 +653,7 @@ struct DocumentControllerConvergenceTests {
             target: cleanEditorDocument.editingTarget,
             source: original.document.rawContent,
             revision: original.fingerprint,
-            mode: .edit
+            mode: .source
         )
         #expect(!cleanEditorSession.hasUnsavedChanges)
         let cleanEditorResult = cleanEditor.receive(
@@ -734,7 +677,7 @@ struct DocumentControllerConvergenceTests {
             target: dirtyDocument.editingTarget,
             source: original.document.rawContent,
             revision: original.fingerprint,
-            mode: .edit
+            mode: .source
         )
         dirtySession.suppressAutosave = true
         let exactDirtyBuffer = "\u{FEFF}# Deleted\r\n\r\nUncommitted exact source.\r\n"
@@ -764,10 +707,10 @@ struct DocumentControllerConvergenceTests {
         let session = controller.session(for: key)
         controller.beginEditing(
             session: session, target: .workspace(key), source: original.document.rawContent,
-            revision: original.fingerprint, mode: .edit)
+            revision: original.fingerprint, mode: .source)
         controller.installOpenedDocument(draft, vaultName: "Topics", vaultRole: .topicKnowledge)
         let selected = controller.selectedDocument
-        #expect(session.isEditing && !session.editorSession.hasAttachedNativeView)
+        #expect(session.isEditing && !session.editorSession.hasAttachedWebView)
         #expect(!session.hasUnsavedChanges)
 
         controller.recordCommittedSnapshot(saved, vaultName: "Topics", vaultRole: .topicKnowledge)
@@ -780,10 +723,15 @@ struct DocumentControllerConvergenceTests {
 
         session.suppressAutosave = true
         let newerDraft = "Researcher's newer draft.\n"
-        try session.editorSession.nativeEditor.replaceProjectedRanges([
-            (NSRange(location: 0, length: session.editorSession.nativeEditor.rawSource.utf16.count), newerDraft)
-        ])
-        _ = try session.editorSession.reconcileNativeSource()
+        #expect(
+            session.editorSession.acceptEditorChanges(
+                [
+                    .init(
+                        from: 0, to: EditorSourceOffsetMap(source: saved.document.rawContent).editorUTF16Length,
+                        insert: newerDraft, exactInsert: newerDraft)
+                ],
+                baseGeneration: session.editorSession.generation,
+                resultingGeneration: session.editorSession.generation + 1))
         let later = note(vaultID: vault, noteID: noteID, path: "Source.md", source: "External change.\n")
         controller.recordCommittedSnapshot(later, vaultName: "Topics", vaultRole: .topicKnowledge)
         #expect(session.editingSource == "Researcher's newer draft.\n")
@@ -805,20 +753,21 @@ struct DocumentControllerConvergenceTests {
         let session = controller.session(for: document.editingTarget)
         controller.beginEditing(
             session: session, target: document.editingTarget,
-            source: original.document.rawContent, revision: original.fingerprint, mode: .edit)
+            source: original.document.rawContent, revision: original.fingerprint, mode: .source)
         session.editorSession.loadDocument(
             original.document.rawContent,
-            documentID: session.editorSession.editorDocumentID, mode: .edit)
+            documentID: session.editorSession.bridgeDocumentID, mode: .source)
         try controller.finishEditing(session: session, target: document.editingTarget)
         controller.installOpenedDocument(other, vaultName: "Topics", vaultRole: .topicKnowledge)
         let selected = controller.selectedDocument
-        #expect(!session.isEditing && !session.editorSession.hasAttachedNativeView && session.retainsEditorSurface)
+        #expect(!session.isEditing && !session.editorSession.hasAttachedWebView && session.retainsEditorSurface)
 
         controller.recordCommittedSnapshot(external, vaultName: "Topics", vaultRole: .topicKnowledge)
 
         #expect(controller.selectedDocument == selected)
         #expect(session.editingRevision == external.fingerprint)
-        let reconstructed = session.editorSession.checkedSource
+        let reconstructed = session.editorSession.sourceForViewAttachment(
+            proposedSource: session.editingSource, documentID: session.editorSession.bridgeDocumentID)
         #expect(Data(reconstructed.utf8) == Data(external.document.rawContent.utf8))
         #expect(session.editorSession.startingFingerprint == external.fingerprint.sha256)
         #expect(!session.hasUnsavedChanges)
@@ -837,16 +786,17 @@ struct DocumentControllerConvergenceTests {
         let session = controller.session(for: document.editingTarget)
         controller.beginEditing(
             session: session, target: document.editingTarget,
-            source: original.document.rawContent, revision: original.fingerprint, mode: .edit)
+            source: original.document.rawContent, revision: original.fingerprint, mode: .source)
         session.editorSession.loadDocument(
             original.document.rawContent,
-            documentID: session.editorSession.editorDocumentID, mode: .edit)
+            documentID: session.editorSession.bridgeDocumentID, mode: .source)
         let insertion = "Researcher's cafe\u{301} 🦉\r\n"
-        try session.editorSession.nativeEditor.replaceProjectedRanges([
-            (NSRange(location: 0, length: 0), insertion.replacingOccurrences(of: "\r\n", with: "\n"))
-        ])
-        _ = try session.editorSession.reconcileNativeSource()
-        #expect(session.hasUnsavedChanges && session.editorSession.isLoaded)
+        #expect(
+            session.editorSession.acceptEditorChanges(
+                [.init(from: 0, to: 0, insert: insertion.replacingOccurrences(of: "\r\n", with: "\n"), exactInsert: insertion)],
+                baseGeneration: 0, resultingGeneration: 1))
+        #expect(session.editingSource == original.document.rawContent)
+        #expect(session.hasUnsavedChanges && !session.editorSession.isLoaded)
         controller.installOpenedDocument(other, vaultName: "Topics", vaultRole: .topicKnowledge)
 
         controller.recordCommittedSnapshot(external, vaultName: "Topics", vaultRole: .topicKnowledge)

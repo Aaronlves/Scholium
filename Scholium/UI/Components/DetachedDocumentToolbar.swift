@@ -6,13 +6,11 @@ final class DetachedDocumentToolbar: NSObject, NSToolbarDelegate {
     let toolbar = NSToolbar(identifier: "scholium.detachedDocumentToolbar")
     private weak var model: WindowModel?
     private var observation: AnyCancellable?
-    private let title: DocumentTitleToolbarItem
     private let mode: ScholiumDocumentModeToolbarItem
     private let more: DocumentNoteActionsToolbarItem
 
     init(model: WindowModel) {
         self.model = model
-        title = DocumentTitleToolbarItem(identifier: .init("title"), model: model)
         mode = ScholiumDocumentModeToolbarItem(identifier: .init("mode"), model: model)
         more = DocumentNoteActionsToolbarItem(identifier: .init("more"), model: model)
         super.init()
@@ -20,32 +18,15 @@ final class DetachedDocumentToolbar: NSObject, NSToolbarDelegate {
         toolbar.allowsUserCustomization = false
         toolbar.displayMode = .iconOnly
         observation = model.commandObservation.$revision.sink { [weak self] _ in
-            self?.title.refreshPresentation()
             self?.mode.refreshPresentation()
             self?.more.refreshPresentation()
         }
     }
 
-    func showDocumentTitle(in window: NSWindow) { title.show(in: window) }
-
-    func invalidate() {
-        observation?.cancel()
-        observation = nil
-        title.invalidate()
-        more.invalidate()
-        mode.target = nil
-        mode.action = nil
-        mode.isEnabled = false
-        model = nil
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .init("title"), .flexibleSpace, .init("mode"), .init("more")]
-    }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [.flexibleSpace, .init("mode"), .init("more")] }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar: Bool) -> NSToolbarItem? {
-        if id.rawValue == "title" { return title }
         if id.rawValue == "mode" { return mode }
         guard id.rawValue == "more" else { return nil }
         return more

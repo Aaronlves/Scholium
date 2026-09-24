@@ -131,7 +131,7 @@ publication; windows accept one atomic capability generation and increasing
 immutable event generations. Commands call capabilities directly, not an event
 bus. One exact-window flush coordinator owns current/aggregate registration,
 rebinding and teardown; the window composition root holds no second registry.
-Application contains appearance/App Support I/O, Obsidian reads and the native Zotero
+Application contains CSS/App Support I/O, Obsidian reads and the native Zotero
 local-API integration.
 
 The process-global authenticated App bridge serves only currently open workspace
@@ -278,8 +278,8 @@ Shortcuts have one command catalog/validated preference writer; menus consume it
 The application hotkey event adapter owns hardware-event normalization, while the
 command-key-equivalent router owns native-menu transport for registered document
 shortcuts. It is reached only through the active visible document boundary,
-outside composition; the native document host supplies that boundary and guard
-but does not match shortcuts or own actions. The retained native text session owns
+outside composition; the shared WebKit container supplies that boundary and guard
+but does not match shortcuts or own actions. CodeMirror retains local
 editing/history. Selection Actions have one machine-local preference owner; views
 retain unsaved drafts only.
 Chat settings borrow the selected Triptych's connection/configuration owner.

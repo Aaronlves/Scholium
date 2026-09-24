@@ -96,14 +96,7 @@ struct WorkspaceToolbarTests {
         let toolbar = try #require(window.toolbar)
         #expect(window.toolbarStyle == .unified)
         #expect(toolbar.itemIdentifiers == ScholiumWorkspaceToolbarController.itemIdentifiers)
-        let titleIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.documentTitle))
-        let forwardIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.forward))
-        let title = try #require(item(ScholiumWorkspaceToolbarController.Item.documentTitle, in: toolbar) as? DocumentTitleToolbarItem)
-        #expect(titleIndex == forwardIndex + 1)
-        #expect(toolbar.itemIdentifiers[titleIndex + 1] == .flexibleSpace)
-        #expect(!title.isEnabled)
         let modeIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.documentMode))
-        #expect(titleIndex < modeIndex)
         #expect(toolbar.itemIdentifiers[modeIndex + 1] == ScholiumWorkspaceToolbarController.Item.noteActions)
         let noteActions = try #require(item(ScholiumWorkspaceToolbarController.Item.noteActions, in: toolbar) as? DocumentNoteActionsToolbarItem)
         #expect(!noteActions.showsIndicator)
@@ -144,7 +137,7 @@ struct WorkspaceToolbarTests {
                 in: toolbar
             ))
         #expect(documentMode.label.hasPrefix("Document Mode,"))
-        #expect(documentMode.possibleLabels.count == 2)
+        #expect(documentMode.possibleLabels.count == 3)
 
         let settlement = try #require(
             item(

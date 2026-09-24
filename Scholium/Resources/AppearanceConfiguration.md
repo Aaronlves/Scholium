@@ -32,27 +32,30 @@ with another complete configuration of the same format.
 
 | Field | Meaning / 含义 | Supported values |
 | --- | --- | --- |
-| `lineWidthCharacterUnits` | Read/Edit reading measure / 阅读与编辑行宽 | 48–96; relative character-width units, not a count of Chinese characters. |
+| `lineWidthCharacterUnits` | Review/Edit reading measure / 审阅与编辑行宽 | 48–96; relative character-width units, not a count of Chinese characters. Source uses a separate adaptive work measure. |
 | `body.fontFamily` | Body font / 正文字体 | `alegreya`, `iowan`, `palatino`, `georgia`, `times`, `systemSerif`, or an installed font family name / 或已安装字体家族名 |
 | `body.cjkStrongFontFamily` | Chinese strong face / 中文加粗字体 | omitted or `null` follows body font; `""` restores body font; otherwise an installed family name |
 | `body.cjkEmphasisFontFamily` | Chinese emphasis face / 中文强调字体 | omitted or `null` uses Kaiti SC; `""` follows the body font's native italic; otherwise an installed family name |
 | `body.fontSizePoints` | Body size / 正文字号 | 9–24 pt |
 | `body.lineHeight` | Line spacing / 行距 | 1.2–2.4 × |
-| `source.fontFamily` | Code font / 代码字体 | Installed font family name / 已安装字体家族名 |
-| `source.fontSizePoints` | Code size / 代码字号 | 6–72 pt |
+| `source.fontFamily` | Source font / 源文本字体 | Installed font family name / 已安装字体家族名 |
+| `source.fontSizePoints` | Source size / 源文本字号 | 6–72 pt |
 
 ## Body typography
 
 `paragraphSpacingEm`: 0–2; `firstLineIndentEm`: 0–4. An `em` is relative to
 the applicable font size. `hyphenation` is `none` or `automatic`; it defaults to
-`none`. Automatic uses the language-aware native hyphenation engine for
-supported prose, while Chinese text and technical regions remain
+`none`. Automatic uses the language-aware WebKit hyphenation engine for
+supported prose, while Chinese text, Source, and technical regions remain
 unsplit by automatic hyphenation.
 
 `alignment`: `start`, `center`, `justify`.
 
-These fields control native paragraph spacing, indentation and alignment.
-这些字段控制原生文稿的段间距、首行缩进和对齐；断词由 `hyphenation` 字段控制。
+These fields control paragraph spacing, indentation and alignment. Fine
+typesetting remains available through the Advanced CSS surface described below
+for letter spacing, word spacing, kerning and ligatures.
+这些字段只控制段间距、首行缩进和对齐。断词由 `hyphenation` 字段控制；字距、词距、
+字偶距与连字等其他细致排版请使用下面的 Advanced CSS。
 
 ## Headings
 
@@ -98,3 +101,47 @@ are safely quoted in generated CSS. They never become Markdown/YAML content.
 语义字体选择只影响呈现层。拉丁字符继续使用正文或标题所选字体及其真实的
 粗体、斜体字形；中文替代字体只作用于呈现语言片段。字体名必须是本机已安装
 的字体，并会在生成 CSS 时安全转义，不会写入 Markdown/YAML。
+
+Optional CSS snippets remain a separate, constrained override for ordinary
+document content. Use **CSS Snippets…** in the Appearance pane to open the
+manager. **Open CSS Folder** reveals the app-owned `Styles/Snippets` folder;
+direct `.css` files are discovered automatically, watched for edits, and
+reloaded after validation. The manifest stores only order, enablement, names,
+and stable identities; CSS file bytes remain the file's responsibility. A
+missing or invalid file stays listed with an error so it can be repaired.
+
+Snippets are the configuration surface for the remaining fine typography and are
+applied after the generated appearance CSS, so they can refine the selected
+profile without creating a second appearance owner. They do not replace
+structured appearance defaults or style native controls. The public Callout
+surface uses `.callout`, `.callout-title`, `.callout-body`, `.callout-content`,
+and `.callout-<role>` (for example `.callout-state .callout-title`); Scholium
+maps these names separately for Review and Edit and does not expose its
+internal projection classes.
+
+For example, an imported snippet can contain:
+
+```css
+body {
+  letter-spacing: 0;
+  word-spacing: 0.04em;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.01em;
+}
+```
+
+The supported selectors are ordinary document elements such as `body`, `p`,
+`h1`–`h6`, `li`, `blockquote`, `table`, `code`, `strong`, `em`, and `mark`,
+along with the public Callout selectors described above. Snippets are
+sanitized, scoped to document content, and projected into both Review and Edit.
+
+例如，导入的 CSS 片段可以包含上述规则。支持的选择器是 `body`、`p`、`h1`–`h6`、
+`li`、`blockquote`、`table`、`code`、`strong`、`em`、`mark` 以及公开的 Callout
+选择器；片段会经过安全检查，只作用于文稿内容，并同时投影到 Review 和 Edit。
+
+Default sizing follows a 16 CSS px body (12 pt), with Menlo at about 15.3 CSS px (11.5 pt) for Source and Frontmatter. Heading scales remain relative to body text; the body font family is unchanged.
+这些字段只控制段间距、首行缩进和对齐。断词由 `hyphenation` 字段控制；字距、词距、

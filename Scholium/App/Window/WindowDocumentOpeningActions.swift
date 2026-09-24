@@ -49,6 +49,7 @@ extension WindowModel {
             presentedOpeningRuntimeIdentity != capabilities.runtimeIdentity
         else { return }
         presentedOpeningRuntimeIdentity = capabilities.runtimeIdentity
+        ScholiumWebKitProcessPrewarmer.shared.finish()
         Task {
             await capabilities.openingPresentationDidComplete()
         }

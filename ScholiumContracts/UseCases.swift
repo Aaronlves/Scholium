@@ -218,6 +218,21 @@ public protocol StyleUseCases: Sendable {
     func reloadAppearanceConfiguration() async throws -> StyleSnapshot
     func restoreAppearanceDefaults() async throws -> StyleSnapshot
     func repairAppearanceProfile(_ profile: DocumentAppearanceProfile) async throws -> StyleSnapshot
+    func restoreStyleSnippetDefaults() async throws -> StyleSnapshot
+    func importStyleSnippet(from sourceURL: URL) async throws -> StyleSnapshot
+    /// Reconciles the machine-local CSS folder with the persisted snippet
+    /// manifest and rebuilds both document projections from fresh disk bytes.
+    func refreshStyleSnippets() async throws -> StyleSnapshot
+    func setStyleSnippetEnabled(_ enabled: Bool, id: UUID) async throws -> StyleSnapshot
+    func moveStyleSnippet(_ id: UUID, by offset: Int) async throws -> StyleSnapshot
+    func renameStyleSnippet(_ id: UUID, to name: String) async throws -> StyleSnapshot
+    func duplicateStyleSnippet(_ id: UUID) async throws -> StyleSnapshot
+    func reloadStyleSnippet(_ id: UUID) async throws -> StyleSnapshot
+    func removeStyleSnippet(_ id: UUID) async throws -> StyleSnapshot
+    func disableAllStyleSnippets() async throws -> StyleSnapshot
+    func enterStyleSafeMode(reason: String) async throws -> StyleSnapshot
+    func managedStyleSnippetURL(_ id: UUID) async throws -> URL?
+    func managedStylesLocation() async throws -> URL
     func obsidianAppearance(at vaultRootURL: URL) async -> ObsidianAppearanceSnapshot?
 }
 
@@ -256,22 +271,68 @@ public protocol ZoteroUseCases: Sendable {
 public struct StyleSnapshot: Codable, Hashable, Sendable {
     public let appearanceProfiles: [DocumentAppearanceProfile]
     public let selectedAppearanceProfileID: UUID?
+    public let snippets: [CSSSnippetRecord]
+    public let validationErrors: [UUID: String]
+    public let readCSS: String
+    public let livePreviewCSS: String
+    public let safeModeReason: String?
     public let storeError: String?
+    public let canModify: Bool
     public let canModifyAppearance: Bool
     public let appearanceError: String?
+    public let snippetError: String?
 
     public init(
         appearanceProfiles: [DocumentAppearanceProfile],
         selectedAppearanceProfileID: UUID?,
+        snippets: [CSSSnippetRecord],
+        validationErrors: [UUID: String],
+        readCSS: String,
+        livePreviewCSS: String,
+        safeModeReason: String?,
         storeError: String?,
+        canModify: Bool,
         canModifyAppearance: Bool,
-        appearanceError: String?
+        appearanceError: String?,
+        snippetError: String?
     ) {
         self.appearanceProfiles = appearanceProfiles
         self.selectedAppearanceProfileID = selectedAppearanceProfileID
+        self.snippets = snippets
+        self.validationErrors = validationErrors
+        self.readCSS = readCSS
+        self.livePreviewCSS = livePreviewCSS
+        self.safeModeReason = safeModeReason
         self.storeError = storeError
+        self.canModify = canModify
         self.canModifyAppearance = canModifyAppearance
         self.appearanceError = appearanceError
+        self.snippetError = snippetError
+    }
+}
+
+public struct CSSSnippetRecord: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var name: String
+    public let managedFileName: String
+    public var isEnabled: Bool
+    public var sourceFingerprint: String?
+    public var lastFailure: String?
+
+    public init(
+        id: UUID,
+        name: String,
+        managedFileName: String,
+        isEnabled: Bool,
+        sourceFingerprint: String? = nil,
+        lastFailure: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.managedFileName = managedFileName
+        self.isEnabled = isEnabled
+        self.sourceFingerprint = sourceFingerprint
+        self.lastFailure = lastFailure
     }
 }
 

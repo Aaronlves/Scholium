@@ -126,11 +126,13 @@ extension WindowModel {
                         !session.editorSession.isComposing,
                         self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
                         self.presentedDocumentMode != .read, session.conflict == nil,
-                        DocumentFingerprint(content: snapshot.text) == attachment.fingerprint
+                        DocumentFingerprint(content: snapshot.text) == attachment.fingerprint,
+                        let webView = session.editorSession.webView
                     else { throw AgentChatNoteMaterialError.changedSource }
-                    try session.editorSession.replacePassage(
-                        expectedText: snapshot.text,
-                        fromUTF16: range.utf16LowerBound, toUTF16: range.utf16UpperBound, replacement: replacement, preserveSelection: false)
+                    _ = try await session.editorSession.send(
+                        .replacePassage(
+                            expectedText: snapshot.text,
+                            fromUTF16: range.utf16LowerBound, toUTF16: range.utf16UpperBound, replacement: replacement, preserveSelection: false), in: webView)
                 }
             } else {
                 adopt = nil
@@ -193,11 +195,16 @@ extension WindowModel {
         else { throw AgentChatNoteMaterialError.selectionUnavailable }
         let session = documentController.session(for: descriptor)
         let mode = presentedDocumentMode
-        let snapshot = try await session.editorSession.selectedSourceSnapshot()
+        let snapshot: MarkdownSourceSelectionSnapshot
         if mode == .read {
-            guard !session.hasUnsavedChanges, snapshot.source.utf8.elementsEqual(note.rawContent.utf8) else {
-                throw AgentChatNoteMaterialError.changedSource
-            }
+            guard !session.hasUnsavedChanges,
+                session.renderedReadFingerprint == note.document.fingerprint.sha256,
+                let selection = session.readSelection,
+                let captured = MarkdownReviewSourceSelection.review(selection, source: note.rawContent)
+            else { throw AgentChatNoteMaterialError.selectionUnavailable }
+            snapshot = captured
+        } else {
+            snapshot = try await session.editorSession.selectedSourceSnapshot()
         }
         guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, presentedDocumentMode == mode else {
             throw AgentChatNoteMaterialError.selectionUnavailable

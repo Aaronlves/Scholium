@@ -42,9 +42,9 @@ uncertain delivery is an explicit action that does not resend its old message.
 Source excerpts
 come from one checked editor source/selection snapshot, retaining Note identity,
 source fingerprint and locator. Adding an excerpt prepares input without sending.
-Read selections may be handed off only when they map uniquely to exact source
+Review selections may be handed off only when they map uniquely to exact source
 in the displayed revision; rendered text never reconstructs source. Unmappable
-selections offer exact selection in Edit. No-selection and unavailable-editor states
+selections offer Edit or Source. No-selection and unavailable-editor states
 request an explicit selection rather than sharing the whole document. Ask Agent
 stages that checked passage in the current conversation and focuses its ordinary
 composer without sending, replacing a draft, or granting a Note modification.
@@ -66,7 +66,7 @@ Replace Selection applies only a completed proposal to the captured range in
 the same editable document and exact source revision, with inactive composition.
 Replacement stays single-flight across dismissal, with one Undo. Changed source retains the proposal
 for Copy or Chat and requires a fresh request, never fuzzy relocation or overwrite.
-Read offers Copy and Continue in Chat; replacement belongs to Edit.
+Review offers Copy and Continue in Chat; replacement belongs to Edit/Source.
 Custom actions and Ask Agent stage their instruction and checked passage in the
 current window's visibly open, available conversation. Without one, they create
 and open a new conversation. They focus the composer, preserve existing drafts,
@@ -87,10 +87,10 @@ task types or durable records; source and locator attachment remain
 application-owned.
 Opening a retained passage reveals its exact range only while the current source
 revision and range match; an older snapshot keeps its original attribution.
-For an exact Chat passage, Read restores the native text selection only when
+For an exact Chat passage, Review restores the native text selection only when
 its rendered block maps exactly to that source range. Otherwise an editable Note
-opens Edit at the verified range; a read-only Note retains the supplied-text
-preview and explicitly reports that Read cannot select it. Ordinary line-only
+opens Source at the verified range; a read-only Note retains the supplied-text
+preview and explicitly reports that Review cannot select it. Ordinary line-only
 references retain their current-mode arrival behavior. A Note reference opens its
 verified identity in the same Triptych; missing identities remain explicit and never fall back to
 an arbitrary path. Show in Library is a separate navigation action.

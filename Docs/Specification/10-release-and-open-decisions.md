@@ -26,7 +26,7 @@ state the accepted profile; an unaccepted optional profile is labelled
 **Usable Core** must cover:
 
 - Bootstrap, registration/restoration, independent windows, and storage failure;
-- create/open/read/edit/autosave, Read/Edit, Find/Replace, Search,
+- create/open/read/edit/autosave, Review/Edit/Source, Find/Replace, Search,
   YAML, Links, inline attachments, Settle, Library, tabs, and cross-vault navigation;
 - formatting, Callouts, Wikilinks, multiline link annotations, Analysis references, image
   Import/Index, statistics, spelling, and exact YAML/source fidelity;
@@ -137,13 +137,13 @@ confidence claim.
 | --- | ---: | ---: |
 | Warm Library launch to usable list | < 1,000 ms | — |
 | Indexed Note Search to complete visible results | < 200 ms | — |
-| Warm Read activation to interactive rendering | < 300 ms | — |
-| First-use 5,000-word Read activation | < 1,000 ms | — |
+| Warm Review activation to interactive rendering | < 300 ms | — |
+| First-use 5,000-word Review activation | < 1,000 ms | — |
 | Key input to first painted edit | < 100 ms | < 200 ms |
-| Read/Edit request to visible accessible mode | < 100 ms | < 200 ms |
+| Edit/Source request to visible accessible mode | < 100 ms | < 200 ms |
 | Cached preview to visible accessible preview | < 100 ms | < 200 ms |
 | Warm Edit activation | < 200 ms | < 300 ms |
-| First-use Edit after cold-launch Read | < 750 ms | < 1,000 ms |
+| First-use Edit after cold-launch Review | < 750 ms | < 1,000 ms |
 | One visible-range projection | < 3 ms | < 5 ms |
 
 An operation that would otherwise leave its owner blank exposes an accessible
@@ -155,9 +155,9 @@ missed interaction threshold into a pass. Editor callbacks during input/scroll
 target under 5 ms and yield before a display-refresh interval.
 
 The frozen performance fixture contains 800 Notes and representative folders,
-links, malformed frontmatter, large CJK, and 5,000-word Read/Edit content.
+links, malformed frontmatter, large CJK, and 5,000-word Review/Edit content.
 Fixture generators and runner ownership belong to
-[Documents and Editor](../Architecture/06-documents-and-editor.md#documents-and-native-editing).
+[Documents and Editor](../Architecture/06-documents-and-editor.md#documents-and-codemirror).
 
 The retained-memory series similarly predeclares 30–60 mode transitions; its
 ordinary plan is 40. It retains the existing two-tail convergence and stable-

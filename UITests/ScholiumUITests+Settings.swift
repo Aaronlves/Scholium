@@ -196,6 +196,8 @@ extension ScholiumUITests {
         XCTAssertTrue(size.waitForExistence(timeout: 5))
         let styles = homeDirectory.appendingPathComponent("ApplicationSupport/Workspace/Styles", isDirectory: true)
         let url = styles.appendingPathComponent("appearances.json")
+        let snippetsURL = styles.appendingPathComponent("snippets.json")
+        let snippetsBefore = try? Data(contentsOf: snippetsURL)
         var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         var profiles = try XCTUnwrap(manifest["profiles"] as? [[String: Any]])
         var profileSettings = try XCTUnwrap(profiles[0]["settings"] as? [String: Any])
@@ -232,6 +234,7 @@ extension ScholiumUITests {
             FileManager.default.contentsOfDirectory(at: styles, includingPropertiesForKeys: nil)
                 .first { $0.lastPathComponent.hasPrefix("appearances.json.recovery-") })
         XCTAssertEqual(try Data(contentsOf: backup), damaged)
+        XCTAssertEqual(try? Data(contentsOf: snippetsURL), snippetsBefore)
         captureSettingsTransaction(window, named: "settings-appearance-repaired")
     }
 

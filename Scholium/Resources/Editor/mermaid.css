@@ -73,6 +73,15 @@
   border-inline-start-color: var(--scholium-color-destructive);
 }
 
+.cm-live-mermaid-slot {
+  box-sizing: border-box;
+  inline-size: 100%;
+}
+
+.cm-live-mermaid-slot > .scholium-mermaid {
+  margin-block: 0;
+}
+
 @media (forced-colors: active) {
   .scholium-mermaid-source {
     border: 1px solid CanvasText;

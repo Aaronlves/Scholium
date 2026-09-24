@@ -22,7 +22,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case toggleLibrary
     case toggleResearchInspector
     case toggleFocusLayout
-    case toggleReadEdit
+    case toggleReviewEdit
+    case showSource
     case showAttention
     case insertFootnote
     case insertInlineFootnote
@@ -53,7 +54,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     var isCustomizable: Bool {
         switch self {
         case .searchResearch, .toggleLibrary, .toggleResearchInspector, .toggleFocusLayout,
-            .toggleReadEdit, .showAttention,
+            .toggleReviewEdit, .showSource, .showAttention,
             .insertFootnote, .insertInlineFootnote, .findWritingReferences:
             true
         default: false
@@ -97,7 +98,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .toggleLibrary: "Show or Hide Library"
         case .toggleResearchInspector: "Show or Hide Research Inspector"
         case .toggleFocusLayout: "Focus Layout"
-        case .toggleReadEdit: "Switch Read and Edit"
+        case .toggleReviewEdit: "Switch Review and Edit"
+        case .showSource: "Show Source"
         case .showAttention: "Show Attention"
         case .insertFootnote: "Insert Footnote"
         case .findWritingReferences: "Find Writing References"
@@ -130,7 +132,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .toggleLibrary: "View → Sidebar"
         case .toggleResearchInspector: "View → Research Inspector"
         case .toggleFocusLayout: "View → Focus Layout"
-        case .toggleReadEdit: "View → Edit / Read"
+        case .toggleReviewEdit: "View → Edit / Review"
+        case .showSource: "View → Document Mode → Source"
         case .showAttention: "Window → Notifications"
         case .insertFootnote: "Insert → Footnote"
         case .findWritingReferences: "Insert → Find Writing References…"
@@ -184,7 +187,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "s", modifiers: [.control, .command])
         case .toggleResearchInspector:
             ScholiumHotkeyBinding(key: "b", modifiers: [.option, .command])
-        case .toggleReadEdit:
+        case .toggleReviewEdit:
             ScholiumHotkeyBinding(key: "r", modifiers: [.command])
         case .insertFootnote:
             ScholiumHotkeyBinding(key: "n", modifiers: [.option, .command])
@@ -194,7 +197,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "j", modifiers: [.shift, .command])
         case .toggleFocusLayout:
             ScholiumHotkeyBinding(key: "l", modifiers: [.control, .command])
-        case .showAttention:
+        case .showSource, .showAttention:
             nil
         }
     }

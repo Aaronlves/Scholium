@@ -36,7 +36,7 @@ The navigation column presents six task categories: Workspace, Document
 Appearance, Writing Assistance, Agents & Chat, Keyboard Shortcuts and Zotero.
 Workspace owns Triptych registration,
 folder access and portable-data location. Document Appearance presents the
-complete native content profile in one scrolling page. Writing
+complete content profile and CSS snippets in one scrolling page. Writing
 Assistance groups opt-in continuation and the shared continuation/Explain/Polish model with
 Selection Actions. Keyboard Shortcuts is directly reachable.
 Agents & Chat uses three native segments: Connection and Chat, Skills and Tools,
@@ -56,8 +56,8 @@ does not repeat this information in a page-wide notice.
 Settings does not duplicate macOS appearance, accent, contrast or motion
 controls. Scholium's window chrome and semantic feedback use system-resolved
 colors and adaptation. Document Appearance controls Markdown content
-presentation only; native typography and layout settings never style app controls.
-Document Advanced CSS is not offered.
+presentation only; researcher-editable document CSS and text colors remain in
+that content layer and never style native app controls.
 
 Each setting has one editing location. Contextual links and Settings search
 lead to that location rather than maintaining duplicate controls. Search indexes
@@ -189,7 +189,8 @@ committed restoration with a later refresh failure is reported separately.
 [Document Appearance §18.4](07-document-and-research-interface.md#184-document-modes-context-and-source-properties)
 owns appearance controls, configuration-file editing and restoration; Settings
 does not create a second appearance owner or duplicate its controls. Its native
-form shares the Document Appearance owner. [Source Properties Appendix A](02-notes-and-file-operations.md#appendix-a-authored-source-properties)
+form and Advanced CSS entry share the Document Appearance owner;
+profile changes never reset CSS snippets. [Source Properties Appendix A](02-notes-and-file-operations.md#appendix-a-authored-source-properties)
 owns authored YAML; [Agent Chat §8.7](12-agent-chat.md) owns Selection
 Actions and runtime configuration. Agents & Chat keeps connection state and
 primary connect or sign-in actions in Connection and Chat, with custom paths

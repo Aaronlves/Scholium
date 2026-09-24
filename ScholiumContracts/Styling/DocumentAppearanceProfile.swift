@@ -91,9 +91,9 @@ public struct DocumentBodyAppearance: Codable, Hashable, Sendable {
         fontFamily: DocumentAppearanceFontFamily = .alegreya,
         cjkStrongFontFamily: String? = nil,
         cjkEmphasisFontFamily: String? = nil,
-        fontSizePoints: Double = 14,
-        lineHeight: Double = 1.55,
-        paragraphSpacingEm: Double = 0.2,
+        fontSizePoints: Double = 12.5,
+        lineHeight: Double = 1.78,
+        paragraphSpacingEm: Double = 0.85,
         firstLineIndentEm: Double = 0,
         alignment: DocumentTextAlignment = .start
     ) {
@@ -153,34 +153,34 @@ public struct DocumentHeadingAppearance: Codable, Hashable, Sendable {
         weight: Int = 500,
         lineHeight: Double = 1.4,
         level1: DocumentHeadingLevelAppearance = .init(
-            scale: 1.6,
-            spaceBeforeEm: 0.95,
-            spaceAfterEm: 0.3
+            scale: 1.48,
+            spaceBeforeEm: 1.1,
+            spaceAfterEm: 0.42
         ),
         level2: DocumentHeadingLevelAppearance = .init(
-            scale: 1.3,
-            spaceBeforeEm: 0.8,
-            spaceAfterEm: 0.27
+            scale: 1.26,
+            spaceBeforeEm: 1,
+            spaceAfterEm: 0.36
         ),
         level3: DocumentHeadingLevelAppearance = .init(
-            scale: 1.15,
-            spaceBeforeEm: 0.7,
-            spaceAfterEm: 0.24
+            scale: 1.14,
+            spaceBeforeEm: 0.85,
+            spaceAfterEm: 0.3
         ),
         level4: DocumentHeadingLevelAppearance = .init(
             scale: 1.07,
-            spaceBeforeEm: 0.65,
-            spaceAfterEm: 0.22
+            spaceBeforeEm: 0.75,
+            spaceAfterEm: 0.28
         ),
         level5: DocumentHeadingLevelAppearance = .init(
             scale: 1.01,
-            spaceBeforeEm: 0.6,
-            spaceAfterEm: 0.2
+            spaceBeforeEm: 0.65,
+            spaceAfterEm: 0.24
         ),
         level6: DocumentHeadingLevelAppearance = .init(
             scale: 0.98,
             spaceBeforeEm: 0.55,
-            spaceAfterEm: 0.18
+            spaceAfterEm: 0.22
         )
     ) {
         self.fontFamily = fontFamily
@@ -219,26 +219,6 @@ public struct DocumentCalloutAppearance: Codable, Hashable, Identifiable, Sendab
     public var contentIndentEm: Double?
     public var quotationScale: Double?
     public var attributionScale: Double?
-
-    /// Inner padding shared by the Read CSS and the native Edit projection.
-    /// Optional profile overrides retain their authored value; the role
-    /// defaults provide the open indents of the quieter Callout families.
-    public var resolvedPaddingInlineEm: Double {
-        if let paddingInlineEm { return paddingInlineEm }
-        return switch role {
-        case .orientation: 1.3
-        case .illustration: 1.5
-        case .quotation: 1.6
-        case .caution, .source: 0.88
-        default: 0.9
-        }
-    }
-
-    public var resolvedPaddingBlockEm: Double {
-        return paddingBlockEm ?? (role == .caution || role == .source ? 0.72 : 0.65)
-    }
-
-    public var resolvedHeaderBodyGapEm: Double { 0.3 }
 
     public init(
         role: DocumentCalloutAppearanceRole,
@@ -279,7 +259,7 @@ public struct DocumentSourceAppearance: Codable, Hashable, Sendable {
     public var fontFamily: String
     public var fontSizePoints: Double
 
-    public init(fontFamily: String = "Menlo", fontSizePoints: Double = 12.5) {
+    public init(fontFamily: String = "Menlo", fontSizePoints: Double = 11.5) {
         self.fontFamily = fontFamily
         self.fontSizePoints = fontSizePoints
     }

@@ -15,6 +15,7 @@ enum ScholiumGrid {
         static let sectionSeparation = foundationUnit * 4
         static let regionContentInset = foundationUnit * 5
         static let documentShellInsetCSSPixels = foundationUnit * 8
+        static let sourceShellInsetCSSPixels = foundationUnit * 10
     }
 
     enum Dimension {

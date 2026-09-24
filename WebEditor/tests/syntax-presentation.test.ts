@@ -1,0 +1,109 @@
+import {EditorState} from "@codemirror/state";
+import {EditorView} from "@codemirror/view";
+import {describe, expect, it} from "vitest";
+import {
+  animatedScalar,
+  canDisplaceSyntax,
+  prefixNeedsMargin,
+  syntaxToken,
+} from "../syntax-presentation";
+import {createLiveSelectionController} from "../live-selection";
+import {createLiveProjectionIndexController} from "../live-projection-index";
+import {
+  createLiveStructuredBlockProjections,
+  selectionActivatesCalloutBody,
+} from "../live-structured-block-projections";
+import {createProjectedWidgetRegistry} from "../projected-widget-registry";
+import {preserveLivePresentationLayout} from "../live-presentation-layout";
+import {scholiumNoteLanguage} from "../language";
+
+describe("syntax presentation boundaries", () => {
+  it("keeps the currently presented value when syntax animation reverses", () => {
+    expect(animatedScalar("0.41", 0.9, 0, 1)).toBeCloseTo(0.41);
+    expect(animatedScalar("auto", 0.25, 0, 1)).toBeCloseTo(0.25);
+    expect(animatedScalar("auto", null, 0.3, 0.8)).toBeCloseTo(0.3);
+  });
+
+  it("borrows whitespace only for wrapping introduced by the prefix itself", () => {
+    expect(prefixNeedsMargin(310, 20, 300, 40)).toBe(true);
+    expect(prefixNeedsMargin(290, 20, 300, 40)).toBe(false);
+    expect(prefixNeedsMargin(340, 20, 300, 40)).toBe(false);
+    expect(prefixNeedsMargin(310, 20, 300, 20)).toBe(false);
+  });
+  it("limits displacement to short single-line tokens", () => {
+    for (const token of ["**", "~~", "`", "###### ", "> "]) {
+      expect(canDisplaceSyntax(token)).toBe(true);
+    }
+    for (const token of ["> [!cite] ", "```", "~~~", "(long-target.md)", "", "\t>", ">\n>", "中文", "x".repeat(25)]) {
+      expect(canDisplaceSyntax(token)).toBe(false);
+    }
+  });
+
+  it("keeps Callout header and body boundaries half-open", () => {
+    const caret = (head: number) => ({from: head, to: head, head, empty: true});
+    const headerTo = 12;
+    const bodyTo = 28;
+    expect(selectionActivatesCalloutBody(caret(headerTo), headerTo, bodyTo)).toBe(false);
+    expect(selectionActivatesCalloutBody(caret(headerTo + 1), headerTo, bodyTo)).toBe(true);
+    expect(selectionActivatesCalloutBody(caret(bodyTo), headerTo, bodyTo)).toBe(true);
+    expect(selectionActivatesCalloutBody(caret(bodyTo + 1), headerTo, bodyTo)).toBe(false);
+    expect(selectionActivatesCalloutBody(
+      {from: 0, to: headerTo, head: headerTo, empty: false}, headerTo, bodyTo,
+    )).toBe(false);
+    expect(selectionActivatesCalloutBody(
+      {from: 0, to: headerTo + 1, head: headerTo + 1, empty: false}, headerTo, bodyTo,
+    )).toBe(true);
+  });
+
+  it("maps presentation layout ranges with the same source transaction", () => {
+    const state = EditorState.create({doc: "abcdef"});
+    const changes = state.changes({from: 0, insert: "x"});
+    const effect = preserveLivePresentationLayout.of({from: 2, to: 5});
+    const mapped = effect.map(changes);
+    expect(mapped).toBeDefined();
+    expect(mapped?.value).toEqual({from: 3, to: 6});
+  });
+
+  it("keeps exposed source addressable and hidden source out of accessibility", () => {
+    const hidden = syntaxToken("**", 4, 6, false);
+    const exposed = syntaxToken("**", 4, 6, true);
+    expect(hidden.spec.attributes["aria-hidden"]).toBe("true");
+    expect(exposed.spec.attributes["aria-hidden"]).toBeUndefined();
+    expect(hidden.spec.attributes["data-syntax-key"])
+      .toBe(exposed.spec.attributes["data-syntax-key"]);
+  });
+
+  it("retains expanded callout prose across activation and preserves authored folding", () => {
+    const selection = createLiveSelectionController({
+      handleModifiedLink: () => false, handleProjectedPointerStart: () => false,
+    });
+    const projections = createLiveProjectionIndexController({editingDialect: () => null, recordMetric: () => {}});
+    const blocks = createLiveStructuredBlockProjections({selection, projections,
+      widgets: createProjectedWidgetRegistry(), editingDialect: () => null,
+      reuseCounts: {table: 0}});
+    for (const fold of ["", "+", "-"]) {
+      const source = `Lead\n\n> [!cite]${fold} Source\n> **中文** evidence\n\nAfter`;
+      let state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage,
+        selection.extension, projections.extension, blocks.calloutExtension]});
+      const replacements = () => {
+        const ranges: number[][] = [];
+        for (const decorations of state.facet(EditorView.decorations)) {
+          if (typeof decorations === "function") continue;
+          decorations.between(0, state.doc.length, (from, to) => { if (to > from) ranges.push([from, to]); });
+        }
+        return ranges;
+      };
+      expect(replacements().length).toBe(fold === "-" ? 1 : 0);
+      if (fold === "-") {
+        const headerFrom = source.indexOf("> [!cite]-");
+        const headerTo = source.indexOf("\n", headerFrom);
+        const bodyFrom = source.indexOf("> **中文**");
+        const bodyTo = source.indexOf("\n", bodyFrom);
+        expect(replacements()).toEqual([[headerTo, bodyTo + 1]]);
+      }
+      state = state.update({selection: {anchor: source.indexOf("evidence")}}).state;
+      expect(replacements()).toEqual([]);
+      expect(state.doc.toString()).toBe(source);
+    }
+  });
+});

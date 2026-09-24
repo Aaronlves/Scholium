@@ -879,7 +879,7 @@ private struct ScholiumSettingsRoot: View {
         _settingsModel = StateObject(
             wrappedValue: WorkspaceSettingsModel(
                 capabilities: workspaceStore.settingsCapabilities(),
-                documentAppearanceStore: workspaceStore.documentAppearanceStore,
+                cssSnippetStore: workspaceStore.cssSnippetStore,
                 agentBridgeAvailability: { [weak workspaceStore] in
                     guard let workspaceStore else {
                         return .unavailable("Scholium is shutting down.")

@@ -27,63 +27,56 @@ enum MarkdownWritingContextProjection {
             var upper = map.sourceUTF16Offset(forEditorUTF16Offset: max(selection.anchor, selection.head))
         else { throw RelatedMaterialsError.invalidSeed }
         let native = source as NSString
-        // Match the editor's logical newline model exactly: CRLF, CR and LF.
-        // Other Unicode line separators are authored characters, not new rows.
-        var lines: [(start: Int, contentEnd: Int, end: Int)] = []
-        var start = 0
-        var cursor = 0
-        while cursor < native.length {
-            let unit = native.character(at: cursor)
-            if unit == 10 || unit == 13 {
-                let width = unit == 13 && cursor + 1 < native.length && native.character(at: cursor + 1) == 10 ? 2 : 1
-                lines.append((start, cursor, cursor + width))
-                cursor += width
-                start = cursor
-            } else {
-                cursor += 1
-            }
-        }
-        lines.append((start, native.length, native.length))
-        func lineIndex(at offset: Int) -> Int {
-            lines.lastIndex(where: { $0.start <= offset }) ?? 0
-        }
-        func blank(_ index: Int) -> Bool {
-            let line = lines[index]
-            let from = line.start == 0 && native.length > 0 && native.character(at: 0) == 0xFEFF ? 1 : line.start
-            return native.substring(with: NSRange(location: from, length: max(0, line.contentEnd - from)))
-                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
+        var capturedLineStart: Int?
         if lower == upper {
             switch mode {
             case .selectionOnly:
                 throw RelatedMaterialsError.selectionRequired
             case .selectionOrCurrentLine:
-                let index = lineIndex(at: lower)
-                guard !blank(index) else { throw RelatedMaterialsError.invalidSeed }
-                lower = lines[index].start
-                upper = lines[index].contentEnd
+                // Editor logical lines are LF-delimited (CRLF in exact source),
+                // not visual wraps or Foundation's other Unicode line separators.
+                let previousNewline = native.range(of: "\n", options: .backwards, range: NSRange(location: 0, length: lower))
+                let nextNewline = native.range(of: "\n", range: NSRange(location: lower, length: native.length - lower))
+                lower = previousNewline.location == NSNotFound ? 0 : NSMaxRange(previousNewline)
+                capturedLineStart = lower
+                upper = nextNewline.location == NSNotFound ? native.length : nextNewline.location
+                if upper > lower, native.character(at: upper - 1) == 13, nextNewline.location != NSNotFound { upper -= 1 }
                 if lower == 0, upper > 0, native.character(at: 0) == 0xFEFF { lower = 1 }
+                guard
+                    !native.substring(with: NSRange(location: lower, length: upper - lower))
+                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else { throw RelatedMaterialsError.invalidSeed }
             case .selectionOrParagraph:
-                var first = lineIndex(at: lower)
-                if blank(first), first > 0 { first -= 1 }
-                guard !blank(first) else { throw RelatedMaterialsError.invalidSeed }
-                var last = first
-                while first > 0, !blank(first - 1) { first -= 1 }
-                while last + 1 < lines.count, !blank(last + 1) { last += 1 }
-                lower = lines[first].start
-                upper = lines[last].end
-                if lower == 0, upper > 0, native.character(at: 0) == 0xFEFF { lower = 1 }
+                var line = native.lineRange(for: NSRange(location: lower, length: 0))
+                func blank(_ range: NSRange) -> Bool {
+                    native.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+                // At the trailing newline, the preceding paragraph is the writing context.
+                if blank(line), line.location > 0 { line = native.lineRange(for: NSRange(location: line.location - 1, length: 0)) }
+                guard !blank(line) else { throw RelatedMaterialsError.invalidSeed }
+                lower = line.location
+                upper = NSMaxRange(line)
+                while lower > 0 {
+                    let previous = native.lineRange(for: NSRange(location: lower - 1, length: 0))
+                    if blank(previous) { break }
+                    lower = previous.location
+                }
+                while upper < native.length {
+                    let next = native.lineRange(for: NSRange(location: upper, length: 0))
+                    if blank(next) { break }
+                    upper = NSMaxRange(next)
+                }
             }
         }
         guard upper > lower, upper - lower <= 32_000,
             let range = Range(NSRange(location: lower, length: upper - lower), in: source)
         else { throw RelatedMaterialsError.invalidSeed }
-        let lowerLine = lineIndex(at: lower)
-        let upperLine = lineIndex(at: upper)
         let sourceRange = SearchSourceRange(
             utf16LowerBound: lower, utf16UpperBound: upper,
-            line: lowerLine + 1, column: lower - lines[lowerLine].start + 1,
-            endLine: upperLine + 1, endColumn: upper - lines[upperLine].start + 1)
+            line: 1 + source[..<range.lowerBound].utf8.filter { $0 == 10 }.count,
+            column: lower - (capturedLineStart ?? native.lineRange(for: NSRange(location: lower, length: 0)).location) + 1,
+            endLine: 1 + source[..<range.upperBound].utf8.filter { $0 == 10 }.count,
+            endColumn: upper - (capturedLineStart ?? native.lineRange(for: NSRange(location: upper, length: 0)).location) + 1)
         return .init(source: source, excerpt: String(source[range]), sourceRange: sourceRange)
     }
 }

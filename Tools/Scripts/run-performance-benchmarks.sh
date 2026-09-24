@@ -102,14 +102,17 @@ LATENCY_METRICS=(
   indexed_search
   warm_read_activation
   first_read_activation
+  editor_key_to_paint
   editor_mode_transition
+  editor_cached_preview
   warm_edit_activation
   first_edit_activation
+  editor_visible_projection
 )
 RUN_MEMORY=1
 if [[ -n "${ONLY_METRIC}" ]]; then
   case "${ONLY_METRIC}" in
-    warm_library_launch|indexed_search|warm_read_activation|first_read_activation|editor_mode_transition|warm_edit_activation|first_edit_activation)
+    warm_library_launch|indexed_search|warm_read_activation|first_read_activation|editor_key_to_paint|editor_mode_transition|editor_cached_preview|warm_edit_activation|first_edit_activation|editor_visible_projection)
       LATENCY_METRICS=("${ONLY_METRIC}")
       RUN_MEMORY=0
       ;;

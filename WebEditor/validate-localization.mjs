@@ -60,8 +60,12 @@ const directUISinkPatterns = [
   /announceEditorMessage\([\s\S]{0,160}?,\s*["'`]\s*[A-Z]/g,
 ];
 const editorUISources = [
+  "accessibility.ts",
   "chat-reply.ts",
-  "reader.ts",
+  "editor.ts",
+  "input-suggestions.ts",
+  "markdown-fragment.ts",
+  "preview-popover.ts",
 ];
 for (const relativePath of editorUISources) {
   const text = fs.readFileSync(path.join(editorRoot, relativePath), "utf8");

@@ -107,14 +107,11 @@ struct VaultRepositoryTests {
         }
         try FileManager.default.removeItem(at: f.note)
 
-        // Keep the Unix socket path below sockaddr_un.sun_path's limit even
-        // when this checkout lives in a managed worktree with a long path.
-        let socket = f.root.appendingPathComponent("s")
-        let socketDescriptor = try bindUnixSocket(at: socket)
+        let socketDescriptor = try bindUnixSocket(at: f.note)
         defer { close(socketDescriptor) }
         let socketStart = clock.now
         await #expect(throws: (any Error).self) {
-            _ = try await repository.load(relativePath: "s")
+            _ = try await repository.load(relativePath: "topics/note.md")
         }
         #expect(socketStart.duration(to: clock.now) < .seconds(1))
     }

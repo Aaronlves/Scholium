@@ -5,24 +5,21 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
-    func testNativeReadEditPreservesTheDocumentSurface() throws {
+    func testLivePreviewUsesDocumentModeMenuForSourceTransition() throws {
         let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         selectDocumentMode("Edit")
-        let editor = app.textViews["scholium.document.editor"]
+
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
-        let source = editor.value as? String
-        XCTAssertFalse((source ?? "").isEmpty)
-        selectDocumentMode("Read")
-        XCTAssertEqual(documentModeState(mode), "Read")
-        XCTAssertEqual(editor.value as? String, source)
-        selectDocumentMode("Edit")
-        XCTAssertEqual(editor.value as? String, source)
-        app.menuBars.menuBarItems["View"].click()
-        let modes = app.menuItems["Document Mode"].firstMatch
-        modes.hover()
-        XCTAssertFalse(app.menuItems["Source"].exists)
-        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertFalse((editor.value as? String ?? "").isEmpty)
+
+        app.typeKey("e", modifierFlags: [.command, .shift])
+        XCTAssertEqual(documentModeState(mode), "Edit", "Source must be entered through the document-mode menu")
+
+        selectDocumentMode("Source")
+        XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
+        XCTAssertEqual(documentModeState(mode), "Source")
     }
 
     @MainActor

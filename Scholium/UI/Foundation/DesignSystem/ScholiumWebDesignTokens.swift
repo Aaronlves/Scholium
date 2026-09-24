@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import ScholiumContracts
 
-/// Contract names used by sanitized read-only HTML stylesheets.
+/// Contract names used by the CodeMirror and sanitized Read stylesheets.
 /// Custom properties transport resolved semantic roles into WebKit; they are
 /// not a second set of configurable color Variables.
 enum ScholiumWebDesignTokens {
@@ -48,6 +48,7 @@ enum ScholiumWebDesignTokens {
             --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
             --scholium-document-source-font-size: \(number(defaults.source.fontSizePoints))pt;
             --scholium-document-source-font-family: "\(defaults.source.fontFamily)", ui-monospace, monospace;
+            --scholium-source-half-work-width: \(ScholiumDocumentRhythm.sourceWorkWidthCharacterUnits / 2)ch;
             --scholium-document-title-size: 210%;
             --scholium-document-title-line-height: 1.25;
             --scholium-document-title-after: 0.7em;
@@ -57,7 +58,7 @@ enum ScholiumWebDesignTokens {
             --scholium-document-frontmatter-ink: color-mix(in srgb, var(--scholium-color-primary-text) 78%, var(--scholium-color-secondary-text));
             \(headingLevelDeclarations)
             --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
-            --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.codeLineHeight);
+            --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
             --scholium-document-text-scale-factor: 1;
             --scholium-rhythm-paragraph-gap: \(number(
                 body.paragraphSpacingEm * body.fontSizePoints * (96 / 72)
@@ -81,6 +82,7 @@ enum ScholiumWebDesignTokens {
             );
             --scholium-task-checkbox-size: max(1em, 20px);
             --scholium-rhythm-inline-regular: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).inline)px;
+            --scholium-rhythm-inline-source: \(ScholiumDocumentRhythm.contentInsets(for: .source, widthClass: .regular).inline)px;
             --scholium-rhythm-inline-narrow: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .narrow).inline)px;
             --scholium-rhythm-trailing-scroll: \(ScholiumDocumentRhythm.contentInsets(for: .read, widthClass: .regular).trailingViewportFraction * 100)vh;
             --scholium-document-content-top-inset: \(ScholiumMetrics.Document.contentTopInsetCSSPixels)px;
@@ -171,7 +173,7 @@ enum ScholiumWebDesignTokens {
     }
 
     /// One runtime presentation contract for every WebKit-backed document
-    /// surface. Chat and external readers append this Swift-owned block; the
+    /// surface. Read and CodeMirror both append this Swift-owned block; the
     /// resource stylesheet consumes these variables rather than duplicating
     /// provisional layout and typography values.
     static let documentPresentationCSS = """
@@ -184,7 +186,8 @@ enum ScholiumWebDesignTokens {
           \(documentMarkupCSSDeclarations)
           \(rhythmCSSDeclarations)
         }
-        .scholium-document {
+        .scholium-document,
+        .cm-editor.scholium-live-mode .cm-content {
           box-sizing: border-box;
           min-width: 0;
           inline-size: 100%;
@@ -212,9 +215,13 @@ enum ScholiumWebDesignTokens {
           text-autospace: normal;
           text-spacing-trim: trim-both;
         }
-        /* Read-only prose uses the engine's available paragraph treatment. */
+        /* Read may use the engine's best available paragraph treatment;
+           editable Live Preview stays stable while the source is changing. */
         .scholium-document {
           text-wrap-style: pretty;
+        }
+        .cm-editor.scholium-live-mode .cm-content {
+          text-wrap-style: stable;
         }
         /* CSS text spacing is a rendering projection. Technical and exact
            source regions retain their authored character grid and never
@@ -224,7 +231,13 @@ enum ScholiumWebDesignTokens {
           .scholium-document pre,
           .scholium-document .scholium-frontmatter-source,
           .scholium-document .scholium-math,
-          .scholium-document .raw-html
+          .scholium-document .raw-html,
+          .cm-editor.scholium-live-mode .cm-live-table,
+          .cm-editor.scholium-live-mode .cm-live-math,
+          .cm-editor.scholium-live-mode .cm-live-math-source,
+          .cm-editor.scholium-live-mode .cm-live-raw-html,
+          .cm-editor.scholium-live-mode .scholium-frontmatter-line,
+          .cm-editor.scholium-source-mode .cm-content
         ) {
           hyphens: none;
           text-autospace: no-autospace;
@@ -234,18 +247,36 @@ enum ScholiumWebDesignTokens {
         .scholium-document :lang(en) {
           line-break: auto;
         }
-        .scholium-document :lang(zh-Hans) {
+        .cm-editor .cm-line[lang="en"] {
+          line-break: auto;
+        }
+        .scholium-document :lang(zh-Hans),
+        .cm-editor .cm-line[lang="zh-Hans"] {
           line-break: strict;
         }
-        .scholium-document button:not(:disabled),
-        .scholium-document select:not(:disabled),
-        .scholium-document a[href],
-        .scholium-document [role="button"]:not([aria-disabled="true"]),
-        .scholium-document [role="menuitem"]:not([aria-disabled="true"]),
-        .scholium-document [role="option"]:not([aria-disabled="true"]) {
+        .cm-editor.scholium-source-mode .cm-scroller {
+          box-sizing: border-box;
+          padding-inline: max(
+            var(--scholium-rhythm-inline-source),
+            calc(50% - var(--scholium-source-half-work-width))
+          );
+        }
+        .cm-editor.scholium-source-mode .cm-content {
+          inline-size: 0;
+          flex: 1 1 0;
+          min-inline-size: 0;
+          padding-inline: 1ch 0;
+        }
+        :is(.scholium-document, .cm-editor) button:not(:disabled),
+        :is(.scholium-document, .cm-editor) select:not(:disabled),
+        :is(.scholium-document, .cm-editor) a[href],
+        :is(.scholium-document, .cm-editor) [role="button"]:not([aria-disabled="true"]),
+        :is(.scholium-document, .cm-editor) [role="menuitem"]:not([aria-disabled="true"]),
+        :is(.scholium-document, .cm-editor) [role="option"]:not([aria-disabled="true"]) {
           cursor: pointer;
         }
-        .scholium-reader-arrival {
+        .scholium-reader-arrival,
+        .cm-editor .cm-content .cm-line.scholium-arrival-target {
           background-color: color-mix(in srgb, var(--scholium-color-accent) 16%, transparent);
           animation: scholium-arrival-fade 1.4s ease-in-out both;
         }
@@ -256,16 +287,19 @@ enum ScholiumWebDesignTokens {
           }
         }
         @media (prefers-reduced-motion: reduce) {
-          .scholium-reader-arrival {
+          .scholium-reader-arrival,
+          .cm-editor .cm-content .cm-line.scholium-arrival-target {
             animation: none;
           }
         }
 
-        .scholium-document p {
+        .scholium-document p,
+        .cm-editor.scholium-live-mode .cm-live-paragraph {
           box-sizing: border-box;
         }
         :is(
-          .scholium-document .scholium-frontmatter-source
+          .scholium-document .scholium-frontmatter-source,
+          .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-line
         ) {
           font-family: var(--scholium-document-body-font-family);
           font-size: calc(
@@ -305,6 +339,50 @@ enum ScholiumWebDesignTokens {
           display: block;
           min-block-size: 1lh;
           opacity: 0;
+        }
+        #editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line {
+          padding-inline: 0;
+        }
+        .cm-editor.scholium-live-mode .scholium-frontmatter-line * { color: inherit; }
+        .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-delimiter-line {
+          /* The authored YAML envelope already owns these source rows. Keep
+             their space stable in Live mode; the fence is presentation-only
+             and disappears through opacity rather than layout collapse. */
+          block-size: auto;
+          min-block-size: calc(1em * var(--scholium-document-frontmatter-line-height));
+          line-height: var(--scholium-document-frontmatter-line-height);
+          font-size: calc(
+            var(--scholium-document-frontmatter-font-size)
+            * var(--scholium-document-text-scale-factor)
+          );
+          overflow: visible;
+          opacity: 0;
+        }
+        .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-delimiter-line-active {
+          opacity: 1;
+        }
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) .cm-live-yaml-delimiter,
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) .cm-live-yaml-comment {
+          color: var(--scholium-color-secondary-text);
+        }
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) .cm-live-yaml-key {
+          color: var(--scholium-color-secondary-text);
+          font-weight: 500;
+        }
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) :is(.cm-live-yaml-value, .cm-live-yaml-scalar, .cm-live-yaml-collection, .cm-live-yaml-string) {
+          color: var(--scholium-document-frontmatter-ink);
         }
         .scholium-note-title {
           box-sizing: border-box;
@@ -432,14 +510,16 @@ enum ScholiumWebDesignTokens {
         .scholium-document > hr {
           margin-block: var(--scholium-rhythm-rule-block-gap);
         }
-        .scholium-document > hr {
+        .scholium-document > hr,
+        .cm-editor.scholium-live-mode .cm-live-rule {
           box-sizing: border-box;
           block-size: 1px;
           min-block-size: 1px;
           border: 0;
           border-block-start: 1px solid var(--scholium-color-separator);
         }
-        .scholium-document li > p {
+        .scholium-document li > p,
+        .cm-editor.scholium-live-mode .cm-live-list {
           box-sizing: border-box;
           padding-inline-start: 0;
           text-align: start;
@@ -447,20 +527,27 @@ enum ScholiumWebDesignTokens {
         .scholium-document li > p {
           padding-block-end: 0;
         }
-        .scholium-document blockquote {
+        .scholium-document blockquote,
+        .cm-editor.scholium-live-mode .cm-live-quote {
           box-sizing: border-box;
           margin-inline: 0;
           padding-inline-start: var(--scholium-rhythm-quote-inset);
           border-inline-start: 3px solid var(--scholium-document-accent);
           color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
         }
-        /* Nested quotations retain their hierarchy in read-only HTML. */
+        /* Nested quotations are real children of their parent quotation in
+           Review. Edit carries the same nested role on every line while its
+           separate rail track paints the ancestor borders. */
         .scholium-document blockquote blockquote:not(.scholium-callout-quotation) {
           border-inline-start: 1px solid var(--scholium-color-separator);
           color: color-mix(in srgb, var(--scholium-color-primary-text) 66%, transparent);
           padding-inline-start: var(--scholium-rhythm-quote-inset);
         }
-        .scholium-document pre {
+        .cm-editor.scholium-live-mode .cm-live-quote.cm-live-quote-nested {
+          color: color-mix(in srgb, var(--scholium-color-primary-text) 66%, transparent);
+        }
+        .scholium-document pre,
+        .cm-editor.scholium-live-mode .cm-live-codeblock {
           box-sizing: border-box;
           font-family: var(--scholium-document-source-font-family);
           font-size: var(--scholium-document-source-font-size);
@@ -470,7 +557,7 @@ enum ScholiumWebDesignTokens {
           background: var(--scholium-document-technical-surface);
         }
         /* The block owns the source surface. Its inline code child only carries
-           the same code-text metrics and must not paint a second rectangle
+           the same Source Text metrics and must not paint a second rectangle
            over the block background. */
         .scholium-document pre code {
           box-sizing: border-box;
@@ -481,7 +568,8 @@ enum ScholiumWebDesignTokens {
           font-variant-caps: normal;
           background: transparent;
         }
-        .scholium-document pre.raw-html {
+        .scholium-document pre.raw-html,
+        .cm-editor.scholium-live-mode .cm-live-raw-html {
           box-sizing: border-box;
           color: var(--scholium-color-secondary-text);
           background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
@@ -491,15 +579,46 @@ enum ScholiumWebDesignTokens {
           font-style: normal;
           font-variant-caps: normal;
         }
+        .cm-editor.scholium-live-mode .cm-live-raw-html {
+          padding-inline: var(--scholium-rhythm-code-inset);
+        }
         .scholium-document pre {
           max-inline-size: 100%;
           padding: var(--scholium-rhythm-code-inset);
           overflow: auto;
           border-radius: var(--scholium-corner-document-code-block);
         }
+        .cm-editor.scholium-live-mode .cm-live-codeblock {
+          padding-inline: var(--scholium-rhythm-code-inset);
+        }
+        .cm-editor.scholium-live-mode .cm-live-codeblock-start {
+          padding-block-start: var(--scholium-rhythm-code-inset);
+          border-start-start-radius: var(--scholium-corner-document-code-block);
+          border-start-end-radius: var(--scholium-corner-document-code-block);
+        }
+        .cm-editor.scholium-live-mode .cm-live-raw-html-start {
+          padding-block-start: var(--scholium-rhythm-code-inset);
+          border-start-start-radius: var(--scholium-corner-document-code-block);
+          border-start-end-radius: var(--scholium-corner-document-code-block);
+        }
+        .cm-editor.scholium-live-mode .cm-live-codeblock-end {
+          padding-block-end: var(--scholium-rhythm-code-inset);
+          border-end-start-radius: var(--scholium-corner-document-code-block);
+          border-end-end-radius: var(--scholium-corner-document-code-block);
+        }
+        .cm-editor.scholium-live-mode .cm-live-raw-html-end {
+          padding-block-end: var(--scholium-rhythm-code-inset);
+          border-end-start-radius: var(--scholium-corner-document-code-block);
+          border-end-end-radius: var(--scholium-corner-document-code-block);
+        }
         @media (prefers-reduced-transparency: reduce) {
           .scholium-document pre,
-          .scholium-document pre.raw-html {
+          .scholium-document pre.raw-html,
+          .cm-editor.scholium-live-mode :is(
+            .cm-live-codeblock,
+            .cm-live-math-source,
+            .cm-live-raw-html
+          ) {
             background: var(--scholium-color-document-background);
           }
         }
@@ -507,18 +626,22 @@ enum ScholiumWebDesignTokens {
         .footnote-content p {
           padding-block: 0;
         }
-        .scholium-document strong {
+        .scholium-document strong,
+        .scholium-live-mode .cm-live-strong {
           font-weight: 700;
         }
-        .scholium-document em {
+        .scholium-document em,
+        .scholium-live-mode .cm-live-emphasis {
           font-style: italic;
         }
         \(DocumentAppearanceStyles.semanticTypographyCSS(for: DocumentAppearanceSettings.defaultSettings))
-        .scholium-document del {
+        .scholium-document del,
+        .scholium-live-mode .cm-live-strike {
           color: var(--scholium-color-primary-text);
           text-decoration: line-through;
         }
-        .scholium-document .scholium-highlight {
+        .scholium-document .scholium-highlight,
+        .scholium-live-mode .cm-live-highlight {
           box-decoration-break: clone;
           -webkit-box-decoration-break: clone;
           padding-inline: 0.08em;
@@ -528,13 +651,15 @@ enum ScholiumWebDesignTokens {
           border-radius: var(--scholium-corner-document-mark-highlight);
         }
         @media (prefers-contrast: more) {
-          .scholium-document .scholium-highlight {
+          .scholium-document .scholium-highlight,
+          .scholium-live-mode .cm-live-highlight {
             background-color: color-mix(in srgb, var(--scholium-color-attention) 30%, transparent);
             box-shadow: inset 0 -0.18em 0 var(--scholium-color-attention);
           }
         }
         .scholium-document :not(pre) > code,
-        .scholium-table :not(pre) > code {
+        .scholium-table :not(pre) > code,
+        .scholium-live-mode .cm-live-code {
           padding: 0.08em 0.25em;
           border-radius: var(--scholium-corner-document-inline-code);
           background: color-mix(in srgb, var(--scholium-color-primary-text) 8%, transparent);
@@ -545,13 +670,15 @@ enum ScholiumWebDesignTokens {
           font-variant-caps: normal;
           vertical-align: baseline;
         }
-        .scholium-document a:not(.wiki-link) {
+        .scholium-document a:not(.wiki-link),
+        .scholium-live-mode .cm-live-link {
           color: var(--scholium-document-accent);
           text-decoration: underline;
           text-decoration-color: color-mix(in srgb, var(--scholium-document-accent) 42%, transparent);
           text-underline-offset: 0.15em;
         }
-        .scholium-document a:not(.wiki-link):hover {
+        .scholium-document a:not(.wiki-link):hover,
+        .scholium-live-mode .cm-live-link:hover {
           color: var(--scholium-color-accent);
           background: var(--scholium-content-hover-surface);
           border-radius: var(--scholium-corner-document-control);
@@ -565,10 +692,12 @@ enum ScholiumWebDesignTokens {
           outline-offset: 2px;
           text-decoration-color: currentColor;
         }
-        .scholium-document a:not(.wiki-link):active {
+        .scholium-document a:not(.wiki-link):active,
+        .scholium-live-mode .cm-live-link:active {
           background: var(--scholium-content-keyboard-focus-surface);
         }
-        .scholium-document .wiki-link {
+        .scholium-document .wiki-link,
+        .scholium-live-mode .cm-live-wiki-link {
           display: inline-block;
           max-inline-size: 100%;
           vertical-align: baseline;
@@ -580,7 +709,8 @@ enum ScholiumWebDesignTokens {
           border-radius: var(--scholium-corner-document-control);
         }
         .scholium-document .wiki-link:hover,
-        .scholium-document .wiki-link:focus-visible {
+        .scholium-document .wiki-link:focus-visible,
+        .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed {
           color: var(--scholium-document-accent);
           background: var(--scholium-content-hover-surface);
           text-decoration-color: currentColor;
@@ -589,15 +719,20 @@ enum ScholiumWebDesignTokens {
           outline: 2px solid var(--scholium-content-focus-ring);
           outline-offset: 2px;
         }
-        .scholium-document .wiki-link:active {
+        .scholium-document .wiki-link:active,
+        .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed:active {
           background: var(--scholium-content-keyboard-focus-surface);
+        }
+        .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed {
+          cursor: pointer;
         }
         .scholium-document h1,
         .scholium-document h2,
         .scholium-document h3,
         .scholium-document h4,
         .scholium-document h5,
-        .scholium-document h6 {
+        .scholium-document h6,
+        .scholium-live-mode .cm-live-heading {
           color: var(--scholium-color-primary-text);
           font-family: var(--scholium-document-heading-font-family);
           font-style: var(--scholium-document-heading-font-style);
@@ -608,40 +743,49 @@ enum ScholiumWebDesignTokens {
           text-align: start;
           text-decoration-line: none;
           text-decoration: none;
-          /* Headings use predictable first-fit wrapping; body prose may
-             use the document's readable `pretty` treatment. */
+          /* Review headings use the predictable first-fit algorithm while
+             body prose may use the document's readable `pretty` wrapping.
+             Edit inherits CodeMirror's stable wrapping. Do not balance
+             headings: balancing can move a heading to a new line while the
+             current line still has available measure. */
           text-wrap-style: auto;
           box-sizing: border-box;
           margin: 0;
           padding-block: 0;
         }
-        .scholium-document h1 {
+        .scholium-document h1,
+        .scholium-live-mode .cm-live-h1 {
           font-size: var(--scholium-document-h1-size);
           font-weight: var(--scholium-document-heading-weight);
           padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);
           text-align: var(--scholium-appearance-h1-align);
         }
-        .scholium-document h2 {
+        .scholium-document h2,
+        .scholium-live-mode .cm-live-h2 {
           font-size: var(--scholium-document-h2-size);
           padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
           text-align: var(--scholium-appearance-h2-align);
         }
-        .scholium-document h3 {
+        .scholium-document h3,
+        .scholium-live-mode .cm-live-h3 {
           font-size: var(--scholium-document-h3-size);
           padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
           text-align: var(--scholium-appearance-h3-align);
         }
-        .scholium-document h4 {
+        .scholium-document h4,
+        .scholium-live-mode .cm-live-h4 {
           font-size: var(--scholium-document-h4-size);
           padding-block: var(--scholium-appearance-h4-before) var(--scholium-appearance-h4-after);
           text-align: var(--scholium-appearance-h4-align);
         }
-        .scholium-document h5 {
+        .scholium-document h5,
+        .scholium-live-mode .cm-live-h5 {
           font-size: var(--scholium-document-h5-size);
           padding-block: var(--scholium-appearance-h5-before) var(--scholium-appearance-h5-after);
           text-align: var(--scholium-appearance-h5-align);
         }
-        .scholium-document h6 {
+        .scholium-document h6,
+        .scholium-live-mode .cm-live-h6 {
           font-size: var(--scholium-document-h6-size);
           padding-block: var(--scholium-appearance-h6-before) var(--scholium-appearance-h6-after);
           text-align: var(--scholium-appearance-h6-align);
@@ -651,7 +795,8 @@ enum ScholiumWebDesignTokens {
         .scholium-document h3 a:not(.wiki-link),
         .scholium-document h4 a:not(.wiki-link),
         .scholium-document h5 a:not(.wiki-link),
-        .scholium-document h6 a:not(.wiki-link) {
+        .scholium-document h6 a:not(.wiki-link),
+        .scholium-live-mode .cm-live-heading .cm-live-link {
           text-decoration: underline;
         }
         .scholium-document .scholium-embed {

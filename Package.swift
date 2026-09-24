@@ -16,18 +16,8 @@ let package = Package(
         .package(url: "https://github.com/jpsim/Yams.git", from: "6.2.2"),
         .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.8.0"),
         .package(url: "https://github.com/swiftlang/swift-subprocess.git", exact: "1.0.0"),
-        .package(url: "https://github.com/mgriebling/SwiftMath.git", exact: "1.7.3"),
     ],
     targets: [
-        .target(
-            name: "ScholiumEditor",
-            dependencies: [
-                .product(name: "Markdown", package: "swift-markdown"),
-                .product(name: "SwiftMath", package: "SwiftMath"),
-            ],
-            path: "ScholiumEditor",
-            resources: [.copy("Resources/Syntaxes"), .copy("Resources/Themes")]
-        ),
         .target(
             name: "ScholiumContracts",
             dependencies: [
@@ -58,7 +48,6 @@ let package = Package(
         .executableTarget(
             name: "ScholiumApp",
             dependencies: [
-                "ScholiumEditor",
                 "ScholiumContracts",
                 "ScholiumApplication",
                 .product(name: "ThinkingOrbs", package: "ThinkingOrbs"),
@@ -100,7 +89,6 @@ let package = Package(
             name: "ScholiumAppTests",
             dependencies: [
                 "ScholiumApp",
-                "ScholiumEditor",
                 "ScholiumContracts",
                 "ScholiumApplication",
             ],

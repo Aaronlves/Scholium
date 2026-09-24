@@ -12,9 +12,9 @@ typeset -a swift_targets
 usage() {
   print -r -- "Usage: ${SCRIPT_NAME} [--fix] [--swift-only|--editor-only] [swift-file-or-directory ...]"
   print -r -- ""
-  print -r -- "Checks Swift formatting rules and shared WebKit renderer TypeScript types."
+  print -r -- "Checks Swift formatting rules and WebEditor TypeScript types."
   print -r -- "--fix          Format Swift targets in place before linting."
-  print -r -- "--swift-only   Skip the WebKit renderer typecheck."
+  print -r -- "--swift-only   Skip the WebEditor typecheck."
   print -r -- "--editor-only  Skip Swift lint."
   print -r -- "Paths          Limit Swift lint to the supplied files/directories."
   exit 64
@@ -52,7 +52,7 @@ if ! $run_swift && $fix; then
   exit 64
 fi
 if (( ${#swift_targets[@]} > 0 )) && $run_editor; then
-  print "Swift paths supplied; skipping the shared WebKit renderer check."
+  print "Swift paths supplied; skipping the full WebEditor check."
   run_editor=false
 fi
 if (( ${#swift_targets[@]} > 0 )) && ! $run_swift; then
@@ -89,7 +89,6 @@ if $run_swift; then
       "${ROOT}/ScholiumApplication"
       "${ROOT}/ScholiumContracts"
       "${ROOT}/ScholiumCore"
-      "${ROOT}/ScholiumEditor"
       "${ROOT}/Tests"
       "${ROOT}/UITests"
     )

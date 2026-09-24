@@ -36,7 +36,6 @@ enum ScholiumPreviewStyles {
 
     /// Preview chrome and prose use system roles, independently of Document Appearance.
     @MainActor static var nativeCSS: String {
-        let bodySize = NSFont.preferredFont(forTextStyle: .body).pointSize
         func colors(_ name: NSAppearance.Name) -> String {
             var declarations = ""
             NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
@@ -56,7 +55,7 @@ enum ScholiumPreviewStyles {
             return declarations
         }
         return """
-            :root { color-scheme: light dark; font-size: \(bodySize)pt !important; \(colors(.aqua)) }
+            :root { color-scheme: light dark; font-size: \(NSFont.systemFontSize)px !important; \(colors(.aqua)) }
             @media (prefers-color-scheme: dark) { :root { \(colors(.darkAqua)) } }
             @media (prefers-contrast: more) { :root { \(colors(.accessibilityHighContrastAqua)) } }
             @media (prefers-color-scheme: dark) and (prefers-contrast: more) { :root { \(colors(.accessibilityHighContrastDarkAqua)) } }

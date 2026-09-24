@@ -155,4 +155,11 @@ struct MarkdownWritingContextTests {
         #expect(selection.excerpt == "x")
     }
 
+    @Test("Insertion transport retains both generation and exact caret")
+    func insertionTransport() throws {
+        let operation = MarkdownEditorOperation.insertReference(selection: .init(anchor: 9, head: 9), generation: 7, target: "自由")
+        let data = try JSONEncoder().encode(operation)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+        #expect(operation.serializesSourceMutation)
+    }
 }

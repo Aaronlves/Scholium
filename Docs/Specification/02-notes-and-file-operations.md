@@ -4,20 +4,20 @@
 
 ## 5. Common note capabilities
 
-Analysis, Topic, and ordinary Work Notes support Read and Edit over
+Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
 one exact Markdown buffer; autosave; create, duplicate, import, move,
 Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
 source properties, Agent Changes, conflicts, and recovery.
 
 ### 5.1 Document modes and YAML
 
-- **Read** renders committed content for reading, navigation, and selection.
+- **Review** renders committed content for reading, navigation, and selection.
 - **Edit** modifies source through a reversible semantic projection; Frontmatter
   remains directly source-editable under §18.4.
+- **Source** edits complete Markdown and YAML with logical source-line numbers.
 
-Both modes use one retained native document session; no Source mode is offered.
-A mode change preserves dirty source, selection, focus, marked text, Undo,
-scroll and recovery authority. §18.4 owns
+All modes share one document session. A mode change preserves dirty source,
+selection, focus, marked text, Undo, scroll and recovery authority. §18.4 owns
 mode presentation, syntax visibility, typography and layout. Source editing
 retains targeted, byte-preserving validation.
 
@@ -42,7 +42,7 @@ Syntax presentation groups by editing behavior rather than by visual similarity:
 
 List projection preserves one marker track and prose indentation. Task
 checkboxes change only the exact task marker in one Undo transaction; a
-keyboard/menu Toggle Task route remains. Edit exposes exact prefixes at their source locations.
+keyboard/menu Toggle Task route remains. Source always exposes exact prefixes.
 
 Edit provides three caret-owned suggestion lists:
 
@@ -95,7 +95,7 @@ relationship and never deletes the file. Images retain their inline routes.
 File links open through bounded native Quick Look; unavailable files report an
 error without substituting a different path or filename match.
 
-Read and Edit preserve exact Markdown while presenting semantic Callouts,
+Review and Edit preserve exact Markdown while presenting semantic Callouts,
 lists, quotations, tables, footnotes, mathematics, code, links, occurrence-owned
 link annotations, and Mermaid.
 Protected constructs follow these rules:
@@ -146,13 +146,12 @@ authority after the reserved identity exists.
 
 A successful source-and-identity commit appears immediately in Library; derived
 indexes refresh afterward without blocking writing. Presentation failure must
-not invite duplicate creation. Activating the toolbar's Note title opens the
-native filename popover in Read or Edit. It uses the existing identity-checked
-rename operation and does not change the document mode.
+not invite duplicate creation. A Note's filename is changed only through the
+inline title control in Edit; there is no separate Note Rename command or sheet.
 
 Paths are locations; Notes have stable app-owned identities. Duplicate creates
 a new identity and copies exact source, but not
-Settlement. A filename change and Move preserve identity and exact
+Settlement. An inline filename change and Move preserve identity and exact
 resolved incoming-link updates. Ambiguous external rename keeps source readable
 but blocks identity-dependent mutation until resolved.
 
@@ -176,7 +175,7 @@ An ordinary top-level paragraph may carry an authored `^identifier` anchor.
 `[[Note#^identifier]]` refers to its current content, never a frozen excerpt.
 Editing retains that identity; moving preserves it; copying assigns fresh
 identifiers. Duplicate identifiers are ambiguous and never choose a winner.
-Edit exposes active anchors; Read and inactive Edit suppress the marker while
+Source exposes anchors; Review and inactive Edit suppress the marker while
 retaining source navigation. Creating a paragraph link may add its anchor as
 one exact editor transaction; save must succeed before the link is copied.
 

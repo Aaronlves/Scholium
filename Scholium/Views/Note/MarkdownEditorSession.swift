@@ -2,7 +2,8 @@ import AppKit
 import Combine
 import Foundation
 import ScholiumContracts
-import ScholiumEditor
+import SwiftUI
+import WebKit
 
 struct MarkdownSourceSelectionSnapshot: Sendable {
     let source: String
@@ -17,11 +18,59 @@ struct MarkdownEditorPresentationState: Equatable, Sendable {
         case loading
         case ready(MarkdownEditorMode)
     }
-    var documentPhase: DocumentPhase = .unavailable
-    var errorMessage: String?
-    var isLoaded: Bool { if case .ready = documentPhase { true } else { false } }
+
+    private(set) var webContentReady = false
+    private(set) var documentPhase: DocumentPhase = .unavailable
+    private(set) var errorMessage: String?
+
+    var isLoaded: Bool {
+        guard case .ready = documentPhase else { return false }
+        return true
+    }
+
     var presentedMode: MarkdownEditorMode? {
-        if case .ready(let mode) = documentPhase { mode } else { nil }
+        guard case .ready(let mode) = documentPhase else { return nil }
+        return mode
+    }
+
+    mutating func reset() {
+        self = MarkdownEditorPresentationState()
+    }
+
+    mutating func webContentBecameReady(hasPendingDocument: Bool) {
+        webContentReady = true
+        if hasPendingDocument {
+            documentPhase = .loading
+            errorMessage = nil
+        }
+    }
+
+    mutating func beginLoading() {
+        documentPhase = .loading
+        errorMessage = nil
+    }
+
+    mutating func complete(_ mode: MarkdownEditorMode) {
+        documentPhase = .ready(mode)
+    }
+
+    mutating func fail(_ message: String) {
+        documentPhase = .unavailable
+        errorMessage = message
+    }
+
+    mutating func report(_ message: String) {
+        errorMessage = message
+    }
+
+    mutating func clearReport(matching message: String) {
+        guard errorMessage == message else { return }
+        errorMessage = nil
+    }
+
+    mutating func webContentTerminated() {
+        webContentReady = false
+        documentPhase = .loading
     }
 }
 
@@ -30,6 +79,8 @@ struct MarkdownEditorTextSnapshot: Equatable, Sendable {
     let generation: Int
 }
 
+/// A persistence input is bound to the editing base as well as exact source.
+/// A suspension ID proves a detached snapshot came from an input-frozen page.
 struct MarkdownEditorPersistenceSnapshot: Sendable {
     let text: String
     let generation: Int
@@ -43,637 +94,2319 @@ enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
     case superseded
 }
 
-/// A document retains this native text view, its source provenance and Undo
-/// history across SwiftUI hosts. DocumentController remains the disk writer.
 @MainActor
 final class MarkdownEditorSession: NSObject, ObservableObject {
+    private static let rejectedChangeRecoveryMessage = String(
+        localized: "The editor buffer could not be synchronized. Autosave will retry without discarding your text.",
+        table: "Localizable",
+        bundle: .module
+    )
+
+    private struct BridgeRequestContext {
+        let requestEpoch: UInt64
+        let sessionID: UUID
+        let documentID: String
+        let startingFingerprint: String
+        let generation: Int
+        let webView: WKWebView
+    }
+
+    private struct RecoveryCaptureKey: Equatable {
+        let requestEpoch: UInt64
+        let generation: Int
+    }
+
     enum SessionError: LocalizedError {
         case unavailable
-        case compositionInProgress
         case invalidResult
         case selectionTooLong
         case staleRequest
-        case operationRejected(String)
+        case bridgeRejected(String)
 
         var errorDescription: String? {
             switch self {
             case .unavailable: "The Markdown editor is not ready."
-            case .compositionInProgress: "Finish the current input before saving."
-            case .invalidResult: "The Markdown editor could not validate its source."
+            case .invalidResult: "The Markdown editor returned an invalid document."
             case .selectionTooLong: "Select at most 2,000 characters for one source-anchored comment."
-            case .staleRequest: "The editor request belonged to a replaced document or session."
-            case .operationRejected(let message): message
+            case .staleRequest: "The Markdown editor request belonged to a replaced document or session."
+            case .bridgeRejected(let message): message
             }
         }
     }
 
-    let nativeEditor: EditorTextView
-    let scrollView: NSScrollView
-    let editorDocumentID = UUID().uuidString
     let writingContextChanges = PassthroughSubject<Void, Never>()
     let selectionChanges = PassthroughSubject<Bool, Never>()
+    var hasNonemptySelection: Bool {
+        lastKnownSelectionSnapshot?.ranges.contains { $0.anchor != $0.head } == true
+            && preferredDocumentFocusTarget != .title
+    }
+
     @Published private(set) var presentation = MarkdownEditorPresentationState()
     @Published private(set) var isDirty = false
-    @Published private(set) var interactionAvailability: EditorInteractionAvailability?
-    @Published private(set) var openingPresentationID = UUID()
-    private(set) var context: MarkdownEditorContext?
-    private(set) var sessionID = UUID()
-    private(set) var documentID = ""
-    private(set) var startingFingerprint = ""
-    private(set) var generation = 0
-    private(set) var checkedSource = ""
+    /// A bounded retry replaces only this retained session's failed WebView.
+    /// `sourceForViewAttachment` restores the checked exact-source mirror.
+    @Published private(set) var viewReconstructionID = UUID()
     private(set) var line = 1
     private(set) var column = 1
     private(set) var lineCount = 1
-    private(set) var preferredDocumentFocusTarget: WindowDocumentFocusTarget?
-    private(set) var detachmentSuspensionID: String?
-    var sourceOffsetMap = EditorSourceOffsetMap(source: "")
-    var commandSemanticCache: (source: String, document: NoteDocument, semantic: MarkdownSemanticDocument)?
+    @Published private(set) var interactionAvailability: EditorInteractionAvailability?
+    private(set) var context: MarkdownEditorContext?
+    private(set) var sessionID = UUID()
+    private(set) var documentID = ""
+
+    /// Opaque identity for the CodeMirror document owned by this retained
+    /// session. A vault-relative path is a mutable projection and must not
+    /// force a new EditorState when the same stable note is renamed.
+    // The transport session rotates on attachment; the document identity must
+    // survive that rotation for reconstruction to admit its selection/history.
+    let bridgeDocumentID = UUID().uuidString
+    private(set) var startingFingerprint = ""
+    private(set) var generation = 0 { didSet { if generation != oldValue { writingContextChanges.send() } } }
+
+    let floatingSurfaces = DocumentFloatingSurfaceController()
+    var webView: WKWebView?
+    var webViewPool: MarkdownEditorWebViewPool?
+
+    /// A bridge request already executing in WebKit cannot be cancelled by
+    /// cancelling its Swift task. Only hand an idle, acknowledged page to a
+    /// different document; other detach paths keep their recovery behavior.
+    var canRecycleWebView: Bool {
+        isReady && isLoaded && errorMessage == nil && !isComposing
+            && inFlightRequestTasks.isEmpty && unfinishedBridgeDispatches.isEmpty
+            && webView?.isLoading == false
+    }
+    private var pendingSource: String?
+    private var pendingDocumentID = ""
+    private var pendingDocumentTitle = ""
+    private var pendingMode: MarkdownEditorMode = .livePreview
+    private var pendingPresentationCSS = ""
+    private var pendingUserCSS = ""
+    private var pendingLine: (line: Int, focusesEditor: Bool)?
+    private var pendingSourceRange: Range<Int>?
+    private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
+    private var pendingWritingContinuationEnabled = false
+    private var pendingWritingContinuationContextKey = ""
     var pendingScrollFraction: Double?
     var pendingScrollAnchor: EditorScrollAnchor?
-    var performanceDocumentID = ""
-    var onLinkActivation: ((String) -> Void)?
-    var onDocumentActivity: (() -> Void)?
-    var onScrollFractionChange: ((Double) -> Void)?
-    var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
-    var onNativeSelectionChange: (([MarkdownEditorSelectionRange], NSRect?) -> Void)?
-
-    private var attachmentID: UUID?
-    private var committedSource = ""
-    private var lastNativeRevision: UInt64 = 0
-    private var isLoading = false
-    private var isReconciling = false
-    private var sourceError: String?
-    private var pendingMode: MarkdownEditorMode = .read
-    private var pendingWindowPresentation: WindowDocumentPresentationSnapshot?
+    @Published private(set) var openingPresentationID = UUID()
+    private var reconstructionScrollAnchor: EditorScrollAnchor?
+    private var startupTask: Task<Void, Never>?
+    private var documentLoadTask: Task<Void, Never>?
+    private var focusHandoffTask: Task<Void, Never>?
     private var automaticFocusIsAuthorized = false
-    private var retainedSelections: [MarkdownEditorSelectionRange] = []
+    private var focusRequestRevision: UInt64 = 0
+    private var automaticFocusTarget: WindowDocumentFocusTarget = .editor
+    private var sourceMutationBarrier: Task<Void, Never>?
+    private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
+    // Unlike the caller's request queue, this survives cancellation and
+    // deadline expiry until the actual WebKit dispatch has returned.
+    private var unfinishedBridgeDispatches: Set<UUID> = []
+    private var requestEpoch: UInt64 = 0
+    private var modeTransitionEpoch: UInt64 = 0
+    private var modeTransitionTask: Task<Void, Never>?
+    private var modeTransitionID: UUID?
+    private var rejectedChangeRecoveryTask: Task<Void, Never>?
+    private var rejectedChangeRecoveryID: UUID?
+    private var pendingRejectedChangeGeneration: Int?
+    private let bridgeDispatcher: any MarkdownEditorBridgeDispatching
+    private let lifecyclePolicy: ScholiumLifecyclePolicy
     private var committedTextSynchronizer: ((String, String) -> Void)?
     private var sourceChangeHandler: (() -> Void)?
-    private var detachedSnapshot: MarkdownEditorPersistenceSnapshot?
-
-    var hasAttachedNativeView: Bool { attachmentID != nil }
-    var isReady: Bool { true }
+    private let checkedSourceBuffer = EditorExactSourceBuffer()
+    var checkedSource: String { checkedSourceBuffer.snapshot() }
+    var isComposing: Bool { context?.composing == true }
+    private var checkedEditorUTF16Length = 0
+    private var sourceOffsetMap = EditorSourceOffsetMap(source: "")
+    private var recoverySnapshot: MarkdownEditorRecoverySnapshot?
+    private struct DetachmentCapture {
+        let suspensionID: String
+        let transportSessionID: UUID
+        let snapshot: MarkdownEditorRecoverySnapshot
+    }
+    private var detachmentCapture: DetachmentCapture?
+    private var pendingDetachmentSuspensionID: String?
+    var detachmentSuspensionID: String? {
+        pendingDetachmentSuspensionID ?? detachmentCapture?.suspensionID
+    }
+    private var lastKnownSelectionSnapshot: MarkdownEditorSelectionSnapshot?
+    private var pendingWindowPresentation: WindowDocumentPresentationSnapshot?
+    private(set) var preferredDocumentFocusTarget: WindowDocumentFocusTarget?
+    #if DEBUG
+        private static let qaTerminationNotification = Notification.Name(
+            "com.scholium.qa.simulate-editor-process-termination"
+        )
+        private var qaTerminationObserverInstalled = false
+    #endif
+    var hasAttachedWebView: Bool { webView != nil }
+    var isReady: Bool { presentation.webContentReady }
     var isLoaded: Bool { presentation.isLoaded }
     var presentedMode: MarkdownEditorMode? { presentation.presentedMode }
     var errorMessage: String? { presentation.errorMessage }
-    var isComposing: Bool { nativeEditor.isComposingSource }
-    var hasRecoverableBuffer: Bool { isDirty || isComposing || sourceError != nil }
-    var hasNonemptySelection: Bool {
-        currentValidSelectionRanges().contains(where: \.isNonempty)
+    var hasRecoverableBuffer: Bool {
+        isDirty || recoverySnapshot?.dirty == true
     }
-    var hasWritingFocus: Bool {
-        guard let window = nativeEditor.window, window.isKeyWindow,
-            let responder = window.firstResponder as? NSView
-        else { return false }
-        return responder === nativeEditor || responder.isDescendant(of: nativeEditor)
-    }
-    var hasDetachedPersistenceSnapshot: Bool {
-        guard !hasAttachedNativeView, !isComposing, let detachedSnapshot else { return false }
-        return detachedSnapshot.documentID == documentID
-            && detachedSnapshot.generation == generation
-            && detachedSnapshot.fingerprint == startingFingerprint
-            && detachedSnapshot.suspensionID == detachmentSuspensionID
-            && detachedSnapshot.text.utf8.elementsEqual(checkedSource.utf8)
-    }
-
-    override init() {
-        nativeEditor = EditorTextView.makeTextKit2(
-            frame: NSRect(x: 0, y: 0, width: 800, height: 600),
-            containerSize: NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude))
-        scrollView = NSScrollView(frame: nativeEditor.frame)
-        super.init()
-        nativeEditor.applyTheme(.default)
-        nativeEditor.minSize = .zero
-        nativeEditor.maxSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude)
-        nativeEditor.isVerticallyResizable = true
-        nativeEditor.isHorizontallyResizable = false
-        nativeEditor.autoresizingMask = [.width]
-        nativeEditor.typewriterModeEnabled = false
-        nativeEditor.viewMode = .reading
-        nativeEditor.isSelectable = true
-        nativeEditor.setAccessibilityIdentifier("scholium.document.editor")
-        nativeEditor.onSourceStateChange = { [weak self] _ in self?.sourceStateChanged() }
-        nativeEditor.onSourceEditRejected = { [weak self] message in self?.reportError(message) }
-        nativeEditor.onLinkActivation = { [weak self] target in self?.onLinkActivation?(target) }
-        scrollView.hasVerticalScroller = true
-        scrollView.scrollerStyle = .overlay
-        scrollView.drawsBackground = false
-        scrollView.documentView = nativeEditor
-        scrollView.contentView.postsBoundsChangedNotifications = true
-        nativeEditor.updateContentInset()
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(selectionDidChange),
-            name: NSTextView.didChangeSelectionNotification, object: nativeEditor)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(scrollDidChange),
-            name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
-    }
-
-    deinit { NotificationCenter.default.removeObserver(self) }
+    var canAttemptPreview: Bool { pendingMode == .livePreview }
 
     @discardableResult
-    func attachNativeView() -> UUID {
-        let id = UUID()
-        attachmentID = id
-        detachedSnapshot = nil
-        detachmentSuspensionID = nil
-        applyInputAvailability()
-        if let anchor = pendingScrollAnchor {
-            setScrollPosition(anchor: anchor, fallbackFraction: pendingScrollFraction ?? 0)
-        } else if let fraction = pendingScrollFraction {
-            setScrollFraction(fraction)
+    func restoreWindowPresentation(
+        _ presentation: WindowDocumentPresentationSnapshot,
+        source: String
+    ) -> Bool {
+        let fingerprint = DocumentFingerprint(content: source).sha256
+        let offsetMap = EditorSourceOffsetMap(source: source)
+        let ranges = presentation.selections.map {
+            MarkdownEditorSelectionRange(anchor: $0.anchor, head: $0.head)
         }
-        return id
+        guard presentation.sourceFingerprint == fingerprint,
+            markdownEditorSelectionRangesAreValid(
+                ranges,
+                forEditorUTF16Length: offsetMap.editorUTF16Length
+            )
+        else {
+            pendingWindowPresentation = nil
+            preferredDocumentFocusTarget = nil
+            return false
+        }
+        pendingWindowPresentation = presentation
+        preferredDocumentFocusTarget = presentation.focusTarget
+        return true
     }
 
-    func isCurrentAttachment(_ id: UUID) -> Bool { attachmentID == id }
-
-    func detachNativeView(attachmentID: UUID) {
-        guard self.attachmentID == attachmentID else { return }
-        recordNativeScrollPosition()
-        self.attachmentID = nil
-        automaticFocusIsAuthorized = false
-        // Native storage and Undo remain retained. There is no serialization,
-        // history reconstruction or process lifetime tied to this host view.
-        if !isComposing, let snapshot = try? reconcileNativeSource() {
-            let suspension = detachmentSuspensionID ?? UUID().uuidString
-            detachmentSuspensionID = suspension
-            detachedSnapshot = MarkdownEditorPersistenceSnapshot(
-                text: snapshot.text,
-                generation: snapshot.generation, documentID: documentID,
-                fingerprint: startingFingerprint, suspensionID: suspension)
+    func windowPresentationSnapshot(
+        scrollFraction: Double
+    ) -> WindowDocumentPresentationSnapshot {
+        if let pendingWindowPresentation {
+            return WindowDocumentPresentationSnapshot(
+                scrollFraction: scrollFraction,
+                sourceFingerprint: pendingWindowPresentation.sourceFingerprint,
+                selections: pendingWindowPresentation.selections,
+                focusTarget: pendingWindowPresentation.focusTarget
+            )
         }
-        applyInputAvailability()
+        guard !isDirty,
+            let selection = lastKnownSelectionSnapshot,
+            selection.isValid(
+                documentID: documentID,
+                fingerprint: startingFingerprint,
+                generation: generation,
+                editorUTF16Length: checkedEditorUTF16Length
+            )
+        else {
+            return WindowDocumentPresentationSnapshot(
+                scrollFraction: scrollFraction
+            )
+        }
+        return WindowDocumentPresentationSnapshot(
+            scrollFraction: scrollFraction,
+            sourceFingerprint: selection.fingerprint,
+            selections: selection.ranges.map {
+                WindowDocumentSelectionRange(anchor: $0.anchor, head: $0.head)
+            },
+            focusTarget: preferredDocumentFocusTarget
+        )
     }
 
+    /// A SwiftUI/AppKit reconstruction of the same retained document must use
+    /// the session's exact mirror, not the parent view's lifecycle snapshot.
+    /// A different document still initializes from its proposed source.
+    func sourceForViewAttachment(
+        proposedSource: String,
+        documentID proposedDocumentID: String
+    ) -> String {
+        guard !documentID.isEmpty, documentID == proposedDocumentID else {
+            return proposedSource
+        }
+        return checkedSource
+    }
+    var canShowPreviewAtSelection: Bool {
+        guard pendingMode == .livePreview,
+            let selectionSnapshot = lastKnownSelectionSnapshot,
+            selectionSnapshot.isValid(
+                documentID: documentID,
+                fingerprint: startingFingerprint,
+                generation: generation,
+                editorUTF16Length: checkedEditorUTF16Length
+            ),
+            let head = selectionSnapshot.ranges.first?.head
+        else { return false }
+        if pendingLinkPreviews.contains(where: { head >= $0.from && head < $0.to }) {
+            return true
+        }
+        return false
+    }
+
+    override convenience init() {
+        self.init(
+            bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
+            lifecyclePolicy: ScholiumLifecyclePolicy()
+        )
+    }
+
+    init(
+        bridgeDispatcher: any MarkdownEditorBridgeDispatching,
+        lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()
+    ) {
+        self.bridgeDispatcher = bridgeDispatcher
+        self.lifecyclePolicy = lifecyclePolicy
+        super.init()
+    }
+
+    func attach(_ webView: WKWebView) {
+        floatingSurfaces.reset()
+        invalidateRequestQueue(clearingRecoveryReport: false)
+        cancelModeTransition()
+        self.webView = webView
+        sessionID = UUID()
+        updatePresentation { $0.reset() }
+        installQATerminationObserverIfEnabled()
+        startupTask?.cancel()
+        documentLoadTask?.cancel()
+        focusHandoffTask?.cancel()
+        startupTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled, let self, !self.isReady else { return }
+            self.reportError(String(localized: "Edit mode did not finish starting.", table: "Localizable", bundle: .module))
+        }
+    }
+
+    func detach(_ webView: WKWebView) {
+        guard self.webView === webView else { return }
+        floatingSurfaces.reset()
+        invalidateRequestQueue(clearingRecoveryReport: false)
+        cancelModeTransition()
+        startupTask?.cancel()
+        documentLoadTask?.cancel()
+        focusHandoffTask?.cancel()
+        self.webView = nil
+        removeQATerminationObserver()
+
+        // SwiftUI calls dismantleNSView while its AttributeGraph is destroying
+        // the representable. Publishing from that callback re-enters the same
+        // graph transaction and can trip Swift's dynamic exclusivity check.
+        // Keep the non-publishing detach synchronous, then reset presentation
+        // after teardown has returned. A fast reattach owns the session again
+        // and already resets presentation in attach(_:), so it must win.
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, self.webView == nil else { return }
+            self.updatePresentation { $0.reset() }
+        }
+    }
+
+    /// Clears the retained editor mirror and callbacks only after AppKit has
+    /// detached the WebView and the session store proved there is no lease or
+    /// recovery pin. Closed documents intentionally do not retain undo state.
     func shutdownDetachedSession() {
-        guard !hasAttachedNativeView else { return }
-        nativeEditor.onSourceStateChange = nil
-        nativeEditor.onSourceEditRejected = nil
-        nativeEditor.onLinkActivation = nil
-        NotificationCenter.default.removeObserver(self)
+        precondition(webView == nil)
+        detachmentCapture = nil
+        pendingDetachmentSuspensionID = nil
+        floatingSurfaces.reset()
+        invalidateRequestQueue(clearingRecoveryReport: false)
+        startupTask?.cancel()
+        startupTask = nil
+        documentLoadTask?.cancel()
+        documentLoadTask = nil
+        focusHandoffTask?.cancel()
+        focusHandoffTask = nil
+        automaticFocusIsAuthorized = false
+        automaticFocusTarget = .editor
         committedTextSynchronizer = nil
         sourceChangeHandler = nil
+        pendingSource = nil
+        pendingDocumentID = ""
+        pendingDocumentTitle = ""
+        pendingLinkPreviews = []
+        pendingScrollFraction = nil
+        pendingScrollAnchor = nil
+        reconstructionScrollAnchor = nil
+        checkedSourceBuffer.replace(with: "")
+        checkedEditorUTF16Length = 0
+        sourceOffsetMap = EditorSourceOffsetMap(source: "")
+        recoverySnapshot = nil
+        lastKnownSelectionSnapshot = nil
+        pendingWindowPresentation = nil
+        preferredDocumentFocusTarget = nil
+        cancelModeTransition()
+        updatePresentation { $0.reset() }
+        updatePublished(\.isDirty, to: false)
     }
 
-    func prepareOpeningPresentation() { openingPresentationID = UUID() }
+    func editorBecameReady() {
+        startupTask?.cancel()
+        updatePresentation {
+            $0.webContentBecameReady(hasPendingDocument: pendingSource != nil)
+        }
+        flushPendingState()
+    }
 
-    func sourceForViewAttachment(proposedSource: String, documentID proposedDocumentID: String) -> String {
-        documentID == proposedDocumentID && isLoaded ? checkedSource : proposedSource
+    /// Applies the rAF-coalesced v5 interaction envelope. Exact cursor
+    /// coordinates stay readable for commands and recovery, but they are not
+    /// Observable state. Only a semantic availability change invalidates UI.
+    func updateInteraction(
+        selections: [MarkdownEditorSelectionRange],
+        line: Int,
+        column: Int,
+        lineCount: Int,
+        documentVersion: Int,
+        focusTarget: WindowDocumentFocusTarget? = nil,
+        context semanticContext: MarkdownEditorContext?
+    ) {
+        let previousSelection = lastKnownSelectionSnapshot?.ranges
+        let wasComposing = context?.composing == true
+        guard documentVersion == generation,
+            markdownEditorSelectionRangesAreValid(
+                selections,
+                forEditorUTF16Length: checkedEditorUTF16Length
+            ),
+            semanticContext?.selections == nil || semanticContext?.selections == selections
+        else { return }
+        lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+            documentID: documentID,
+            fingerprint: startingFingerprint,
+            generation: documentVersion,
+            ranges: selections
+        )
+        if let focusTarget {
+            preferredDocumentFocusTarget = focusTarget
+            automaticFocusTarget = focusTarget
+        }
+        self.line = max(1, line)
+        self.column = max(1, column)
+        self.lineCount = max(1, lineCount)
+        if let semanticContext {
+            let availability = EditorInteractionAvailability(context: semanticContext)
+            context = availability.context(selections: selections)
+            updatePublished(\.interactionAvailability, to: availability)
+        } else if let interactionAvailability {
+            context = interactionAvailability.context(selections: selections)
+        }
+        if wasComposing, context?.composing == false {
+            reconvergePendingPresentationState()
+        }
+        if previousSelection != selections || wasComposing != isComposing {
+            writingContextChanges.send()
+            selectionChanges.send(hasNonemptySelection)
+        }
+        flushPendingSourceRange()
+    }
+
+    func reportError(_ message: String) {
+        startupTask?.cancel()
+        cancelModeTransition()
+        updatePresentation { $0.fail(message) }
+    }
+
+    func retryUnavailablePresentation() {
+        guard !isLoaded else { return }
+        updatePresentation { $0.beginLoading() }
+        viewReconstructionID = UUID()
+    }
+
+    /// Advances the native host identity for a new presentation without
+    /// imposing a title- or frontmatter-specific viewport.
+    func prepareOpeningPresentation() {
+        openingPresentationID = UUID()
     }
 
     func loadDocument(
-        _ source: String, documentID: String, mode: MarkdownEditorMode,
+        _ source: String,
+        documentID: String,
+        mode: MarkdownEditorMode,
         initialSourceRange: Range<Int>? = nil
     ) {
-        guard !isComposing else {
-            reportError("Finish the current input before replacing this document.")
-            return
-        }
-        isLoading = true
-        defer { isLoading = false }
-        presentation = .init(documentPhase: .loading)
-        do {
-            try nativeEditor.loadExactUTF8(Data(source.utf8))
-            self.documentID = documentID
-            sessionID = UUID()
-            checkedSource = source
-            commandSemanticCache = nil
-            committedSource = source
-            startingFingerprint = DocumentFingerprint(content: source).sha256
-            sourceOffsetMap = EditorSourceOffsetMap(source: source)
-            generation = 0
-            lastNativeRevision = nativeEditor.sourceState.revision
-            detachedSnapshot = nil
-            detachmentSuspensionID = nil
-            sourceError = nil
-            isDirty = false
-            pendingMode = mode
-            nativeEditor.viewMode = mode == .read ? .reading : .edit
-            applyInputAvailability()
-            presentation = .init(documentPhase: .ready(mode))
-            if let initialSourceRange {
-                revealSourceRange(fromUTF16: initialSourceRange.lowerBound, toUTF16: initialSourceRange.upperBound)
-            } else if let restored = pendingWindowPresentation,
-                restored.sourceFingerprint == startingFingerprint
-            {
-                let ranges = restored.selections.map {
-                    NSValue(
-                        range: NSRange(
-                            location: min($0.anchor, $0.head), length: abs($0.head - $0.anchor)))
-                }
-                nativeEditor.selectedRanges = ranges
-                preferredDocumentFocusTarget = restored.focusTarget
+        detachmentCapture = nil
+        pendingDetachmentSuspensionID = nil
+        floatingSurfaces.reset()
+        let isFirstDocumentLoad = self.documentID != documentID
+        let publishesLoadingState = isReady
+        invalidateRequestQueue()
+        let nextFingerprint = DocumentFingerprint(content: source).sha256
+        let restoredPresentation = pendingWindowPresentation
+        pendingWindowPresentation = nil
+        let restoredRanges =
+            restoredPresentation?.selections.map {
+                MarkdownEditorSelectionRange(anchor: $0.anchor, head: $0.head)
+            } ?? []
+        let canRestoreWindowPresentation =
+            initialSourceRange == nil
+            && restoredPresentation?.sourceFingerprint == nextFingerprint
+            && markdownEditorSelectionRangesAreValid(
+                restoredRanges,
+                forEditorUTF16Length: EditorSourceOffsetMap(source: source).editorUTF16Length
+            )
+        let preservesRecovery =
+            recoverySnapshot.map {
+                $0.documentID == documentID
+                    && $0.fingerprint == startingFingerprint
+                    && $0.source.utf8.elementsEqual(source.utf8)
+            } ?? false
+        let retainedStartingFingerprint = preservesRecovery ? startingFingerprint : nil
+        if !preservesRecovery {
+            if canRestoreWindowPresentation, let restoredPresentation {
+                recoverySnapshot = MarkdownEditorRecoverySnapshot(
+                    documentID: documentID,
+                    fingerprint: nextFingerprint,
+                    generation: 0,
+                    ranges: restoredRanges,
+                    source: source,
+                    stateJSON: nil,
+                    undoHistoryPreserved: false,
+                    dirty: false,
+                    focusTarget: restoredPresentation.focusTarget
+                )
+                lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+                    documentID: documentID,
+                    fingerprint: nextFingerprint,
+                    generation: 0,
+                    ranges: restoredRanges
+                )
+                preferredDocumentFocusTarget = restoredPresentation.focusTarget
             } else {
-                let body = NoteDocument(relativePath: "", rawContent: source).bodyUTF16Offset
-                let caret =
-                    sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: body)
-                    ?? sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: source.hasPrefix("\u{FEFF}") ? 1 : 0) ?? 0
-                nativeEditor.setSelectedRange(NSRange(location: caret, length: 0))
+                recoverySnapshot = nil
+                lastKnownSelectionSnapshot = nil
             }
-            pendingWindowPresentation = nil
-            updateNativeInteraction()
-            committedTextSynchronizer?(source, startingFingerprint)
-        } catch {
-            presentation = .init(documentPhase: .unavailable, errorMessage: error.localizedDescription)
+            reconstructionScrollAnchor = nil
+            context = nil
+            updatePublished(\.interactionAvailability, to: nil)
         }
+        pendingSource = source
+        pendingDocumentID = documentID
+        self.documentID = documentID
+        startingFingerprint =
+            retainedStartingFingerprint
+            ?? nextFingerprint
+        checkedSourceBuffer.replace(with: source)
+        sourceOffsetMap = EditorSourceOffsetMap(source: source)
+        checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
+        generation = 0
+        pendingMode = mode
+        if let initialSourceRange {
+            let lowerBound = max(0, initialSourceRange.lowerBound)
+            pendingSourceRange =
+                lowerBound..<max(
+                    lowerBound,
+                    initialSourceRange.upperBound
+                )
+        } else if isFirstDocumentLoad, !canRestoreWindowPresentation,
+            !preservesRecovery, pendingSourceRange == nil,
+            mode == .livePreview
+        {
+            let bodyStart = NoteDocument(relativePath: "", rawContent: source).bodyUTF16Offset
+            pendingSourceRange = bodyStart..<bodyStart
+        }
+        committedTextSynchronizer?(source, startingFingerprint)
+        cancelModeTransition()
+        if publishesLoadingState {
+            updatePresentation {
+                $0.beginLoading()
+            }
+            updatePublished(\.isDirty, to: false)
+        }
+        flushPendingState()
     }
 
     func setMode(_ mode: MarkdownEditorMode) {
+        let requiresConvergence = pendingMode != mode || presentedMode != mode
         pendingMode = mode
-        guard isLoaded, !isComposing else { return }
-        do {
-            _ = try reconcileNativeSource()
-            PerformanceProbe.shared.markEditorModeLayoutStarted(mode: mode)
-            nativeEditor.viewMode = mode == .read ? .reading : .edit
-            applyInputAvailability()
-            presentation.documentPhase = .ready(mode)
-            PerformanceProbe.shared.markEditorModeApplied(documentID: performanceDocumentID, mode: mode)
-            scrollView.superview?.needsLayout = true
-            nativeEditor.setAccessibilityLabel(ScholiumL10n.string(mode == .read ? "Document, Reading" : "Document, Editing"))
-            updateNativeInteraction()
-        } catch { reportError(error.localizedDescription) }
+        guard requiresConvergence else { return }
+        guard isReady, isLoaded, let webView else { return }
+        startModeConvergence(in: webView)
     }
 
-    func setDocumentTitle(_ title: String) { scrollView.setAccessibilityLabel(title) }
-
-    private func applyInputAvailability() {
-        nativeEditor.isEditable = pendingMode == .edit && detachmentSuspensionID == nil
-        nativeEditor.isSelectable = true
-    }
-
-    func reportError(_ message: String) { presentation.errorMessage = message }
-
-    func retryUnavailablePresentation() {
-        guard !isLoaded, !documentID.isEmpty else { return }
-        loadDocument(checkedSource, documentID: documentID, mode: pendingMode)
-    }
-
-    /// Synchronous validation binds source and generation to one main-actor turn.
-    /// Provisional IME input never replaces the last checked source.
-    @discardableResult
-    func reconcileNativeSource() throws -> MarkdownEditorTextSnapshot {
-        guard isLoaded else { throw SessionError.unavailable }
-        guard !isComposing else { throw SessionError.compositionInProgress }
-        guard !isReconciling else { return .init(text: checkedSource, generation: generation) }
-        isReconciling = true
-        defer { isReconciling = false }
-        let bytes = try nativeEditor.exactUTF8ForSaving()
-        let text = String(decoding: bytes, as: UTF8.self)
-        let changed = !text.utf8.elementsEqual(checkedSource.utf8)
-        let revision = nativeEditor.sourceState.revision
-        if changed {
-            let advance = revision >= lastNativeRevision ? revision - lastNativeRevision : 1
-            generation += max(1, Int(clamping: advance))
-            checkedSource = text
-            sourceOffsetMap = EditorSourceOffsetMap(source: text)
-            isDirty = !text.utf8.elementsEqual(committedSource.utf8)
-            detachedSnapshot = nil
-            writingContextChanges.send()
-            sourceChangeHandler?()
-            onDocumentActivity?()
+    func setDocumentTitle(_ title: String) {
+        pendingDocumentTitle = String(title.prefix(1_024))
+        guard isReady, isLoaded, let webView else { return }
+        let documentTitle = pendingDocumentTitle
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            _ = try? await self.send(.setDocumentTitle(documentTitle), in: webView)
         }
-        lastNativeRevision = revision
-        if let sourceError, presentation.errorMessage == sourceError { presentation.errorMessage = nil }
-        sourceError = nil
-        updateNativeInteraction()
-        return .init(text: text, generation: generation)
     }
 
-    private func sourceStateChanged() {
-        guard !isLoading, isLoaded else { return }
-        if isComposing {
-            updateNativeInteraction()
-            writingContextChanges.send()
-            return
+    /// Serially converges the retained CodeMirror configuration on the latest
+    /// requested editor mode. A newer request never starts a competing bridge
+    /// task and never gets discarded merely because the previously published
+    /// mode still matches it while another mode is in flight.
+    private func startModeConvergence(in webView: WKWebView) {
+        guard modeTransitionTask == nil else { return }
+        let transitionID = UUID()
+        let intendedModeTransitionEpoch = modeTransitionEpoch
+        modeTransitionID = transitionID
+        modeTransitionTask = Task.immediate { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            defer {
+                if self.modeTransitionID == transitionID {
+                    self.modeTransitionTask = nil
+                    self.modeTransitionID = nil
+                }
+            }
+            do {
+                while true {
+                    try Task.checkCancellation()
+                    guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
+                        self.isReady,
+                        self.isLoaded,
+                        self.webView === webView
+                    else { return }
+                    let targetMode = self.pendingMode
+                    guard self.presentedMode != targetMode else { return }
+                    PerformanceProbe.shared.markEditorModeBridgeStarted(
+                        mode: targetMode
+                    )
+                    // A mode request is idempotent and source-preserving. One
+                    // bounded retry safely resolves a transient transport
+                    // failure or an acknowledgement lost after the Web side
+                    // already applied the compartment, without creating a
+                    // second mode owner or an unbounded retry loop.
+                    do {
+                        _ = try await self.send(.setMode(targetMode), in: webView)
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch SessionError.staleRequest {
+                        throw SessionError.staleRequest
+                    } catch {
+                        _ = try await self.send(.setMode(targetMode), in: webView)
+                    }
+                    guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
+                        self.webView === webView
+                    else { return }
+                    self.updatePresentation { $0.complete(targetMode) }
+                    if self.pendingMode == targetMode { return }
+                }
+            } catch is CancellationError {
+                return
+            } catch SessionError.staleRequest {
+                return
+            } catch {
+                guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
+                    self.webView === webView
+                else { return }
+                let message = "The document mode change was not applied because the editor changed during text composition."
+                self.updatePresentation { $0.report(message) }
+                _ = try? await self.send(.announceStatus(message), in: webView)
+            }
         }
-        do { _ = try reconcileNativeSource() } catch {
-            sourceError = error.localizedDescription
-            reportError(error.localizedDescription)
+    }
+
+    private func cancelModeTransition() {
+        modeTransitionEpoch &+= 1
+        modeTransitionTask?.cancel()
+        modeTransitionTask = nil
+        modeTransitionID = nil
+    }
+
+    func setUserCSS(_ css: String) {
+        pendingUserCSS = css
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.setUserCSS(css), in: webView)
         }
-        if presentedMode != pendingMode { setMode(pendingMode) }
     }
 
-    @objc private func selectionDidChange(_ notification: Notification) {
-        guard !isLoading, isLoaded else { return }
-        updateNativeInteraction()
+    func setWritingContinuation(enabled: Bool, contextKey: String) {
+        pendingWritingContinuationEnabled = enabled
+        pendingWritingContinuationContextKey = String(contextKey.prefix(256))
+        guard isReady, isLoaded, let webView else { return }
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            // Read the latest preference at dispatch, not an obsolete SwiftUI update.
+            _ = try? await send(
+                .setWritingContinuation(
+                    enabled: pendingWritingContinuationEnabled,
+                    contextKey: pendingWritingContinuationContextKey), in: webView)
+        }
     }
 
-    func currentValidSelectionRanges() -> [MarkdownEditorSelectionRange] {
-        let ranges = nativeEditor.selectedRanges.compactMap { value -> MarkdownEditorSelectionRange? in
-            let range = value.rangeValue
-            guard range.location != NSNotFound, range.location >= 0, range.length >= 0,
-                range.location <= (nativeEditor.rawSource as NSString).length,
-                range.length <= (nativeEditor.rawSource as NSString).length - range.location
+    func setPresentationCSS(_ css: String) {
+        pendingPresentationCSS = css
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.setPresentationCSS(css), in: webView)
+        }
+    }
+
+    func goToLine(_ line: Int, focusesEditor: Bool = true) {
+        if focusesEditor {
+            focusRequestRevision &+= 1
+            automaticFocusIsAuthorized = true
+            preferredDocumentFocusTarget = .editor
+            automaticFocusTarget = .editor
+        }
+        pendingLine = (max(1, line), focusesEditor)
+        flushPendingLine()
+    }
+
+    func revealSourceRange(fromUTF16: Int, toUTF16: Int) {
+        preferredDocumentFocusTarget = .editor
+        automaticFocusTarget = .editor
+        let lowerBound = max(0, fromUTF16)
+        pendingSourceRange = lowerBound..<max(lowerBound, toUTF16)
+        flushPendingSourceRange()
+    }
+
+    /// Applies an original-source locator through the existing generation-checked bridge.
+    func revealSourceLocation(_ request: DocumentSourceLocationRequest) async throws {
+        guard isReady, isLoaded, !isComposing, let webView else { throw SessionError.unavailable }
+        if let expected = request.sourceFingerprint,
+            DocumentFingerprint(content: checkedSource).sha256 != expected
+        {
+            throw DocumentSourceLocationFailure.sourceChanged
+        }
+        let operation: MarkdownEditorOperation
+        if let range = request.range {
+            guard range.utf16UpperBound >= range.utf16LowerBound,
+                let from = sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: range.utf16LowerBound),
+                let to = sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: range.utf16UpperBound)
+            else { throw SessionError.invalidResult }
+            operation = .revealSourceRange(fromUTF16: from, toUTF16: to)
+        } else if let line = request.line, line > 0 {
+            operation = .goToLine(line, focusesEditor: true)
+        } else {
+            throw SessionError.invalidResult
+        }
+        let documentID = self.documentID
+        let focusRevision = focusRequestRevision
+        // No suspension separates revision/offset validation from capturing the
+        // bridge generation. A later editor change rejects this operation.
+        _ = try await send(operation, in: webView)
+        guard !Task.isCancelled, self.webView === webView, self.documentID == documentID,
+            focusRequestRevision == focusRevision,
+            webView.window?.makeFirstResponder(webView) == true
+        else { return }
+        try await focusAndWait(.editor)
+    }
+
+    func setScrollFraction(_ fraction: Double) {
+        let normalized = min(1, max(0, fraction))
+        pendingScrollFraction = normalized
+        pendingScrollAnchor = nil
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.setScrollFraction(normalized), in: webView)
+        }
+    }
+
+    func setScrollPosition(anchor: EditorScrollAnchor?, fallbackFraction: Double) {
+        let normalized = min(1, max(0, fallbackFraction))
+        pendingScrollFraction = normalized
+        pendingScrollAnchor = anchor
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            if let anchor,
+                let wireAnchor = wireAnchor(from: anchor, in: checkedSource)
+            {
+                _ = try? await send(.setScrollAnchor(wireAnchor), in: webView)
+            } else {
+                _ = try? await send(.setScrollFraction(normalized), in: webView)
+            }
+        }
+    }
+
+    func recordScrollFraction(_ fraction: Double) {
+        pendingScrollFraction = min(1, max(0, fraction))
+    }
+
+    func recordScrollPosition(
+        _ wireAnchor: MarkdownEditorWireScrollAnchor?,
+        fallbackFraction: Double
+    ) -> EditorScrollAnchor? {
+        let fraction = min(1, max(0, fallbackFraction))
+        pendingScrollFraction = fraction
+        guard let wireAnchor,
+            let sourceOffset = sourceOffsetMap.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.sourceUTF16Offset
+            ),
+            let lowerBound = sourceOffsetMap.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.blockUTF16LowerBound
+            ),
+            let upperBound = sourceOffsetMap.sourceUTF16Offset(
+                forEditorUTF16Offset: wireAnchor.blockUTF16UpperBound
+            )
+        else {
+            pendingScrollAnchor = nil
+            return nil
+        }
+        let anchor = EditorScrollAnchor(
+            sourceFingerprint: checkedSourceBuffer.fingerprint.sha256,
+            sourceUTF16Offset: sourceOffset,
+            blockUTF16LowerBound: lowerBound,
+            blockUTF16UpperBound: upperBound,
+            relativeBlockPosition: wireAnchor.relativeBlockPosition,
+            fallbackFraction: fraction
+        )
+        guard anchor.isValid(forUTF16Length: checkedSourceBuffer.utf16Length) else {
+            pendingScrollAnchor = nil
+            return nil
+        }
+        pendingScrollAnchor = reconstructionScrollAnchor ?? anchor
+        return anchor
+    }
+
+    func retainedScrollFraction(fallback: Double) -> Double {
+        pendingScrollFraction ?? min(1, max(0, fallback))
+    }
+
+    var retainedScrollAnchor: EditorScrollAnchor? {
+        reconstructionScrollAnchor ?? pendingScrollAnchor
+    }
+
+    func setLinkPreviews(_ previews: [DocumentLinkPreview], in source: String) {
+        let offsetMap =
+            source.utf8.elementsEqual(checkedSource.utf8)
+            ? sourceOffsetMap
+            : EditorSourceOffsetMap(source: source)
+        pendingLinkPreviews = previews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).compactMap { preview in
+            guard
+                let from = offsetMap.editorUTF16Offset(
+                    forSourceUTF16Offset: preview.sourceSpan.utf16LowerBound
+                ),
+                let to = offsetMap.editorUTF16Offset(
+                    forSourceUTF16Offset: preview.sourceSpan.utf16UpperBound
+                ), to > from
             else { return nil }
-            return MarkdownEditorSelectionRange(anchor: range.location, head: range.upperBound)
+            return MarkdownEditorLinkPreview(
+                from: from,
+                to: to,
+                title: String(preview.title.prefix(240)),
+                isEmbedded: preview.syntax == .embed,
+                fragment: preview.fragment.map { String($0.prefix(240)) },
+                htmlBody: preview.syntax == .embed
+                    ? preview.htmlBody
+                    : String(preview.htmlBody.prefix(24_000))
+            )
         }
-        guard ranges.count == nativeEditor.selectedRanges.count,
-            markdownEditorSelectionRangesAreValid(ranges, forProjectedText: nativeEditor.rawSource)
-        else { return [] }
-        return ranges
-    }
-
-    func updateNativeInteraction() {
-        let ranges = currentValidSelectionRanges()
-        let previous = retainedSelections
-        retainedSelections = ranges
-        let nativeContext = nativeContext()
-        context = nativeContext
-        let availability = EditorInteractionAvailability(context: nativeContext)
-        if interactionAvailability != availability { interactionAvailability = availability }
-        let position = min(ranges.first?.head ?? 0, (nativeEditor.rawSource as NSString).length)
-        let prefix = (nativeEditor.rawSource as NSString).substring(to: position)
-        line = prefix.utf16.reduce(into: 1) { if $1 == 10 { $0 += 1 } }
-        column =
-            (prefix as NSString).length
-            - ((prefix as NSString).range(of: "\n", options: .backwards).location == NSNotFound
-                ? 0 : (prefix as NSString).range(of: "\n", options: .backwards).upperBound) + 1
-        lineCount = nativeEditor.rawSource.utf16.reduce(into: 1) { if $1 == 10 { $0 += 1 } }
-        if previous != ranges {
-            if hasWritingFocus { preferredDocumentFocusTarget = .editor }
-            writingContextChanges.send()
-            selectionChanges.send(hasNonemptySelection)
-            onNativeSelectionChange?(ranges, nativeSelectionRect())
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.setLinkPreviews(pendingLinkPreviews), in: webView)
         }
     }
 
-    func nativeSelectionRect() -> NSRect? {
-        guard nativeEditor.window != nil, nativeEditor.selectedRange().length > 0 else { return nil }
-        let screen = nativeEditor.firstRect(forCharacterRange: nativeEditor.selectedRange(), actualRange: nil)
-        guard let window = nativeEditor.window else { return nil }
-        return nativeEditor.convert(window.convertFromScreen(screen), from: nil)
+    func showPreview() {
+        guard canAttemptPreview, isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.showPreview, in: webView)
+        }
+    }
+
+    func showPreview(
+        for preview: DocumentLinkPreview,
+        in source: String
+    ) async {
+        guard canAttemptPreview, isReady, isLoaded, let webView else { return }
+        let offsetMap =
+            source.utf8.elementsEqual(checkedSource.utf8)
+            ? sourceOffsetMap
+            : EditorSourceOffsetMap(source: source)
+        guard
+            let from = offsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16LowerBound
+            ),
+            let to = offsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16UpperBound
+            ), to > from
+        else { return }
+        _ = try? await send(
+            .revealSourceRange(fromUTF16: from, toUTF16: from),
+            in: webView
+        )
+        _ = try? await send(.showPreview, in: webView)
+    }
+
+    func measureVisibleProjection() {
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.measureVisibleProjection, in: webView)
+        }
+    }
+
+    func showPreview(at point: CGPoint) {
+        guard canAttemptPreview, isReady, isLoaded, let webView,
+            point.x.isFinite, point.y.isFinite
+        else { return }
+        Task {
+            _ = try? await send(
+                .showPreviewAt(x: point.x, y: point.y),
+                in: webView
+            )
+        }
     }
 
     func currentText(for expectedDocumentID: String? = nil) async throws -> String {
         try await currentTextSnapshot(for: expectedDocumentID).text
     }
 
-    func currentTextSnapshot(for expectedDocumentID: String? = nil) async throws -> MarkdownEditorTextSnapshot {
-        try Task.checkCancellation()
-        guard expectedDocumentID == nil || expectedDocumentID == documentID else { throw SessionError.staleRequest }
-        return try reconcileNativeSource()
-    }
-
-    func waitUntilLoadedForSave(maximumWait: Duration = .seconds(6)) async throws -> Bool {
-        try Task.checkCancellation()
-        return isLoaded && !isComposing
-    }
-
-    func captureStateForViewReconstruction(suspendForDetachment: Bool = false) async throws {
-        let snapshot = try reconcileNativeSource()
-        recordNativeScrollPosition()
-        if suspendForDetachment {
-            let suspension = detachmentSuspensionID ?? UUID().uuidString
-            detachmentSuspensionID = suspension
-            detachedSnapshot = .init(
-                text: snapshot.text, generation: snapshot.generation,
-                documentID: documentID, fingerprint: startingFingerprint, suspensionID: suspension)
-            applyInputAvailability()
+    func passageSourceSnapshot(expectedSelections: [MarkdownEditorSelectionRange]?, expectedGeneration: Int) async throws -> MarkdownSourceSelectionSnapshot {
+        guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let epoch = requestEpoch
+        let identity = documentID
+        let result = try await send(.queryText, in: webView)
+        guard epoch == requestEpoch, identity == documentID, self.webView === webView,
+            result.resultingGeneration == generation, generation == expectedGeneration,
+            result.selections == expectedSelections, !isComposing, let source = result.text,
+            result.selections.count == 1, let selection = result.selections.first
+        else { throw SessionError.invalidResult }
+        if selection.isNonempty {
+            let captured = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, mode: .selectionOnly)
+            guard
+                let span = try? ParagraphAnchorPlanner.paragraph(
+                    in: NoteDocument(relativePath: identity, rawContent: source), atUTF16: captured.sourceRange.utf16LowerBound)
+            else { return captured }
+            return DocumentPassageSnapshot.includingParagraphIdentity(captured, paragraphSpan: span)
         }
+        guard let offset = EditorSourceOffsetMap(source: source).sourceUTF16Offset(forEditorUTF16Offset: selection.head) else {
+            throw SessionError.invalidResult
+        }
+        let span = try ParagraphAnchorPlanner.paragraph(in: NoteDocument(relativePath: identity, rawContent: source), atUTF16: offset)
+        guard let snapshot = DocumentPassageSnapshot.capture(source: source, range: span.nsRange) else { throw SessionError.invalidResult }
+        return snapshot
     }
 
-    func resumeAfterDetachment(suspensionID: String) async throws {
-        guard suspensionID == detachmentSuspensionID else { return }
-        detachmentSuspensionID = nil
-        detachedSnapshot = nil
-        applyInputAvailability()
+    func selectedSourceSnapshot() async throws -> MarkdownSourceSelectionSnapshot {
+        try await writingContextSnapshot(mode: .selectionOnly).snapshot
     }
+
+    func writingContextSnapshot(mode: MarkdownWritingContextCaptureMode) async throws -> (
+        snapshot: MarkdownSourceSelectionSnapshot, point: MarkdownEditorInsertionPoint?
+    ) {
+        guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let epoch = requestEpoch
+        let identity = documentID
+        let result = try await send(.queryText, in: webView)
+        guard epoch == requestEpoch, identity == documentID, self.webView === webView,
+            result.resultingGeneration == generation, !isComposing, let source = result.text
+        else { throw SessionError.invalidResult }
+        let snapshot = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, mode: mode)
+        let point = result.selections.first.flatMap { selection -> MarkdownEditorInsertionPoint? in
+            guard !selection.isNonempty else { return nil }
+            return .init(sessionID: sessionID, documentID: identity, generation: generation, selection: selection)
+        }
+        return (snapshot, point)
+    }
+
+    var hasWritingFocus: Bool {
+        guard let webView, webView.window?.isKeyWindow == true,
+            let responder = webView.window?.firstResponder as? NSView
+        else { return false }
+        return responder === webView || responder.isDescendant(of: webView)
+    }
+
+    func acceptsInsertionPoint(_ point: MarkdownEditorInsertionPoint) -> Bool {
+        !isComposing && isReady && isLoaded && point.sessionID == sessionID && point.documentID == documentID
+            && point.generation == generation && lastKnownSelectionSnapshot?.ranges == [point.selection]
+    }
+
+    func insertReference(_ target: String, at point: MarkdownEditorInsertionPoint) async throws {
+        guard acceptsInsertionPoint(point), let webView else { throw SessionError.invalidResult }
+        _ = try await send(.insertReference(selection: point.selection, generation: point.generation, target: target), in: webView)
+    }
+
+    func currentTextSnapshot(
+        for expectedDocumentID: String? = nil
+    ) async throws -> MarkdownEditorTextSnapshot {
+        guard expectedDocumentID == nil || expectedDocumentID == documentID,
+            isReady, isLoaded, let webView
+        else { throw SessionError.unavailable }
+        let intendedRequestEpoch = requestEpoch
+        let intendedDocumentID = documentID
+        let intendedFingerprint = startingFingerprint
+        let result = try await send(.queryText, in: webView)
+        guard intendedRequestEpoch == requestEpoch,
+            intendedDocumentID == documentID,
+            intendedFingerprint == startingFingerprint,
+            self.webView === webView,
+            let text = result.text
+        else { throw SessionError.invalidResult }
+        return MarkdownEditorTextSnapshot(
+            text: text,
+            generation: result.resultingGeneration
+        )
+    }
+
+    /// A retained editor can be briefly unavailable while SwiftUI reattaches
+    /// its WebView after a document projection changes. Saves must wait for
+    /// that same session to finish loading instead of treating the transient
+    /// presentation gap as loss of the authoritative CodeMirror buffer.
+    func waitUntilLoadedForSave(
+        maximumWait: Duration = .seconds(6)
+    ) async throws -> Bool {
+        if isReady, isLoaded, webView != nil { return true }
+        // Document loading already has one authoritative lifecycle task. Join
+        // that task instead of polling the published projection and racing the
+        // WebKit bridge under main-actor contention. The bounded fallback is
+        // only for a reattachment gap before `editorBecameReady()` has had a
+        // chance to install the task.
+        let expectedDocumentID = documentID
+        let expectedWebView = webView
+        if let documentLoadTask {
+            await documentLoadTask.value
+            try Task.checkCancellation()
+            guard documentID == expectedDocumentID, webView === expectedWebView else { return false }
+            return isReady && isLoaded && webView != nil
+        }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: maximumWait)
+        while clock.now < deadline {
+            try Task.checkCancellation()
+            try await clock.sleep(for: .milliseconds(50))
+            if isReady, isLoaded, webView != nil { return true }
+        }
+        return isReady && isLoaded && webView != nil
+    }
+
+    /// Captures CodeMirror's exact source, selection, and bounded history before
+    /// SwiftUI removes the WKWebView during a note collapse or replacement.
+    /// The retained document session replays this snapshot into the next view.
+    func captureStateForViewReconstruction(suspendForDetachment: Bool = false) async throws {
+        let expectedKey = RecoveryCaptureKey(
+            requestEpoch: requestEpoch,
+            generation: generation
+        )
+        if suspendForDetachment {
+            guard !isComposing, isReady, isLoaded, let webView else {
+                throw SessionError.unavailable
+            }
+            let existingCapture = detachmentCapture.flatMap { capture -> DetachmentCapture? in
+                guard capture.transportSessionID == sessionID,
+                    capture.snapshot.documentID == documentID,
+                    capture.snapshot.fingerprint == startingFingerprint,
+                    capture.snapshot.generation == generation,
+                    capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8)
+                else { return nil }
+                return capture
+            }
+            let suspensionID =
+                existingCapture?.suspensionID
+                ?? pendingDetachmentSuspensionID
+                ?? UUID().uuidString
+            pendingDetachmentSuspensionID = suspensionID
+            do {
+                let result = try await send(.suspendForDetachment(suspensionID: suspensionID), in: webView)
+                guard self.webView === webView,
+                    pendingDetachmentSuspensionID == suspensionID,
+                    let snapshot = result.recovery,
+                    snapshot.documentID == documentID,
+                    snapshot.fingerprint == startingFingerprint,
+                    snapshot.generation == generation,
+                    snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+                    markdownEditorSelectionRangesAreValid(snapshot.ranges, forEditorUTF16Length: checkedEditorUTF16Length)
+                else { throw SessionError.invalidResult }
+                recoverySnapshot = snapshot
+                detachmentCapture = DetachmentCapture(
+                    suspensionID: suspensionID, transportSessionID: sessionID, snapshot: snapshot
+                )
+                pendingDetachmentSuspensionID = nil
+                lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+                    documentID: snapshot.documentID, fingerprint: snapshot.fingerprint,
+                    generation: snapshot.generation, ranges: snapshot.ranges
+                )
+                if let focusTarget = snapshot.focusTarget {
+                    preferredDocumentFocusTarget = focusTarget
+                    automaticFocusTarget = focusTarget
+                }
+            } catch {
+                try? await resumeAfterDetachment(suspensionID: suspensionID)
+                throw error
+            }
+        } else {
+            try await captureRecoverySnapshot(expectedKey: expectedKey)
+        }
+        guard
+            expectedKey
+                == RecoveryCaptureKey(
+                    requestEpoch: requestEpoch,
+                    generation: generation
+                )
+        else { throw SessionError.invalidResult }
+        let capturedScrollAnchor = try? await currentScrollAnchor()
+        guard
+            expectedKey
+                == RecoveryCaptureKey(
+                    requestEpoch: requestEpoch,
+                    generation: generation
+                )
+        else { throw SessionError.invalidResult }
+        reconstructionScrollAnchor = capturedScrollAnchor ?? pendingScrollAnchor
+    }
+
+    /// Failed/cancelled navigation may keep the original page visible. An old
+    /// completion cannot unfreeze a newer suspension of that same document.
+    func resumeAfterDetachment(suspensionID: String) async throws {
+        guard detachmentSuspensionID == suspensionID,
+            let webView, isReady, isLoaded
+        else { return }
+        // Dispatch can unfreeze WebKit before its reply returns. From this
+        // point an independent detach cannot retain the old no-input proof.
+        detachmentCapture = nil
+        pendingDetachmentSuspensionID = suspensionID
+        _ = try await send(.resumeAfterDetachment(suspensionID: suspensionID), in: webView)
+        guard self.webView === webView, detachmentSuspensionID == suspensionID else { return }
+        detachmentCapture = nil
+        pendingDetachmentSuspensionID = nil
+    }
+
+    private var validDetachmentCapture: DetachmentCapture? {
+        guard !hasAttachedWebView, !isComposing,
+            let capture = detachmentCapture,
+            capture.snapshot.documentID == documentID,
+            capture.snapshot.fingerprint == startingFingerprint,
+            capture.snapshot.generation == generation,
+            capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8)
+        else { return nil }
+        return capture
+    }
+
+    var hasDetachedPersistenceSnapshot: Bool { validDetachmentCapture != nil }
 
     func persistenceSnapshot(expectedRevision: DocumentFingerprint) async throws -> MarkdownEditorPersistenceSnapshot {
-        guard startingFingerprint == expectedRevision.sha256 else { throw SessionError.staleRequest }
-        let snapshot = try reconcileNativeSource()
-        return .init(
-            text: snapshot.text, generation: snapshot.generation, documentID: documentID,
-            fingerprint: startingFingerprint, suspensionID: detachmentSuspensionID)
+        if !hasAttachedWebView {
+            guard let capture = validDetachmentCapture else { throw SessionError.unavailable }
+            guard startingFingerprint == expectedRevision.sha256 else { throw SessionError.staleRequest }
+            return MarkdownEditorPersistenceSnapshot(
+                text: capture.snapshot.source, generation: generation,
+                documentID: documentID, fingerprint: startingFingerprint,
+                suspensionID: capture.suspensionID
+            )
+        }
+        let snapshot = try await currentTextSnapshot(for: documentID)
+        // A durable write may already have advanced Document's repository base
+        // while its live acknowledgement failed. A fresh full WebKit read is
+        // still authoritative; the repository separately checks that base.
+        return MarkdownEditorPersistenceSnapshot(
+            text: snapshot.text, generation: snapshot.generation,
+            documentID: documentID, fingerprint: startingFingerprint,
+            suspensionID: nil
+        )
     }
 
     func acknowledgePersistenceSnapshot(
         _ snapshot: MarkdownEditorPersistenceSnapshot,
-        committedText: String, fingerprint: DocumentFingerprint
+        committedText: String,
+        fingerprint: DocumentFingerprint
     ) async throws -> MarkdownEditorCommitAcknowledgement {
-        guard snapshot.documentID == documentID, snapshot.fingerprint == startingFingerprint,
-            snapshot.generation <= generation
-        else { throw SessionError.staleRequest }
-        return try await acknowledgeCommittedSnapshot(
-            expectedText: snapshot.text, committedText: committedText,
-            fingerprint: fingerprint, documentID: snapshot.documentID)
-    }
-
-    func acknowledgeCommittedSnapshot(
-        expectedText: String, committedText: String,
-        fingerprint: DocumentFingerprint, documentID expectedDocumentID: String
-    ) async throws -> MarkdownEditorCommitAcknowledgement {
-        guard documentID == expectedDocumentID, DocumentFingerprint(content: committedText) == fingerprint,
-            expectedText.utf8.elementsEqual(committedText.utf8)
-        else { throw SessionError.invalidResult }
-        let current = try reconcileNativeSource()
-        committedSource = committedText
-        startingFingerprint = fingerprint.sha256
-        let superseded = !current.text.utf8.elementsEqual(committedText.utf8)
-        isDirty = superseded
-        if let suspension = detachmentSuspensionID {
-            detachedSnapshot = .init(
-                text: current.text, generation: current.generation,
-                documentID: documentID, fingerprint: fingerprint.sha256, suspensionID: suspension)
+        guard snapshot.documentID == documentID, snapshot.fingerprint == startingFingerprint else {
+            throw SessionError.staleRequest
         }
-        committedTextSynchronizer?(current.text, fingerprint.sha256)
+        // Reattachment may have resumed editing while the repository saved.
+        // Its live acknowledgement then decides whether newer input wins.
+        if hasAttachedWebView {
+            guard try await waitUntilLoadedForSave() else { throw SessionError.unavailable }
+            return try await acknowledgeCommittedSnapshot(
+                expectedText: snapshot.text, committedText: committedText,
+                fingerprint: fingerprint, documentID: snapshot.documentID
+            )
+        }
+        guard let capture = validDetachmentCapture,
+            capture.snapshot.generation >= snapshot.generation,
+            capture.snapshot.generation != snapshot.generation
+                || capture.snapshot.source.utf8.elementsEqual(snapshot.text.utf8),
+            DocumentFingerprint(content: committedText) == fingerprint
+        else { throw SessionError.invalidResult }
+        let recovered = capture.snapshot
+        let superseded = !recovered.source.utf8.elementsEqual(committedText.utf8)
+        let committed = MarkdownEditorRecoverySnapshot(
+            documentID: documentID, fingerprint: fingerprint.sha256,
+            generation: generation, ranges: recovered.ranges,
+            source: recovered.source, stateJSON: recovered.stateJSON,
+            undoHistoryPreserved: recovered.undoHistoryPreserved, dirty: superseded,
+            focusTarget: recovered.focusTarget
+        )
+        startingFingerprint = fingerprint.sha256
+        recoverySnapshot = committed
+        detachmentCapture = DetachmentCapture(
+            suspensionID: capture.suspensionID, transportSessionID: capture.transportSessionID, snapshot: committed
+        )
+        lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+            documentID: documentID, fingerprint: fingerprint.sha256,
+            generation: generation, ranges: recovered.ranges
+        )
+        updatePublished(\.isDirty, to: superseded)
+        committedTextSynchronizer?(recovered.source, fingerprint.sha256)
         return superseded ? .superseded : .clean
     }
 
-    func installCommittedTextSynchronizer(_ synchronizer: @escaping (String, String) -> Void) {
-        committedTextSynchronizer = synchronizer
-    }
-    func removeCommittedTextSynchronizer() { committedTextSynchronizer = nil }
-    func installSourceChangeHandler(_ handler: @escaping () -> Void) { sourceChangeHandler = handler }
-    func removeSourceChangeHandler() { sourceChangeHandler = nil }
-
-    @discardableResult
-    func restoreWindowPresentation(_ snapshot: WindowDocumentPresentationSnapshot, source: String) -> Bool {
-        guard let projection = try? ExactSourceProjection(utf8: Data(source.utf8)) else { return false }
-        let ranges = snapshot.selections.map { MarkdownEditorSelectionRange(anchor: $0.anchor, head: $0.head) }
-        guard snapshot.coordinateSpace == WindowDocumentPresentationSnapshot.nativeCoordinateSpace,
-            snapshot.sourceFingerprint == DocumentFingerprint(content: source).sha256,
-            markdownEditorSelectionRangesAreValid(ranges, forProjectedText: projection.projectedText)
-        else { return false }
-        pendingWindowPresentation = snapshot
-        preferredDocumentFocusTarget = snapshot.focusTarget
-        return true
-    }
-
-    func windowPresentationSnapshot(scrollFraction: Double) -> WindowDocumentPresentationSnapshot {
-        guard isLoaded, !isDirty, !isComposing else { return .init(scrollFraction: scrollFraction) }
-        return .init(
-            scrollFraction: scrollFraction,
-            sourceFingerprint: DocumentFingerprint(content: checkedSource).sha256,
-            selections: currentValidSelectionRanges().map { .init(anchor: $0.anchor, head: $0.head) },
-            focusTarget: preferredDocumentFocusTarget)
-    }
-
-    func goToLine(_ line: Int, focusesEditor: Bool = true) {
-        guard isLoaded, !isComposing else { return }
-        let text = nativeEditor.rawSource as NSString
-        var offset = 0
-        for _ in 1..<max(1, line) {
-            guard offset < text.length else { break }
-            offset = text.lineRange(for: NSRange(location: offset, length: 0)).upperBound
-        }
-        nativeEditor.setSelectedRange(NSRange(location: min(offset, text.length), length: 0))
-        nativeEditor.scrollRangeToVisible(nativeEditor.selectedRange())
-        if focusesEditor { focus() }
-    }
-
-    func revealSourceRange(fromUTF16: Int, toUTF16: Int) {
-        guard isLoaded, !isComposing, fromUTF16 >= 0, fromUTF16 <= toUTF16,
-            let projection = try? ExactSourceProjection(utf8: Data(checkedSource.utf8)),
-            let range = try? projection.projectedUTF16Range(
-                forSourceUTF16Range:
-                    NSRange(location: fromUTF16, length: toUTF16 - fromUTF16))
-        else { return }
-        nativeEditor.setSelectedRange(range)
-        nativeEditor.scrollRangeToVisible(nativeEditor.selectedRange())
-        preferredDocumentFocusTarget = .editor
-    }
-
-    func revealSourceLocation(_ request: DocumentSourceLocationRequest) async throws {
-        let snapshot = try reconcileNativeSource()
-        if let expected = request.sourceFingerprint, DocumentFingerprint(content: snapshot.text).sha256 != expected {
-            throw DocumentSourceLocationFailure.sourceChanged
-        }
-        if let range = request.range {
-            guard range.utf16LowerBound >= 0, range.utf16UpperBound >= range.utf16LowerBound,
-                let projection = try? ExactSourceProjection(utf8: Data(snapshot.text.utf8)),
-                (try? projection.projectedUTF16Range(
-                    forSourceUTF16Range:
-                        NSRange(location: range.utf16LowerBound, length: range.utf16UpperBound - range.utf16LowerBound))) != nil
-            else { throw SessionError.invalidResult }
-            revealSourceRange(fromUTF16: range.utf16LowerBound, toUTF16: range.utf16UpperBound)
-        } else if let line = request.line, line > 0 {
-            goToLine(line)
-        } else {
+    private func captureRecoverySnapshot(
+        expectedKey: RecoveryCaptureKey
+    ) async throws {
+        guard
+            expectedKey
+                == RecoveryCaptureKey(
+                    requestEpoch: requestEpoch,
+                    generation: generation
+                )
+        else { throw SessionError.invalidResult }
+        guard isReady, isLoaded, let webView else { return }
+        let result = try await send(.captureRecovery, in: webView)
+        try Task.checkCancellation()
+        guard let snapshot = result.recovery,
+            snapshot.documentID == documentID,
+            snapshot.fingerprint == startingFingerprint,
+            snapshot.generation == generation,
+            snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+            markdownEditorSelectionRangesAreValid(
+                snapshot.ranges,
+                forEditorUTF16Length: checkedEditorUTF16Length
+            ),
+            expectedKey
+                == RecoveryCaptureKey(
+                    requestEpoch: requestEpoch,
+                    generation: generation
+                )
+        else {
             throw SessionError.invalidResult
         }
-        focus()
+        recoverySnapshot = snapshot
+        if let focusTarget = snapshot.focusTarget {
+            preferredDocumentFocusTarget = focusTarget
+            automaticFocusTarget = focusTarget
+        }
+        lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+            documentID: snapshot.documentID,
+            fingerprint: snapshot.fingerprint,
+            generation: snapshot.generation,
+            ranges: snapshot.ranges
+        )
     }
 
-    func prepareReadSelection(_ range: Range<Int>) {
-        revealSourceRange(fromUTF16: range.lowerBound, toUTF16: range.upperBound)
-    }
-
-    func focus() {
-        preferredDocumentFocusTarget = .editor
-        automaticFocusIsAuthorized = true
-        guard hasAttachedNativeView, !nativeEditor.isHiddenOrHasHiddenAncestor else { return }
-        nativeEditor.window?.makeFirstResponder(nativeEditor)
-    }
-    func focusPreferred() { focus() }
-    func authorizeAutomaticFocus(target: WindowDocumentFocusTarget? = nil) {
-        if let target { preferredDocumentFocusTarget = target }
-        automaticFocusIsAuthorized = true
-    }
-    func focusAndWait() async throws {
-        guard isLoaded, hasAttachedNativeView, nativeEditor.window != nil else { throw SessionError.unavailable }
-        focus()
-    }
-    func resignFocusAndWait() async {
-        automaticFocusIsAuthorized = false
-        if hasWritingFocus { nativeEditor.window?.makeFirstResponder(nil) }
-    }
-    func activateAttachedView() {
-        if automaticFocusIsAuthorized { focusPreferred() }
-    }
-
-    @objc private func scrollDidChange(_ notification: Notification) {
-        guard !isLoading, hasAttachedNativeView else { return }
-        recordNativeScrollPosition()
-    }
-    private var scrollFraction: Double {
-        let extent = max(0, nativeEditor.bounds.height - scrollView.contentView.bounds.height)
-        return extent > 0 ? min(1, max(0, scrollView.contentView.bounds.minY / extent)) : 0
-    }
-    private func recordNativeScrollPosition() {
-        pendingScrollFraction = scrollFraction
-        onScrollFractionChange?(scrollFraction)
-        guard let anchor = makeScrollAnchor() else { return }
-        pendingScrollAnchor = anchor
-        onScrollAnchorChange?(anchor)
-    }
-    private func makeScrollAnchor() -> EditorScrollAnchor? {
-        guard isLoaded, !isComposing else { return nil }
-        let text = nativeEditor.rawSource as NSString
-        let point = NSPoint(
-            x: nativeEditor.textContainerOrigin.x + 1,
-            y: scrollView.contentView.bounds.minY + 1)
-        let offset = min(text.length, nativeEditor.characterIndexForInsertion(at: point))
-        let fragment = nativeFragment(at: offset, ensureLayout: false)
-        let paragraph = fragment?.range ?? text.lineRange(for: NSRange(location: offset, length: 0))
-        let relative =
-            fragment.map { value in
-                min(1, max(0, (scrollView.contentView.bounds.minY - value.frame.minY) / max(1, value.frame.height)))
-            } ?? 0
-        guard let source = sourceOffsetMap.sourceUTF16Offset(forEditorUTF16Offset: offset),
-            let lower = sourceOffsetMap.sourceUTF16Offset(forEditorUTF16Offset: paragraph.location),
-            let upper = sourceOffsetMap.sourceUTF16Offset(forEditorUTF16Offset: paragraph.upperBound)
-        else { return nil }
-        return .init(
-            sourceFingerprint: DocumentFingerprint(content: checkedSource).sha256,
-            sourceUTF16Offset: source, blockUTF16LowerBound: lower, blockUTF16UpperBound: upper,
-            relativeBlockPosition: relative, fallbackFraction: scrollFraction)
-    }
     func currentScrollAnchor() async throws -> EditorScrollAnchor? {
-        _ = try reconcileNativeSource()
-        let anchor = makeScrollAnchor()
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let intendedRequestEpoch = requestEpoch
+        let result = try await send(.queryScrollAnchor, in: webView)
+        guard intendedRequestEpoch == requestEpoch,
+            self.webView === webView
+        else {
+            throw SessionError.bridgeRejected("The editor identity changed while reading its scroll position.")
+        }
+        let anchor = recordScrollPosition(
+            result.scrollAnchor,
+            fallbackFraction: result.scrollAnchor?.fallbackFraction
+                ?? pendingScrollFraction
+                ?? 0
+        )
+        reconstructionScrollAnchor = nil
         pendingScrollAnchor = anchor
         return anchor
     }
-    func setScrollFraction(_ fraction: Double) {
-        guard fraction.isFinite else { return }
-        let value = min(1, max(0, fraction))
-        pendingScrollFraction = value
-        let extent = max(0, nativeEditor.bounds.height - scrollView.contentView.bounds.height)
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: extent * value))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-    }
-    func setScrollPosition(anchor: EditorScrollAnchor?, fallbackFraction: Double) {
-        guard let anchor, anchor.sourceFingerprint == DocumentFingerprint(content: checkedSource).sha256,
-            anchor.isValid(forUTF16Length: checkedSource.utf16.count),
-            let projected = sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: anchor.sourceUTF16Offset)
+
+    func queryPerformanceSamples() async throws -> [MarkdownEditorPerformanceSample] {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let intendedRequestEpoch = requestEpoch
+        let result = try await send(.queryPerformance, in: webView)
+        guard intendedRequestEpoch == requestEpoch,
+            self.webView === webView,
+            result.accepted,
+            let samples = result.performanceSamples
         else {
-            pendingScrollAnchor = nil
-            setScrollFraction(fallbackFraction)
-            return
+            throw SessionError.invalidResult
         }
-        pendingScrollAnchor = anchor
-        pendingScrollFraction = min(1, max(0, fallbackFraction))
-        if let fragment = nativeFragment(at: projected, ensureLayout: true) {
-            let y = fragment.frame.minY + fragment.frame.height * anchor.relativeBlockPosition
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-        } else {
-            setScrollFraction(fallbackFraction)
+        return samples
+    }
+
+    func currentSelection(
+        for expectedDocumentID: String? = nil,
+        in source: String? = nil
+    ) async throws -> MarkdownReviewSelection? {
+        guard expectedDocumentID == nil || expectedDocumentID == documentID,
+            isReady, isLoaded, let webView
+        else { throw SessionError.unavailable }
+        let intendedRequestEpoch = requestEpoch
+        let intendedDocumentID = documentID
+        let intendedFingerprint = startingFingerprint
+        // Source and selections must come from one JS turn and one resulting
+        // generation. Two separate queries can otherwise anchor a newer
+        // selection into an older source after intervening input.
+        let result = try await send(.queryText, in: webView)
+        guard intendedRequestEpoch == requestEpoch,
+            intendedDocumentID == documentID,
+            intendedFingerprint == startingFingerprint,
+            self.webView === webView,
+            let exactSource = result.text,
+            exactSource.utf8.elementsEqual(checkedSource.utf8),
+            source.map({ $0.utf8.elementsEqual(exactSource.utf8) }) ?? true,
+            markdownEditorSelectionRangesAreValid(
+                result.selections,
+                forEditorUTF16Length: checkedEditorUTF16Length
+            ),
+            let range = result.selections.first
+        else {
+            throw SessionError.invalidResult
+        }
+        let editorLower = min(range.anchor, range.head)
+        let editorUpper = max(range.anchor, range.head)
+        guard editorUpper > editorLower else { return nil }
+        guard let lower = sourceOffsetMap.sourceUTF16Offset(forEditorUTF16Offset: editorLower),
+            let upper = sourceOffsetMap.sourceUTF16Offset(forEditorUTF16Offset: editorUpper),
+            upper > lower,
+            upper - lower <= 2_000
+        else { throw SessionError.selectionTooLong }
+        let units = exactSource.utf16
+        guard let lowerUTF16 = units.index(units.startIndex, offsetBy: lower, limitedBy: units.endIndex),
+            let upperUTF16 = units.index(units.startIndex, offsetBy: upper, limitedBy: units.endIndex),
+            let lowerIndex = String.Index(lowerUTF16, within: exactSource),
+            let upperIndex = String.Index(upperUTF16, within: exactSource)
+        else {
+            throw SessionError.invalidResult
+        }
+        let prefix = exactSource[..<lowerIndex]
+        let excerpt = String(exactSource[lowerIndex..<upperIndex])
+        let startLine = prefix.reduce(into: 1) { if $1 == "\n" { $0 += 1 } }
+        let endLine = startLine + excerpt.reduce(into: 0) { if $1 == "\n" { $0 += 1 } }
+        return MarkdownReviewSelection(
+            startLine: startLine,
+            endLine: endLine,
+            excerpt: excerpt,
+            utf16LowerBound: lower,
+            utf16UpperBound: upper,
+            contextBefore: String(prefix.suffix(48)),
+            contextAfter: String(exactSource[upperIndex...].prefix(48))
+        )
+    }
+
+    func acknowledgeCommittedSnapshot(
+        expectedText: String,
+        committedText: String,
+        fingerprint: DocumentFingerprint,
+        documentID expectedDocumentID: String
+    ) async throws -> MarkdownEditorCommitAcknowledgement {
+        guard expectedDocumentID == documentID,
+            isReady, isLoaded, let webView
+        else { throw SessionError.unavailable }
+        let intendedRequestEpoch = requestEpoch
+        let intendedFingerprint = startingFingerprint
+        let result = try await send(
+            .acknowledgeCommittedSnapshot(
+                expected: expectedText,
+                committed: committedText,
+                fingerprint: fingerprint.sha256
+            ),
+            in: webView
+        )
+        guard intendedRequestEpoch == requestEpoch,
+            expectedDocumentID == documentID,
+            intendedFingerprint == startingFingerprint,
+            self.webView === webView,
+            let currentText = result.text,
+            let commitSuperseded = result.commitSuperseded,
+            result.resultingGeneration == generation,
+            currentText.utf8.elementsEqual(checkedSource.utf8)
+        else { throw SessionError.invalidResult }
+        let rebasedRanges = currentValidSelectionRanges()
+        invalidateRequestQueue()
+        startingFingerprint = fingerprint.sha256
+        lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+            documentID: documentID,
+            fingerprint: startingFingerprint,
+            generation: generation,
+            ranges: rebasedRanges
+        )
+        // A commit advances the repository base identity. If typing continued
+        // after the saved snapshot, the newer CodeMirror source remains dirty
+        // and is scheduled for the next save rather than being replaced.
+        recoverySnapshot = MarkdownEditorRecoverySnapshot(
+            documentID: documentID,
+            fingerprint: startingFingerprint,
+            generation: generation,
+            ranges: rebasedRanges,
+            source: checkedSource,
+            stateJSON: nil,
+            undoHistoryPreserved: false,
+            dirty: commitSuperseded,
+            focusTarget: preferredDocumentFocusTarget
+        )
+        updatePublished(\.isDirty, to: commitSuperseded)
+        committedTextSynchronizer?(checkedSource, fingerprint.sha256)
+        return commitSuperseded ? .superseded : .clean
+    }
+
+    func installCommittedTextSynchronizer(
+        _ synchronizer: @escaping (String, String) -> Void
+    ) {
+        committedTextSynchronizer = synchronizer
+    }
+
+    func removeCommittedTextSynchronizer() {
+        committedTextSynchronizer = nil
+    }
+
+    func installSourceChangeHandler(_ handler: @escaping () -> Void) {
+        sourceChangeHandler = handler
+    }
+
+    func removeSourceChangeHandler() {
+        sourceChangeHandler = nil
+    }
+
+    func markClean() {
+        updatePublished(\.isDirty, to: false)
+        guard isReady, let webView else { return }
+        Task {
+            _ = try? await send(.markClean, in: webView)
         }
     }
 
-    private func nativeFragment(at offset: Int, ensureLayout: Bool) -> (range: NSRange, frame: NSRect)? {
-        guard let layout = nativeEditor.textLayoutManager,
-            let location = layout.location(layout.documentRange.location, offsetBy: offset),
-            let range = NSTextRange(location: location, end: location)
-        else { return nil }
-        if ensureLayout { layout.ensureLayout(for: range) }
-        guard let fragment = layout.textLayoutFragment(for: location) else { return nil }
-        let lower = layout.offset(from: layout.documentRange.location, to: fragment.rangeInElement.location)
-        let upper = layout.offset(from: layout.documentRange.location, to: fragment.rangeInElement.endLocation)
-        guard lower >= 0, upper >= lower, upper <= (nativeEditor.rawSource as NSString).length else { return nil }
-        let origin = nativeEditor.textContainerOrigin
-        return (
-            NSRange(location: lower, length: upper - lower),
-            fragment.layoutFragmentFrame.offsetBy(dx: origin.x, dy: origin.y)
+    func focus() {
+        requestFocus(.editor)
+    }
+
+    /// Completes an admitted external text drop's native focus handoff. The
+    /// page already owns the inserted text and caret; do not send a selection
+    /// operation or revive the focus lease of a hidden Review document.
+    @discardableResult
+    func acceptNativeFocusAfterDrop(from requestingWebView: WKWebView) -> Bool {
+        guard webView === requestingWebView, isReady, isLoaded, errorMessage == nil,
+            automaticFocusIsAuthorized, !isComposing, presentedMode == pendingMode,
+            !requestingWebView.isHiddenOrHasHiddenAncestor,
+            let window = requestingWebView.window, window.isKeyWindow,
+            window.makeFirstResponder(requestingWebView)
+        else { return false }
+        focusRequestRevision &+= 1
+        automaticFocusTarget = .editor
+        preferredDocumentFocusTarget = .editor
+        return true
+    }
+
+    func focusTitle() {
+        requestFocus(.title)
+    }
+
+    func prepareReadSelection(_ range: Range<Int>) {
+        guard pendingSourceRange == nil, lastKnownSelectionSnapshot == nil else { return }
+        revealSourceRange(fromUTF16: range.lowerBound, toUTF16: range.upperBound)
+    }
+
+    func focusPreferred() {
+        requestFocus(preferredDocumentFocusTarget ?? .editor)
+    }
+
+    private func requestFocus(_ target: WindowDocumentFocusTarget) {
+        focusRequestRevision &+= 1
+        let revision = focusRequestRevision
+        automaticFocusTarget = target
+        preferredDocumentFocusTarget = target
+        automaticFocusIsAuthorized = true
+        let precedingHandoff = focusHandoffTask
+        Task {
+            await precedingHandoff?.value
+            guard revision == focusRequestRevision, automaticFocusIsAuthorized else { return }
+            try? await focusAndWait(target)
+        }
+    }
+
+    func authorizeAutomaticFocus(
+        target: WindowDocumentFocusTarget? = nil
+    ) {
+        if let target {
+            automaticFocusTarget = target
+            preferredDocumentFocusTarget = target
+        }
+        automaticFocusIsAuthorized = true
+    }
+
+    func focusAndWait() async throws {
+        try await focusAndWait(.editor)
+    }
+
+    func focusTitleAndWait() async throws {
+        try await focusAndWait(.title)
+    }
+
+    private func focusAndWait(
+        _ target: WindowDocumentFocusTarget
+    ) async throws {
+        focusRequestRevision &+= 1
+        automaticFocusTarget = target
+        preferredDocumentFocusTarget = target
+        automaticFocusIsAuthorized = true
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        _ = try await send(
+            focusOperation(for: target, mode: presentedMode ?? pendingMode),
+            in: webView
         )
     }
-    func recordScrollFraction(_ fraction: Double) { pendingScrollFraction = min(1, max(0, fraction)) }
-    func retainedScrollFraction(fallback: Double) -> Double { pendingScrollFraction ?? min(1, max(0, fallback)) }
-    var retainedScrollAnchor: EditorScrollAnchor? { pendingScrollAnchor }
+
+    private func focusOperation(
+        for target: WindowDocumentFocusTarget,
+        mode: MarkdownEditorMode
+    ) -> MarkdownEditorOperation {
+        switch target {
+        case .title where mode == .livePreview: .focusTitle
+        case .title: .focus
+        case .editor: .focus
+        }
+    }
+
+    func resignFocusAndWait() async {
+        focusRequestRevision &+= 1
+        automaticFocusIsAuthorized = false
+        await resignFocusAndWait(revision: focusRequestRevision)
+    }
+
+    private func resignFocusAndWait(revision: UInt64) async {
+        await documentLoadTask?.value
+        // A newer Edit/Source request supersedes this pending Review handoff.
+        // Its renewed focus lease must not be revoked by the older task.
+        guard revision == focusRequestRevision, !automaticFocusIsAuthorized else { return }
+        guard isReady, let webView else { return }
+        if let window = webView.window,
+            let firstResponder = window.firstResponder as? NSView,
+            firstResponder === webView || firstResponder.isDescendant(of: webView)
+        {
+            window.makeFirstResponder(nil)
+        }
+        // Native focus ownership is authoritative for the retained, hidden
+        // WebView. A failed best-effort bridge blur must never trap the
+        // researcher in Edit after the source save has already succeeded.
+        _ = try? await send(.blur, in: webView)
+    }
+
+    func perform(_ command: MarkdownEditorCommand, argument: String? = nil) async throws {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        _ = try await send(.command(command, argument: argument), in: webView)
+    }
+
+    func performDocumentFind(_ query: DocumentFindQuery) async throws -> DocumentFindResult {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let result = try await send(.documentFind(query), in: webView)
+        guard let find = result.find,
+            find.current >= 0,
+            find.total >= 0,
+            find.current <= find.total
+        else {
+            throw SessionError.invalidResult
+        }
+        return find
+    }
+
+    func clearDocumentFind() async {
+        guard isReady, isLoaded, let webView else { return }
+        let currentDocumentID = documentID
+        do {
+            _ = try await send(.clearDocumentFind, in: webView)
+            guard !Task.isCancelled, self.webView === webView,
+                documentID == currentDocumentID,
+                let window = webView.window,
+                window.makeFirstResponder(webView)
+            else { return }
+            try await focusAndWait(.editor)
+        } catch {
+            // Find is already dismissed; the retained document owns any editor
+            // failure. A failed clear must not transfer focus to another page.
+        }
+    }
+
+    func acceptEditorChanges(
+        _ rawChanges: [EditorBridgeChange],
+        baseGeneration: Int,
+        resultingGeneration: Int
+    ) -> Bool {
+        guard !rawChanges.isEmpty,
+            rawChanges.count <= 512,
+            baseGeneration == generation,
+            resultingGeneration == baseGeneration + 1
+        else { return false }
+        var changes: [MarkdownEditorDelta] = []
+        var resultingEditorUTF16Length = checkedEditorUTF16Length
+        for raw in rawChanges {
+            guard raw.hasMatchingExactInsertion,
+                raw.from >= 0,
+                raw.to >= raw.from,
+                raw.to <= checkedEditorUTF16Length
+            else { return false }
+            resultingEditorUTF16Length +=
+                Self.normalizedEditorUTF16Length(of: raw.insert)
+                - (raw.to - raw.from)
+            guard resultingEditorUTF16Length >= 0,
+                let from = sourceOffsetMap.sourceUTF16Offset(
+                    forEditorUTF16Offset: raw.from
+                ),
+                let to = sourceOffsetMap.sourceUTF16Offset(
+                    forEditorUTF16Offset: raw.to
+                )
+            else { return false }
+            changes.append(
+                MarkdownEditorDelta(
+                    fromUTF16: from,
+                    toUTF16: to,
+                    insertion: raw.exactInsert
+                ))
+        }
+        do {
+            try checkedSourceBuffer.apply(changes)
+        } catch {
+            return false
+        }
+        sourceOffsetMap.apply(
+            changes,
+            resultingSourceUTF16Length: checkedSourceBuffer.utf16Length,
+            resultingCharacterAt: checkedSourceBuffer.character(atUTF16:)
+        )
+        checkedEditorUTF16Length = resultingEditorUTF16Length
+        generation = resultingGeneration
+        updatePublished(\.isDirty, to: true)
+        sourceChangeHandler?()
+        return true
+    }
+
+    /// Validates an interaction payload against the same checked CodeMirror
+    /// generation and UTF-16 length that accepted editor deltas update. The
+    /// parent SwiftUI source is intentionally commit-paced and must never be
+    /// used to authorize a live selection.
+    func acceptsInteractionRanges(
+        _ ranges: [MarkdownEditorSelectionRange],
+        documentVersion: Int
+    ) -> Bool {
+        documentVersion == generation
+            && markdownEditorSelectionRangesAreValid(
+                ranges,
+                forEditorUTF16Length: checkedEditorUTF16Length
+            )
+    }
+
+    /// A current-identity Web editor has already committed this generation, so
+    /// rejecting its delta cannot leave the native mirror looking clean. Pin the
+    /// exact buffer immediately and coalesce a full-buffer read through the same
+    /// typed bridge. The ordinary autosave path then performs revision-checked
+    /// persistence; a failed reconciliation remains dirty and reaches its
+    /// existing visible save-recovery state instead of losing Web-only source.
+    func reconcileAfterRejectedEditorChanges(
+        resultingGeneration: Int,
+        in webView: WKWebView
+    ) {
+        guard resultingGeneration > generation,
+            self.webView === webView,
+            isReady,
+            isLoaded
+        else { return }
+        pendingRejectedChangeGeneration = max(
+            pendingRejectedChangeGeneration ?? resultingGeneration,
+            resultingGeneration
+        )
+        updatePublished(\.isDirty, to: true)
+        sourceChangeHandler?()
+        guard rejectedChangeRecoveryTask == nil else { return }
+
+        let recoveryID = UUID()
+        rejectedChangeRecoveryID = recoveryID
+        rejectedChangeRecoveryTask = Task { @MainActor [weak self, weak webView] in
+            guard let self, let webView else { return }
+            defer {
+                if self.rejectedChangeRecoveryID == recoveryID {
+                    self.rejectedChangeRecoveryTask = nil
+                    self.rejectedChangeRecoveryID = nil
+                }
+            }
+            while let expectedGeneration = self.pendingRejectedChangeGeneration,
+                expectedGeneration > self.generation
+            {
+                self.pendingRejectedChangeGeneration = nil
+                do {
+                    let snapshot = try await self.currentTextSnapshot(
+                        for: self.documentID
+                    )
+                    guard snapshot.generation >= expectedGeneration else {
+                        throw SessionError.invalidResult
+                    }
+                    self.updatePresentation {
+                        $0.clearReport(matching: Self.rejectedChangeRecoveryMessage)
+                    }
+                    self.updatePublished(\.isDirty, to: true)
+                    self.sourceChangeHandler?()
+                } catch is CancellationError {
+                    return
+                } catch SessionError.staleRequest {
+                    return
+                } catch {
+                    let message = Self.rejectedChangeRecoveryMessage
+                    self.updatePresentation { $0.report(message) }
+                    _ = try? await self.send(
+                        .announceStatus(message),
+                        in: webView
+                    )
+                    return
+                }
+            }
+            self.pendingRejectedChangeGeneration = nil
+        }
+    }
+
+    func webContentProcessTerminated() {
+        floatingSurfaces.reset()
+        invalidateRequestQueue()
+        cancelModeTransition()
+        let recoveryRanges = currentValidSelectionRanges()
+        if let snapshot = recoverySnapshot,
+            snapshot.documentID == documentID,
+            snapshot.fingerprint == startingFingerprint,
+            snapshot.generation == generation,
+            snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+            markdownEditorSelectionRangesAreValid(
+                snapshot.ranges,
+                forEditorUTF16Length: checkedEditorUTF16Length
+            )
+        {
+            // The bounded serialized history may predate recent cursor moves.
+            // Preserve that history while making the exact lightweight
+            // selection and current dirty state authoritative for recovery.
+            recoverySnapshot = MarkdownEditorRecoverySnapshot(
+                documentID: snapshot.documentID,
+                fingerprint: snapshot.fingerprint,
+                generation: snapshot.generation,
+                ranges: recoveryRanges,
+                source: snapshot.source,
+                stateJSON: snapshot.stateJSON,
+                undoHistoryPreserved: snapshot.undoHistoryPreserved,
+                dirty: isDirty,
+                focusTarget: preferredDocumentFocusTarget
+            )
+        } else {
+            recoverySnapshot = MarkdownEditorRecoverySnapshot(
+                documentID: documentID,
+                fingerprint: startingFingerprint,
+                generation: generation,
+                ranges: recoveryRanges,
+                source: checkedSource,
+                stateJSON: nil,
+                undoHistoryPreserved: false,
+                dirty: isDirty,
+                focusTarget: preferredDocumentFocusTarget
+            )
+        }
+        let recoverySource = checkedSource
+        let recoveryDocumentID = documentID
+        let recoveryMode = pendingMode
+        updatePresentation { $0.webContentTerminated() }
+        loadDocument(
+            recoverySource,
+            documentID: recoveryDocumentID,
+            mode: recoveryMode
+        )
+    }
+
+    private func flushPendingState() {
+        guard isReady, let source = pendingSource, let webView else { return }
+        pendingSource = nil
+        let mode = pendingMode
+        let documentID = pendingDocumentID
+        let intendedRequestEpoch = requestEpoch
+        documentLoadTask = Task {
+            do {
+                guard intendedRequestEpoch == requestEpoch,
+                    self.documentID == documentID,
+                    self.webView === webView
+                else { return }
+                let matchingRecovery = recoverySnapshot.flatMap { snapshot in
+                    snapshot.documentID == documentID
+                        && snapshot.fingerprint == startingFingerprint
+                        && snapshot.generation >= 0
+                        && snapshot.source.utf8.elementsEqual(source.utf8)
+                        && markdownEditorSelectionRangesAreValid(
+                            snapshot.ranges,
+                            forEditorUTF16Length: checkedEditorUTF16Length
+                        )
+                        ? snapshot
+                        : nil
+                }
+                checkedSourceBuffer.replace(with: source)
+                sourceOffsetMap = EditorSourceOffsetMap(source: source)
+                checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
+                generation = 0
+                let requestedInitialRange = pendingSourceRange
+                let initialSelection = try requestedInitialRange.map { range in
+                    guard
+                        let anchor = sourceOffsetMap.editorUTF16Offset(
+                            forSourceUTF16Offset: range.lowerBound
+                        ),
+                        let head = sourceOffsetMap.editorUTF16Offset(
+                            forSourceUTF16Offset: range.upperBound
+                        )
+                    else {
+                        throw SessionError.invalidResult
+                    }
+                    return MarkdownEditorSelectionRange(
+                        anchor: anchor,
+                        head: head
+                    )
+                }
+                let initialized = try await send(
+                    .initialize(
+                        text: source,
+                        mode: mode,
+                        dialect: .current,
+                        initialSelection: initialSelection
+                    ),
+                    in: webView,
+                    requiringRequestEpoch: intendedRequestEpoch
+                )
+                if let initialSelection {
+                    guard initialized.selections == [initialSelection] else {
+                        throw SessionError.invalidResult
+                    }
+                    if pendingSourceRange == requestedInitialRange {
+                        pendingSourceRange = nil
+                    }
+                }
+                if let snapshot = matchingRecovery,
+                    snapshot.fingerprint == startingFingerprint,
+                    snapshot.source.utf8.elementsEqual(checkedSource.utf8)
+                {
+                    let recovered = try await send(
+                        .restoreRecovery(snapshot),
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                    guard intendedRequestEpoch == requestEpoch,
+                        self.documentID == documentID,
+                        self.webView === webView
+                    else { return }
+                    generation = recovered.resultingGeneration
+                    updatePublished(\.isDirty, to: snapshot.dirty)
+                    if recovered.recovery?.undoHistoryPreserved == false {
+                        updatePresentation {
+                            $0.report(
+                                String(
+                                    localized: "The exact editor buffer was recovered, but its pre-crash undo history was unavailable.", table: "Localizable",
+                                    bundle: .module))
+                        }
+                        _ = try await send(
+                            .announceStatus(
+                                "The exact editor buffer was recovered. Pre-crash undo history is unavailable."
+                            ),
+                            in: webView,
+                            requiringRequestEpoch: intendedRequestEpoch
+                        )
+                    } else {
+                        _ = try await send(
+                            .announceStatus("The exact editor buffer was recovered."),
+                            in: webView,
+                            requiringRequestEpoch: intendedRequestEpoch
+                        )
+                    }
+                } else {
+                    updatePublished(\.isDirty, to: false)
+                }
+                guard intendedRequestEpoch == requestEpoch,
+                    self.documentID == documentID,
+                    self.webView === webView
+                else { return }
+                let restorationScrollAnchor =
+                    reconstructionScrollAnchor
+                    ?? pendingScrollAnchor
+                pendingScrollAnchor = restorationScrollAnchor
+                // Appearance and snippet stores can finish loading after the
+                // page is ready but while document initialization is still in
+                // flight. Keep the editor hidden until a serial convergence
+                // pass observes the same latest values before and after all
+                // three bridge requests. A SwiftUI update that arrives during
+                // an await therefore causes another pass instead of becoming
+                // a permanently dropped initial style or preview update.
+                try await convergePendingPresentationState(
+                    in: webView,
+                    requiringRequestEpoch: intendedRequestEpoch,
+                    documentID: documentID
+                )
+                // Recovery and the final converged styles can both change
+                // visual block heights. Restore the retained position only
+                // after both have settled into the retained EditorState.
+                if let anchor = restorationScrollAnchor,
+                    let wireAnchor = wireAnchor(from: anchor, in: checkedSource)
+                {
+                    _ = try await send(
+                        .setScrollAnchor(wireAnchor),
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                } else {
+                    _ = try await send(
+                        .setScrollFraction(pendingScrollFraction ?? 0),
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                }
+                var appliedMode = mode
+                while pendingMode != appliedMode {
+                    let requestedMode = pendingMode
+                    _ = try await send(
+                        .setMode(requestedMode),
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                    appliedMode = requestedMode
+                }
+                if automaticFocusIsAuthorized {
+                    _ = try await send(
+                        focusOperation(
+                            for: automaticFocusTarget,
+                            mode: appliedMode
+                        ),
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                    if !automaticFocusIsAuthorized {
+                        _ = try? await send(
+                            .blur,
+                            in: webView,
+                            requiringRequestEpoch: intendedRequestEpoch
+                        )
+                    }
+                }
+                updatePresentation { $0.complete(appliedMode) }
+                // CodeMirror has replaced its exact source, but WebKit can
+                // retain the previous accessibility value until a separate
+                // DOM interaction occurs. Invalidate that value projection
+                // without moving focus or adding an audible announcement.
+                NSAccessibility.post(element: webView, notification: .valueChanged)
+                flushPendingLine()
+            } catch {
+                guard intendedRequestEpoch == requestEpoch,
+                    self.documentID == documentID,
+                    self.webView === webView
+                else { return }
+                _ = try? await send(
+                    .blur,
+                    in: webView,
+                    requiringRequestEpoch: intendedRequestEpoch
+                )
+                updatePresentation { $0.fail(error.localizedDescription) }
+            }
+        }
+    }
+
+    private func reconvergePendingPresentationState() {
+        guard isReady, isLoaded, context?.composing != true,
+            let webView
+        else { return }
+        let intendedRequestEpoch = requestEpoch
+        let documentID = documentID
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            try? await self.convergePendingPresentationState(
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch,
+                documentID: documentID
+            )
+        }
+    }
+
+    private func convergePendingPresentationState(
+        in webView: WKWebView,
+        requiringRequestEpoch intendedRequestEpoch: UInt64,
+        documentID: String
+    ) async throws {
+        while true {
+            let documentTitle = pendingDocumentTitle
+            let presentationCSS = pendingPresentationCSS
+            let userCSS = pendingUserCSS
+            let linkPreviews = pendingLinkPreviews
+            let writingContinuationEnabled = pendingWritingContinuationEnabled
+            let writingContinuationContextKey = pendingWritingContinuationContextKey
+            _ = try await send(
+                .setDocumentTitle(documentTitle),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
+            _ = try await send(
+                .setPresentationCSS(presentationCSS),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
+            _ = try await send(
+                .setUserCSS(userCSS),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
+            _ = try await send(
+                .setLinkPreviews(linkPreviews),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
+            _ = try await send(
+                .setWritingContinuation(
+                    enabled: writingContinuationEnabled,
+                    contextKey: writingContinuationContextKey), in: webView, requiringRequestEpoch: intendedRequestEpoch)
+            guard intendedRequestEpoch == requestEpoch,
+                self.documentID == documentID,
+                self.webView === webView
+            else {
+                throw SessionError.staleRequest
+            }
+            if documentTitle == pendingDocumentTitle,
+                presentationCSS == pendingPresentationCSS,
+                userCSS == pendingUserCSS,
+                linkPreviews == pendingLinkPreviews,
+                writingContinuationEnabled == pendingWritingContinuationEnabled,
+                writingContinuationContextKey == pendingWritingContinuationContextKey
+            {
+                return
+            }
+        }
+    }
+
+    private func flushPendingLine() {
+        guard isReady, isLoaded, let line = pendingLine, let webView else { return }
+        pendingLine = nil
+        let documentID = self.documentID
+        let focusRevision = focusRequestRevision
+        Task {
+            do {
+                let focusesEditor =
+                    line.focusesEditor && focusRevision == focusRequestRevision
+                    && automaticFocusIsAuthorized
+                _ = try await send(.goToLine(line.line, focusesEditor: focusesEditor), in: webView)
+                guard line.focusesEditor, self.webView === webView,
+                    focusRevision == self.focusRequestRevision, self.automaticFocusIsAuthorized,
+                    self.documentID == documentID, !Task.isCancelled,
+                    webView.window?.makeFirstResponder(webView) == true
+                else { return }
+                try await focusAndWait(.editor)
+            } catch {
+                // Failed or replaced navigation cannot transfer focus elsewhere.
+            }
+        }
+    }
+
+    private func flushPendingSourceRange() {
+        guard isReady,
+            isLoaded,
+            context?.composing != true,
+            let range = pendingSourceRange,
+            let webView
+        else { return }
+        pendingSourceRange = nil
+        Task { [weak self] in
+            do {
+                _ = try await self?.send(
+                    .revealSourceRange(
+                        fromUTF16: range.lowerBound,
+                        toUTF16: range.upperBound
+                    ),
+                    in: webView
+                )
+            } catch {
+                guard let self else { return }
+                if self.context?.composing == true {
+                    self.pendingSourceRange = range
+                }
+            }
+        }
+    }
+
+    func send(
+        _ operation: MarkdownEditorOperation,
+        in webView: WKWebView,
+        requiringRequestEpoch requiredRequestEpoch: UInt64? = nil
+    ) async throws -> MarkdownEditorCommandResult {
+        let requestDeadline = ContinuousClock.now.advanced(by: lifecyclePolicy.bridgeRequest)
+        let duration = lifecyclePolicy.bridgeRequest.components
+        let durationMilliseconds =
+            Double(duration.seconds) * 1_000
+            + Double(duration.attoseconds) / 1_000_000_000_000_000
+        let expiresAt = Int64((Date().timeIntervalSince1970 * 1_000 + durationMilliseconds).rounded(.down))
+        let previous = operation.serializesSourceMutation ? sourceMutationBarrier : nil
+        let context = BridgeRequestContext(
+            requestEpoch: requiredRequestEpoch ?? requestEpoch,
+            sessionID: sessionID,
+            documentID: documentID,
+            startingFingerprint: startingFingerprint,
+            generation: generation,
+            webView: webView
+        )
+        let trackingID = UUID()
+        let task = Task.immediate { @MainActor in
+            await previous?.value
+            try Task.checkCancellation()
+            guard isCurrentIdentity(context) else {
+                throw SessionError.staleRequest
+            }
+            let remaining = ContinuousClock.now.duration(to: requestDeadline)
+            guard remaining > .zero else {
+                throw ScholiumWindowLifecycleError.timedOut(.bridgeRequest)
+            }
+            let request = MarkdownEditorRequest(
+                sessionID: context.sessionID,
+                documentID: context.documentID,
+                startingFingerprint: context.startingFingerprint,
+                knownGeneration: context.generation,
+                expiresAt: expiresAt,
+                operation: operation
+            )
+            let encoder = JSONEncoder()
+            let requestData = try encoder.encode(request)
+            guard requestData.count <= markdownEditorMaximumSourceEnvelopeBytes,
+                let requestJSON = String(data: requestData, encoding: .utf8)
+            else {
+                throw SessionError.invalidResult
+            }
+            let rawResult: Any?
+            do {
+                var dispatchedResult: Any?
+                try await withScholiumLifecycleDeadline(
+                    phase: .bridgeRequest,
+                    timeout: remaining
+                ) { [self, bridgeDispatcher] in
+                    guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
+                    let dispatchID = UUID()
+                    unfinishedBridgeDispatches.insert(dispatchID)
+                    defer { unfinishedBridgeDispatches.remove(dispatchID) }
+                    dispatchedResult = try await bridgeDispatcher.dispatch(
+                        requestJSON: requestJSON,
+                        in: webView
+                    )
+                }
+                rawResult = dispatchedResult
+            } catch {
+                guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
+                throw error
+            }
+            guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
+            guard JSONSerialization.isValidJSONObject(rawResult as Any),
+                let resultData = try? JSONSerialization.data(withJSONObject: rawResult as Any),
+                resultData.count <= markdownEditorMaximumSourceEnvelopeBytes,
+                let result = try? JSONDecoder().decode(MarkdownEditorCommandResult.self, from: resultData),
+                result.requestID == request.requestID
+            else {
+                throw SessionError.invalidResult
+            }
+            guard result.accepted else {
+                throw SessionError.bridgeRejected(result.error ?? "The Markdown editor rejected the request.")
+            }
+            guard result.resultingGeneration >= 0 else {
+                throw SessionError.invalidResult
+            }
+
+            // Validate the complete response before changing the checked mirror.
+            // A bounded JSON envelope does not establish a bounded exact source.
+            guard result.text.map({ $0.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes }) ?? true,
+                result.recovery.map({
+                    $0.source.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes
+                        && ($0.stateJSON?.utf8.count ?? 0) <= markdownEditorMaximumInboundBytes
+                }) ?? true,
+                !result.sourceChanged || result.text != nil
+            else { throw SessionError.invalidResult }
+
+            let responseEditorLength =
+                result.text.map {
+                    Self.normalizedEditorUTF16Length(of: $0)
+                } ?? (result.resultingGeneration == generation ? checkedEditorUTF16Length : nil)
+            guard result.context?.selections == nil || result.context?.selections == result.selections else {
+                throw SessionError.invalidResult
+            }
+            if let responseEditorLength,
+                !markdownEditorSelectionRangesAreValid(
+                    result.selections,
+                    forEditorUTF16Length: responseEditorLength
+                )
+            {
+                throw SessionError.invalidResult
+            }
+            // A later full snapshot can overtake queued deltas. An unexplained
+            // same-generation mismatch cannot silently replace the checked source.
+            if let text = result.text, result.resultingGeneration >= generation {
+                if result.resultingGeneration == generation,
+                    !checkedSourceBuffer.isEqual(to: text)
+                {
+                    updatePublished(\.isDirty, to: true)
+                    sourceChangeHandler?()
+                    throw SessionError.invalidResult
+                }
+                try reconcileMirror(with: text, publish: result.resultingGeneration > generation)
+                generation = result.resultingGeneration
+            }
+            if result.resultingGeneration == generation,
+                responseEditorLength != nil
+            {
+                updateInteraction(
+                    selections: result.selections,
+                    line: line,
+                    column: column,
+                    lineCount: lineCount,
+                    documentVersion: result.resultingGeneration,
+                    context: result.context
+                )
+            }
+            return result
+        }
+        inFlightRequestTasks[trackingID] = task
+        if operation.serializesSourceMutation {
+            sourceMutationBarrier = Task { @MainActor in _ = try? await task.value }
+        }
+        defer { inFlightRequestTasks[trackingID] = nil }
+        return try await task.value
+    }
+
+    private func isCurrentIdentity(_ context: BridgeRequestContext) -> Bool {
+        context.requestEpoch == requestEpoch
+            && context.sessionID == sessionID
+            && context.documentID == documentID
+            && context.startingFingerprint == startingFingerprint
+            && self.webView === context.webView
+    }
+
+    #if DEBUG
+        private func installQATerminationObserverIfEnabled() {
+            guard !qaTerminationObserverInstalled,
+                Bundle.main.bundleIdentifier == "com.scholium.qa",
+                ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
+            else {
+                return
+            }
+            DistributedNotificationCenter.default().addObserver(
+                self,
+                selector: #selector(receiveQATerminationNotification(_:)),
+                name: Self.qaTerminationNotification,
+                object: nil
+            )
+            qaTerminationObserverInstalled = true
+        }
+
+        private func removeQATerminationObserver() {
+            guard qaTerminationObserverInstalled else { return }
+            DistributedNotificationCenter.default().removeObserver(
+                self,
+                name: Self.qaTerminationNotification,
+                object: nil
+            )
+            qaTerminationObserverInstalled = false
+        }
+
+        @objc private func receiveQATerminationNotification(_ notification: Notification) {
+            guard notification.userInfo?["documentID"] as? String == documentID else { return }
+            guard testingSimulateWebContentProcessTermination() else { return }
+            if let markerPath = ProcessInfo.processInfo.environment[
+                "SCHOLIUM_UI_TEST_EDITOR_FAULT_MARKER"
+            ] {
+                try? Data(documentID.utf8).write(
+                    to: URL(fileURLWithPath: markerPath),
+                    options: .atomic
+                )
+            }
+        }
+    #else
+        private func installQATerminationObserverIfEnabled() {}
+        private func removeQATerminationObserver() {}
+    #endif
+
+    private func invalidateRequestQueue(clearingRecoveryReport: Bool = true) {
+        requestEpoch &+= 1
+        rejectedChangeRecoveryTask?.cancel()
+        rejectedChangeRecoveryTask = nil
+        rejectedChangeRecoveryID = nil
+        pendingRejectedChangeGeneration = nil
+        if clearingRecoveryReport {
+            updatePresentation {
+                $0.clearReport(matching: Self.rejectedChangeRecoveryMessage)
+            }
+        }
+        sourceMutationBarrier?.cancel()
+        sourceMutationBarrier = nil
+        for task in inFlightRequestTasks.values {
+            task.cancel()
+        }
+        inFlightRequestTasks.removeAll()
+    }
+
+    private func fallbackSelectionSnapshot() -> MarkdownEditorSelectionSnapshot {
+        MarkdownEditorSelectionSnapshot(
+            documentID: documentID,
+            fingerprint: startingFingerprint,
+            generation: generation,
+            ranges: [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
+        )
+    }
+
+    private func currentValidSelectionRanges() -> [MarkdownEditorSelectionRange] {
+        if let snapshot = lastKnownSelectionSnapshot,
+            snapshot.isValid(
+                documentID: documentID,
+                fingerprint: startingFingerprint,
+                generation: generation,
+                editorUTF16Length: checkedEditorUTF16Length
+            )
+        {
+            return snapshot.ranges
+        }
+        if let snapshot = recoverySnapshot,
+            snapshot.documentID == documentID,
+            snapshot.fingerprint == startingFingerprint,
+            snapshot.generation == generation,
+            snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+            markdownEditorSelectionRangesAreValid(
+                snapshot.ranges,
+                forEditorUTF16Length: checkedEditorUTF16Length
+            )
+        {
+            return snapshot.ranges
+        }
+        return fallbackSelectionSnapshot().ranges
+    }
+
+    private func updatePresentation(
+        _ update: (inout MarkdownEditorPresentationState) -> Void
+    ) {
+        var next = presentation
+        update(&next)
+        guard next != presentation else { return }
+        presentation = next
+    }
+
+    private func updatePublished<Value: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<MarkdownEditorSession, Value>,
+        to value: Value
+    ) {
+        guard self[keyPath: keyPath] != value else { return }
+        self[keyPath: keyPath] = value
+    }
+
+    private func reconcileMirror(with text: String, publish: Bool) throws {
+        guard !checkedSourceBuffer.isEqual(to: text) else { return }
+        checkedSourceBuffer.replace(with: text)
+        sourceOffsetMap = EditorSourceOffsetMap(source: text)
+        checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
+        if publish {
+            updatePublished(\.isDirty, to: true)
+            sourceChangeHandler?()
+        }
+    }
+
+    private static func normalizedEditorUTF16Length(of source: String) -> Int {
+        let units = source.utf16
+        var index = units.startIndex
+        var length = 0
+        while index < units.endIndex {
+            if units[index] == 13 {
+                let next = units.index(after: index)
+                if next < units.endIndex, units[next] == 10 {
+                    index = units.index(after: next)
+                    length += 1
+                    continue
+                }
+            }
+            index = units.index(after: index)
+            length += 1
+        }
+        return length
+    }
+
+    func wireAnchor(
+        from anchor: EditorScrollAnchor,
+        in source: String
+    ) -> MarkdownEditorWireScrollAnchor? {
+        guard anchor.sourceFingerprint == DocumentFingerprint(content: source).sha256,
+            anchor.isValid(forUTF16Length: source.utf16.count),
+            let sourceOffset = sourceOffsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: anchor.sourceUTF16Offset
+            ),
+            let lowerBound = sourceOffsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: anchor.blockUTF16LowerBound
+            ),
+            let upperBound = sourceOffsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: anchor.blockUTF16UpperBound
+            )
+        else { return nil }
+        return MarkdownEditorWireScrollAnchor(
+            sourceUTF16Offset: sourceOffset,
+            blockUTF16LowerBound: lowerBound,
+            blockUTF16UpperBound: upperBound,
+            relativeBlockPosition: anchor.relativeBlockPosition,
+            fallbackFraction: anchor.fallbackFraction
+        )
+    }
 }

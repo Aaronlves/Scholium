@@ -62,7 +62,6 @@ struct DocumentNoteActionsTests {
         #expect(zip(originalCommands, menu.items).allSatisfy { $0 === $1 })
         #expect(menu.items.first?.identifier?.rawValue == "scholium.noteActions.copyLink")
         #expect(menu.items.first?.isHidden == false)
-        #expect(menu.items.contains { $0.identifier?.rawValue == "scholium.noteActions.rename" })
         for command in menu.items where !command.isSeparatorItem {
             #expect(!item.validateMenuItem(command))
         }
@@ -90,10 +89,6 @@ struct DocumentNoteActionsTests {
         let controller = DetachedDocumentToolbar(model: model)
         let ids = controller.toolbarDefaultItemIdentifiers(controller.toolbar)
         #expect(ids.filter { $0.rawValue == "more" }.count == 1)
-        #expect(ids.filter { $0.rawValue == "title" }.count == 1)
-        #expect(try #require(ids.firstIndex(of: .init("title"))) < #require(ids.firstIndex(of: .init("mode"))))
-        #expect(controller.toolbar(controller.toolbar, itemForItemIdentifier: .init("title"), willBeInsertedIntoToolbar: true) is DocumentTitleToolbarItem)
-
         let item = try #require(
             controller.toolbar(
                 controller.toolbar,
@@ -104,8 +99,5 @@ struct DocumentNoteActionsTests {
         let close = try #require(menu.items.first { $0.identifier?.rawValue == "scholium.noteActions.close" })
         #expect(close.title == ScholiumL10n.string("Close Window"))
         #expect(menu.items.last?.identifier?.rawValue == "scholium.noteActions.trash")
-        controller.invalidate()
-        #expect(item.menu.items.isEmpty)
-
     }
 }

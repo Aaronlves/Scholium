@@ -2,7 +2,7 @@ name: Verify
 
 # Tools/Scripts/verify.sh is already the repository's whole gate: documentation
 # authority, interface localization, swift-format, the architecture and I/O wall
-# guards, every Swift test product, the reproducible WebKit resource comparison,
+# guards, every Swift test product, the reproducible editor bundle comparison,
 # the public symbol graph wall, and a release build. It only ever ran when
 # someone remembered to type it. This runs it on every change instead.
 
@@ -26,8 +26,8 @@ jobs:
   # Fast feedback on the TypeScript surface. verify.sh covers this too, by way
   # of run-editor-toolchain.sh --test, but it reports roughly twenty minutes
   # later; a type error should not cost that long to learn about.
-  web-resources:
-    name: WebKit renderer typecheck and tests
+  editor:
+    name: Editor typecheck and tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -52,7 +52,7 @@ jobs:
     # Xcode 27's. This label is a public preview image; if it is withdrawn the
     # gate has to follow the toolchain rather than retreat to an older SDK.
     # Pinned rather than macos-latest either way, so the image cannot change
-    # underneath a byte-comparison of the committed WebKit resources.
+    # underneath a byte-comparison of the committed editor bundles.
     runs-on: xcode-27
     timeout-minutes: 120
     steps:
@@ -63,7 +63,7 @@ jobs:
           node-version: 24
 
       # run-editor-toolchain.sh installs npm dependencies in temporary storage
-      # and excludes in-worktree node_modules from verification, so there is nothing
+      # and refuses an in-worktree WebEditor/node_modules, so there is nothing
       # here for actions/setup-node to cache.
       - name: Install ripgrep
         run: command -v rg >/dev/null 2>&1 || brew install ripgrep

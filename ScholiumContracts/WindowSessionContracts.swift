@@ -1,6 +1,7 @@
 import Foundation
 
 public enum WindowDocumentFocusTarget: String, Codable, Hashable, Sendable {
+    case title
     case editor
 }
 
@@ -17,10 +18,6 @@ public struct WindowDocumentSelectionRange: Codable, Hashable, Sendable {
 /// Lightweight, source-neutral presentation for one document that remains
 /// open in a window. Editor bytes and undo history never enter this value.
 public struct WindowDocumentPresentationSnapshot: Codable, Hashable, Sendable {
-    /// Native projected UTF-16 excludes an initial BOM and collapses CR/CRLF.
-    /// A former renderer's positions cannot authorize native selection restore.
-    public static let nativeCoordinateSpace = "native-projected-utf16-v1"
-    public let coordinateSpace: String
     public var scrollFraction: Double
     public var sourceFingerprint: String?
     public var selections: [WindowDocumentSelectionRange]
@@ -32,7 +29,6 @@ public struct WindowDocumentPresentationSnapshot: Codable, Hashable, Sendable {
         selections: [WindowDocumentSelectionRange] = [],
         focusTarget: WindowDocumentFocusTarget? = nil
     ) {
-        self.coordinateSpace = Self.nativeCoordinateSpace
         self.scrollFraction =
             scrollFraction.isFinite
             ? min(1, max(0, scrollFraction))

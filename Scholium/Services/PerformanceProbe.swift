@@ -11,9 +11,12 @@ final class PerformanceProbe {
         case indexedSearch = "indexed_search"
         case warmReadActivation = "warm_read_activation"
         case firstReadActivation = "first_read_activation"
+        case editorKeyToPaint = "editor_key_to_paint"
         case editorModeTransition = "editor_mode_transition"
+        case editorCachedPreview = "editor_cached_preview"
         case warmEditActivation = "warm_edit_activation"
         case firstEditActivation = "first_edit_activation"
+        case editorVisibleProjection = "editor_visible_projection"
         case editorRetainedMemory = "editor_retained_memory"
         case editorLargeCJKCorrectness = "editor_large_cjk_correctness"
     }
@@ -41,8 +44,8 @@ final class PerformanceProbe {
             documentID: String,
             mode: MarkdownEditorMode,
             startNanoseconds: UInt64,
-            layoutStartedNanoseconds: UInt64?,
-            appliedNanoseconds: UInt64?
+            bridgeStartedNanoseconds: UInt64?,
+            acknowledgedNanoseconds: UInt64?
         )?
     private var editActivation:
         (
@@ -56,9 +59,9 @@ final class PerformanceProbe {
     private var warmLibraryProjectionNanoseconds: UInt64?
     private var firstReadDocumentSelectedNanoseconds: UInt64?
     private var firstReadTaskStartedNanoseconds: UInt64?
-    private var firstReadSourceReadyNanoseconds: UInt64?
-    private var firstReadNativeLayoutStartedNanoseconds: UInt64?
-    private var firstReadNativeLayoutFinishedNanoseconds: UInt64?
+    private var firstReadHTMLReadyNanoseconds: UInt64?
+    private var firstReadNavigationStartedNanoseconds: UInt64?
+    private var firstReadNavigationFinishedNanoseconds: UInt64?
     private var searchIsArmed = true
     private var readIsArmed = true
     private var recordedSampleCount = 0
@@ -119,6 +122,15 @@ final class PerformanceProbe {
     }
     var measuresEditorModeTransition: Bool {
         configuration?.metric == .editorModeTransition
+    }
+    var measuresEditorKeyToPaint: Bool {
+        configuration?.metric == .editorKeyToPaint
+    }
+    var measuresEditorCachedPreview: Bool {
+        configuration?.metric == .editorCachedPreview
+    }
+    var measuresEditorVisibleProjection: Bool {
+        configuration?.metric == .editorVisibleProjection
     }
     var exercisesLargeCJKCorrectness: Bool {
         configuration?.metric == .editorLargeCJKCorrectness
@@ -218,25 +230,25 @@ final class PerformanceProbe {
         firstReadTaskStartedNanoseconds = now()
     }
 
-    func markReadSourceReady(documentID: String) {
+    func markReadHTMLReady(documentID: String) {
         guard measuresExpectedFirstRead(documentID),
-            firstReadSourceReadyNanoseconds == nil
+            firstReadHTMLReadyNanoseconds == nil
         else { return }
-        firstReadSourceReadyNanoseconds = now()
+        firstReadHTMLReadyNanoseconds = now()
     }
 
-    func markReadNativeLayoutStarted(documentID: String) {
+    func markReadNavigationStarted(documentID: String) {
         guard measuresExpectedFirstRead(documentID),
-            firstReadNativeLayoutStartedNanoseconds == nil
+            firstReadNavigationStartedNanoseconds == nil
         else { return }
-        firstReadNativeLayoutStartedNanoseconds = now()
+        firstReadNavigationStartedNanoseconds = now()
     }
 
-    func markReadNativeLayoutFinished(documentID: String) {
+    func markReadNavigationFinished(documentID: String) {
         guard measuresExpectedFirstRead(documentID),
-            firstReadNativeLayoutFinishedNanoseconds == nil
+            firstReadNavigationFinishedNanoseconds == nil
         else { return }
-        firstReadNativeLayoutFinishedNanoseconds = now()
+        firstReadNavigationFinishedNanoseconds = now()
     }
 
     func markReadReady(documentID: String) {
@@ -281,23 +293,23 @@ final class PerformanceProbe {
             documentID: documentID,
             mode: mode,
             startNanoseconds: now(),
-            layoutStartedNanoseconds: nil,
-            appliedNanoseconds: nil
+            bridgeStartedNanoseconds: nil,
+            acknowledgedNanoseconds: nil
         )
     }
 
-    func markEditorModeLayoutStarted(mode: MarkdownEditorMode) {
+    func markEditorModeBridgeStarted(mode: MarkdownEditorMode) {
         guard let configuration,
             configuration.metric == .editorModeTransition,
             var transition = editorModeTransition,
             transition.mode == mode,
-            transition.layoutStartedNanoseconds == nil
+            transition.bridgeStartedNanoseconds == nil
         else { return }
-        transition.layoutStartedNanoseconds = now()
+        transition.bridgeStartedNanoseconds = now()
         editorModeTransition = transition
     }
 
-    func markEditorModeApplied(
+    func markEditorModeAcknowledged(
         documentID: String,
         mode: MarkdownEditorMode
     ) {
@@ -307,14 +319,15 @@ final class PerformanceProbe {
             var transition = editorModeTransition,
             transition.documentID == documentID,
             transition.mode == mode,
-            transition.appliedNanoseconds == nil
+            transition.acknowledgedNanoseconds == nil
         else { return }
-        transition.appliedNanoseconds = now()
+        transition.acknowledgedNanoseconds = now()
         editorModeTransition = transition
     }
 
-    /// Completes after the applied mode crosses the native container layout
-    /// boundary. Source loading or configuration alone is not this endpoint.
+    /// Completes only after the acknowledged editor mode has crossed the
+    /// native layout boundary that exposes it to accessibility. The bridge
+    /// acknowledgment alone is intentionally not a visible-latency endpoint.
     func markEditorModeVisible(
         documentID: String,
         mode: MarkdownEditorMode
@@ -325,33 +338,85 @@ final class PerformanceProbe {
             let transition = editorModeTransition,
             transition.documentID == documentID,
             transition.mode == mode,
-            let layoutStarted = transition.layoutStartedNanoseconds,
-            let applied = transition.appliedNanoseconds
+            let bridgeStarted = transition.bridgeStartedNanoseconds,
+            let acknowledged = transition.acknowledgedNanoseconds
         else { return }
         let completed = now()
-        guard layoutStarted >= transition.startNanoseconds,
-            applied >= layoutStarted,
-            completed >= applied
+        guard bridgeStarted >= transition.startNanoseconds,
+            acknowledged >= bridgeStarted,
+            completed >= acknowledged
         else { return }
         editorModeTransition = nil
         record(
             startNanoseconds: transition.startNanoseconds,
             observedCount: nil,
-            observedMode: mode.rawValue,
+            observedMode: mode == .livePreview ? "live_preview" : "source",
             completedNanoseconds: completed,
             phaseDurations: [
-                "applied_duration_ms": Double(
-                    applied - transition.startNanoseconds
+                "acknowledged_duration_ms": Double(
+                    acknowledged - transition.startNanoseconds
                 ) / 1_000_000,
-                "native_layout_started_duration_ms": Double(
-                    layoutStarted - transition.startNanoseconds
+                "bridge_started_duration_ms": Double(
+                    bridgeStarted - transition.startNanoseconds
                 ) / 1_000_000,
-                "native_layout_work_duration_ms": Double(
-                    applied - layoutStarted
+                "bridge_roundtrip_duration_ms": Double(
+                    acknowledged - bridgeStarted
                 ) / 1_000_000,
-                "layout_duration_ms": Double(completed - applied) / 1_000_000,
+                "layout_duration_ms": Double(completed - acknowledged) / 1_000_000,
             ]
         )
+    }
+
+    func recordEditorKeyToPaint(
+        documentID: String,
+        durationMilliseconds: Double
+    ) {
+        guard let configuration,
+            configuration.metric == .editorKeyToPaint,
+            documentID == configuration.expectedDocument,
+            durationMilliseconds.isFinite,
+            durationMilliseconds > 0,
+            durationMilliseconds < 600_000,
+            recordedSampleCount < configuration.sampleCount
+        else { return }
+        let completed = now()
+        let object: [String: Any] = [
+            "schema": "scholium-performance-v1",
+            "run_id": configuration.runID,
+            "sample": configuration.firstSample + recordedSampleCount,
+            "metric": configuration.metric.rawValue,
+            "duration_ms": durationMilliseconds,
+            "completed_uptime_ns": completed,
+        ]
+        guard append(object, to: configuration.resultURL) else { return }
+        recordedSampleCount += 1
+    }
+
+    func recordEditorWebDuration(
+        documentID: String,
+        metric: Metric,
+        durationMilliseconds: Double
+    ) {
+        guard let configuration,
+            configuration.metric == metric,
+            metric == .editorCachedPreview || metric == .editorVisibleProjection,
+            documentID == configuration.expectedDocument,
+            durationMilliseconds.isFinite,
+            durationMilliseconds > 0,
+            durationMilliseconds < 600_000,
+            recordedSampleCount < configuration.sampleCount
+        else { return }
+        let completed = now()
+        let object: [String: Any] = [
+            "schema": "scholium-performance-v1",
+            "run_id": configuration.runID,
+            "sample": configuration.firstSample + recordedSampleCount,
+            "metric": configuration.metric.rawValue,
+            "duration_ms": durationMilliseconds,
+            "completed_uptime_ns": completed,
+        ]
+        guard append(object, to: configuration.resultURL) else { return }
+        recordedSampleCount += 1
     }
 
     func beginEditActivation(documentID: String) {
@@ -401,8 +466,8 @@ final class PerformanceProbe {
         )
     }
 
-    /// Publishes the retained native editor handshake after visible layout.
-    /// The UI-test driver can read the
+    /// Publishes the retained Editor handshake only after the WebKit bridge
+    /// has acknowledged the requested mode. The UI-test driver can read the
     /// sampler acknowledgment, but it deliberately cannot write into the app
     /// container that owns this probe file.
     func markEditorModeReady(documentID: String, mode: MarkdownEditorMode) {
@@ -413,13 +478,13 @@ final class PerformanceProbe {
         else { return }
         let expectedMode: MarkdownEditorMode =
             recordedSampleCount.isMultiple(of: 2)
-            ? .edit
-            : .read
+            ? .livePreview
+            : .source
         guard mode == expectedMode else { return }
         let object: [String: Any] = [
             "sample": configuration.firstSample + recordedSampleCount,
             "transition": configuration.firstSample + recordedSampleCount,
-            "mode": mode.rawValue,
+            "mode": mode == .livePreview ? "live_preview" : "source",
         ]
         guard append(object, to: configuration.resultURL) else { return }
         recordedSampleCount += 1
@@ -540,15 +605,15 @@ final class PerformanceProbe {
     ) -> [String: Double] {
         guard let documentSelected = firstReadDocumentSelectedNanoseconds,
             let readTaskStarted = firstReadTaskStartedNanoseconds,
-            let sourceReady = firstReadSourceReadyNanoseconds,
-            let layoutStarted = firstReadNativeLayoutStartedNanoseconds,
-            let layoutFinished = firstReadNativeLayoutFinishedNanoseconds,
+            let htmlReady = firstReadHTMLReadyNanoseconds,
+            let navigationStarted = firstReadNavigationStartedNanoseconds,
+            let navigationFinished = firstReadNavigationFinishedNanoseconds,
             documentSelected >= startNanoseconds,
             readTaskStarted >= documentSelected,
-            sourceReady >= readTaskStarted,
-            layoutStarted >= sourceReady,
-            layoutFinished >= layoutStarted,
-            completedNanoseconds >= layoutFinished
+            htmlReady >= readTaskStarted,
+            navigationStarted >= htmlReady,
+            navigationFinished >= navigationStarted,
+            completedNanoseconds >= navigationFinished
         else { return [:] }
         return [
             "activation_to_document_selection_duration_ms": milliseconds(
@@ -557,17 +622,17 @@ final class PerformanceProbe {
             "document_selection_to_read_task_start_duration_ms": milliseconds(
                 readTaskStarted - documentSelected
             ),
-            "read_task_start_to_source_ready_duration_ms": milliseconds(
-                sourceReady - readTaskStarted
+            "read_task_start_to_html_ready_duration_ms": milliseconds(
+                htmlReady - readTaskStarted
             ),
-            "read_source_ready_to_layout_start_duration_ms": milliseconds(
-                layoutStarted - sourceReady
+            "read_html_ready_to_navigation_start_duration_ms": milliseconds(
+                navigationStarted - htmlReady
             ),
-            "read_native_layout_duration_ms": milliseconds(
-                layoutFinished - layoutStarted
+            "read_navigation_duration_ms": milliseconds(
+                navigationFinished - navigationStarted
             ),
-            "read_layout_to_ready_duration_ms": milliseconds(
-                completedNanoseconds - layoutFinished
+            "read_navigation_to_ready_duration_ms": milliseconds(
+                completedNanoseconds - navigationFinished
             ),
         ]
     }

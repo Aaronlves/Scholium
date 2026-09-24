@@ -7,7 +7,7 @@
 从 Topics / QA Topic 开始。数据全部为合成内容，不依赖真实研究笔记。
 
 - 浏览：三库切换、嵌套目录、同名文件、空白笔记、长文目录。
-- 编辑：Read / Edit、自动保存、撤销、文件重命名。
+- 编辑：Review / Edit / Source、自动保存、撤销、文件重命名。
 - 搜索：晨光样本、aurora-fixture、文件名和正文标题。
 - Connect / Attention：正常跨库链接、注释；诊断样本故意保留缺失、歧义及未闭合注释。
 - 保真：源码保真.md 带 UTF-8 BOM、CRLF、自定义 YAML、无末尾换行；操作前后可对照 fixture-manifest.json 的 SHA-256。

@@ -92,7 +92,7 @@ private enum ScholiumTypeface {
 /// The sole native typography resolver for Scholium-owned text. Family
 /// communicates content kind; role communicates hierarchy. Feature views do
 /// not publish aliases. Document typography remains owned by
-/// `DocumentAppearanceSettings` and its native/HTML presentation adapters.
+/// `DocumentAppearanceSettings` and generated CSS.
 enum ScholiumTypography {
     enum InterfaceRole {
         case primaryTitle

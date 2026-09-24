@@ -78,17 +78,20 @@ Evidence: `.build/reference-interface-fix-acceptance.md`,
 `.build/reference-interface-fix-navigation-integration-recheck.log`,
 `.build/retrieval-ui-acceptance.md`, `.build/retrieval-ui-state-tests.log`.
 
-**2026-09-23–24 — Native editor migration:** The Edmund-derived `ScholiumEditor`
-and App compile with Xcode 27 beta, Swift 6.4 and SDK 27. Focused tests cover
-exact BOM/mixed-newline/Unicode edits, native Undo, read-only mutation rejection,
-selection geometry, attachment isolation, capacity, persistence, Appearance and
-filename-rename rejection/retry.
-A disposable standard 500-Note QA Triptych verifies typing, A/B/A retention,
-autosave, Read Find/links, mode-preserved Undo, cross-code/link selection and
-toolbar rename rejection/retry/cancel. Exercised notes return byte-identical
-to their fixture sources.
-Old DOM results do not establish native coverage. Logs: `.build/migration/`;
-physical-input, adaptation and release acceptance remain open.
+**2026-09-16 — Editor authority/recovery:** Deterministic coverage retains detached
+exact-source persistence, background Review revision adoption including NFC/NFD,
+conflict fidelity, suspension/resume ordering, lost commit-reply replay, composition
+expiry and UTF-8 capacity admission. Two native 500-Note QA journeys retain
+background saves/external revisions through further editing and dirty external
+conflict/Recovery. Earlier scoped checks retain newline Undo/Redo/reconstruction,
+half-open/CRLF selection, rename autosave, inactive-tab publication, replacement-size
+rejection and newer-input preservation during Conflict Reload; native journeys
+covered dirty Review handoff and continued autosave after external rename.
+Evidence: `.build/editor-boundary-evidence/`, `.build/note-editing-fix/`.
+Syntax-continuity fixture QA (2026-09-07) covers Callouts, Chinese paste/Undo,
+disclosure, Light/Dark and mode switching with byte-identical Undo; it does not
+establish installed IME, minimum width, full adaptation or human perception.
+Evidence: `.build/editor-presentation-*.log`.
 
 **2026-09-16 — Bootstrap:** Bootstrap's 102 scoped lifecycle tests
 and two QA journeys cover connect/restore/create, non-replacing destination

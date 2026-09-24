@@ -12,70 +12,7 @@ struct WindowNoteRestructureRequest: Identifiable {
     var title: String { action?.title ?? ScholiumL10n.string("Merge into Another Note…") }
 }
 
-enum DocumentTitleRenameError: LocalizedError {
-    case invalidName
-    case noteUnavailable
-    case titleChangedElsewhere
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidName:
-            String(localized: "That note name cannot be used.", table: "Localizable", bundle: .module)
-        case .noteUnavailable:
-            String(
-                localized: "This note is no longer available to rename.", table: "Localizable",
-                bundle: .module)
-        case .titleChangedElsewhere:
-            String(
-                localized:
-                    "The note was renamed elsewhere. Review its current title before renaming again.",
-                table: "Localizable", bundle: .module)
-        }
-    }
-}
-
 extension WindowModel {
-    func renameDocumentTitle(
-        requestedNote: WindowDocumentLocation,
-        expectedTitle: String,
-        requestedTitle: String
-    ) async throws -> String {
-        guard !transferInProgress, currentDocumentCapabilities.allows(.move) else {
-            throw DocumentTitleRenameError.noteUnavailable
-        }
-        guard
-            let requestedStableID = requestedNote.workspaceSnapshot?
-                .stableIdentity.resolvedID,
-            let currentNote = self.currentNote,
-            currentNote.vaultID == requestedNote.vaultID,
-            currentNote.workspaceSnapshot?.stableIdentity.resolvedID
-                == requestedStableID
-        else {
-            throw DocumentTitleRenameError.noteUnavailable
-        }
-        guard currentNote.displayName == expectedTitle else {
-            throw DocumentTitleRenameError.titleChangedElsewhere
-        }
-        guard let target = NoteMutationTarget(currentNote),
-            let destination = noteRenameDestination(
-                sourceRelativePath: currentNote.relativePath,
-                requestedName: requestedTitle
-            )
-        else {
-            throw DocumentTitleRenameError.invalidName
-        }
-        guard destination != currentNote.relativePath else {
-            return currentNote.displayName
-        }
-        try await self.libraryMutationController.moveNote(
-            target,
-            to: destination
-        )
-        return URL(fileURLWithPath: destination)
-            .deletingPathExtension()
-            .lastPathComponent
-    }
-
     var canMergeCurrentNote: Bool {
         currentDocumentCapabilities.allows(.moveToSystemTrash) && !transferInProgress
             && presentationRouter.sheet == nil
@@ -110,18 +47,27 @@ extension WindowModel {
         let initialSession = documentController.session(for: descriptor)
         let expectedSelections = initialSession.editorSession.context?.selections
         let expectedGeneration = initialSession.editorSession.generation
-        let capturedSourceKind: AgentChatAttachment.Source = presentedDocumentMode == .read ? .savedSource : .editorSnapshot
+        let expectedReadSelection = initialSession.readSelection
+        let capturedSourceKind: AgentChatAttachment.Source = captured != nil || presentedDocumentMode == .read ? .savedSource : .editorSnapshot
         Task { @MainActor [weak self] in
             guard let self, self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey else { return }
             do {
                 let session = self.documentController.session(for: descriptor)
                 let snapshot: MarkdownSourceSelectionSnapshot
                 if let captured {
-                    let current = try await session.editorSession.currentText()
-                    guard captured.source.utf8.elementsEqual(current.utf8),
-                        session.editorSession.generation == expectedGeneration
+                    guard let note = self.currentNote, !session.hasUnsavedChanges,
+                        captured.source.utf8.elementsEqual(note.rawContent.utf8)
                     else { throw AgentChatNoteMaterialError.changedSource }
                     snapshot = captured
+                } else if self.presentedDocumentMode == .read {
+                    guard let selection = expectedReadSelection, let note = self.currentNote,
+                        let selected = MarkdownReviewSourceSelection.review(selection, source: note.rawContent)
+                    else { throw AgentChatNoteMaterialError.selectionUnavailable }
+                    if let paragraph = try? ParagraphAnchorPlanner.paragraph(in: note.document, atUTF16: selected.sourceRange.utf16LowerBound) {
+                        snapshot = MarkdownReviewSourceSelection.passage(selection, source: note.rawContent, paragraphSpan: paragraph) ?? selected
+                    } else {
+                        snapshot = selected
+                    }
                 } else {
                     snapshot = try await session.editorSession.passageSourceSnapshot(
                         expectedSelections: expectedSelections, expectedGeneration: expectedGeneration)
@@ -165,7 +111,11 @@ extension WindowModel {
         let session = documentController.session(for: descriptor)
         guard session.conflict == nil, currentDocumentCapabilities.canEditSource else { throw AgentChatNoteMaterialError.changedSource }
         if presentedDocumentMode == .read {
-            requestDocumentMode(.edit)
+            session.readSelection = .init(
+                startLine: snapshot.sourceRange.line, endLine: snapshot.sourceRange.endLine,
+                excerpt: snapshot.excerpt, utf16LowerBound: snapshot.sourceRange.utf16LowerBound,
+                utf16UpperBound: snapshot.sourceRange.utf16UpperBound)
+            requestDocumentMode(.livePreview)
             let deadline = ContinuousClock.now.advanced(by: .seconds(6))
             while presentedDocumentMode == .read || !session.editorSession.isLoaded {
                 guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, ContinuousClock.now < deadline else {
@@ -199,13 +149,14 @@ extension WindowModel {
         let readsEditor = !plan.edits.isEmpty || presentedDocumentMode != .read
         if let edit = plan.edits.first {
             try await preparePassageEditing(snapshot, descriptor: descriptor)
-            guard plan.edits.count == 1 else { throw AgentChatNoteMaterialError.unavailable }
+            guard plan.edits.count == 1, let webView = editor.webView else { throw AgentChatNoteMaterialError.unavailable }
             let bytes = Array(snapshot.source.utf8)
             let from = String(decoding: bytes[..<edit.startUTF8], as: UTF8.self).utf16.count
             let to = String(decoding: bytes[..<edit.endUTF8], as: UTF8.self).utf16.count
-            try editor.replacePassage(
-                expectedText: snapshot.source, fromUTF16: from,
-                toUTF16: to, replacement: edit.replacement, preserveSelection: true)
+            _ = try await editor.send(
+                .replacePassage(
+                    expectedText: snapshot.source, fromUTF16: from,
+                    toUTF16: to, replacement: edit.replacement, preserveSelection: true), in: webView)
         }
         guard let capabilities = windowWorkspaceController.activeCapabilities else { throw AgentChatNoteMaterialError.unavailable }
         if readsEditor {

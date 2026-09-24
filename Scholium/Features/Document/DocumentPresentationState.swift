@@ -1,43 +1,49 @@
 import Foundation
 
-/// Researcher-facing modes of one retained native exact-source editor.
+/// Researcher-facing Document modes. Review is a committed renderer; Edit and
+/// Source are two configurations of the same retained exact-source editor.
 enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
     case read
-    case edit
+    case livePreview
+    case source
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .read: ScholiumL10n.string("Read")
-        case .edit: ScholiumL10n.string("Edit")
+        case .read: ScholiumL10n.string("Review")
+        case .livePreview: ScholiumL10n.string("Edit")
+        case .source: ScholiumL10n.string("Source")
         }
     }
 
     var symbol: String {
         switch self {
         case .read: "book"
-        case .edit: "square.and.pencil"
+        case .livePreview: "square.and.pencil"
+        case .source: "chevron.left.forwardslash.chevron.right"
         }
     }
 
     var editorMode: MarkdownEditorMode? {
         switch self {
         case .read: nil
-        case .edit: .edit
+        case .livePreview: .livePreview
+        case .source: .source
         }
     }
 }
 
-/// The native text session presents read-only or editable content.
+/// The Web editor has exactly two configurations. Review cannot cross the
+/// CodeMirror bridge and therefore cannot become a runtime-rejected mode.
 enum MarkdownEditorMode: String, Codable, Hashable, Sendable {
-    case read
-    case edit
+    case livePreview
+    case source
 
     var presentationMode: NotePresentationMode {
         switch self {
-        case .read: .read
-        case .edit: .edit
+        case .livePreview: .livePreview
+        case .source: .source
         }
     }
 }
@@ -45,8 +51,8 @@ enum MarkdownEditorMode: String, Codable, Hashable, Sendable {
 /// One atomic value owns Document presentation intent, active editing state,
 /// retained editor configuration, and editor-surface allocation. A pending
 /// editor intent is deliberately distinct from an active mode: the live
-/// Document presentation may prepare a selected session for Edit without
-/// claiming that Edit is already visible or writable.
+/// Document presentation may prepare a selected session for Source without
+/// claiming that Source is already visible or writable.
 struct DocumentPresentationState: Equatable, Sendable {
     enum Phase: Equatable, Sendable {
         case review(editorIntent: MarkdownEditorMode?)
@@ -54,8 +60,8 @@ struct DocumentPresentationState: Equatable, Sendable {
     }
 
     private(set) var phase: Phase = .review(editorIntent: nil)
-    private(set) var retainedEditorMode: MarkdownEditorMode = .edit
-    private(set) var retainsEditorSurface = true
+    private(set) var retainedEditorMode: MarkdownEditorMode = .livePreview
+    private(set) var retainsEditorSurface = false
 
     var activeMode: NotePresentationMode {
         switch phase {
@@ -101,6 +107,6 @@ struct DocumentPresentationState: Equatable, Sendable {
 
     mutating func reset() {
         phase = .review(editorIntent: nil)
-        retainedEditorMode = .edit
+        retainedEditorMode = .livePreview
     }
 }

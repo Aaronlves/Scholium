@@ -109,24 +109,6 @@ struct EditorWritingContinuationControllerTests {
         await task.value
         #expect(publications.isEmpty)
     }
-
-    @Test("A progress callback cannot replace a completed inline result")
-    func resultOutlivesQueuedProgress() async {
-        let controller = EditorWritingContinuationController()
-        var publications: [EditorWritingContinuationController.Publication] = []
-        let task = controller.start(
-            requestID: "quick-result", sourceCaret: 2, editorCaret: 2,
-            query: { _, status in
-                status(.generating)
-                return .suggestion("suffix")
-            },
-            isCurrent: { true },
-            publish: { publications.append($0) }
-        )
-        await task.value
-        await Task.yield()
-        #expect(publications.last == .result(.suggestion("suffix")))
-    }
 }
 
 @MainActor

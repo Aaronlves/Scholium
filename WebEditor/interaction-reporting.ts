@@ -1,7 +1,22 @@
+import type {EditorContext} from "./protocol";
+
+export function interactionAvailabilitySignature(context: EditorContext) {
+  return JSON.stringify({
+    activeInlineConstructs: context.activeInlineConstructs,
+    activeBlockConstructs: context.activeBlockConstructs,
+    tablePosition: context.tablePosition ?? null,
+    composing: context.composing,
+    hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
+    availableCommands: context.availableCommands,
+    undoLabel: context.undoLabel ?? null,
+    redoLabel: context.redoLabel ?? null,
+  });
+}
+
 /**
  * Keeps only the latest callback and admits at most one scheduled animation
- * frame. Reader selection changes therefore publish only their latest geometry
- * for the painted frame.
+ * frame. This makes rapid CodeMirror transactions produce one bridge report
+ * for the painted frame rather than one report per transaction.
  */
 export class AnimationFrameCoalescer {
   private frame: number | null = null;

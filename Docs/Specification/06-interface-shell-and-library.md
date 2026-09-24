@@ -67,7 +67,7 @@ and buffer.
 
 The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
-current Note title, Document mode,
+current-Document mode,
 Settlement, Note Actions, confirmed Agent Changes when present, Inspector
 projection, and Inspector visibility. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,
@@ -94,12 +94,12 @@ keyboard routes, and persistent document error,
 conflict, and recovery surfaces remain available. The layout is not persisted;
 window-session restoration retains the pre-focus pane visibility.
 
-One native **Note Actions** menu sits immediately after Read/Edit in both
+One native **Note Actions** menu sits immediately after Review/Edit in both
 window types; the separate window reuses its existing More button. It groups
 Note-link copying and Add to Chat; Move, Duplicate and Merge; Find and
 current-Note Agent Changes; Finder and window actions; then system Trash.
-The toolbar shows the current Note title; activating it opens the native rename
-popover in either document mode. Settle and Document Mode retain their direct controls. Menu
+The filename title is changed in place by editing the inline title control in
+the document. Settle and Document Mode retain their direct controls. Menu
 execution remains bound to its captured Note even when Library selection or the
 active tab changes.
 Separate-window Add to Chat opens the same Triptych's main Chat without moving
@@ -125,7 +125,7 @@ opening replaces selection; Open in New Tab appends. Switching preserves state w
 Selected. Failure retains the tab with Retry. Menus provide Close/Next/Previous Tab and Document Tabs for overflow.
 
 Tabs drag with an insertion gap; dropping back reorders, Escape cancels. Dropping
-outside, or **Move to Separate Window**, moves the same session into one document window: Read/Edit, Find, and
+outside, or **Move to Separate Window**, moves the same session into one document window: Review/Edit, Find, and
 save/conflict/recovery actions; no Library, Chat, Inspector, tabs, or floating
 priority. **More** reuses the shared Note Actions menu, with **Move to Main Window** and
 **Close Window** as its window-specific actions. Hover/focus reveals ×; right-click targets its tab. Removal is immediate. Preparation
@@ -275,7 +275,7 @@ A successful New Note commit installs and opens its exact Library row
 immediately, then performs one derived refresh. Filters that would hide it are
 cleared, only its ancestors expand, unrelated disclosure and sort remain, and
 Library reveal does not steal editor focus. If editor activation fails after
-source commit, the UI offers Retry Edit with retained exact source without duplicate creation.
+source commit, the UI offers Retry Edit/Source without duplicate creation.
 
 Triptych Notifications has one stable native bell in the toolbar. It aligns
 with the Sidebar's upper trailing edge when expanded; native toolbar layout
@@ -386,7 +386,7 @@ content-state views, preserving the actual reason and any valid retry. Saved Sea
 remains directly available. Explain Query opens a compact transient explanation of the
 actual conditions; tokenizer, normalization, ranking recipes, and repeated result titles
 do not occupy the search workspace. Opening a result returns to the originating Document
-at the matching location while preserving its current Read or Edit mode,
+at the matching location while preserving its current Review, Edit, or Source mode,
 and keeps the advanced window and query available for continued search. Ordinary
 input never opens an advanced window automatically.
 

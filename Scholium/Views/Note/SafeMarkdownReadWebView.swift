@@ -96,16 +96,23 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> DocumentWebViewContainer {
-        let contentController = WKUserContentController()
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController = contentController
-        configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-        ScholiumWebFontResources.install(in: configuration)
-        let webView =
-            pageExtension?.makeWebView(configuration: configuration)
-            ?? WKWebView(frame: .zero, configuration: configuration)
+        let webView: WKWebView
+        let contentController: WKUserContentController
+        if pageExtension == nil, let prepared = ScholiumWebKitProcessPrewarmer.shared.takeReadWebView() {
+            webView = prepared
+            contentController = prepared.configuration.userContentController
+        } else {
+            contentController = WKUserContentController()
+            let configuration = WKWebViewConfiguration()
+            configuration.userContentController = contentController
+            configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
+            configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+            ScholiumWebFontResources.install(in: configuration)
+            webView =
+                pageExtension?.makeWebView(configuration: configuration)
+                ?? WKWebView(frame: .zero, configuration: configuration)
+        }
         contentController.add(
             context.coordinator,
             contentWorld: Self.bridgeContentWorld,
@@ -531,6 +538,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             let expectedSignature = signature
             if !publishesLoadingTransition {
+                PerformanceProbe.shared.markReadNavigationStarted(
+                    documentID: documentID
+                )
                 let navigation = webView.loadHTMLString(html, baseURL: nil)
                 guard activeWebView === webView,
                     loadedSignature == expectedSignature,
@@ -553,6 +563,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     self.activeLoadSignature == expectedSignature,
                     self.loadGeneration == expectedLoadGeneration
                 else { return }
+                PerformanceProbe.shared.markReadNavigationStarted(
+                    documentID: self.documentID
+                )
                 let navigation = webView.loadHTMLString(html, baseURL: nil)
                 guard self.activeWebView === webView,
                     self.loadedSignature == expectedSignature,
@@ -928,6 +941,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 loadedSignature == expectedSignature
             else { return }
             let expectedLoadGeneration = loadGeneration
+            PerformanceProbe.shared.markReadNavigationFinished(
+                documentID: documentID
+            )
             pageIsReady = true
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
             applyLinkPreviewsIfNeeded(in: webView)
@@ -1596,7 +1612,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   <meta charset="utf-8">
                   <meta name="viewport" content="width=device-width, initial-scale=1">
                   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; connect-src 'none'; font-src scholium-font: data:">
-                  <style>\(documentResourceCSS(mathCSS: mathCSS))</style>
+                  <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumAttachmentStyles.css)\n\(mathCSS)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebSymbolAssets.cssVariables)\n\(baseCSS)</style>
                   <style id="scholium-presentation-css"></style>
                   <style id="scholium-user-css"></style>
                 </head>
@@ -1780,14 +1796,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private static func base64JSON<T: Encodable>(_ value: T) -> String {
             guard let data = try? JSONEncoder().encode(value) else { return "W10=" }
             return data.base64EncodedString()
-        }
-
-        static func documentResourceCSS(mathCSS: String = ScholiumMathAssets.css) -> String {
-            [
-                ScholiumWebFonts.css, ScholiumTableStyles.css, ScholiumFootnoteStyles.css,
-                ScholiumAttachmentStyles.css, mathCSS, ScholiumMermaidAssets.css,
-                ScholiumPreviewStyles.css, ScholiumWebSymbolAssets.cssVariables, baseCSS,
-            ].joined(separator: "\n")
         }
 
         static let baseCSS = """

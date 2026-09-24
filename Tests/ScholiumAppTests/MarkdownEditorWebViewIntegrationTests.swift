@@ -1,0 +1,8328 @@
+import AppKit
+import Combine
+import ScholiumContracts
+import SwiftUI
+import Testing
+import WebKit
+
+@testable import ScholiumApp
+
+@Suite("Markdown editor WKWebView integration", .serialized)
+@MainActor
+struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Unfocused AI continuation sends no requests; configuration preserves exact source and history")
+    func writingContinuationUnfocusedSuppressionAndConfiguration() async throws {
+        let source = "\u{feff}Intro 😀.\r\n\r\n控制 moral re"
+        var requestedCarets: [Int] = []
+        let configurationProbe = WritingContinuationConfigurationProbe()
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: configurationProbe,
+            initialSourceRange: source.utf16.count..<source.utf16.count,
+            laysOutForPointerTesting: true,
+            writingContinuationEnabled: true,
+            writingContinuationQuery: { caret, _ in
+                requestedCarets.append(caret)
+                return .suggestion("ponsibility needs care.")
+            })
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.hideWindowForUnfocusedInputTesting()
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilFocused()
+        // DOM focus in a background/hidden page cannot authorize automatic AI.
+        // This is a suppression/source-preservation check, not a GUI acceptance test.
+        #expect(try await harness.callPageJavaScript("return document.hasFocus();") as? Bool == false)
+        func ghostCount() async throws -> Int {
+            (try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-writing-ghost').length;") as? Int) ?? -1
+        }
+        func waitForConfiguration(enabled: Bool, model: String) async throws {
+            let expected = MarkdownEditorOperation.setWritingContinuation(enabled: enabled, contextKey: model)
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while !configurationProbe.applied.contains(expected) {
+                guard ContinuousClock.now < deadline else {
+                    Issue.record("The continuation configuration did not reach the page.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        try await waitForConfiguration(enabled: true, model: "model-a")
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 's');")
+        let typed = source + "s"
+        #expect(try await harness.session.currentText(for: harness.documentID) == typed)
+        let idleDeadline = ContinuousClock.now.advanced(by: .milliseconds(1_500))
+        repeat {
+            #expect(try await ghostCount() == 0)
+            #expect(requestedCarets.isEmpty)
+            try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < idleDeadline
+
+        let selection = harness.session.context?.selections
+        harness.configureWritingContinuation(enabled: true, model: "model-b")
+        try await waitForConfiguration(enabled: true, model: "model-b")
+        #expect(try await harness.session.currentText(for: harness.documentID) == typed)
+        harness.configureWritingContinuation(enabled: false, model: "model-b")
+        try await waitForConfiguration(enabled: false, model: "model-b")
+        #expect(try await harness.session.currentText(for: harness.documentID) == typed)
+        #expect(harness.session.context?.selections == selection)
+        #expect(requestedCarets.isEmpty)
+        #expect(try await ghostCount() == 0)
+        _ = try await harness.callPageJavaScript(
+            """
+            document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, bubbles: true, cancelable: true
+            }));
+            """)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class WritingContinuationConfigurationProbe: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        var applied: [MarkdownEditorOperation] = []
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if case .setWritingContinuation = request.operation { applied.append(request.operation) }
+            return result
+        }
+    }
+
+    @Test("Edit and Source publish section positions while scrolling continues", arguments: [MarkdownEditorMode.livePreview, .source])
+    func continuousScrollReports(mode: MarkdownEditorMode) async throws {
+        let source = (1...24).map { section in
+            "## Section \(section)\r\n\r\n" + String(repeating: "Nonprivate 中文 😀 paragraph.\r\n\r\n", count: 15)
+        }.joined()
+        let harness = EditorHarness(source: source, initialMode: mode)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        var observedOffsets: [Int] = []
+        var step = 0
+        // Drive input from native time: WebKit marks test pages hidden and
+        // throttles their own intervals, which would create artificial pauses.
+        while observedOffsets.count < 2 {
+            step += 1
+            _ = try await harness.callPageJavaScript(
+                """
+                const scroller = document.querySelector('.cm-scroller');
+                scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * fraction;
+                scroller.dispatchEvent(new Event('scroll'));
+                """, arguments: ["fraction": min(0.9, 0.1 + Double(step) * 0.008)])
+            if let anchor = harness.latestScrollAnchor,
+                anchor.sourceUTF16Offset > source.utf16.count / 4,
+                observedOffsets.last.map({ abs($0 - anchor.sourceUTF16Offset) > 500 }) ?? true
+            {
+                observedOffsets.append(anchor.sourceUTF16Offset)
+            }
+            if ContinuousClock.now >= deadline {
+                let message =
+                    "No continuous scroll reports; latest: \(String(describing: harness.latestScrollAnchor)); observed: \(observedOffsets)"
+                Issue.record(Comment(rawValue: message))
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(observedOffsets.count == 2)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+    }
+
+    @Test("Live scrolling fills only newly exposed projection ranges")
+    func liveScrollUsesIncrementalProjection() async throws {
+        let source = (1...180).map { section in
+            "## Stress section \(section)\r\n\r\n"
+                + String(repeating: "projection selection anchor viewport 中文 😀.\r\n\r\n", count: 8)
+                + (section % 3 == 0
+                    ? "> [!NOTE] **Stress callout \(section)**\r\n> preserved source range.\r\n\r\n"
+                    : "")
+                + (section % 5 == 0 ? "![[RDF-1 Work Note 003]]\r\n\r\n" : "")
+        }.joined()
+        let harness = EditorHarness(source: source, initialMode: .livePreview)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        for step in 1...12 {
+            _ = try await harness.callPageJavaScript(
+                """
+                const scroller = document.querySelector('.cm-scroller');
+                scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * fraction;
+                scroller.dispatchEvent(new Event('scroll'));
+                """,
+                arguments: ["fraction": Double(step) / 13.0]
+            )
+            try await Task.sleep(for: .milliseconds(30))
+        }
+
+        let samples = try await harness.session.queryPerformanceSamples()
+        let incremental = samples.filter {
+            $0.name == "projection" && $0.observed["viewportIncremental"] == 1
+        }
+        #expect(!incremental.isEmpty)
+        #expect(incremental.allSatisfy { $0.observed["selectionScoped"] == 0 })
+        #expect(
+            incremental.contains {
+                ($0.observed["projectionWindowUTF16Count"] ?? .infinity) < Double(source.utf16.count)
+            })
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+    }
+
+    @Test("A lost commit acknowledgement can be replayed without replacing later input", arguments: [false, true])
+    func lostCommitAcknowledgementCanBeReplayed(withLaterInput: Bool) async throws {
+        let source = "Original.\r\n"
+        let dispatcher = LostCommitReplyBridgeDispatcher()
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.perform(.pastePlain, argument: "saved ")
+        let saved = try await harness.session.currentText(for: harness.documentID)
+        let fingerprint = DocumentFingerprint(content: saved)
+        dispatcher.dropNextCommitReply = true
+        do {
+            _ = try await harness.session.acknowledgeCommittedSnapshot(
+                expectedText: saved, committedText: saved,
+                fingerprint: fingerprint, documentID: harness.documentID
+            )
+            Issue.record("The injected lost reply unexpectedly succeeded")
+        } catch LostCommitReplyBridgeDispatcher.LostReply.afterExecution {
+            #expect(harness.session.startingFingerprint != fingerprint.sha256)
+        }
+        if withLaterInput {
+            _ = try await harness.callPageJavaScript(
+                """
+                const transfer = new DataTransfer();
+                transfer.setData('text/plain', 'later ');
+                document.querySelector('.cm-content').dispatchEvent(
+                  new ClipboardEvent('paste', {bubbles: true, cancelable: true, clipboardData: transfer}));
+                """
+            )
+        }
+        let outcome = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: saved, committedText: saved,
+            fingerprint: fingerprint, documentID: harness.documentID
+        )
+        #expect(outcome == (withLaterInput ? .superseded : .clean))
+        #expect(harness.session.isDirty == withLaterInput)
+        let current = try await harness.session.currentText(for: harness.documentID)
+        #expect(current == (withLaterInput ? "saved later " + source : saved))
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class LostCommitReplyBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        enum LostReply: Error { case afterExecution }
+        var dropNextCommitReply = false
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if dropNextCommitReply, case .acknowledgeCommittedSnapshot = request.operation {
+                dropNextCommitReply = false
+                throw LostReply.afterExecution
+            }
+            return result
+        }
+    }
+
+    @Test("An expired native command cannot execute after cancelled composition")
+    func expiredCommandCannotOutliveCompositionWait() async throws {
+        let source = "Untouched exact source.\r\n"
+        var policy = ScholiumLifecyclePolicy()
+        policy.bridgeRequest = .milliseconds(500)
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
+            lifecyclePolicy: policy
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.testingDispatchCompositionEvent("compositionstart")
+        do {
+            try await harness.session.perform(.pastePlain, argument: "EXPIRED")
+            Issue.record("The composition-held command unexpectedly completed")
+        } catch let error as ScholiumWindowLifecycleError {
+            #expect(error == .timedOut(.bridgeRequest))
+        } catch MarkdownEditorSession.SessionError.bridgeRejected(let message) {
+            #expect(message == "editor request expired")
+        }
+        // No text was committed by this synthetic composition. The old
+        // generation therefore still matches and cannot be the rejection gate.
+        try await harness.session.testingDispatchCompositionEvent("compositionend")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        try await harness.session.perform(.pastePlain, argument: "CURRENT")
+        #expect(try await harness.session.currentText(for: harness.documentID) == "CURRENT" + source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Malformed or inconsistent full snapshots cannot change the checked mirror")
+    func invalidFullSnapshotPreservesCheckedSource() async throws {
+        let source = "Original bytes.\r\n"
+        let dispatcher = InvalidSnapshotBridgeDispatcher()
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        for corruption in InvalidSnapshotBridgeDispatcher.Corruption.allCases {
+            dispatcher.corruption = corruption
+            do {
+                _ = try await harness.session.currentText(for: harness.documentID)
+                Issue.record("An invalid snapshot unexpectedly entered source authority")
+            } catch MarkdownEditorSession.SessionError.invalidResult {
+                #expect(harness.session.checkedSource.utf8.elementsEqual(source.utf8))
+                #expect(harness.session.generation == 0)
+            }
+        }
+        dispatcher.corruption = nil
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A detachment snapshot freezes input until its matching transition resumes")
+    func detachmentCaptureOwnsInputUntilResume() async throws {
+        let source = "\u{FEFF}原文 e\u{301} 🙂\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.perform(.pastePlain, argument: "retained ")
+        let before = try await harness.session.currentText(for: harness.documentID)
+        try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+        let suspensionID = try #require(harness.session.detachmentSuspensionID)
+        do {
+            try await harness.session.perform(.pastePlain, argument: "FORBIDDEN")
+            Issue.record("A frozen document accepted a source command")
+        } catch MarkdownEditorSession.SessionError.bridgeRejected {
+            #expect(harness.session.checkedSource.utf8.elementsEqual(before.utf8))
+        }
+        try await harness.session.resumeAfterDetachment(suspensionID: suspensionID)
+        try await harness.session.perform(.pastePlain, argument: "resumed ")
+        let after = try await harness.session.currentText(for: harness.documentID)
+        #expect(after.contains("resumed "))
+        #expect(!after.contains("FORBIDDEN"))
+        #expect(after.hasSuffix(source))
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class InvalidSnapshotBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        enum Corruption: CaseIterable { case sameGeneration, selection, oversized }
+        var corruption: Corruption?
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let raw = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            guard case .queryText = request.operation, let corruption,
+                var result = raw as? [String: Any]
+            else { return raw }
+            result["text"] = "Corrupt source"
+            switch corruption {
+            case .sameGeneration:
+                break
+            case .selection:
+                result["resultingGeneration"] = request.knownGeneration + 1
+                result["selections"] = [["anchor": -1, "head": -1]]
+                result.removeValue(forKey: "context")
+            case .oversized:
+                result["resultingGeneration"] = request.knownGeneration + 1
+                result["text"] = String(repeating: "x", count: MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 1)
+            }
+            return result
+        }
+    }
+
+    @Test(
+        "Native text drag payloads preserve internal move, Option-copy and exact Undo",
+        arguments: [MarkdownEditorMode.livePreview, .source], [false, true])
+    func nativeTextDragPreservesPayloadAndExactUndo(mode: MarkdownEditorMode, copy: Bool) async throws {
+        let source = "Selected passage remains.\n\nOther paragraph."
+        let harness = EditorHarness(
+            source: source, initialMode: mode, initialSourceRange: 0..<8,
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(mode)
+        try await harness.waitUntilSelection(head: 8)
+        try await harness.session.focusAndWait()
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                await document.fonts.ready;
+                const selected = window.getSelection();
+                const rect = selected.getRangeAt(0).getClientRects()[0];
+                const x = rect.left + 1, y = rect.top + rect.height / 2;
+                const target = document.elementFromPoint(x, y);
+                const content = document.querySelector('.cm-content');
+                target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, altKey: copy, clientX: x, clientY: y}));
+                const rootIsNative = !content.hasAttribute('draggable');
+                const data = new DataTransfer();
+                let dragImageCalls = 0;
+                Object.defineProperty(data, 'setDragImage', {value: () => { dragImageCalls++; }});
+                const previewObserver = new MutationObserver(() => {});
+                previewObserver.observe(document.body, {childList: true});
+                // DOM dispatch checks our payload and ownership contract. The OS
+                // owns gesture recognition and timing; this does not simulate it.
+                content.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
+                    dataTransfer: data, altKey: copy, clientX: x, clientY: y}));
+                const previewNodes = previewObserver.takeRecords()
+                    .reduce((count, record) => count + record.addedNodes.length, 0);
+                previewObserver.disconnect();
+                const nativeDuringDrag = !content.hasAttribute('draggable');
+                const text = data.getData('text/plain');
+                const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+                let endNode, endOffset;
+                while ((endNode = walker.nextNode())) {
+                    const index = endNode.nodeValue.indexOf('Other paragraph.');
+                    if (index >= 0) { endOffset = index + 'Other paragraph.'.length; break; }
+                }
+                if (!endNode) throw new Error('Missing visible drop target');
+                const caret = document.createRange();
+                caret.setStart(endNode, endOffset - 1);
+                caret.setEnd(endNode, endOffset);
+                const endRect = caret.getBoundingClientRect();
+                if (!endRect.width || !endRect.height) throw new Error('Missing drop target geometry');
+                content.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true,
+                    dataTransfer: data, altKey: copy,
+                    clientX: endRect.right, clientY: endRect.top + endRect.height / 2}));
+                content.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
+                document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
+                return {text, rootIsNative: String(rootIsNative), nativeDuringDrag: String(nativeDuringDrag),
+                    dragImageCalls: String(dragImageCalls), previewNodes: String(previewNodes),
+                    rootStillNative: String(!content.hasAttribute('draggable'))};
+                """, arguments: ["copy": copy]) as? [String: String])
+        #expect(result["text"] == "Selected")
+        #expect(result["rootIsNative"] == "true")
+        #expect(result["nativeDuringDrag"] == "true")
+        #expect(result["rootStillNative"] == "true")
+        #expect(result["dragImageCalls"] == "0")
+        #expect(result["previewNodes"] == "0")
+        let expected = copy ? source + "Selected" : " passage remains.\n\nOther paragraph.Selected"
+        let movedSource = try await harness.session.currentText()
+        #expect(movedSource == expected)
+        let undoHandled =
+            try await harness.callPageJavaScript(
+                """
+                const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90,
+                    which: 90, metaKey: true, bubbles: true, cancelable: true});
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """, arguments: [:]) as? Bool
+        #expect(undoHandled == true)
+        #expect(try await harness.session.currentText() == source)
+        let ordinarySelection = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const selected = window.getSelection();
+                const rect = selected.getRangeAt(0).getClientRects()[0];
+                const target = document.elementFromPoint(rect.left + 1, rect.top + rect.height / 2);
+                target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, clientX: rect.left + 1, clientY: rect.top + rect.height / 2}));
+                document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
+                const collapsed = selected.isCollapsed;
+                document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, which: 39,
+                    shiftKey: true, bubbles: true, cancelable: true}));
+                return {collapsed, selectedLength: selected.toString().length};
+                """, arguments: [:]) as? [String: Any])
+        #expect(ordinarySelection["collapsed"] as? Bool == true)
+        #expect(ordinarySelection["selectedLength"] as? Int == 1)
+        await harness.closeAndDrain()
+    }
+
+    @Test(
+        "Heading transfers preserve complete Markdown lines and exact partial text",
+        arguments: [MarkdownEditorMode.livePreview, .source], ["heading", "headingAndParagraph", "partial"])
+    func headingTextTransferPreservesSourceStructure(mode: MarkdownEditorMode, scope: String) async throws {
+        let heading = "##   Moved 中文 title\r\n"
+        let paragraph = "Moved paragraph.\r\n"
+        let source = heading + paragraph + "\r\n# Target heading\r\nTail.\r\n"
+        let structural = scope != "partial"
+        let selectedRange: Range<Int> =
+            structural
+            ? 0..<(heading.utf16.count + (scope == "headingAndParagraph" ? paragraph.utf16.count : 0))
+            : 5..<10
+        let payload = (source as NSString).substring(with: NSRange(selectedRange))
+        let target = (source as NSString).range(of: structural ? "# Target heading" : "Target heading").location
+        let removed = (source as NSString).replacingCharacters(in: NSRange(selectedRange), with: "")
+        let expected = (removed as NSString).replacingCharacters(
+            in: NSRange(location: target - selectedRange.count, length: 0), with: payload)
+        let tail = (source as NSString).range(of: "Tail.").location
+        let harness = EditorHarness(
+            source: source, initialMode: mode,
+            initialSourceRange: mode == .source ? selectedRange : tail..<tail,
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(mode)
+        try await harness.session.focusAndWait()
+
+        if mode == .livePreview {
+            // Select rendered text using CodeMirror's real pointer path. The
+            // complete-heading case deliberately starts after its hidden marker.
+            // Source mode above instead selects an explicit exact source range.
+            _ = try await harness.callPageJavaScript(
+                """
+                await document.fonts.ready;
+                const content = document.querySelector('.cm-content');
+                const point = (text, end) => {
+                    for (const line of content.querySelectorAll('.cm-line')) {
+                        const index = line.textContent.indexOf(text);
+                        if (index < 0) continue;
+                        let offset = index + (end ? text.length - 1 : 0);
+                        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                        let node;
+                        while ((node = walker.nextNode())) {
+                            if (offset >= node.length) { offset -= node.length; continue; }
+                            const range = document.createRange();
+                            range.setStart(node, offset); range.setEnd(node, offset + 1);
+                            const box = range.getBoundingClientRect();
+                            if (!box.width || !box.height) break;
+                            return {x: end ? box.right - 0.2 : box.left + 0.2,
+                                y: box.top + box.height / 2, target: node.parentElement};
+                        }
+                    }
+                    throw new Error('Missing selection text: ' + text);
+                };
+                const start = point('Moved 中文 title', false);
+                const end = point(scope === 'headingAndParagraph' ? 'Moved paragraph.'
+                    : scope === 'partial' ? 'Moved' : 'Moved 中文 title', true);
+                start.target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, clientX: start.x, clientY: start.y}));
+                document.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, clientX: end.x, clientY: end.y}));
+                document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 0, clientX: end.x, clientY: end.y}));
+                await new Promise(resolve => setTimeout(resolve, 60));
+                """, arguments: ["scope": scope])
+        }
+        let map = EditorSourceOffsetMap(source: source)
+        let selectedHead = try #require(map.editorUTF16Offset(forSourceUTF16Offset: selectedRange.upperBound))
+        let selectedAnchor = try #require(map.editorUTF16Offset(forSourceUTF16Offset: selectedRange.lowerBound))
+        try await harness.waitUntilSelection(head: selectedHead, stage: "completed heading transfer selection")
+        #expect(harness.session.context?.selections == [MarkdownEditorSelectionRange(anchor: selectedAnchor, head: selectedHead)])
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+
+        let transfer = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                const locate = text => {
+                    for (const line of content.querySelectorAll('.cm-line')) {
+                        let offset = line.textContent.indexOf(text);
+                        if (offset < 0) continue;
+                        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                        let node;
+                        while ((node = walker.nextNode())) {
+                            if (offset >= node.length) { offset -= node.length; continue; }
+                            const range = document.createRange();
+                            range.setStart(node, offset); range.setEnd(node, offset + 1);
+                            const rect = range.getBoundingClientRect();
+                            if (!rect.width || !rect.height) break;
+                            return {node, rect};
+                        }
+                    }
+                    throw new Error('Missing transfer text: ' + text);
+                };
+                const start = locate('Moved 中文 title');
+                const x = start.rect.left + 1, y = start.rect.top + start.rect.height / 2;
+                start.node.parentElement.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
+                const data = new DataTransfer();
+                content.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
+                    dataTransfer: data, clientX: x, clientY: y}));
+                const payload = data.getData('text/plain');
+                const target = locate(structural && !edit ? '# Target heading' : 'Target heading');
+                let dropX = target.rect.left + 0.2;
+                let dropY = target.rect.top + target.rect.height / 2;
+                if (structural && edit) {
+                    const line = target.node.parentElement.closest('.cm-live-heading');
+                    const top = parseFloat(getComputedStyle(line).paddingTop);
+                    if (!(top > 0)) throw new Error('Fixture has no target heading padding');
+                    dropY = line.getBoundingClientRect().top + top / 2;
+                }
+                content.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true,
+                    dataTransfer: data, clientX: dropX, clientY: dropY}));
+                content.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true,
+                    dataTransfer: data, clientX: dropX, clientY: dropY}));
+                content.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
+                document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
+                return payload;
+                """, arguments: ["structural": structural, "edit": mode == .livePreview]) as? String)
+        #expect(transfer == payload.replacingOccurrences(of: "\r\n", with: "\n"))
+        #expect(Data(try await harness.session.currentText().utf8) == Data(expected.utf8))
+        let handled =
+            try await harness.callPageJavaScript(
+                """
+                const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                    metaKey: true, bubbles: true, cancelable: true});
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """) as? Bool
+        #expect(handled == true)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test(
+        "DOM text drops preserve the old selection, restore focus and isolate exact Undo",
+        arguments: [MarkdownEditorMode.livePreview, .source])
+    func textDropDOMEventsPreserveSelectionAndExactUndo(mode: MarkdownEditorMode) async throws {
+        let source = "\u{FEFF}Selected passage remains.\r\n\r\nDrop target remains.\nTail."
+        let droppedText = "新😀e\u{301}\n段 "
+        let target = (source as NSString).range(of: "Drop target remains.")
+        let expected = (source as NSString).replacingCharacters(
+            in: NSRange(location: target.location, length: 0),
+            with: droppedText.replacingOccurrences(of: "\n", with: "\r\n"))
+        let harness = EditorHarness(
+            source: source, initialMode: mode, initialSourceRange: 1..<9,
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(mode)
+        try await harness.waitUntilSelection(head: 9)
+        let webView = try #require(harness.session.webView)
+        webView.window?.makeKeyAndOrderFront(nil)
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilFocused()
+        let originalSelection = harness.session.context?.selections
+
+        // This exercises real WebKit DOM events and CodeMirror coordinates,
+        // not an operating-system drag gesture or an installed input method.
+        func dispatchDrop(duringComposition: Bool) async throws -> [String: Any] {
+            let value = try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                if (!content) throw new Error('Missing editor content');
+                await document.fonts.ready;
+                const frame = () => Promise.race([
+                  new Promise(resolve => requestAnimationFrame(resolve)),
+                  new Promise(resolve => setTimeout(resolve, 50))
+                ]);
+                await frame();
+                const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+                let node, offset = -1;
+                while ((node = walker.nextNode())) {
+                  offset = node.nodeValue.indexOf('Drop target remains.');
+                  if (offset >= 0) break;
+                }
+                if (!node) throw new Error('Drop target has no visible source text');
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                const rect = range.getBoundingClientRect();
+                if (!rect.width || !rect.height) throw new Error('Drop target has no text geometry');
+                const x = rect.left + Math.min(0.5, rect.width / 4);
+                const y = (rect.top + rect.bottom) / 2;
+                const transfer = new DataTransfer();
+                transfer.setData('text/plain', droppedText);
+                transfer.effectAllowed = 'copy';
+                const event = name => new DragEvent(name, {
+                  dataTransfer: transfer, clientX: x, clientY: y,
+                  bubbles: true, cancelable: true
+                });
+                const externalFocus = document.createElement('button');
+                externalFocus.textContent = 'Fixture focus outside the editor';
+                externalFocus.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0';
+                document.body.appendChild(externalFocus);
+                try {
+                  if (duringComposition) {
+                    content.dispatchEvent(new CompositionEvent('compositionstart', {bubbles: true}));
+                  } else {
+                    externalFocus.focus();
+                    if (document.activeElement !== externalFocus) throw new Error('Could not leave editor focus');
+                  }
+                  content.dispatchEvent(event('dragover'));
+                  await frame();
+                  const cursorBefore = document.querySelectorAll('.cm-dropCursor').length;
+                  const drop = event('drop');
+                  content.dispatchEvent(drop);
+                  await frame();
+                  await frame();
+                  return {
+                    consumed: drop.defaultPrevented,
+                    cursorBefore,
+                    cursorAfter: document.querySelectorAll('.cm-dropCursor').length,
+                    activeEditor: document.activeElement === content
+                  };
+                } finally {
+                  externalFocus.remove();
+                  if (duringComposition) {
+                    content.dispatchEvent(new CompositionEvent('compositionend', {bubbles: true}));
+                    await frame();
+                  }
+                }
+                """,
+                arguments: ["droppedText": droppedText, "duringComposition": duringComposition])
+            return try #require(value as? [String: Any])
+        }
+
+        let rejected = try await dispatchDrop(duringComposition: true)
+        #expect(rejected["consumed"] as? Bool == true)
+        #expect(rejected["cursorAfter"] as? Int == 0)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        #expect(harness.session.context?.selections == originalSelection)
+        #expect(harness.session.generation == 0)
+
+        let accepted = try await dispatchDrop(duringComposition: false)
+        #expect(accepted["consumed"] as? Bool == true)
+        #expect(accepted["cursorBefore"] as? Int == 1)
+        #expect(accepted["cursorAfter"] as? Int == 0)
+        #expect(accepted["activeEditor"] as? Bool == true)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(expected.utf8))
+        #expect(harness.session.generation == 1)
+
+        func historyKey(redo: Bool) async throws {
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const event = new KeyboardEvent('keydown', {
+                      key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                      metaKey: true, shiftKey: redo, bubbles: true, cancelable: true
+                    });
+                    document.querySelector('.cm-content').dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: ["redo": redo]) as? Bool
+            #expect(handled == true)
+        }
+        try await historyKey(redo: false)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        #expect(harness.session.context?.selections == originalSelection)
+        try await historyKey(redo: true)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(expected.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test(
+        "Deleting and undoing a line break restores its exact original bytes",
+        arguments: [
+            "one\r\ntwo", "one\r\ntwo\nthree\rfour",
+        ])
+    func newlineUndoRestoresExactSourceBytes(source: String) async throws {
+        let harness = EditorHarness(source: source, initialMode: .source, initialSourceRange: 3..<5)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        // Source offsets include both CRLF bytes; the editor owns one logical
+        // newline. Delete that newline through its actual keyboard binding.
+        try await harness.waitUntilSelection(head: 4)
+        try await harness.session.testingPressBackspace()
+        let deleted = (source as NSString).replacingCharacters(in: NSRange(location: 3, length: 2), with: "")
+        #expect(Data(try await harness.session.currentText().utf8) == Data(deleted.utf8))
+
+        func historyKey(redo: Bool) async throws {
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const event = new KeyboardEvent('keydown', {
+                      key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                      metaKey: true, shiftKey: redo, bubbles: true, cancelable: true
+                    });
+                    document.querySelector('.cm-content').dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: ["redo": redo]) as? Bool
+            #expect(handled == true)
+        }
+
+        try await historyKey(redo: false)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        #expect(harness.session.context?.selections == [MarkdownEditorSelectionRange(anchor: 3, head: 4)])
+        try await historyKey(redo: true)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(deleted.utf8))
+        try await historyKey(redo: false)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Return in a CRLF list creates a separate logical line and preserves CRLF bytes")
+    func crlfListReturnCreatesLogicalLine() async throws {
+        let source = "- first\r\n- second"
+        let expected = source + "\r\n- "
+        let harness = EditorHarness(
+            source: source, initialMode: .source,
+            initialSourceRange: source.utf16.count..<source.utf16.count)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: source.utf16.count - 1)
+        try await harness.session.testingPressEnter()
+        #expect(Data(try await harness.session.currentText().utf8) == Data(expected.utf8))
+        try await harness.waitUntilSelection(head: expected.utf16.count - 2)
+        #expect(harness.session.context?.undoLabel == "Continue List")
+        // Command acknowledgements update the selection before the coalesced
+        // interaction report publishes native logical-line metadata.
+        let lineReportDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.lineCount != 3 || harness.session.line != 3 {
+            guard ContinuousClock.now < lineReportDeadline else {
+                Issue.record(
+                    "CRLF Return did not report logical line 3 of 3; received \(harness.session.line) of \(harness.session.lineCount).")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.lineCount == 3)
+        #expect(harness.session.line == 3)
+        try await harness.session.perform(.pastePlain, argument: "third")
+        #expect(Data(try await harness.session.currentText().utf8) == Data((expected + "third").utf8))
+        harness.session.goToLine(2)
+        try await harness.waitUntilSelection(head: 8, stage: "second CRLF logical line")
+        await harness.closeAndDrain()
+    }
+
+    @Test(
+        "A block command excludes the next line at a half-open selection boundary",
+        arguments: [
+            "two\n", "```swift\nlet value = 1\n```\n",
+        ])
+    func blockCommandPreservesNextUnselectedLine(suffix: String) async throws {
+        let source = "one\n" + suffix
+        let harness = EditorHarness(source: source, initialMode: .source, initialSourceRange: 0..<4)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: 4)
+        try await harness.session.perform(.bulletList)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(("- one\n" + suffix).utf8))
+        #expect(harness.session.generation == 1)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Replace All rejects an oversized result before changing source or editing history")
+    func replaceAllRejectsOversizedResultBeforeMutation() async throws {
+        // The request and initial document are small. The 10 MB candidate
+        // exceeds the 8 MB source limit only after expanding all matches.
+        let source = String(repeating: "x", count: 10_000)
+        let harness = EditorHarness(source: source, initialMode: .source, initialSourceRange: 4..<7)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: 7)
+        let selection = harness.session.context?.selections
+        let generation = harness.session.generation
+        let undo = harness.session.context?.undoLabel
+        do {
+            _ = try await harness.session.performDocumentFind(
+                .init(
+                    query: "x", replacement: String(repeating: "y", count: 1_000),
+                    caseSensitive: true, wholeWord: false, action: .replaceAll))
+            Issue.record("Replace All accepted a candidate larger than the source limit.")
+        } catch MarkdownEditorSession.SessionError.bridgeRejected(let message) {
+            #expect(!message.isEmpty)
+        }
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undo)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("System Accent refresh reaches the retained editor without changing source or selection")
+    func nativeSystemAccentRefreshPreservesEditor() async throws {
+        let source = "# Accent\r\n\r\nA selected passage 😀.\r\n"
+        let harness = EditorHarness(source: source, initialSourceRange: 15..<23)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let container = try #require(webView.superview as? DocumentWebViewContainer)
+        let selection = harness.session.context?.selections
+
+        func waitForNativeAccent() async throws {
+            let expected = String(
+                format: "#%06x",
+                ScholiumColorRole.systemAccentRGBValue(for: webView.effectiveAppearance)
+            )
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                let actual =
+                    try await harness.callPageJavaScript(
+                        "return document.documentElement.style.getPropertyValue('--scholium-color-accent');"
+                    ) as? String
+                if actual == expected { return }
+                if clock.now >= deadline {
+                    Issue.record("The editor did not receive AppKit's current system Accent.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        // An explicit native projection is required even on a machine whose
+        // current Accent happens to match WebKit's default blue.
+        try await waitForNativeAccent()
+        _ = try await harness.callPageJavaScript(
+            "document.documentElement.style.removeProperty('--scholium-color-accent');"
+        )
+        NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+        try await waitForNativeAccent()
+
+        container.appearance = NSAppearance(named: .darkAqua)
+        try await waitForNativeAccent()
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        try await waitForNativeAccent()
+        #expect(harness.session.webView === webView)
+        #expect(harness.session.context?.selections == selection)
+        #expect(try await harness.session.currentText() == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Adding a paragraph anchor preserves selection and has its own Undo action")
+    func paragraphAnchorPreservesSelection() async throws {
+        let source = "A paragraph 😀.\r\n\r\nFollowing."
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let web = try #require(harness.session.webView)
+        let selection = harness.session.context?.selections
+        let end = (source as NSString).range(of: "\r\n").location
+        let result = try await harness.session.send(
+            .replacePassage(
+                expectedText: source, fromUTF16: end, toUTF16: end,
+                replacement: " ^one", preserveSelection: true), in: web)
+        #expect(result.sourceChanged && result.undoLabel == "Create Paragraph Link")
+        #expect(try await harness.session.currentText() == "A paragraph 😀. ^one\r\n\r\nFollowing.")
+        #expect(harness.session.context?.selections == selection)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A paragraph anchor commit survives loss of the editor before save acknowledgement")
+    func paragraphAnchorCommitBeforeEditorLoss() async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/paragraph-save-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
+        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let original = "A claim.\n"
+        let candidate = "A claim. ^claim\n"
+        let file = vaults[1].appendingPathComponent("Source.md")
+        try Data(original.utf8).write(to: file)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Paragraph save fixture")
+            let sourceVault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
+            let snapshot = try #require(sourceVault.documents.first { $0.id.relativePath == "Source.md" })
+            let controller = DocumentController()
+            controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
+            let descriptor = try #require(controller.activeDocument)
+            let session = controller.session(for: descriptor)
+            controller.beginEditing(
+                session: session, target: .workspace(descriptor.sessionKey), source: original,
+                revision: snapshot.fingerprint, mode: .source)
+            let harness = EditorHarness(
+                source: original, usesSessionDocumentIdentity: true,
+                suppliedSession: session.editorSession, initialMode: .source)
+            defer {
+                harness.close()
+                session.cancelScheduledWork()
+            }
+            try await harness.waitUntilReady()
+            let web = try #require(session.editorSession.webView)
+            controller.bind(
+                to: capabilities.documents,
+                documentDidCommit: { _ in
+                    // The repository has returned the durable revision. Remove the
+                    // actual WebKit endpoint before performEditingSave sends its ack.
+                    session.editorSession.detach(web)
+                })
+            _ = try await session.editorSession.send(
+                .replacePassage(
+                    expectedText: original, fromUTF16: 8, toUTF16: 8,
+                    replacement: " ^claim", preserveSelection: true), in: web)
+            var confirmed: [String] = []
+            await #expect(throws: (any Error).self) {
+                try await controller.flushForExternalOperation(
+                    session: session, target: .workspace(descriptor.sessionKey),
+                    onCommitted: { confirmed.append($0.rawContent) })
+            }
+            #expect(confirmed == [candidate])
+            #expect(try Data(contentsOf: file) == Data(candidate.utf8))
+            #expect(session.originalEditingSource == candidate)
+            #expect(session.editError != nil)
+            await harness.closeAndDrain()
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    @Test("A production document identity preserves Undo and selection across WebView transfer")
+    func productionIdentitySurvivesTransfer() async throws {
+        let source = "# Fixture\n\nOriginal text."
+        let harness = EditorHarness(source: source, usesSessionDocumentIdentity: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let identity = harness.session.bridgeDocumentID
+        let transport = harness.session.sessionID
+        let web = try #require(harness.session.webView)
+        _ = try await harness.session.send(
+            .replacePassage(
+                expectedText: source, fromUTF16: 0, toUTF16: source.utf16.count,
+                replacement: source + " Added 😀.", preserveSelection: false
+            ), in: web)
+        let expected = try await harness.session.currentText()
+        let selection = harness.session.context?.selections
+        _ = try #require(harness.session.context?.undoLabel)
+        try await harness.session.captureStateForViewReconstruction()
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+        #expect(harness.session.sessionID != transport)
+        #expect(harness.session.bridgeDocumentID == identity)
+        #expect(try await harness.session.currentText() == expected)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel != nil)
+        _ = try await harness.callPageJavaScript(
+            """
+            document.querySelector('.cm-content')?.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                metaKey: true, bubbles: true, cancelable: true
+            }));
+            """)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while try await harness.session.currentText() != source, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(try await harness.session.currentText() == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Adoption crosses the real typed bridge and rejects the superseded source")
+    func adoptExactPassage() async throws {
+        let source = "\u{FEFF}---\r\nunknown: 'keep'\r\n---\n原文 😀。\r\n尾段\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let range = (source as NSString).range(of: "原文 😀。")
+        let web = try #require(harness.session.webView)
+        let operation = MarkdownEditorOperation.replacePassage(
+            expectedText: source,
+            fromUTF16: range.location, toUTF16: NSMaxRange(range), replacement: "新的原文 😀。", preserveSelection: false)
+        let encoded = try JSONEncoder().encode(operation)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == operation)
+        let result = try await harness.session.send(operation, in: web)
+        #expect(result.sourceChanged && result.undoLabel == "Adopt Suggestion")
+        let expected = source.replacingOccurrences(of: "原文 😀。", with: "新的原文 😀。")
+        #expect(try await harness.session.currentText() == expected)
+        do {
+            _ = try await harness.session.send(operation, in: web)
+            Issue.record("An old source revision must not replace later writing")
+        } catch {}
+        #expect(try await harness.session.currentText() == expected)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Chat source return aligns native DOM selection in Edit and Source")
+    func sourceReturnNativeSelection() async throws {
+        let source = "\u{FEFF}---\r\nsummary: Synthetic fixture\r\n---\r\n\r\n# 正文标题\r\n\r\n文件名、正文标题 😀与来源标题。\r\n"
+        let excerpt = "正文标题 😀"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let expected = (source as NSString).range(of: excerpt)
+        let request = DocumentSourceLocationRequest(
+            id: UUID(),
+            target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"), line: 7,
+            range: SearchSourceRange(
+                utf16LowerBound: expected.location,
+                utf16UpperBound: NSMaxRange(expected), line: 7, column: 5, endLine: 7, endColumn: 12),
+            requiresExactSelection: true, sourceFingerprint: DocumentFingerprint(content: source).sha256)
+        for mode in [MarkdownEditorMode.livePreview, .source] {
+            harness.session.setMode(mode)
+            try await harness.waitUntilPresentedMode(mode)
+            try await harness.session.revealSourceLocation(request)
+            let snapshot = try await harness.session.selectedSourceSnapshot()
+            let nativeText = try await harness.callPageJavaScript("return window.getSelection()?.toString();") as? String
+            #expect(nativeText == excerpt && snapshot.excerpt == excerpt)
+            #expect(snapshot.source == source && !harness.session.isDirty)
+            #expect(snapshot.sourceRange.utf16LowerBound == expected.location)
+            #expect(snapshot.sourceRange.utf16UpperBound == NSMaxRange(expected))
+        }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Source navigation maps CRLF and Unicode exactly and rejects a changed revision")
+    func revisionBoundSourceNavigation() async throws {
+        let source = "\u{FEFF}# Fixture\r\n\r\n中文 😀 same same\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let match = (source as NSString).range(of: "same", options: .backwards)
+        let range = SearchSourceRange(
+            utf16LowerBound: match.location, utf16UpperBound: NSMaxRange(match),
+            line: 3, column: 1, endLine: 3, endColumn: 1)
+        let request = DocumentSourceLocationRequest(
+            id: UUID(), target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"),
+            line: 3, range: range, requiresExactSelection: true, sourceFingerprint: DocumentFingerprint(content: source).sha256)
+        let webView = try #require(harness.session.webView)
+        let window = try #require(webView.window)
+        let input = NSTextView(frame: NSRect(x: 0, y: 0, width: 100, height: 40))
+        window.contentView?.addSubview(input)
+        #expect(window.makeFirstResponder(input))
+        try await harness.session.revealSourceLocation(request)
+        let responder = try #require(window.firstResponder as? NSView)
+        #expect(responder === webView || responder.isDescendant(of: webView))
+        let snapshot = try await harness.session.selectedSourceSnapshot()
+        #expect(snapshot.excerpt == "same" && snapshot.sourceRange.utf16LowerBound == match.location)
+        #expect(snapshot.source == source)
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'changed');")
+        let changed = try await harness.session.currentText(for: harness.documentID)
+        let selection = harness.session.context?.selections
+        #expect(window.makeFirstResponder(input))
+        do {
+            try await harness.session.revealSourceLocation(request)
+            Issue.record("An obsolete source range was applied")
+        } catch DocumentSourceLocationFailure.sourceChanged {}
+        #expect(window.firstResponder === input)
+        #expect(harness.session.context?.selections == selection)
+        #expect(try await harness.session.currentText(for: harness.documentID) == changed)
+        input.removeFromSuperview()
+        await harness.closeAndDrain()
+    }
+
+    @Test("Chat receives the current unsaved Unicode selection without changing source or Undo")
+    func chatSelectionSnapshot() async throws {
+        let source = "\u{FEFF}# Fixture\r\n\r\n中文 😀 passage\r\nnext line\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        harness.session.goToLine(3)
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '未保存 ');")
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !harness.session.isDirty && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        let unsaved = try await harness.session.currentText(for: harness.documentID)
+        #expect(unsaved.contains("未保存 "))
+        let excerpt = "中文 😀 passage\r\nnext"
+        let range = try #require(unsaved.range(of: excerpt))
+        let lower = range.lowerBound.utf16Offset(in: unsaved)
+        let upper = range.upperBound.utf16Offset(in: unsaved)
+        let map = EditorSourceOffsetMap(source: unsaved)
+        let expectedHead = try #require(map.editorUTF16Offset(forSourceUTF16Offset: upper))
+        harness.session.revealSourceRange(fromUTF16: try #require(map.editorUTF16Offset(forSourceUTF16Offset: lower)), toUTF16: expectedHead)
+        try await harness.waitUntilSelection(head: expectedHead, stage: "chat selection")
+        let beforeGeneration = harness.session.generation
+        let snapshot = try await harness.session.selectedSourceSnapshot()
+        #expect(snapshot.sourceRange.utf16LowerBound == lower)
+        #expect(snapshot.sourceRange.utf16UpperBound == upper)
+        #expect(snapshot.source == unsaved && snapshot.excerpt == excerpt && snapshot.line == 3)
+        #expect(harness.session.generation == beforeGeneration && harness.session.isDirty)
+        #expect(try await harness.session.currentText(for: harness.documentID) == unsaved)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Writing capture separates current-line retrieval from continuation and retains exact caret receipts")
+    func writingContextCaptureModes() async throws {
+        let source = "\u{FEFF}Before.\r\n\r\n控制😀 e\u{301} 当前行\r\nContinuation.\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let map = EditorSourceOffsetMap(source: source)
+        let lineText = "控制😀 e\u{301} 当前行"
+        let expected = (source as NSString).range(of: lineText)
+        let caret = try #require(map.editorUTF16Offset(forSourceUTF16Offset: NSMaxRange(expected)))
+        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        try await harness.waitUntilSelection(head: caret, stage: "writing-context caret")
+        let generation = harness.session.generation
+        let before = harness.session.context?.selections
+        let line = try await harness.session.writingContextSnapshot(mode: .selectionOrCurrentLine)
+        let point = try #require(line.point)
+        #expect(line.snapshot.excerpt.utf8.elementsEqual(lineText.utf8))
+        #expect(line.snapshot.source.utf8.elementsEqual(source.utf8))
+        #expect(line.snapshot.sourceRange.utf16LowerBound == expected.location)
+        #expect(line.snapshot.sourceRange.utf16UpperBound == NSMaxRange(expected))
+        #expect(point.generation == generation && point.documentID == harness.documentID)
+        #expect(point.selection == .init(anchor: caret, head: caret))
+        #expect(harness.session.acceptsInsertionPoint(point))
+        let paragraph = try await harness.session.writingContextSnapshot(mode: .selectionOrParagraph)
+        #expect(paragraph.snapshot.excerpt == lineText + "\r\nContinuation.\r\n")
+        #expect(paragraph.point == point)
+        #expect(harness.session.context?.selections == before)
+
+        let selectionText = "😀 e\u{301} 当前行\r\nContinuation"
+        let selectedRange = (source as NSString).range(of: selectionText)
+        let from = try #require(map.editorUTF16Offset(forSourceUTF16Offset: selectedRange.location))
+        let to = try #require(map.editorUTF16Offset(forSourceUTF16Offset: NSMaxRange(selectedRange)))
+        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        try await harness.waitUntilSelection(head: to, stage: "writing-context cross-line selection")
+        let selected = try await harness.session.writingContextSnapshot(mode: .selectionOrCurrentLine)
+        #expect(selected.point == nil)
+        #expect(selected.snapshot.excerpt.utf8.elementsEqual(selectionText.utf8))
+        #expect(selected.snapshot.sourceRange.utf16LowerBound == selectedRange.location)
+        #expect(selected.snapshot.sourceRange.utf16UpperBound == NSMaxRange(selectedRange))
+        #expect(!harness.session.acceptsInsertionPoint(point))
+
+        let end = map.editorUTF16Length
+        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end, stage: "writing-context blank trailing line")
+        do {
+            _ = try await harness.session.writingContextSnapshot(mode: .selectionOrCurrentLine)
+            Issue.record("An empty current line must not capture preceding prose")
+        } catch RelatedMaterialsError.invalidSeed {}
+        #expect(harness.session.generation == generation && !harness.session.isDirty)
+        #expect(harness.session.context?.selections == [.init(anchor: end, head: end)])
+        let unchanged = try await harness.session.currentText(for: harness.documentID)
+        #expect(unchanged.utf8.elementsEqual(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Syntax families retain exact source and Callout geometry through entry and exit")
+    func syntaxFamiliesRetainSourceAndCalloutGeometry() async throws {
+        let source =
+            "Lead.\r\n\r\n## 标题 Heading\r\n\r\n**Bold** and *emphasis* and ~~strike~~ and ==mark== and `code`.\r\n\r\n> [!state] Stable Callout\r\n> 中文正文 **reason**.\r\n> Second paragraph.\r\n\r\n> A quotation.\r\n\r\n- [ ] A task\r\n\r\n| A | B |\r\n|---|---|\r\n| 1 | 2 |\r\n\r\n$$\r\nx^2\r\n$$\r\n\r\nAfter.\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        harness.resize(width: 700)
+        try await harness.waitUntilReady()
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        for text in ["Bold", "emphasis", "strike", "mark", "code", "Heading", "reason", "quotation", "A task", "| 1", "x^2", "After"] {
+            let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized)
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset, stage: text)
+            #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        }
+        let unchanged =
+            try await harness.callPageJavaScript(
+                """
+                await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+                const lines = [...document.querySelectorAll('.cm-line.cm-live-callout')];
+                const body = lines.find(line => line.textContent.includes('Second paragraph.'));
+                const scroller = document.querySelector('.cm-scroller');
+                return lines.length === 3 && !!body
+                    && !document.querySelector('.cm-live-callout-widget')
+                    && scroller.scrollWidth <= scroller.clientWidth + 1;
+                """) as? Bool
+        #expect(unchanged == true)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    static let arrivalAnimationProbe = """
+        const marker = document.querySelector('.scholium-arrival-target');
+        const animation = marker.getAnimations().find(a => a.animationName === 'scholium-arrival-fade');
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) return !animation;
+        if (!animation) return false;
+        animation.pause();
+        const sample = time => { animation.currentTime = time; return getComputedStyle(marker).backgroundColor; };
+        const start = sample(0), peak = sample(140), held = sample(700), end = sample(1400);
+        animation.currentTime = 0;
+        animation.play();
+        return start === end && peak === held && peak !== start;
+        """
+
+    @Test("Line arrival expires and repeats in Edit and Source without changing content")
+    func lineArrivalFeedback() async throws {
+        let source = "# First\n\n中文 😀 passage.\n\nSecond passage.\n"
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        for mode in [MarkdownEditorMode.livePreview, .source] {
+            harness.session.setMode(mode)
+            try await harness.waitUntilPresentedMode(mode)
+            _ = try await harness.session.send(.goToLine(3, focusesEditor: false), in: webView)
+            let marked = try await harness.callPageJavaScript("return document.querySelector('.scholium-arrival-target')?.textContent;") as? String
+            #expect(marked?.contains("中文 😀 passage.") == true)
+            #expect(harness.session.presentedMode == mode)
+            #expect(try await harness.callPageJavaScript(Self.arrivalAnimationProbe) as? Bool == true)
+            #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 1)
+            let expirationDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+            var remaining = 1
+            while remaining != 0 && ContinuousClock.now < expirationDeadline {
+                remaining =
+                    try await harness.callPageJavaScript(
+                        "return document.querySelectorAll('.scholium-arrival-target').length;"
+                    ) as? Int ?? -1
+                if remaining != 0 { try await Task.sleep(for: .milliseconds(20)) }
+            }
+            #expect(remaining == 0)
+            _ = try await harness.session.send(.goToLine(3, focusesEditor: false), in: webView)
+            #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 1)
+            _ = try await harness.session.send(.goToLine(5, focusesEditor: false), in: webView)
+            #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 1)
+            #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        }
+    }
+
+    @Test("Document title precedes quiet frontmatter, which stays before the body")
+    func frontmatterFollowsDocumentTitle() async throws {
+        let source = "\u{FEFF}---\r\n# 注释 😀\r\nunknown: 'keep'\r\nsummary: |\r\n  原文\r\n---\r\n# Body\r\n\r\nUntouched body.\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        try await Task.sleep(for: .milliseconds(200))
+        let titleOffset =
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;"
+            ) as? Double
+        let yamlBottom =
+            try await harness.callPageJavaScript(
+                "return Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'), e => e.getBoundingClientRect().bottom - document.querySelector('.cm-scroller').getBoundingClientRect().top));"
+            ) as? Double
+        let yamlTop =
+            try await harness.callPageJavaScript(
+                "return Math.min(...Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'), e => e.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top));"
+            ) as? Double
+        let headingTop =
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.cm-line.cm-live-h1')?.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;"
+            ) as? Double
+        let delimiterCount = try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-yaml-delimiter').length;") as? Int
+        let delimitersQuiet =
+            try await harness.callPageJavaScript(
+                "return Array.from(document.querySelectorAll('.scholium-frontmatter-delimiter-line')).every(line => line.getBoundingClientRect().height > 0.5 && getComputedStyle(line).opacity === '0');"
+            ) as? Bool
+        let renderedLineCount =
+            try await harness.callPageJavaScript("return document.querySelectorAll('[data-scholium-yaml-rendered=\\\"true\\\"]').length;") as? Int
+        #expect((yamlTop ?? -1) >= 0)
+        #expect((titleOffset ?? .greatestFiniteMagnitude) < (yamlTop ?? -1))
+        #expect((yamlBottom ?? .greatestFiniteMagnitude) <= (headingTop ?? -1))
+        #expect(delimiterCount == 2)
+        #expect(delimitersQuiet == true)
+        #expect((renderedLineCount ?? 0) > 0)
+        _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let activeDelimiterCount = try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-yaml-delimiter').length;") as? Int
+        let activeDelimitersVisible =
+            try await harness.callPageJavaScript(
+                "return Array.from(document.querySelectorAll('.scholium-frontmatter-delimiter-line')).every(line => line.getBoundingClientRect().height > 0.5 && getComputedStyle(line).fontSize !== '0px');"
+            ) as? Bool
+        #expect(activeDelimiterCount == 2)
+        #expect(activeDelimitersVisible == true)
+        let controls = try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-frontmatter-entry').length;") as? Int
+        #expect(controls == 0)
+        try await harness.session.focusAndWait()
+        try await harness.session.perform(.pastePlain, argument: "# 新注释 ")
+        let edited = source.replacingOccurrences(of: "# 注释", with: "# 新注释 # 注释")
+        #expect(try await harness.session.currentText(for: harness.documentID) == edited)
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key:'z', code:'KeyZ', metaKey:true, bubbles:true, cancelable:true}));"
+        )
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("Mathematics opening keeps title, YAML, and H1 order after rendering settles")
+    func mathematicsOpeningPreservesFrontmatterOrder() async throws {
+        let source = "---\nsummary: QA\nkeywords: [test]\n---\n# Mathematics\n\nInline $a^2+b^2=c^2$.\n\n$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n\nEnd.\n"
+        let harness = EditorHarness(
+            documentTitle: "Mathematics", source: source,
+            initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        for _ in 0..<5 {
+            let geometry =
+                try await harness.callPageJavaScript(
+                    """
+                    const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                    const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+                    const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
+                    const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+                    const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                    const heading = document.querySelector('.cm-line.cm-live-h1').getBoundingClientRect().top - top;
+                    return JSON.stringify({title, yamlTop, yamlBottom, heading});
+                    """) as? String
+            let payload = try #require(
+                geometry?.data(using: .utf8).flatMap {
+                    try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
+                })
+            #expect((payload["title"] ?? .greatestFiniteMagnitude) < (payload["yamlTop"] ?? -1))
+            #expect((payload["yamlBottom"] ?? .greatestFiniteMagnitude) <= (payload["heading"] ?? -1))
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        try await harness.session.testingApplyScrollFraction(0.8)
+        harness.session.prepareOpeningPresentation()
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+        try await Task.sleep(for: .milliseconds(200))
+        let reopenedGeometry =
+            try await harness.callPageJavaScript(
+                """
+                const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+                const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
+                const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+                const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                const heading = document.querySelector('.cm-line.cm-live-h1').getBoundingClientRect().top - top;
+                return JSON.stringify({title, yamlTop, yamlBottom, heading});
+                """) as? String
+        let reopenedPayload = try #require(
+            reopenedGeometry?.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
+            })
+        #expect((reopenedPayload["title"] ?? .greatestFiniteMagnitude) < (reopenedPayload["yamlTop"] ?? -1))
+        #expect((reopenedPayload["yamlBottom"] ?? .greatestFiniteMagnitude) <= (reopenedPayload["heading"] ?? -1))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("Mixed Chinese and English lines carry presentation language hints without changing source")
+    func mixedScriptPresentationLanguageHints() async throws {
+        let source = "中文 English\n\nEnglish typography\n\n—— 🧭\n"
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let languages =
+            try await harness.callPageJavaScript(
+                """
+                return JSON.stringify([...document.querySelectorAll('.cm-line')]
+                    .map(line => line.getAttribute('lang')));
+                """) as? String
+        let values = try #require(
+            languages?.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [Any?]
+            })
+        #expect(values.contains { ($0 as? String) == "zh-Hans" })
+        #expect(values.contains { ($0 as? String) == "en" })
+        let spacing = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                const style = content ? getComputedStyle(content) : null;
+                return JSON.stringify({
+                  supportsAutoSpace: CSS.supports('text-autospace', 'normal'),
+                  autoSpace: style?.getPropertyValue('text-autospace').trim() || '',
+                  supportsPunctuationTrim: CSS.supports('text-spacing-trim', 'trim-both'),
+                  punctuationTrim: style?.getPropertyValue('text-spacing-trim').trim() || '',
+                  wrapStyle: style?.getPropertyValue('text-wrap-style').trim() || ''
+                });
+                """
+            ) as? String)
+        let spacingValues = try #require(
+            spacing.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+            })
+        if spacingValues["supportsAutoSpace"] as? Bool == true {
+            #expect(spacingValues["autoSpace"] as? String == "normal")
+        }
+        if spacingValues["supportsPunctuationTrim"] as? Bool == true {
+            #expect(spacingValues["punctuationTrim"] as? String == "trim-both")
+        }
+        #expect(spacingValues["wrapStyle"] as? String == "stable")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("Installed body and heading families apply in the live editor without changing source")
+    func installedBodyAndHeadingFontsReachLiveEditor() async throws {
+        let source = "# Heading 标题\n\nBody 正文.\n"
+        var profile = DocumentAppearanceProfile(name: "Installed fonts")
+        profile.settings.body.fontFamily = .init(rawValue: "Helvetica Neue")
+        profile.settings.headings.fontFamily = .init(rawValue: "Songti SC")
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: DocumentAppearanceStyles.css(for: profile),
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let families = try #require(
+            try await harness.callPageJavaScript(
+                """
+                return [getComputedStyle(document.querySelector('.cm-content')).fontFamily,
+                        getComputedStyle(document.querySelector('.cm-live-heading')).fontFamily];
+                """
+            ) as? [String])
+        #expect(families.count == 2)
+        #expect(families[0].hasPrefix("Helvetica Neue,"))
+        #expect(families[1].hasPrefix("Songti SC,"))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("Semantic typefaces keep CJK overrides separate for body and headings")
+    func semanticTypefacesRemainRoleAndScriptScoped() async throws {
+        let source = "正文 *中文 English* and **加粗 text**.\n\n# 标题 中文 English\n"
+        var profile = DocumentAppearanceProfile(name: "Semantic typefaces")
+        profile.settings.body.cjkStrongFontFamily = "Noto Sans CJK SC"
+        profile.settings.body.cjkEmphasisFontFamily = "LXGW WenKai"
+        profile.settings.headings.cjkStrongFontFamily = "Songti SC"
+        profile.settings.headings.cjkEmphasisFontFamily = "STKaiti"
+        profile.settings.headings.style = .italic
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: DocumentAppearanceStyles.css(for: profile),
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let typography = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const emphasis = document.querySelector(
+                  '.cm-live-emphasis .cm-live-cjk, .cm-live-cjk .cm-live-emphasis, .cm-live-emphasis.cm-live-cjk'
+                );
+                const strong = document.querySelector(
+                  '.cm-live-strong .cm-live-cjk, .cm-live-cjk .cm-live-strong, .cm-live-strong.cm-live-cjk'
+                );
+                const heading = document.querySelector(
+                  '.cm-line.cm-live-heading .cm-live-cjk, .cm-live-cjk .cm-line.cm-live-heading'
+                );
+                const style = element => element ? getComputedStyle(element) : null;
+                const emphasisStyle = style(emphasis);
+                const strongStyle = style(strong);
+                const headingStyle = style(heading);
+                return JSON.stringify({
+                  emphasisFont: emphasisStyle?.fontFamily || '',
+                  emphasisStyle: emphasisStyle?.fontStyle || '',
+                  strongFont: strongStyle?.fontFamily || '',
+                  headingFont: headingStyle?.fontFamily || '',
+                  headingStyle: headingStyle?.fontStyle || ''
+                });
+                """
+            ) as? String)
+        let values = try #require(
+            typography.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [String: String]
+            })
+        #expect(values["emphasisFont"]?.contains("LXGW WenKai") == true)
+        #expect(values["emphasisStyle"] == "normal")
+        #expect(values["strongFont"]?.contains("Noto Sans CJK SC") == true)
+        #expect(values["headingFont"]?.contains("STKaiti") == true)
+        #expect(values["headingStyle"] == "normal")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("示例材料 keeps title, rendered frontmatter, and body order across reopening")
+    func exampleMaterialOpeningFrames() async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("TestVaults/01-analyses/示例材料.md"), encoding: .utf8)
+        let harness = EditorHarness(
+            documentID: "示例材料.md", documentTitle: "示例材料", source: source,
+            initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        for opening in 0..<4 {
+            let started = Date()
+            if opening > 0 {
+                harness.session.prepareOpeningPresentation()
+                try await harness.reconstructEditorView()
+            }
+            try await harness.waitUntilReady()
+            print("EXAMPLE_OPENING_MS", opening, Date().timeIntervalSince(started) * 1000)
+            let samples =
+                try await harness.callPageJavaScript(
+                    """
+                    const samples = [];
+                    for (let i = 0; i < 20; i++) {
+                      const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                      const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+                      const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
+                      const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+                      const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                      const heading = document.querySelector('.cm-line.cm-live-h1')?.getBoundingClientRect().top - top;
+                      const renderedYaml = document.querySelectorAll('[data-scholium-yaml-rendered="true"]').length;
+                      const renderedKeys = document.querySelectorAll('.cm-live-yaml-key').length;
+                      samples.push({title, yamlTop, yamlBottom, heading, renderedYaml, renderedKeys});
+                      await Promise.race([new Promise(resolve => requestAnimationFrame(resolve)), new Promise(resolve => setTimeout(resolve, 50))]);
+                    }
+                    return JSON.stringify(samples.filter(s => s.yamlTop < 0 || s.title >= s.yamlTop || typeof s.heading !== "number" || s.yamlBottom > s.heading || s.renderedYaml === 0 || s.renderedKeys === 0));
+                    """) as? String
+            #expect(samples == "[]", "Opening \(opening): \(samples ?? "missing geometry")")
+            #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        }
+    }
+
+    @Test("Native completion displays the current CodeMirror list")
+    func nativeCompletionProjection() async throws {
+        let harness = EditorHarness(source: "\n", laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let owner = try #require(harness.session.webView)
+        owner.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '> [!');")
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while owner.superview?.subviews.contains(where: { $0 is NSGlassEffectView }) != true && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(owner.superview?.subviews.contains { $0 is NSGlassEffectView } == true)
+        let source = "> [!\n"
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let glass = try #require(owner.superview?.subviews.first { $0 is NSGlassEffectView })
+        let content = try #require((glass as? NSGlassEffectView)?.contentView)
+        let fingerprint = DocumentFingerprint(content: source)
+        _ = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: source, committedText: source, fingerprint: fingerprint, documentID: harness.documentID)
+        #expect(glass.superview === owner.superview)
+        #expect((glass as? NSGlassEffectView)?.contentView === content)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let list = try #require(content as? NativeFloatingChoiceList)
+        list.layoutSubtreeIfNeeded()
+        let focus = owner.window?.firstResponder
+        let selection = harness.session.context?.selections
+        let undo = harness.session.context?.undoLabel
+        let rect = list.table.rect(ofRow: 1)
+        let movement = try #require(
+            NSEvent.mouseEvent(
+                with: .mouseMoved,
+                location: list.table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil),
+                modifierFlags: [], timestamp: 0, windowNumber: owner.window?.windowNumber ?? 0,
+                context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+        list.table.mouseMoved(with: movement)
+        let selectionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while list.table.selectedRow != 1 && ContinuousClock.now < selectionDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(list.table.selectedRow == 1)
+        #expect(owner.window?.firstResponder === focus)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let nativeRow = try #require(list.table.rowView(atRow: 1, makeIfNecessary: true))
+        #expect(nativeRow.window === owner.window)
+        // Selection remains active, but the editor's auxiliary list uses the
+        // system secondary treatment even when its window becomes key.
+        nativeRow.isEmphasized = true
+        #expect(!nativeRow.isEmphasized)
+        #expect(nativeRow.isSelected)
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true}));"
+        )
+        let keyboardDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while list.table.selectedRow != 2 && ContinuousClock.now < keyboardDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(list.table.selectedRow == 2)
+        #expect(list.table.selectedRowIndexes == IndexSet(integer: 2))
+        #expect(glass.superview === owner.superview)
+        #expect((glass as? NSGlassEffectView)?.contentView === list)
+        let widthBeforeFiltering = glass.frame.width
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'sta');")
+        let filterDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while list.items.count != 1 && ContinuousClock.now < filterDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(list.items.map(\.label) == ["Statement"])
+        #expect(glass.superview === owner.superview)
+        #expect((glass as? NSGlassEffectView)?.contentView === list)
+        #expect(glass.frame.width == widthBeforeFiltering)
+        #expect(try await harness.session.currentText(for: harness.documentID) == "> [!sta\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Slash candidates retain editor focus through filtering, Backspace, acceptance, and Undo")
+    func nativeSlashCandidatesPreserveEditing() async throws {
+        let harness = EditorHarness(source: "\n", laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let owner = try #require(harness.session.webView)
+        owner.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        try await harness.waitUntilFocused()
+        let focus = owner.window?.firstResponder
+        @MainActor final class MenuTracking { var count = 0 }
+        let menuTracking = MenuTracking()
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+        ) { _ in MainActor.assumeIsolated { menuTracking.count += 1 } }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        func currentList() -> NativeFloatingChoiceList? {
+            owner.superview?.subviews.compactMap { ($0 as? NSGlassEffectView)?.contentView as? NativeFloatingChoiceList }.first
+        }
+        func waitForList(_ labels: [String]?) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while true {
+                let actual = currentList()?.items.map(\.label)
+                if labels == nil ? actual == nil : actual == labels { return }
+                if ContinuousClock.now >= deadline {
+                    Issue.record("Slash candidates did not reach \(String(describing: labels)); found \(String(describing: actual)).")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        func verifyEditing(_ source: String) async throws {
+            #expect(try await harness.session.currentText(for: harness.documentID) == source)
+            #expect(harness.session.checkedSource == source)
+            #expect(owner.window?.firstResponder === focus)
+            #expect(try await harness.session.testingAccessibilitySnapshot().isFocused)
+            #expect(menuTracking.count == 0)
+        }
+        func key(_ key: String, code: String, keyCode: Int, command: Bool = false) async throws {
+            _ = try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                for (const type of ['keydown', 'keyup']) content.dispatchEvent(new KeyboardEvent(type,
+                    {key, code, keyCode, which: keyCode, metaKey: command, bubbles: true, cancelable: true}));
+                """, arguments: ["key": key, "code": code, "keyCode": keyCode, "command": command])
+        }
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '/');")
+        let openingDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while currentList() == nil && ContinuousClock.now < openingDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let list = try #require(currentList())
+        let allLabels = list.items.map(\.label)
+        #expect(allLabels.contains("Table") && allLabels.contains("Date"))
+        let initialWidthDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while (list.superview?.frame.width ?? 0) <= 0, ContinuousClock.now < initialWidthDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let initialWidth = try #require(list.superview?.frame.width, "Completion list did not finish its initial layout")
+        try await verifyEditing("/\n")
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'tab');")
+        try await waitForList(["Table"])
+        #expect(currentList() === list)
+        // Filtering must leave the popover's width where it started, so the
+        // candidates do not make the surface jitter as they narrow. AppKit
+        // settles that frame in a later layout pass than the one that changes
+        // the items, so sample it until it holds rather than once: a width
+        // that is genuinely wrong still fails, at the deadline.
+        let widthDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while list.superview?.frame.width != initialWidth, ContinuousClock.now < widthDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(list.superview?.frame.width == initialWidth)
+        try await verifyEditing("/tab\n")
+        for remaining in ["/ta", "/t", "/", ""] {
+            try await key("Backspace", code: "Backspace", keyCode: 8)
+            try await verifyEditing(remaining + "\n")
+        }
+        try await waitForList(nil)
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '/date');")
+        try await waitForList(["Date"])
+        // CodeMirror deliberately ignores acceptance within its default 75 ms
+        // interaction guard after opening a fresh completion list.
+        try await Task.sleep(for: .milliseconds(100))
+        try await verifyEditing("/date\n")
+        let date = try #require(
+            try await harness.callPageJavaScript(
+                "const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;")
+                as? String)
+        try await key("Enter", code: "Enter", keyCode: 13)
+        try await waitForList(nil)
+        try await verifyEditing(date + "\n")
+        try await key("z", code: "KeyZ", keyCode: 90, command: true)
+        try await verifyEditing("/date\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit previews use a native popover without changing source, selection, or document geometry")
+    func nativeEditPreviewPreservesDocument() async throws {
+        let source = "[[Target]]\n\n" + String(repeating: "Synthetic paragraph.\n\n", count: 24)
+        let harness = EditorHarness(
+            source: source, linkPreviews: [Self.linkPreview(atUTF16: 0)],
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.goToLine(1)
+        try await harness.waitUntilPreviewIsAvailable()
+        let owner = try #require(harness.session.webView)
+        let frame = owner.frame
+        let selection = harness.session.context?.selections
+        let undo = harness.session.context?.undoLabel
+        harness.session.showPreview()
+        _ = try await harness.waitUntilPresentation(stage: "native Edit preview") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Target note"
+        }
+        #expect(harness.session.floatingSurfaces.isPreviewShown)
+        #expect(harness.session.floatingSurfaces.previewWebView?.window !== owner.window)
+        #expect(owner.frame == frame)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        _ = try await harness.callPageJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));")
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.floatingSurfaces.previewWebView != nil && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.floatingSurfaces.previewWebView == nil)
+        harness.session.showPreview()
+        _ = try await harness.waitUntilPresentation(stage: "preview before composition") {
+            !$0.previewPopoverHidden
+        }
+        try await harness.session.testingDispatchCompositionEvent("compositionstart")
+        let compositionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.floatingSurfaces.previewWebView != nil && ContinuousClock.now < compositionDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.floatingSurfaces.previewWebView == nil)
+        try await harness.session.testingDispatchCompositionEvent("compositionend")
+        #expect(harness.session.context?.selections == selection)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Document find preserves prose layout and exact source", arguments: [MarkdownEditorMode.source, .livePreview])
+    func documentFindPreservesLayout(mode: MarkdownEditorMode) async throws {
+        let source = "findtarget at the beginning.\n\n" + String(repeating: "Following paragraph.\n\n", count: 30)
+        let harness = EditorHarness(source: source, initialMode: mode, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+
+        func scrollPositionsAroundMeasurement() async throws -> [Double] {
+            let script = "return document.querySelector('.cm-scroller').scrollTop;"
+            let before = try #require(try await harness.callPageJavaScript(script) as? Double)
+            // The production anchor query reads CodeMirror's measured line
+            // blocks, flushing pending layout/scroll effects even when WebKit
+            // throttles animation frames in a noninteractive test process.
+            _ = try await harness.session.send(.queryScrollAnchor, in: webView)
+            let after = try #require(try await harness.callPageJavaScript(script) as? Double)
+            return [before, after]
+        }
+
+        // Bridge readiness is not a CodeMirror measurement barrier. Finish
+        // initial font and viewport work before scrolling away from the caret.
+        _ = try await harness.callPageJavaScript("await document.fonts.ready;")
+        _ = try await scrollPositionsAroundMeasurement()
+        let geometryScript = """
+            const content = document.querySelector('.cm-content');
+            const style = getComputedStyle(content);
+            return JSON.stringify([style.paddingTop, style.paddingBottom, content.offsetWidth]);
+            """
+        let before = try #require(try await harness.callPageJavaScript(geometryScript) as? String)
+        let selectionBefore = harness.session.context?.selections
+        let undoBefore = harness.session.context?.undoLabel
+        _ = try await harness.callPageJavaScript("document.querySelector('.cm-scroller').scrollTop = 300;")
+        let baseline = try await scrollPositionsAroundMeasurement()
+        #expect(baseline.allSatisfy { $0 == 300 })
+
+        let present = DocumentFindQuery(
+            query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
+            action: .present
+        )
+        _ = try await harness.session.performDocumentFind(present)
+        // Check both immediate and measured results, without polling until a
+        // later value happens to match the expected position.
+        let opened = try await scrollPositionsAroundMeasurement()
+        #expect(opened == baseline)
+        #expect(try await harness.callPageJavaScript(geometryScript) as? String == before)
+        #expect(harness.session.context?.selections == selectionBefore)
+        #expect(harness.session.context?.undoLabel == undoBefore)
+        await harness.session.clearDocumentFind()
+        let closed = try await scrollPositionsAroundMeasurement()
+        #expect(closed == baseline)
+        #expect(harness.session.context?.selections == selectionBefore)
+
+        _ = try await harness.session.performDocumentFind(present)
+        _ = try await harness.session.performDocumentFind(
+            .init(
+                query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
+                action: .update
+            ))
+        let navigated = try await scrollPositionsAroundMeasurement()
+        #expect(try #require(navigated.last) < 300)
+        #expect(try await harness.callPageJavaScript(geometryScript) as? String == before)
+        #expect(harness.session.context?.selections.first?.anchor == 0)
+        #expect(harness.session.context?.selections.first?.head == 10)
+        #expect(harness.session.generation == 0)
+        await harness.session.clearDocumentFind()
+        let dismissed = try await scrollPositionsAroundMeasurement()
+        #expect(dismissed.allSatisfy { $0 == navigated.last })
+        #expect(try await harness.callPageJavaScript(geometryScript) as? String == before)
+        #expect(harness.session.context?.selections.first?.head == 10)
+        #expect(harness.session.context?.undoLabel == undoBefore)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Empty ATX headings retain semantic presentation with or without a separator")
+    func bareATXMarkerImmediatelyUsesHeadingPresentation() async throws {
+        let source = ""
+        let harness = EditorHarness(
+            source: source,
+            initialSourceRange: 0..<0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.perform(.pastePlain, argument: "#")
+        try await harness.waitUntilSelection(head: 1, stage: "ATX marker")
+        // CommonMark permits an empty ATX heading with no trailing separator.
+        #expect(try await harness.session.testingAccessibilitySnapshot().liveH1Count == 1)
+
+        try await harness.session.perform(.pastePlain, argument: " ")
+        try await harness.waitUntilSelection(head: 2, stage: "ATX marker separator")
+
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.liveH1Count == 1)
+        #expect(!presentation.h1FontSize.isEmpty)
+        #expect(try await harness.session.currentText(for: harness.documentID) == "# ")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Initial body selection is acknowledged before editor readiness")
+    func initialBodySelectionGatesReadiness() async throws {
+        let source = "---\r\ncustom: |+\r\n  before\r\n  ---\r\n  after\r\n---\r\nBody\r\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let sourceBodyUTF16Index = source.utf16.index(
+            source.utf16.startIndex,
+            offsetBy: bodyStart
+        )
+        let sourceBodyIndex = try #require(
+            String.Index(sourceBodyUTF16Index, within: source)
+        )
+        let editorBodyStart = String(source[..<sourceBodyIndex])
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .utf16.count
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher()
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: dispatcher,
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        try await dispatcher.waitUntilSuspended()
+        #expect(!harness.session.isLoaded)
+        #expect(harness.session.presentedMode == nil)
+        #expect(!(try await harness.session.testingAccessibilitySnapshot().isFocused))
+
+        dispatcher.resume()
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(
+            head: editorBodyStart,
+            stage: "acknowledged managed body boundary"
+        )
+        #expect(harness.session.presentedMode == .livePreview)
+        #expect(try await harness.session.testingAccessibilitySnapshot().isFocused)
+    }
+
+    @Test("Review handoff revokes focus from a pending editor initialization")
+    func reviewHandoffRevokesPendingInitialFocus() async throws {
+        let source = "---\ntags: [draft]\n---\nBody\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher()
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: dispatcher,
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        try await dispatcher.waitUntilSuspended()
+        let handoff = Task { @MainActor in
+            await harness.session.resignFocusAndWait()
+        }
+        await Task.yield()
+        dispatcher.resume()
+        await handoff.value
+        try await harness.waitUntilReady()
+
+        #expect(!(try await harness.session.testingAccessibilitySnapshot().isFocused))
+    }
+
+    @Test("A newer Source request supersedes a pending Review handoff")
+    func sourceRequestSupersedesPendingReviewHandoff() async throws {
+        let source = "---\ntags: [draft]\n---\nBody\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher()
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: dispatcher,
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        try await dispatcher.waitUntilSuspended()
+        let obsoleteReviewHandoff = Task { @MainActor in
+            await harness.session.resignFocusAndWait()
+        }
+        await Task.yield()
+        harness.session.authorizeAutomaticFocus()
+        harness.session.setMode(.source)
+        dispatcher.resume()
+        await obsoleteReviewHandoff.value
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(.source)
+        try await harness.waitUntilSelection(
+            head: bodyStart,
+            stage: "newest Source request body boundary"
+        )
+
+        #expect(harness.session.presentedMode == .source)
+        #expect(try await harness.session.testingAccessibilitySnapshot().isFocused)
+    }
+
+    @Test("A failed bridge blur cannot block the native Review handoff")
+    func failedBlurDoesNotBlockReviewHandoff() async throws {
+        let dispatcher = FailingBlurBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "Body\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        await harness.session.resignFocusAndWait()
+
+        #expect(dispatcher.didAttemptBlur)
+        #expect(harness.session.isLoaded)
+    }
+
+    @Test("Rejected editor recovery report resets only after teardown returns")
+    func rejectedEditorRecoveryReportDefersTeardownReset() async throws {
+        let dispatcher = FailingQueryTextBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "Body\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let webView = try #require(harness.session.webView)
+        dispatcher.shouldFailQueryText = true
+        harness.session.reconcileAfterRejectedEditorChanges(
+            resultingGeneration: harness.session.generation + 1,
+            in: webView
+        )
+
+        let clock = ContinuousClock()
+        let reportDeadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.errorMessage == nil,
+            clock.now < reportDeadline
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(dispatcher.didFailQueryText)
+        #expect(harness.session.errorMessage != nil)
+
+        var invalidationCount = 0
+        let observation = harness.session.objectWillChange.sink {
+            invalidationCount += 1
+        }
+        invalidationCount = 0
+
+        harness.session.detach(webView)
+
+        #expect(!harness.session.hasAttachedWebView)
+        #expect(harness.session.errorMessage != nil)
+        #expect(invalidationCount == 0)
+
+        let resetDeadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.errorMessage != nil,
+            clock.now < resetDeadline
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(harness.session.errorMessage == nil)
+        #expect(invalidationCount == 1)
+        _ = observation
+    }
+
+    @Test("A false initial selection acknowledgement fails editor readiness")
+    func falseInitialSelectionAcknowledgementFailsClosed() async throws {
+        let source = "---\ntags: [draft]\n---\nBody\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: WrongInitialSelectionBridgeDispatcher(),
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while harness.session.errorMessage == nil, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.errorMessage != nil)
+        #expect(!harness.session.isLoaded)
+        #expect(harness.session.presentedMode == nil)
+    }
+
+    @Test("Post-initialize failure leaves the hidden editor unfocused")
+    func postInitializeFailureLeavesEditorUnfocused() async throws {
+        let source = "---\ntags: [draft]\n---\nBody\n"
+        let bodyStart = NoteDocument(
+            relativePath: "Untitled.md",
+            rawContent: source
+        ).bodyUTF16Offset
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: FailingPostInitializeBridgeDispatcher(),
+            initialSourceRange: bodyStart..<bodyStart
+        )
+        defer { harness.close() }
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while harness.session.errorMessage == nil, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.errorMessage != nil)
+        #expect(!harness.session.isLoaded)
+        #expect(!(try await harness.session.testingAccessibilitySnapshot().isFocused))
+    }
+
+    @Test("Edit renders Mermaid only after the caret leaves its exact fenced source")
+    func mermaidRendersAtFencedBlockExit() async throws {
+        let source = """
+            # Diagram
+
+            ```mermaid
+            flowchart LR
+            accTitle: Argument structure
+            accDescr: A reason supports a conclusion.
+            A --> B
+            ```
+
+            After diagram.
+            """
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func snapshot() async throws -> [String: Any] {
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    return {
+                      runtime: window.scholiumMermaid?.version || 0,
+                      widgets: document.querySelectorAll('.cm-live-mermaid-widget').length,
+                      rendered: [...document.querySelectorAll('.cm-live-mermaid-widget .scholium-mermaid-output')]
+                        .filter(output => output.shadowRoot?.querySelector('svg')).length,
+                      sourceLines: [...document.querySelectorAll('.cm-line')]
+                        .filter(line => (line.textContent || '').includes('flowchart LR')).length,
+                      openingFenceVisible: [...document.querySelectorAll('.cm-line')]
+                        .some(line => (line.textContent || '').trim() === '```mermaid'
+                          && line.getBoundingClientRect().height > 0.5),
+                      closingFenceVisible: [...document.querySelectorAll('.cm-line')]
+                        .some(line => (line.textContent || '').trim() === '```'
+                          && line.getBoundingClientRect().height > 0.5),
+                      collapsedFenceLines: document.querySelectorAll('.cm-live-code-fence-line').length
+                    };
+                    """
+                ) as? [String: Any])
+        }
+
+        let clock = ContinuousClock()
+        var deadline = clock.now.advanced(by: .seconds(8))
+        var inactive = try await snapshot()
+        while inactive["rendered"] as? Int != 1 {
+            if clock.now >= deadline {
+                Issue.record("Inactive Mermaid did not render: \(inactive)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(25))
+            inactive = try await snapshot()
+        }
+        #expect(inactive["runtime"] as? Int == 2)
+        #expect(inactive["widgets"] as? Int == 1)
+        #expect(inactive["sourceLines"] as? Int == 0)
+
+        let closingFence = try #require(source.range(of: "```\n\nAfter diagram.")?.lowerBound)
+            .utf16Offset(in: source)
+        let blockTo = closingFence + 3
+        harness.session.revealSourceRange(fromUTF16: blockTo, toUTF16: blockTo)
+        try await harness.waitUntilSelection(head: blockTo, stage: "Mermaid closing boundary")
+        try await harness.session.testingPressArrow("ArrowLeft")
+        try await harness.waitUntilSelection(head: blockTo - 1, stage: "left-arrow Mermaid source entry")
+        deadline = clock.now.advanced(by: .seconds(4))
+        var arrowActive = try await snapshot()
+        while arrowActive["widgets"] as? Int != 0
+            || arrowActive["sourceLines"] as? Int != 1
+            || arrowActive["openingFenceVisible"] as? Bool != true
+            || arrowActive["closingFenceVisible"] as? Bool != true
+        {
+            if clock.now >= deadline {
+                Issue.record("Mermaid source did not expose both fences after arrow entry: \(arrowActive)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            arrowActive = try await snapshot()
+        }
+        #expect(arrowActive["collapsedFenceLines"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.session.goToLine(10)
+        deadline = clock.now.advanced(by: .seconds(8))
+        var arrowExited = try await snapshot()
+        while arrowExited["rendered"] as? Int != 1 {
+            if clock.now >= deadline {
+                Issue.record("Mermaid did not rerender after arrow exit: \(arrowExited)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(25))
+            arrowExited = try await snapshot()
+        }
+
+        harness.session.goToLine(4)
+        deadline = clock.now.advanced(by: .seconds(4))
+        var active = try await snapshot()
+        while active["widgets"] as? Int != 0
+            || active["sourceLines"] as? Int != 1
+            || active["openingFenceVisible"] as? Bool != true
+            || active["closingFenceVisible"] as? Bool != true
+        {
+            if clock.now >= deadline {
+                Issue.record("Mermaid source did not expose both fences after direct entry: \(active)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            active = try await snapshot()
+        }
+        #expect(active["rendered"] as? Int == 0)
+        #expect(active["collapsedFenceLines"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        let selectedBody = try #require(source.range(of: "A --> B"))
+        let selectedBodyFrom = selectedBody.lowerBound.utf16Offset(in: source)
+        let selectedBodyTo = selectedBody.upperBound.utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: selectedBodyFrom, toUTF16: selectedBodyTo)
+        try await harness.waitUntilSelection(head: selectedBodyTo, stage: "exact Mermaid source selection")
+        let exactSelection = try #require(
+            try await harness.session.currentSelection(
+                for: harness.documentID,
+                in: source
+            ))
+        #expect(exactSelection.excerpt == "A --> B")
+        let selectedActive = try await snapshot()
+        #expect(selectedActive["widgets"] as? Int == 0)
+        #expect(selectedActive["openingFenceVisible"] as? Bool == true)
+        #expect(selectedActive["closingFenceVisible"] as? Bool == true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.session.goToLine(10)
+        deadline = clock.now.advanced(by: .seconds(8))
+        var exited = try await snapshot()
+        while exited["rendered"] as? Int != 1 {
+            if clock.now >= deadline {
+                Issue.record("Mermaid did not rerender after direct exit: \(exited)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(25))
+            exited = try await snapshot()
+        }
+        #expect(exited["widgets"] as? Int == 1)
+        #expect(exited["sourceLines"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("Active fenced code has one block surface and keeps the shared source inset")
+    func activeFencedCodeUsesOneSurface() async throws {
+        let source = "Before `inline`.\n\n```swift\nstruct Fixture {}\n```\n\nAfter.\n"
+        let codeCaret =
+            try #require(source.range(of: "struct Fixture")?.lowerBound)
+            .utf16Offset(in: source) + 3
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
+        try await harness.waitUntilSelection(head: codeCaret, stage: "active fenced code")
+        let snapshot = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const allLines = Array.from(document.querySelectorAll('.cm-line'));
+                const blockLines = allLines.filter(line => line.classList.contains('cm-live-codeblock'));
+                const closingFence = blockLines.find(
+                    line => (line.textContent || '').trim() === '```'
+                );
+                const closingIndex = closingFence ? allLines.indexOf(closingFence) : -1;
+                const authoredBlank = closingIndex >= 0 ? allLines[closingIndex + 1] : null;
+                return {
+                  blockLineCount: blockLines.length,
+                  activeBlockLineCount: blockLines.filter(
+                    line => line.classList.contains('cm-live-codeblock-active')
+                  ).length,
+                  fencedInlineCodeCount: blockLines.reduce(
+                    (count, line) => count + line.querySelectorAll('.cm-live-code').length,
+                    0
+                  ),
+                  totalInlineCodeCount: document.querySelectorAll('.cm-live-code').length,
+                  closingPaddingBottom: closingFence
+                    ? Number.parseFloat(getComputedStyle(closingFence).paddingBottom) || 0
+                    : -1,
+                  authoredBlankIsSourceLine: Boolean(
+                    authoredBlank?.classList.contains('cm-live-blank-line')
+                  ),
+                  authoredBlankUsesCodeSurface: Boolean(
+                    authoredBlank?.classList.contains('cm-live-codeblock')
+                  ),
+                  closingBackground: closingFence
+                    ? getComputedStyle(closingFence).backgroundColor
+                    : '',
+                  authoredBlankBackground: authoredBlank
+                    ? getComputedStyle(authoredBlank).backgroundColor
+                    : ''
+                };
+                """
+            ) as? [String: Any])
+        #expect(snapshot["blockLineCount"] as? Int == 3)
+        #expect(snapshot["activeBlockLineCount"] as? Int == 3)
+        #expect(snapshot["fencedInlineCodeCount"] as? Int == 0)
+        #expect(snapshot["totalInlineCodeCount"] as? Int == 1)
+        #expect(snapshot["closingPaddingBottom"] as? Double == 16)
+        #expect(snapshot["authoredBlankIsSourceLine"] as? Bool == true)
+        #expect(snapshot["authoredBlankUsesCodeSurface"] as? Bool == false)
+        #expect(
+            (snapshot["authoredBlankBackground"] as? String)
+                != (snapshot["closingBackground"] as? String))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Reading metadata and technical source retain their own typography during activation")
+    func technicalSourceTypographyUsesSourceText() async throws {
+        let source = "---\nsummary: Fixture\nquoted: 'Fixture'\n---\n# Technical\n\n```swift\nlet value = true\n```\n\n$$\nx + y\n$$\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func typography() async throws -> [String: Any] {
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const style = element => element ? getComputedStyle(element) : null;
+                    const yaml = [...document.querySelectorAll('.cm-line.scholium-frontmatter-line')]
+                      .find(line => (line.textContent || '').includes('summary:'));
+                    const code = [...document.querySelectorAll('.cm-line.cm-live-codeblock')]
+                      .find(line => (line.textContent || '').includes('let value'));
+                    const math = document.querySelector('.cm-line.cm-live-math-source');
+                    const yamlStyle = style(yaml);
+                    const bodyStyle = style(document.querySelector('.cm-content'));
+                    const headingStyle = style(document.querySelector('.cm-live-h1'));
+                    const codeStyle = style(code);
+                    const mathStyle = style(math);
+                    return {
+                      yamlFont: yamlStyle?.fontFamily || '',
+                      yamlSize: yamlStyle?.fontSize || '',
+                      yamlLineHeight: yamlStyle?.lineHeight || '',
+                      bodyFont: bodyStyle?.fontFamily || '',
+                      bodySize: parseFloat(bodyStyle?.fontSize || '0'),
+                      yamlPoints: parseFloat(yamlStyle?.fontSize || '0'),
+                      plainValueColor: style(document.querySelector('.cm-live-yaml-value'))?.color || '',
+                      quotedValueColor: style(document.querySelector('.cm-live-yaml-string'))?.color || '',
+                      headingSize: parseFloat(headingStyle?.fontSize || '0'),
+                      headingBefore: parseFloat(headingStyle?.paddingTop || '0'),
+                      metadataGap: document.querySelector('.cm-live-semantic-gap-after-frontmatter')?.getBoundingClientRect().height || 0,
+                      codeFont: codeStyle?.fontFamily || '',
+                      codeSize: codeStyle?.fontSize || '',
+                      codeLineHeight: codeStyle?.lineHeight || '',
+                      codeAnimation: code?.getAnimations().length || 0,
+                      mathFont: mathStyle?.fontFamily || '',
+                      mathSize: mathStyle?.fontSize || '',
+                      mathLineHeight: mathStyle?.lineHeight || ''
+                    };
+                    """
+                ) as? [String: Any])
+        }
+
+        let inactive = try await typography()
+        #expect(inactive["yamlFont"] as? String == inactive["bodyFont"] as? String)
+        #expect(inactive["codeFont"] as? String != inactive["yamlFont"] as? String)
+        #expect(try #require(inactive["yamlPoints"] as? Double) < #require(inactive["bodySize"] as? Double))
+        #expect(inactive["plainValueColor"] as? String == inactive["quotedValueColor"] as? String)
+        let expectedHeadingBefore =
+            try #require(inactive["headingSize"] as? Double)
+            * DocumentAppearanceSettings.defaultSettings.headings.level1.spaceBeforeEm
+        #expect(abs(try #require(inactive["headingBefore"] as? Double) - expectedHeadingBefore) < 1)
+        #expect(try #require(inactive["metadataGap"] as? Double) > 0)
+
+        let yamlCaret = try #require(source.range(of: "Fixture")?.lowerBound).utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: yamlCaret, toUTF16: yamlCaret)
+        try await harness.waitUntilSelection(head: yamlCaret, stage: "active YAML typography")
+        let activeYAML = try await typography()
+        #expect(activeYAML["yamlFont"] as? String == inactive["yamlFont"] as? String)
+        #expect(activeYAML["yamlLineHeight"] as? String == inactive["yamlLineHeight"] as? String)
+
+        let codeCaret =
+            try #require(source.range(of: "let value")?.lowerBound)
+            .utf16Offset(in: source) + 3
+        harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
+        try await harness.waitUntilSelection(head: codeCaret, stage: "active code typography")
+        let activeCode = try await typography()
+        #expect(activeCode["codeFont"] as? String == inactive["codeFont"] as? String)
+        #expect(activeCode["codeSize"] as? String == inactive["codeSize"] as? String)
+        #expect(activeCode["codeLineHeight"] as? String == inactive["codeLineHeight"] as? String)
+
+        let mathCaret =
+            try #require(source.range(of: "x + y")?.lowerBound)
+            .utf16Offset(in: source) + 2
+        harness.session.revealSourceRange(fromUTF16: mathCaret, toUTF16: mathCaret)
+        try await harness.waitUntilSelection(head: mathCaret, stage: "active math typography")
+        let activeMath = try await typography()
+        #expect(activeMath["mathFont"] as? String == inactive["codeFont"] as? String)
+        #expect(activeMath["mathSize"] as? String == inactive["codeSize"] as? String)
+        #expect(activeMath["mathLineHeight"] as? String == inactive["codeLineHeight"] as? String)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Metadata boundary spacing preserves the first technical block's own inset")
+    func frontmatterBoundaryKeepsTechnicalInset() async throws {
+        let source = "---\nsummary: Fixture\n---\n```swift\nlet value = true\n```\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const code = document.querySelector('.cm-live-codeblock-start');
+                const gap = document.querySelector('.cm-live-semantic-gap-after-frontmatter');
+                return {inset: parseFloat(getComputedStyle(code).paddingTop), gap: gap?.getBoundingClientRect().height || 0};
+                """
+            ) as? [String: Any])
+        #expect(geometry["inset"] as? Double == Double(ScholiumDocumentRhythm.codeBlockInset))
+        #expect(try #require(geometry["gap"] as? Double) > 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("The published editor mode changes only after the Web bridge acknowledges it")
+    func presentedModeWaitsForBridgeAcknowledgement() async throws {
+        let dispatcher = SuspendingModeBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "# Mode handoff\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let mermaidRuntime =
+            try await harness.callPageJavaScript(
+                "return window.scholiumMermaid?.version || 0"
+            ) as? Int
+        #expect(mermaidRuntime == 0)
+        #expect(harness.session.presentedMode == .livePreview)
+        var presentationPublications: [MarkdownEditorPresentationState] = []
+        let observation = harness.session.$presentation.dropFirst().sink {
+            presentationPublications.append($0)
+        }
+
+        harness.session.setMode(.source)
+        try await dispatcher.waitUntilSuspended()
+        #expect(harness.session.presentedMode == .livePreview)
+        #expect(presentationPublications.isEmpty)
+
+        dispatcher.resume()
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(harness.session.presentedMode == .source)
+        #expect(presentationPublications.map(\.documentPhase) == [.ready(.source)])
+        _ = observation
+        await harness.closeAndDrain()
+    }
+
+    @Test("A newer editor-mode request converges after an in-flight acknowledgement")
+    func newerModeRequestConvergesAfterInflightAcknowledgement() async throws {
+        let dispatcher = SuspendingModeBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "# Mode convergence\n\nExact **Markdown**.\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.setMode(.source)
+        try await dispatcher.waitUntilSuspended()
+        harness.session.setMode(.livePreview)
+        dispatcher.resume()
+
+        try await dispatcher.waitUntilModeRequestCount(2)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let final = try await harness.waitUntilPresentation(stage: "latest retained editor mode") {
+            $0.liveModeClassCount == 1
+                && $0.sourceModeClassCount == 0
+                && $0.gutterCount == 0
+        }
+        #expect(final.label == "Markdown editor, Edit mode")
+        #expect(dispatcher.requestedModes == [.source, .livePreview])
+        await harness.closeAndDrain()
+    }
+
+    @Test("A transient mode transport failure retries idempotently before publication")
+    func transientModeFailureRetriesBeforePublication() async throws {
+        let dispatcher = FailingOnceModeBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "# Retried mode\n\nExact **Markdown**.\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        var presentationPublications: [MarkdownEditorPresentationState] = []
+        let observation = harness.session.$presentation.dropFirst().sink {
+            presentationPublications.append($0)
+        }
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let source = try await harness.waitUntilPresentation(stage: "retried Source mode") {
+            $0.sourceModeClassCount == 1
+                && $0.liveProjectionDOMCount == 0
+        }
+
+        #expect(source.label == "Markdown source editor")
+        #expect(dispatcher.requestedModes == [.source, .source])
+        #expect(presentationPublications.map(\.documentPhase) == [.ready(.source)])
+        _ = observation
+        await harness.closeAndDrain()
+    }
+
+    @Test("A mode request waits for marked-text composition before changing presentation")
+    func modeChangeDefersUntilCompositionEnds() async throws {
+        let source = "# Composition boundary\r\n\r\n研究输入 remains exact.\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.testingDispatchCompositionEvent("compositionstart")
+        harness.session.setMode(.source)
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(harness.session.presentedMode == .livePreview)
+        let composing = try await harness.session.testingAccessibilitySnapshot()
+        #expect(composing.label == "Markdown editor, Edit mode")
+        #expect(composing.sourceModeClassCount == 0)
+
+        try await harness.session.testingDispatchCompositionEvent("compositionend")
+        try await harness.waitUntilPresentedMode(.source)
+        let sourceMode = try await harness.waitUntilPresentation(stage: "post-composition Source") {
+            $0.label == "Markdown source editor"
+                && $0.sourceModeClassCount == 1
+                && $0.liveProjectionDOMCount == 0
+        }
+        #expect(sourceMode.liveModeClassCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Source mode preserves exact Markdown with restrained syntax hierarchy")
+    func sourceModeUsesExactSourceTypography() async throws {
+        let source = """
+            ---
+            summary: Synthetic source hierarchy
+            ---
+
+            # Exact heading
+
+            **Bold source** and *italic source* and ~~struck source~~ and [linked source](https://example.test) plus [[Topic|alias]].
+            """
+        let harness = EditorHarness(source: source, initialMode: .source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.setMode(.source)
+        let snapshot = try await harness.waitUntilPresentation(stage: "plain exact Source typography") {
+            $0.sourceModeClassCount == 1
+                && $0.liveModeClassCount == 0
+                && $0.gutterCount > 0
+                && $0.lineNumberCount > 0
+        }
+        #expect(snapshot.liveH1Count == 0)
+        #expect(snapshot.sourceSemanticTypographyCount == 0)
+        #expect(snapshot.liveProjectionDOMCount == 0)
+        #expect(snapshot.selectionActionsCount == 0)
+        #expect(snapshot.previewPopoverCount == 0)
+        #expect(snapshot.visibleLineClassSummary.contains("**Bold source**"))
+        #expect(snapshot.visibleLineClassSummary.contains("*italic source*"))
+        #expect(snapshot.visibleLineClassSummary.contains("~~struck source~~"))
+        #expect(
+            (try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-source-mode .cm-source-heading').length;"
+            ) as? Int ?? 0) > 0
+        )
+        #expect(
+            (try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-source-mode .cm-source-marker').length;"
+            ) as? Int ?? 0) > 0
+        )
+        #expect(
+            (try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-source-mode .cm-source-yaml-key').length;"
+            ) as? Int ?? 0) > 0
+        )
+        #expect(
+            (try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-source-mode .cm-source-url').length;"
+            ) as? Int ?? 0) > 0
+        )
+        let sourceColors = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const editor = document.querySelector('.scholium-source-mode');
+                const color = selector => getComputedStyle(editor.querySelector(selector)).color;
+                const background = getComputedStyle(editor).backgroundColor;
+                const channels = value => {
+                    const values = value.match(/-?(?:\\d*\\.)?\\d+/g)?.slice(0, 3).map(Number) || [];
+                    return value.startsWith('color(') ? values.map(channel => channel * 255) : values;
+                };
+                const luminance = value => {
+                    const linear = channels(value).map(channel => {
+                        const component = channel / 255;
+                        return component <= 0.04045 ? component / 12.92
+                            : Math.pow((component + 0.055) / 1.055, 2.4);
+                    });
+                    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+                };
+                const ratio = value => {
+                    const first = luminance(value);
+                    const second = luminance(background);
+                    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+                };
+                const heading = color('.cm-source-heading:not(.cm-source-marker)');
+                const marker = color('.cm-source-marker');
+                const wikiTarget = [...editor.querySelectorAll('.cm-source-link')]
+                    .find(element => element.textContent === 'Topic');
+                return {
+                    distinctStructure: heading !== marker,
+                    yamlKeyUsesStructureInk: color('.cm-source-yaml-key') === heading,
+                    wikiTargetUsesStructureInk: wikiTarget
+                        ? getComputedStyle(wikiTarget).color === heading : false,
+                    minimumContrast: Math.min(...[
+                        '.cm-source-heading:not(.cm-source-marker)', '.cm-source-link',
+                        '.cm-source-yaml-key', '.cm-source-marker',
+                        '.cm-source-url', '.cm-source-comment'
+                    ].filter(selector => editor.querySelector(selector)).map(selector => ratio(color(selector))))
+                };
+                """
+            ) as? [String: Any]
+        )
+        #expect(sourceColors["distinctStructure"] as? Bool == true)
+        #expect(sourceColors["yamlKeyUsesStructureInk"] as? Bool == true)
+        #expect(sourceColors["wikiTargetUsesStructureInk"] as? Bool == true)
+        #expect((sourceColors["minimumContrast"] as? NSNumber)?.doubleValue ?? 0 >= 4.5)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let before = harness.session.context?.selections
+        var profile = DocumentAppearanceProfile(name: "Source font fixture")
+        profile.settings.source = .init(fontFamily: "Helvetica Neue", fontSizePoints: 18)
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(textScale: 1).css
+                + "\n" + DocumentAppearanceStyles.css(for: profile)
+        )
+        let changed = try await harness.waitUntilPresentation(stage: "researcher-selected Source font") {
+            $0.presentation.documentFontFamily.contains("Helvetica Neue")
+        }
+        #expect(changed.sourceSemanticTypographyCount == 0)
+        #expect(harness.session.context?.selections == before)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Ordinary Edit begins at the exact body boundary without a supplied locator")
+    func ordinaryEditStartsAtBody() async throws {
+        let source = "---\r\ncustom: preserved\r\n---\r\nBody text.\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let bodyStart = NoteDocument(relativePath: "Fixture.md", rawContent: normalized).bodyUTF16Offset
+        try await harness.waitUntilSelection(head: bodyStart)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit and Source derive bidi direction without executing raw HTML")
+    func bidiDirectionUsesTheVisibleLineAndKeepsRawHTMLInert() async throws {
+        let source = """
+            # Direction boundary
+
+            هذا نص عربي مع **دليل عربي** و[مرجع عربي](https://example.test) والعدد 2026.
+
+            זהו טקסט עברי עם Scholium והמספר 2026.
+
+            <section dir="rtl">يبقى HTML الخام نصًا حرفيًا.</section>
+            """
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let edit = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const lines = [...document.querySelectorAll('.cm-line')];
+                const find = token => lines.find(line => (line.textContent || '').includes(token));
+                const arabic = find('هذا نص عربي');
+                const hebrew = find('זהו טקסט עברי');
+                const raw = document.querySelector('.cm-line.cm-live-raw-html');
+                return {
+                  arabicAttribute: arabic?.getAttribute('dir') || '',
+                  arabicDirection: arabic ? getComputedStyle(arabic).direction : '',
+                  hebrewAttribute: hebrew?.getAttribute('dir') || '',
+                  hebrewDirection: hebrew ? getComputedStyle(hebrew).direction : '',
+                  rawDirection: raw ? getComputedStyle(raw).direction : '',
+                  executableSectionCount: document.querySelectorAll('section[dir="rtl"]').length,
+                };
+                """
+            ) as? [String: Any])
+        #expect(edit["arabicAttribute"] as? String == "auto")
+        #expect(edit["arabicDirection"] as? String == "rtl")
+        #expect(edit["hebrewAttribute"] as? String == "auto")
+        #expect(edit["hebrewDirection"] as? String == "rtl")
+        #expect(edit["rawDirection"] as? String == "ltr")
+        #expect(edit["executableSectionCount"] as? Int == 0)
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let sourceMode = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const lines = [...document.querySelectorAll('.cm-line')];
+                const find = token => lines.find(line => (line.textContent || '').includes(token));
+                const isolates = [...document.querySelectorAll('.cm-iso')];
+                const result = token => {
+                  const line = find(token);
+                  return {
+                    attribute: line?.getAttribute('dir') || '',
+                    direction: line ? getComputedStyle(line).direction : '',
+                  };
+                };
+                return {
+                  arabic: result('هذا نص عربي'),
+                  hebrew: result('זהו טקסט עברי'),
+                  raw: result('<section dir="rtl">'),
+                  autoMarkdownIsolate: isolates.some(element =>
+                    element.getAttribute('dir') === 'auto'
+                      && (element.textContent || '').includes('**دليل عربي**')),
+                  ltrMarkdownIsolate: isolates.some(element =>
+                    element.getAttribute('dir') === 'ltr'
+                      && (element.textContent || '').includes('[مرجع عربي](https://example.test)')),
+                  liveProjectionCount: document.querySelectorAll('[class*="cm-live-"]').length,
+                };
+                """
+            ) as? [String: Any])
+        let sourceArabic = try #require(sourceMode["arabic"] as? [String: Any])
+        let sourceHebrew = try #require(sourceMode["hebrew"] as? [String: Any])
+        let sourceRaw = try #require(sourceMode["raw"] as? [String: Any])
+        #expect(sourceArabic["attribute"] as? String == "auto")
+        #expect(sourceArabic["direction"] as? String == "rtl")
+        #expect(sourceHebrew["attribute"] as? String == "auto")
+        #expect(sourceHebrew["direction"] as? String == "rtl")
+        #expect(sourceRaw["attribute"] as? String == "auto")
+        #expect(sourceRaw["direction"] as? String == "ltr")
+        #expect(sourceMode["autoMarkdownIsolate"] as? Bool == true)
+        #expect(sourceMode["ltrMarkdownIsolate"] as? Bool == true)
+        #expect(sourceMode["liveProjectionCount"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("RTL pointer placement and exact insertion remain writable in Source and Edit")
+    func rtlTextRemainsWritableAcrossEditorModes() async throws {
+        let source = """
+            هذا نص عربي للاختبار.
+
+            זהו טקסט עברי לבדיקה.
+            """
+        let harness = EditorHarness(source: source, initialMode: .source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        let arabicRange = try #require(source.range(of: "نص عربي"))
+        let arabicFrom = arabicRange.lowerBound.utf16Offset(in: source)
+        let arabicTo = arabicRange.upperBound.utf16Offset(in: source)
+        try await harness.session.testingClickVisibleText("نص عربي")
+        _ = try await harness.waitUntilSelection(in: arabicFrom..<arabicTo)
+        let sourceSelection = try #require(harness.session.context?.selections.first)
+        #expect(sourceSelection.anchor == sourceSelection.head)
+        try await harness.session.perform(.pastePlain, argument: "س")
+        let afterSourceInput = try await harness.session.currentText(for: harness.documentID)
+        #expect(afterSourceInput.utf16.count == source.utf16.count + 1)
+        #expect(afterSourceInput.hasPrefix("هذا "))
+
+        harness.session.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let hebrewRange = try #require(afterSourceInput.range(of: "טקסט עברי"))
+        let hebrewFrom = hebrewRange.lowerBound.utf16Offset(in: afterSourceInput)
+        let hebrewTo = hebrewRange.upperBound.utf16Offset(in: afterSourceInput)
+        try await harness.session.testingClickVisibleText("טקסט עברי")
+        _ = try await harness.waitUntilSelection(in: hebrewFrom..<hebrewTo)
+        let editSelection = try #require(harness.session.context?.selections.first)
+        #expect(editSelection.anchor == editSelection.head)
+        try await harness.session.perform(.pastePlain, argument: "א")
+        let afterEditInput = try await harness.session.currentText(for: harness.documentID)
+        #expect(afterEditInput.utf16.count == source.utf16.count + 2)
+        #expect(afterEditInput.contains("זהו "))
+        #expect(harness.latestSource == afterEditInput)
+        #expect(harness.lifecycleSource == source)
+
+        harness.setPresentationCSS(".cm-editor { --qa-unrelated-update: 1; }")
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(try await harness.session.currentText(for: harness.documentID) == afterEditInput)
+        #expect(harness.lifecycleSource == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Selecting text does not highlight matching text elsewhere")
+    func selectionDoesNotHighlightDocumentMatches() async throws {
+        let source = "Repeated z appears beside z and another z.\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let selected = try #require(source.range(of: "z"))
+        let from = selected.lowerBound.utf16Offset(in: source)
+        let to = selected.upperBound.utf16Offset(in: source)
+
+        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        _ = try await harness.waitUntilSelection(in: from..<(to + 1))
+        let snapshot = try await harness.session.testingAccessibilitySnapshot()
+        #expect(snapshot.selectionMatchCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A delayed bridge success cannot mutate or block a replacement document")
+    func delayedBridgeSuccessIsRejectedAfterReplacement() async throws {
+        let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
+        let harness = EditorHarness(
+            source: "Original A\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let delayed = Task {
+            try await harness.session.currentText(for: harness.documentID)
+        }
+        try await dispatcher.waitUntilSuspended()
+
+        harness.session.loadDocument(
+            "Replacement B\n",
+            documentID: "Replacement.md",
+            mode: .livePreview
+        )
+        try await harness.waitUntilLoaded(documentID: "Replacement.md")
+        #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+
+        dispatcher.resumeSuccessfully()
+        do {
+            _ = try await delayed.value
+            Issue.record("The stale A request unexpectedly succeeded after B loaded.")
+        } catch MarkdownEditorSession.SessionError.staleRequest {
+            // Expected: identity validation owns the result, not transport order.
+        } catch {
+            Issue.record("The stale A request returned the wrong error: \(error).")
+        }
+
+        #expect(harness.session.documentID == "Replacement.md")
+        #expect(harness.session.errorMessage == nil)
+        #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("A text snapshot remains valid when the same document advances")
+    func textSnapshotToleratesSameDocumentInput() async throws {
+        let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
+        let harness = EditorHarness(
+            source: "Original A\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let snapshot = Task {
+            try await harness.session.currentTextSnapshot(for: harness.documentID)
+        }
+        try await dispatcher.waitUntilSuspended()
+
+        // The snapshot read must not own the source-mutation lane. CodeMirror
+        // may accept a later transaction while the read is in transport.
+        try await harness.session.perform(.pastePlain, argument: "x")
+        dispatcher.resumeSuccessfully()
+
+        let captured = try await snapshot.value
+        #expect(captured.text == "xOriginal A\n")
+        #expect(captured.generation == 1)
+        #expect(harness.session.checkedSource == captured.text)
+        #expect(harness.session.errorMessage == nil)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A committed autosave snapshot never replaces newer input")
+    func committedSnapshotKeepsNewerInputDirty() async throws {
+        let source = "Original A\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let savedSnapshot = try await harness.session.currentTextSnapshot(
+            for: harness.documentID
+        )
+
+        try await harness.session.perform(.pastePlain, argument: "x")
+        let newerSource = "xOriginal A\n"
+        #expect(harness.session.checkedSource == newerSource)
+
+        let committedFingerprint = DocumentFingerprint(content: source)
+        let acknowledgement = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: savedSnapshot.text,
+            committedText: source,
+            fingerprint: committedFingerprint,
+            documentID: harness.documentID
+        )
+
+        #expect(acknowledgement == .superseded)
+        #expect(harness.session.checkedSource == newerSource)
+        #expect(harness.session.isDirty)
+        #expect(harness.session.startingFingerprint == committedFingerprint.sha256)
+        #expect(try await harness.session.currentText(for: harness.documentID) == newerSource)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A delayed bridge transport error is hidden from a replacement document")
+    func delayedBridgeErrorIsRejectedAfterReplacement() async throws {
+        let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
+        let harness = EditorHarness(
+            source: "Original A\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let delayed = Task {
+            try await harness.session.currentText(for: harness.documentID)
+        }
+        try await dispatcher.waitUntilSuspended()
+
+        harness.session.loadDocument(
+            "Replacement B\n",
+            documentID: "Replacement.md",
+            mode: .livePreview
+        )
+        try await harness.waitUntilLoaded(documentID: "Replacement.md")
+        #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+
+        dispatcher.resumeWithTransportError()
+        do {
+            _ = try await delayed.value
+            Issue.record("The stale A transport failure unexpectedly succeeded.")
+        } catch MarkdownEditorSession.SessionError.staleRequest {
+            // Expected: B must not inherit A's transport failure.
+        } catch {
+            Issue.record("The stale A transport failure escaped identity validation: \(error).")
+        }
+
+        #expect(harness.session.documentID == "Replacement.md")
+        #expect(harness.session.errorMessage == nil)
+        #expect(try await harness.session.currentText(for: "Replacement.md") == "Replacement B\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("A hanging bridge request times out without poisoning the editor")
+    func hangingBridgeRequestIsBoundedAndRetryable() async throws {
+        let dispatcher = SuspendingBridgeDispatcher(targetDocumentID: "Argument.md")
+        var policy = ScholiumLifecyclePolicy()
+        policy.bridgeRequest = .milliseconds(30)
+        let harness = EditorHarness(
+            source: "Retryable\n",
+            bridgeDispatcher: dispatcher,
+            lifecyclePolicy: policy
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let request = Task {
+            try await harness.session.currentText(for: harness.documentID)
+        }
+        try await dispatcher.waitUntilSuspended()
+        do {
+            _ = try await request.value
+            Issue.record("A hanging editor bridge request incorrectly succeeded")
+        } catch let error as ScholiumWindowLifecycleError {
+            #expect(error == .timedOut(.bridgeRequest))
+        } catch {
+            Issue.record("Unexpected editor bridge deadline error: \(error)")
+        }
+
+        dispatcher.resumeSuccessfully()
+        #expect(try await harness.session.currentText(for: harness.documentID) == "Retryable\n")
+        #expect(harness.session.errorMessage == nil)
+        await harness.closeAndDrain()
+    }
+
+    @Test("One hundred thousand CJK characters preserve an exact CRLF edit across modes")
+    func largeCJKExactRoundTrip() async throws {
+        let seed = "研究性能边界输入选择撤销渲染滚动保存恢复"
+        let cjkCharacters = String(
+            String(repeating: seed, count: 100_000 / seed.count + 1).prefix(100_000)
+        )
+        let normalizedSource = "---\ntitle: WK 100k CJK\n---\n# CJK Stress\n\n\(cjkCharacters)\n"
+        let source = normalizedSource.replacingOccurrences(of: "\n", with: "\r\n")
+        let token = "QA-CJK-END-\(UUID().uuidString)"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        harness.session.goToLine(
+            normalizedSource.split(separator: "\n", omittingEmptySubsequences: false).count
+        )
+        try await harness.waitUntilSelection(head: normalizedSource.utf16.count)
+        try await harness.session.perform(.pastePlain, argument: token)
+
+        let edited = try await harness.session.currentText(for: harness.documentID)
+        #expect(Data(edited.utf8) == Data((source + token).utf8))
+        #expect(harness.latestSource == source + token)
+        #expect(harness.session.isDirty)
+        let exactUpdate = try #require(
+            try await harness.session.queryPerformanceSamples().last {
+                $0.name == "exact-source-update"
+            }
+        )
+        #expect(exactUpdate.observed["changeCount"] == 1)
+        #expect((exactUpdate.observed["documentLength"] ?? 0) >= 100_000)
+
+        harness.session.setMode(.source)
+        _ = try await harness.waitUntilPresentation(stage: "100k Source mode") {
+            $0.label == "Markdown source editor" && $0.gutterCount > 0
+        }
+        harness.session.setMode(.livePreview)
+        _ = try await harness.waitUntilPresentation(stage: "100k Live Preview") {
+            $0.label == "Markdown editor, Edit mode" && $0.gutterCount == 0
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source + token)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A plain Editor loads mathematics only after the first authored expression")
+    func plainEditorLoadsMathRuntimeOnDemand() async throws {
+        let plainSource = "Other paragraph.\n\nInline "
+        #expect(
+            !MarkdownEditorWebView.requiresMathRuntime(
+                source: plainSource,
+                linkPreviews: []
+            ))
+        let end = plainSource.utf16.count
+        let harness = EditorHarness(
+            source: plainSource,
+            initialSourceRange: end..<end
+        )
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        try await harness.session.perform(.pastePlain, argument: "$x$.\n")
+        harness.synchronizeLifecycleSourceFromSession()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        try await harness.waitUntilSelection(head: 0)
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        harness.session.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let presentation = try await harness.waitUntilPresentation(
+            stage: "on-demand mathematics runtime"
+        ) {
+            $0.renderedMathCount == 1 && $0.mathErrorCount == 0
+        }
+        #expect(presentation.renderedMathCount == 1)
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "Other paragraph.\n\nInline $x$.\n"
+        )
+    }
+
+    @Test("Exact UTF-16 reveal selects source without changing bytes, generation, or undo")
+    func exactSourceRangeRevealIsNonmutating() async throws {
+        let source = "# Search\n\nBefore 🧭 autonomy after.\n"
+        let nsSource = source as NSString
+        let range = nsSource.range(of: "autonomy")
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let generation = harness.session.generation
+        let undoLabel = harness.session.context?.undoLabel
+        harness.session.revealSourceRange(
+            fromUTF16: range.location,
+            toUTF16: NSMaxRange(range)
+        )
+        try await harness.waitUntilSelection(head: NSMaxRange(range))
+
+        let selection = try #require(
+            try await harness.session.currentSelection(
+                for: harness.documentID,
+                in: source
+            ))
+        #expect(selection.excerpt == "autonomy")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.undoLabel == undoLabel)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit reveals only the selected inline construct and preserves its semantic style")
+    func editInlineSyntaxActivationIsConstructScoped() async throws {
+        let probe = "INLINE_SYNTAX_PROBE"
+        let source = """
+            # Inline projection
+
+            \(probe) before **First** between **Second**, *Third* or *Fourth*, ~~Fifth~~, ==Sixth==, `Seventh`, and [Eighth](https://example.test).
+            """
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let generation = harness.session.generation
+        let undoLabel = harness.session.context?.undoLabel
+        let caret = { (sourceToken: String, leadingMarkerLength: Int) throws -> Int in
+            let range = try #require(source.range(of: sourceToken))
+            return range.lowerBound.utf16Offset(in: source) + leadingMarkerLength + 1
+        }
+        let moveCaret = { (offset: Int) async throws in
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset)
+        }
+
+        try await moveCaret(try caret("before", 0))
+        let inactive = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(inactive.lineText == "\(probe) before First between Second, Third or Fourth, Fifth, Sixth, Seventh, and Eighth.")
+        #expect(inactive.strongTexts == ["First", "Second"])
+        #expect(inactive.emphasisTexts == ["Third", "Fourth"])
+        #expect(inactive.strikethroughTexts == ["Fifth"])
+        #expect(inactive.highlightTexts == ["Sixth"])
+        #expect(inactive.highlightBackgrounds.count == 1)
+        #expect(
+            inactive.highlightBackgrounds.allSatisfy {
+                $0 != "rgb(255, 154, 0)" && $0 != "rgba(0, 0, 0, 0)"
+            })
+        #expect(inactive.highlightColors == inactive.highlightParentColors)
+        #expect(inactive.codeTexts == ["Seventh"])
+        #expect(inactive.linkTexts == ["Eighth"])
+
+        let firstCaret = try caret("**First**", 2)
+        try await moveCaret(firstCaret)
+        let activeStrong = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeStrong.lineText == "\(probe) before **First** between Second, Third or Fourth, Fifth, Sixth, Seventh, and Eighth.")
+        #expect(activeStrong.strongTexts == ["**First**", "Second"])
+        #expect(activeStrong.strongWeights.allSatisfy { $0 == "700" })
+
+        let scopedProjectionCount = try await harness.session.queryPerformanceSamples().filter {
+            $0.name == "projection" && $0.observed["selectionScoped"] == 1
+        }.count
+        try await moveCaret(firstCaret + 1)
+        let sameConstructProjectionCount = try await harness.session.queryPerformanceSamples().filter {
+            $0.name == "projection" && $0.observed["selectionScoped"] == 1
+        }.count
+        #expect(sameConstructProjectionCount == scopedProjectionCount)
+
+        try await moveCaret(try caret("*Third*", 1))
+        let activeEmphasis = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeEmphasis.lineText == "\(probe) before First between Second, *Third* or Fourth, Fifth, Sixth, Seventh, and Eighth.")
+        #expect(activeEmphasis.emphasisTexts == ["*Third*", "Fourth"])
+        #expect(activeEmphasis.emphasisStyles.allSatisfy { $0 == "italic" })
+
+        try await moveCaret(try caret("~~Fifth~~", 2))
+        let activeStrike = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeStrike.strikethroughTexts == ["~~Fifth~~"])
+        #expect(!activeStrike.lineText.contains("*Third*"))
+
+        try await moveCaret(try caret("==Sixth==", 2))
+        let activeHighlight = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeHighlight.highlightTexts == ["==Sixth=="])
+        #expect(!activeHighlight.lineText.contains("~~Fifth~~"))
+
+        try await moveCaret(try caret("`Seventh`", 1))
+        let activeCode = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeCode.codeTexts == ["`Seventh`"])
+        #expect(!activeCode.lineText.contains("==Sixth=="))
+
+        try await moveCaret(try caret("[Eighth](https://example.test)", 1))
+        let activeLink = try await harness.session.testingInlineProjectionSnapshot(containing: probe)
+        #expect(activeLink.linkTexts == ["[Eighth](https://example.test)"])
+        #expect(!activeLink.lineText.contains("`Seventh`"))
+
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.undoLabel == undoLabel)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A plain click on projected inline syntax inserts one caret")
+    func projectedInlineClickInsertsOneCaret() async throws {
+        let source = "Before **Obsidian** after.\n"
+        let construct = try #require(source.range(of: "**Obsidian**"))
+        let from = construct.lowerBound.utf16Offset(in: source)
+        let to = construct.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.testingClickVisibleText("Obsidian")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while true {
+            if let selection = harness.session.context?.selections.first,
+                selection.anchor == selection.head,
+                selection.head >= from,
+                selection.head < to
+            {
+                break
+            }
+            if clock.now >= deadline {
+                Issue.record("A plain projected-syntax click did not publish one caret inside the construct.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor == selection.head)
+        #expect(selection.head >= from && selection.head < to)
+        let active = try await harness.session.testingInlineProjectionSnapshot(containing: "Obsidian")
+        #expect(active.lineText == "Before **Obsidian** after.")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit selection paints source characters without blank-line rectangles")
+    func editSelectionPaintsOnlySourceCharacters() async throws {
+        let source = "First paragraph text.\n\nSecond paragraph text.\n"
+        let firstFrom = try #require(source.range(of: "paragraph text"))
+            .lowerBound.utf16Offset(in: source)
+        let secondTo = try #require(source.range(of: "Second paragraph"))
+            .upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.revealSourceRange(fromUTF16: firstFrom, toUTF16: secondTo)
+        try await harness.waitUntilSelection(head: secondTo, stage: "cross-paragraph selection")
+        let snapshot = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(snapshot.selectedTexts == ["paragraph text.", "Second paragraph"])
+        #expect(snapshot.selectedRunCount == 2)
+        #expect(snapshot.selectedBlankLineRunCount == 0)
+        #expect(snapshot.visibleStockRectangleCount == 0)
+        #expect(snapshot.nativeSelectionBackground == "rgba(0, 0, 0, 0)")
+        #expect(snapshot.selectedBackgroundsMatchFocusState)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Deleting a block-safe date retains one cursor owner across Edit and Source")
+    func deletingDateRetainsOneCursorOwner() async throws {
+        let date = "2026-08-03"
+        let source = "Before.\n\n\(date)\n\nAfter.\n"
+        let dateEnd = try #require(source.range(of: date)?.upperBound.utf16Offset(in: source))
+        let expected = source.replacingOccurrences(of: date, with: "")
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+        harness.session.revealSourceRange(fromUTF16: dateEnd, toUTF16: dateEnd)
+        try await harness.waitUntilSelection(head: dateEnd, stage: "date insertion point")
+        for _ in date {
+            try await harness.session.testingPressBackspace()
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+
+        let snapshot = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(snapshot.nativeCaretIsTransparent)
+        #expect(snapshot.drawnCursorCount == 1)
+        #expect(snapshot.visibleStockRectangleCount == 0)
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let sourceSnapshot = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(sourceSnapshot.nativeCaretIsTransparent)
+        #expect(sourceSnapshot.drawnCursorCount == 1)
+        #expect(sourceSnapshot.visibleStockRectangleCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Triple-click selects one paragraph and reveals syntax immediately")
+    func tripleClickSelectsOneParagraphWithoutLayoutSpace() async throws {
+        let source = "First **bold** paragraph.\n\nSecond paragraph.\n"
+        let firstLineTo = source.firstIndex(of: "\n")?.utf16Offset(in: source) ?? 0
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.testingTripleClickVisibleText("bold")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.context?.selections.first?.anchor
+            == harness.session.context?.selections.first?.head
+        {
+            if clock.now >= deadline {
+                Issue.record("Triple-click did not publish a paragraph selection.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor != selection.head)
+        #expect(min(selection.anchor, selection.head) >= 0)
+        #expect(max(selection.anchor, selection.head) <= firstLineTo + 1)
+        let active = try await harness.session.testingInlineProjectionSnapshot(containing: "bold")
+        #expect(active.lineText == "First **bold** paragraph.")
+        let presentation = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(presentation.selectedBlankLineRunCount == 0)
+        #expect(presentation.visibleStockRectangleCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Source triple-click does not paint the next logical line as active")
+    func sourceTripleClickDoesNotActivateFollowingLine() async throws {
+        let source = """
+            This is deterministic, disposable, nonprivate test material. It contains no real
+            source claims and makes no philosophical attribution.
+            > [!orient] Reading route
+            """
+        let harness = EditorHarness(
+            source: source,
+            initialMode: .source,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        try await harness.session.testingTripleClickVisibleText("nonprivate")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.context?.selections.first?.anchor
+            == harness.session.context?.selections.first?.head
+        {
+            if clock.now >= deadline {
+                Issue.record("Source triple-click did not publish a logical-line selection.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let selected = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(selected.selectedTexts.joined() == String(source.split(separator: "\n")[0]))
+        #expect(selected.activeLineTexts.isEmpty)
+        #expect(selected.activeLineGutterCount == 0)
+
+        let secondLineStart = try #require(source.range(of: "source claims"))
+            .lowerBound.utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: secondLineStart, toUTF16: secondLineStart)
+        let collapseDeadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.context?.selections.first.map({ selection in
+            selection.anchor == secondLineStart && selection.head == secondLineStart
+        }) != true {
+            if clock.now >= collapseDeadline {
+                Issue.record("Source selection did not collapse after triple-click.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let collapsed = try await harness.session.testingEditorSelectionPresentationSnapshot()
+        #expect(collapsed.activeLineTexts == ["source claims and makes no philosophical attribution."])
+        #expect(collapsed.activeLineGutterCount > 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Callout content boundaries and annotated links share one source projection")
+    func calloutContentBoundaryAndNestedLinksShareOneProjection() async throws {
+        let calloutSource = """
+            > [!cite]+ Synthetic source boundary
+            > [[analysis-001|support]]{{A source reason.}}; body ends with [[work-031|linked note]].
+            """
+        let source = "Lead.\n\n\(calloutSource)\n\nAfter.\n"
+        let range = try #require(source.range(of: calloutSource))
+        let calloutFrom = range.lowerBound.utf16Offset(in: source)
+        let calloutTo = range.upperBound.utf16Offset(in: source)
+        let linkRange = try #require(source.range(of: "[[work-031|linked note]]"))
+        let linkFrom = linkRange.lowerBound.utf16Offset(in: source)
+        let linkTo = linkRange.upperBound.utf16Offset(in: source)
+        let annotatedLinkRange = try #require(source.range(of: "[[analysis-001|support]]"))
+        let annotatedLinkTo = annotatedLinkRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        do {
+            _ = try await harness.waitUntilPresentation(stage: "inactive nested-link Callout") {
+                $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
+            }
+        } catch {
+            Issue.record("Inactive nested-link Callout presentation failed: \(error)")
+            throw error
+        }
+        let inactive: MarkdownEditorSession.TestingCalloutProjectionSnapshot
+        do {
+            inactive = try await harness.session.testingCalloutProjectionSnapshot(
+                containing: "Synthetic source boundary"
+            )
+        } catch {
+            Issue.record("Inactive Callout link projection snapshot failed: \(error)")
+            throw error
+        }
+        #expect(inactive.renderedLinkTexts == ["support", "linked note"])
+        #expect(inactive.renderedLinkTargets == ["analysis-001", "work-031"])
+        #expect(inactive.renderedLinkCaretOffsets == [annotatedLinkTo, linkTo])
+        #expect(inactive.renderedAnnotationIconNames == ["text-bubble"])
+        #expect(inactive.renderedAnnotationIconMaskCount == 1)
+
+        do {
+            try await harness.session.testingClickVisibleText("linked note")
+        } catch {
+            Issue.record("Projected Callout Wikilink click failed: \(error)")
+            throw error
+        }
+        try await harness.waitUntilSelection(head: linkTo, stage: "Wikilink projected end boundary")
+        let projectedLink = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "linked note"
+        )
+        #expect(projectedLink.lineText.contains("[[work-031|linked note]]"))
+
+        try await harness.session.testingPressArrow("ArrowLeft")
+        try await harness.waitUntilSelection(
+            head: linkTo - 1,
+            stage: "Wikilink exact closing syntax entry"
+        )
+        let activeLink = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "linked note"
+        )
+        #expect(activeLink.lineText.contains("[[work-031|linked note]]"))
+
+        harness.session.revealSourceRange(fromUTF16: linkFrom, toUTF16: linkFrom)
+        try await harness.waitUntilSelection(head: linkFrom, stage: "Wikilink keyboard start boundary")
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: linkTo, stage: "Wikilink keyboard end boundary")
+        let keyboardProjectedLink = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "linked note"
+        )
+        #expect(keyboardProjectedLink.lineText.contains("[[work-031|linked note]]"))
+
+        harness.session.goToLine(1)
+        _ = try await harness.waitUntilPresentation(stage: "Callout restored before modified link") {
+            $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
+        }
+        try await harness.session.testingModifiedClickVisibleText(
+            "linked note",
+            modifierFlags: .control
+        )
+        let activationDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while harness.activatedLinks != ["work-031"] {
+            if ContinuousClock().now >= activationDeadline {
+                Issue.record("Control-click did not activate the projected Callout link.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.activatedLinks == ["work-031"])
+
+        try await harness.session.testingClickVisibleText("body ends")
+        let clickedBody = try #require(source.range(of: "body ends"))
+        _ = try await harness.waitUntilSelection(in: clickedBody.lowerBound.utf16Offset(in: source)..<clickedBody.upperBound.utf16Offset(in: source))
+        harness.session.revealSourceRange(fromUTF16: calloutTo, toUTF16: calloutTo)
+        try await harness.waitUntilSelection(head: calloutTo)
+        let projectedHeader = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "Synthetic source boundary"
+        )
+        #expect(projectedHeader.lineText.contains("Synthetic source boundary"))
+        #expect(!projectedHeader.lineText.contains("> [!cite]"))
+        let activeBody = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "body ends"
+        )
+        #expect(activeBody.lineText.contains("> support; body ends"))
+        #expect(!activeBody.lineText.contains("A source reason."))
+        #expect(!activeBody.lineText.contains("[[analysis-001|support]]"))
+        try await harness.session.perform(.pastePlain, argument: "继续")
+        let editedTo = calloutTo + 2
+        try await harness.waitUntilSelection(head: editedTo)
+        let edited = try await harness.session.currentText(for: harness.documentID)
+        #expect(edited.contains("> [[analysis-001|support]]{{A source reason.}}; body ends with [[work-031|linked note]].继续"))
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: editedTo + 1, stage: "real separator after Callout")
+        _ = try await harness.waitUntilPresentation(stage: "Callout restored after separator entry") {
+            $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
+        }
+
+        harness.session.goToLine(2)
+        let blankBefore = calloutFrom - 1
+        try await harness.waitUntilSelection(head: blankBefore, stage: "real separator before Callout")
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: calloutFrom, stage: "right-arrow Callout entry")
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: calloutFrom + 1, stage: "right-arrow inside Callout")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Callout Return continues one visible block and a second Return exits")
+    func calloutReturnContinuesOneVisibleBlockThenExits() async throws {
+        let calloutHeader = "> [!orient] Reading **route**"
+        let source = "Lead.\n\n" + calloutHeader
+        let headerEnd = source.utf16.count
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        _ = try await harness.waitUntilPresentation(stage: "title-only Orient projection") {
+            $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
+        }
+        let titleOnly = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Reading route"
+        )
+        #expect(titleOnly.renderedTitleText.hasPrefix("Reading"))
+        #expect(titleOnly.renderedText.contains("Reading route"))
+
+        harness.session.revealSourceRange(fromUTF16: headerEnd, toUTF16: headerEnd)
+        try await harness.waitUntilSelection(head: headerEnd, stage: "active Orient header")
+        try await harness.session.testingPressEnter()
+        let continuedSource = source + "\n> "
+        try await harness.waitUntilSelection(
+            head: continuedSource.utf16.count,
+            stage: "continued Callout line"
+        )
+        let continueDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while try await harness.session.currentText(for: harness.documentID) != continuedSource {
+            if ContinuousClock().now >= continueDeadline {
+                Issue.record("Return did not continue the Callout with one quote prefix.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.context?.undoLabel == "Continue Callout")
+
+        let active = try await harness.waitUntilPresentation(stage: "line-scoped Callout source") {
+            $0.activeLiveBlockKind == "callout" && $0.liveCalloutSourceLineCount == 2
+        }
+        #expect(active.exactCalloutSourceCount == 0)
+        let activeProjection = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Reading route"
+        )
+        #expect(activeProjection.activeSourceLineTexts.count == 2)
+        #expect(
+            activeProjection.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-projected-line"))
+        #expect(
+            activeProjection.activeSourceLineClassNames[1]
+                .contains("cm-live-callout-active-line"))
+        #expect(
+            activeProjection.activeSourceLineTexts[0]
+                .trimmingCharacters(in: .whitespaces) == "Reading route")
+        #expect(activeProjection.activeSourceLineTexts[1].trimmingCharacters(in: .whitespaces) == ">")
+        #expect(Set(activeProjection.activeSourceLineBackgrounds).count == 1)
+        #expect(
+            activeProjection.activeSourceLineBackgrounds.allSatisfy {
+                $0 == "transparent" || $0 == "rgba(0, 0, 0, 0)"
+            })
+        try await harness.session.testingPressEnter()
+        let exitedSource = source + "\n"
+        try await harness.waitUntilSelection(
+            head: exitedSource.utf16.count,
+            stage: "Callout exit line"
+        )
+        let exitDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while try await harness.session.currentText(for: harness.documentID) != exitedSource {
+            if ContinuousClock().now >= exitDeadline {
+                Issue.record("A second Return retained an empty Callout quote prefix.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.context?.undoLabel == "Exit Callout")
+        _ = try await harness.waitUntilPresentation(stage: "title-only Orient restored") {
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutBlockCount == 1
+        }
+        let restored = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Reading route"
+        )
+        #expect(restored.renderedText.contains("Reading route"))
+        #expect(try await harness.session.currentText(for: harness.documentID) == exitedSource)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Callout Return continues its current list level")
+    func calloutReturnContinuesCurrentListLevel() async throws {
+        let source = "> [!state] Claims\n> - First claim"
+        let expected = source + "\n> - "
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        harness.session.revealSourceRange(
+            fromUTF16: source.utf16.count,
+            toUTF16: source.utf16.count
+        )
+        try await harness.waitUntilSelection(head: source.utf16.count)
+        let bodyActive = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Claims"
+        )
+        #expect(
+            bodyActive.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-projected-line"))
+        #expect(
+            bodyActive.activeSourceLineClassNames[1]
+                .contains("cm-live-callout-active-line"))
+        try await harness.session.testingPressEnter()
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.session.currentText(for: harness.documentID) != expected {
+            if clock.now >= deadline {
+                let actual = try await harness.session.currentText(for: harness.documentID)
+                Issue.record(
+                    "Return did not retain the Callout quote and list prefixes. Actual source: \(String(reflecting: actual)); selections: \(String(describing: harness.session.context?.selections)); undo label: \(harness.session.context?.undoLabel ?? "nil")"
+                )
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await harness.waitUntilSelection(head: expected.utf16.count)
+        #expect(harness.session.context?.undoLabel == "Continue List")
+        let active = try await harness.waitUntilPresentation(stage: "continued Callout list") {
+            $0.activeLiveBlockKind == "callout" && $0.liveCalloutSourceLineCount == 3
+        }
+        #expect(active.liveCalloutBlockCount == 1)
+
+        try await harness.session.perform(.pastePlain, argument: "Second claim")
+        let completed = expected + "Second claim"
+        #expect(try await harness.session.currentText(for: harness.documentID) == completed)
+        let continued = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Claims"
+        )
+        #expect(continued.activeSourceLineTexts.contains { $0.contains("First claim") })
+        #expect(continued.activeSourceLineTexts.contains { $0.contains("Second claim") })
+        await harness.closeAndDrain()
+    }
+
+    @Test("Active Callout title retains its role typography")
+    func activeCalloutTitleRetainsRoleTypography() async throws {
+        let source = "Before.\n\n> [!connect] Curated connections\n> - First claim\n\nAfter.\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(1)
+        _ = try await harness.waitUntilPresentation(stage: "inactive Connect Callout") {
+            $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
+        }
+        let inactive = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Curated connections"
+        )
+
+        let bodyCaret =
+            try #require(source.range(of: "First claim")?.lowerBound)
+            .utf16Offset(in: source) + 2
+        harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
+        try await harness.waitUntilSelection(head: bodyCaret)
+        let bodyActive = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Curated connections"
+        )
+        #expect(
+            bodyActive.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-projected-line"))
+        #expect(
+            bodyActive.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-role-connect"))
+        #expect(
+            bodyActive.activeSourceTitleFontFamilies[0]
+                == inactive.renderedTitleFontFamily)
+        #expect(
+            bodyActive.activeSourceTitleFontSizes[0]
+                == inactive.renderedTitleFontSize)
+        #expect(
+            bodyActive.activeSourceTitleFontWeights[0]
+                == inactive.renderedTitleFontWeight)
+        #expect(
+            bodyActive.activeSourceTitleFontStyles[0]
+                == inactive.renderedTitleFontStyle)
+
+        let titleCaret =
+            try #require(source.range(of: "Curated connections")?.lowerBound)
+            .utf16Offset(in: source) + 2
+        harness.session.revealSourceRange(fromUTF16: titleCaret, toUTF16: titleCaret)
+        try await harness.waitUntilSelection(head: titleCaret)
+        let titleActive = try await harness.session.testingCalloutProjectionSnapshot(
+            containing: "Curated connections"
+        )
+        #expect(
+            titleActive.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-active-line"))
+        #expect(
+            titleActive.activeSourceLineFontWeights[0]
+                == bodyActive.activeSourceLineFontWeights[1])
+        #expect(
+            titleActive.activeSourceTitleFontWeights[0]
+                == inactive.renderedTitleFontWeight)
+        #expect(
+            titleActive.activeSourceTitleFontStyles[0]
+                == inactive.renderedTitleFontStyle)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit footnote locators move the one CodeMirror caret to the exact definition")
+    func editFootnoteReferenceLocatesExactDefinition() async throws {
+        let source = "Claim[^note].\n\n[^note]: Basis.\n"
+        let definitionContentFrom = try #require(source.range(of: "Basis"))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        _ = try await harness.waitUntilPresentation(
+            stage: "Edit footnote locator and direct definition"
+        ) {
+            $0.footnoteReferenceCount == 1 && $0.footnoteDefinitionSourceCount == 1
+        }
+
+        try await harness.session.testingClickFirstFootnoteReference()
+        try await harness.waitUntilSelection(head: definitionContentFrom)
+        let sourcePresentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(sourcePresentation.footnoteReferenceCount == 1)
+        #expect(sourcePresentation.footnoteDefinitionSourceCount == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        let referenceFrom =
+            try #require(source.range(of: "[^note]")?.lowerBound)
+            .utf16Offset(in: source) + 1
+        harness.session.revealSourceRange(fromUTF16: referenceFrom, toUTF16: referenceFrom)
+        try await harness.waitUntilSelection(head: referenceFrom)
+        let activeSourceMarkerCount =
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-footnote-source-marker').length;"
+            ) as? Int
+        #expect((activeSourceMarkerCount ?? 0) >= 2)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-footnote-reference-widget').length;"
+            ) as? Int == 0)
+        let sourceMarkerMetrics =
+            try await harness.callPageJavaScript(
+                """
+                return [...document.querySelectorAll('.cm-live-footnote-source-marker')].map((node) => {
+                  const style = getComputedStyle(node);
+                  return [style.fontFamily, style.fontSize, style.lineHeight].join('|');
+                }).join('||');
+                """
+            ) as? String
+        let metricValues = sourceMarkerMetrics?.components(separatedBy: "||") ?? []
+        #expect(metricValues.count >= 2)
+        #expect(Set(metricValues).count == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit footnote locators preview current named and inline definitions without reflow")
+    func editFootnotesPreviewCurrentBufferWithoutReflow() async throws {
+        let source = "Claim[^note] and aside^[Inline *qualification*].\n\n[^note]: **Basis** for the claim.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        _ = try await harness.waitUntilPresentation(stage: "two Edit footnote locators") {
+            $0.footnoteReferenceCount == 2 && $0.footnoteDefinitionSourceCount == 1
+        }
+        let owner = try #require(harness.session.webView)
+        let frame = owner.frame
+        for (index, text, tag) in [(0, "Basis for the claim", "strong"), (1, "Inline qualification", "em")] {
+            _ = try await harness.callPageJavaScript(
+                """
+                const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
+                marker.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse'}));
+                """, arguments: ["index": index])
+            _ = try await harness.waitUntilPresentation(stage: "native footnote preview") {
+                !$0.previewPopoverHidden && $0.previewTitle == "Footnote \(index + 1)"
+            }
+            let preview = try #require(harness.session.floatingSurfaces.previewWebView)
+            #expect(try await preview.evaluateJavaScript("document.body.textContent.includes('\(text)')") as? Bool == true)
+            #expect(try await preview.evaluateJavaScript("document.querySelector('\(tag)') !== null") as? Bool == true)
+            #expect(owner.frame == frame)
+            #expect(
+                try await harness.callPageJavaScript(
+                    """
+                    const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
+                    return marker.tagName === 'BUTTON' && marker.getAttribute('aria-expanded') === 'true'
+                        && !marker.hasAttribute('aria-controls');
+                    """, arguments: ["index": index]) as? Bool == true)
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inline footnote command wraps the exact selection in one source transaction")
+    func inlineFootnoteCommandWrapsExactSelection() async throws {
+        let source = "Claim remains."
+        let harness = EditorHarness(source: source, initialSourceRange: 0..<5)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.perform(.insertInlineFootnote)
+        try await harness.waitUntilSelection(head: 7, stage: "inline footnote insertion")
+
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "^[Claim] remains."
+        )
+        #expect(
+            harness.session.context?.selections == [
+                MarkdownEditorSelectionRange(anchor: 2, head: 7)
+            ])
+        #expect(harness.session.context?.undoLabel == "Insert Inline Footnote")
+        #expect(harness.session.generation == 1)
+        #expect(harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit footnote definitions remain direct exact Markdown after preceding edits")
+    func editFootnoteDefinitionRemainsDirectEditableSource() async throws {
+        let source = "Claim[^note].\n\n[^note]: Basis for revision.\n"
+        let prefix = "Preface added before projected content.\n\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        harness.resize(width: 700)
+        try await harness.waitUntilReady()
+        harness.setPresentationCSS(ScholiumDocumentPresentationConfiguration(textScale: 2).css)
+        _ = try await harness.waitUntilPresentation(stage: "two-hundred-percent footnote") {
+            $0.presentation.rootTextScale == "2.000000em"
+                && $0.footnoteDefinitionSourceCount == 1
+        }
+
+        harness.session.goToLine(1)
+        try await harness.waitUntilSelection(head: 0)
+        try await harness.session.perform(.pastePlain, argument: prefix)
+        let shiftedSource = prefix + source
+        let contentFrom = try #require(shiftedSource.range(of: "Basis"))
+            .lowerBound.utf16Offset(in: shiftedSource)
+        _ = try await harness.waitUntilPresentation(stage: "shifted direct footnote") {
+            $0.footnoteDefinitionSourceCount == 1
+        }
+
+        harness.session.revealSourceRange(fromUTF16: contentFrom, toUTF16: contentFrom)
+        try await harness.waitUntilSelection(head: contentFrom)
+        let direct = try await harness.session.testingAccessibilitySnapshot()
+        #expect(direct.footnoteDefinitionSourceCount == 1)
+
+        try await harness.session.perform(.pastePlain, argument: "Revised ")
+        let expected = shiftedSource.replacingOccurrences(
+            of: "Basis for revision.",
+            with: "Revised Basis for revision."
+        )
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+        #expect(harness.latestSource == expected)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A Live Preview click places one caret before exposing only that inline construct")
+    func inlineProjectionClickPlacesSingleCaret() async throws {
+        let source = "Before **bold evidence** and [a standard link](https://example.test).\n"
+        let linkRange = try #require(source.range(of: "a standard link"))
+        let linkFrom = linkRange.lowerBound.utf16Offset(in: source)
+        let linkTo = linkRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.testingClickVisibleText("a standard link")
+        _ = try await harness.waitUntilSelection(in: linkFrom..<linkTo)
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor == selection.head)
+        let active = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "a standard link"
+        )
+        #expect(active.linkTexts == ["[a standard link](https://example.test)"])
+        #expect(!active.lineText.contains("**bold evidence**"))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A caret beside Wiki syntax has no synthetic bracket selection")
+    func wikiSyntaxCaretRemainsAPlainInsertionPoint() async throws {
+        let source = "Before [[work-034]] after.\n"
+        let construct = try #require(source.range(of: "[[work-034]]"))
+        let closingMarker = construct.upperBound.utf16Offset(in: source) - 1
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.revealSourceRange(fromUTF16: closingMarker, toUTF16: closingMarker)
+        try await harness.waitUntilSelection(head: closingMarker)
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor == selection.head)
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.matchingBracketCount == 0)
+
+        try await harness.session.perform(.pastePlain, argument: "中文")
+        let expected = (source as NSString).replacingCharacters(
+            in: NSRange(location: closingMarker, length: 0),
+            with: "中文"
+        )
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit keeps an empty auto-closed Wikilink placeholder exact")
+    func emptyWikilinkPlaceholderRemainsExact() async throws {
+        let source = "Before [[]] after.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let projection = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "Before"
+        )
+        #expect(projection.lineText == "Before [[]] after.")
+        #expect(projection.wikiLinkTexts.isEmpty)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Footnote definition content uses ordinary Live Preview at its sole source position")
+    func footnoteDefinitionContentUsesOrdinaryLiveProjection() async throws {
+        let source = "Claim[^note].\n\n[^note]: **Grounded** reason.\n\n  - Nested footnote item.\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let definition = try await harness.session.testingInlineProjectionSnapshot(
+            containing: "Grounded"
+        )
+        #expect(definition.strongTexts == ["Grounded"])
+        #expect(definition.lineText.contains("[^note]:"))
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.footnoteDefinitionSourceCount == 1)
+        #expect(presentation.liveListMarkerCount == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit exposes the filename title as a source-neutral inline rename control")
+    func editProjectsEditableDocumentTitleOutsideMarkdown() async throws {
+        let source = "# Authored section\n\nArgument."
+        var renameRequests: [(expected: String, requested: String)] = []
+        let harness = EditorHarness(
+            documentTitle: "Reasons & Emotion",
+            source: source,
+            laysOutForPointerTesting: true,
+            onTitleRename: { expected, requested in
+                renameRequests.append((expected, requested))
+                return requested
+            }
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let live = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const title = document.querySelector('.cm-live-note-title');
+                const section = document.querySelector('.cm-live-h1');
+                return {
+                  titleCount: document.querySelectorAll('.cm-live-note-title').length,
+                  titleText: title?.querySelector('textarea')?.value || '',
+                  titleEditable: !title?.querySelector('textarea')?.disabled,
+                  titleRole: title?.getAttribute('role') || '',
+                  titleLevel: title?.getAttribute('aria-level') || '',
+                  sectionLevel: section?.getAttribute('aria-level') || ''
+                };
+                """
+            ) as? [String: Any])
+        #expect(live["titleCount"] as? Int == 1)
+        #expect(live["titleText"] as? String == "Reasons & Emotion")
+        #expect(live["titleEditable"] as? Bool == true)
+        #expect(live["titleRole"] as? String == "heading")
+        #expect(live["titleLevel"] as? String == "1")
+        #expect(live["sectionLevel"] as? String == "2")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        #expect(!harness.session.isDirty)
+
+        try await harness.session.testingClickElementBox(
+            ".scholium-note-title",
+            horizontalFraction: 0.7,
+            verticalFraction: 0.95
+        )
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.activeElement?.matches('.scholium-note-title-input') === true"
+            ) as? Bool == true)
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Cancelled title';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            return input.value;
+            """
+        )
+        #expect(renameRequests.isEmpty)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.scholium-note-title-input')?.value || ''"
+            ) as? String == "Reasons & Emotion")
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Reasons after Inline Rename';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """
+        )
+        let clock = ContinuousClock()
+        let renameDeadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript(
+            "return document.querySelector('.scholium-note-title-input')?.value || ''"
+        ) as? String != "Reasons after Inline Rename" || renameRequests.isEmpty {
+            if clock.now >= renameDeadline {
+                Issue.record("Edit did not complete its inline Note rename.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(renameRequests.count == 1)
+        #expect(renameRequests.first?.expected == "Reasons & Emotion")
+        #expect(renameRequests.first?.requested == "Reasons after Inline Rename")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        #expect(!harness.session.isDirty)
+
+        harness.setDocumentTitle("Reasons after Rename")
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript(
+            "return document.querySelector('.scholium-note-title-input')?.value || ''"
+        ) as? String != "Reasons after Rename" {
+            if clock.now >= deadline {
+                Issue.record("Edit did not refresh its projected Note title.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-note-title').length"
+            ) as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Document title preserves native forward and backward pointer selection")
+    func editDocumentTitleSupportsBidirectionalPointerSelection() async throws {
+        let source = "Argument."
+        var renameRequests = 0
+        let harness = EditorHarness(
+            documentTitle: "Reasons & Emotion",
+            source: source,
+            laysOutForPointerTesting: true,
+            onTitleRename: { _, _ in
+                renameRequests += 1
+                return "Reasons & Emotion"
+            }
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let forward = try await harness.session.testingDragDocumentTitle(
+            from: 0.15,
+            to: 0.85
+        )
+        #expect(forward.start < forward.end)
+        #expect(!forward.selectedText.isEmpty)
+
+        let backward = try await harness.session.testingDragDocumentTitle(
+            from: 0.85,
+            to: 0.15
+        )
+        #expect(backward.start < backward.end)
+        #expect(backward.start == forward.start)
+        #expect(backward.end == forward.end)
+        #expect(backward.selectedText == forward.selectedText)
+        #expect(renameRequests == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Programmatic title focus collapses at the end and recovery records the active surface")
+    func titleFocusAndBodyFocusAreRecoverable() async throws {
+        let title = "Emotion and Reasons"
+        let source = "# The Question\n\nEmotions may disclose reasons."
+        let harness = EditorHarness(documentTitle: title, source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.focusTitleAndWait()
+        let titleState = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const input = document.querySelector('.scholium-note-title-input');
+                return {
+                  focused: document.activeElement === input,
+                  start: input?.selectionStart ?? -1,
+                  end: input?.selectionEnd ?? -1
+                };
+                """
+            ) as? [String: Any])
+        #expect(titleState["focused"] as? Bool == true)
+        #expect(titleState["start"] as? Int == title.utf16.count)
+        #expect(titleState["end"] as? Int == title.utf16.count)
+
+        try await harness.session.captureStateForViewReconstruction()
+        #expect(
+            harness.session.windowPresentationSnapshot(
+                scrollFraction: 0
+            ).focusTarget == .title)
+
+        harness.session.revealSourceRange(fromUTF16: 18, toUTF16: 18)
+        try await harness.waitUntilSelection(head: 18)
+        try await harness.session.captureStateForViewReconstruction()
+        let restored = harness.session.windowPresentationSnapshot(scrollFraction: 0)
+        #expect(restored.focusTarget == .editor)
+        #expect(
+            restored.selections == [
+                WindowDocumentSelectionRange(anchor: 18, head: 18)
+            ])
+        await harness.closeAndDrain()
+    }
+
+    @Test("A rejected inline title rename preserves the draft and reports the error")
+    func rejectedInlineTitleRenamePreservesDraft() async throws {
+        enum RenameFailure: LocalizedError {
+            case collision
+            var errorDescription: String? { "A note with that name already exists." }
+        }
+        let source = "Argument."
+        let harness = EditorHarness(
+            documentTitle: "Argument",
+            source: source,
+            onTitleRename: { _, _ in throw RenameFailure.collision }
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Existing';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """
+        )
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript(
+            "return document.querySelector('.scholium-note-title-error')?.textContent || ''"
+        ) as? String != "A note with that name already exists." {
+            if clock.now >= deadline {
+                Issue.record("Edit did not present the rejected rename inline.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let state = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const input = document.querySelector('.scholium-note-title-input');
+                return {
+                  value: input?.value || '',
+                  invalid: input?.getAttribute('aria-invalid') || '',
+                  focused: document.activeElement === input
+                };
+                """
+            ) as? [String: Any])
+        #expect(state["value"] as? String == "Existing")
+        #expect(state["invalid"] as? String == "true")
+        #expect(state["focused"] as? Bool == true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inline title rename waits for marked-text composition to finish")
+    func inlineTitleRenameRespectsComposition() async throws {
+        var renameRequests: [String] = []
+        let source = "情绪提供理由。"
+        let harness = EditorHarness(
+            documentTitle: "Emotion",
+            source: source,
+            onTitleRename: { _, requested in
+                renameRequests.append(requested)
+                return requested
+            }
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.focus();
+            input.dispatchEvent(new CompositionEvent('compositionstart', {bubbles: true}));
+            input.value = '情绪与理由';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, isComposing: true}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Enter', bubbles: true, isComposing: true
+            }));
+            return !input.disabled;
+            """
+        )
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(renameRequests.isEmpty)
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.dispatchEvent(new CompositionEvent('compositionend', {bubbles: true}));
+            input.blur();
+            return true;
+            """
+        )
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while renameRequests.isEmpty {
+            if clock.now >= deadline {
+                Issue.record("The title rename did not resume after composition ended.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(renameRequests == ["情绪与理由"])
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit heading and spacing regions remain pointer-addressable")
+    func editHeadingAndSpacingRegionsRemainPointerAddressable() async throws {
+        let source = "# First section\nFollowing paragraph.\n\n## Second section\nFinal paragraph.\n"
+        let firstHeading = try #require(source.range(of: "First section"))
+        let firstHeadingFrom = firstHeading.lowerBound.utf16Offset(in: source)
+        let firstHeadingTo = firstHeading.upperBound.utf16Offset(in: source)
+        let secondHeading = try #require(source.range(of: "Second section"))
+        let secondHeadingFrom = secondHeading.lowerBound.utf16Offset(in: source)
+        let secondHeadingTo = secondHeading.upperBound.utf16Offset(in: source)
+        let finalParagraphFrom = try #require(source.range(of: "Final paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let authoredBlank =
+            try #require(source.range(of: "\n\n"))
+            .lowerBound.utf16Offset(in: source) + 1
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(
+            head: finalParagraphFrom,
+            stage: "fixture tail selection"
+        )
+
+        try await harness.session.testingClickElementBox(
+            ".cm-live-h1",
+            verticalFraction: 0.08
+        )
+        _ = try await harness.waitUntilSelection(in: firstHeadingFrom..<firstHeadingTo)
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(head: finalParagraphFrom)
+        try await harness.session.testingClickElementBox(
+            ".cm-live-h1",
+            verticalFraction: 0.72
+        )
+        _ = try await harness.waitUntilSelection(in: firstHeadingFrom..<firstHeadingTo)
+
+        harness.session.goToLine(1)
+        try await harness.waitUntilSelection(head: 0)
+        try await harness.session.testingClickBlankLine(
+            between: "Following paragraph.",
+            and: "Second section"
+        )
+        try await harness.waitUntilSelection(head: authoredBlank)
+
+        harness.session.goToLine(1)
+        try await harness.waitUntilSelection(head: 0)
+        try await harness.session.testingClickElementBox(
+            ".cm-live-h2",
+            verticalFraction: 0.08
+        )
+        _ = try await harness.waitUntilSelection(in: secondHeadingFrom..<secondHeadingTo)
+
+        harness.session.goToLine(1)
+        try await harness.waitUntilSelection(head: 0)
+        try await harness.session.testingClickElementBox(
+            ".cm-live-h2",
+            verticalFraction: 0.72
+        )
+        _ = try await harness.waitUntilSelection(in: secondHeadingFrom..<secondHeadingTo)
+
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit cursor follows heading syntax expansion")
+    func editCursorFollowsHeadingSyntaxExpansion() async throws {
+        let source = "# 材料正文中的一级标题\nFollowing paragraph.\n"
+        let title = "材料正文中的一级标题"
+        let titleRange = try #require(source.range(of: title))
+        let titleTo = titleRange.upperBound.utf16Offset(in: source)
+        let paragraphFrom = try #require(source.range(of: "Following paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(2)
+        try await harness.waitUntilSelection(head: paragraphFrom, stage: "inactive heading")
+
+        _ = try await harness.callPageJavaScript("await document.fonts.ready;")
+        let clickPoint = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const heading = document.querySelector('.cm-line.cm-live-h1');
+                if (!heading) return null;
+                const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+                let node;
+                while ((node = walker.nextNode())) {
+                  if (node.parentElement?.closest('[data-syntax-open="false"]')) continue;
+                  const index = node.textContent?.indexOf(title) ?? -1;
+                  if (index < 0) continue;
+                  const range = document.createRange();
+                  range.setStart(node, index);
+                  range.setEnd(node, index + title.length);
+                  const rect = range.getBoundingClientRect();
+                  const lineRect = heading.getBoundingClientRect();
+                  return {horizontal: (rect.right + 2 - lineRect.left) / lineRect.width,
+                    vertical: ((rect.top + rect.bottom) / 2 - lineRect.top) / lineRect.height};
+                }
+                return null;
+                """,
+                arguments: ["title": title]
+            ) as? [String: Any])
+        // Use the same native single-click path as the other heading tests.
+        // The helper completes layout before measuring the requested point;
+        // synthetic MouseEvent defaults do not represent a single click.
+        try await harness.session.testingClickElementBox(
+            ".cm-line.cm-live-h1",
+            horizontalFraction: try #require((clickPoint["horizontal"] as? NSNumber)?.doubleValue),
+            verticalFraction: try #require((clickPoint["vertical"] as? NSNumber)?.doubleValue)
+        )
+        try await harness.waitUntilSelection(head: titleTo, stage: "expanded heading end")
+        try await harness.waitUntilFocused()
+        // Syntax expansion starts in a measured frame, so a fixed sleep can
+        // sample its first frame in a background WKWebView. Wait for the
+        // actual animation and cursor geometry without finishing it manually.
+        let animationDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        var geometry: [String: Any] = [:]
+        while true {
+            geometry = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const heading = document.querySelector('.cm-line.cm-live-h1');
+                    const cursor = document.querySelector('.cm-cursor-primary');
+                    const scroller = document.querySelector('.cm-scroller');
+                    if (!heading || !cursor || !scroller) return null;
+                    const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+                    let node;
+                    while ((node = walker.nextNode())) {
+                      const index = node.textContent?.indexOf(title) ?? -1;
+                      if (index < 0) continue;
+                      const range = document.createRange();
+                      range.setStart(node, index);
+                      range.setEnd(node, index + title.length);
+                      const textRect = range.getBoundingClientRect();
+                      const scrollerRect = scroller.getBoundingClientRect();
+                      const expectedLeft = textRect.right - scrollerRect.left + scroller.scrollLeft;
+                      const marker = heading.querySelector('.cm-syntax-token[data-syntax-kind="prefix"]');
+                      const animations = heading.getAnimations({subtree: true});
+                      return {distance: String(Math.abs(parseFloat(cursor.style.left) - expectedLeft)),
+                        syntaxAnimating: animations.some(a => a.pending || a.playState === 'running'),
+                        animationStates: animations.map(a => ({state: a.playState, time: a.currentTime})),
+                        markerVisible: marker?.dataset.syntaxOpen === 'true'
+                          && marker.getBoundingClientRect().width > 0
+                          && Number.parseFloat(getComputedStyle(marker).opacity) > 0.95};
+                    }
+                    return null;
+                    """,
+                    arguments: ["title": title]
+                ) as? [String: Any])
+            let distance = Double(geometry["distance"] as? String ?? "")
+            if geometry["syntaxAnimating"] as? Bool == false,
+                geometry["markerVisible"] as? Bool == true,
+                let distance, distance < 4
+            {
+                break
+            }
+            guard ContinuousClock.now < animationDeadline else {
+                Issue.record("Heading syntax and cursor did not settle: \(geometry)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect((geometry["markerVisible"] as? Bool) == true)
+        let cursorDistance = try #require(Double(geometry["distance"] as? String ?? ""))
+        #expect(cursorDistance < 4)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit heading text supports forward and backward pointer selection")
+    func editHeadingTextSupportsBidirectionalPointerSelection() async throws {
+        let source = "# First heading\nFollowing paragraph.\n\n## Second heading\nFinal paragraph.\n"
+        let heading = try #require(source.range(of: "First heading"))
+        let headingFrom = heading.lowerBound.utf16Offset(in: source)
+        let headingTo = heading.upperBound.utf16Offset(in: source)
+        let finalParagraphFrom = try #require(
+            source.range(of: "Final paragraph.")?.lowerBound.utf16Offset(in: source)
+        )
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(
+            head: finalParagraphFrom,
+            stage: "fixture tail selection"
+        )
+
+        _ = try await harness.session.testingDragSelectionNative(
+            from: "First",
+            to: "heading",
+            lineContaining: "First heading"
+        )
+        _ = try await harness.waitUntilSelection(in: headingFrom..<headingTo)
+        let forward = try #require(harness.session.context?.selections.first)
+        #expect(forward.anchor < forward.head)
+        #expect(min(forward.anchor, forward.head) >= headingFrom)
+        #expect(max(forward.anchor, forward.head) <= headingTo)
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(
+            head: finalParagraphFrom,
+            stage: "fixture tail selection before reverse drag"
+        )
+        _ = try await harness.session.testingDragSelectionNative(
+            from: "heading",
+            to: "First",
+            lineContaining: "First heading"
+        )
+        _ = try await harness.waitUntilSelection(in: headingFrom..<headingTo)
+        let backward = try #require(harness.session.context?.selections.first)
+        #expect(backward.anchor > backward.head)
+        #expect(min(backward.anchor, backward.head) >= headingFrom)
+        #expect(max(backward.anchor, backward.head) <= headingTo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit callout roles use styling without duplicate visible labels")
+    func editCalloutRolesUseStylingWithoutVisibleLabels() async throws {
+        let source =
+            "> [!warning]+ Limitation\n> First body.\n\n"
+            + "> [!state]+ Claim\n> Second body.\n\n"
+            + "> [!quote]+ Source\n> Third body.\n\n"
+            + "> [!orient] Route\n> Supporting prose.\n\n"
+            + "> [!cite] Literature\n> Supporting prose.\n\n"
+            + "> [!connect] Connection\n> Supporting prose.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const labels = [...document.querySelectorAll('.cm-live-callout-role-label')];
+                const roleClasses = ['flag', 'state', 'quote'].map(role =>
+                  !!document.querySelector(`.cm-live-callout-role-${role}`));
+                const visuallyHidden = labels.every(label => {
+                  const rect = label.getBoundingClientRect();
+                  const style = getComputedStyle(label);
+                  return rect.width <= 1.5 && rect.height <= 1.5
+                    && style.position === 'absolute';
+                });
+                const probe = document.createElement('span');
+                probe.style.color = 'var(--scholium-color-secondary-text)';
+                document.querySelector('.cm-content').append(probe);
+                const secondary = getComputedStyle(probe).color;
+                probe.remove();
+                const quietBodies = ['orient', 'cite', 'connect'].every(role => {
+                  const line = document.querySelector(`.cm-live-callout-role-${role}.cm-live-callout-body-line`);
+                  return line && getComputedStyle(line).color === secondary
+                    && getComputedStyle(line).opacity === '1';
+                });
+                return {
+                  quietBodies,
+                  labelCount: labels.length,
+                  visuallyHidden,
+                  roleClasses,
+                };
+                """
+            ) as? [String: Any])
+        #expect(result["quietBodies"] as? Bool == true)
+        #expect((result["labelCount"] as? NSNumber)?.intValue == 3)
+        #expect(result["visuallyHidden"] as? Bool == true)
+        #expect(result["roleClasses"] as? [Bool] == [true, true, true])
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit callouts project default titles only for untitled source")
+    func editCalloutsProjectDefaultTitleOnlyWhenUntitled() async throws {
+        let source = "> [!warning]\n> Warning body.\n\n> [!warning]-\n> Foldable body.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const defaultTitles = [...document.querySelectorAll('.scholium-callout-default-title')];
+                const roleLabels = [...document.querySelectorAll('.cm-live-callout-role-label')];
+                const disclosureButtons = [...document.querySelectorAll('.cm-live-callout-disclosure')];
+                const sourceLines = [...document.querySelectorAll('.cm-line.cm-live-callout')]
+                  .map(line => {
+                    const clone = line.cloneNode(true);
+                    clone.querySelectorAll('.cm-live-callout-role-label, .scholium-callout-default-title').forEach(label => label.remove());
+                    return clone.textContent ?? '';
+                  }).join('\\n');
+                return {
+                  defaultTitleCount: defaultTitles.length,
+                  roleLabelCount: roleLabels.length,
+                  disclosureCount: disclosureButtons.length,
+                  sourceContainsGeneratedRole: sourceLines.includes('Caution'),
+                };
+                """
+            ) as? [String: Any])
+        #expect((result["defaultTitleCount"] as? NSNumber)?.intValue == 2)
+        #expect((result["roleLabelCount"] as? NSNumber)?.intValue == 0)
+        #expect((result["disclosureCount"] as? NSNumber)?.intValue == 1)
+        #expect(result["sourceContainsGeneratedRole"] as? Bool == false)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit Callout disclosure keeps following-line pointer selection stable")
+    func editCalloutDisclosureKeepsFollowingLinePointerSelectionStable() async throws {
+        let source = """
+            Introductory context before the folded block.
+
+            > [!state]- Folded claim
+            > Body line one remains source-owned.
+            > Body line two remains source-owned.
+
+            AFTER_TARGET remains directly pointer-addressable.
+            Following context stays below the target.
+            """
+        let targetRange = try #require(source.range(of: "AFTER_TARGET"))
+        let targetFrom = targetRange.lowerBound.utf16Offset(in: source)
+        let targetTo = targetRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(
+            source: source,
+            initialWindowSize: NSSize(width: 1_080, height: 640),
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func waitForDisclosure(_ expanded: Bool) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                let value =
+                    try await harness.callPageJavaScript(
+                        """
+                        return document.querySelector('.cm-live-callout-disclosure')?.getAttribute('aria-expanded') === 'true';
+                        """
+                    ) as? Bool
+                if value == expanded { return }
+                if clock.now >= deadline {
+                    Issue.record("The Edit Callout disclosure did not reach the expected state \(expanded).")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        try await waitForDisclosure(false)
+        try await harness.session.testingClickElementBox(".cm-live-callout-disclosure")
+        try await waitForDisclosure(true)
+        try await harness.session.testingClickVisibleText("AFTER_TARGET")
+        _ = try await harness.waitUntilSelection(in: targetFrom..<targetTo)
+        let expandedSelection = try #require(harness.session.context?.selections.first)
+        #expect(expandedSelection.anchor == expandedSelection.head)
+        #expect(targetFrom..<targetTo ~= expandedSelection.head)
+        try await waitForDisclosure(true)
+
+        try await harness.session.testingClickElementBox(".cm-live-callout-disclosure")
+        try await waitForDisclosure(false)
+        try await harness.session.testingClickVisibleText("AFTER_TARGET")
+        _ = try await harness.waitUntilSelection(in: targetFrom..<targetTo)
+        let collapsedSelection = try #require(harness.session.context?.selections.first)
+        #expect(collapsedSelection.anchor == collapsedSelection.head)
+        #expect(targetFrom..<targetTo ~= collapsedSelection.head)
+        try await waitForDisclosure(false)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit source-less semantic spacing resolves to its document boundary")
+    func editSourceLessSemanticSpacingResolvesToDocumentBoundary() async throws {
+        let source = "```text\ncode\n```\nFollowing paragraph.\n"
+        let codeFrom = try #require(source.range(of: "code"))
+            .lowerBound.utf16Offset(in: source)
+        let followingFrom = try #require(source.range(of: "Following paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(2)
+        try await harness.waitUntilSelection(head: codeFrom)
+        try await harness.session.testingClickElementBox(
+            ".cm-live-semantic-gap",
+            at: 1
+        )
+        try await harness.waitUntilSelection(
+            head: followingFrom,
+            stage: "source-less semantic-gap click"
+        )
+
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Two-hundred-percent Edit projections remain measured and pointer-addressable")
+    func enlargedEditProjectionRemainsStableAcrossFocusAndBlockActivation() async throws {
+        let source = """
+            ---
+            title: Projection stability
+            ---
+            # First-level body heading
+
+            ## Stable second-level heading
+
+            > Ordinary quotation keeps the Review inset.
+
+            ```swift
+            let deliberatelyLongLine = "code remains one semantic block"
+            ```
+
+            | Claim | Status |
+            |:---|:---:|
+            | Fittingness | Open |
+
+            AFTER_TABLE_TARGET remains pointer-addressable.
+
+            1. First ordered item.
+            2. SECOND_LIST_TARGET remains pointer-addressable.
+            """
+        let targetRange = try #require(source.range(of: "AFTER_TABLE_TARGET"))
+        let targetFrom = targetRange.lowerBound.utf16Offset(in: source)
+        let targetTo = targetRange.upperBound.utf16Offset(in: source)
+        let listMarkerRange = try #require(source.range(of: "2. SECOND_LIST_TARGET"))
+        let listMarkerFrom = listMarkerRange.lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        harness.resize(width: 700)
+        try await harness.waitUntilReady()
+        let profile = DocumentAppearanceProfile(name: "Default")
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(textScale: 2).css
+                + "\n"
+                + DocumentAppearanceStyles.css(for: profile)
+        )
+
+        let initial = try await harness.waitUntilPresentation(stage: "stable enlarged Edit projection") {
+            $0.presentation.rootTextScale == "2.000000em"
+                && $0.liveH1Count == 1
+                && $0.liveH2Count == 1
+                && $0.collapsedCodeFenceLineCount == 2
+                && $0.liveListMarkerCount == 2
+                && $0.semanticTableCount == 1
+        }
+        #expect(initial.h1TextAlign == "start")
+        #expect(initial.h2TextAlign == "start")
+        #expect(initial.collapsedCodeFenceVisibleHeight <= 0.5)
+
+        // At 200% the quotation may be outside CodeMirror's mounted viewport
+        // even though the surrounding semantic catalog is complete. Move the
+        // caret to the following blank line so the quotation is both mounted
+        // and inactive; an active quotation intentionally exposes exact
+        // source rather than retaining its projected inset.
+        harness.session.goToLine(9)
+        let inactiveQuote = try await harness.waitUntilPresentation(stage: "mounted inactive quotation") {
+            !$0.quotePaddingInlineStart.isEmpty
+        }
+        let quoteInset = Double(
+            inactiveQuote.quotePaddingInlineStart.replacingOccurrences(of: "px", with: "")
+        )
+        #expect(quoteInset == Double(ScholiumDocumentRhythm.quoteInlineInset))
+        #expect(inactiveQuote.quoteMarginInlineStart == "0px")
+
+        harness.session.goToLine(4)
+        let titleFrom = try #require(source.range(of: "# First-level body heading"))
+            .lowerBound.utf16Offset(in: source)
+        try await harness.waitUntilSelection(head: titleFrom)
+        let activeTitle = try await harness.waitUntilPresentation(stage: "active first-level heading") {
+            $0.liveH1Count == 1
+        }
+        #expect(activeTitle.h1TextAlign == "start")
+
+        await harness.session.resignFocusAndWait()
+        #expect(!(try await harness.session.testingAccessibilitySnapshot()).isFocused)
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+        let refocused = try await harness.waitUntilPresentation(stage: "refocused heading projection") {
+            $0.liveH1Count == 1 && $0.liveH2Count == 1
+        }
+        #expect(refocused.h1TextAlign == "start")
+
+        try await harness.session.testingClickFirstTableCell()
+        _ = try await harness.waitUntilPresentation(stage: "pointer-activated table source") {
+            $0.semanticTableCount == 0 && $0.liveTableSourceLineCount > 0
+        }
+        try await harness.session.testingClickVisibleText("AFTER_TABLE_TARGET")
+        _ = try await harness.waitUntilSelection(in: targetFrom..<(targetTo + 1))
+        _ = try await harness.waitUntilPresentation(stage: "remeasured table projection") {
+            $0.semanticTableCount == 1 && $0.liveTableSourceLineCount == 0
+        }
+
+        try await harness.session.testingClickVisibleText("2.")
+        _ = try await harness.waitUntilSelection(in: listMarkerFrom..<(listMarkerFrom + 3))
+        let final = try await harness.waitUntilPresentation(stage: "ordered-list pointer placement") {
+            $0.liveListMarkerCount == 1
+        }
+        #expect(final.liveH1Count == 1)
+        #expect(final.liveH2Count == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Fresh Edit and Source-to-Edit publish the same semantic projection before acknowledgement")
+    func freshAndRetainedEditEntryHaveProjectionParity() async throws {
+        let source = """
+            # QA Autosave A
+
+            ## Fixture boundary
+
+            First paragraph remains independently editable.
+
+            > [!orient] Reading route
+            > This synthetic note exercises the complete Scholium editing dialect.
+
+            > [!cite]- Synthetic source boundary
+            > No real publication or quotation is represented here.
+            """
+        let presentationCSS =
+            ScholiumDocumentPresentationConfiguration(textScale: 1).css
+            + "\n"
+            + DocumentAppearanceStyles.css(for: DocumentAppearanceProfile(name: "Default"))
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: presentationCSS,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        // `isLoaded` is the product visibility boundary. It must never expose
+        // the partial projection that previously appeared after Review -> Edit.
+        let fresh = try await harness.session.testingAccessibilitySnapshot()
+        #expect(fresh.liveH1Count == 1)
+        #expect(fresh.liveH2Count == 1)
+        #expect(fresh.liveCalloutBlockCount == 2)
+        #expect(fresh.h1TextAlign == "start")
+        #expect(fresh.h2TextAlign == "start")
+        #expect(fresh.editBlankLineCount > 0)
+        let body = DocumentAppearanceSettings.defaultSettings.body
+        let expectedBlankLineHeight = body.fontSizePoints * (96 / 72) * body.lineHeight
+        #expect(abs(fresh.editBlankLineMinimumHeight - expectedBlankLineHeight) < 0.5)
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        _ = try await harness.waitUntilPresentation(stage: "parity Source mode") {
+            $0.gutterCount > 0 && $0.lineNumberCount > 0
+        }
+        harness.session.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let retained = try await harness.session.testingAccessibilitySnapshot()
+
+        #expect(retained.liveH1Count == fresh.liveH1Count)
+        #expect(retained.liveH2Count == fresh.liveH2Count)
+        #expect(retained.liveCalloutBlockCount == fresh.liveCalloutBlockCount)
+        #expect(retained.h1FontSize == fresh.h1FontSize)
+        #expect(retained.h2FontSize == fresh.h2FontSize)
+        #expect(retained.h1TextAlign == fresh.h1TextAlign)
+        #expect(retained.h2TextAlign == fresh.h2TextAlign)
+        #expect(retained.editBlankLineCount == fresh.editBlankLineCount)
+        #expect(retained.editBlankLineMinimumHeight == fresh.editBlankLineMinimumHeight)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Losing editor focus preserves the complete heading projection")
+    func focusLossPreservesHeadingProjection() async throws {
+        let source = """
+            # Focus-stable first-level heading
+
+            ## Focus-stable section heading
+
+            Ordinary paragraph.
+            """
+        let presentationCSS =
+            ScholiumDocumentPresentationConfiguration(textScale: 2).css
+            + "\n"
+            + DocumentAppearanceStyles.css(for: DocumentAppearanceProfile(name: "Default"))
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: presentationCSS
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.waitUntilPresentation(stage: "focused heading projection") {
+            $0.isFocused
+                && $0.liveH1Count == 1
+                && $0.liveH2Count == 1
+        }
+
+        await harness.session.resignFocusAndWait()
+        let blurred = try await harness.waitUntilPresentation(stage: "unfocused heading projection") {
+            !$0.isFocused
+                && $0.liveH1Count == 1
+                && $0.liveH2Count == 1
+        }
+        #expect(blurred.h1TextAlign == "start")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inactive Edit lists mirror Review rhythm, markers, and task projection")
+    func inactiveEditListsMirrorReviewPresentation() async throws {
+        let source = """
+            # List parity
+
+            - Unordered item one
+            - Unordered item two
+              - Nested unordered item
+
+            1. Ordered item one
+            2. Ordered item two
+               1. Nested ordered item
+
+            - [ ] Open task fixture
+            - [x] Completed task fixture
+
+            Following paragraph.
+            """
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let inactive = try await harness.waitUntilPresentation(stage: "inactive Review-parity lists") {
+            $0.liveListMarkerCount == 8
+                && $0.liveTaskCheckboxCount == 2
+                && $0.liveTaskCheckedCheckboxCount == 1
+                && $0.liveTaskSourceTokenCount == 0
+        }
+        #expect(inactive.liveListMarkerUsesPrimaryText)
+        #expect(inactive.liveListMarkerText == "•|•|◦|1.|2.|1.")
+        #expect(inactive.liveListMarkerTextGap > 0)
+        #expect(inactive.liveListMarkerTextGap < 8)
+        let rhythm = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const lines = [...document.querySelectorAll('.cm-line.cm-live-list')].slice(0, 3);
+                return {
+                  count: lines.length,
+                  paddingEnds: lines.map(line => getComputedStyle(line).paddingBlockEnd),
+                  gaps: lines.slice(1).map((line, index) =>
+                    line.getBoundingClientRect().top - lines[index].getBoundingClientRect().bottom),
+                };
+                """
+            ) as? [String: Any])
+        #expect(rhythm["count"] as? Int == 3)
+        #expect((rhythm["paddingEnds"] as? [String]) == ["0px", "0px", "0px"])
+        let internalGaps = try #require(rhythm["gaps"] as? [Double])
+        #expect(internalGaps.allSatisfy { abs($0) <= 1 })
+
+        let taskSourceFrom = try #require(source.range(of: "- [ ] Open task fixture"))
+            .lowerBound.utf16Offset(in: source)
+        harness.session.goToLine(11)
+        try await harness.waitUntilSelection(head: taskSourceFrom)
+        let active = try await harness.waitUntilPresentation(stage: "active exact task source") {
+            $0.liveListMarkerCount == 7
+                && $0.liveTaskCheckboxCount == 1
+                && $0.liveTaskSourceTokenCount == 1
+        }
+        #expect(active.liveListMarkerUsesPrimaryText)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("List Tab indentation is transactional and leaves fenced code to the editor indent command")
+    func listTabIndentationUsesStructuralAndCodePaths() async throws {
+        let source = "- first\n- second\n\n```swift\n- code\n```\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func pressTab(shift: Bool = false) async throws {
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const content = document.querySelector('.cm-content');
+                    if (!content) return false;
+                    const event = new KeyboardEvent('keydown', {
+                      key: 'Tab',
+                      code: 'Tab',
+                      shiftKey,
+                      bubbles: true,
+                      cancelable: true
+                    });
+                    content.dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """,
+                    arguments: ["shiftKey": shift]
+                ) as? Bool
+            #expect(handled == true)
+        }
+
+        let listSelectionEnd = try #require(source.range(of: "- second")?.upperBound)
+            .utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: listSelectionEnd)
+        try await harness.waitUntilSelection(head: listSelectionEnd, stage: "list selection")
+        try await pressTab()
+        let indented = "  - first\n  - second\n\n```swift\n- code\n```\n"
+        #expect(try await harness.session.currentText(for: harness.documentID) == indented)
+        #expect(
+            harness.session.context?.selections == [
+                MarkdownEditorSelectionRange(anchor: 2, head: 20)
+            ])
+        #expect(harness.session.context?.undoLabel == "Indent List")
+
+        let indentedSelectionEnd = try #require(indented.range(of: "- second")?.upperBound)
+            .utf16Offset(in: indented)
+        harness.session.revealSourceRange(fromUTF16: 2, toUTF16: indentedSelectionEnd)
+        try await harness.waitUntilSelection(head: indentedSelectionEnd, stage: "indented list selection")
+        try await pressTab(shift: true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(
+            harness.session.context?.selections == [
+                MarkdownEditorSelectionRange(anchor: 0, head: 16)
+            ])
+        #expect(harness.session.context?.undoLabel == "Outdent List")
+
+        let codeCaret =
+            try #require(source.range(of: "- code")?.lowerBound)
+            .utf16Offset(in: source) + 2
+        harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
+        try await harness.waitUntilSelection(head: codeCaret, stage: "fenced code caret")
+        try await pressTab()
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "- first\n- second\n\n```swift\n  - code\n```\n"
+        )
+        #expect(harness.session.context?.undoLabel == "Indent")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Projected task checkbox toggles only its exact marker bytes")
+    func projectedTaskCheckboxTogglesExactMarkerBytes() async throws {
+        let source = """
+            Before the tasks.
+
+            - [ ] OPEN_TASK_BODY
+            - [x] COMPLETED_TASK_BODY
+            * [ ] ALTERNATE_TASK_BODY
+              ALTERNATE_CONTINUATION
+
+            After the tasks.
+            """
+        let expected = source.replacingOccurrences(
+            of: "- [ ] OPEN_TASK_BODY",
+            with: "- [x] OPEN_TASK_BODY"
+        )
+        let expectedAfterUncheck = expected.replacingOccurrences(
+            of: "- [x] COMPLETED_TASK_BODY",
+            with: "- [ ] COMPLETED_TASK_BODY"
+        )
+        let expectedAfterCommand = expectedAfterUncheck.replacingOccurrences(
+            of: "* [ ] ALTERNATE_TASK_BODY",
+            with: "* [x] ALTERNATE_TASK_BODY"
+        )
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let inactive = try await harness.waitUntilPresentation(stage: "projected task checkboxes") {
+            $0.liveTaskCheckboxCount == 3
+                && $0.liveTaskCheckedCheckboxCount == 1
+                && $0.liveTaskSourceTokenCount == 0
+        }
+        #expect(inactive.isFocused)
+        let controls = try #require(
+            try await harness.callPageJavaScript(
+                """
+                return Array.from(document.querySelectorAll('.cm-live-task-checkbox')).map(checkbox => ({
+                  tag: checkbox.tagName,
+                  type: checkbox.type,
+                  label: checkbox.getAttribute('aria-label'),
+                  tabIndex: checkbox.tabIndex,
+                  checked: checkbox.checked,
+                  width: checkbox.getBoundingClientRect().width,
+                  height: checkbox.getBoundingClientRect().height
+                }));
+                """
+            ) as? [[String: Any]])
+        #expect(controls.count == 3)
+        #expect(controls.allSatisfy { $0["tag"] as? String == "INPUT" })
+        #expect(controls.allSatisfy { $0["type"] as? String == "checkbox" })
+        #expect(controls.allSatisfy { $0["label"] as? String == "Task item" })
+        #expect(controls.allSatisfy { $0["tabIndex"] as? Int == -1 })
+        #expect(controls.compactMap { $0["checked"] as? Bool } == [false, true, false])
+        #expect(controls.allSatisfy { ($0["width"] as? Double ?? 0) >= 20 })
+        #expect(controls.allSatisfy { ($0["height"] as? Double ?? 0) >= 20 })
+
+        func taskBodyLeadingX(_ body: String) async throws -> Double {
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const target = '\(body)';
+                    for (const line of document.querySelectorAll('.cm-line.cm-live-task-list')) {
+                      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                      let node;
+                      while ((node = walker.nextNode())) {
+                        const offset = (node.textContent || '').indexOf(target);
+                        if (offset < 0) continue;
+                        const range = document.createRange();
+                        range.setStart(node, offset);
+                        range.setEnd(node, offset + 1);
+                        return range.getBoundingClientRect().left;
+                      }
+                    }
+                    return null;
+                    """
+                ) as? NSNumber)
+            return value.doubleValue
+        }
+        let initialOpenTaskX = try await taskBodyLeadingX("OPEN_TASK_BODY")
+        let initialCompletedTaskX = try await taskBodyLeadingX("COMPLETED_TASK_BODY")
+        #expect(abs(initialOpenTaskX - initialCompletedTaskX) <= 0.5)
+
+        let selectionBeforeClick = harness.session.context?.selections
+        try await harness.session.testingClickTaskCheckbox()
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(4))
+        while try await harness.session.currentText(for: harness.documentID) != expected {
+            guard clock.now < deadline else {
+                Issue.record("Task checkbox did not update its exact source marker.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let checked = try await harness.waitUntilPresentation(stage: "checked task projection") {
+            $0.liveTaskCheckboxCount == 3
+                && $0.liveTaskCheckedCheckboxCount == 2
+                && $0.liveTaskSourceTokenCount == 0
+        }
+        #expect(checked.isFocused)
+        #expect(harness.session.context?.selections == selectionBeforeClick)
+        #expect(harness.session.context?.undoLabel == "Toggle Task")
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+        #expect(abs(try await taskBodyLeadingX("OPEN_TASK_BODY") - initialOpenTaskX) <= 0.5)
+        #expect(
+            abs(try await taskBodyLeadingX("COMPLETED_TASK_BODY") - initialCompletedTaskX)
+                <= 0.5
+        )
+
+        try await harness.session.testingClickTaskCheckbox(at: 1)
+        let uncheckDeadline = clock.now.advanced(by: .seconds(4))
+        while try await harness.session.currentText(for: harness.documentID) != expectedAfterUncheck {
+            guard clock.now < uncheckDeadline else {
+                Issue.record("Checked task checkbox did not clear its exact source marker.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let unchecked = try await harness.waitUntilPresentation(stage: "unchecked task projection") {
+            $0.liveTaskCheckboxCount == 3
+                && $0.liveTaskCheckedCheckboxCount == 1
+                && $0.liveTaskSourceTokenCount == 0
+        }
+        #expect(unchecked.isFocused)
+        #expect(harness.session.context?.selections == selectionBeforeClick)
+        #expect(harness.session.context?.undoLabel == "Toggle Task")
+        #expect(try await harness.session.currentText(for: harness.documentID) == expectedAfterUncheck)
+        #expect(abs(try await taskBodyLeadingX("OPEN_TASK_BODY") - initialOpenTaskX) <= 0.5)
+        #expect(
+            abs(try await taskBodyLeadingX("COMPLETED_TASK_BODY") - initialCompletedTaskX)
+                <= 0.5
+        )
+
+        let commandCaret =
+            try #require(expectedAfterUncheck.range(of: "ALTERNATE_CONTINUATION"))
+            .lowerBound.utf16Offset(in: expectedAfterUncheck) + 2
+        harness.session.revealSourceRange(fromUTF16: commandCaret, toUTF16: commandCaret)
+        try await harness.waitUntilSelection(head: commandCaret)
+        let availabilityDeadline = clock.now.advanced(by: .seconds(4))
+        while harness.session.context?.availableCommands.contains(.toggleTask) != true {
+            guard clock.now < availabilityDeadline else {
+                Issue.record("The alternate task continuation did not expose Toggle Task.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.context?.availableCommands.contains(.toggleTask) == true)
+        try await harness.session.perform(.toggleTask)
+        let commandDeadline = clock.now.advanced(by: .seconds(4))
+        while try await harness.session.currentText(for: harness.documentID) != expectedAfterCommand {
+            guard clock.now < commandDeadline else {
+                Issue.record("The keyboard/menu task command did not update its exact marker.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.context?.undoLabel == "Toggle Task")
+        #expect(try await harness.session.currentText(for: harness.documentID) == expectedAfterCommand)
+        await harness.closeAndDrain()
+    }
+
+    @Test("List prefix arrows move one source position at a time")
+    func leftArrowEntersProjectedListPrefixAtTrailingEdge() async throws {
+        let source = """
+            Before the lists.
+
+            - BULLET_LIST_BODY
+              - NESTED_LIST_BODY
+            10. ORDERED_LIST_BODY
+            - [ ] TASK_LIST_BODY
+
+            After the lists.
+            """
+        let cases = [
+            (prefix: "- ", body: "BULLET_LIST_BODY"),
+            (prefix: "  - ", body: "NESTED_LIST_BODY"),
+            (prefix: "10. ", body: "ORDERED_LIST_BODY"),
+            (prefix: "- [ ] ", body: "TASK_LIST_BODY"),
+        ]
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        for testCase in cases {
+            let bodyFrom = try #require(source.range(of: testCase.body))
+                .lowerBound.utf16Offset(in: source)
+            harness.session.revealSourceRange(fromUTF16: bodyFrom, toUTF16: bodyFrom)
+            try await harness.waitUntilSelection(head: bodyFrom)
+
+            for step in 1...testCase.prefix.utf16.count {
+                try await harness.session.testingPressArrow("ArrowLeft")
+                try await harness.waitUntilSelection(
+                    head: bodyFrom - step,
+                    stage: "source prefix step \(step) for \(testCase.body)"
+                )
+            }
+            let lineText = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    return Array.from(document.querySelectorAll('.cm-line'))
+                      .find(line => (line.textContent || '').includes('\(testCase.body)'))
+                      ?.textContent || '';
+                    """
+                ) as? String)
+            #expect(lineText.contains(testCase.prefix + testCase.body))
+
+            for step in stride(from: testCase.prefix.utf16.count - 1, through: 0, by: -1) {
+                try await harness.session.testingPressArrow("ArrowRight")
+                try await harness.waitUntilSelection(
+                    head: bodyFrom - step,
+                    stage: "right-arrow prefix step \(step) for \(testCase.body)"
+                )
+            }
+            let rightLineText = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    return Array.from(document.querySelectorAll('.cm-line'))
+                      .find(line => (line.textContent || '').includes('\(testCase.body)'))
+                      ?.textContent || '';
+                    """
+                ) as? String)
+            #expect(rightLineText.contains(testCase.prefix + testCase.body))
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("List source reveal is marker scoped and preserves content geometry")
+    func listSourceRevealIsMarkerScopedAndPreservesContentGeometry() async throws {
+        let source = """
+            Before the list.
+
+            - ROOT_LIST_BODY
+              - NESTED_LIST_BODY
+
+            10. ORDERED_LIST_BODY
+
+            - [ ] TASK_LIST_BODY
+
+            After the list.
+            """
+        let afterFrom = try #require(source.range(of: "After the list."))
+            .lowerBound.utf16Offset(in: source)
+        let cases = [
+            (marker: "- ROOT_LIST_BODY", body: "ROOT_LIST_BODY", task: false),
+            (marker: "- NESTED_LIST_BODY", body: "NESTED_LIST_BODY", task: false),
+            (marker: "10. ORDERED_LIST_BODY", body: "ORDERED_LIST_BODY", task: false),
+            (marker: "- [ ] TASK_LIST_BODY", body: "TASK_LIST_BODY", task: true),
+        ]
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func bodyLeadingX(_ target: String) async throws -> Double {
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const target = '\(target)';
+                    for (const line of document.querySelectorAll('.cm-line')) {
+                      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                      let node;
+                      while ((node = walker.nextNode())) {
+                        const text = node.textContent || '';
+                        const offset = text.indexOf(target);
+                        if (offset < 0) continue;
+                        const range = document.createRange();
+                        range.setStart(node, offset);
+                        range.setEnd(node, offset + 1);
+                        return range.getBoundingClientRect().left;
+                      }
+                    }
+                    return null;
+                    """
+                ) as? NSNumber)
+            return value.doubleValue
+        }
+
+        harness.session.revealSourceRange(fromUTF16: afterFrom, toUTF16: afterFrom)
+        try await harness.waitUntilSelection(head: afterFrom)
+        let inactive = try await harness.session.testingAccessibilitySnapshot()
+        #expect(inactive.liveListMarkerCount == cases.count)
+
+        for testCase in cases {
+            let markerFrom = try #require(source.range(of: testCase.marker))
+                .lowerBound.utf16Offset(in: source)
+            let bodyFrom = try #require(source.range(of: testCase.body))
+                .lowerBound.utf16Offset(in: source)
+            let inactiveX = try await bodyLeadingX(testCase.body)
+
+            let bodyCaret = bodyFrom + testCase.body.utf16.count / 2
+            harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
+            try await harness.waitUntilSelection(head: bodyCaret)
+            let bodyActive = try await harness.session.testingAccessibilitySnapshot()
+            #expect(bodyActive.liveListMarkerCount == cases.count)
+            #expect(bodyActive.liveTaskSourceTokenCount == 0)
+            let bodyActiveX = try await bodyLeadingX(testCase.body)
+
+            harness.session.revealSourceRange(fromUTF16: markerFrom, toUTF16: markerFrom)
+            try await harness.waitUntilSelection(head: markerFrom)
+            let markerActive = try await harness.session.testingAccessibilitySnapshot()
+            #expect(markerActive.liveListMarkerCount == cases.count - 1)
+            #expect(markerActive.liveTaskSourceTokenCount == (testCase.task ? 1 : 0))
+            let markerActiveX = try await bodyLeadingX(testCase.body)
+
+            harness.session.revealSourceRange(fromUTF16: afterFrom, toUTF16: afterFrom)
+            try await harness.waitUntilSelection(head: afterFrom)
+            let restored = try await harness.session.testingAccessibilitySnapshot()
+            #expect(restored.liveListMarkerCount == cases.count)
+            let restoredX = try await bodyLeadingX(testCase.body)
+
+            for candidate in [bodyActiveX, markerActiveX, restoredX] {
+                #expect(abs(candidate - inactiveX) <= 0.5)
+            }
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A nested list prefix never consumes its active Callout marker")
+    func nestedListPrefixPreservesActiveCalloutMarker() async throws {
+        let source = """
+            > [!state] Callout list
+            > - CALLOUT_LIST_BODY
+            """
+        let bodyFrom = try #require(source.range(of: "CALLOUT_LIST_BODY"))
+            .lowerBound.utf16Offset(in: source)
+        let markerFrom = try #require(source.range(of: "- CALLOUT_LIST_BODY"))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func listLinePresentation() async throws -> [String: Any] {
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const line = Array.from(document.querySelectorAll('.cm-line'))
+                      .find(candidate => (candidate.textContent || '').includes('CALLOUT_LIST_BODY'));
+                    if (!line) return null;
+                    return {
+                      text: line.textContent || '',
+                      projected: line.querySelectorAll('.cm-live-list-marker').length,
+                      exactPrefix: line.querySelectorAll('.cm-live-list-source-prefix').length
+                    };
+                    """
+                ) as? [String: Any])
+        }
+
+        let bodyCaret = bodyFrom + 4
+        harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
+        try await harness.waitUntilSelection(head: bodyCaret)
+        _ = try await harness.waitUntilPresentation(stage: "Callout list body projection") {
+            $0.activeLiveBlockKind == "callout" && $0.liveListMarkerCount == 1
+        }
+        let projected = try await listLinePresentation()
+        #expect((projected["text"] as? String)?.hasPrefix(">") == true)
+        #expect(projected["projected"] as? Int == 1)
+        #expect(projected["exactPrefix"] as? Int == 0)
+
+        harness.session.revealSourceRange(fromUTF16: markerFrom, toUTF16: markerFrom)
+        try await harness.waitUntilSelection(head: markerFrom)
+        _ = try await harness.waitUntilPresentation(stage: "exact nested list prefix") {
+            $0.activeLiveBlockKind == "callout" && $0.liveListMarkerCount == 0
+        }
+        let exact = try await listLinePresentation()
+        #expect((exact["text"] as? String)?.contains("> - CALLOUT_LIST_BODY") == true)
+        #expect(exact["projected"] as? Int == 0)
+        #expect(exact["exactPrefix"] as? Int == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit blank separators remain stable prose rows without overlap")
+    func editParagraphSeparatorsRemainEditableSourceLines() async throws {
+        let source = "First paragraph.\n\nSecond paragraph.\n"
+        let blankOffset =
+            try #require(source.range(of: "\n\n"))
+            .lowerBound.utf16Offset(in: source) + 1
+        let secondFrom = try #require(source.range(of: "Second paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.editBlankLineCount >= 1)
+        let body = DocumentAppearanceSettings.defaultSettings.body
+        let expectedBlankLineHeight = body.fontSizePoints * (96 / 72) * body.lineHeight
+        #expect(abs(presentation.editBlankLineMinimumHeight - expectedBlankLineHeight) < 0.5)
+
+        func transitionGeometry(lineIndex: Int) async throws -> [String: Double] {
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const lines = Array.from(document.querySelectorAll('.cm-line'));
+                    const line = lines[lineIndex] || null;
+                    const following = lines[lineIndex + 1] || null;
+                    const scroller = document.querySelector('.cm-scroller');
+                    const cursor = document.querySelector('.cm-cursor-primary');
+                    return line && following && scroller ? {
+                      lineTop: line.getBoundingClientRect().top,
+                      lineBottom: line.getBoundingClientRect().bottom,
+                      height: line.getBoundingClientRect().height,
+                      followingTop: following.getBoundingClientRect().top,
+                      lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight),
+                      scrollHeight: scroller.scrollHeight,
+                      cursorTop: cursor?.getBoundingClientRect().top || 0
+                    } : null;
+                    """,
+                    arguments: ["lineIndex": lineIndex]
+                ) as? [String: Any])
+            return [
+                "lineTop": try #require(value["lineTop"] as? NSNumber).doubleValue,
+                "lineBottom": try #require(value["lineBottom"] as? NSNumber).doubleValue,
+                "height": try #require(value["height"] as? NSNumber).doubleValue,
+                "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
+                "lineHeight": try #require(value["lineHeight"] as? NSNumber).doubleValue,
+                "scrollHeight": try #require(value["scrollHeight"] as? NSNumber).doubleValue,
+                "cursorTop": try #require(value["cursorTop"] as? NSNumber).doubleValue,
+            ]
+        }
+
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        try await harness.waitUntilSelection(head: 0)
+        let beforeEntry = try await transitionGeometry(lineIndex: 1)
+
+        harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
+        try await harness.waitUntilSelection(head: secondFrom)
+        try await harness.session.testingPressArrow("ArrowLeft")
+        try await harness.waitUntilSelection(head: blankOffset)
+        let activeBlankGeometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const line = document.querySelector('.cm-live-blank-line-active');
+                const style = line ? getComputedStyle(line) : null;
+                return {
+                  className: line?.className || '',
+                  height: line?.getBoundingClientRect().height || 0,
+                  blockSize: style?.blockSize || '',
+                  minBlockSize: style?.minBlockSize || '',
+                  lineHeight: style?.lineHeight || ''
+                };
+                """
+            ) as? [String: Any]
+        )
+        let activeBlankHeight = try #require(
+            activeBlankGeometry["height"] as? NSNumber
+        ).doubleValue
+        #expect(
+            (activeBlankGeometry["className"] as? String)?
+                .contains("cm-live-blank-line-active") == true
+        )
+        #expect(abs(activeBlankHeight - expectedBlankLineHeight) < 0.5)
+        let afterEntry = try await transitionGeometry(lineIndex: 1)
+        let followingTopAfterEntry = try #require(afterEntry["followingTop"])
+        let lineBottomAfterEntry = try #require(afterEntry["lineBottom"])
+        #expect(followingTopAfterEntry >= lineBottomAfterEntry - 0.5)
+        for key in ["lineTop", "lineBottom", "height", "followingTop", "lineHeight", "scrollHeight"] {
+            let before = try #require(beforeEntry[key])
+            let after = try #require(afterEntry[key])
+            #expect(abs(before - after) < 0.5)
+        }
+
+        try await harness.session.perform(.pastePlain, argument: "a")
+        try await harness.waitUntilSelection(
+            head: blankOffset + 1,
+            stage: "first character on separator line"
+        )
+        let afterInput = try await transitionGeometry(lineIndex: 1)
+        for key in [
+            "lineTop", "lineBottom", "height", "followingTop", "lineHeight",
+            "scrollHeight", "cursorTop",
+        ] {
+            let before = try #require(afterEntry[key])
+            let after = try #require(afterInput[key])
+            #expect(abs(before - after) < 0.5)
+        }
+        let followingTopAfterInput = try #require(afterInput["followingTop"])
+        let lineBottomAfterInput = try #require(afterInput["lineBottom"])
+        #expect(followingTopAfterInput >= lineBottomAfterInput - 0.5)
+
+        try await harness.session.testingPressBackspace()
+        try await harness.waitUntilSelection(head: blankOffset, stage: "deletion back to blank line")
+        let afterDeletion = try await transitionGeometry(lineIndex: 1)
+        for key in [
+            "lineTop", "lineBottom", "height", "followingTop", "lineHeight",
+            "scrollHeight", "cursorTop",
+        ] {
+            let before = try #require(afterEntry[key])
+            let after = try #require(afterDeletion[key])
+            #expect(abs(before - after) < 0.5)
+        }
+
+        harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
+        try await harness.waitUntilSelection(head: secondFrom, stage: "exit from blank line")
+        let afterExit = try await transitionGeometry(lineIndex: 1)
+        for key in ["lineTop", "lineBottom", "height", "followingTop", "lineHeight", "scrollHeight"] {
+            let before = try #require(beforeEntry[key])
+            let after = try #require(afterExit[key])
+            #expect(abs(before - after) < 0.5)
+        }
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == source
+        )
+        await harness.closeAndDrain()
+    }
+
+    @Test("Syntax activation commits layout while Callout and fence markers only fade")
+    func syntaxMotionRespectsConstructBoundaries() async throws {
+        let source = "Lead.\n\n**Bold**.\n\n> [!long-unsupported-callout-role] Title\n> Body.\n\n```typescript\nlet value = 1;\n```\n\nAfter."
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.callPageJavaScript(
+            """
+            window.syntaxMotionFrames = [];
+            const originalAnimate = Element.prototype.animate;
+            Element.prototype.animate = function(frames, options) {
+                if (this.matches('.cm-syntax-token')) {
+                    window.syntaxMotionFrames.push({
+                        callout: !!this.closest('.cm-live-callout'),
+                        code: !!this.closest('.cm-live-codeblock'),
+                        opens: this.dataset.syntaxOpen === 'true',
+                        geometry: frames.some(frame => 'width' in frame
+                            || 'height' in frame || 'marginInlineStart' in frame),
+                        color: frames.some(frame => 'color' in frame)
+                    });
+                }
+                return originalAnimate.call(this, frames, options);
+            };
+            """)
+        for text in ["Bold", "Title", "let value", "After"] {
+            let offset = try #require(source.range(of: text)?.lowerBound).utf16Offset(in: source)
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset, stage: text)
+            _ = try await harness.callPageJavaScript(
+                """
+                await new Promise(resolve => {
+                    requestAnimationFrame(() => requestAnimationFrame(resolve));
+                    setTimeout(resolve, 200);
+                });
+                """)
+        }
+        #expect(
+            try await harness.callPageJavaScript(
+                """
+                const frames = window.syntaxMotionFrames;
+                if (matchMedia('(prefers-reduced-motion: reduce)').matches) return frames.length === 0;
+                return frames.length > 0
+                    && frames.every(f => !f.geometry)
+                    && frames.some(f => f.callout && f.opens && f.color)
+                    && frames.some(f => f.code && f.opens && f.color)
+                    && frames.some(f => !f.callout && !f.code && f.color);
+                """) as? Bool == true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Active inline syntax uses activation color and stays visible through the closing caret boundary")
+    func activeInlineSyntaxPresentation() async throws {
+        let harness = EditorHarness(source: "\n", laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '*Source-role classification')")
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-syntax-marker').length") as? Int == 0)
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '*')")
+        func checkActiveMarkers() async throws {
+            #expect(
+                try await harness.callPageJavaScript(
+                    """
+                    await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+                    // This probe asserts final geometry/color, not animation timing.
+                    // Background WebKit windows may suspend their animation clock.
+                    for (const node of document.querySelectorAll('.cm-syntax-token')) {
+                        for (const animation of node.getAnimations()) animation.finish();
+                    }
+                    const markers = [...document.querySelectorAll('.cm-live-syntax-marker')];
+                    const probe = document.createElement('span');
+                    probe.style.color = 'var(--scholium-syntax-active-ink)';
+                    document.body.appendChild(probe);
+                    const active = getComputedStyle(probe).color;
+                    probe.remove();
+                    const emphasis = document.querySelector('.cm-live-emphasis');
+                    return markers.length === 2 && markers.every(marker => marker.textContent === '*'
+                        && getComputedStyle(marker).color === active)
+                        && !!emphasis && getComputedStyle(emphasis).fontStyle === 'italic'
+                        && getComputedStyle(emphasis).color !== active;
+                    """) as? Bool == true)
+        }
+        try await checkActiveMarkers()
+        harness.session.revealSourceRange(fromUTF16: 5, toUTF16: 5)
+        try await harness.waitUntilSelection(head: 5, stage: "inside emphasized prose")
+        try await checkActiveMarkers()
+        let end = "*Source-role classification*".utf16.count
+        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end, stage: "after closing delimiter")
+        try await checkActiveMarkers()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, ' ')")
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-syntax-marker').length") as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == "*Source-role classification* \n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Repeated ordinary Backspace preserves the live document and exact native mirror")
+    func ordinaryDeletionProjectionPerformance() async throws {
+        let source = (0..<350).map { index in
+            "## Section \(index)\n\nThe researcher develops an ordinary argument beside *emphasis* and [[Target]]. This synthetic paragraph contains English prose and 中文 for inspection.\n\n"
+        }.joined()
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let prefix = try #require(source.range(of: "inspection."))
+        let position = source[..<prefix.upperBound].utf16.count
+        harness.session.revealSourceRange(fromUTF16: position, toUTF16: position)
+        try await harness.waitUntilSelection(head: position, stage: "ordinary line-end deletion")
+        for action in ["insert", "delete"] {
+            let measurements = try await harness.callPageJavaScript(
+                """
+                const dispatch = [], painted = [];
+                let timerFallbacks = 0;
+                for (let index = 0; index < 12; index++) {
+                    const started = performance.now();
+                    document.execCommand(action === 'insert' ? 'insertText' : 'delete', false, action === 'insert' ? 'x' : null);
+                    dispatch.push(performance.now() - started);
+                    const receivedFrame = await new Promise(resolve => {
+                        const frame = requestAnimationFrame(() => setTimeout(() => { clearTimeout(timeout); resolve(true); }, 0));
+                        const timeout = setTimeout(() => { cancelAnimationFrame(frame); resolve(false); }, 50);
+                    });
+                    if (receivedFrame) painted.push(performance.now() - started); else timerFallbacks++;
+                }
+                dispatch.sort((a, b) => a - b); painted.sort((a, b) => a - b);
+                return {action, samples: dispatch.length, dispatchP50: dispatch[6], dispatchP95: dispatch[11],
+                    paintedSamples: painted.length, timerFallbacks,
+                    paintedP50: painted.length ? painted[Math.floor(painted.length / 2)] : null};
+                """, arguments: ["action": action])
+            print("Ordinary line-end input diagnostic: \(String(describing: measurements))")
+            let expected =
+                action == "insert"
+                ? String(source[..<prefix.upperBound]) + String(repeating: "x", count: 12) + String(source[prefix.upperBound...])
+                : source
+            #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+            #expect(harness.session.checkedSource == expected)
+        }
+        try await harness.waitUntilSelection(head: position, stage: "ordinary deletion restores the caret")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Heading typing and marker deletion update one visible semantic line", arguments: [1, 2, 6])
+    func headingTypingAndDeletion(level: Int) async throws {
+        let harness = EditorHarness(source: "\n\nFollowing paragraph.\n", laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        try await harness.waitUntilSelection(head: 0, stage: "new heading")
+        func presentation() async throws -> [String: Any] {
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const line = document.querySelector('.cm-content .cm-line');
+                    const marker = line?.querySelector('.cm-live-heading-source-marker');
+                    return {level: line?.getAttribute('aria-level') || '',
+                        fontSize: line ? getComputedStyle(line).fontSize : '',
+                        marker: marker?.textContent || '',
+                        markerVisible: !!marker && marker.getBoundingClientRect().width > 0
+                            && getComputedStyle(line).overflow !== 'hidden'};
+                    """) as? [String: Any])
+        }
+        for character in String(repeating: "#", count: level) + " " {
+            _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, text)", arguments: ["text": String(character)])
+        }
+        let initial = try await presentation()
+        #expect(initial["level"] as? String == String(min(level + 1, 6)))
+        #expect(initial["markerVisible"] as? Bool == true)
+        for character in "dd中文" {
+            _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, text)", arguments: ["text": String(character)])
+            let current = try await presentation()
+            #expect(current["level"] as? String == String(min(level + 1, 6)))
+            #expect(current["fontSize"] as? String == initial["fontSize"] as? String)
+            #expect(current["markerVisible"] as? Bool == true)
+        }
+        for remaining in stride(from: level - 1, through: 0, by: -1) {
+            harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 1)
+            let selectionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while true {
+                if let selected = try await harness.session.currentSelection(for: harness.documentID),
+                    selected.utf16LowerBound == 0 && selected.utf16UpperBound == 1
+                {
+                    break
+                }
+                guard ContinuousClock.now < selectionDeadline else { throw MarkdownEditorSession.SessionError.unavailable }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            _ = try await harness.callPageJavaScript("document.execCommand('delete', false)")
+            try await harness.waitUntilSelection(head: 0, stage: "deleted heading marker")
+            let current = try await presentation()
+            #expect(current["level"] as? String == (remaining == 0 ? "" : String(min(remaining + 1, 6))))
+            if remaining > 0 { #expect(current["markerVisible"] as? Bool == true) }
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == " dd中文\n\nFollowing paragraph.\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Heading keyboard navigation enters the exact source boundary")
+    func headingKeyboardBoundaryDeletion() async throws {
+        let source = "\n\n# headingprobe\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let end = source.utf16.count
+        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end, stage: "heading keyboard initial selection")
+        try await harness.session.testingPressArrow("ArrowUp")
+        try await harness.waitUntilSelection(head: 15, stage: "heading keyboard entry")
+        _ = try await harness.callPageJavaScript(
+            """
+            const content = document.querySelector('.cm-content');
+            const event = new KeyboardEvent('keydown', {
+                key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, which: 37,
+                metaKey: true, bubbles: true, cancelable: true
+            });
+            content?.dispatchEvent(event);
+            return {defaultPrevented: event.defaultPrevented, active: document.activeElement?.className || ''};
+            """)
+        try await harness.waitUntilSelection(head: 2, stage: "heading keyboard line start")
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: 3, stage: "heading keyboard marker entry")
+        try await harness.session.testingPressBackspace()
+        try await harness.waitUntilSelection(head: 2, stage: "heading keyboard marker deletion")
+        #expect(try await harness.session.currentText(for: harness.documentID) == "\n\n headingprobe\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inactive Edit headings remove marker width and reveal exact source on entry")
+    func inactiveEditHeadingRemovesMarkerWidth() async throws {
+        let heading = "Conceptual Distinctions"
+        let source = "# \(heading)\n\nFollowing paragraph.\n"
+        let headingFrom = try #require(source.range(of: heading))
+            .lowerBound.utf16Offset(in: source)
+        let followingFrom = try #require(source.range(of: "Following paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        harness.resize(width: 540)
+        try await harness.waitUntilReady()
+
+        func geometry() async throws -> [String: Double] {
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+                    // This probe asserts final geometry/color, not animation timing.
+                    // Background WebKit windows may suspend their animation clock.
+                    for (const node of document.querySelectorAll('.cm-syntax-token')) {
+                        for (const animation of node.getAnimations()) animation.finish();
+                    }
+                    const heading = document.querySelector('.cm-live-h1');
+                    const following = Array.from(document.querySelectorAll('.cm-line'))
+                      .find(line => (line.textContent || '').includes('Following paragraph.'));
+                    if (!heading || !following) return null;
+                    const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+                    let node = null;
+                    while (walker.nextNode()) {
+                      if ((walker.currentNode.nodeValue || '').includes(headingText)) {
+                        node = walker.currentNode;
+                        break;
+                      }
+                    }
+                    if (!node) return null;
+                    const offset = node.nodeValue.indexOf(headingText);
+                    const range = document.createRange();
+                    range.setStart(node, offset);
+                    range.setEnd(node, offset + 1);
+                    const followingWalker = document.createTreeWalker(following, NodeFilter.SHOW_TEXT);
+                    let followingNode = null;
+                    while (followingWalker.nextNode()) {
+                      if ((followingWalker.currentNode.nodeValue || '').includes('Following')) {
+                        followingNode = followingWalker.currentNode;
+                        break;
+                      }
+                    }
+                    if (!followingNode) return null;
+                    const followingRange = document.createRange();
+                    followingRange.setStart(followingNode, followingNode.nodeValue.indexOf('Following'));
+                    followingRange.setEnd(followingNode, followingNode.nodeValue.indexOf('Following') + 1);
+                    return {
+                      headingTop: heading.getBoundingClientRect().top,
+                      headingHeight: heading.getBoundingClientRect().height,
+                      titleLeft: range.getBoundingClientRect().left,
+                      followingTop: following.getBoundingClientRect().top,
+                      followingLeft: followingRange.getBoundingClientRect().left,
+                      markerLeft: heading.querySelector('.cm-live-heading-source-marker')
+                        ?.getBoundingClientRect().left ?? -1,
+                      markerRight: heading.querySelector('.cm-live-heading-source-marker')
+                        ?.getBoundingClientRect().right ?? -1
+                    };
+                    """,
+                    arguments: ["headingText": heading]
+                ) as? [String: Any])
+            return [
+                "headingTop": try #require(value["headingTop"] as? NSNumber).doubleValue,
+                "headingHeight": try #require(value["headingHeight"] as? NSNumber).doubleValue,
+                "titleLeft": try #require(value["titleLeft"] as? NSNumber).doubleValue,
+                "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
+                "followingLeft": try #require(value["followingLeft"] as? NSNumber).doubleValue,
+                "markerLeft": try #require(value["markerLeft"] as? NSNumber).doubleValue,
+                "markerRight": try #require(value["markerRight"] as? NSNumber).doubleValue,
+            ]
+        }
+
+        harness.session.revealSourceRange(fromUTF16: followingFrom, toUTF16: followingFrom)
+        try await harness.waitUntilSelection(head: followingFrom)
+        let inactive = try await geometry()
+
+        harness.session.revealSourceRange(fromUTF16: headingFrom, toUTF16: headingFrom)
+        try await harness.waitUntilSelection(head: headingFrom)
+        let active = try await geometry()
+
+        let inactiveTitleLeft = try #require(inactive["titleLeft"])
+        let inactiveFollowingLeft = try #require(inactive["followingLeft"])
+        let activeTitleLeft = try #require(active["titleLeft"])
+        #expect(abs(inactiveTitleLeft - inactiveFollowingLeft) < 0.5)
+        #expect(activeTitleLeft > inactiveTitleLeft)
+        #expect(try #require(active["markerLeft"]) >= 0)
+        let activeMarkerRight = try #require(active["markerRight"])
+        // Glyph range boxes can overhang the adjacent inline box by a fractional pixel.
+        #expect(activeMarkerRight <= activeTitleLeft + 1, Comment(rawValue: String(describing: active)))
+        for key in ["headingTop", "headingHeight", "followingTop"] {
+            let before = try #require(inactive[key])
+            let after = try #require(active[key])
+            #expect(abs(before - after) < 0.5)
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit quotation prefixes reveal inside the measure without vertical reflow")
+    func editQuotationPrefixRevealPreservesProseGeometry() async throws {
+        let quotation = "Quoted argument remains stable."
+        let source = "> \(quotation)\n\nFollowing paragraph.\n"
+        let quotationFrom = try #require(source.range(of: quotation))
+            .lowerBound.utf16Offset(in: source)
+        let followingFrom = try #require(source.range(of: "Following paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        harness.resize(width: 540)
+        try await harness.waitUntilReady()
+
+        func geometry() async throws -> [String: Double] {
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const quote = document.querySelector('.cm-live-quote');
+                    const following = Array.from(document.querySelectorAll('.cm-line'))
+                      .find(line => (line.textContent || '').includes('Following paragraph.'));
+                    if (!quote || !following) return null;
+                    const textNode = Array.from(quote.childNodes)
+                      .find(node => (node.textContent || '').includes(quotationText));
+                    if (!textNode) return null;
+                    const textRange = document.createRange();
+                    const textOffset = textNode.textContent.indexOf(quotationText);
+                    textRange.setStart(textNode, textOffset);
+                    textRange.setEnd(textNode, textOffset + 1);
+                    const marker = quote.querySelector('.cm-live-quote-source-marker');
+                    return {
+                      quoteTop: quote.getBoundingClientRect().top,
+                      quoteHeight: quote.getBoundingClientRect().height,
+                      textLeft: textRange.getBoundingClientRect().left,
+                      followingTop: following.getBoundingClientRect().top,
+                      markerLeft: marker?.getBoundingClientRect().left ?? -1,
+                      markerRight: marker?.getBoundingClientRect().right ?? -1
+                    };
+                    """,
+                    arguments: ["quotationText": quotation]
+                ) as? [String: Any])
+            return try Dictionary(
+                uniqueKeysWithValues: value.map { key, rawValue in
+                    (key, try #require(rawValue as? NSNumber).doubleValue)
+                })
+        }
+
+        harness.session.revealSourceRange(fromUTF16: followingFrom, toUTF16: followingFrom)
+        try await harness.waitUntilSelection(head: followingFrom)
+        let inactive = try await geometry()
+
+        harness.session.revealSourceRange(fromUTF16: quotationFrom, toUTF16: quotationFrom)
+        try await harness.waitUntilSelection(head: quotationFrom)
+        let active = try await geometry()
+
+        for key in ["quoteTop", "quoteHeight", "followingTop"] {
+            #expect(abs(try #require(inactive[key]) - (try #require(active[key]))) < 0.5)
+        }
+        #expect(try #require(active["markerLeft"]) >= 0)
+        let activeMarkerRight = try #require(active["markerRight"])
+        let activeTextLeft = try #require(active["textLeft"])
+        #expect(activeMarkerRight <= activeTextLeft + 0.5)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit preserves authored quotation depth in cumulative visual indentation")
+    func editQuotationDepthUsesCumulativeInset() async throws {
+        let source = "> 一级引用\n>\n> > 二级引用\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const quotes = [...document.querySelectorAll('.cm-line.cm-live-quote')];
+                const first = quotes.find(line => (line.textContent || '').includes('一级引用'));
+                const second = quotes.find(line => (line.textContent || '').includes('二级引用'));
+                if (!first || !second) return null;
+                return {
+                  firstClass: first.className,
+                  secondClass: second.className,
+                  firstInset: getComputedStyle(first).paddingInlineStart,
+                  secondInset: getComputedStyle(second).paddingInlineStart,
+                  secondMargin: getComputedStyle(second).marginInlineStart,
+                  firstBorder: getComputedStyle(first).borderInlineStartWidth,
+                  secondBorder: getComputedStyle(second).borderInlineStartWidth,
+                  quoteDepth: getComputedStyle(second).getPropertyValue('--scholium-live-quote-depth').trim(),
+                  parentRail: getComputedStyle(second, '::before').backgroundImage
+                };
+                """
+            ) as? [String: Any]
+        )
+        #expect((geometry["firstClass"] as? String)?.contains("cm-live-quote") == true)
+        #expect((geometry["firstClass"] as? String)?.contains("cm-live-quote-nested") == false)
+        #expect((geometry["secondClass"] as? String)?.contains("cm-live-quote-nested") == true)
+        #expect(geometry["firstInset"] as? String == "16px")
+        #expect(geometry["secondInset"] as? String == "32px")
+        #expect(geometry["secondMargin"] as? String == "0px")
+        #expect(geometry["firstBorder"] as? String == "3px")
+        #expect(geometry["secondBorder"] as? String == "3px")
+        #expect(geometry["quoteDepth"] as? String == "2")
+        #expect((geometry["parentRail"] as? String)?.contains("gradient") == true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Filename-title focus hides retained source markers for every heading level")
+    func titleFocusHidesRetainedHeadingMarkers() async throws {
+        let headings = (1...6).map { level in
+            "\(String(repeating: "#", count: level)) Heading \(level)"
+        }
+        let source = headings.joined(separator: "\n\n") + "\n"
+        let harness = EditorHarness(
+            documentTitle: "Focus Boundary",
+            source: source,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        for level in 1...6 {
+            let label = "Heading \(level)"
+            let marker = String(repeating: "#", count: level) + " "
+            let labelFrom = try #require(source.range(of: label))
+                .lowerBound.utf16Offset(in: source)
+            harness.session.revealSourceRange(fromUTF16: labelFrom, toUTF16: labelFrom)
+            try await harness.waitUntilSelection(
+                head: labelFrom,
+                stage: "active H\(level) source"
+            )
+
+            let activePresentation = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const line = Array.from(document.querySelectorAll(selector))
+                      .find(candidate => (candidate.textContent || '').includes(label));
+                    const sourceMarker = line?.querySelector('.cm-live-heading-source-marker');
+                    return line && sourceMarker ? {
+                      text: line.textContent || '',
+                      headingFontSize: Number.parseFloat(getComputedStyle(line).fontSize),
+                      markerFontSize: Number.parseFloat(getComputedStyle(sourceMarker).fontSize)
+                    } : null;
+                    """,
+                    arguments: ["selector": ".cm-live-h\(level)", "label": label]
+                ) as? [String: Any])
+            #expect(activePresentation["text"] as? String == marker + label)
+            let headingFontSize = try #require(
+                activePresentation["headingFontSize"] as? NSNumber
+            ).doubleValue
+            let markerFontSize = try #require(
+                activePresentation["markerFontSize"] as? NSNumber
+            ).doubleValue
+            #expect(abs(headingFontSize - markerFontSize) < 0.02)
+
+            try await harness.session.focusTitleAndWait()
+            #expect(
+                try await harness.callPageJavaScript(
+                    "return document.activeElement?.matches('.scholium-note-title-input') === true"
+                ) as? Bool == true)
+            let inactiveText =
+                try await harness.callPageJavaScript(
+                    """
+                    const line = Array.from(document.querySelectorAll(selector))
+                      .find(candidate => (candidate.textContent || '').includes(label));
+                    const copy = line?.cloneNode(true);
+                    copy?.querySelectorAll('[data-syntax-open="false"]').forEach(node => node.remove());
+                    return copy?.textContent || '';
+                    """,
+                    arguments: ["selector": ".cm-live-h\(level)", "label": label]
+                ) as? String
+            #expect(inactiveText == label)
+        }
+
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit whitespace occupies exact width and prose uses editorial line breaking")
+    func editWhitespaceAndLineBreakingFollowEditorialRules() async throws {
+        let source = "Reasons, fittingness, motivation, and value remain distinct as neutral vocabulary.\n"
+        let insertion =
+            try #require(source.range(of: " neutral"))
+            .lowerBound.utf16Offset(in: source) + 1
+        let harness = EditorHarness(
+            source: source,
+            initialSourceRange: insertion..<insertion,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func neutralPosition() async throws -> (left: Double, top: Double) {
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const line = Array.from(document.querySelectorAll('.cm-line'))
+                      .find(candidate => (candidate.textContent || '').includes('neutral vocabulary'));
+                    if (!line) return null;
+                    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                    let node = null;
+                    while (walker.nextNode()) {
+                      if ((walker.currentNode.nodeValue || '').includes('neutral')) {
+                        node = walker.currentNode;
+                        break;
+                      }
+                    }
+                    if (!node) return null;
+                    const offset = node.nodeValue.indexOf('neutral');
+                    const range = document.createRange();
+                    range.setStart(node, offset);
+                    range.setEnd(node, offset + 1);
+                    const rect = range.getBoundingClientRect();
+                    return {left: rect.left, top: rect.top};
+                    """
+                ) as? [String: Any])
+            return (
+                try #require(value["left"] as? NSNumber).doubleValue,
+                try #require(value["top"] as? NSNumber).doubleValue
+            )
+        }
+
+        let before = try await neutralPosition()
+        let alignmentBefore =
+            try await harness.callPageJavaScript(
+                "return getComputedStyle(document.querySelector('.cm-content')).textAlign"
+            ) as? String
+        #expect(alignmentBefore == "start")
+
+        try await harness.session.perform(.pastePlain, argument: " ")
+        try await harness.waitUntilSelection(head: insertion + 1, stage: "second exact space")
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => (candidate.textContent || '').includes('neutral vocabulary'));
+                if (!content || !line) return null;
+                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                let node = null;
+                while (walker.nextNode()) {
+                  if ((walker.currentNode.nodeValue || '').includes('  neutral')) {
+                    node = walker.currentNode;
+                    break;
+                  }
+                }
+                if (!node) return null;
+                const offset = node.nodeValue.indexOf('  neutral') + 1;
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                const rect = range.getBoundingClientRect();
+                const style = getComputedStyle(content);
+                return {
+                  whiteSpace: style.whiteSpace,
+                  wordBreak: style.wordBreak,
+                  overflowWrap: style.overflowWrap,
+                  lineBreak: style.lineBreak,
+                  insertedSpaceWidth: rect.width,
+                  insertedSpaceHeight: rect.height,
+                  visibleSpaceMarkerCount: document.querySelectorAll(
+                    '.cm-live-authored-extra-space'
+                  ).length
+                };
+                """
+            ) as? [String: Any])
+        #expect(result["whiteSpace"] as? String == "break-spaces")
+        #expect(result["wordBreak"] as? String == "normal")
+        #expect(result["overflowWrap"] as? String == "break-word")
+        #expect(result["lineBreak"] as? String == "strict")
+        #expect((result["insertedSpaceWidth"] as? NSNumber)?.doubleValue ?? 0 > 1)
+        #expect((result["insertedSpaceHeight"] as? NSNumber)?.doubleValue ?? 0 > 1)
+        #expect(result["visibleSpaceMarkerCount"] as? Int == 0)
+        let after = try await neutralPosition()
+        #expect(abs(after.left - before.left) > 1 || abs(after.top - before.top) > 1)
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == source.replacingOccurrences(of: " neutral", with: "  neutral"))
+
+        harness.session.revealSourceRange(
+            fromUTF16: insertion,
+            toUTF16: insertion + 1
+        )
+        let selectionDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while harness.session.context?.selections != [
+            MarkdownEditorSelectionRange(anchor: insertion, head: insertion + 1)
+        ] {
+            if ContinuousClock().now >= selectionDeadline {
+                Issue.record("The exact extra space did not become selected for deletion.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await harness.session.perform(.pastePlain, argument: "")
+        try await harness.waitUntilSelection(head: insertion, stage: "removed extra space")
+        let restored = try await neutralPosition()
+        #expect(abs(restored.left - before.left) < 0.5)
+        #expect(abs(restored.top - before.top) < 0.5)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-authored-extra-space').length"
+            ) as? Int == 0)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return getComputedStyle(document.querySelector('.cm-content')).textAlign"
+            ) as? String == alignmentBefore)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inactive Edit keeps punctuation with a projected footnote locator")
+    func editFootnoteLocatorDoesNotOrphanPunctuation() async throws {
+        let source = "A philosophical claim[^note].\n\n[^note]: Supporting qualification.\n"
+        let punctuationOffset =
+            try #require(source.range(of: "[^note]."))
+            .lowerBound.utf16Offset(in: source) + "[^note]".utf16.count
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => candidate.querySelector('.cm-live-footnote-reference-widget'));
+                const reference = line?.querySelector('.cm-live-footnote-reference-widget');
+                const cluster = reference?.closest('.footnote-reference-cluster');
+                if (!line || !reference || !cluster) return {
+                  orphanWidth: -1,
+                  clusterWhiteSpace: '',
+                  html: line?.innerHTML || ''
+                };
+                const walker = document.createTreeWalker(cluster, NodeFilter.SHOW_TEXT);
+                let punctuationNode = null;
+                while (walker.nextNode()) {
+                  if ((walker.currentNode.nodeValue || '').includes('.')) {
+                    punctuationNode = walker.currentNode;
+                    break;
+                  }
+                }
+                if (!punctuationNode) return null;
+                const punctuationOffset = punctuationNode.nodeValue.indexOf('.');
+                const punctuationRange = document.createRange();
+                punctuationRange.setStart(punctuationNode, punctuationOffset);
+                punctuationRange.setEnd(punctuationNode, punctuationOffset + 1);
+                line.style.inlineSize = '360px';
+                const sameLineOffset = punctuationRange.getBoundingClientRect().top
+                  - reference.getBoundingClientRect().top;
+                const lineHeight = Number.parseFloat(getComputedStyle(line).lineHeight) || 20;
+                let orphanWidth = 0;
+                for (let width = 48; width <= 360; width += 1) {
+                  line.style.inlineSize = width + 'px';
+                  const referenceTop = reference.getBoundingClientRect().top;
+                  const punctuationTop = punctuationRange.getBoundingClientRect().top;
+                  if (punctuationTop - referenceTop > sameLineOffset + lineHeight / 2) {
+                    orphanWidth = width;
+                    break;
+                  }
+                }
+                line.style.inlineSize = '';
+                return {
+                  orphanWidth,
+                  clusterWhiteSpace: getComputedStyle(cluster).whiteSpace
+                };
+                """
+            ) as? [String: Any])
+        #expect(result["orphanWidth"] as? Int == 0, Comment(rawValue: "\(result)"))
+        #expect(result["clusterWhiteSpace"] as? String == "nowrap")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+
+        harness.session.revealSourceRange(
+            fromUTF16: punctuationOffset,
+            toUTF16: punctuationOffset
+        )
+        try await harness.waitUntilSelection(
+            head: punctuationOffset,
+            stage: "footnote punctuation source reveal"
+        )
+        let revealed =
+            try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => (candidate.textContent || '').includes('[^note].'));
+                return Boolean(line)
+                  && !line.querySelector('.cm-live-footnote-reference-widget');
+                """
+            ) as? Bool
+        #expect(revealed == true)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A document-start editor anchor keeps the projected title visible")
+    func documentStartEditorAnchorKeepsTitleVisible() async throws {
+        let source =
+            (1...80).map { "Research paragraph \($0) remains available." }
+            .joined(separator: "\n") + "\n"
+        let harness = EditorHarness(
+            documentTitle: "Reasons and Emotional Attitudes",
+            source: source,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let firstLineUpperBound = source.firstIndex(of: "\n")?.utf16Offset(in: source) ?? 0
+        try await harness.session.testingApplyScrollAnchor(
+            EditorScrollAnchor(
+                sourceFingerprint: DocumentFingerprint(content: source).sha256,
+                sourceUTF16Offset: 0,
+                blockUTF16LowerBound: 0,
+                blockUTF16UpperBound: firstLineUpperBound,
+                relativeBlockPosition: 0,
+                fallbackFraction: 0
+            ))
+        try await Task.sleep(for: .milliseconds(150))
+
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const scroller = document.querySelector('.cm-scroller');
+                const title = document.querySelector('.scholium-note-title');
+                if (!scroller || !title) return null;
+                const scrollerRect = scroller.getBoundingClientRect();
+                const titleRect = title.getBoundingClientRect();
+                return {
+                  scrollTop: scroller.scrollTop,
+                  titleTop: titleRect.top,
+                  titleBottom: titleRect.bottom,
+                  viewportTop: scrollerRect.top,
+                  viewportBottom: scrollerRect.bottom
+                };
+                """
+            ) as? [String: Any])
+        let scrollTop = (result["scrollTop"] as? NSNumber)?.doubleValue ?? 100
+        let titleTop = (result["titleTop"] as? NSNumber)?.doubleValue ?? 10_000
+        let titleBottom = (result["titleBottom"] as? NSNumber)?.doubleValue ?? 0
+        let viewportTop = (result["viewportTop"] as? NSNumber)?.doubleValue ?? 1
+        let viewportBottom = (result["viewportBottom"] as? NSNumber)?.doubleValue ?? 0
+        #expect(abs(scrollTop) < 0.5)
+        #expect(titleBottom > viewportTop)
+        #expect(titleTop < viewportBottom)
+        await harness.closeAndDrain()
+    }
+
+    @Test("An authored separator line owns semantic block spacing and pointer entry")
+    func authoredSeparatorLineOwnsSemanticBlockGap() async throws {
+        let source = "Lead paragraph.\n\n> Quoted paragraph.\n> Continued quotation.\n\nFollowing paragraph.\n"
+        let blankOffset =
+            try #require(source.range(of: "\n\n"))
+            .lowerBound.utf16Offset(in: source) + 1
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.semanticGapCount == 0)
+        try await harness.session.testingClickBlankLine(
+            between: "Lead paragraph.",
+            and: "Quoted paragraph."
+        )
+        try await harness.waitUntilSelection(head: blankOffset, stage: "authored separator click")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        // A topology-safe edit maps the separator decoration. Pointer entry
+        // must resolve its current source line, never an embedded old offset.
+        harness.session.revealSourceRange(fromUTF16: 4, toUTF16: 4)
+        try await harness.waitUntilSelection(head: 4, stage: "edit before separator")
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '中文');")
+        let edited = "Lead中文 paragraph.\n\n> Quoted paragraph.\n> Continued quotation.\n\nFollowing paragraph.\n"
+        #expect(try await harness.session.currentText(for: harness.documentID) == edited)
+        try await harness.session.testingClickBlankLine(
+            between: "Lead中文 paragraph.",
+            and: "Quoted paragraph."
+        )
+        try await harness.waitUntilSelection(head: blankOffset + 2, stage: "mapped separator click")
+        _ = try await harness.callPageJavaScript(
+            """
+            document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, bubbles: true, cancelable: true
+            }));
+            """)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        try await harness.session.testingClickBlankLine(
+            between: "Lead paragraph.", and: "Quoted paragraph."
+        )
+        try await harness.waitUntilSelection(head: blankOffset, stage: "separator after Undo")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Raw HTML switches between an inert projection and exact editable source")
+    func rawHTMLProjectionRevealsExactSourceOnlyWhileActive() async throws {
+        let source = """
+            # Raw HTML boundary
+
+            <section data-fixture="raw-html">Literal source.</section>
+
+            Following paragraph.
+            """
+        let htmlFrom = try #require(source.range(of: "<section"))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        _ = try await harness.waitUntilPresentation(stage: "inactive raw HTML projection") {
+            $0.liveRawHTMLSourceLineCount == 1
+        }
+        harness.session.goToLine(3)
+        try await harness.waitUntilSelection(head: htmlFrom)
+        _ = try await harness.waitUntilPresentation(stage: "active exact raw HTML source") {
+            $0.liveRawHTMLSourceLineCount == 1
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.session.goToLine(5)
+        _ = try await harness.waitUntilPresentation(stage: "restored raw HTML projection") {
+            $0.liveRawHTMLSourceLineCount == 1
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A Callout click edits the requested passage before Backspace")
+    func calloutPointerBackspaceCannotDeleteThePrecedingBlock() async throws {
+        let source = """
+            # Interaction boundary
+
+            > [!orient] Reading route
+            > This synthetic note exercises the complete Scholium editing dialect.
+
+            > [!cite]- Synthetic source boundary
+            > No real publication or quotation is represented here.
+            """
+        let firstCalloutSource = """
+            > [!orient] Reading route
+            > This synthetic note exercises the complete Scholium editing dialect.
+            """
+        let calloutRange = try #require(source.range(of: firstCalloutSource))
+        let calloutFrom = calloutRange.lowerBound.utf16Offset(in: source)
+        let calloutTo = calloutRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.waitUntilPresentation(stage: "passive Callout before Backspace") {
+            $0.liveCalloutBlockCount == 2 && $0.editBlankLineCount > 0
+        }
+
+        try await harness.session.testingClickVisibleText("synthetic note")
+        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
+        try await harness.session.testingPressBackspace()
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        var edited = source
+        while clock.now < deadline {
+            edited = try await harness.session.currentText(for: harness.documentID)
+            if edited != source { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(edited.utf16.count == source.utf16.count - 1)
+        #expect(edited.contains("> [!orient] Reading route"))
+        #expect(edited.contains("> [!cite]- Synthetic source boundary"))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Source soft-wraps exact logical lines without changing their text or numbering")
+    func sourceSoftWrapPreservesExactLogicalLines() async throws {
+        let longLine =
+            "SOFT_WRAP_PROBE "
+            + Array(repeating: "exact-source-token", count: 80).joined(separator: " ")
+        let source = "---\r\ntitle: Soft Wrap\r\n---\r\n\(longLine)\r\nFinal logical line.\r\n"
+        let normalizedSource = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let finalLineOffset = try #require(
+            normalizedSource.range(of: "Final logical line.")?.lowerBound
+        ).utf16Offset(in: normalizedSource)
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        let generation = harness.session.generation
+        let undoLabel = harness.session.context?.undoLabel
+        harness.session.setMode(.source)
+        let sourceMode = try await harness.waitUntilPresentation(stage: "soft-wrapped Source") {
+            $0.label == "Markdown source editor"
+                && $0.lineWrappingEnabled
+                && $0.softWrapProbeHeight > 0
+        }
+        let sourceLineHeight =
+            Double(
+                sourceMode.presentation.documentLineHeight.replacingOccurrences(of: "px", with: "")
+            ) ?? 0
+        #expect(sourceLineHeight > 0)
+        #expect(sourceMode.softWrapProbeHeight > sourceLineHeight * 2)
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(head: finalLineOffset)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.undoLabel == undoLabel)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A formatted attachment label has one decorative icon without changing exact source")
+    func attachmentIconDoesNotRepeatAcrossFormattedLabel() async throws {
+        let source = "Intro 中文 😀.\r\n\r\n[**Paper** final](Attachments/paper.pdf)\r\n\r\n[Note](Note.md#Section)\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let icons =
+            try await harness.callPageJavaScript(
+                """
+                return [...document.querySelectorAll('.scholium-attachment-icon')].map(icon => ({
+                  symbol: icon.dataset.scholiumAttachmentSymbol,
+                  text: icon.textContent,
+                  hidden: icon.getAttribute('aria-hidden')
+                }));
+                """) as? [[String: String]]
+        #expect(icons == [["symbol": "doc-richtext", "text": "", "hidden": "true"]])
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.scholium-attachment-icon').length;"
+            ) as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("The WebKit symbol catalog resolves every direct SF Symbol")
+    func webSymbolCatalogResolvesDirectSystemSymbols() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let catalogSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/system-symbols.ts"),
+            encoding: .utf8
+        )
+        let catalogStart = try #require(
+            catalogSource.range(of: "export const webSystemSymbolKeys = [")
+        )
+        let catalogEnd = try #require(
+            catalogSource.range(of: "] as const;", range: catalogStart.upperBound..<catalogSource.endIndex)
+        )
+        let catalogBody = String(catalogSource[catalogStart.upperBound..<catalogEnd.lowerBound])
+        let catalogExpression = try NSRegularExpression(pattern: #""([^"]+)""#)
+        let catalogNSString = catalogBody as NSString
+        let webTokens = Set<String>(
+            catalogExpression.matches(
+                in: catalogBody,
+                range: NSRange(location: 0, length: catalogNSString.length)
+            ).compactMap { match in
+                guard match.numberOfRanges == 2 else { return nil }
+                return catalogNSString.substring(with: match.range(at: 1))
+            })
+        #expect(webTokens == Set(ScholiumSystemSymbol.allCases.map(\.webToken)))
+
+        let css = ScholiumWebSymbolAssets.cssVariables
+        for symbol in ScholiumSystemSymbol.allCases {
+            let image = try #require(
+                NSImage(
+                    systemSymbolName: symbol.systemName,
+                    accessibilityDescription: nil
+                )?.withSymbolConfiguration(.init(pointSize: 16, weight: .regular)))
+            let prefix = "data:image/png;base64,"
+            let dataURI = ScholiumWebSymbolAssets.dataURI(for: symbol)
+            #expect(dataURI.hasPrefix(prefix))
+            let data = try #require(Data(base64Encoded: String(dataURI.dropFirst(prefix.count))))
+            let bitmap = try #require(NSBitmapImageRep(data: data))
+            #expect(CGFloat(bitmap.pixelsWide) >= image.size.width * 4 - 1)
+            #expect(CGFloat(bitmap.pixelsHigh) >= image.size.height * 4 - 1)
+            #expect(css.contains("--scholium-system-symbol-\(symbol.webToken):"))
+        }
+    }
+
+    @Test("Edit previews Command-armed links and annotated links in the native surface without reflow")
+    func editAnnotatedLinkDisclosure() async throws {
+        let source = "Intro.\n\n> [!state] Related\n> [[Target]]\n\n[[Support]]{{First **reason**.\n\n- Second reason.}}\n"
+        let targetOffset = try #require(source.range(of: "[[Target]]")?.lowerBound)
+            .utf16Offset(in: source)
+        let harness = EditorHarness(
+            source: source,
+            linkPreviews: [Self.linkPreview(atUTF16: targetOffset)], laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let owner = try #require(harness.session.webView)
+        let frame = owner.frame
+        let selection = harness.session.context?.selections
+        let undo = harness.session.context?.undoLabel
+        let anchors = """
+            const targetLink = Array.from(document.querySelectorAll('.cm-live-wiki-link'))
+              .find(candidate => candidate.textContent === 'Target');
+            const button = document.querySelector('.scholium-link-annotation-button');
+            """
+        #expect(try await harness.callPageJavaScript(anchors + "return !!targetLink && !!button;") as? Bool == true)
+        _ = try await harness.callPageJavaScript(
+            anchors + """
+                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                await new Promise(resolve => setTimeout(resolve, 350));
+                """)
+        #expect(harness.session.floatingSurfaces.previewWebView == nil)
+        _ = try await harness.callPageJavaScript(
+            """
+            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
+            """)
+        _ = try await harness.waitUntilPresentation(stage: "Command after pointer entry") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Target note"
+        }
+        #expect(
+            try await harness.callPageJavaScript(
+                anchors + """
+                    const style = getComputedStyle(targetLink);
+                    return targetLink.classList.contains('scholium-link-preview-armed')
+                      && style.cursor === 'pointer' && style.textDecorationLine.includes('underline');
+                    """) as? Bool == true)
+        _ = try await harness.callPageJavaScript(
+            """
+            document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
+            document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+            """)
+        _ = try await harness.waitUntilPresentation(stage: "released Command") { $0.previewPopoverHidden }
+        _ = try await harness.callPageJavaScript(
+            anchors + """
+                document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
+                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                """)
+        _ = try await harness.waitUntilPresentation(stage: "Command before pointer entry") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Target note"
+        }
+        _ = try await harness.callPageJavaScript(
+            anchors + """
+                document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
+                button.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                """)
+        _ = try await harness.waitUntilPresentation(stage: "pinned native annotation") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Support"
+        }
+        let preview = try #require(harness.session.floatingSurfaces.previewWebView)
+        #expect(try await preview.evaluateJavaScript("document.body.textContent.includes('Second reason.')") as? Bool == true)
+        #expect(try await preview.evaluateJavaScript("document.querySelector('strong')?.textContent") as? String == "reason")
+        _ = try await harness.callPageJavaScript(
+            """
+            document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+            await new Promise(resolve => setTimeout(resolve, 220));
+            """)
+        #expect(!(try await harness.session.testingAccessibilitySnapshot()).previewPopoverHidden)
+        _ = try await harness.callPageJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));")
+        _ = try await harness.waitUntilPresentation(stage: "annotation Escape") { $0.previewPopoverHidden }
+        _ = try await harness.callPageJavaScript(anchors + "button.focus();")
+        _ = try await harness.waitUntilPresentation(stage: "keyboard annotation focus") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Support"
+        }
+        _ = try await harness.callPageJavaScript(anchors + "button.blur();")
+        _ = try await harness.waitUntilPresentation(stage: "annotation focus exit") { $0.previewPopoverHidden }
+        #expect(
+            try await harness.callPageJavaScript(
+                """
+                return document.querySelectorAll('#scholium-preview-popover, .scholium-link-annotation-panel').length;
+                """) as? Int == 0)
+        #expect(owner.frame == frame)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit renders an inactive embed as one complete bounded Note")
+    func editEmbeddedNotePresentation() async throws {
+        let source = "Intro.\n\n![[Embedded]]\n\nAfter embedded note.\n"
+        let embedOffset = try #require(source.range(of: "![[Embedded]]")?.lowerBound)
+            .utf16Offset(in: source)
+        let embedLength = "![[Embedded]]".utf16.count
+        let preview = DocumentLinkPreview(
+            sourceSpan: SourceSpan(
+                utf8LowerBound: embedOffset,
+                utf8UpperBound: embedOffset + embedLength,
+                utf16LowerBound: embedOffset,
+                utf16UpperBound: embedOffset + embedLength,
+                start: SourcePosition(line: 3, utf8Column: 1, utf16Column: 1),
+                end: SourcePosition(
+                    line: 3,
+                    utf8Column: embedLength + 1,
+                    utf16Column: embedLength + 1
+                )
+            ),
+            target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Embedded.md"),
+            targetFingerprint: DocumentFingerprint(content: "Embedded target"),
+            title: "Embedded note",
+            syntax: .embed,
+            fragment: nil,
+            htmlBody: "<h1>Embedded note</h1>"
+                + String(
+                    repeating: "<p>Complete projected paragraph.</p>",
+                    count: 90
+                ) + "<p>Complete editor embedded tail</p>"
+        )
+        let harness = EditorHarness(
+            source: source,
+            linkPreviews: [preview],
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        var snapshot: [String: Any] = [:]
+        while true {
+            snapshot = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const shell = document.querySelector('.cm-live-embedded-note-widget');
+                    const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
+                    const body = shell?.querySelector('.scholium-embedded-note-body');
+                    const open = shell?.querySelector('.scholium-embedded-note-open');
+                    if (!shell || !viewport || !body || !open) {
+                      return {
+                        ready: false,
+                        contentText: document.querySelector('.cm-content')?.textContent || '',
+                        embedFallbacks: document.querySelectorAll('.cm-live-embed').length,
+                        replacementWidgets: document.querySelectorAll('.cm-widgetBuffer').length
+                      };
+                    }
+                    viewport.scrollTop = 160;
+                    return {
+                      ready: true,
+                      bodyOwnsDocumentStyle: body.classList.contains('scholium-document'),
+                      duplicateTitleCount: [...body.querySelectorAll('h1')]
+                        .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
+                      hasTail: (body.textContent || '').includes('Complete editor embedded tail'),
+                      scrolls: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
+                      openBadgeCount: open.querySelectorAll('.scholium-system-symbol').length,
+                      viewportTabIndex: viewport.tabIndex,
+                      sourceLocatorCount: body.querySelectorAll('[data-source-utf16-start]').length
+                    };
+                    """
+                ) as? [String: Any])
+            if snapshot["ready"] as? Bool == true { break }
+            if clock.now >= deadline {
+                Issue.record("Edit did not install the finite embedded Note widget: \(snapshot).")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        #expect(snapshot["bodyOwnsDocumentStyle"] as? Bool == true)
+        #expect(snapshot["duplicateTitleCount"] as? Int == 0)
+        #expect(snapshot["hasTail"] as? Bool == true)
+        #expect(snapshot["scrolls"] as? Bool == true)
+        #expect(snapshot["openBadgeCount"] as? Int == 0)
+        #expect(snapshot["viewportTabIndex"] as? Int == 0)
+        #expect(snapshot["sourceLocatorCount"] as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("The native Italic menu shortcut preserves exact selection and Undo")
+    func editKeyboardItalicUsesExactSourceTransaction() async throws {
+        let source = "Selected 中文 claim remains exact.\n"
+        let selectedText = "Selected 中文 claim"
+        let end = selectedText.utf16.count
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: end)
+        try await harness.waitUntilSelection(head: end)
+        try await harness.session.focusAndWait()
+
+        let webView = try #require(harness.session.webView)
+        let window = try #require(webView.window)
+        let previousMenu = NSApp.mainMenu
+        defer { NSApp.mainMenu = previousMenu }
+        let target = FormattingMenuTarget(session: harness.session)
+        let menu = NSMenu()
+        let format = NSMenuItem()
+        format.submenu = NSMenu(title: "Format")
+        let italic = NSMenuItem(title: "Italic", action: #selector(FormattingMenuTarget.italic), keyEquivalent: "i")
+        italic.keyEquivalentModifierMask = .command
+        italic.target = target
+        format.submenu?.addItem(italic)
+        menu.addItem(format)
+        NSApp.mainMenu = menu
+        let event = try #require(
+            NSEvent.keyEvent(
+                with: .keyDown, location: .zero,
+                modifierFlags: .command, timestamp: 0, windowNumber: window.windowNumber,
+                context: nil, characters: "i", charactersIgnoringModifiers: "i", isARepeat: false, keyCode: 34))
+        #expect(menu.performKeyEquivalent(with: event))
+        let task = try #require(target.task)
+        try await task.value
+
+        let expected = "*Selected 中文 claim* remains exact.\n"
+        let editedDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var edited = source
+        while edited == source && ContinuousClock.now < editedDeadline {
+            edited = try await harness.session.currentText(for: harness.documentID)
+            if edited == source { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        #expect(edited == expected)
+        #expect(harness.session.context?.undoLabel == "Italic")
+
+        _ = try await harness.callPageJavaScript(
+            """
+            document.querySelector('.cm-content')?.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+              metaKey: true, bubbles: true, cancelable: true
+            }));
+            """
+        )
+        let restoredDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var restored = edited
+        while restored != source && ContinuousClock.now < restoredDeadline {
+            restored = try await harness.session.currentText(for: harness.documentID)
+            if restored != source { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        #expect(restored == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit selection stays unobscured while native formatting commands preserve exact source")
+    func editSelectionRetainsNativeFormattingCommands() async throws {
+        let source = "Selected 中文 claim remains exact.\n"
+        let selectedText = "Selected 中文 claim"
+        let end = selectedText.utf16.count
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: end)
+        try await harness.waitUntilSelection(head: end)
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+
+        let snapshot = try await harness.session.testingAccessibilitySnapshot()
+        #expect(snapshot.selectionActionsCount == 0)
+        #expect(harness.session.context?.selections.first?.anchor == 0)
+        #expect(harness.session.context?.selections.first?.head == end)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+
+        try await harness.session.perform(.bold)
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "**Selected 中文 claim** remains exact.\n")
+        #expect(harness.session.context?.undoLabel == "Bold")
+        #expect(harness.session.generation == 1)
+        try await harness.waitUntilFocused()
+
+        try await harness.session.perform(.bold)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 2)
+        try await harness.session.perform(.markdownComment)
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "%% Selected 中文 claim %% remains exact.\n")
+        #expect(harness.session.context?.undoLabel == "Markdown Comment")
+        #expect(harness.session.generation == 3)
+        #expect(try await harness.session.testingAccessibilitySnapshot().selectionActionsCount == 0)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Editor context menu starts with standard editing and adds only clicked-construct actions")
+    func editorContextMenuOwnsOneCompactCommandProjection() {
+        let webView = WindowAttachedWebView(
+            frame: NSRect(x: 0, y: 0, width: 640, height: 480),
+            configuration: WKWebViewConfiguration()
+        )
+        func context(
+            selection: MarkdownEditorSelectionRange,
+            available: [MarkdownEditorCommand]
+        ) -> MarkdownEditorContext {
+            MarkdownEditorContext(
+                selections: [selection],
+                activeInlineConstructs: [],
+                activeBlockConstructs: [],
+                tablePosition: nil,
+                composing: false,
+                availableCommands: available,
+                undoLabel: nil,
+                redoLabel: nil
+            )
+        }
+
+        let selectedMenu = webView.makeEditorContextMenu(
+            context: context(
+                selection: MarkdownEditorSelectionRange(anchor: 2, head: 8),
+                available: [.bold, .toggleTask, .tableInsertRowAfter]
+            ),
+            mode: .livePreview,
+            canPaste: true
+        )
+        #expect(
+            Array(selectedMenu.items.prefix(5)).map(\.identifier?.rawValue) == [
+                "scholium.editor.cut",
+                "scholium.editor.copy",
+                "scholium.editor.paste",
+                nil,
+                "scholium.editor.selectAll",
+            ])
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Cut"))?.isEnabled == true)
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Copy"))?.isEnabled == true)
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Paste"))?.isEnabled == true)
+        let spelling = selectedMenu.item(
+            withTitle: ScholiumL10n.string("Spelling and Grammar")
+        )?.submenu
+        #expect(spelling?.item(withTitle: ScholiumL10n.string("Show Spelling and Grammar"))?.action == NSSelectorFromString("showGuessPanel:"))
+        #expect(spelling?.item(withTitle: ScholiumL10n.string("Check Spelling While Typing"))?.action == NSSelectorFromString("toggleContinuousSpellChecking:"))
+        #expect(selectedMenu.item(withTitle: "Autofill") == nil)
+        #expect(selectedMenu.item(withTitle: "Services") == nil)
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Bold")) == nil)
+        #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) == nil)
+
+        let constructMenu = webView.makeEditorContextMenu(
+            context: context(
+                selection: MarkdownEditorSelectionRange(anchor: 4, head: 4),
+                available: [.toggleTask, .tableInsertRowAfter]
+            ),
+            mode: .livePreview,
+            canPaste: false
+        )
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Cut"))?.isEnabled == false)
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Copy"))?.isEnabled == false)
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Paste"))?.isEnabled == false)
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) != nil)
+        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Table"))?.submenu != nil)
+
+        let sourceMenu = webView.makeEditorContextMenu(
+            context: context(
+                selection: MarkdownEditorSelectionRange(anchor: 4, head: 4),
+                available: [.toggleTask, .tableInsertRowAfter]
+            ),
+            mode: .source,
+            canPaste: true
+        )
+        #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) == nil)
+        #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Table")) == nil)
+    }
+
+    @Test("Native pasteboard image bytes route to attachment import")
+    func nativeImagePasteboardRouting() throws {
+        let pasteboard = NSPasteboard(
+            name: NSPasteboard.Name("scholium-image-paste-\(UUID().uuidString)")
+        )
+        pasteboard.clearContents()
+        let png = try #require(
+            Data(
+                base64Encoded:
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            ))
+        #expect(pasteboard.setData(png, forType: .init("public.png")))
+
+        guard
+            case .data(let data, let preferredFilename) =
+                WindowAttachedWebView.pastedImageSource(in: pasteboard)
+        else {
+            Issue.record("Expected native PNG pasteboard bytes.")
+            return
+        }
+        #expect(data == png)
+        #expect(preferredFilename == "Pasted Image.png")
+        pasteboard.clearContents()
+    }
+
+    @Test("Presentation CSS preserves the semantic Source scroll anchor across reflow")
+    func presentationCSSPreservesSourceScrollAnchor() async throws {
+        let lines = (1...96).map { index in
+            "Research line \(index) keeps one deliberately extended argument in view while the configured editorial measure changes around it."
+        }
+        let source = lines.joined(separator: "\n") + "\n"
+        let target = lines[63]
+        let targetRange = try #require(source.range(of: target))
+        let targetLowerBound = targetRange.lowerBound.utf16Offset(in: source)
+        let targetUpperBound = targetRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(
+            source: source,
+            initialMode: .source,
+            initialWindowSize: NSSize(width: 1_080, height: 520)
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let regularProfile = DocumentAppearanceProfile(name: "Regular Measure")
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(
+                textScale: ScholiumMetrics.Document.defaultTextScale
+            ).css
+                + "\n"
+                + DocumentAppearanceStyles.css(for: regularProfile)
+        )
+        _ = try await harness.waitUntilPresentation(stage: "regular Source measure") {
+            $0.label == "Markdown source editor"
+                && $0.presentation.rootLineWidth
+                    == "\(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch"
+        }
+        let requested = EditorScrollAnchor(
+            sourceFingerprint: DocumentFingerprint(content: source).sha256,
+            sourceUTF16Offset: targetLowerBound,
+            blockUTF16LowerBound: targetLowerBound,
+            blockUTF16UpperBound: targetUpperBound,
+            relativeBlockPosition: 0,
+            fallbackFraction: 0.66
+        )
+        try await harness.session.testingApplyScrollAnchor(requested)
+        let before = try #require(
+            try await harness.waitUntilCurrentScrollAnchor {
+                abs($0.sourceUTF16Offset - targetLowerBound) < 4
+            }
+        )
+        let selectionBefore = harness.session.context?.selections
+        let undoBefore = harness.session.context?.undoLabel
+
+        let narrowProfile = DocumentAppearanceProfile(
+            name: "Narrow Measure",
+            settings: .init(lineWidthCharacterUnits: 48)
+        )
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(
+                textScale: ScholiumMetrics.Document.defaultTextScale
+            ).css
+                + "\n"
+                + DocumentAppearanceStyles.css(for: narrowProfile)
+        )
+        _ = try await harness.waitUntilPresentation(stage: "narrow Source measure") {
+            $0.label == "Markdown source editor"
+                && $0.presentation.rootLineWidth == "48ch"
+        }
+        let after = try await harness.waitUntilStableScrollAnchor {
+            $0.sourceFingerprint == before.sourceFingerprint
+                && $0.blockUTF16LowerBound == before.blockUTF16LowerBound
+                && $0.blockUTF16UpperBound == before.blockUTF16UpperBound
+                && abs($0.sourceUTF16Offset - before.sourceUTF16Offset) < 4
+        }
+
+        #expect(after.sourceFingerprint == before.sourceFingerprint)
+        #expect(after.blockUTF16LowerBound == before.blockUTF16LowerBound)
+        #expect(after.blockUTF16UpperBound == before.blockUTF16UpperBound)
+        #expect(abs(after.sourceUTF16Offset - before.sourceUTF16Offset) < 4)
+        #expect(harness.session.context?.selections == selectionBefore)
+        #expect(harness.session.context?.undoLabel == undoBefore)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Current bridge preserves exact commands, diagnostics, mode chrome, and reconstruction state")
+    func bridgeCommandRoundTrip() async throws {
+        // Swift Testing can schedule unrelated AppKit suites concurrently.
+        // Let their short native-window journeys finish before this suite owns
+        // the shared WebKit process; this is test-process isolation only.
+        try await Task.sleep(for: .seconds(2))
+        let frontmatter = "---\r\ntitle: Fixture\r\n---\r\n"
+        let longTail = (1...40).map { "Research paragraph \($0)." }.joined(separator: "\r\n") + "\r\n"
+        let original =
+            frontmatter
+            + "[[Target]]\r\nThesis\r\nSecond\r\n\r\n| **Claim** | Status | Count |\r\n|:---|:---:|---:|\r\n| Fittingness | Open | 2 |\r\n\r\nInline $x^2 + y^2$.\r\n\r\n$$\r\n\\int_0^1 x\\,dx\r\n$$\r\nClaim[^note] and inline ^[Inline note].\r\n\r\n[^note]: **Named** note\r\n  continued\r\n\r\n  - Outer item\r\n    - Nested item\r\n\r\n  > Quoted reason.\r\n\r\n  > [!state] Nested claim\r\n  > Body with $z$.\r\n\r\n  | Term | Value |\r\n  |:---|---:|\r\n  | $z$ | 3 |\r\n\r\n  $$\r\n  z^2\r\n  $$\r\n\r\n  ```swift\r\n  let value = 1\r\n  ```\r\n"
+            + longTail
+            + "\r\n## Shared heading\r\n\r\nA shared paragraph establishes the editorial measure.\r\n\r\n> [!state] Shared claim\r\n> The same callout must retain its typographic hierarchy.\r\n\r\nAfter shared callout.\r\n"
+        let linkOffset = frontmatter.utf16.count
+        let harness = EditorHarness(
+            source: original,
+            linkPreviews: [Self.linkPreview(atUTF16: linkOffset)],
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+
+        var diagnosticStage = "initial readiness"
+        do {
+            try await harness.waitUntilReady()
+            #expect(harness.session.isReady)
+            #expect(harness.session.isLoaded)
+            #expect(harness.session.documentID == harness.documentID)
+            #expect(harness.session.hasAttachedWebView)
+            let initial: String
+            do {
+                initial = try await harness.session.currentText(for: harness.documentID)
+            } catch {
+                Issue.record(Comment(rawValue: "Initial bridge query failed: \(error.localizedDescription)"))
+                return
+            }
+            #expect(initial == original)
+
+            diagnosticStage = "initial focus handoff"
+            await harness.session.resignFocusAndWait()
+            do {
+                #expect(!(try await harness.session.testingAccessibilitySnapshot()).isFocused)
+            } catch {
+                Issue.record("The resigned-focus accessibility snapshot failed: \(error).")
+                throw error
+            }
+            harness.session.focus()
+            try await harness.waitUntilFocused()
+
+            diagnosticStage = "initial semantic presentation"
+            let accessibility: MarkdownEditorSession.TestingAccessibilitySnapshot
+            do {
+                accessibility = try await harness.session.testingAccessibilitySnapshot()
+            } catch {
+                Issue.record("The initial accessibility snapshot failed: \(error).")
+                throw error
+            }
+            #expect(accessibility.contentEditableCount == 1)
+            #expect(accessibility.textboxCount == 1)
+            #expect(accessibility.label == "Markdown editor, Edit mode")
+            #expect(accessibility.multiline == "true")
+            #expect(!accessibility.hasValueText)
+            #expect(accessibility.spellcheck == "true")
+            #expect(accessibility.mathRuntimeVersion == 1)
+            #expect(accessibility.mathErrorCount == 0)
+            #expect(accessibility.displayMathOverflowX == "auto")
+            #expect(accessibility.frontmatterLineCount > 0)
+            #expect(accessibility.frontmatterVisibleHeight > 0)
+            #expect(accessibility.semanticTableCount == 1)
+            #expect(accessibility.liveTableSourceLineCount == 0)
+            #expect(accessibility.tableHeaderCount == 3)
+            #expect(accessibility.tableBodyCellCount == 3)
+            #expect(accessibility.tableStrongCount == 1)
+            #expect(accessibility.tableFirstHeaderText == "Claim")
+            #expect(accessibility.tableOverflowX == "auto")
+            #expect(accessibility.footnoteReferenceCount == 2)
+            #expect(accessibility.footnoteDefinitionSourceCount == 1)
+            #expect(accessibility.exactWikilinkSourceCount == 1)
+            #expect(accessibility.incompleteWikilinkSourceCount == 0)
+            let normalizedOriginal = original.replacingOccurrences(of: "\r\n", with: "\n")
+            let normalizedLines = normalizedOriginal.split(
+                separator: "\n",
+                omittingEmptySubsequences: false
+            )
+            let displayMathLine = try #require(
+                normalizedLines.firstIndex(where: { $0 == "$$" }).map { $0 + 1 }
+            )
+            harness.session.goToLine(displayMathLine)
+            let activeMath = try await harness.waitUntilPresentation(stage: "active mathematics source") {
+                $0.renderedMathCount > 0 && $0.mathErrorCount == 0
+            }
+            #expect(activeMath.mathErrorCount == 0)
+            #expect(try await harness.session.currentText(for: harness.documentID) == initial)
+
+            let sharedCalloutLine = try #require(
+                normalizedLines.firstIndex(where: { $0 == "> [!state] Shared claim" }).map { $0 + 1 }
+            )
+            let calloutFrom = try #require(normalizedOriginal.range(of: "> [!state] Shared claim")?.lowerBound)
+                .utf16Offset(in: normalizedOriginal)
+            let calloutSource = "> [!state] Shared claim\n> The same callout must retain its typographic hierarchy."
+            let calloutTo = try #require(normalizedOriginal.range(of: calloutSource)?.upperBound)
+                .utf16Offset(in: normalizedOriginal)
+            diagnosticStage = "projected Callout interaction"
+            harness.session.goToLine(sharedCalloutLine)
+            _ = try await harness.waitUntilPresentation(stage: "shared callout visible") {
+                $0.liveCalloutBlockCount > 0
+            }
+            try await harness.session.testingClickVisibleText("same callout")
+            _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
+            let activeCallout = try await harness.waitUntilPresentation(stage: "active callout source") {
+                $0.activeLiveBlockKind == "callout"
+            }
+            #expect(activeCallout.liveCalloutSourceLineCount >= 2)
+            #expect(try await harness.session.currentText(for: harness.documentID) == initial)
+
+            let tableLine = try #require(
+                normalizedLines.firstIndex(where: { $0 == "| **Claim** | Status | Count |" }).map { $0 + 1 }
+            )
+            harness.session.goToLine(tableLine)
+            _ = try await harness.waitUntilPresentation(stage: "active table source") {
+                $0.semanticTableCount == 0
+                    && $0.liveTableSourceLineCount > 0
+            }
+            let namedDefinitionLine = try #require(
+                normalizedLines.firstIndex(where: { $0.hasPrefix("[^note]:") }).map { $0 + 1 }
+            )
+            harness.session.goToLine(namedDefinitionLine)
+            let namedDefinitionOffset = try #require(normalizedOriginal.range(of: "[^note]:")?.lowerBound)
+                .utf16Offset(in: normalizedOriginal)
+            try await harness.waitUntilSelection(
+                head: namedDefinitionOffset,
+                stage: "named footnote definition"
+            )
+            let directFootnote = try await harness.waitUntilPresentation(stage: "direct footnote source") {
+                $0.footnoteDefinitionSourceCount == 1
+            }
+            #expect(directFootnote.footnoteReferenceCount == 2)
+            harness.session.goToLine(4)
+            try await harness.waitUntilPreviewIsAvailable()
+            #expect(harness.session.canShowPreviewAtSelection)
+            harness.session.showPreview()
+            // Native preview visibility is covered by nativeEditPreviewPreservesDocument
+            // in a laid-out native host. This unconstrained bridge fixture verifies
+            // the request and source/session state, not floating-window geometry.
+            try await Task.sleep(for: .milliseconds(200))
+            let presentationPerformance = try await harness.session.queryPerformanceSamples()
+            #expect(presentationPerformance.contains { $0.name == "mode-toggle-work" })
+            #expect(presentationPerformance.contains { $0.name == "cached-preview-work" })
+
+            let initialSelection = try #require(harness.session.context?.selections)
+            let configuredTopInset: CGFloat = 36
+            let expectedPadding = "\(Int(configuredTopInset))px"
+            harness.setPresentationCSS(
+                ScholiumDocumentPresentationConfiguration(
+                    textScale: ScholiumMetrics.Document.defaultTextScale,
+                    contentTopInsetCSSPixels: configuredTopInset
+                ).css)
+
+            let live = try await harness.waitUntilPresentation(stage: "configured Live Preview") {
+                $0.label == "Markdown editor, Edit mode"
+                    && $0.contentPaddingTop == expectedPadding
+            }
+            #expect(live.gutterCount == 0)
+            #expect(live.lineNumberCount == 0)
+            #expect(live.activeLineCount == 0)
+            #expect(live.liveProjectionDOMCount > 0)
+            #expect(live.selectionActionsCount == 0)
+            #expect(live.previewPopoverCount == 0)
+            #expect(Double(live.contentPaddingInlineStart.dropLast(2)) ?? 0 > 0)
+            #expect(live.isFocused)
+
+            diagnosticStage = "Source and Live Preview transitions"
+            harness.session.setMode(.source)
+            let sourceMode = try await harness.waitUntilPresentation(stage: "Source mode") {
+                $0.label == "Markdown source editor"
+                    && $0.gutterCount > 0
+                    && $0.lineNumberCount > 0
+                    && $0.liveProjectionDOMCount == 0
+                    && $0.selectionActionsCount == 0
+                    && $0.previewPopoverCount == 0
+            }
+            #expect(sourceMode.activeLineCount > 0)
+            #expect(sourceMode.renderedMathCount == 0)
+            #expect(sourceMode.semanticTableCount == 0)
+            #expect(sourceMode.footnoteReferenceCount == 0)
+            #expect(sourceMode.previewPopoverHidden)
+            #expect(sourceMode.contentPaddingTop == expectedPadding)
+            #expect(Double(sourceMode.contentPaddingInlineStart.dropLast(2)) ?? 0 > 0)
+            #expect(sourceMode.isFocused)
+            #expect(harness.session.context?.selections == initialSelection)
+            harness.session.goToLine(2)
+            try await harness.waitUntilSelection(head: 4, stage: "Source frontmatter line")
+            harness.session.setMode(.livePreview)
+            _ = try await harness.waitUntilPresentation(stage: "frontmatter remains editable in Live Preview") {
+                $0.label == "Markdown editor, Edit mode" && $0.frontmatterLineCount > 0
+            }
+            try await harness.waitUntilSelection(
+                head: 4,
+                stage: "Edit preserves YAML selection"
+            )
+            harness.session.setMode(.source)
+            _ = try await harness.waitUntilPresentation(stage: "frontmatter selection restored Source") {
+                $0.label == "Markdown source editor" && $0.lineNumberCount > 0
+            }
+            try await harness.waitUntilSelection(head: 4, stage: "restored Source frontmatter")
+            let bodyEditorOffset = (frontmatter.replacingOccurrences(of: "\r\n", with: "\n") + "[[Target]]\n").utf16.count
+            let bodySourceOffset = (frontmatter + "[[Target]]\r\n").utf16.count
+            harness.session.goToLine(5)
+            try await harness.waitUntilSelection(head: bodyEditorOffset, stage: "Source body line")
+
+            harness.session.setMode(.livePreview)
+            let restoredLive = try await harness.waitUntilPresentation(stage: "restored Live Preview") {
+                $0.label == "Markdown editor, Edit mode"
+                    && $0.gutterCount == 0
+                    && $0.semanticTableCount == 1
+                    && $0.footnoteReferenceCount == 2
+            }
+            #expect(restoredLive.lineNumberCount == 0)
+            #expect(restoredLive.activeLineCount == 0)
+            #expect(restoredLive.contentPaddingTop == expectedPadding)
+            #expect(restoredLive.isFocused)
+            #expect(restoredLive.semanticTableCount == 1)
+            #expect(restoredLive.footnoteReferenceCount == 2)
+            #expect(try await harness.session.currentText(for: harness.documentID) == initial)
+            #expect(harness.session.context?.selections.first?.head == bodyEditorOffset)
+
+            diagnosticStage = "exact formatting and mode stress"
+            do {
+                try await harness.session.perform(.bold)
+            } catch {
+                Issue.record(Comment(rawValue: "Formatting command failed: \(error.localizedDescription)"))
+                return
+            }
+
+            let updated = try await harness.session.currentText(for: harness.documentID)
+            let expectedUpdated = try inserting("****", atUTF16: bodySourceOffset, in: original)
+            #expect(updated == expectedUpdated)
+            #expect(harness.latestSource == expectedUpdated)
+            #expect(harness.session.generation == 1)
+            #expect(harness.session.isDirty)
+
+            for _ in 0..<25 {
+                harness.session.setMode(.source)
+                _ = try await harness.waitUntilPresentation(stage: "stress Source mode") {
+                    $0.label == "Markdown source editor"
+                        && $0.gutterCount > 0
+                        && $0.lineNumberCount > 0
+                        && $0.liveProjectionDOMCount == 0
+                        && $0.selectionActionsCount == 0
+                        && $0.previewPopoverCount == 0
+                }
+                harness.session.setMode(.livePreview)
+                _ = try await harness.waitUntilPresentation(stage: "stress Live Preview") {
+                    $0.label == "Markdown editor, Edit mode"
+                        && $0.gutterCount == 0
+                        && $0.lineNumberCount == 0
+                }
+            }
+            #expect(try await harness.session.currentText(for: harness.documentID) == expectedUpdated)
+            #expect(harness.session.isDirty)
+            #expect(harness.session.hasAttachedWebView)
+            let modeStressSamples = try await harness.session.queryPerformanceSamples()
+            let latestModeTransition = try #require(
+                modeStressSamples.last { $0.name == "mode-toggle-work" }
+            )
+            #expect((latestModeTransition.observed["transitionSequence"] ?? 0) >= 50)
+
+            let pastePayload = #"{"plainText":"Reason","html":"<strong>Reason</strong>"}"#
+            try await harness.session.perform(.pasteMarkdown, argument: pastePayload)
+            let pasted = try await harness.session.currentText(for: harness.documentID)
+            let expectedPasted = try inserting("****Reason****", atUTF16: bodySourceOffset, in: original)
+            #expect(pasted == expectedPasted)
+            #expect(harness.session.generation == 2)
+
+            let unicode = "e\u{301} | é | 👩🏽‍💻️ | العربية، Markdown | עברית (LTR)"
+            let unicodeInsertionOffset = try #require(harness.session.context?.selections.first?.head)
+            try await harness.session.perform(.pastePlain, argument: unicode)
+            let beforeTermination = try await harness.session.currentText(for: harness.documentID)
+            let expectedBeforeTermination = try insertingAtEditorOffset(
+                unicode,
+                editorUTF16: unicodeInsertionOffset,
+                in: pasted
+            )
+            #expect(Data(beforeTermination.utf8) == Data(expectedBeforeTermination.utf8))
+            #expect(Array(beforeTermination.utf16) == Array(expectedBeforeTermination.utf16))
+            #expect(harness.session.isDirty)
+            let insertionOffset = try #require(harness.session.context?.selections.first?.head)
+
+            diagnosticStage = "Web content process recovery"
+            // Terminate before the bounded EditorState capture can replace the
+            // delta-checked mirror fallback. Recovery must retain the last context
+            // selection so the next insertion remains at the end of the source.
+            #expect(harness.session.testingSimulateWebContentProcessTermination())
+            try await harness.waitUntilReady()
+            let recovered = try await harness.session.currentText(for: harness.documentID)
+            #expect(Data(recovered.utf8) == Data(beforeTermination.utf8))
+            #expect(Array(recovered.utf16) == Array(beforeTermination.utf16))
+            #expect(harness.session.isDirty)
+
+            try await harness.session.perform(.pastePlain, argument: "!")
+            let afterSelectionRestore = try await harness.session.currentText(for: harness.documentID)
+            let expectedAfterSelectionRestore = try insertingAtEditorOffset(
+                "!",
+                editorUTF16: insertionOffset,
+                in: recovered
+            )
+            #expect(Data(afterSelectionRestore.utf8) == Data(expectedAfterSelectionRestore.utf8))
+            #expect(Array(afterSelectionRestore.utf16) == Array(expectedAfterSelectionRestore.utf16))
+
+            diagnosticStage = "view reconstruction"
+            // Collapse/reopen uses the same explicit recovery capture before
+            // SwiftUI dismantles the WKWebView. The retained session must restore
+            // exact bytes, selection, bounded undo history, focus, and scroll.
+            let selectionBeforeReconstruction = try #require(harness.session.context?.selections.first)
+            _ = try #require(harness.session.context?.undoLabel)
+            let beforeScroll = try await harness.session.testingAccessibilitySnapshot()
+            #expect(beforeScroll.scrollExtent > 0)
+            diagnosticStage = "view reconstruction anchor preparation"
+            try await harness.session.testingApplyScrollFraction(0.65)
+            let fractionScrollAnchor = try await harness.waitUntilScrollAnchor()
+            #expect(fractionScrollAnchor.fallbackFraction > 0.2)
+            let anchorText = "Research paragraph 30."
+            let anchorRange = try #require(afterSelectionRestore.range(of: anchorText))
+            let anchorLowerBound = anchorRange.lowerBound.utf16Offset(in: afterSelectionRestore)
+            let requestedAnchor = EditorScrollAnchor(
+                sourceFingerprint: DocumentFingerprint(content: afterSelectionRestore).sha256,
+                sourceUTF16Offset: anchorLowerBound,
+                blockUTF16LowerBound: anchorLowerBound,
+                blockUTF16UpperBound: anchorLowerBound + anchorText.utf16.count,
+                relativeBlockPosition: 0,
+                fallbackFraction: 0.65
+            )
+            try await harness.session.testingApplyScrollAnchor(requestedAnchor)
+            let semanticScrollAnchor = try #require(
+                try await harness.waitUntilCurrentScrollAnchor {
+                    abs($0.sourceUTF16Offset - anchorLowerBound) < 4
+                }
+            )
+            #expect(semanticScrollAnchor.fallbackFraction > 0.2)
+            #expect(abs(semanticScrollAnchor.sourceUTF16Offset - anchorLowerBound) < 4)
+            #expect(semanticScrollAnchor.sourceUTF16Offset >= semanticScrollAnchor.blockUTF16LowerBound)
+            #expect(semanticScrollAnchor.sourceUTF16Offset <= semanticScrollAnchor.blockUTF16UpperBound)
+
+            #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+            diagnosticStage = "view reconstruction state capture"
+            try await harness.session.captureStateForViewReconstruction()
+            #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+            diagnosticStage = "view reconstruction detach"
+            try await harness.reconstructEditorView()
+            diagnosticStage = "view reconstruction readiness"
+            try await harness.waitUntilReady()
+            #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+
+            diagnosticStage = "view reconstruction exact source"
+            let afterReopen = try await harness.session.currentText(for: harness.documentID)
+            #expect(Data(afterReopen.utf8) == Data(afterSelectionRestore.utf8))
+            #expect(harness.session.context?.selections.first == selectionBeforeReconstruction)
+            #expect(harness.session.context?.undoLabel != nil)
+            diagnosticStage = "view reconstruction focus"
+            try await harness.waitUntilFocused()
+            diagnosticStage = "view reconstruction scroll restoration"
+            let restoredScrollAnchor = try await harness.waitUntilCurrentScrollAnchor {
+                $0.sourceFingerprint == semanticScrollAnchor.sourceFingerprint
+                    && $0.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound
+                    && $0.blockUTF16UpperBound == semanticScrollAnchor.blockUTF16UpperBound
+            }
+            #expect(restoredScrollAnchor?.sourceFingerprint == semanticScrollAnchor.sourceFingerprint)
+            #expect(restoredScrollAnchor?.sourceUTF16Offset == semanticScrollAnchor.sourceUTF16Offset)
+            #expect(restoredScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+            #expect(restoredScrollAnchor?.blockUTF16UpperBound == semanticScrollAnchor.blockUTF16UpperBound)
+            #expect((harness.session.testingRetainedScrollFraction ?? 0) > 0.2)
+            let restoredAccessibility = try await harness.session.testingAccessibilitySnapshot()
+            #expect(restoredAccessibility.isFocused)
+
+            diagnosticStage = "view reconstruction editing and performance"
+            try await harness.session.perform(.pastePlain, argument: "?")
+            let afterInsertion = try await harness.session.currentText(for: harness.documentID)
+            let expectedAfterInsertion = try insertingAtEditorOffset(
+                "?",
+                editorUTF16: selectionBeforeReconstruction.head,
+                in: afterSelectionRestore
+            )
+            #expect(afterInsertion == expectedAfterInsertion)
+            let performanceSamples = try await harness.session.queryPerformanceSamples()
+            #expect(!performanceSamples.isEmpty)
+            #expect(performanceSamples.count <= 256)
+            #expect(performanceSamples.contains { $0.name == "startup" })
+            #expect(performanceSamples.contains { $0.name == "document-load" })
+            #expect(performanceSamples.contains { $0.name == "projection" })
+            #expect(performanceSamples.contains { $0.name == "bridge-request" })
+            #expect(
+                performanceSamples.allSatisfy {
+                    $0.durationMilliseconds.isFinite && $0.durationMilliseconds >= 0
+                        && $0.observed.values.allSatisfy { $0.isFinite && $0 >= 0 }
+                })
+            diagnosticStage = "Source presentation geometry"
+            harness.resize(width: 1_080)
+            harness.session.setMode(.source)
+            let regularSourceGrid = try await harness.waitUntilPresentation(
+                stage: "regular-width Source grid"
+            ) {
+                $0.label == "Markdown source editor"
+                    && $0.presentation.viewportWidth > 704
+                    && $0.presentation.rootLineWidth
+                        == "\(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch"
+                    && $0.presentation.documentFontFamily.contains("Menlo")
+            }
+            #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
+            #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
+
+            let regularSourceInset = try #require(
+                try await harness.callPageJavaScript(
+                    "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-source-mode .cm-scroller')).paddingInlineStart);"
+                ) as? Double)
+            let gutterGap = try #require(
+                try await harness.callPageJavaScript(
+                    "return document.querySelector('.scholium-source-mode .cm-content').getBoundingClientRect().left - document.querySelector('.scholium-source-mode .cm-gutters').getBoundingClientRect().right;"
+                ) as? Double)
+            #expect(regularSourceInset > 40)
+            #expect(gutterGap >= 0 && gutterGap < 32)
+            let selectionBeforeLineWidthChange = harness.session.context?.selections
+            let undoBeforeLineWidthChange = harness.session.context?.undoLabel
+            let scrollAnchorBeforeLineWidthChange = try await harness.session.currentScrollAnchor()
+            let narrowMeasureProfile = DocumentAppearanceProfile(
+                name: "Narrow Measure",
+                settings: .init(lineWidthCharacterUnits: 48)
+            )
+            diagnosticStage = "line-width scroll continuity"
+            harness.setPresentationCSS(
+                ScholiumDocumentPresentationConfiguration(
+                    textScale: ScholiumMetrics.Document.defaultTextScale,
+                    contentTopInsetCSSPixels: configuredTopInset
+                ).css
+                    + "\n"
+                    + DocumentAppearanceStyles.css(for: narrowMeasureProfile)
+            )
+            let customSourceGrid = try await harness.waitUntilPresentation(
+                stage: "reading line width leaves Source measure independent"
+            ) {
+                $0.label == "Markdown source editor"
+                    && $0.presentation.rootLineWidth == "48ch"
+            }
+            let customSourceInset = try #require(
+                try await harness.callPageJavaScript(
+                    "return Number.parseFloat(getComputedStyle(document.querySelector('.scholium-source-mode .cm-scroller')).paddingInlineStart);"
+                ) as? Double)
+            #expect(abs(customSourceInset - regularSourceInset) < 1)
+            #expect(customSourceGrid.presentation.documentFontFamily.contains("Menlo"))
+            #expect(customSourceGrid.isFocused)
+            #expect(harness.session.context?.selections == selectionBeforeLineWidthChange)
+            #expect(harness.session.context?.undoLabel == undoBeforeLineWidthChange)
+            #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
+            let scrollAnchorAfterLineWidthChange = try await harness.session.currentScrollAnchor()
+            let anchorBefore = try #require(scrollAnchorBeforeLineWidthChange)
+            let anchorAfter = try #require(scrollAnchorAfterLineWidthChange)
+            #expect(anchorAfter.sourceFingerprint == anchorBefore.sourceFingerprint)
+            // Soft wrapping changes visual block heights. Preserve the same
+            // nearby semantic source location while allowing the viewport probe
+            // to cross at most one neighboring logical line at a line boundary.
+            let sourceDistance = abs(
+                anchorAfter.sourceUTF16Offset - anchorBefore.sourceUTF16Offset
+            )
+            let neighboringLineBound =
+                max(
+                    anchorBefore.blockUTF16UpperBound - anchorBefore.blockUTF16LowerBound,
+                    anchorAfter.blockUTF16UpperBound - anchorAfter.blockUTF16LowerBound
+                ) + 2
+            #expect(sourceDistance <= neighboringLineBound)
+            await harness.closeAndDrain()
+
+            diagnosticStage = "unclosed frontmatter presentation"
+            let unclosedSource = "\u{FEFF}---\ntitle: Unclosed\n[[Not a body link]]\n\n| A | B |\n|---|---|\n| $x$ | [^n] |\n\n[^n]: Note\n"
+            let unclosedHarness = EditorHarness(source: unclosedSource)
+            defer { unclosedHarness.close() }
+            try await unclosedHarness.waitUntilReady()
+            let unclosedLive = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter") {
+                $0.frontmatterLineCount > 0
+            }
+            #expect(unclosedLive.gutterCount == 0)
+            #expect(unclosedLive.lineNumberCount == 0)
+            #expect(unclosedLive.frontmatterLineCount > 0)
+            #expect(unclosedLive.semanticTableCount == 0)
+            #expect(unclosedLive.renderedMathCount == 0)
+            #expect(unclosedLive.previewAnchorCount == 0)
+            let unclosedLiveSource = try await unclosedHarness.session.currentText(
+                for: unclosedHarness.documentID
+            )
+            #expect(Data(unclosedLiveSource.utf8) == Data(unclosedSource.utf8))
+            #expect(Array(unclosedLiveSource.utf16) == Array(unclosedSource.utf16))
+            unclosedHarness.session.setMode(.source)
+            _ = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter Source") {
+                $0.gutterCount > 0 && $0.lineNumberCount > 0
+            }
+            let unclosedSourceModeSource = try await unclosedHarness.session.currentText(
+                for: unclosedHarness.documentID
+            )
+            #expect(Data(unclosedSourceModeSource.utf8) == Data(unclosedSource.utf8))
+            #expect(Array(unclosedSourceModeSource.utf16) == Array(unclosedSource.utf16))
+            await unclosedHarness.closeAndDrain()
+
+        } catch {
+            Issue.record(
+                "The bridge round-trip failed during \(diagnosticStage): \(error)."
+            )
+            throw error
+        }
+    }
+
+    private func inserting(_ insertion: String, atUTF16 offset: Int, in source: String) throws -> String {
+        let units = source.utf16
+        let position = try #require(units.index(units.startIndex, offsetBy: offset, limitedBy: units.endIndex))
+        let index = try #require(String.Index(position, within: source))
+        return String(source[..<index]) + insertion + source[index...]
+    }
+
+    private func insertingAtEditorOffset(
+        _ insertion: String,
+        editorUTF16 requestedOffset: Int,
+        in source: String
+    ) throws -> String {
+        let units = Array(source.utf16)
+        var sourceOffset = 0
+        var editorOffset = 0
+        while sourceOffset < units.count, editorOffset < requestedOffset {
+            if units[sourceOffset] == 13,
+                sourceOffset + 1 < units.count,
+                units[sourceOffset + 1] == 10
+            {
+                sourceOffset += 2
+            } else {
+                sourceOffset += 1
+            }
+            editorOffset += 1
+        }
+        #expect(editorOffset == requestedOffset)
+        return try inserting(insertion, atUTF16: sourceOffset, in: source)
+    }
+
+    private static func linkPreview(atUTF16 offset: Int) -> DocumentLinkPreview {
+        DocumentLinkPreview(
+            sourceSpan: SourceSpan(
+                utf8LowerBound: offset,
+                utf8UpperBound: offset + 10,
+                utf16LowerBound: offset,
+                utf16UpperBound: offset + 10,
+                start: SourcePosition(line: 4, utf8Column: 1, utf16Column: 1),
+                end: SourcePosition(line: 4, utf8Column: 11, utf16Column: 11)
+            ),
+            target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
+            targetFingerprint: DocumentFingerprint(content: "Target body"),
+            title: "Target note",
+            syntax: .wikilink,
+            fragment: nil,
+            htmlBody: "<p>Target body</p>"
+        )
+    }
+
+    @MainActor
+    private final class FormattingMenuTarget: NSObject {
+        let session: MarkdownEditorSession
+        var task: Task<Void, Error>?
+        init(session: MarkdownEditorSession) { self.session = session }
+        @objc func italic() { task = Task { try await session.perform(.emphasis) } }
+    }
+
+    @MainActor
+    final class EditorHarness {
+        let session: MarkdownEditorSession
+        let documentID: String
+        private let sourceBox: SourceBox
+        var latestSource: String { session.checkedSource }
+        var lifecycleSource: String { sourceBox.source }
+        var latestScrollAnchor: EditorScrollAnchor? { sourceBox.scrollAnchor }
+        var activatedLinks: [String] { sourceBox.activatedLinks }
+        private let window: NSWindow
+        private var hostingController: NSViewController?
+        private var isClosed = false
+
+        func synchronizeLifecycleSourceFromSession() {
+            sourceBox.source = session.checkedSource
+        }
+
+        func configureWritingContinuation(enabled: Bool, model: String) {
+            sourceBox.writingContinuationEnabled = enabled
+            sourceBox.writingContinuationModel = model
+        }
+
+        func hideWindowForUnfocusedInputTesting() { window.orderOut(nil) }
+
+        init(
+            documentID: String = "Argument.md",
+            documentTitle: String = "Argument",
+            source: String,
+            usesSessionDocumentIdentity: Bool = false,
+            linkPreviews: [DocumentLinkPreview] = [],
+            bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
+            suppliedSession: MarkdownEditorSession? = nil,
+            lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
+            initialMode: MarkdownEditorMode = .livePreview,
+            initialPresentationCSS: String = "",
+            initialSourceRange: Range<Int>? = nil,
+            initialWindowSize: NSSize = NSSize(width: 720, height: 520),
+            fixedLayoutSize: NSSize? = nil,
+            laysOutForPointerTesting: Bool = false,
+            writingContinuationEnabled: Bool = false,
+            writingContinuationQuery: @escaping EditorWritingContinuationQuery = { _, _ in .unavailable(nil) },
+            onTitleRename: @escaping @MainActor (String, String) async throws -> String = {
+                _, requested in requested
+            }
+        ) {
+            _ = NSApplication.shared
+            session =
+                suppliedSession ?? bridgeDispatcher.map {
+                    MarkdownEditorSession(
+                        bridgeDispatcher: $0,
+                        lifecyclePolicy: lifecyclePolicy
+                    )
+                } ?? MarkdownEditorSession()
+            session.authorizeAutomaticFocus()
+            if let initialSourceRange {
+                session.revealSourceRange(
+                    fromUTF16: initialSourceRange.lowerBound,
+                    toUTF16: initialSourceRange.upperBound
+                )
+            }
+            self.documentID = usesSessionDocumentIdentity ? session.bridgeDocumentID : documentID
+            sourceBox = SourceBox(
+                source,
+                mode: initialMode,
+                documentTitle: documentTitle
+            )
+            sourceBox.presentationCSS = initialPresentationCSS
+            sourceBox.writingContinuationEnabled = writingContinuationEnabled
+            sourceBox.writingContinuationQuery = writingContinuationQuery
+            window = NSWindow(
+                contentRect: NSRect(
+                    origin: .zero,
+                    size: initialWindowSize
+                ),
+                styleMask: [.titled, .closable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            // The harness is the sole window owner. AppKit's historical
+            // close-release behavior must not invalidate this strong Swift
+            // property before EditorHarness.deinit releases it.
+            window.isReleasedWhenClosed = false
+            let editor = EditorHarnessRoot(
+                session: session,
+                documentID: self.documentID,
+                usesSessionDocumentIdentity: usesSessionDocumentIdentity,
+                sourceBox: sourceBox,
+                linkPreviews: linkPreviews,
+                onTitleRename: onTitleRename,
+                laysOutForPointerTesting: laysOutForPointerTesting,
+                fixedLayoutSize: fixedLayoutSize
+            )
+            let hostingController = NSHostingController(rootView: editor)
+            hostingController.sizingOptions = []
+            self.hostingController = hostingController
+            window.contentViewController = hostingController
+            window.setContentSize(initialWindowSize)
+            hostingController.view.frame = window.contentView?.bounds ?? .zero
+            hostingController.view.autoresizingMask = [.width, .height]
+            window.orderFrontRegardless()
+        }
+
+        func waitUntilReady() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(10))
+            while !session.isReady || !session.isLoaded
+                || !session.hasAttachedWebView
+            {
+                if clock.now >= deadline {
+                    Issue.record(
+                        Comment(
+                            rawValue: session.errorMessage
+                                ?? "The WKWebView editor did not become ready with an attached view."))
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+
+        func waitUntilLoaded(documentID: String) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while session.documentID != documentID || !session.isLoaded {
+                if clock.now >= deadline {
+                    Issue.record("The replacement editor document did not finish loading.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitUntilPresentedMode(_ mode: MarkdownEditorMode) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while session.presentedMode != mode {
+                if clock.now >= deadline {
+                    Issue.record("The editor did not publish the acknowledged \(mode.rawValue) mode.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func resize(width: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: 520))
+        }
+
+        func resize(width: CGFloat, height: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: height))
+        }
+
+        func callPageJavaScript(
+            _ body: String,
+            arguments: [String: Any] = [:]
+        ) async throws -> Any? {
+            guard let webView = session.webView else {
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            return try await webView.callAsyncJavaScript(
+                body,
+                arguments: arguments,
+                in: nil,
+                contentWorld: .page
+            )
+        }
+
+        func reconstructEditorView() async throws {
+            sourceBox.showsEditor = false
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while session.hasAttachedWebView {
+                if clock.now >= deadline {
+                    Issue.record("SwiftUI did not dismantle the editor view during reconstruction.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            sourceBox.showsEditor = true
+        }
+
+        func waitUntilFocused() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                do {
+                    if try await session.testingAccessibilitySnapshot().isFocused { return }
+                } catch {
+                    Issue.record("The focus polling snapshot failed: \(error).")
+                    throw error
+                }
+                if clock.now >= deadline {
+                    Issue.record("The reconstructed editor did not regain focus.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitUntilPreviewIsAvailable() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while !session.canShowPreviewAtSelection {
+                if clock.now >= deadline {
+                    Issue.record("The editor did not move the insertion point to a previewable construct.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitUntilSelection(head: Int, stage: String = "requested selection") async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while session.context?.selections.first?.head != head {
+                if clock.now >= deadline {
+                    Issue.record(
+                        "The editor did not publish \(stage); expected \(head), latest \(String(describing: session.context?.selections.first?.head))."
+                    )
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitUntilSelection(in expectedRange: Range<Int>) async throws -> Int {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                if let head = session.context?.selections.first?.head,
+                    expectedRange.contains(head)
+                {
+                    return head
+                }
+                if clock.now >= deadline {
+                    Issue.record(
+                        "The editor did not publish an insertion point inside \(expectedRange.lowerBound)..<\(expectedRange.upperBound); head=\(session.context?.selections.first?.head ?? -1)."
+                    )
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitUntilScrollAnchor() async throws -> EditorScrollAnchor {
+            try await Task.sleep(for: .milliseconds(250))
+            let anchor = try #require(try await session.currentScrollAnchor())
+            sourceBox.scrollAnchor = anchor
+            return anchor
+        }
+
+        func waitUntilCurrentScrollAnchor(
+            matching predicate: (EditorScrollAnchor) -> Bool
+        ) async throws -> EditorScrollAnchor? {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                let anchor = try await session.currentScrollAnchor()
+                if anchor.map(predicate) == true { return anchor }
+                if clock.now >= deadline {
+                    Issue.record("The editor did not stabilize the requested semantic scroll anchor; latest: \(String(describing: anchor)).")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+
+        func waitUntilStableScrollAnchor(
+            matching predicate: (EditorScrollAnchor) -> Bool
+        ) async throws -> EditorScrollAnchor {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            var previous: EditorScrollAnchor?
+            var stableSampleCount = 0
+            while true {
+                let anchor = try #require(try await session.currentScrollAnchor())
+                if predicate(anchor), anchor == previous {
+                    stableSampleCount += 1
+                    if stableSampleCount >= 3 { return anchor }
+                } else {
+                    stableSampleCount = predicate(anchor) ? 1 : 0
+                }
+                previous = anchor
+                if clock.now >= deadline {
+                    Issue.record(
+                        "The editor did not stabilize its semantic scroll anchor; latest: \(anchor)."
+                    )
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+
+        func waitUntilPresentation(
+            stage: String,
+            _ predicate: (MarkdownEditorSession.TestingAccessibilitySnapshot) -> Bool
+        ) async throws -> MarkdownEditorSession.TestingAccessibilitySnapshot {
+            let clock = ContinuousClock()
+            // Keep the predicate semantic rather than accepting an incomplete
+            // projection while WebKit finishes its layout work.
+            let deadline = clock.now.advanced(by: .seconds(8))
+            while true {
+                let snapshot = try await session.testingAccessibilitySnapshot()
+                if predicate(snapshot) { return snapshot }
+                if clock.now >= deadline {
+                    Issue.record(
+                        "The editor did not apply \(stage); label=\(snapshot.label), liveMode=\(snapshot.liveModeClassCount), sourceMode=\(snapshot.sourceModeClassCount), liveProjectionDOM=\(snapshot.liveProjectionDOMCount), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutBlockCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary)."
+                    )
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func presentationSnapshots(
+            for scenarios: [TestingPresentationScenario],
+            height: CGFloat = 520
+        ) async throws -> [(TestingPresentationScenario, MarkdownEditorSession.TestingPresentationSnapshot)] {
+            var snapshots: [(TestingPresentationScenario, MarkdownEditorSession.TestingPresentationSnapshot)] = []
+            let requiresCallout = sourceBox.source.contains("> [!")
+            let requiresTable =
+                sourceBox.source.contains("|:---")
+                || sourceBox.source.contains("| ---")
+            let requiresMath = sourceBox.source.contains("$$")
+            let requiresFootnote = sourceBox.source.contains("[^")
+            for scenario in scenarios {
+                window.appearance = NSAppearance(named: scenario.appearanceName)
+                window.setContentSize(NSSize(width: scenario.width, height: height))
+                sourceBox.userCSS = scenario.liveUserCSS
+                sourceBox.presentationCSS = scenario.presentationCSS
+                _ = try await waitUntilPresentation(stage: "\(scenario.name) layout") {
+                    $0.label == "Markdown editor, Edit mode"
+                        && $0.presentation.rootTextScale == scenario.expectedTextScale
+                        && $0.presentation.documentWidth > 0
+                }
+                // The production adapter intentionally projects a bounded
+                // viewport. Keep the app-owned title visible at document start,
+                // then move this presentation-only probe to the fixture's
+                // middle before requiring every representative component.
+                try await session.testingApplyScrollFraction(0.15)
+                _ = try await waitUntilPresentation(stage: scenario.name) {
+                    (!requiresCallout || $0.liveCalloutBlockCount > 0)
+                        && (!requiresTable || $0.semanticTableCount > 0)
+                        && (!requiresMath || $0.renderedMathCount > 0)
+                        && $0.mathErrorCount == 0
+                        && (!requiresFootnote || $0.footnoteReferenceCount > 0)
+                        && (!requiresFootnote || $0.footnoteDefinitionSourceCount > 0)
+                }
+                try await Task.sleep(for: .milliseconds(100))
+                let snapshot = try await waitUntilPresentation(stage: "stable \(scenario.name)") {
+                    $0.label == "Markdown editor, Edit mode"
+                        && $0.presentation.rootTextScale == scenario.expectedTextScale
+                        && $0.presentation.documentWidth > 0
+                        && (!requiresCallout || $0.liveCalloutBlockCount > 0)
+                        && (!requiresTable || $0.semanticTableCount > 0)
+                        && (!requiresMath || $0.renderedMathCount > 0)
+                        && $0.mathErrorCount == 0
+                        && (!requiresFootnote || $0.footnoteReferenceCount > 0)
+                        && (!requiresFootnote || $0.footnoteDefinitionSourceCount > 0)
+                }
+                snapshots.append((scenario, snapshot.presentation))
+            }
+            return snapshots
+        }
+
+        func setPresentationCSS(_ css: String) {
+            sourceBox.presentationCSS = css
+        }
+
+        func setDocumentTitle(_ title: String) {
+            sourceBox.documentTitle = title
+        }
+
+        func close() {
+            guard !isClosed else { return }
+            isClosed = true
+            window.orderOut(nil)
+            window.contentViewController = nil
+            hostingController = nil
+            window.close()
+        }
+
+        /// SwiftUI dismantles the representable synchronously, but WebKit and
+        /// AppKit finish releasing window-owned objects on subsequent main-run
+        /// loop turns. Crossing a Swift Testing autorelease-pool boundary
+        /// immediately after `close()` can therefore race those releases on
+        /// the selected Xcode beta. Product code never relies on this helper;
+        /// the integration harness waits for its real detach boundary and then
+        /// gives framework-owned cleanup a bounded drain interval.
+        func closeAndDrain() async {
+            close()
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(2))
+            while session.hasAttachedWebView, clock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(!session.hasAttachedWebView)
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+    }
+
+    @MainActor
+    private final class SuspendingInitialSelectionBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var didSuspend = false
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            let result = try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+            if !didSuspend,
+                case .initialize(_, _, _, .some) = request.operation
+            {
+                didSuspend = true
+                await withCheckedContinuation { continuation = $0 }
+            }
+            return result
+        }
+
+        func waitUntilSuspended() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while continuation == nil {
+                if clock.now >= deadline {
+                    Issue.record("The initial selection did not reach its acknowledgement boundary.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func resume() {
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    @MainActor
+    private final class WrongInitialSelectionBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            let result = try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+            guard case .initialize(_, _, _, .some) = request.operation,
+                var object = result as? [String: Any]
+            else {
+                return result
+            }
+            object["selections"] = [["anchor": 0, "head": 0]]
+            if var context = object["context"] as? [String: Any] {
+                context["selections"] = object["selections"]
+                object["context"] = context
+            }
+            return object
+        }
+    }
+
+    @MainActor
+    private final class FailingPostInitializeBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private enum ProbeError: Error { case postInitializeFailure }
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var initialized = false
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if initialized, case .setScrollFraction = request.operation {
+                throw ProbeError.postInitializeFailure
+            }
+            let result = try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+            if case .initialize = request.operation { initialized = true }
+            return result
+        }
+    }
+
+    @MainActor
+    private final class FailingBlurBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private enum ProbeError: Error { case blurFailure }
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private(set) var didAttemptBlur = false
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if case .blur = request.operation {
+                didAttemptBlur = true
+                throw ProbeError.blurFailure
+            }
+            return try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+        }
+    }
+
+    @MainActor
+    private final class FailingQueryTextBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private enum ProbeError: Error { case queryTextFailure }
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        var shouldFailQueryText = false
+        private(set) var didFailQueryText = false
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if shouldFailQueryText,
+                case .queryText = request.operation
+            {
+                didFailQueryText = true
+                throw ProbeError.queryTextFailure
+            }
+            return try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+        }
+    }
+
+    @MainActor
+    private final class SuspendingBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private enum ProbeError: Error {
+            case transportFailure
+        }
+
+        private enum ResumeOutcome: Equatable {
+            case success
+            case failure
+        }
+
+        private let targetDocumentID: String
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var didSuspend = false
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var outcome: ResumeOutcome = .success
+
+        init(targetDocumentID: String) {
+            self.targetDocumentID = targetDocumentID
+        }
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if !didSuspend,
+                request.documentID == targetDocumentID,
+                case .queryText = request.operation
+            {
+                didSuspend = true
+                await withCheckedContinuation { continuation = $0 }
+                if outcome == .failure {
+                    throw ProbeError.transportFailure
+                }
+                return try await production.dispatch(requestJSON: requestJSON, in: webView)
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
+
+        func waitUntilSuspended() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while continuation == nil {
+                if clock.now >= deadline {
+                    Issue.record("The bridge request did not reach the deterministic suspension point.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func resumeSuccessfully() {
+            outcome = .success
+            continuation?.resume()
+            continuation = nil
+        }
+
+        func resumeWithTransportError() {
+            outcome = .failure
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    @MainActor
+    private final class SuspendingModeBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var didSuspend = false
+        private var continuation: CheckedContinuation<Void, Never>?
+        private(set) var requestedModes: [MarkdownEditorMode] = []
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if case .setMode(let mode) = request.operation {
+                requestedModes.append(mode)
+                if !didSuspend {
+                    didSuspend = true
+                    await withCheckedContinuation { continuation = $0 }
+                }
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
+
+        func waitUntilSuspended() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while continuation == nil {
+                if clock.now >= deadline {
+                    Issue.record("The mode bridge request did not reach its acknowledgement boundary.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func resume() {
+            continuation?.resume()
+            continuation = nil
+        }
+
+        func waitUntilModeRequestCount(_ expectedCount: Int) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while requestedModes.count < expectedCount {
+                if clock.now >= deadline {
+                    Issue.record("The editor did not converge the latest requested mode.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+    }
+
+    @MainActor
+    private final class FailingOnceModeBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private enum ProbeError: Error {
+            case transientTransportFailure
+        }
+
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var hasFailed = false
+        private(set) var requestedModes: [MarkdownEditorMode] = []
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if case .setMode(let mode) = request.operation {
+                requestedModes.append(mode)
+                if !hasFailed {
+                    hasFailed = true
+                    throw ProbeError.transientTransportFailure
+                }
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
+    }
+
+    @MainActor
+    private final class SourceBox: ObservableObject {
+        @Published var source: String
+        @Published var documentTitle: String
+        @Published var showsEditor = true
+        @Published var scrollAnchor: EditorScrollAnchor?
+        @Published var presentationCSS = ""
+        @Published var userCSS = ""
+        @Published var writingContinuationEnabled = false
+        @Published var writingContinuationModel = "model-a"
+        var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
+        var activatedLinks: [String] = []
+        let mode: MarkdownEditorMode
+        init(_ source: String, mode: MarkdownEditorMode, documentTitle: String) {
+            self.source = source
+            self.mode = mode
+            self.documentTitle = documentTitle
+        }
+    }
+
+    private struct EditorHarnessRoot: View {
+        @ObservedObject var sourceBox: SourceBox
+        @ObservedObject var session: MarkdownEditorSession
+        let documentID: String
+        let usesSessionDocumentIdentity: Bool
+        let linkPreviews: [DocumentLinkPreview]
+        let onTitleRename: @MainActor (String, String) async throws -> String
+        let laysOutForPointerTesting: Bool
+        let fixedLayoutSize: NSSize?
+
+        init(
+            session: MarkdownEditorSession,
+            documentID: String,
+            usesSessionDocumentIdentity: Bool,
+            sourceBox: SourceBox,
+            linkPreviews: [DocumentLinkPreview],
+            onTitleRename: @escaping @MainActor (String, String) async throws -> String,
+            laysOutForPointerTesting: Bool,
+            fixedLayoutSize: NSSize?
+        ) {
+            self.session = session
+            self.documentID = documentID
+            self.usesSessionDocumentIdentity = usesSessionDocumentIdentity
+            self.sourceBox = sourceBox
+            self.linkPreviews = linkPreviews
+            self.onTitleRename = onTitleRename
+            self.laysOutForPointerTesting = laysOutForPointerTesting
+            self.fixedLayoutSize = fixedLayoutSize
+        }
+
+        var body: some View {
+            if sourceBox.showsEditor {
+                if let fixedLayoutSize {
+                    editorSurface
+                        .frame(width: fixedLayoutSize.width, height: fixedLayoutSize.height)
+                } else if laysOutForPointerTesting {
+                    editorSurface
+                        .frame(width: 720, height: 520)
+                } else {
+                    editorSurface
+                }
+            }
+        }
+
+        private var editorSurface: some View {
+            DocumentEditorHost(
+                documentID: session.openingPresentationID.uuidString,
+                presentsEditor: true,
+                retainsEditor: true,
+                editorIsReady: session.isLoaded
+            ) {
+                Color.clear
+            } editor: {
+                editorWebView
+            }
+        }
+
+        private var editorWebView: some View {
+            MarkdownEditorWebView(
+                session: session,
+                documentID: usesSessionDocumentIdentity ? session.bridgeDocumentID : documentID,
+                documentTitle: sourceBox.documentTitle,
+                performanceDocumentID: documentID,
+                source: sourceBox.source,
+                mode: sourceBox.mode,
+                presentationCSS: sourceBox.presentationCSS,
+                userCSS: sourceBox.userCSS,
+                requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
+                    source: sourceBox.source,
+                    linkPreviews: linkPreviews
+                ),
+                linkCompletionQuery: { _, _ in [] },
+                linkPreviews: linkPreviews,
+                initialScrollFraction: 0,
+                initialScrollAnchor: sourceBox.scrollAnchor,
+                onDocumentActivity: {},
+                onRequestSave: {},
+                onRequestFind: { _ in },
+                onRequestDocumentTitleRename: onTitleRename,
+                onPasteImage: { _ in false },
+                onLinkActivation: { sourceBox.activatedLinks.append($0) },
+                onScrollFractionChange: { _ in },
+                onScrollAnchorChange: { sourceBox.scrollAnchor = $0 },
+                writingContinuationEnabled: sourceBox.writingContinuationEnabled,
+                writingContinuationContextKey: sourceBox.writingContinuationModel,
+                writingContinuationQuery: sourceBox.writingContinuationQuery
+            )
+        }
+    }
+
+}

@@ -2,11 +2,11 @@ import AppKit
 import ScholiumContracts
 
 enum DocumentNoteAction: String, CaseIterable {
-    case copyLink, addToChat, rename, move, duplicate, merge, find, agentChanges
+    case copyLink, addToChat, move, duplicate, merge, find, agentChanges
     case revealInFinder, moveWindow, close, trash
 
     static let groups: [[Self]] = [
-        [.copyLink, .addToChat], [.rename, .move, .duplicate, .merge],
+        [.copyLink, .addToChat], [.move, .duplicate, .merge],
         [.find, .agentChanges], [.revealInFinder, .moveWindow, .close], [.trash],
     ]
 
@@ -14,7 +14,6 @@ enum DocumentNoteAction: String, CaseIterable {
         switch self {
         case .copyLink: "Copy Note Link"
         case .addToChat: "Add to Chat"
-        case .rename: "Rename Note…"
         case .move: "Move Note…"
         case .duplicate: "Duplicate Note…"
         case .merge: "Merge into Another Note…"
@@ -162,9 +161,6 @@ extension WindowModel {
         switch action {
         case .copyLink: return currentDocumentDescriptor != nil && workspaceCatalog != nil
         case .addToChat: return currentDocumentDescriptor != nil && windowWorkspaceController.activeCapabilities != nil
-        case .rename:
-            guard currentDocumentCapabilities.allows(.move), let currentNote else { return false }
-            return NoteMutationTarget(currentNote) != nil
         case .move: return currentDocumentCapabilities.allows(.move)
         case .duplicate: return currentDocumentCapabilities.allows(.duplicate)
         case .merge: return canMergeCurrentNote
@@ -206,7 +202,6 @@ extension WindowModel {
                 guard let self, document == self.documentController.selectedDocument else { return }
                 await self.addCurrentNoteToVisibleChat()
             }
-        case .rename: nativeWindowCoordinator?.showDocumentTitle()
         case .move, .duplicate:
             guard let note = currentNote, let target = NoteMutationTarget(note) else { return }
             switch action {

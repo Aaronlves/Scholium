@@ -87,9 +87,6 @@ cp "${DERIVED}/debug/ScholiumApp" "${APP}/Contents/MacOS/Scholium"
 chmod +x "${APP}/Contents/MacOS/Scholium"
 cp -R "${DERIVED}/debug/Scholium_ScholiumApp.bundle" "${APP}/Contents/Resources/"
 cp -R "${DERIVED}/debug/Scholium_ScholiumCore.bundle" "${APP}/Contents/Resources/"
-for native_resource in Scholium_ScholiumEditor SwiftMath_SwiftMath; do
-  cp -R "${DERIVED}/debug/${native_resource}.bundle" "${APP}/Contents/Resources/"
-done
 # SwiftUI's literal-based controls resolve against the outer application
 # bundle. Mirror the package target's compiled catalogs there while retaining
 # the SwiftPM resource bundle for explicit Bundle.module lookups.

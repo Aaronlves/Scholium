@@ -10,10 +10,12 @@ struct ExternalMarkdownWindowRoute: Codable, Hashable {
 }
 
 private enum ExternalMarkdownWindowIssue: LocalizedError {
+    case renameUnavailable
     case unsaved
 
     var errorDescription: String? {
         switch self {
+        case .renameUnavailable: "Rename this external file in Finder, then reopen it."
         case .unsaved: "The external Markdown window could not be saved. Its edits remain open."
         }
     }
@@ -45,8 +47,8 @@ final class ExternalMarkdownWindowRegistry {
 final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDelegate {
     let originalURL: URL
     let editorSession = MarkdownEditorSession()
-    let nativeInteractions = NativeEditorInteractions()
     @Published private(set) var snapshot: ExternalMarkdownFileSnapshot?
+    @Published private(set) var readHTML = ""
     @Published private(set) var isLoading = true
     @Published private(set) var isSaving = false
     @Published var mode: NotePresentationMode = .read
@@ -55,6 +57,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private var fileSession: ExternalMarkdownFileSession?
     private var editorObservation: AnyCancellable?
     private var openingID = UUID()
+    private var didAllocateEditor = false
     private var pendingAcknowledgement: (MarkdownEditorPersistenceSnapshot, ExternalMarkdownFileSnapshot)?
     private var closeAuthorized = false
     private weak var window: NSWindow?
@@ -72,7 +75,10 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     var documentID: String { "external:\(originalURL.path):\(openingID.uuidString)" }
     var isDirty: Bool { editorSession.isDirty || editorSession.hasRecoverableBuffer }
     var canSave: Bool { snapshot != nil && fileSession != nil && isDirty && !isSaving }
-    var nativeMode: MarkdownEditorMode { mode == .read ? .read : .edit }
+    var retainsEditor: Bool { didAllocateEditor }
+    var editorReady: Bool {
+        editorSession.isLoaded && editorSession.presentedMode == mode.editorMode
+    }
 
     func attach(to window: NSWindow) {
         guard self.window !== window else { return }
@@ -112,28 +118,26 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
 
     private func install(_ loaded: ExternalMarkdownFileSnapshot) {
         snapshot = loaded
+        readHTML =
+            SafeMarkdownRenderer.render(
+                NoteDocument(relativePath: title, rawContent: loaded.source)
+            ).htmlBody
         openingID = UUID()
-        editorSession.loadDocument(loaded.source, documentID: documentID, mode: nativeMode)
+        mode = .read
+        didAllocateEditor = false
         window?.isDocumentEdited = false
         error = nil
     }
 
     func selectMode(_ requested: NotePresentationMode) {
         guard requested != mode else { return }
-        guard !editorSession.isComposing else {
-            error = "Finish the current input before changing document mode."
-            return
-        }
         if requested == .read && isDirty {
             Task { @MainActor in
-                if await save() {
-                    editorSession.setMode(.read)
-                    mode = .read
-                }
+                if await save() { mode = .read }
             }
             return
         }
-        editorSession.setMode(requested == .read ? .read : .edit)
+        if requested != .read { didAllocateEditor = true }
         mode = requested
     }
 
@@ -163,6 +167,10 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             let committed = try await fileSession.save(candidate: candidate.text, expected: baseSnapshot)
             pendingAcknowledgement = (candidate, committed)
             self.snapshot = committed
+            readHTML =
+                SafeMarkdownRenderer.render(
+                    NoteDocument(relativePath: title, rawContent: committed.source)
+                ).htmlBody
             let acknowledgement = try await editorSession.acknowledgePersistenceSnapshot(
                 candidate, committedText: candidate.text, fingerprint: committed.fingerprint)
             pendingAcknowledgement = nil
@@ -295,22 +303,52 @@ struct ExternalMarkdownWindowView: View {
                 ProgressView("Opening Original Markdown…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let snapshot = model.snapshot {
-                NativeMarkdownEditorView(
-                    session: model.editorSession,
+                DocumentEditorHost(
                     documentID: model.documentID,
-                    documentTitle: model.title,
-                    source: snapshot.source,
-                    mode: model.nativeMode,
-                    appearance: .defaultSettings,
-                    documentTextScale: 1,
-                    initialScrollFraction: 0, initialScrollAnchor: nil,
-                    onDocumentActivity: { model.sourceChanged() },
-                    onRequestSave: { Task { await model.save() } },
-                    onRequestFind: handleFindShortcut,
-                    onLinkActivation: openAuthoredLink,
-                    onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in },
-                    interactions: model.nativeInteractions
-                )
+                    presentsEditor: model.mode != .read,
+                    retainsEditor: model.retainsEditor,
+                    editorIsReady: model.editorReady
+                ) {
+                    SafeMarkdownReadWebView(
+                        documentID: model.documentID,
+                        documentTitle: model.title,
+                        fingerprint: snapshot.fingerprint.sha256,
+                        source: snapshot.source,
+                        htmlBody: model.readHTML,
+                        presentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+                        userCSS: "",
+                        onLinkClick: { _ in }, onOpenExternalURL: { NSWorkspace.shared.open($0) },
+                        onRenderingFailure: { model.error = $0 },
+                        findRequest: model.mode == .read ? documentFind.request : nil,
+                        onFindResult: { requestID, result in
+                            switch result {
+                            case .success(let value): documentFind.accept(value, for: requestID)
+                            case .failure(let error): documentFind.fail(error, for: requestID)
+                            }
+                        }
+                    )
+                } editor: {
+                    MarkdownEditorWebView(
+                        session: model.editorSession,
+                        documentID: model.documentID,
+                        documentTitle: model.title,
+                        performanceDocumentID: model.documentID,
+                        source: snapshot.source,
+                        mode: model.mode.editorMode ?? .livePreview,
+                        presentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+                        userCSS: "",
+                        requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(source: snapshot.source, linkPreviews: []),
+                        linkCompletionQuery: { _, _ in [] }, linkPreviews: [],
+                        initialScrollFraction: 0, initialScrollAnchor: nil,
+                        onDocumentActivity: { model.sourceChanged() },
+                        onRequestSave: { Task { await model.save() } },
+                        onRequestFind: handleFindShortcut,
+                        onRequestDocumentTitleRename: { _, _ in throw ExternalMarkdownWindowIssue.renameUnavailable },
+                        onPasteImage: { _ in false },
+                        onLinkActivation: { _ in },
+                        onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in }
+                    )
+                }
                 .scholiumSurface(.document)
                 .overlay {
                     DocumentFindOverlay(model: documentFind, allowsReplacement: model.mode != .read)
@@ -326,7 +364,7 @@ struct ExternalMarkdownWindowView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            if let error = model.error ?? model.editorSession.errorMessage, model.snapshot != nil {
+            if let error = model.error, model.snapshot != nil {
                 Text(error).font(.callout).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(10)
             }
@@ -342,7 +380,7 @@ struct ExternalMarkdownWindowView: View {
         .onAppear { ExternalMarkdownWindowRegistry.shared.register(model) }
         .task { if model.snapshot == nil { await model.open() } }
         .task(id: documentFind.request) {
-            guard let request = documentFind.request else { return }
+            guard let request = documentFind.request, model.mode != .read else { return }
             if case .clear = request.operation {
                 await model.editorSession.clearDocumentFind()
                 return
@@ -358,20 +396,6 @@ struct ExternalMarkdownWindowView: View {
         .onDisappear {
             ExternalMarkdownWindowRegistry.shared.unregister(model)
             model.close()
-        }
-    }
-
-    private func openAuthoredLink(_ destination: String) {
-        if destination.hasPrefix("#") {
-            model.editorSession.nativeEditor.scrollToHeading(String(destination.dropFirst()).removingPercentEncoding ?? String(destination.dropFirst()))
-        } else if let url = URL(string: destination),
-            ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
-        {
-            NSWorkspace.shared.open(url)
-        } else if let url = URL(string: destination), let reference = try? ZoteroReference(url: url) {
-            NSWorkspace.shared.open(reference.url)
-        } else {
-            model.error = "This link cannot be resolved outside a registered Triptych."
         }
     }
 

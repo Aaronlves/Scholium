@@ -97,9 +97,6 @@ private struct ScholiumFileDocumentCommandContent: View {
             .scholiumActivationPointer()
             .disabled(appState?.workspaceAssignment == nil || appState?.isDetachedDocumentWindow == true)
         Divider()
-        Button("Rename Note…") { appState?.performNoteAction(.rename) }
-            .scholiumActivationPointer()
-            .disabled(appState?.canPerformNoteAction(.rename) != true)
         Button("Duplicate Note…") {
             guard let target = appState?.fileCommandSingleNoteTarget else { return }
             appState?.noteFileRequest = .duplicate(target)
@@ -459,22 +456,27 @@ private struct ScholiumViewCommandContent: View {
         Divider()
         Button(
             ScholiumL10n.dynamicString(
-                appState?.presentedDocumentMode == .read ? "Edit" : "Read"
+                appState?.presentedDocumentMode == .read ? "Edit" : "Review"
             )
         ) {
             guard let destination = reviewEditDestination else { return }
             appState?.requestDocumentMode(destination)
         }
         .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(.toggleReadEdit)
+        .scholiumKeyboardShortcut(.toggleReviewEdit)
         .disabled(reviewEditDestination == nil || editorActions?.isComposing == true)
         Menu("Document Mode") {
-            Button("Read") { appState?.requestDocumentMode(.read) }
+            Button("Review") { appState?.requestDocumentMode(.read) }
                 .scholiumActivationPointer()
-            Button("Edit") { appState?.requestDocumentMode(.edit) }
+            Button("Edit") { appState?.requestDocumentMode(.livePreview) }
                 .scholiumActivationPointer()
                 .disabled(appState?.canEditCurrentNote != true)
-
+            if appState?.isDetachedDocumentWindow != true {
+                Button("Source") { appState?.requestDocumentMode(.source) }
+                    .scholiumActivationPointer()
+                    .scholiumKeyboardShortcut(.showSource)
+                    .disabled(appState?.canEditCurrentNote != true)
+            }
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
@@ -535,8 +537,8 @@ private struct ScholiumViewCommandContent: View {
         guard let appState, appState.currentNote != nil else { return nil }
         switch appState.presentedDocumentMode {
         case .read:
-            return appState.canEditCurrentNote ? .edit : nil
-        case .edit:
+            return appState.canEditCurrentNote ? .livePreview : nil
+        case .livePreview, .source:
             return .read
         }
     }

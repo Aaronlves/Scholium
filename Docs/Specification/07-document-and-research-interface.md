@@ -6,16 +6,16 @@ to [Scholium Design](../../Design.md).
 
 ## 18.4 Document modes, context, and source properties
 
-Read and Edit are modes over one Document, not tabs. Each live
+Review, Edit, and Source are modes over one Document, not tabs. Each live
 Triptych workspace session owns one current mode, starting in Edit and retained
 across its Note/tab changes. Activating a Note applies its role's mode; merely
 browsing another Library role does not change the active Document mode. Mode state never becomes a Note, vault, or Markdown fact.
 
-Read owns read selection; Edit owns formatting. Selection remains source-local without creating a separate annotation or
+Review owns read selection; Edit owns formatting. Selection remains source-local without creating a separate annotation or
 collaboration object.
 
 Managed New Note opens Edit at the exact body start after durable commit.
-Editor failure retains the Note and its recoverable exact source and offers **Retry Edit**. An
+Editor failure retains the Note and offers **Retry Edit** and **Source**. An
 exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
@@ -25,7 +25,7 @@ composition and restoration remain unchanged.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.
 A nonempty body selection offers Explain, Polish and More Actions in
-Read and Edit. More Actions contains Ask Agent and enabled custom
+Review, Edit and Source. More Actions contains Ask Agent and enabled custom
 operations; instructions stay in Chat. Native controls own layout, transitions,
 hover, pressed, disabled, focus and menu feedback. Peer labels use primary text;
 hover uses system Accent with minimal gaps. No custom skin or animation engine.
@@ -40,7 +40,7 @@ focus restoration preserves the passage. Settings owns custom operations.
 Ask Agent's menu and shortcut share §8.7's draft-only handoff. Unverifiable
 source ranges remain unavailable.
 
-Body context menus and Research commands expose §5.4. Body mutations require
+Body context menus and Research commands expose §5.4. Review mutations require
 verified source and Edit. Reorganization sheets use native search and a striped
 Name/Folder table sharing its visible width, then exact preview in the same resizable sheet, with Change,
 Cancel and operation-specific confirmation. Merge property conflicts show both
@@ -59,7 +59,7 @@ never adds document padding or reserves layout space. Find shows the query, matc
 Previous/Next, and Close; empty input has no no-match message. The native search-field
 menu owns case and whole-word options, with active options also visible in quiet text.
 Replace expands downward inside the same panel with aligned input fields; Find and
-Replace opens it directly. Read has no replacement controls. Opening/closing uses a
+Replace opens it directly. Review has no replacement controls. Opening/closing uses a
 short trailing-edge translation and fade, while replacement disclosure changes panel
 height. Both remain reversible; Reduce Motion presents final states immediately.
 Return/Shift-Return navigate matches through normal document scrolling. Escape or Close
@@ -84,7 +84,7 @@ owner. All editing auxiliaries use system text, colors, controls and elevation
 under §19. During composition, menus, candidates and previews yield immediately
 to the input method; application navigation and acceptance resume afterward.
 
-Edit has an inline preview with dotted underline and ⇥, never a panel.
+Edit/Source share an inline preview with dotted underline and ⇥, never a panel.
 Local completion offers authored alias/keyword suffixes, excluding complete terms
 and undeclared titles. AI continuation defaults off. Writing Assistance selects
 one runtime-inventory model shared by continuation, Explain and Polish, independent
@@ -137,21 +137,21 @@ Insert presents Footnote and Inline Footnote as neighboring commands. Their
 default shortcuts are Option-Command-N and Option-Shift-Command-N respectively;
 the existing Keyboard Shortcuts owner may replace or clear either binding.
 
-Read reveals cached internal-link destinations on ordinary hover or link
+Review reveals cached internal-link destinations on ordinary hover or link
 focus. Edit requires Command over an inactive projected link, including Command
 pressed after pointer entry; Command-click opens it. The armed link gives visible
 pointer feedback. Unmodified Edit interaction places the caret and reveals exact
 source.
 
-Read and inactive Edit show annotated Wikilinks with a small trailing
+Review and inactive Edit show annotated Wikilinks with a small trailing
 superscript disclosure marker. Hover or keyboard focus reveals its source-owned
 Markdown; primary activation keeps it open. Escape, outside activation,
 document scrolling, resizing, source activation or document change dismisses it.
 Annotation prose never enters document flow or changes neighboring line geometry.
 
-Read and inactive Edit show named and inline footnote occurrences as
+Review and inactive Edit show named and inline footnote occurrences as
 superscript ordinals. Hover or keyboard focus reveals the rendered definition
-without reflow. Read activation navigates to the generated end note and its
+without reflow. Review activation navigates to the generated end note and its
 return route; Edit activation reveals the exact source-owned definition or
 inline range in the same Editor state.
 
@@ -161,32 +161,33 @@ preserves position and reading context; long content scrolls internally. Moving
 the pointer from trigger into preview permits continued reading. Disclosure
 never mutates source, moves selection or takes document focus.
 
-Read/Edit share Appearance **Reading line width** on one native text surface.
-Quiet, contrast-safe syntax colors distinguish active headings, YAML, links and
-markers without a separate source view. Soft wraps distinguish continuation rows. Layout changes
+Review/Edit share Appearance **Reading line width**. Source uses a wider adaptive
+measure with its line/fold gutter beside text. Exact-source type and quiet,
+contrast-safe syntax colors distinguish headings, YAML, links and markers. Soft wraps
+distinguish continuation rows. Layout changes
 retain buffer, selection, Undo, composition, scroll and focus.
 
 Beta/1.0 interactive writing supports English, Simplified Chinese, and mixed
-content. Every Unicode byte remains preserved and accessible through exact editing. Code,
+content. Every Unicode byte remains preserved and Source-visible. Code,
 mathematics, and inert raw HTML are isolated technical regions. Complete RTL
 chrome/input behavior remains deferred under §17, but all Scholium-owned layout
 uses logical start/end edges.
 
 Document Appearance is machine-local, with named configurations for line width,
-Body, headings, semantic Callouts and technical-source face and size. Body and
+Body, headings, semantic Callouts and Exact-source face and size. Body and
 headings have independent optional Bold and Italic choices, labelled by role
 without language-specific controls. Defaults use the selected Latin face's
 native variants, FangSong for mixed-script body text and KaiTi for italics.
 Researchers may choose any installed font family for Body, headings and
-technical source. Unavailable families remain selected and saved while rendering
+Exact-source. Unavailable families remain selected and saved while rendering
 uses fallbacks. Explicit choices remain authoritative until changed or reset;
-Scholium does not audit them. Technical source defaults to a monospaced font.
+Scholium does not audit them. Exact-source defaults to a monospaced font.
 Presentation preserves protected structure, accessibility, source bytes and
-logical lines. Appearance uses native settings; document Advanced CSS is not offered.
-Native app chrome is not themeable.
+logical lines. Native app chrome is not themeable; Advanced CSS is additive and
+optional.
 
 Appearance exposes one settings pane for body font/size, line width/spacing,
-hyphenation, technical-source font/size, alignment, paragraph spacing, first-line indentation,
+hyphenation, Source font/size, alignment, paragraph spacing, first-line indentation,
 body/heading Bold and Italic fonts, heading type, and heading-level values
 against the same appearance draft. Body and heading controls remain grouped as
 named sections in one scrollable page, with aligned property matrices that
@@ -195,12 +196,14 @@ independent for Body and Headings and remain stable when the base role font
 changes. Heading hierarchy settings address H1 through H6 independently; the
 main page shows each level's scale, alignment and before/after spacing in
 the appearance draft, adapting to rows at narrow widths.
-Hyphenation is a Never/Automatic reading setting for supported prose; Chinese
-and technical regions remain unhyphenated.
-The shared scrolling document plane shows quiet source-located YAML, then
-authored body (including its first H1); frontmatter retains its authored source
-position. The filename title belongs to the toolbar. Read and Edit share quiet
-reading type and neutral ink for YAML; Edit retains direct access to exact text.
+Hyphenation is a Never/Automatic reading setting. Automatic uses WebKit for
+tagged supported prose; Chinese, Source and technical regions remain
+unhyphenated. Advanced CSS remains for letter spacing, word spacing, kerning and
+ligatures after generated CSS.
+The shared scrolling document plane shows the app-owned filename title,
+quiet source-located YAML, then authored body (including its first H1);
+frontmatter retains its authored source position. Review and Edit share quiet
+reading type and neutral ink for YAML; Source retains exact text.
 YAML is never replaced by a field editor or
 reordered in the source, and no disclosure or timed collapse exists. Outside
 an active YAML selection, its fence lines are visually suppressed; entering or
@@ -211,26 +214,33 @@ presents only the requested mode after readiness, without showing a temporary
 layout from another mode.
 A View-menu action may navigate to Frontmatter without creating an empty
 envelope or changing its document order.
-Edit retains complete authored text; explicit folds remain visibly and
-accessibly reversible. The documented `appearances.json` file owns structured
-profiles. Finder, guidance, Reload and Restore Defaults remain available.
-External edits prevent stale overwrite; invalid reload preserves loaded
-appearance and drafts and identifies the invalid field. Scoped repair preserves
-other configuration. Whole-file recovery preserves previous bytes and creates
-a default profile without modifying research source.
+Source shows all text by default; explicit folds remain visibly and
+accessibly reversible. The documented `appearances.json`
+file owns structured profiles, including file-managed Callout geometry; Advanced CSS owns content overrides. Finder, guidance, Reload and Restore
+Defaults remain available. External edits prevent stale overwrite; invalid
+reload preserves loaded appearance and drafts and identifies the invalid field.
+Profile saves preserve CSS snippets under §18.4.1.
+Appearance and snippets fail independently. Supported profiles offer scoped
+repair preserving other configuration. Whole-file recovery preserves previous
+bytes and creates a default profile; snippet recovery retains CSS files with
+all snippets disabled.
+Recovery preserves the other group and research source.
 
-The toolbar's filename title identifies the current Note in Read and Edit.
-Activating it by pointer or keyboard opens one native popover with a **Name**
-field and the Note's existing location context. Confirming the name requests the
-existing identity-checked rename operation; cancellation preserves the filename.
-A rejected change retains the draft and explains the failure in the popover.
-Rename remains available in either mode when file-operation admission permits;
-Read keeps the document body read-only. Dismissal restores focus without
-changing source selection or scroll. The title is not repeated in the document
-plane or inserted into Markdown.
-Authored H1 through H6 retain their six relative visual and accessible levels;
-H1 is the first-level heading in the body. Filename changes do not alter authored
-headings.
+The app-owned filename title is the primary document title. Review and Edit
+place it at the top of the shared document plane, inside the document's
+scrolling reading and writing context but outside authoritative Markdown.
+Review presents it as a read-only identity projection. Edit presents the same
+title as a borderless inline filename control: Return or leaving the field
+requests the existing revision-aware Note move, while Escape cancels. Its
+visible trailing space belongs to the control and focuses it when clicked; it
+is never an unresponsive surface. A rejected filename change preserves the
+draft and explains the failure beside the title. Native window title continues
+to identify the window without becoming the visual title. Authored Markdown
+headings belong to the body: H1 through H6 are presented as six relative
+semantic levels beneath the Note title, with H1 remaining the first-level
+section and lower levels becoming progressively quieter. Review and Edit
+preserve those relative visual and accessible levels; Source exposes only the
+exact authored hierarchy and no projected title.
 
 Document modes may show a Document Outline over the Document's
 logical trailing edge, without changing prose geometry. H1-H2 ticks share a
@@ -261,17 +271,16 @@ navigation uses a short smooth reveal and the existing transient arrival marker.
 Reduce Motion uses immediate positioning and static feedback. The rail hides
 before it would compress or cover readable Document content.
 
-Attachments remain file links or image embeds. Read and inactive Edit
+Attachments remain file links or image embeds. Review and inactive Edit
 add quiet file-type symbols beside authored link labels without changing source
 or activation. File-menu insertion uses the editor selection; system Quick Look
 owns file opening/dismissal. No attachment sidebar, global manager or persistent
 reader is added.
 
-Ordinary Edit entry restores retained, fingerprint-valid body focus and
-selection when available. Otherwise it uses an exactly mapped Read selection,
+Ordinary Edit entry restores retained, fingerprint-valid title/body focus and
+selection when available. Otherwise it uses an exactly mapped Review selection,
 or places a collapsed insertion point at the first authored body position after
-YAML. The explicit title-focus route opens the toolbar's rename popover; mode
-entry alone never opens it.
+YAML. Direct title activation remains an explicit title-focus route.
 An explicit source locator and Managed New Note's body-start insertion take
 precedence. Window restoration retains this state only for still-open tabs;
 closing a tab ends it, without permanent vault-wide cursor history.
@@ -286,7 +295,7 @@ heading's visual padding places the caret in that heading; clicking a visible
 Markdown blank line places it on that exact source line; and source-less
 spacing between projected objects resolves to the nearest explicit source
 boundary. Typography cannot create a region that merely ignores editing input.
-Read and inactive Edit retain the same recognizable manuscript hierarchy,
+Review and inactive Edit retain the same recognizable manuscript hierarchy,
 measure, wrapping intent, and visible semantic-block order. Editing may create
 bounded geometric differences needed for caret placement, marked text, exact
 spaces, blank source rows, and active syntax. Every authored blank line remains
@@ -295,8 +304,8 @@ first visible character is entered.
 
 Recognized Markdown syntax remains visible while a caret is inside its editable
 construct or immediately at either boundary; moving outside hides it. A range selection
-reveals constructs it actually overlaps. Recognized active delimiters use one accessible semantic
-gray while authored content keeps its semantic styling. Short inline delimiters
+reveals constructs it actually overlaps. Recognized active delimiters use an accessible system-Accent-derived syntax
+color while authored content keeps its semantic styling. Short inline delimiters
 and short heading/quotation prefixes expand and retract with restrained motion.
 Callout markers, code fences, long destinations and technical source never
 animate their width or indentation; they remain quiet or fade. Activation color
@@ -312,25 +321,19 @@ markers; language-aware wrapping keeps closing punctuation off visual-line start
 
 Completing an Edit pointer selection over a whole visible heading includes its
 original structural markers; complete-line selections include the final authored
-newline. Partial text and explicit exact-source ranges never expand. The actual
+newline. Partial text and explicit Source ranges never expand. The actual
 selection and revealed syntax agree before copy, cut or drag. Complete lines
 containing a heading drop at line boundaries; partial text at a caret. Feedback
 and insertion share one location. Moves preserve Markdown and line endings,
 adding only necessary missing boundary separators, and undo once. Source changes
 invalidate local drags. Selecting a heading never implicitly selects its section.
 
-Read and Edit Callouts share role-specific title colors, typography, quiet surfaces,
-and a single-column header/body order. Examples do not acquire a Read-only
+Review and Edit Callouts share role-specific title colors, typography, quiet surfaces,
+and a single-column header/body order. Examples do not acquire a Review-only
 column layout, and quotation titles retain their authored position above the
 passage. Untitled Callouts share a default role title while inactive; activating
 the Edit header replaces that projection with exact source. Active syntax and
 addressable source rows remain the bounded editing exceptions described above.
-Surface-bearing roles use a neutral text-derived wash, while open roles keep
-their transparent indentation; title color does not tint the prose background.
-Read and Edit share the content inset and header/body rhythm from Appearance.
-In Edit, revealing a body line's `>` uses a reserved syntax gutter so its prose
-start and soft wraps do not move. Header source may expand in place without
-moving the Callout container or its body.
 
 Edit Callouts retain their exact authored markers when active, but do not repeat
 generated role names such as `Caution`, `Statement`, or `Quotation` as visible
@@ -343,7 +346,7 @@ connections; literature uses compact grouping; statements gain typographic
 weight; examples use an inset; quotations retain italic prose and a quiet
 attribution; qualifications use restrained grouping. Color is supplementary.
 The role name remains available to assistive
-technology, and Edit always retains access to the complete authored text.
+technology, and Source always exposes the complete authored text.
 
 The compact Document Outline rail is the only outline surface. Document
 statistics have no interface entry in Inspector, toolbar, menus or popovers.
@@ -355,14 +358,31 @@ Overview, Metadata form, or dedicated attachment Inspector. Native controls,
 quiet hierarchy and system semantic colors follow Design; reference images do
 not prescribe copied card geometry or decorative glass.
 
-### 18.4.1 Native appearance boundary
+### 18.4.1 Advanced CSS boundary
 
-Document Appearance configures the native Read/Edit surface through structured,
-machine-local settings. It changes typography and layout without changing source,
-selection, composition, Undo or document identity. Application chrome and semantic
-state remain system-owned. No document CSS folder, snippet import or executable
-styling surface is exposed. Invalid appearance data retains the last valid
-presentation and the existing scoped repair routes.
+Advanced CSS is an explicit, machine-local folder surface at the app-owned
+Styles/Snippets location. Settings provides **Open CSS Folder**, **Reload**, and
+import as equivalent entry points. Direct `.css` files are discovered into the
+snippet list; the folder owns their bytes, while the adjacent manifest retains
+only snippet identity, display name, order, and enablement. A newly discovered
+file is enabled by default. An external edit is re-read and projected without
+rewriting the file; a missing or invalid file remains visible with an actionable
+error until it is repaired or explicitly removed.
+
+CSS applies only to document content in Review/Edit, after generated appearance
+CSS, and never to Source, app chrome, or research source. It is scoped to
+ordinary prose, headings, lists, quotations, tables, code, links, emphasis,
+marks, rules, and the public Callout selectors `.callout`, `.callout-title`,
+`.callout-body`, `.callout-content`, and `.callout-<role>`. These Callout names
+are a stable user-facing API projected to the protected Review and Edit
+representations; internal WebKit or CodeMirror selectors are not accepted.
+
+Sanitization rejects imports, executable content, external URLs, escaping
+selectors, `!important`, and declarations that hide, reposition, or cover
+protected information. Callout semantics, folding, footnotes, provenance,
+diagnostics, conflicts, recovery, and chrome remain app-owned. Invalid snippets
+stay disabled with errors. Rendering failure enters persistent CSS Safe Mode
+until the researcher disables or selectively re-enables managed copies.
 
 ## 18.5 Contextual research and Agent Changes
 
@@ -383,7 +403,7 @@ Note identity leads, followed by operation, time and viewed state; one explicit
 action opens comparison. A single system-owned resizable sheet retains its geometry across list,
 comparison and dismissal. The Note-first comparison has a stable navigation/Undo
 footer. Empty and unavailable states use the same shell. It is
-not another Document mode, durable review state, or
+not a fourth Document mode, durable review state, or
 research history. An Agent Change notification opens one exact
 `(change_id, Note ID)` result. An updated Note shows only the exact preimage and
 confirmed readback revision. A created Note shows **Created by External Agent**
@@ -394,7 +414,7 @@ boundary; it is not rendered as an editable deletion diff.
 Several Agent Changes never become one cumulative diff. The current collection uses
 exact position and **Previous**/**Next** routes. A direct receipt link opens only that
 change, without unrelated history navigation. The compact header names Note, operation,
-time, and current-revision state. Hide receipt IDs, hashes and encoding details; Help exposes full Note paths. Ordinary Read continues to show the current complete Note. If
+time, and current-revision state. Hide receipt IDs, hashes and encoding details; Help exposes full Note paths. Ordinary Review continues to show the current complete Note. If
 current saved source differs from the ending fingerprint, comparison is **Earlier
 Revision** and is never overlaid on current prose.
 
@@ -412,7 +432,7 @@ Pane content never repeats that selector. Each
 workspace retains its selection across Note and tab changes. Hiding Inspector
 moves no content elsewhere. Without a Document it presents No Document Selected.
 
-Related Material follows selected or paused Edit text, including unsaved
+Related Material follows selected or paused Edit/Source text, including unsaved
 writing. Opening, switching editors and selection changes schedule debounced
 retrieval; composition suspends it. New selections invalidate older responses;
 closing cancels pending work. The Research menu retains its keyboard route.
@@ -516,7 +536,7 @@ retain keyboard activation, but no persistent selected, checked, visited or clic
 appearance. Passage activation locates its original source in the current Document mode.
 Show meaningful passages and annotations, never source line numbers as visible fields.
 Once the target has been revealed, the Document briefly highlights the corresponding
-visible line in Read or source line in Edit, then returns to ordinary reading;
+visible line in Review or source line in Edit/Source, then returns to ordinary reading;
 it does not wash an entire long paragraph or enclosing section with color. The marker
 fades in briefly, holds, then fades out without moving or scaling the text. Reduce
 Motion keeps the same brief marker static. Repeated activation locates and briefly
@@ -538,7 +558,7 @@ The card forms one source-navigation button; hierarchy uses grouping, spacing an
 type as well as color. Titles, passages and annotations wrap; line numbers stay internal.
 Ordinary incoming, outgoing, and in-document link
 navigation retains the current Document mode and reveals the corresponding rendered
-paragraph in Read or exact line in Edit. Outgoing fragment links use the
+paragraph in Review or exact line in Edit/Source. Outgoing fragment links use the
 resolved destination anchor. Each Note and direction retains its query, group
 disclosure, and reading position in window-local state. Returning restores that context
 without creating another graph or source owner.
@@ -590,7 +610,7 @@ This is not a universal runtime enum or second state store.
 | **Disabled** | Known action lacks a prerequisite; keep discoverable when core. | Unavailable content |
 
 Document Loading, Empty and Unavailable share centered presentation.
-Editor failure retains recoverable exact source and offers Retry Edit. Notices above
+Editor failure retains source and offers Retry Edit and Source. Notices above
 usable content share a bounded, centered measure with reflowing native actions.
 
 Owners retain state and context; §20 owns accessibility and persistent
@@ -645,7 +665,7 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
 | Annotated Wikilink / Link Annotation | 带注释双链 / 链接注释 |
 | Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
-| Read / Edit | 阅读 / 编辑 |
+| Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | No Document Selected | 未选择文档 |
 | Expand / Collapse All Folders | 展开 / 折叠所有文件夹 |
 | Move to Trash… | 移至纸篓… |

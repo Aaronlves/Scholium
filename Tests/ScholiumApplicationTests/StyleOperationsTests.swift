@@ -226,8 +226,155 @@ struct StyleOperationsTests {
         #expect(loaded.appearanceProfiles.count == 1)
         #expect(loaded.selectedAppearanceProfileID == profile.id)
         #expect(!loaded.canModifyAppearance)
+        #expect(loaded.canModify)
         #expect(loaded.appearanceError != nil)
         #expect(try Data(contentsOf: styles.appendingPathComponent("appearances.json")) == manifestData)
+    }
+
+    @Test("CSS import and persistence stay behind StyleUseCases")
+    func cssPersistence() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumStyleOperations-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let sourceURL = root.appendingPathComponent("Readable.css")
+        try Data("p { color: #543210; }\n".utf8).write(to: sourceURL)
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+
+        let imported = try await operations.importStyleSnippet(from: sourceURL)
+        let record = try #require(imported.snippets.first)
+        #expect(record.name == "Readable")
+        #expect(record.isEnabled)
+        #expect(imported.readCSS.contains("#543210"))
+
+        let disabled = try await operations.setStyleSnippetEnabled(false, id: record.id)
+        #expect(disabled.snippets.first?.isEnabled == false)
+        #expect(disabled.readCSS.isEmpty)
+        #expect(try await operations.managedStyleSnippetURL(record.id) != nil)
+        let snippetsFolder = try await operations.managedStylesLocation()
+        #expect(snippetsFolder.path.contains("Application Support"))
+        #expect(snippetsFolder.lastPathComponent == "Snippets")
+    }
+
+    @Test("CSS folder files are discovered, reloaded, and kept visible when invalid or missing")
+    func cssFolderDiscoveryAndReload() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumStyleFolder-(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let snippetsFolder =
+            support
+            .appendingPathComponent("Workspace", isDirectory: true)
+            .appendingPathComponent("Styles", isDirectory: true)
+            .appendingPathComponent("Snippets", isDirectory: true)
+        try FileManager.default.createDirectory(at: snippetsFolder, withIntermediateDirectories: true)
+        let validURL = snippetsFolder.appendingPathComponent("paper.css")
+        let invalidURL = snippetsFolder.appendingPathComponent("broken.css")
+        try Data(".callout { background-color: #f4f0e8; }\n".utf8)
+            .write(to: validURL, options: .atomic)
+        try Data(".not-supported { display: none; }\n".utf8)
+            .write(to: invalidURL, options: .atomic)
+
+        let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+        let refreshed = try await operations.refreshStyleSnippets()
+        #expect(refreshed.snippets.map(\.name) == ["broken", "paper"])
+        #expect(refreshed.snippets.allSatisfy { $0.isEnabled })
+        #expect(refreshed.readCSS.contains(".scholium-callout"))
+        let broken = try #require(refreshed.snippets.first(where: { $0.name == "broken" }))
+        #expect(refreshed.validationErrors[broken.id] != nil)
+
+        try Data(".callout-title { font-style: italic; }\n".utf8)
+            .write(to: validURL, options: .atomic)
+        let reloaded = try await operations.refreshStyleSnippets()
+        let paper = try #require(reloaded.snippets.first(where: { $0.name == "paper" }))
+        #expect(reloaded.validationErrors[paper.id] == nil)
+        #expect(reloaded.readCSS.contains(".scholium-callout-title"))
+
+        try FileManager.default.removeItem(at: validURL)
+        let missing = try await operations.refreshStyleSnippets()
+        #expect(missing.snippets.contains(where: { $0.id == paper.id }))
+        #expect(missing.validationErrors[paper.id] != nil)
+    }
+
+    @Test("CSS snippet names are normalized and never enter generated CSS")
+    func cssSnippetNamesStayInert() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumStyleSnippetNames-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let hostile = "</style><script id=\"scholium-proof\">0</script><style>"
+        let sourceURL = root.appendingPathComponent("Readable.css")
+        try Data("p { color: #543210; }\n".utf8).write(to: sourceURL)
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+
+        let imported = try await operations.importStyleSnippet(from: sourceURL)
+        let record = try #require(imported.snippets.first)
+        let renamed = try await operations.renameStyleSnippet(record.id, to: hostile)
+        let renamedRecord = try #require(renamed.snippets.first)
+
+        #expect(renamedRecord.name == "/stylescript id=\"scholium-proof\"0/scriptstyle")
+        #expect(!renamed.readCSS.contains("scholium-proof"))
+        #expect(!renamed.readCSS.contains("</style>"))
+        #expect(!renamed.livePreviewCSS.contains(hostile))
+        #expect(!renamed.readCSS.contains(renamedRecord.name))
+        #expect(renamed.readCSS.contains("#543210"))
+
+        let persisted: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+        let reloaded = try await persisted.styleSnapshot()
+        #expect(reloaded.snippets.first?.name == renamedRecord.name)
+    }
+
+    @Test("Tampered snippet manifests normalize hostile names on load")
+    func tamperedSnippetManifestNamesAreNormalized() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumTamperedSnippetManifest-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let styles =
+            support
+            .appendingPathComponent("Workspace", isDirectory: true)
+            .appendingPathComponent("Styles", isDirectory: true)
+        try FileManager.default.createDirectory(at: styles, withIntermediateDirectories: true)
+        let managedFileName = UUID().uuidString.lowercased() + ".css"
+        let snippetsDirectory = styles.appendingPathComponent("Snippets", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: snippetsDirectory,
+            withIntermediateDirectories: true
+        )
+        try Data("p { color: #543210; }\n".utf8).write(
+            to: snippetsDirectory.appendingPathComponent(managedFileName),
+            options: .atomic
+        )
+
+        let record = CSSSnippetRecord(
+            id: UUID(),
+            name: "</style><script id=\"scholium-proof\">0</script><style>",
+            managedFileName: managedFileName,
+            isEnabled: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode([record]).write(
+            to: styles.appendingPathComponent("snippets.json"),
+            options: .atomic
+        )
+
+        let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+        let loaded = try await operations.styleSnapshot()
+        #expect(loaded.snippets.first?.name == "/stylescript id=\"scholium-proof\"0/scriptstyle")
+        #expect(!loaded.readCSS.contains("scholium-proof"))
+        #expect(!loaded.livePreviewCSS.contains("</style>"))
+        #expect(loaded.readCSS.contains("#543210"))
     }
 
     @Test("Obsidian appearance bytes are read in Application")
@@ -248,24 +395,48 @@ struct StyleOperationsTests {
         #expect(appearance.showLineNumbers == true)
         #expect(appearance.defaultViewMode == "source")
     }
-    @Test("Appearance defaults preserve the exact damaged configuration in a recovery copy")
-    func appearanceRecovery() async throws {
+    @Test("Appearance and snippet failures recover independently with exact backups", arguments: ["appearances.json", "snippets.json"])
+    func independentRecovery(_ brokenFile: String) async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/style-recovery-fixtures/\(UUID())", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let operations = StyleOperations(applicationSupportURL: root)
-        let appearanceURL = try await operations.appearanceConfigurationURL()
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let support = root.appendingPathComponent("Support", isDirectory: true)
+        let source = root.appendingPathComponent("kept.css")
+        let css = Data("p { color: #543210; }".utf8)
+        try css.write(to: source)
+        let setup = StyleOperations(applicationSupportURL: support)
+        let original = try await setup.importStyleSnippet(from: source)
+        let appearanceURL = try await setup.appearanceConfigurationURL()
+        let styles = appearanceURL.deletingLastPathComponent()
+        let target = styles.appendingPathComponent(brokenFile)
         let corrupt = Data("{broken configuration".utf8)
-        try corrupt.write(to: appearanceURL, options: .atomic)
-        let reopened = StyleOperations(applicationSupportURL: root)
-        let damaged = try await reopened.styleSnapshot()
-        #expect(!damaged.canModifyAppearance)
-        let recovered = try await reopened.restoreAppearanceDefaults()
-        #expect(recovered.canModifyAppearance && recovered.appearanceError == nil)
-        let backups = try FileManager.default.contentsOfDirectory(at: appearanceURL.deletingLastPathComponent(), includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix("appearances.json.recovery-") }
+        try corrupt.write(to: target, options: .atomic)
+        let operations = StyleOperations(applicationSupportURL: support)
+        let damaged = try await operations.styleSnapshot()
+        if brokenFile == "appearances.json" {
+            #expect(!damaged.canModifyAppearance && damaged.canModify)
+            #expect(damaged.readCSS.contains("#543210"))
+            let recovered = try await operations.restoreAppearanceDefaults()
+            #expect(recovered.canModifyAppearance && recovered.appearanceError == nil)
+            #expect(recovered.snippets == damaged.snippets)
+        } else {
+            #expect(damaged.canModifyAppearance && !damaged.canModify)
+            #expect(damaged.appearanceProfiles == original.appearanceProfiles)
+            let recovered = try await operations.restoreStyleSnippetDefaults()
+            #expect(recovered.canModify && recovered.snippetError == nil)
+            #expect(recovered.snippets.count == 1 && recovered.snippets.allSatisfy { !$0.isEnabled })
+            #expect(recovered.appearanceProfiles == original.appearanceProfiles)
+            let refreshed = try await operations.refreshStyleSnippets()
+            #expect(refreshed.snippets.allSatisfy { !$0.isEnabled } && refreshed.readCSS.isEmpty)
+        }
+        let backups = try FileManager.default.contentsOfDirectory(at: styles, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("\(brokenFile).recovery-") }
         #expect(backups.count == 1)
         #expect(try Data(contentsOf: try #require(backups.first)) == corrupt)
+        let managed = styles.appendingPathComponent("Snippets", isDirectory: true)
+        let files = try FileManager.default.contentsOfDirectory(at: managed, includingPropertiesForKeys: nil)
+        #expect(try Data(contentsOf: try #require(files.first)) == css)
     }
 
     @Test("An invalid appearance option retains other values without rewriting configuration")
@@ -301,6 +472,36 @@ struct StyleOperationsTests {
         let backup = try FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil)
             .first { $0.lastPathComponent.hasPrefix("appearances.json.recovery-") }
         #expect(try Data(contentsOf: try #require(backup)) == bytes)
+    }
+
+    @Test("One malformed snippet registration preserves readable snippets and can be repaired")
+    func partialSnippetRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ScholiumSnippetRecovery-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let support = root.appendingPathComponent("Support", isDirectory: true)
+        let source = root.appendingPathComponent("kept.css")
+        try Data("p { color: #543210; }".utf8).write(to: source)
+        let setup = StyleOperations(applicationSupportURL: support)
+        let original = try await setup.importStyleSnippet(from: source)
+        let appearance = try await setup.appearanceConfigurationURL()
+        let target = appearance.deletingLastPathComponent().appendingPathComponent("snippets.json")
+        let validBytes = try Data(contentsOf: target)
+        let records = try #require(JSONSerialization.jsonObject(with: validBytes) as? [Any])
+        let corrupt = try JSONSerialization.data(withJSONObject: records + [["id": "bad", "name": false]])
+        try corrupt.write(to: target, options: .atomic)
+        let operations = StyleOperations(applicationSupportURL: support)
+        let damaged = try await operations.styleSnapshot()
+        #expect(damaged.snippets == original.snippets)
+        #expect(damaged.readCSS.contains("#543210") && !damaged.canModify)
+        #expect(damaged.canModifyAppearance && damaged.snippetError != nil)
+        #expect(try Data(contentsOf: target) == corrupt)
+        let safe = try await operations.enterStyleSafeMode(reason: "fixture rendering failure")
+        #expect(safe.readCSS.isEmpty && safe.safeModeReason == "fixture rendering failure")
+        #expect(try Data(contentsOf: target) == corrupt)
+        try validBytes.write(to: target, options: .atomic)
+        let repaired = try await operations.refreshStyleSnippets()
+        #expect(repaired.canModify && repaired.snippetError == nil)
     }
 
     @Test("Profile repair preserves unknown keys and sibling profiles and rejects a stale file")

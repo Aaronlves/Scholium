@@ -100,7 +100,9 @@ struct DocumentFeatureState {
     let workspaceCatalog: WorkspaceCatalogSnapshot?
     let canEdit: Bool
     let documentTextScale: Double
-    let appearance: DocumentAppearanceSettings
+    let appearanceCSS: String
+    let readCSS: String
+    let livePreviewCSS: String
     let initialScrollFraction: Double
     let requestedPresentationMode: NotePresentationMode?
     let sourceLocationRequest: DocumentSourceLocationRequest?
@@ -123,10 +125,17 @@ struct DocumentFeatureActions {
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
     let openExternalURL: @MainActor (URL) -> Void
+    let enterCSSSafeMode: @MainActor (String) -> Void
     let rememberPresentationMode: @MainActor (NotePresentationMode) -> Void
     let setSidebarVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let openingDocumentPresentationDidComplete: @MainActor () -> Void
+    let renameNote:
+        @MainActor (
+            WindowDocumentLocation,
+            String,
+            String
+        ) async throws -> String
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
 }
 
@@ -266,6 +275,18 @@ struct NoteContentView: View {
         get { documentSession.returnToReadAfterSave }
         nonmutating set { documentSession.returnToReadAfterSave = newValue }
     }
+    private var renderedReadHTML: String {
+        get { documentSession.renderedReadHTML }
+        nonmutating set { documentSession.renderedReadHTML = newValue }
+    }
+    private var renderedReadFingerprint: String {
+        get { documentSession.renderedReadFingerprint }
+        nonmutating set { documentSession.renderedReadFingerprint = newValue }
+    }
+    private var failedReadFingerprint: String? {
+        get { documentSession.failedReadFingerprint }
+        nonmutating set { documentSession.failedReadFingerprint = newValue }
+    }
     private var conflict: DocumentConflictSnapshot? {
         documentSession.conflict
     }
@@ -339,13 +360,6 @@ struct NoteContentView: View {
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                 }
 
-                if editorSession.isLoaded, let error = editorSession.errorMessage {
-                    Text(error)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-                        .accessibilityIdentifier("scholium.nativeEditor.error")
-                }
                 documentBodySurface
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .overlay {
@@ -445,18 +459,29 @@ struct NoteContentView: View {
             if available { applyPreparedPresentationModeIfAvailable() }
         }
         .onChange(of: isEditing) { _, _ in
+            documentSession.readSelection = nil
             documentFind.refresh()
             outlineScrollFraction = documentSession.scrollFraction
             outlineScrollAnchor = documentSession.scrollAnchor
             focusEditorIfPresented()
             if !isEditing,
-                editorSession.isLoaded
+                documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
             {
                 markReadPresentationReady(documentID: note.relativePath)
             }
         }
-        .onChange(of: editorSession.presentedMode) { _, _ in
+        .onChange(of: editorSession.presentedMode) { _, presentedMode in
             focusEditorIfPresented()
+            if let presentedMode {
+                PerformanceProbe.shared.markEditorModeAcknowledged(
+                    documentID: note.relativePath,
+                    mode: presentedMode
+                )
+                PerformanceProbe.shared.markEditorModeReady(
+                    documentID: note.relativePath,
+                    mode: presentedMode
+                )
+            }
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
@@ -479,6 +504,48 @@ struct NoteContentView: View {
             outlineSelectionAwaitsScrollAnchor = false
             outlineEntries = entries
         }
+        .task(id: readProjectionTaskIdentity) {
+            PerformanceProbe.shared.markReadTaskStarted(
+                documentID: note.relativePath
+            )
+            documentSession.prepareReadProjection(
+                for: noteFingerprint.sha256
+            )
+            let source = note.rawContent
+            let relativePath = note.relativePath
+            let fingerprint = noteFingerprint
+            if !isEditing {
+                documentSession.readSelection = nil
+                documentSession.requestReadScrollRestore(
+                    fingerprint: fingerprint.sha256,
+                    reason: .documentLoad
+                )
+            }
+            if note.document.hasExactEmptyBody {
+                // A header-only Note is already a complete Review state. Do
+                // not start WebKit merely to render an exact empty body or
+                // imply that source loading is still in progress.
+                renderedReadHTML = ""
+                renderedReadFingerprint = fingerprint.sha256
+                documentSession.renderedReadReadyFingerprint = fingerprint.sha256
+                if !isEditing {
+                    markReadPresentationReady(documentID: relativePath)
+                }
+                return
+            }
+            let html = await controller.readProjectionHTML(
+                target: target,
+                relativePath: relativePath,
+                source: source,
+                fingerprint: fingerprint,
+                workspaceID: state.currentVaultID,
+                semantic: note.workspaceSnapshot?.cachedSemanticDocument
+            )
+            guard !Task.isCancelled, fingerprint == noteFingerprint else { return }
+            PerformanceProbe.shared.markReadHTMLReady(documentID: relativePath)
+            renderedReadHTML = html
+            renderedReadFingerprint = fingerprint.sha256
+        }
         .task(id: indexedImageAvailabilityTaskIdentity) {
             await checkIndexedImageAvailability()
         }
@@ -491,10 +558,12 @@ struct NoteContentView: View {
         .task(id: documentFind.request) {
             guard let request = documentFind.request else { return }
             if case .clear = request.operation {
-                await editorSession.clearDocumentFind()
+                if isEditing {
+                    await editorSession.clearDocumentFind()
+                }
                 return
             }
-            guard let query = request.editorQuery else { return }
+            guard isEditing, let query = request.editorQuery else { return }
             do {
                 let result = try await editorSession.performDocumentFind(query)
                 documentFind.accept(result, for: request.id)
@@ -529,6 +598,10 @@ struct NoteContentView: View {
         }
     }
 
+    private var readProjectionTaskIdentity: String {
+        "\(note.relativePath):\(noteFingerprint.sha256)"
+    }
+
     private var outlineSource: String {
         isEditing ? editingSource : note.rawContent
     }
@@ -550,6 +623,7 @@ struct NoteContentView: View {
         guard let vaultID = state.currentVaultID,
             let graph = state.workspaceCatalog?.graph,
             state.selectedDocumentPath == note.relativePath,
+            presentationMode != .source,
             !hasUnsavedChanges
         else {
             documentSession.previewCatalog = nil
@@ -584,99 +658,123 @@ struct NoteContentView: View {
         state.documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
     }
 
-    private var bodyEditor: some View {
-        NativeMarkdownEditorView(
-            session: editorSession,
-            documentID: editorSession.editorDocumentID,
-            documentTitle: note.displayName,
-            performanceDocumentID: note.relativePath,
-            source: isEditing ? editingSource : note.rawContent,
-            mode: isEditing ? .edit : .read,
-            appearance: state.appearance,
-            documentTextScale: state.documentTextScale,
-            initialScrollFraction: documentSession.scrollFraction,
-            initialScrollAnchor: editorScrollAnchor,
-            onDocumentActivity: {
-                controller.editorSourceDidChange(session: documentSession, target: target)
-            },
-            onRequestSave: {
-                Task { await controller.persistEditingSource(session: documentSession, target: target) }
-            },
-            onRequestFind: handleDocumentFindShortcut,
-            onLinkActivation: openAuthoredLink,
-            onScrollFractionChange: {
-                rememberOutlineScrollFraction($0)
-                documentSession.observeScrollFraction($0)
-                actions.rememberScrollPosition($0)
-            },
-            onScrollAnchorChange: {
-                rememberOutlineScrollAnchor($0)
-                documentSession.observeScrollAnchor($0)
-            },
-            interactions: NativeEditorInteractions(
+    private var bodyEditor: AnyView {
+        AnyView(
+            MarkdownEditorWebView(
+                session: editorSession,
+                documentID: editorSession.bridgeDocumentID,
+                documentTitle: note.displayName,
+                performanceDocumentID: note.relativePath,
+                source: editingSource,
+                mode: documentSession.retainedEditorMode,
+                presentationCSS: documentPresentationCSS,
+                userCSS: state.livePreviewCSS,
+                requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
+                    source: editingSource,
+                    linkPreviews: documentSession.previewCatalog?.links ?? []
+                ),
                 linkCompletionQuery: queryEditorLinkCompletions,
-                previewCatalog: documentSession.previewCatalog,
-                previewRelativePath: note.relativePath,
-                previewAppearance: state.appearance,
+                linkPreviews: documentSession.previewCatalog?.links ?? [],
+                initialScrollFraction: documentSession.editorScrollFraction,
+                initialScrollAnchor: editorScrollAnchor,
+                onDocumentActivity: {
+                    controller.editorSourceDidChange(
+                        session: documentSession,
+                        target: target
+                    )
+                },
+                onRequestSave: {
+                    Task {
+                        await controller.persistEditingSource(
+                            session: documentSession,
+                            target: target
+                        )
+                    }
+                },
+                onRequestFind: handleDocumentFindShortcut,
+                onRequestDocumentTitleRename: { expectedTitle, requestedTitle in
+                    try await actions.renameNote(note, expectedTitle, requestedTitle)
+                },
                 onPasteImage: handlePastedImage,
+                onLinkActivation: openAuthoredLink,
+                onScrollFractionChange: {
+                    guard isEditing else { return }
+                    rememberOutlineScrollFraction($0)
+                    documentSession.observeScrollFraction($0, on: .editor)
+                    actions.rememberScrollPosition($0)
+                },
+                onScrollAnchorChange: {
+                    guard isEditing else { return }
+                    rememberOutlineScrollAnchor($0)
+                    documentSession.observeScrollAnchor($0, on: .editor)
+                },
                 onAskAgent: actions.askAgent,
-                onPassageAction: { actions.passageAction($0, $1) },
+                onPassageAction: { actions.passageAction($0, nil) },
                 writingContinuationEnabled: writingContinuationPreferences.continuationEnabled,
                 writingContinuationContextKey: writingContinuationPreferences.model,
                 writingContinuationQuery: actions.writingContinuation
             )
-        )
-        .id(editorSession.editorDocumentID)
-        .allowsHitTesting(!returnToReadAfterSave)
-        .accessibilityHidden(returnToReadAfterSave)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .layoutPriority(1)
+            .id(editorSession.viewReconstructionID)
+            .allowsHitTesting(!returnToReadAfterSave)
+            .accessibilityHidden(returnToReadAfterSave)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1))
     }
 
+    @ViewBuilder
     private var documentBodySurface: some View {
-        bodyEditor
-            .overlay {
-                if !editorSession.isLoaded, let error = editorSession.errorMessage {
-                    editorFailure(error)
+        DocumentEditorHost(
+            documentID: editorSession.openingPresentationID.uuidString,
+            presentsEditor: isEditing,
+            retainsEditor: documentSession.retainsEditorSurface,
+            editorIsReady: editorSession.isLoaded
+                && editorSession.presentedMode == documentSession.activeEditorMode,
+            allowsPendingReadRecovery: !editorSession.isLoaded && editorSession.errorMessage != nil
+        ) {
+            readSurface
+        } editor: {
+            bodyEditor
+        }
+        .environment(\.documentToolbarUnderlap, true)
+        .ignoresSafeArea(.container, edges: .top)
+        .scholiumSurface(.document)
+        .overlay(alignment: .topLeading) {
+            if isEditing,
+                editorSession.isLoaded,
+                let presentedMode = editorSession.presentedMode,
+                presentedMode == documentSession.activeEditorMode
+            {
+                PerformanceReadyBoundary(
+                    generation: "\(noteFingerprint.sha256):\(presentedMode.rawValue)"
+                ) {
+                    PerformanceProbe.shared.markEditorModeVisible(
+                        documentID: note.relativePath,
+                        mode: presentedMode
+                    )
+                    PerformanceProbe.shared.markEditorVisible(
+                        documentID: note.relativePath
+                    )
+                    actions.openingDocumentPresentationDidComplete()
                 }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
             }
-            .scholiumSurface(.document)
-            .overlay(alignment: .topLeading) {
-                if isEditing,
-                    editorSession.isLoaded,
-                    let presentedMode = editorSession.presentedMode,
-                    presentedMode == documentSession.activeEditorMode
-                {
-                    PerformanceReadyBoundary(
-                        generation: "\(noteFingerprint.sha256):\(presentedMode.rawValue)"
-                    ) {
-                        PerformanceProbe.shared.markEditorModeVisible(
-                            documentID: note.relativePath,
-                            mode: presentedMode
-                        )
-                        PerformanceProbe.shared.markEditorVisible(
-                            documentID: note.relativePath
-                        )
-                        actions.openingDocumentPresentationDidComplete()
-                    }
-                    .frame(width: 0, height: 0)
-                    .accessibilityHidden(true)
+            if !isEditing,
+                note.document.hasExactEmptyBody
+                    || documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
+            {
+                PerformanceReadyBoundary(
+                    generation: "read:\(noteFingerprint.sha256)"
+                ) {
+                    actions.openingDocumentPresentationDidComplete()
                 }
-                if !isEditing,
-                    editorSession.isLoaded
-                {
-                    PerformanceReadyBoundary(
-                        generation: "read:\(noteFingerprint.sha256)"
-                    ) {
-                        actions.openingDocumentPresentationDidComplete()
-                    }
-                    .frame(width: 0, height: 0)
-                    .accessibilityHidden(true)
-                }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
             }
-            .overlay(alignment: .trailing) {
-                documentOutlineOverlay
-            }
+        }
+        .overlay(alignment: .trailing) {
+            documentOutlineOverlay
+        }
     }
 
     @ViewBuilder
@@ -686,7 +784,7 @@ struct NoteContentView: View {
             let contentIsReady =
                 isEditing
                 ? editorSession.isLoaded
-                : editorSession.isLoaded
+                : documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
             let canShow = hasSpace && contentIsReady && outlineEntries.count > 1
 
             Group {
@@ -769,6 +867,50 @@ struct NoteContentView: View {
         outlineSelectionEntryID = nil
     }
 
+    @ViewBuilder
+    private var readSurface: some View {
+        if isEditing, !editorSession.isLoaded, let error = editorSession.errorMessage {
+            editorFailure(error)
+        } else if documentSession.isEnteringManagedCreation {
+            // The host covers preparation until the editor acknowledges its mode.
+            Color.clear.accessibilityHidden(true)
+        } else if note.document.hasExactEmptyBody {
+            emptyReviewState
+        } else {
+            let hasWebProjection =
+                renderedReadFingerprint == noteFingerprint.sha256
+                && failedReadFingerprint != noteFingerprint.sha256
+            let webProjectionIsReady =
+                hasWebProjection
+                && documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
+
+            ZStack {
+                if !webProjectionIsReady {
+                    readProjectionPlaceholder
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .layoutPriority(1)
+                }
+
+                if hasWebProjection {
+                    readDocumentSurface
+                        .opacity(webProjectionIsReady ? 1 : 0)
+                        .allowsHitTesting(webProjectionIsReady && !isEditing)
+                        .accessibilityHidden(!webProjectionIsReady)
+                }
+            }
+        }
+    }
+
+    private var emptyReviewState: some View {
+        ScholiumContentStateView(
+            "Empty Note",
+            detail: Text("This note has no body content."),
+            indicator: .symbol("doc")
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("scholium.emptyRenderedReview")
+    }
+
     private func editorFailure(_ error: String) -> some View {
         ScholiumContentStateView(
             "Edit Unavailable",
@@ -779,16 +921,131 @@ struct NoteContentView: View {
         ) {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Button("Retry Edit") {
-                    retryEditor(in: .edit)
+                    retryEditor(in: .livePreview)
                 }
                 .scholiumActivationPointer()
                 .keyboardShortcut(.defaultAction)
+                Button("Source") {
+                    retryEditor(in: .source)
+                }
+                .scholiumActivationPointer()
             }
         }
         .accessibilityIdentifier(
             documentSession.isEnteringManagedCreation
                 ? "scholium.managedNewNote.editorFailure" : "scholium.documentEditorFailure"
         )
+    }
+
+    @ViewBuilder
+    private var readProjectionPlaceholder: some View {
+        if failedReadFingerprint == noteFingerprint.sha256 {
+            ScholiumContentStateView(
+                "Review Mode Unavailable",
+                detail: Text("Use Source mode while the rendered document is unavailable."),
+                indicator: .symbol("exclamationmark.triangle", role: .attention)
+            ) {
+                Button("Source") { beginEditing(mode: .source) }
+                    .disabled(!editingIsAvailable)
+            }
+        } else {
+            ScholiumContentStateView(
+                "Loading Document…",
+                indicator: .progress
+            )
+        }
+    }
+
+    private var readDocumentSurface: some View {
+        SafeMarkdownReadWebView(
+            documentID: note.relativePath,
+            documentTitle: note.displayName,
+            fingerprint: noteFingerprint.sha256,
+            source: note.rawContent,
+            htmlBody: renderedReadHTML,
+            presentationCSS: documentPresentationCSS,
+            userCSS: state.readCSS,
+            configurationRevision: readConfigurationRevision,
+            linkPreviews: documentSession.previewCatalog?.links ?? [],
+            linkPreviewRevision: readLinkPreviewRevision,
+            onLinkClick: openAuthoredLink,
+            onOpenExternalURL: { openAuthoredLink($0.absoluteString) },
+            onAskAgent: actions.askAgent,
+            onPassageAction: { actions.passageAction($0, $1) },
+            onSelectionChange: { selection in
+                guard !isEditing else { return }
+                documentSession.readSelection = selection
+            },
+            selectionSurfaceIsActive: !isEditing,
+            renderingReadinessIsAcknowledged:
+                documentSession.renderedReadReadyFingerprint
+                == noteFingerprint.sha256,
+            onRenderingFailure: { reason in
+                actions.enterCSSSafeMode(reason)
+                failedReadFingerprint = noteFingerprint.sha256
+                documentSession.renderedReadReadyFingerprint = ""
+            },
+            onRenderingLoading: {
+                documentSession.renderedReadReadyFingerprint = ""
+            },
+            onRenderingReady: {
+                documentSession.renderedReadReadyFingerprint = noteFingerprint.sha256
+                if !isEditing {
+                    markReadPresentationReady(documentID: note.relativePath)
+                }
+            },
+            findRequest: isEditing ? nil : documentFind.request,
+            onFindResult: { requestID, result in
+                switch result {
+                case .success(let value):
+                    documentFind.accept(value, for: requestID)
+                case .failure(let error):
+                    documentFind.fail(error, for: requestID)
+                }
+            },
+            observedScrollPosition: documentSession.readScrollPosition,
+            scrollRestoreRequest: documentSession.scrollRestoreRequest,
+            onScrollRestoreConsumed: { id, fingerprint in
+                documentSession.acknowledgeScrollRestoreRequest(
+                    id: id,
+                    fingerprint: fingerprint
+                )
+            },
+            onScrollFractionChange: {
+                guard !isEditing else { return }
+                rememberOutlineScrollFraction($0)
+                documentSession.observeScrollFraction($0, on: .read)
+                actions.rememberScrollPosition($0)
+            },
+            onScrollAnchorChange: {
+                guard !isEditing else { return }
+                rememberOutlineScrollAnchor($0)
+                documentSession.observeScrollAnchor($0, on: .read)
+            },
+            sourceLocationRequest: isEditing ? nil : currentSourceLocationRequest,
+            onSourceRangeUnavailable: { id in
+                guard !isEditing, currentSourceLocationRequest?.id == id else { return }
+                if editingIsAvailable {
+                    selectPresentationMode(.source)
+                } else {
+                    actions.consumeSourceLocation(id)
+                    actions.notify(
+                        String(localized: "This passage cannot be selected in Review. Its supplied text remains available in Chat.", bundle: .module),
+                        .information)
+                }
+            },
+            onSourceRevisionChanged: { id in
+                guard currentSourceLocationRequest?.id == id else { return }
+                actions.consumeSourceLocation(id)
+                reportChangedSourceLocation()
+            },
+            onSourceLocationReached: { id in
+                guard !isEditing else { return }
+                actions.consumeSourceLocation(id)
+            }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .layoutPriority(1)
     }
 
     private func markReadPresentationReady(documentID: String) {
@@ -800,8 +1057,35 @@ struct NoteContentView: View {
             return retained
         }
         let fingerprint = DocumentFingerprint(content: editorSession.checkedSource).sha256
-        guard documentSession.scrollAnchor?.sourceFingerprint == fingerprint else { return nil }
-        return documentSession.scrollAnchor
+        guard documentSession.editorScrollAnchor?.sourceFingerprint == fingerprint else { return nil }
+        return documentSession.editorScrollAnchor
+    }
+
+    private var documentPresentation: ScholiumDocumentPresentationConfiguration {
+        ScholiumDocumentPresentationConfiguration(textScale: state.documentTextScale)
+    }
+
+    private var documentPresentationCSS: String {
+        documentPresentation.css + "\n" + state.appearanceCSS
+    }
+
+    private var readConfigurationRevision: String {
+        [
+            noteFingerprint.sha256,
+            String(note.displayName.hashValue),
+        ].joined(separator: ":")
+    }
+
+    private var readLinkPreviewRevision: String {
+        let previewRevision =
+            documentSession.previewCatalog.map { catalog in
+                let targets = catalog.links.map { link in
+                    "\(link.sourceSpan.utf16LowerBound)-\(link.sourceSpan.utf16UpperBound):"
+                        + link.targetFingerprint.sha256
+                }.joined(separator: ",")
+                return "\(catalog.graphGeneration):\(catalog.sourceFingerprint.sha256):\(targets)"
+            } ?? "no-previews"
+        return previewRevision
     }
 
     private var hasUnsavedChanges: Bool {
@@ -960,9 +1244,16 @@ struct NoteContentView: View {
     }
 
     private func useSelectionForDocumentFind() {
-        Task { @MainActor in
-            let selection = try? await editorSession.selectedSourceSnapshot()
-            documentFind.useSelection(selection?.excerpt)
+        if isEditing {
+            Task { @MainActor in
+                let selection = try? await editorSession.currentSelection(
+                    for: editorSession.documentID,
+                    in: editingSource
+                )
+                documentFind.useSelection(selection?.excerpt)
+            }
+        } else {
+            documentFind.useSelection(documentSession.readSelection?.excerpt)
         }
     }
 
@@ -1177,9 +1468,14 @@ struct NoteContentView: View {
                     guard documentSession.reviewHandoffID == handoffID,
                         controller.selectedDocument?.editingTarget == target, !Task.isCancelled
                     else { return }
-                    documentSession.observeScrollAnchor(handoffAnchor)
+                    documentSession.adoptEditorScrollPositionForReview(anchor: handoffAnchor)
                     actions.rememberScrollPosition(
-                        handoffAnchor?.fallbackFraction ?? documentSession.scrollFraction
+                        handoffAnchor?.fallbackFraction ?? documentSession.readScrollFraction
+                    )
+                    documentSession.requestReadScrollRestore(
+                        fingerprint: handoffAnchor?.sourceFingerprint
+                            ?? DocumentFingerprint(content: editingSource).sha256,
+                        reason: .modeHandoff
                     )
                     await editorSession.resignFocusAndWait()
                     guard documentSession.reviewHandoffID == handoffID,
@@ -1194,6 +1490,17 @@ struct NoteContentView: View {
                     guard documentSession.reviewHandoffID == handoffID,
                         controller.selectedDocument?.editingTarget == target, !Task.isCancelled
                     else { return }
+                    let committedFingerprint = DocumentFingerprint(
+                        content: documentSession.originalEditingSource
+                    ).sha256
+                    if documentSession.renderedReadReadyFingerprint
+                        != committedFingerprint
+                    {
+                        // Never reveal a retained Review projection for the
+                        // pre-save revision while SwiftUI publishes the newly
+                        // committed Note and its hidden projection catches up.
+                        documentSession.renderedReadReadyFingerprint = ""
+                    }
                     try finishEditing()
                 } catch is CancellationError {
                     return
@@ -1252,7 +1559,10 @@ struct NoteContentView: View {
     }
 
     private var sourceLocationExecutionID: UUID? {
-        guard editorSession.isLoaded, !editorSession.isComposing
+        guard isEditing, editorSession.isLoaded, !editorSession.isComposing,
+            let intendedMode = state.requestedPresentationMode?.editorMode
+                ?? documentSession.activeEditorMode,
+            editorSession.presentedMode == intendedMode
         else { return nil }
         return currentSourceLocationRequest?.id
     }
@@ -1285,11 +1595,11 @@ struct NoteContentView: View {
 
     private func goToFrontmatter() {
         guard editingIsAvailable, editorSession.context?.composing != true else { return }
-        selectPresentationMode(.edit)
+        selectPresentationMode(.livePreview)
         editorSession.goToLine(1)
     }
 
-    private func beginEditing(mode: MarkdownEditorMode = .edit) {
+    private func beginEditing(mode: MarkdownEditorMode = .livePreview) {
         controller.beginEditing(
             session: documentSession,
             target: target,
@@ -1299,14 +1609,26 @@ struct NoteContentView: View {
         )
     }
 
+    /// Focus belongs to the mode that the Web editor has acknowledged, not
+    /// merely to the mode most recently requested by native UI. This keeps a
+    /// retained Source surface from receiving focus during Review -> Edit and
+    /// prevents rapid Edit/Source requests from racing the bridge handshake.
     private func focusEditorIfPresented() {
-        guard isEditing, !returnToReadAfterSave, editorSession.isLoaded,
-            editorSession.presentedMode == .edit
+        guard
+            DocumentEditorPresentationGate().allowsEditorFocus(
+                isEditing: isEditing,
+                isReturningToReview: returnToReadAfterSave,
+                editorIsReady: editorSession.isLoaded,
+                presentedModeMatchesIntent:
+                    editorSession.presentedMode == documentSession.activeEditorMode
+            )
         else { return }
         if documentSession.managedCreationBodyStartUTF16 != nil {
             documentSession.completeManagedCreationEntry()
             AccessibilityNotification.Announcement(
-                String(localized: "New note created. Edit is ready.")
+                documentSession.activeEditorMode == .source
+                    ? String(localized: "New note created. Source is ready.")
+                    : String(localized: "New note created. Edit is ready.")
             ).post()
             return
         }
@@ -1496,7 +1818,9 @@ private struct ConflictComparisonSheet: View {
         workspaceCatalog: nil,
         canEdit: false,
         documentTextScale: 1,
-        appearance: .defaultSettings,
+        appearanceCSS: "",
+        readCSS: "",
+        livePreviewCSS: "",
         initialScrollFraction: 0,
         requestedPresentationMode: nil,
         sourceLocationRequest: nil,
@@ -1515,10 +1839,12 @@ private struct ConflictComparisonSheet: View {
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },
         openExternalURL: { _ in },
+        enterCSSSafeMode: { _ in },
         rememberPresentationMode: { _ in },
         setSidebarVisible: { _ in },
         setResearchInspectorVisible: { _ in },
         openingDocumentPresentationDidComplete: {},
+        renameNote: { _, _, requestedTitle in requestedTitle },
         notify: { _, _ in }
     )
     NoteContentView(

@@ -12,15 +12,14 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     private var activeNavigation: WKNavigation?
     private var generation: UInt64 = 0
     var isShown: Bool { popover?.isShown == true }
-    private weak var owner: NSView?
-    private weak var initiatingResponder: NSResponder?
+    private weak var owner: WKWebView?
     private var surface: DocumentPreviewSurface?
     private var popover: NSPopover?
     private var measurement: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var eventMonitor: Any?
 
-    func present(_ value: DocumentPreviewSurface, in owner: NSView) {
+    func present(_ value: DocumentPreviewSurface, in owner: WKWebView) {
         // Repeated pointer/focus reports retain both the loaded content and its
         // reading position. A different target gets a fresh measured presentation.
         if self.owner === owner, let surface,
@@ -32,7 +31,6 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         }
         dismiss()
         self.owner = owner
-        initiatingResponder = owner.window?.firstResponder
         surface = value
         let content: PreviewWebView
         if let renderer {
@@ -80,7 +78,6 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         renderer?.allowsFocus = false
         surface = nil
         owner = nil
-        initiatingResponder = nil
     }
 
     /// Document departure releases both derived content and the WebKit page.
@@ -145,7 +142,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         }
     }
 
-    private func observeContext(_ owner: NSView) {
+    private func observeContext(_ owner: WKWebView) {
         guard let window = owner.window else { return }
         for name in [NSWindow.willCloseNotification, NSWindow.didResizeNotification] {
             observers.append(
@@ -174,17 +171,9 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
                     // Leave document/IME key handling with its original owner.
                     if event.window === self.webView?.window, event.keyCode == 53 {
                         let owner = self.owner
-                        let responder = self.initiatingResponder
                         self.onEvent?(.dismiss)
                         owner?.window?.makeKey()
-                        if let window = owner?.window,
-                            let responder,
-                            (responder as? NSView)?.window === window || !(responder is NSView)
-                        {
-                            window.makeFirstResponder(responder)
-                        } else {
-                            owner?.window?.makeFirstResponder(owner)
-                        }
+                        owner?.window?.makeFirstResponder(owner)
                         return true
                     }
                 } else if event.window !== self.webView?.window {
@@ -226,7 +215,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     private static func previewHTML(_ value: DocumentPreviewSurface) -> String {
         let css = value.css.replacingOccurrences(of: "</style", with: "<\\/style", options: .caseInsensitive)
         return """
-            <!doctype html><html lang="\(WebKitInterfaceLocalization.current().languageTag)"><head><meta charset="utf-8">
+            <!doctype html><html><head><meta charset="utf-8">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src scholium-font: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
             <style>\(css)</style><style>
             \(ScholiumPreviewStyles.nativeCSS)

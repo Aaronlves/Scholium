@@ -223,8 +223,7 @@ ScholiumContracts/         不可变值、协议与源码语义
 ScholiumCore/              内部仓储、索引、监听与 I/O
 ScholiumApplication/       应用与随附组件共享的应用能力
 Scholium/                  原生 macOS 应用与面向人的交互
-ScholiumEditor/            原生 Markdown 编辑与精确源文投影
-WebEditor/                 本地 TypeScript Chat／预览渲染
+WebEditor/                 TypeScript 与 CodeMirror 源码
 Tests/                     Contracts、Core、Application 与 App 测试
 UITests/                   隔离的一次性 macOS UI 旅程
 Docs/SCHOLIUM_SPEC.md      目标权威清单与阅读路由

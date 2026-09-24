@@ -1,0 +1,311 @@
+import {EditorView} from "@codemirror/view";
+import type {Text} from "@codemirror/state";
+import type {EditorScrollAnchor} from "./protocol";
+import {recordEditorMetric} from "./performance";
+import {AnimationFrameCoalescer} from "./interaction-reporting";
+
+// Native geometry publishes only the portion actually covered by the toolbar.
+// Keep caret scrolling clear without changing manual scroll or restored anchors.
+export const documentToolbarScrollMargin = EditorView.scrollMargins.of(view => {
+  const inset = parseFloat(getComputedStyle(view.dom)
+    .getPropertyValue("--scholium-document-toolbar-inset"));
+  return Number.isFinite(inset) && inset > 0 ? {top: inset * view.scaleY} : null;
+});
+
+export interface EditorGeometrySnapshot {
+  anchor: EditorScrollAnchor;
+  document: Text;
+  revision: number;
+}
+
+export interface EditorScrollCoordinator {
+  resetDocument(): void;
+  captureGeometry(): EditorGeometrySnapshot;
+  currentAnchor(): EditorScrollAnchor;
+  postCurrent(): void;
+  scheduleGeometryReport(snapshot?: EditorGeometrySnapshot): void;
+  setAnchor(anchor: EditorScrollAnchor): void;
+  setFraction(fraction: number): void;
+  setTop(top: number): void;
+}
+
+/** Owns scroll observation, metrics, and restoration for one retained view. */
+export function createEditorScrollCoordinator(
+  editor: EditorView,
+  options: {
+    onScroll(): void;
+    post(anchor: EditorScrollAnchor): void;
+    flushPresentationGeometry(): void;
+  },
+): EditorScrollCoordinator {
+  let scrollRevision = 0;
+  let lastPostedAnchor: EditorScrollAnchor | null = null;
+  function sameAnchor(left: EditorScrollAnchor, right: EditorScrollAnchor) {
+    return left.sourceUTF16Offset === right.sourceUTF16Offset
+      && left.blockUTF16LowerBound === right.blockUTF16LowerBound
+      && left.blockUTF16UpperBound === right.blockUTF16UpperBound
+      && left.relativeBlockPosition === right.relativeBlockPosition
+      && left.fallbackFraction === right.fallbackFraction;
+  }
+  function currentAnchor(): EditorScrollAnchor {
+    const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
+    const fallbackFraction = extent > 0
+      ? Math.max(0, Math.min(1, editor.scrollDOM.scrollTop / extent))
+      : 0;
+    // lineBlockAtHeight uses coordinates relative to the document top, while
+    // scrollTop is relative to the scroll container. Account for the
+    // document's measured top inset before probing the first visible block.
+    const scrollRect = editor.scrollDOM.getBoundingClientRect();
+    const probeHeight = Math.max(
+      0,
+      scrollRect.top + 8 - editor.documentTop,
+    );
+    const block = editor.lineBlockAtHeight(probeHeight);
+    const relativeBlockPosition = block.height > 0
+      ? Math.max(0, Math.min(1, (probeHeight - block.top) / block.height))
+      : 0;
+    return {
+      sourceUTF16Offset: block.from,
+      blockUTF16LowerBound: block.from,
+      blockUTF16UpperBound: block.to,
+      relativeBlockPosition,
+      fallbackFraction,
+    };
+  }
+
+  function captureGeometry(): EditorGeometrySnapshot {
+    return {anchor: currentAnchor(), document: editor.state.doc, revision: scrollRevision};
+  }
+
+  function postCurrent() {
+    const anchor = currentAnchor();
+    if (lastPostedAnchor && sameAnchor(lastPostedAnchor, anchor)) return;
+    lastPostedAnchor = anchor;
+    options.post(anchor);
+  }
+
+  const scrollReports = new AnimationFrameCoalescer(
+    (callback) => window.requestAnimationFrame(callback),
+    (identifier) => window.cancelAnimationFrame(identifier),
+    (callback, delay) => window.setTimeout(callback, delay),
+    (identifier) => window.clearTimeout(identifier),
+  );
+  let sessionTimer: number | undefined;
+  let sessionStartedAt: number | null = null;
+  let previousFrameAt: number | null = null;
+  let measurementFrame: number | null = null;
+  let sessionFrameCount = 0;
+  let sessionLongestFrame = 0;
+  let sessionDroppedFrameCount = 0;
+  editor.scrollDOM.addEventListener("scroll", () => {
+    options.onScroll();
+    // Follow the painted viewport during scrolling, independently of the
+    // quiet-period timer that closes the performance measurement session.
+    scrollReports.schedule(postCurrent);
+    if (sessionStartedAt === null) sessionStartedAt = performance.now();
+    if (measurementFrame === null) {
+      measurementFrame = window.requestAnimationFrame(() => {
+        measurementFrame = null;
+        const now = performance.now();
+        sessionFrameCount += 1;
+        if (previousFrameAt !== null) {
+          const duration = Math.max(0, now - previousFrameAt);
+          sessionLongestFrame = Math.max(sessionLongestFrame, duration);
+          if (duration > 20) sessionDroppedFrameCount += 1;
+        }
+        previousFrameAt = now;
+      });
+    }
+    window.clearTimeout(sessionTimer);
+    sessionTimer = window.setTimeout(() => {
+      if (sessionStartedAt !== null) {
+        recordEditorMetric("scroll-session", sessionStartedAt, {
+          frameCount: sessionFrameCount,
+          longestFrameMilliseconds: sessionLongestFrame,
+          droppedFrameCount: sessionDroppedFrameCount,
+        });
+      }
+      sessionStartedAt = null;
+      previousFrameAt = null;
+      sessionFrameCount = 0;
+      sessionLongestFrame = 0;
+      sessionDroppedFrameCount = 0;
+    }, 120);
+  }, {passive: true});
+
+  function validAnchor(anchor: EditorScrollAnchor) {
+    const documentLength = editor.state.doc.length;
+    return Number.isSafeInteger(anchor.sourceUTF16Offset)
+      && anchor.sourceUTF16Offset >= 0
+      && anchor.sourceUTF16Offset <= documentLength
+      && Number.isSafeInteger(anchor.blockUTF16LowerBound)
+      && Number.isSafeInteger(anchor.blockUTF16UpperBound)
+      && anchor.blockUTF16LowerBound >= 0
+      && anchor.blockUTF16LowerBound <= anchor.sourceUTF16Offset
+      && anchor.blockUTF16UpperBound >= anchor.sourceUTF16Offset
+      && anchor.blockUTF16UpperBound <= documentLength;
+  }
+
+  function requestedScrollTop(anchor: EditorScrollAnchor) {
+    if (!validAnchor(anchor)) {
+      const fraction = Number.isFinite(anchor.fallbackFraction)
+        ? Math.max(0, Math.min(1, anchor.fallbackFraction))
+        : 0;
+      const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
+      return extent * fraction;
+    }
+    const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
+    const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound
+      && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound
+      ? anchor.blockUTF16LowerBound + 1
+      : anchor.sourceUTF16Offset;
+    const block = editor.lineBlockAt(blockProbe);
+    const scrollRect = editor.scrollDOM.getBoundingClientRect();
+    const documentInset = editor.documentTop - scrollRect.top + editor.scrollDOM.scrollTop;
+    return Math.max(
+      0,
+      documentInset + block.top + block.height * relativePosition - 4,
+    );
+  }
+
+  let geometryReportScheduled = false;
+  let geometryReportGeneration = 0;
+  let pendingGeometrySnapshot: EditorGeometrySnapshot | undefined;
+  function scheduleGeometryReport(snapshot?: EditorGeometrySnapshot) {
+    if (snapshot && snapshot.revision !== scrollRevision) return;
+    pendingGeometrySnapshot ??= snapshot;
+    if (geometryReportScheduled) return;
+    geometryReportScheduled = true;
+    const generation = ++geometryReportGeneration;
+    queueMicrotask(() => {
+      if (generation !== geometryReportGeneration) return;
+      geometryReportScheduled = false;
+      const geometrySnapshot = pendingGeometrySnapshot;
+      pendingGeometrySnapshot = undefined;
+      const documentSnapshot = geometrySnapshot?.document ?? editor.state.doc;
+      const revision = geometrySnapshot?.revision ?? scrollRevision;
+      editor.requestMeasure({
+        read: () => {
+          if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return undefined;
+          return geometrySnapshot
+            ? requestedScrollTop(geometrySnapshot.anchor)
+            : null;
+        },
+        write: (scrollTop) => {
+          if (scrollTop === undefined || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
+          if (scrollTop !== null) editor.scrollDOM.scrollTop = scrollTop;
+          postCurrent();
+        },
+      });
+    });
+  }
+
+  function setTop(top: number) {
+    scrollRevision += 1;
+    pendingGeometrySnapshot = undefined;
+    editor.scrollDOM.scrollTop = Math.max(0, top);
+  }
+
+  function setFraction(requestedFraction: number) {
+    options.flushPresentationGeometry();
+    lastPostedAnchor = null;
+    const fraction = Number.isFinite(requestedFraction)
+      ? Math.max(0, Math.min(1, requestedFraction))
+      : 0;
+    const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
+    setTop(extent * fraction);
+  }
+
+  function setAnchor(anchor: EditorScrollAnchor) {
+    const revision = ++scrollRevision;
+    options.flushPresentationGeometry();
+    lastPostedAnchor = null;
+    if (!validAnchor(anchor)) {
+      setFraction(anchor.fallbackFraction);
+      return;
+    }
+    const documentSnapshot = editor.state.doc;
+    if (Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction <= 0) {
+      editor.scrollDOM.scrollTop = 0;
+      postCurrent();
+      const keepDocumentStart = () => {
+        if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
+        editor.requestMeasure({
+          read: () => editor.state.doc === documentSnapshot,
+          write: (isCurrentDocument) => {
+            if (!isCurrentDocument || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
+            editor.scrollDOM.scrollTop = 0;
+            postCurrent();
+          },
+        });
+      };
+      keepDocumentStart();
+      void document.fonts.ready.then(keepDocumentStart);
+      window.requestAnimationFrame(keepDocumentStart);
+      return;
+    }
+    const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound
+      && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound
+      ? anchor.blockUTF16LowerBound + 1
+      : anchor.sourceUTF16Offset;
+    const applyMeasuredAnchor = () => {
+      if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
+      editor.requestMeasure({
+        read: () => editor.state.doc === documentSnapshot
+          ? requestedScrollTop(anchor)
+          : null,
+        write: (scrollTop) => {
+          if (scrollTop === null || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
+          editor.scrollDOM.scrollTop = scrollTop;
+          postCurrent();
+        },
+      });
+    };
+    const applyScrollEffect = () => {
+      if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
+      editor.dispatch({effects: EditorView.scrollIntoView(blockProbe, {y: "start", yMargin: 4})});
+    };
+    editor.scrollDOM.scrollTop = requestedScrollTop(anchor);
+    postCurrent();
+    applyScrollEffect();
+    applyMeasuredAnchor();
+    void document.fonts.ready.then(applyMeasuredAnchor);
+    window.requestAnimationFrame(() => {
+      applyScrollEffect();
+      applyMeasuredAnchor();
+    });
+    window.setTimeout(() => {
+      applyScrollEffect();
+      applyMeasuredAnchor();
+    }, 80);
+  }
+
+  return {
+    resetDocument() {
+      scrollRevision += 1;
+      geometryReportGeneration += 1;
+      geometryReportScheduled = false;
+      pendingGeometrySnapshot = undefined;
+      scrollReports.cancel();
+      lastPostedAnchor = null;
+      window.clearTimeout(sessionTimer);
+      sessionTimer = undefined;
+      if (measurementFrame !== null) window.cancelAnimationFrame(measurementFrame);
+      measurementFrame = null;
+      sessionStartedAt = null;
+      previousFrameAt = null;
+      sessionFrameCount = 0;
+      sessionLongestFrame = 0;
+      sessionDroppedFrameCount = 0;
+      editor.scrollDOM.scrollTop = 0;
+      editor.scrollDOM.scrollLeft = 0;
+    },
+    captureGeometry,
+    currentAnchor,
+    postCurrent,
+    scheduleGeometryReport,
+    setAnchor,
+    setFraction,
+    setTop,
+  };
+}

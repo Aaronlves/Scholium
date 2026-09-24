@@ -12,8 +12,6 @@ struct EditorSourceOffsetMapTests {
             "",
             "LF\nonly\n",
             "CRLF\r\nonly\r\n",
-            "CR\ronly\r",
-            "\u{FEFF}\u{FEFF}interior BOM\r\n",
             "mixed\r\nline\nend\r\n",
             "\u{FEFF}emoji 🧑🏽‍💻\r\n中文\n",
             "NFC é\r\nNFD e\u{301}\r\n",
@@ -70,23 +68,12 @@ struct EditorSourceOffsetMapTests {
         }
     }
 
-    @Test("Initial BOM is metadata; the first editable caret follows it")
-    func initialBOMBoundary() {
-        let map = EditorSourceOffsetMap(source: "\u{FEFF}A\r\nB\rC")
-        #expect(map.editorUTF16Length == 5)
-        #expect(map.editorUTF16Offset(forSourceUTF16Offset: 0) == nil)
-        #expect(map.sourceUTF16Offset(forEditorUTF16Offset: 0) == 1)
-        #expect(map.sourceUTF16Offset(forEditorUTF16Offset: 2) == 4)
-        #expect(map.editorUTF16Offset(forSourceUTF16Offset: 3) == nil)
-    }
-
     private func assertEquivalent(
         _ map: EditorSourceOffsetMap,
         source: String
     ) {
         let sourceLength = (source as NSString).length
-        let content = source.hasPrefix("\u{FEFF}") ? String(source.dropFirst()) : source
-        let normalized = content.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
         let editorLength = (normalized as NSString).length
         #expect(map.sourceUTF16Length == sourceLength)
         #expect(map.editorUTF16Length == editorLength)
@@ -107,7 +94,7 @@ struct EditorSourceOffsetMapTests {
 
     private func slowSourceOffset(_ requested: Int, source: String) -> Int? {
         let units = Array(source.utf16)
-        var sourceOffset = units.first == 0xFEFF ? 1 : 0
+        var sourceOffset = 0
         var editorOffset = 0
         while sourceOffset < units.count, editorOffset < requested {
             if sourceOffset + 1 < units.count,
@@ -125,8 +112,8 @@ struct EditorSourceOffsetMapTests {
 
     private func slowEditorOffset(_ requested: Int, source: String) -> Int? {
         let units = Array(source.utf16)
-        guard requested >= (units.first == 0xFEFF ? 1 : 0), requested <= units.count else { return nil }
-        var sourceOffset = units.first == 0xFEFF ? 1 : 0
+        guard requested >= 0, requested <= units.count else { return nil }
+        var sourceOffset = 0
         var editorOffset = 0
         while sourceOffset < requested {
             if sourceOffset + 1 < units.count,

@@ -47,6 +47,11 @@ enum ScrollRestoreReason: String, Equatable, Sendable {
     case explicitNavigation
 }
 
+enum DocumentScrollSurface: Hashable, Sendable {
+    case read
+    case editor
+}
+
 struct ScrollRestoreRequest: Equatable, Sendable {
     let id: UInt64
     let fingerprint: String
@@ -55,7 +60,8 @@ struct ScrollRestoreRequest: Equatable, Sendable {
 }
 
 /// The single owner for mutable, reconstruction-sensitive document UI state.
-/// The retained native text session owns exact source in both reading and editing.
+/// The WKWebView remains an implementation detail of `MarkdownEditorSession`;
+/// CodeMirror remains authoritative while the session is editing.
 @MainActor
 final class DocumentSessionModel: ObservableObject {
     let key: DocumentSessionKey?
@@ -67,13 +73,25 @@ final class DocumentSessionModel: ObservableObject {
     @Published var editingRevision: DocumentFingerprint?
     @Published var editError: String?
     @Published var isSavingEdit = false
-    private(set) var observedScrollPosition = ObservedScrollPosition()
+    /// Review and the retained editor have independent viewport observations.
+    /// A mode handoff copies one position explicitly; an ordinary report from
+    /// one surface can never overwrite the other surface's viewport.
+    private(set) var readScrollPosition = ObservedScrollPosition()
+    private(set) var editorScrollPosition = ObservedScrollPosition()
+    /// Only an explicit lifecycle or navigation transition creates a request.
+    /// Coordinators consume each monotonically increasing ID at most once.
+    @Published private(set) var scrollRestoreRequest: ScrollRestoreRequest?
     @Published var returnToReadAfterSave = false
     var reviewHandoffID: UUID?
     @Published var suppressAutosave = false
+    @Published var renderedReadHTML = ""
+    @Published var renderedReadFingerprint = ""
+    @Published var renderedReadReadyFingerprint = ""
+    @Published var failedReadFingerprint: String?
     @Published var previewCatalog: DocumentPreviewCatalog?
     @Published var isAttachingDocument = false
     let findRequested = PassthroughSubject<Void, Never>()
+    var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
     /// The exact conflict revision shown in the open comparison sheet. A
     /// later filesystem observation may update `conflict`, but it must never
@@ -97,6 +115,7 @@ final class DocumentSessionModel: ObservableObject {
     var detachmentResumeTask: Task<Void, Never>?
     var detachmentResumeToken: UUID?
     private var editorCancellable: AnyCancellable?
+    private var nextScrollRestoreRequestID: UInt64 = 0
 
     init(key: DocumentSessionKey?, editorSession: MarkdownEditorSession = MarkdownEditorSession()) {
         self.key = key
@@ -115,6 +134,21 @@ final class DocumentSessionModel: ObservableObject {
     var isEnteringManagedCreation: Bool {
         managedCreationBodyStartUTF16 != nil
     }
+
+    var activeScrollSurface: DocumentScrollSurface {
+        isEditing ? .editor : .read
+    }
+
+    var activeScrollPosition: ObservedScrollPosition {
+        switch activeScrollSurface {
+        case .read: readScrollPosition
+        case .editor: editorScrollPosition
+        }
+    }
+
+    var readScrollFraction: Double { readScrollPosition.fraction }
+    var editorScrollFraction: Double { editorScrollPosition.fraction }
+    var editorScrollAnchor: EditorScrollAnchor? { editorScrollPosition.anchor }
 
     func presentConflictComparison() {
         guard let conflict else { return }
@@ -136,7 +170,7 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     /// A first activation begins in the body. A retained or restored
-    /// session reuses its body focus and exact valid editor
+    /// session reuses its last title/body focus target and exact valid editor
     /// selection; managed creation keeps its explicit body-start contract.
     func prepareForDocumentActivation() {
         resetScrollPosition()
@@ -157,7 +191,8 @@ final class DocumentSessionModel: ObservableObject {
         _ presentation: WindowDocumentPresentationSnapshot,
         source: String
     ) {
-        observedScrollPosition.updateFraction(presentation.scrollFraction)
+        readScrollPosition.updateFraction(presentation.scrollFraction)
+        editorScrollPosition.updateFraction(presentation.scrollFraction)
         hasBeenActivated = true
         _ = editorSession.restoreWindowPresentation(
             presentation,
@@ -167,8 +202,17 @@ final class DocumentSessionModel: ObservableObject {
 
     var windowPresentationSnapshot: WindowDocumentPresentationSnapshot {
         editorSession.windowPresentationSnapshot(
-            scrollFraction: observedScrollPosition.fraction
+            scrollFraction: activeScrollPosition.fraction
         )
+    }
+
+    /// Prepares the outer Review projection without invalidating a retained
+    /// WebView that has already finalized the same authoritative revision.
+    /// The WebView load lifecycle owns readiness changes for an actual reload.
+    func prepareReadProjection(for fingerprint: String) {
+        failedReadFingerprint = nil
+        guard renderedReadFingerprint != fingerprint else { return }
+        renderedReadReadyFingerprint = ""
     }
 
     func preparePresentationMode(_ mode: NotePresentationMode) {
@@ -176,8 +220,14 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func beginEditing(in mode: MarkdownEditorMode) {
+        // Entering Edit is an explicit projection handoff from the active
+        // Review viewport. The editor keeps its own subsequent position.
+        editorScrollPosition = readScrollPosition
+        editorSession.setScrollPosition(
+            anchor: editorScrollPosition.anchor,
+            fallbackFraction: editorScrollPosition.fraction
+        )
         updatePresentation { $0.beginEditing(mode) }
-        editorSession.setMode(mode)
     }
 
     func switchEditorMode(to mode: MarkdownEditorMode) {
@@ -185,14 +235,15 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func finishEditing() {
+        // Returning to Review is the opposite explicit handoff. This is not a
+        // shared live state: later hidden-editor reports cannot change Read.
+        readScrollPosition = editorScrollPosition
         completeManagedCreationEntry()
-        editorSession.setMode(.read)
         updatePresentation { $0.finishEditing() }
     }
 
     func resetPresentation() {
         completeManagedCreationEntry()
-        editorSession.setMode(.read)
         updatePresentation { $0.reset() }
     }
 
@@ -234,7 +285,7 @@ final class DocumentSessionModel: ObservableObject {
     /// every recovery pin are gone. A still-attached WebView is never torn
     /// out from underneath AppKit; the store retries reaping after detach.
     func shutdown() {
-        precondition(!editorSession.hasAttachedNativeView)
+        precondition(!editorSession.hasAttachedWebView)
         cancelScheduledWork()
         editorCancellable?.cancel()
         editorCancellable = nil
@@ -243,7 +294,12 @@ final class DocumentSessionModel: ObservableObject {
         originalEditingSource = ""
         editingRevision = nil
         pendingEditorCommit = nil
+        renderedReadHTML = ""
+        renderedReadFingerprint = ""
+        renderedReadReadyFingerprint = ""
+        failedReadFingerprint = nil
         previewCatalog = nil
+        readSelection = nil
         conflict = nil
         conflictComparison = nil
         editError = nil
@@ -263,25 +319,112 @@ final class DocumentSessionModel: ObservableObject {
     /// Presentation readiness does not determine source ownership. A detached
     /// editor retains the checked mirror even though its WebView is unavailable.
     var retainedExactSource: String {
-        editorSession.documentID == editorSession.editorDocumentID
+        editorSession.documentID == editorSession.bridgeDocumentID
             ? editorSession.checkedSource
             : editingSource
     }
 
     var scrollFraction: Double {
-        get { observedScrollPosition.fraction }
-        set { observedScrollPosition.updateFraction(newValue) }
+        get { activeScrollPosition.fraction }
+        set {
+            switch activeScrollSurface {
+            case .read: readScrollPosition.updateFraction(newValue)
+            case .editor: editorScrollPosition.updateFraction(newValue)
+            }
+        }
     }
 
     var scrollAnchor: EditorScrollAnchor? {
-        get { observedScrollPosition.anchor }
-        set { observedScrollPosition.anchor = newValue }
+        get { activeScrollPosition.anchor }
+        set {
+            switch activeScrollSurface {
+            case .read: readScrollPosition.anchor = newValue
+            case .editor: editorScrollPosition.anchor = newValue
+            }
+        }
     }
 
-    func observeScrollFraction(_ fraction: Double) { observedScrollPosition.updateFraction(fraction) }
-    func observeScrollAnchor(_ anchor: EditorScrollAnchor?) { observedScrollPosition.anchor = anchor }
-    func resetScrollPosition() { observedScrollPosition = ObservedScrollPosition() }
+    /// Observes the active presentation surface. New surface callbacks should
+    /// use the overload that names the surface explicitly.
+    func observeScrollFraction(_ fraction: Double) {
+        observeScrollFraction(fraction, on: activeScrollSurface)
+    }
 
+    func observeScrollAnchor(_ anchor: EditorScrollAnchor?) {
+        observeScrollAnchor(anchor, on: activeScrollSurface)
+    }
+
+    func observeScrollFraction(_ fraction: Double, on surface: DocumentScrollSurface) {
+        switch surface {
+        case .read: readScrollPosition.updateFraction(fraction)
+        case .editor: editorScrollPosition.updateFraction(fraction)
+        }
+    }
+
+    func observeScrollAnchor(_ anchor: EditorScrollAnchor?, on surface: DocumentScrollSurface) {
+        switch surface {
+        case .read: readScrollPosition.anchor = anchor
+        case .editor: editorScrollPosition.anchor = anchor
+        }
+    }
+
+    func adoptEditorScrollPositionForReview(anchor: EditorScrollAnchor?) {
+        if let anchor {
+            editorScrollPosition.updateFraction(anchor.fallbackFraction)
+            editorScrollPosition.anchor = anchor
+        }
+        readScrollPosition = editorScrollPosition
+    }
+
+    @discardableResult
+    func requestScrollRestore(
+        fingerprint: String,
+        reason: ScrollRestoreReason,
+        position: ObservedScrollPosition? = nil
+    ) -> ScrollRestoreRequest {
+        requestReadScrollRestore(
+            fingerprint: fingerprint,
+            reason: reason,
+            position: position ?? activeScrollPosition
+        )
+    }
+
+    @discardableResult
+    func requestReadScrollRestore(
+        fingerprint: String,
+        reason: ScrollRestoreReason,
+        position: ObservedScrollPosition? = nil
+    ) -> ScrollRestoreRequest {
+        nextScrollRestoreRequestID &+= 1
+        let observed = position ?? readScrollPosition
+        let matchingAnchor = observed.anchor.flatMap { anchor in
+            anchor.sourceFingerprint == fingerprint ? anchor : nil
+        }
+        let request = ScrollRestoreRequest(
+            id: nextScrollRestoreRequestID,
+            fingerprint: fingerprint,
+            position: ObservedScrollPosition(
+                fraction: observed.fraction,
+                anchor: matchingAnchor
+            ),
+            reason: reason
+        )
+        scrollRestoreRequest = request
+        return request
+    }
+
+    func resetScrollPosition() {
+        readScrollPosition = ObservedScrollPosition()
+        editorScrollPosition = ObservedScrollPosition()
+        scrollRestoreRequest = nil
+    }
+
+    func acknowledgeScrollRestoreRequest(id: UInt64, fingerprint: String) {
+        guard scrollRestoreRequest?.id == id,
+            scrollRestoreRequest?.fingerprint == fingerprint
+        else { return }
+        scrollRestoreRequest = nil
+    }
 }
 
 /// Per-window retention for document sessions. `DocumentController` owns one
@@ -310,6 +453,7 @@ final class DocumentSessionStore {
     }
 
     private var entries: [DocumentEditingTarget: Entry] = [:]
+    private(set) var editorWebViewPool = MarkdownEditorWebViewPool()
 
     var retainedSessions: [DocumentEditingTarget: DocumentSessionModel] {
         entries.mapValues(\.session)
@@ -319,6 +463,7 @@ final class DocumentSessionStore {
         if let existing = entries[target]?.session { return existing }
         let key: DocumentSessionKey? = if case .workspace(let key) = target { key } else { nil }
         let session = DocumentSessionModel(key: key)
+        session.editorSession.webViewPool = editorWebViewPool
         entries[target] = Entry(session: session)
         return session
     }
@@ -341,6 +486,7 @@ final class DocumentSessionStore {
 
     func receiveSession(_ session: DocumentSessionModel, for target: DocumentEditingTarget) {
         precondition(entries[target] == nil)
+        session.editorSession.webViewPool = editorWebViewPool
         entries[target] = Entry(session: session, leaseCount: 1, isForeground: true)
     }
 
@@ -386,11 +532,11 @@ final class DocumentSessionStore {
         let eligible = entries.compactMap { target, entry -> ReapedPresentation? in
             guard entry.leaseCount == 0,
                 pinReasons(for: entry.session).isEmpty,
-                !entry.session.editorSession.hasAttachedNativeView
+                !entry.session.editorSession.hasAttachedWebView
             else { return nil }
             return ReapedPresentation(
                 target: target,
-                scrollPosition: entry.session.observedScrollPosition
+                scrollPosition: entry.session.activeScrollPosition
             )
         }
         for presentation in eligible {
@@ -401,8 +547,10 @@ final class DocumentSessionStore {
     }
 
     func removeAll() {
+        editorWebViewPool.invalidate()
+        editorWebViewPool = MarkdownEditorWebViewPool()
         for entry in entries.values {
-            if entry.session.editorSession.hasAttachedNativeView {
+            if entry.session.editorSession.hasAttachedWebView {
                 entry.session.cancelScheduledWork()
             } else {
                 entry.session.shutdown()

@@ -12,7 +12,7 @@ Live construction, tests and scripts establish precise current behavior.
 ## Current reachability profile
 
 The native App reaches a registered three-vault Triptych, Library and document
-tabs, Read/Edit, source-derived Search and Links, Writing References,
+tabs, Review/Edit/Source, source-derived Search and Links, Writing References,
 Settlement, guarded Note/file operations, note reorganization and Recovery.
 Exact Markdown remains authoritative; YAML properties are authored in source,
 not a separate managed metadata editor. File links and paragraph anchors refer
