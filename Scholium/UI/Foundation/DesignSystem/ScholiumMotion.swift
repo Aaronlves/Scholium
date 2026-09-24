@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 
 enum ScholiumMotion {
+    static let sidebarPageDuration: TimeInterval = 0.16
     static let libraryWorkspaceDuration: TimeInterval = 0.14
 
     /// Native preview window motion; reduced motion uses only a short fade.
@@ -29,6 +30,14 @@ enum ScholiumMotion {
 
     static func chatMessageArrival(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeOut(duration: 0.18)
+    }
+
+    static func documentNotice(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.18)
+    }
+
+    static func documentNoticeTransition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .identity : .opacity.combined(with: .offset(y: -8))
     }
 
     static func outlineInteraction(reduceMotion: Bool) -> Animation? {

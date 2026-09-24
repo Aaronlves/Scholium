@@ -59,9 +59,16 @@ struct SidebarIsolationTests {
             chat: Page(expanded: false), selection: .triptych)
         #expect(!libraryView.isHidden && chatView.isHidden)
         #expect(window.firstResponder !== chatView)
+        controller.update(
+            library: TextField("Library search", text: .constant("")),
+            chat: Page(expanded: true), selection: .chat)
+        #expect(libraryView.isHidden && !chatView.isHidden)
+        #expect(controller.libraryHost.view === libraryView)
+        #expect(controller.chatHost.view === chatView)
+        #expect(window.frame == original)
         window.setContentSize(.init(width: 1400, height: 900))
         window.contentView?.layoutSubtreeIfNeeded()
-        #expect(controller.view.safeAreaRect.contains(libraryView.frame))
+        #expect(controller.view.safeAreaRect.contains(chatView.frame))
         #expect(controller.libraryHost.sizingOptions.isEmpty && controller.chatHost.sizingOptions.isEmpty)
     }
 }

@@ -42,7 +42,10 @@ leading native icon selector, labelled Library / Chat in Help and accessibility,
 the chosen sidebar presentation. Choosing the other item switches content at the same
 width; choosing the visible item again collapses the sidebar, leaving neither item
 selected. Selecting either item while collapsed reveals it. Both presentations retain
-their independent scrolling and disclosure while switching. Native split visibility
+their independent scrolling and disclosure while switching. A brief content-only
+crossfade connects Library and Chat; the committed page takes input immediately,
+the hidden page leaves interaction and accessibility, and another switch interrupts
+the transition. Reduce Motion presents the complete page directly. Native split visibility
 remains authoritative, including menu and window-resize changes. Inspector controls
 use native enabled, selected, pressed, and disabled states, with no hand-tinted
 unavailable symbols or custom refusal animation. Chat is available with an open Triptych

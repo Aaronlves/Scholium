@@ -180,6 +180,7 @@ struct InspectorLinkGroup: Identifiable {
 struct ConnectionsInspectorView: View {
     let context: ConnectionsInspectorContext
     @ObservedObject var session: LinksInspectorSession
+    var isActive = true
 
     private var direction: ConnectionDirection { session.direction }
     private var locationKey: String {
@@ -217,10 +218,13 @@ struct ConnectionsInspectorView: View {
     var body: some View {
         let noteGroups = groups
         VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-            InspectorLinkDirectionControl(direction: $session.direction)
+            InspectorLinkDirectionControl(direction: $session.direction, isActive: isActive)
                 .padding(.horizontal, ResearchInspectorLayout.contentInset)
-            ContextSearchField(text: query, prompt: "Find in Links", identifier: "scholium.links.search")
-                .padding(.horizontal, ResearchInspectorLayout.contentInset)
+            ContextSearchField(
+                text: query, prompt: "Find in Links",
+                identifier: "scholium.links.search", isActive: isActive
+            )
+            .padding(.horizontal, ResearchInspectorLayout.contentInset)
             ScrollViewReader { proxy in
                 List {
                     Group {

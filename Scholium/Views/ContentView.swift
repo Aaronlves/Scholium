@@ -26,7 +26,6 @@ private enum DocumentTitleRenameError: LocalizedError {
 // MARK: - Content View
 
 struct ContentView: View {
-    @State private var operationIssueHeight: CGFloat = 0
     @ObservedObject var appState: WindowModel
     @ObservedObject private var presentationRouter: WindowPresentationRouter
     @ObservedObject private var discoveryController: DiscoveryController
@@ -735,59 +734,55 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detailRegion: some View {
-        VStack(spacing: 0) {
-            if !appState.transactionRecoveryRecords.isEmpty
-                || !appState.interruptedSaveRecoveries.isEmpty
-                || appState.transactionRecoveryError != nil
-                || appState.interruptedSaveRecoveryError != nil
-            {
-                TransactionRecoveryNotice(
-                    count: appState.transactionRecoveryRecords.count
-                        + appState.interruptedSaveRecoveries.count,
-                    error: appState.transactionRecoveryError
-                        ?? appState.interruptedSaveRecoveryError
-                ) {
-                    appState.showTransactionRecovery = true
-                }
+        detailContent
+            .animation(
+                ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
+                value: appState.currentNote != nil
+            )
+    }
+
+    private var hasShellNotices: Bool {
+        !appState.transactionRecoveryRecords.isEmpty
+            || !appState.interruptedSaveRecoveries.isEmpty
+            || appState.transactionRecoveryError != nil
+            || appState.interruptedSaveRecoveryError != nil
+            || !shellState.operationIssues.isEmpty
+            || appState.refreshStatusText != nil
+    }
+
+    @ViewBuilder
+    private var shellNotices: some View {
+        if !appState.transactionRecoveryRecords.isEmpty
+            || !appState.interruptedSaveRecoveries.isEmpty
+            || appState.transactionRecoveryError != nil
+            || appState.interruptedSaveRecoveryError != nil
+        {
+            TransactionRecoveryNotice(
+                count: appState.transactionRecoveryRecords.count
+                    + appState.interruptedSaveRecoveries.count,
+                error: appState.transactionRecoveryError
+                    ?? appState.interruptedSaveRecoveryError
+            ) {
+                appState.showTransactionRecovery = true
             }
-            if !shellState.operationIssues.isEmpty || appState.refreshStatusText != nil {
-                ScrollView {
-                    VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        ForEach(shellState.operationIssues) { issue in
-                            ScholiumOperationIssueView(
-                                issue: issue,
-                                refresh: { Task { await appState.retryDerivedRefresh() } },
-                                dismiss: { shellState.dismissOperationIssue(id: issue.id) })
-                        }
-                        if let status = appState.refreshStatusText {
-                            ScholiumDocumentStatusNotice(
-                                status, detail: "",
-                                kind: appState.hasDerivedRefreshFailure ? .attention : .information
-                            ) {
-                                if appState.hasDerivedRefreshFailure {
-                                    Button("Retry Refresh") { Task { await appState.retryDerivedRefresh() } }
-                                }
-                            }
-                            .accessibilityIdentifier("scholium.refreshStatus")
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-                    .onGeometryChange(for: CGFloat.self) {
-                        $0.size.height
-                    } action: {
-                        operationIssueHeight = $0
-                    }
-                }
-                .frame(height: min(operationIssueHeight, ScholiumMetrics.Notice.maximumStackHeight))
-            }
-            detailContent
         }
-        .animation(
-            ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
-            value: appState.currentNote != nil
-        )
+        ForEach(shellState.operationIssues) { issue in
+            ScholiumOperationIssueView(
+                issue: issue,
+                refresh: { Task { await appState.retryDerivedRefresh() } },
+                dismiss: { shellState.dismissOperationIssue(id: issue.id) })
+        }
+        if let status = appState.refreshStatusText {
+            ScholiumDocumentStatusNotice(
+                status, detail: "",
+                kind: appState.hasDerivedRefreshFailure ? .attention : .information
+            ) {
+                if appState.hasDerivedRefreshFailure {
+                    Button("Retry Refresh") { Task { await appState.retryDerivedRefresh() } }
+                }
+            }
+            .accessibilityIdentifier("scholium.refreshStatus")
+        }
     }
 
     @ViewBuilder
@@ -846,7 +841,9 @@ struct ContentView: View {
             DocumentFeatureView(
                 controller: appState.documentController,
                 state: documentFeatureState,
-                actions: documentFeatureActions
+                actions: documentFeatureActions,
+                hasShellNotices: hasShellNotices,
+                shellNotices: { shellNotices }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .transition(
@@ -858,6 +855,21 @@ struct ContentView: View {
             .zIndex(0)
         } else {
             ScholiumNoDocumentDetailView()
+                .overlay {
+                    GeometryReader { geometry in
+                        if hasShellNotices {
+                            ScholiumDocumentNoticeStack(availableSize: geometry.size) {
+                                shellNotices
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                            .transition(ScholiumMotion.documentNoticeTransition(reduceMotion: reduceMotion))
+                        }
+                    }
+                    .animation(
+                        ScholiumMotion.documentNotice(reduceMotion: reduceMotion),
+                        value: hasShellNotices
+                    )
+                }
                 .transition(
                     ScholiumMotion.documentRevealTransition(
                         showingDocument: false,

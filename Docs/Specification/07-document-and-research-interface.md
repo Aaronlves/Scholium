@@ -424,13 +424,14 @@ Closing returns to the originating context without changing Settlement. Direct U
 §8.4's revision requirement; creation and system Trash have no fabricated
 source preimage or Undo.
 
-An icon-only native single-choice group in the Inspector's toolbar selects
-Links or Related Material; each icon retains its complete Help and accessibility
-name. These panes share content-edge insets and top spacing, use system semantic
-control colors, and leave selection and interaction feedback to native controls.
-Pane content never repeats that selector. Each
-workspace retains its selection across Note and tab changes. Hiding Inspector
-moves no content elsewhere. Without a Document it presents No Document Selected.
+An icon-only native single-choice Inspector toolbar group selects Links or Related
+Material, with Help and accessible names. Panes share content-edge insets, top
+spacing, system semantic colors and native selection/interaction feedback.
+Content crossfades; toolbar and Document stay still. Panes retain scroll position;
+the hidden one loses input and accessibility immediately. Reduce Motion switches
+directly. Neither pane repeats the selector. Workspaces retain selection across
+Notes and tabs. Hiding Inspector moves no content elsewhere. Without a Document
+it shows No Document Selected.
 
 Related Material follows selected or paused Edit/Source text, including unsaved
 writing. Opening, switching editors and selection changes schedule debounced
@@ -610,8 +611,9 @@ This is not a universal runtime enum or second state store.
 | **Disabled** | Known action lacks a prerequisite; keep discoverable when core. | Unavailable content |
 
 Document Loading, Empty and Unavailable share centered presentation.
-Editor failure retains source and offers Retry Edit and Source. Notices above
-usable content share a bounded, centered measure with reflowing native actions.
+Editor failure retains source; offers Retry Edit and Source. Notices float
+over content without resizing its viewport, bounded and centered with
+reflowing actions.
 
 Owners retain state and context; §20 owns accessibility and persistent
 repair. Settle and Dismiss retain their meanings. Fields, rows and notices keep

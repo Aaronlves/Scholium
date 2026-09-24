@@ -498,6 +498,9 @@ extension ScholiumUITests {
             + String(repeating: "synthetic exact-source soft-wrap probe ", count: 18)
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         try enterLivePreviewAndAppend(localToken)
+        let editorViewport = app.webViews.firstMatch
+        XCTAssertTrue(editorViewport.exists)
+        let viewportBeforeNotice = editorViewport.frame
 
         var externalDisk = try source(at: noteURL)
         let frontmatterEnd = try XCTUnwrap(externalDisk.range(of: "\n---\n"))
@@ -516,6 +519,10 @@ extension ScholiumUITests {
             "scholium.documentStatus.conflict"
         ]
         XCTAssertTrue(conflictStatus.exists)
+        XCTAssertEqual(
+            editorViewport.frame, viewportBeforeNotice,
+            "A Document notice must not resize or shift the retained editor viewport."
+        )
         XCTAssertTrue(accessibilityText(of: conflictStatus).contains("Autosave Paused"))
         XCTAssertGreaterThanOrEqual(compare.frame.minX, conflictStatus.frame.minX)
         XCTAssertLessThanOrEqual(compare.frame.maxX, conflictStatus.frame.maxX)

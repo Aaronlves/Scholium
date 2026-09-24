@@ -535,3 +535,28 @@ struct ScholiumDocumentStatusNotice<Actions: View>: View {
     }
 
 }
+
+/// Keeps Document feedback inside its own region without changing the size of
+/// the retained reading or editing surface. Long notice lists scroll locally.
+struct ScholiumDocumentNoticeStack<Notices: View>: View {
+    let availableSize: CGSize
+    @ViewBuilder let notices: () -> Notices
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                notices()
+            }
+            .frame(maxWidth: .infinity)
+            .padding(ScholiumGrid.Spacing.regionContentInset)
+        }
+        .frame(
+            width: min(
+                ScholiumMetrics.Notice.readableWidth + 2 * ScholiumGrid.Spacing.regionContentInset,
+                availableSize.width
+            )
+        )
+        .frame(maxHeight: min(ScholiumMetrics.Notice.maximumStackHeight, availableSize.height / 2))
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}

@@ -141,19 +141,25 @@ struct DocumentFeatureActions {
 
 // MARK: - Note Content Container
 
-struct DocumentFeatureView: View {
+struct DocumentFeatureView<ShellNotices: View>: View {
     @ObservedObject private var controller: DocumentController
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
+    let hasShellNotices: Bool
+    let shellNotices: ShellNotices
 
     init(
         controller: DocumentController,
         state: DocumentFeatureState,
-        actions: DocumentFeatureActions
+        actions: DocumentFeatureActions,
+        hasShellNotices: Bool,
+        @ViewBuilder shellNotices: () -> ShellNotices
     ) {
         self.controller = controller
         self.state = state
         self.actions = actions
+        self.hasShellNotices = hasShellNotices
+        self.shellNotices = shellNotices()
     }
 
     var body: some View {
@@ -177,7 +183,9 @@ struct DocumentFeatureView: View {
                     note: note,
                     documentSession: controller.session(for: key),
                     state: state,
-                    actions: actions
+                    actions: actions,
+                    hasShellNotices: hasShellNotices,
+                    shellNotices: shellNotices
                 )
                 .id(key)
             } else {
@@ -189,7 +197,9 @@ struct DocumentFeatureView: View {
                         relativePath: note.relativePath
                     ),
                     state: state,
-                    actions: actions
+                    actions: actions,
+                    hasShellNotices: hasShellNotices,
+                    shellNotices: shellNotices
                 )
                 .id(selectedDocumentPath)
             }
@@ -197,12 +207,14 @@ struct DocumentFeatureView: View {
     }
 }
 
-private struct DocumentSessionFallback: View {
+private struct DocumentSessionFallback<ShellNotices: View>: View {
     let note: WindowDocumentLocation
     let controller: DocumentController
     let target: DocumentEditingTarget
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
+    let hasShellNotices: Bool
+    let shellNotices: ShellNotices
 
     var body: some View {
         NoteContentView(
@@ -211,12 +223,14 @@ private struct DocumentSessionFallback: View {
             note: note,
             documentSession: controller.session(for: target),
             state: state,
-            actions: actions
+            actions: actions,
+            hasShellNotices: hasShellNotices,
+            shellNotices: shellNotices
         )
     }
 }
 
-struct NoteContentView: View {
+struct NoteContentView<ShellNotices: View>: View {
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @ObservedObject private var controller: DocumentController
@@ -226,6 +240,8 @@ struct NoteContentView: View {
     let note: WindowDocumentLocation
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
+    let hasShellNotices: Bool
+    let shellNotices: ShellNotices
     @StateObject private var quickLook = DocumentAttachmentQuickLookSession()
     @StateObject private var documentFind = DocumentFindPresentationModel()
     @State private var isInsertingImage = false
@@ -243,7 +259,9 @@ struct NoteContentView: View {
         note: WindowDocumentLocation,
         documentSession: DocumentSessionModel,
         state: DocumentFeatureState,
-        actions: DocumentFeatureActions
+        actions: DocumentFeatureActions,
+        hasShellNotices: Bool,
+        shellNotices: ShellNotices
     ) {
         self.controller = controller
         _documentSession = ObservedObject(wrappedValue: documentSession)
@@ -251,6 +269,8 @@ struct NoteContentView: View {
         self.note = note
         self.state = state
         self.actions = actions
+        self.hasShellNotices = hasShellNotices
+        self.shellNotices = shellNotices
         _outlineScrollFraction = State(initialValue: documentSession.scrollFraction)
         _outlineScrollAnchor = State(initialValue: documentSession.scrollAnchor)
     }
@@ -328,91 +348,74 @@ struct NoteContentView: View {
 
     var body: some View {
         AnyView(
-            VStack(spacing: 0) {
-                if let ambiguity = state.identityAmbiguity {
-                    IdentityAmbiguityNotice(ambiguity: ambiguity) {
-                        actions.requestIdentityResolution()
-                    }
-                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-                } else if let pending = state.pendingIdentityRebinding {
-                    IdentityMigrationNotice(
-                        rebinding: pending,
-                        message: state.identityMigrationFailureMessage,
-                        isRetrying: state.isResolvingIdentity
-                    ) {
-                        await actions.retryIdentityRecovery()
-                    }
-                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-                }
-
-                if let presentation = documentIntegrityPresentation {
-                    ScholiumDocumentStatusNotice(
-                        presentation.title,
-                        detail: presentation.detail,
-                        kind: presentation.kind
-                    ) {
-                        documentIntegrityActions(presentation)
-                    }
-                    .accessibilityIdentifier(presentation.accessibilityIdentifier)
-                    .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-                }
-
-                documentBodySurface
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .overlay {
-                        DocumentFindOverlay(model: documentFind, allowsReplacement: isEditing)
-                    }
-            }
-            .scholiumSurface(.document)
-            .focusedSceneValue(
-                \.scholiumEditorActions,
-                ScholiumFocusedEditorActions(
-                    documentID: isEditing ? editorSession.documentID : note.relativePath,
-                    isComposing: isEditing && editorSession.context?.composing == true,
-                    allowsReplace: isEditing,
-                    isAvailable: { command in
-                        isEditing && editorSession.context?.availableCommands.contains(command) == true
-                    },
-                    perform: { command in
-                        Task { @MainActor in
-                            do {
-                                try await editorSession.perform(command)
-                            } catch {
-                                actions.notify(error.localizedDescription, .error)
+            documentBodySurface
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    GeometryReader { geometry in
+                        VStack(spacing: 0) {
+                            if hasShellNotices || hasLocalNotices {
+                                ScholiumDocumentNoticeStack(availableSize: geometry.size) {
+                                    shellNotices
+                                    localNotices
+                                }
+                                .frame(maxWidth: .infinity, alignment: .top)
+                                .transition(ScholiumMotion.documentNoticeTransition(reduceMotion: reduceMotion))
                             }
+                            DocumentFindOverlay(model: documentFind, allowsReplacement: isEditing)
                         }
-                    },
-                    performWithArgument: { command, argument in
-                        Task { @MainActor in
-                            do {
-                                try await editorSession.perform(command, argument: argument)
-                            } catch {
-                                actions.notify(error.localizedDescription, .error)
+                        .animation(
+                            ScholiumMotion.documentNotice(reduceMotion: reduceMotion),
+                            value: hasShellNotices || hasLocalNotices
+                        )
+                    }
+                }
+                .scholiumSurface(.document)
+                .focusedSceneValue(
+                    \.scholiumEditorActions,
+                    ScholiumFocusedEditorActions(
+                        documentID: isEditing ? editorSession.documentID : note.relativePath,
+                        isComposing: isEditing && editorSession.context?.composing == true,
+                        allowsReplace: isEditing,
+                        isAvailable: { command in
+                            isEditing && editorSession.context?.availableCommands.contains(command) == true
+                        },
+                        perform: { command in
+                            Task { @MainActor in
+                                do {
+                                    try await editorSession.perform(command)
+                                } catch {
+                                    actions.notify(error.localizedDescription, .error)
+                                }
                             }
-                        }
-                    },
-                    presentFind: documentFind.present,
-                    presentReplace: documentFind.presentReplacement,
-                    findNext: documentFind.next,
-                    findPrevious: documentFind.previous,
-                    useSelectionForFind: useSelectionForDocumentFind,
-                    importImage: requestImageImport,
-                    indexImage: requestImageIndex,
-                    canAttachDocument: isEditing && editorSession.isLoaded && documentAttachmentTarget != nil
-                        && !documentSession.isAttachingDocument,
-                    attachDocumentCopy: {
-                        requestDocumentAttachment(.copyIntoTriptych)
-                    },
-                    referenceOriginalDocument: {
-                        requestDocumentAttachment(.referenceOriginal)
-                    },
-                    canEditFrontmatter: editingIsAvailable,
-                    goToFrontmatter: goToFrontmatter
+                        },
+                        performWithArgument: { command, argument in
+                            Task { @MainActor in
+                                do {
+                                    try await editorSession.perform(command, argument: argument)
+                                } catch {
+                                    actions.notify(error.localizedDescription, .error)
+                                }
+                            }
+                        },
+                        presentFind: documentFind.present,
+                        presentReplace: documentFind.presentReplacement,
+                        findNext: documentFind.next,
+                        findPrevious: documentFind.previous,
+                        useSelectionForFind: useSelectionForDocumentFind,
+                        importImage: requestImageImport,
+                        indexImage: requestImageIndex,
+                        canAttachDocument: isEditing && editorSession.isLoaded && documentAttachmentTarget != nil
+                            && !documentSession.isAttachingDocument,
+                        attachDocumentCopy: {
+                            requestDocumentAttachment(.copyIntoTriptych)
+                        },
+                        referenceOriginalDocument: {
+                            requestDocumentAttachment(.referenceOriginal)
+                        },
+                        canEditFrontmatter: editingIsAvailable,
+                        goToFrontmatter: goToFrontmatter
+                    )
                 )
-            )
         )
         .sheet(
             isPresented: Binding(
@@ -572,6 +575,40 @@ struct NoteContentView: View {
             }
         }
         .onDisappear {
+        }
+    }
+
+    private var hasLocalNotices: Bool {
+        state.identityAmbiguity != nil
+            || state.pendingIdentityRebinding != nil
+            || documentIntegrityPresentation != nil
+    }
+
+    @ViewBuilder
+    private var localNotices: some View {
+        if let ambiguity = state.identityAmbiguity {
+            IdentityAmbiguityNotice(ambiguity: ambiguity) {
+                actions.requestIdentityResolution()
+            }
+        } else if let pending = state.pendingIdentityRebinding {
+            IdentityMigrationNotice(
+                rebinding: pending,
+                message: state.identityMigrationFailureMessage,
+                isRetrying: state.isResolvingIdentity
+            ) {
+                await actions.retryIdentityRecovery()
+            }
+        }
+
+        if let presentation = documentIntegrityPresentation {
+            ScholiumDocumentStatusNotice(
+                presentation.title,
+                detail: presentation.detail,
+                kind: presentation.kind
+            ) {
+                documentIntegrityActions(presentation)
+            }
+            .accessibilityIdentifier(presentation.accessibilityIdentifier)
         }
     }
 
@@ -1856,6 +1893,8 @@ private struct ConflictComparisonSheet: View {
         note: note,
         documentSession: DocumentSessionModel(key: nil),
         state: state,
-        actions: actions
+        actions: actions,
+        hasShellNotices: false,
+        shellNotices: EmptyView()
     )
 }

@@ -5,6 +5,7 @@ struct ContextSearchField: NSViewRepresentable {
     @Binding var text: String
     let prompt: String
     let identifier: String
+    var isActive = true
     struct Option {
         let title: String
         let selected: Bool
@@ -29,6 +30,7 @@ struct ContextSearchField: NSViewRepresentable {
         searchField.setAccessibilityLabel(ScholiumL10n.dynamicString(prompt))
         searchField.setAccessibilityIdentifier(identifier)
         searchField.maximumRecents = 0
+        searchField.isEnabled = isActive
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         if !options.isEmpty { searchField.searchMenuTemplate = context.coordinator.scopeMenu() }
@@ -43,6 +45,13 @@ struct ContextSearchField: NSViewRepresentable {
 
     func updateNSView(_ searchField: Field, context: Context) {
         context.coordinator.parent = self
+        if !isActive,
+            let editor = searchField.currentEditor(),
+            searchField.window?.firstResponder === editor
+        {
+            searchField.window?.makeFirstResponder(nil)
+        }
+        searchField.isEnabled = isActive
         if (searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true, searchField.stringValue != text {
             searchField.stringValue = text
         }
@@ -58,6 +67,7 @@ struct ContextSearchField: NSViewRepresentable {
         }
         private func applyFocus() {
             guard let focusRequest, focusRequest != appliedFocus,
+                isEnabled,
                 (currentEditor() as? NSTextView)?.hasMarkedText() != true,
                 let window, window.makeFirstResponder(self)
             else { return }

@@ -11,6 +11,7 @@ enum ResearchInspectorLayout {
 
 struct ResearchInspectorView: View {
     @ObservedObject private var shellState: WindowShellState
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
 
     @State private var externalProjectionKey: String?
     @State private var externalLinks: [SourceResourceReferences.ExternalLink] = []
@@ -73,19 +74,42 @@ struct ResearchInspectorView: View {
     }
 
     var body: some View {
+        let showsRelated = shellState.inspector.mode == .related
+        let linksActive = shellState.inspector.isVisible && !showsRelated
+        let relatedActive = shellState.inspector.isVisible && showsRelated
+        let paneAnimation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.16)
         ZStack(alignment: .topLeading) {
-            if shellState.inspector.mode == .related {
-                RelatedMaterialsView(
-                    session: research.relatedMaterials, isVisible: shellState.inspector.isVisible,
-                    editor: editor, find: findRelated,
-                    retry: retryRelated,
-                    open: openRelated, addToChat: discussRelated, insert: insertRelated, insertParagraph: insertRelatedParagraph)
+            ConnectionsInspectorView(
+                context: connectionsContext,
+                session: research.linksInspector,
+                isActive: linksActive
+            )
+            .animation(paneAnimation) { pane in
+                pane.opacity(showsRelated ? 0 : 1)
             }
-            if shellState.inspector.mode == .links {
-                ConnectionsInspectorView(
-                    context: connectionsContext,
-                    session: research.linksInspector
-                )
+            .disabled(!linksActive)
+            .allowsHitTesting(linksActive)
+            .accessibilityHidden(!linksActive)
+
+            RelatedMaterialsView(
+                session: research.relatedMaterials,
+                isVisible: relatedActive,
+                editor: editor, find: findRelated,
+                retry: retryRelated,
+                open: openRelated, addToChat: discussRelated,
+                insert: insertRelated, insertParagraph: insertRelatedParagraph
+            )
+            .animation(paneAnimation) { pane in
+                pane.opacity(showsRelated ? 1 : 0)
+            }
+            .disabled(!relatedActive)
+            .allowsHitTesting(relatedActive)
+            .accessibilityHidden(!relatedActive)
+        }
+        .transaction {
+            if reduceMotion {
+                $0.animation = nil
+                $0.disablesAnimations = true
             }
         }
         .task(id: resourceProjectionKey) {

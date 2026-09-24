@@ -7,8 +7,20 @@ struct AgentChatReplyNavigation: Equatable {
     let messageID: String
 }
 
+private struct AgentChatOutgoingPageInteraction: ViewModifier {
+    let isInteractive: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .allowsHitTesting(isInteractive)
+            .accessibilityHidden(!isInteractive)
+    }
+}
+
 /// Window-local routing and retained page presentation; runtime state stays in the controller.
 struct AgentChatView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.controlActiveState) private var activeState
     @ObservedObject var controller: AgentChatController
     let transcriptReaderID: UUID
     let isVisible: Bool
@@ -39,48 +51,29 @@ struct AgentChatView: View {
     @State private var showsRename = false
     @State private var renameTitle = ""
 
+    private var navigationAnimation: Animation? {
+        isVisible && !reduceMotion && activeState != .inactive ? .smooth(duration: 0.24) : nil
+    }
+
+    private func pageTransition(from edge: Edge) -> AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: edge),
+            removal: .move(edge: edge).combined(
+                with: .modifier(
+                    active: AgentChatOutgoingPageInteraction(isInteractive: false),
+                    identity: AgentChatOutgoingPageInteraction(isInteractive: true))))
+    }
+
     var body: some View {
-        Group {
+        ZStack(alignment: .topLeading) {
             if showsConversationList {
-                AgentChatConversationListView(
-                    controller: controller, state: listState,
-                    showConversation: { showsConversationList = false },
-                    newConversation: newConversation, renameConversation: renameConversation,
-                    showConversationChanges: showConversationChanges,
-                    showAccountUsage: { showsAccountUsage = true },
-                    showDiagnostics: { presentDiagnostics(error: $0) }
-                )
+                listPage
             } else {
-                AgentChatConversationDetailView(
-                    controller: controller, isVisible: isVisible,
-                    addSelection: addSelection, noteChoices: noteChoices, addNote: addNote,
-                    openReference: openReference, openAttachment: openAttachment,
-                    showInLibrary: showInLibrary, showChanges: showChanges,
-                    showConversationChanges: showConversationChanges,
-                    changes: changes, changesError: changesError,
-                    presentation: detailPresentation,
-                    readingSession: readingStore.session(for: controller.selectedID),
-                    focusRequest: focusRequest,
-                    consumeFocusRequest: { if focusRequest == $0 { focusRequest = nil } },
-                    replyNavigation: replyNavigation,
-                    openReply: { target in
-                        controller.select(target.conversationID)
-                        replyNavigation = target
-                    },
-                    showList: {
-                        detailPresentation.contextAnchor = nil
-                        detailPresentation.completion.dismiss()
-                        showsConversationList = true
-                    },
-                    newConversation: newConversation,
-                    didRestoreConversation: { listState.showsArchived = false },
-                    renameConversation: renameConversation,
-                    showAccountUsage: { showsAccountUsage = true },
-                    showDiagnostics: { presentDiagnostics(messageID: $0, error: $1) }
-                )
-                .id(controller.selectedID)
+                detailPage
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.chat")
         .popover(isPresented: $showsDiagnostics) {
@@ -131,15 +124,61 @@ struct AgentChatView: View {
         .onDisappear { controller.displayTranscript(nil, readerID: transcriptReaderID) }
         .onChange(of: controller.contextPresentationID, initial: true) { _, request in
             guard request != nil else { return }
-            showsConversationList = false
+            showDetail(animated: false)
             focusRequest = UUID()
         }
         .onChange(of: controller.selected?.attachments.count) { old, new in
             if (new ?? 0) > (old ?? 0) {
-                showsConversationList = false
+                showDetail(animated: false)
                 focusRequest = UUID()
             }
         }
+    }
+
+    private var listPage: some View {
+        AgentChatConversationListView(
+            controller: controller, state: listState,
+            showConversation: { showDetail() },
+            newConversation: newConversation, renameConversation: renameConversation,
+            showConversationChanges: showConversationChanges,
+            showAccountUsage: { showsAccountUsage = true },
+            showDiagnostics: { presentDiagnostics(error: $0) }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(pageTransition(from: .leading))
+    }
+
+    private var detailPage: some View {
+        AgentChatConversationDetailView(
+            controller: controller, isVisible: isVisible && !showsConversationList,
+            addSelection: addSelection, noteChoices: noteChoices, addNote: addNote,
+            openReference: openReference, openAttachment: openAttachment,
+            showInLibrary: showInLibrary, showChanges: showChanges,
+            showConversationChanges: showConversationChanges,
+            changes: changes, changesError: changesError,
+            presentation: detailPresentation,
+            readingSession: readingStore.session(for: controller.selectedID),
+            focusRequest: focusRequest,
+            consumeFocusRequest: { if focusRequest == $0 { focusRequest = nil } },
+            replyNavigation: replyNavigation,
+            openReply: { target in
+                controller.select(target.conversationID)
+                replyNavigation = target
+            },
+            showList: {
+                detailPresentation.contextAnchor = nil
+                detailPresentation.completion.dismiss()
+                showList()
+            },
+            newConversation: newConversation,
+            didRestoreConversation: { listState.showsArchived = false },
+            renameConversation: renameConversation,
+            showAccountUsage: { showsAccountUsage = true },
+            showDiagnostics: { presentDiagnostics(messageID: $0, error: $1) }
+        )
+        .id(controller.selectedID)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(pageTransition(from: .trailing))
     }
 
     private func newConversation() {
@@ -155,8 +194,17 @@ struct AgentChatView: View {
             controller.newConversation()
         }
         listState.showsArchived = false
-        showsConversationList = false
+        showDetail()
         focusRequest = UUID()
+    }
+
+    private func showList() {
+        detailPresentation.messageIsFocused = false
+        withAnimation(navigationAnimation) { showsConversationList = true }
+    }
+
+    private func showDetail(animated: Bool = true) {
+        withAnimation(animated ? navigationAnimation : nil) { showsConversationList = false }
     }
 
     private func renameConversation(_ conversation: AgentChatConversation) {

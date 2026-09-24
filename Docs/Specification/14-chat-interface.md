@@ -13,7 +13,10 @@ visual authority.
 ### Conversation list and transcript
 
 Chat inherits the Sidebar background with list-to-detail
-navigation. A native sidebar List scrolls; buttons open conversations without persistent selection. Text-aligned separators divide rows in one continuous list. Dates accompany titles; no date sections. Titles wrap and expose Help; previews
+navigation. The list and detail move in the direction of navigation without
+moving the Sidebar or Document; Back reverses the direction. Contextual handoffs
+and Reduce Motion present the destination immediately. Conversation drafts and
+reading positions survive either route. A native sidebar List scrolls; buttons open conversations without persistent selection. Text-aligned separators divide rows in one continuous list. Dates accompany titles; no date sections. Titles wrap and expose Help; previews
 strip Markdown while retaining search matches. Draft, Unread, Important
 and current activity have text equivalents; completed turns carry no checkmark.
 One click opens; native button focus and keyboard activation remain available. Organize switches
@@ -554,7 +557,7 @@ detail, and opens a native account-only sheet with reported quota, reset, Refres
 and Done. Inspecting or closing either surface never reads Notes, resumes a turn,
 sends input or clears a draft. Long content scrolls within its own surface.
 
-Motion follows native controls and containers under §19. Card disclosure and tab
+Motion follows the editorial continuity in §19. Card disclosure and tab
 selection use system transitions; request-to-confirmation feedback changes in
 place with a persistent label and restrained native symbol replacement. Reduce
 Motion supplies the same state immediately. No full-form transition replaces an

@@ -4,6 +4,7 @@ import SwiftUI
 /// AppKit owns segment drawing, selection, focus and appearance adaptation.
 struct InspectorLinkDirectionControl: NSViewRepresentable {
     @Binding var direction: ConnectionDirection
+    var isActive = true
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -20,11 +21,16 @@ struct InspectorLinkDirectionControl: NSViewRepresentable {
         control.setAccessibilityIdentifier("scholium.links.direction")
         control.setContentHuggingPriority(.defaultLow, for: .horizontal)
         control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        control.isEnabled = isActive
         return control
     }
 
     func updateNSView(_ control: NSSegmentedControl, context: Context) {
         context.coordinator.parent = self
+        if !isActive, control.window?.firstResponder === control {
+            control.window?.makeFirstResponder(nil)
+        }
+        control.isEnabled = isActive
         for (index, item) in ConnectionDirection.allCases.enumerated() {
             let title = ScholiumL10n.dynamicString(item.tabTitle)
             control.setLabel(item == direction ? title : "", forSegment: index)

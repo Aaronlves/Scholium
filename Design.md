@@ -78,9 +78,13 @@ specify which content and routes remain available. Avoid fixed geometry that
 prevents native adaptation. Exact spacing, font sizes, opacity, radii and timing
 remain implementation defaults unless an owning requirement needs a threshold.
 
-Native controls and containers own interface motion. Do not add a separate
-feedback animation system. Motion never delays input or celebrates a research
-judgment; §20 owns Reduce Motion and other adaptation requirements.
+Motion is part of Scholium's editorial hierarchy: it helps researchers follow
+changes in location, object identity and state while preserving continuity of
+reading and writing. Native controls retain system behavior; Scholium may
+design motion for app-owned navigation and research feedback. Motion stays
+local and interruptible. It never delays input, replaces textual state or
+implies a scholarly judgment. §20 owns Reduce Motion, which presents the
+complete result immediately, and other adaptation requirements.
 
 ### 19.4 Symbols and identity artwork
 
