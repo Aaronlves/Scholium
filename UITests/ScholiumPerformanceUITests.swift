@@ -140,18 +140,22 @@ final class ScholiumPerformanceUITests: XCTestCase {
         }
     }
 
-    /// Proves the exact packaged Release artifact starts at Bootstrap when its
-    /// isolated machine-state root is empty. No fixture registration is
-    /// supplied, so Restore Access is never a valid first-launch route.
+    /// Exercises one clean Core journey on the exact packaged Release App.
+    /// The shell driver runs this against both the mounted and copied bundle,
+    /// each with its own disposable standard Triptych and empty state root.
     @MainActor
-    func testPackagedFirstLaunchUsesBootstrap() throws {
+    func testPackagedCoreSmoke() throws {
         continueAfterFailure = false
         let environment = ProcessInfo.processInfo.environment
-        guard environment["SCHOLIUM_PACKAGED_FIRST_LAUNCH_PROOF"] == "1" else {
-            throw XCTSkip("The packaged first-launch proof is not configured.")
+        guard environment["SCHOLIUM_PACKAGED_CORE_SMOKE"] == "1" else {
+            throw XCTSkip("The packaged Core smoke is not configured.")
         }
         let applicationPath = try required(
             "SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH",
+            in: environment
+        )
+        let fixtureRoot = try required(
+            "SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT",
             in: environment
         )
         let homeRoot = try required(
@@ -159,6 +163,21 @@ final class ScholiumPerformanceUITests: XCTestCase {
             in: environment
         )
         let runID = try required("SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID", in: environment)
+        let triptych = URL(fileURLWithPath: fixtureRoot, isDirectory: true)
+        let noteURL = triptych.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalBytes = try Data(contentsOf: noteURL)
+        let originalSource = try XCTUnwrap(String(data: originalBytes, encoding: .utf8))
+        let addition = "packaged-core-smoke-\(runID)\n"
+        let expectedSource = originalSource + addition
+        let expectedBytes = Data(expectedSource.utf8)
+        for role in ["01-analyses", "02-topics", "03-works"] {
+            XCTAssertTrue(
+                FileManager.default.fileExists(
+                    atPath: triptych.appendingPathComponent(role, isDirectory: true).path
+                ),
+                "The packaged smoke needs all three standard fixture folders."
+            )
+        }
         let application = XCUIApplication(
             url: URL(fileURLWithPath: applicationPath, isDirectory: true)
         )
@@ -190,6 +209,150 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.descendants(matching: .any)["scholium.restoreAccess"].exists,
             "Restore Access is valid only for an already configured Triptych."
         )
+
+        application.buttons["scholium.bootstrap.connectExisting"].click()
+        XCTAssertTrue(
+            application.descendants(matching: .any)["scholium.bootstrap.existingFolders"]
+                .waitForExistence(timeout: 5)
+        )
+        choosePackagedFolder(
+            triptych.appendingPathComponent("01-analyses", isDirectory: true),
+            button: "scholium.bootstrap.chooseAnalyses",
+            in: application
+        )
+        choosePackagedFolder(
+            triptych.appendingPathComponent("02-topics", isDirectory: true),
+            button: "scholium.bootstrap.chooseTopics",
+            in: application
+        )
+        choosePackagedFolder(
+            triptych.appendingPathComponent("03-works", isDirectory: true),
+            button: "scholium.bootstrap.chooseWorks",
+            in: application
+        )
+        choosePackagedFolder(
+            triptych,
+            button: "scholium.bootstrap.authorizeParent",
+            in: application
+        )
+        let connect = application.buttons["Connect and Open"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 5))
+        XCTAssertTrue(connect.isEnabled)
+        connect.click()
+        let noteRow = packagedNoteRow(in: application)
+        XCTAssertTrue(noteRow.waitForExistence(timeout: 45))
+        XCTAssertFalse(
+            application.descendants(matching: .any)["scholium.bootstrap"].exists,
+            "A connected Triptych must replace Bootstrap."
+        )
+        noteRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let mode = documentModeControl(in: application)
+        XCTAssertTrue(mode.waitForExistence(timeout: 20))
+        selectPackagedSourceMode(in: application, control: mode)
+        let editor = application.descendants(matching: .any)["Markdown source editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 20))
+        XCTAssertTrue(waitUntil(timeout: 20) { editor.value as? String == originalSource })
+        editor.click()
+        editor.typeKey(.end, modifierFlags: [.command])
+        editor.typeText(addition)
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == expectedSource })
+        application.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 30) { (try? Data(contentsOf: noteURL)) == expectedBytes },
+            "Saving must write the exact edited Markdown bytes to the disposable Note."
+        )
+
+        XCTAssertTrue(
+            stopPackagedApplication(
+                application,
+                bundleURL: URL(fileURLWithPath: applicationPath, isDirectory: true)
+            ),
+            "The packaged App must fully terminate before the restore launch."
+        )
+        application.launch()
+        XCTAssertTrue(application.windows.firstMatch.waitForExistence(timeout: 30))
+        XCTAssertFalse(
+            application.descendants(matching: .any)["scholium.bootstrap"].exists,
+            "The saved Triptych must restore without repeating Bootstrap."
+        )
+        let restoredRow = packagedNoteRow(in: application)
+        XCTAssertTrue(restoredRow.waitForExistence(timeout: 30))
+        restoredRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let restoredMode = documentModeControl(in: application)
+        XCTAssertTrue(restoredMode.waitForExistence(timeout: 20))
+        selectPackagedSourceMode(in: application, control: restoredMode)
+        let restoredEditor = application.descendants(matching: .any)["Markdown source editor"]
+        XCTAssertTrue(restoredEditor.waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            waitUntil(timeout: 20) { restoredEditor.value as? String == expectedSource },
+            "Reopening after relaunch must display the exact saved source."
+        )
+        XCTAssertEqual(try Data(contentsOf: noteURL), expectedBytes)
+    }
+
+    @MainActor
+    private func choosePackagedFolder(
+        _ folder: URL,
+        button: String,
+        in application: XCUIApplication
+    ) {
+        let chooseButton = application.buttons[button]
+        XCTAssertTrue(chooseButton.waitForExistence(timeout: 5))
+        chooseButton.click()
+        let panel = application.descendants(matching: .any)["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        application.typeKey("g", modifierFlags: [.command, .shift])
+        let goToFolder = application.sheets.matching(
+            NSPredicate(format: "identifier != %@", "open-panel")
+        ).firstMatch
+        XCTAssertTrue(goToFolder.waitForExistence(timeout: 5))
+        let pathField = goToFolder.textFields.firstMatch
+        XCTAssertTrue(pathField.waitForExistence(timeout: 5))
+        pathField.click()
+        pathField.typeKey("a", modifierFlags: [.command])
+        pathField.typeText(folder.path)
+        let confirmFolder = goToFolder.buttons.allElementsBoundByIndex
+            .reversed()
+            .first(where: {
+                $0.isEnabled && $0.label != "Cancel" && $0.label != "Close"
+                    && $0.identifier != "CancelButton" && $0.identifier != "CloseButton"
+            })
+        if let confirmFolder {
+            confirmFolder.click()
+        } else {
+            application.typeKey(.return, modifierFlags: [])
+        }
+        XCTAssertTrue(waitUntil(timeout: 5) { !goToFolder.exists })
+        guard panel.exists else { return }
+        let choose = panel.buttons["OKButton"]
+        XCTAssertTrue(choose.waitForExistence(timeout: 5))
+        choose.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+    }
+
+    @MainActor
+    private func packagedNoteRow(in application: XCUIApplication) -> XCUIElement {
+        application.outlines["scholium.noteList"]
+            .descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.noteRow.QA Autosave A.md")
+            .firstMatch
+    }
+
+    @MainActor
+    private func selectPackagedSourceMode(
+        in application: XCUIApplication,
+        control: XCUIElement
+    ) {
+        if documentModeState(control) == "Source" { return }
+        application.menuBars.menuBarItems["View"].click()
+        let documentModeMenu = application.menuItems["Document Mode"].firstMatch
+        XCTAssertTrue(documentModeMenu.waitForExistence(timeout: 5))
+        documentModeMenu.hover()
+        let source = application.menuItems["Source"].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        source.click()
     }
 
     /// Samples only the app and WebKit service PIDs attributed to this exact
