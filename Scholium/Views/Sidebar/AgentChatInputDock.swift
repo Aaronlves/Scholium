@@ -30,15 +30,21 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
     @FocusState private var requestHasFocus: Bool
 
     private var expanded: Bool { requestID != nil && presentation.isExpanded }
+    private var mayExpandRequest: Bool { isActive && !isEditingDraft && !isReadingHistory }
+    private var isAwaitingAutomaticExpansion: Bool {
+        !expanded && presentation.requestID == nil && requestID != nil && mayExpandRequest
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumSidebarLayout.itemSpacing) {
-            if requestID != nil && (!expanded || requestCount > 1) {
+            if requestID != nil && (!expanded || requestCount > 1) && !isAwaitingAutomaticExpansion {
                 HStack {
                     if !expanded {
                         Button {
                             composerIsFocused = false
-                            presentation.isExpanded = true
+                            withAnimation(ScholiumMotion.disclosure(reduceMotion: reduceMotion)) {
+                                presentation.isExpanded = true
+                            }
                         } label: {
                             Text(requestTitle)
                         }
@@ -74,10 +80,17 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
         .buttonStyle(.borderless)
         .padding(ScholiumSidebarLayout.rowInset)
         .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
-        .animation(ScholiumMotion.disclosure(reduceMotion: reduceMotion), value: expanded)
         .tint(nil as Color?)
-        .onChange(of: requestID, initial: true) { _, id in
-            if presentation.receive(id, mayExpand: isActive && !isEditingDraft && !isReadingHistory), isActive && !isReadingHistory {
+        .onChange(of: requestID, initial: true) { previousID, id in
+            let restoreDraft: Bool
+            if previousID != id && id != nil && mayExpandRequest {
+                restoreDraft = withAnimation(ScholiumMotion.disclosure(reduceMotion: reduceMotion)) {
+                    presentation.receive(id, mayExpand: true)
+                }
+            } else {
+                restoreDraft = presentation.receive(id, mayExpand: mayExpandRequest)
+            }
+            if restoreDraft && isActive && !isReadingHistory {
                 composerIsFocused = true
             } else if expanded {
                 composerIsFocused = false
@@ -97,18 +110,14 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
 struct AgentChatContentScroll<Content: View>: View {
     var maximumHeight: CGFloat = 240
     @ViewBuilder let content: () -> Content
-    @State private var contentHeight: CGFloat = 1
 
     var body: some View {
         ScrollView {
             content()
                 .padding(ScholiumSidebarLayout.textSpacing)
-                .onGeometryChange(for: CGFloat.self) {
-                    ceil($0.size.height)
-                } action: {
-                    contentHeight = $0
-                }
-        }.frame(height: min(maximumHeight, contentHeight))
+        }
+        .frame(maxHeight: maximumHeight)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

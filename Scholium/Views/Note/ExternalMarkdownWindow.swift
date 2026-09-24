@@ -351,7 +351,13 @@ struct ExternalMarkdownWindowView: View {
                 }
                 .scholiumSurface(.document)
                 .overlay {
-                    DocumentFindOverlay(model: documentFind, allowsReplacement: model.mode != .read)
+                    GeometryReader { geometry in
+                        DocumentFindOverlay(
+                            model: documentFind,
+                            allowsReplacement: model.mode != .read,
+                            availableWidth: geometry.size.width
+                        )
+                    }
                 }
             } else {
                 ScholiumContentStateView(

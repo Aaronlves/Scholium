@@ -8,6 +8,30 @@ import Testing
 @Suite("Chat input transforms into requests", .serialized)
 @MainActor
 struct AgentChatInputDockTests {
+    @Test("Request content fits immediately and caps long local scrolling")
+    func contentScrollFitsFirstLayout() {
+        _ = NSApplication.shared
+        for width: CGFloat in [260, 340] {
+            for contentHeight: CGFloat in [96, 480] {
+                let host = NSHostingView(
+                    rootView: AgentChatContentScroll {
+                        Color.clear.frame(height: contentHeight)
+                    }
+                    .frame(width: width))
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: width, height: 500),
+                    styleMask: [.titled], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.contentView = host
+                host.layoutSubtreeIfNeeded()
+                let expected = min(240, contentHeight + 2 * ScholiumSidebarLayout.textSpacing)
+                #expect(abs(host.fittingSize.height - expected) < 1)
+                window.contentView = nil
+                window.close()
+            }
+        }
+    }
+
     private struct ComposerEnabledProbe: NSViewRepresentable {
         @Environment(\.isEnabled) private var isEnabled
         let record: (Bool) -> Void

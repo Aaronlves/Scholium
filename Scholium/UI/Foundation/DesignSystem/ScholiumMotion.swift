@@ -40,8 +40,8 @@ enum ScholiumMotion {
         reduceMotion ? .identity : .opacity.combined(with: .offset(y: -8))
     }
 
-    static func outlineInteraction(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .smooth(duration: 0.38)
+    static func outlineSettling(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.14)
     }
 
     static func symbolReplacement(reduceMotion: Bool) -> Animation? {

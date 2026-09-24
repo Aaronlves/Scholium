@@ -200,8 +200,14 @@ struct DocumentOutlineRail: View {
                     alignment: .trailing
                 )
                 .contentShape(Rectangle())
-                .animation(ScholiumMotion.outlineInteraction(reduceMotion: reduceMotion), value: influence)
-                .animation(ScholiumMotion.outlineInteraction(reduceMotion: reduceMotion), value: isActive)
+                // Continuous hover already supplies intermediate positions.
+                // Animating each update would make the ticks lag behind the
+                // title preview and the pointer's current heading.
+                .animation(
+                    pointerRow == nil ? ScholiumMotion.outlineSettling(reduceMotion: reduceMotion) : nil,
+                    value: influence
+                )
+                .animation(ScholiumMotion.outlineSettling(reduceMotion: reduceMotion), value: isActive)
         }
         .buttonStyle(DocumentOutlineMarkerButtonStyle(reduceMotion: reduceMotion))
         .scholiumActivationPointer()

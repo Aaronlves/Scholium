@@ -317,16 +317,17 @@ struct DocumentFindPanel: View {
 struct DocumentFindOverlay: View {
     @ObservedObject var model: DocumentFindPresentationModel
     let allowsReplacement: Bool
+    let availableWidth: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var direction
 
     var body: some View {
-        GeometryReader { geometry in
+        Group {
             if model.isPresented {
                 DocumentFindPanel(model: model, allowsReplacement: allowsReplacement)
-                    .frame(width: min(560, max(0, geometry.size.width - 24)))
+                    .frame(width: min(560, max(0, availableWidth - 24)))
                     .padding(12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                     .transition(
                         reduceMotion
                             ? .identity

@@ -353,15 +353,21 @@ struct NoteContentView<ShellNotices: View>: View {
                 .overlay {
                     GeometryReader { geometry in
                         VStack(spacing: 0) {
-                            if hasShellNotices || hasLocalNotices {
-                                ScholiumDocumentNoticeStack(availableSize: geometry.size) {
-                                    shellNotices
-                                    localNotices
+                            DocumentFindOverlay(
+                                model: documentFind,
+                                allowsReplacement: isEditing,
+                                availableWidth: geometry.size.width
+                            )
+                            GeometryReader { remaining in
+                                if hasShellNotices || hasLocalNotices {
+                                    ScholiumDocumentNoticeStack(availableSize: remaining.size) {
+                                        shellNotices
+                                        localNotices
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .top)
+                                    .transition(ScholiumMotion.documentNoticeTransition(reduceMotion: reduceMotion))
                                 }
-                                .frame(maxWidth: .infinity, alignment: .top)
-                                .transition(ScholiumMotion.documentNoticeTransition(reduceMotion: reduceMotion))
                             }
-                            DocumentFindOverlay(model: documentFind, allowsReplacement: isEditing)
                         }
                         .animation(
                             ScholiumMotion.documentNotice(reduceMotion: reduceMotion),
