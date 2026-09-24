@@ -1,8 +1,9 @@
 import Darwin
 import Foundation
-import ScholiumApplication
 import ScholiumContracts
 import Testing
+
+@testable import ScholiumApplication
 
 @Suite("External Markdown original files")
 struct ExternalMarkdownFileStoreTests {
@@ -76,6 +77,69 @@ struct ExternalMarkdownFileStoreTests {
             try await session.save(candidate: "C\n", expected: updated)
         }
         #expect(try Data(contentsOf: file) == external)
+        await #expect(throws: ExternalMarkdownFileError.changed) { try await session.load() }
+        await session.close()
+    }
+
+    @Test("A replaced staging name cannot displace the original or delete the peer entry")
+    func substitutedStageIsRestored() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        let peer = root.appendingPathComponent("peer.md")
+        let original = Data("Original source\n".utf8)
+        let peerBytes = Data("Peer source\n".utf8)
+        try original.write(to: file)
+        try peerBytes.write(to: peer)
+        let (session, opened) = try ExternalMarkdownFileSession.open(file)
+        await session.installBeforeSwapTestHook { stagingURL in
+            _ = Darwin.unlink(stagingURL.path)
+            _ = Darwin.symlink(peer.path, stagingURL.path)
+        }
+
+        await #expect(throws: ExternalMarkdownFileError.changed) {
+            try await session.save(candidate: "Edited source\n", expected: opened)
+        }
+        #expect(try Data(contentsOf: file) == original)
+        #expect(try Data(contentsOf: peer) == peerBytes)
+        let stagedEntries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(".source.md-scholium-") }
+        #expect(stagedEntries.count == 1)
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: stagedEntries[0].path) == peer.path)
+        #expect(try await session.load().source == opened.source)
+        await session.close()
+    }
+
+    @Test("Rollback does not hide a newer external file")
+    func newerFileBeforeRollbackIsPreserved() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        let peer = root.appendingPathComponent("peer.md")
+        let replacement = root.appendingPathComponent("new.md")
+        let original = Data("Original source\n".utf8)
+        let newer = Data("Newer external source\n".utf8)
+        try original.write(to: file)
+        try Data("Peer source\n".utf8).write(to: peer)
+        try newer.write(to: replacement)
+        let (session, opened) = try ExternalMarkdownFileSession.open(file)
+        await session.installBeforeSwapTestHook { stagingURL in
+            _ = Darwin.unlink(stagingURL.path)
+            _ = Darwin.symlink(peer.path, stagingURL.path)
+        }
+        await session.installBeforeRollbackTestHook { originalURL in
+            _ = Darwin.unlink(originalURL.path)
+            _ = Darwin.rename(replacement.path, originalURL.path)
+        }
+
+        await #expect(throws: ExternalMarkdownFileError.commitUncertain) {
+            try await session.save(candidate: "Edited source\n", expected: opened)
+        }
+        #expect(try Data(contentsOf: file) == newer)
+        let stagedEntries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(".source.md-scholium-") }
+        #expect(stagedEntries.count == 1)
+        #expect(try Data(contentsOf: stagedEntries[0]) == original)
         await #expect(throws: ExternalMarkdownFileError.changed) { try await session.load() }
         await session.close()
     }

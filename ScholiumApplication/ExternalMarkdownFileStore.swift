@@ -24,7 +24,8 @@ public enum ExternalMarkdownFileError: Error, Equatable, LocalizedError, Sendabl
         case .permissionDenied: "Scholium no longer has permission to access this file."
         case .changed: "The original Markdown file changed. Your edits remain available in the editor."
         case .closed: "This external Markdown session is closed."
-        case .commitUncertain: "The save could not be verified. Keep the editor open and inspect the original file."
+        case .commitUncertain:
+            "The save could not be verified. Keep the editor open. Check the original; a prior copy may remain in a hidden Scholium file beside it."
         case .io(let description): "The Markdown file could not be accessed: \(description)"
         }
     }
@@ -75,6 +76,8 @@ public actor ExternalMarkdownFileSession {
     private let sessionID = UUID()
     private var currentIdentity: ExternalMarkdownFileIdentity
     private var isClosed = false
+    private var beforeSwapForTesting: (@Sendable (URL) -> Void)?
+    private var beforeRollbackForTesting: (@Sendable (URL) -> Void)?
 
     private init(url: URL, scope: ExternalMarkdownSecurityScope, identity: ExternalMarkdownFileIdentity) {
         self.url = url
@@ -136,7 +139,9 @@ public actor ExternalMarkdownFileSession {
                 guard coordinatedURL.standardizedFileURL == url else { throw ExternalMarkdownFileError.changed }
                 let saved = try Self.replace(
                     at: url, expected: expectedBytes, identity: expected.identity,
-                    candidate: candidateBytes, replacementMayHaveCommitted: &replacementMayHaveCommitted)
+                    candidate: candidateBytes, replacementMayHaveCommitted: &replacementMayHaveCommitted,
+                    beforeSwapForTesting: beforeSwapForTesting,
+                    beforeRollbackForTesting: beforeRollbackForTesting)
                 return try ExternalMarkdownFileSnapshot(
                     url: url, bytes: saved.bytes, identity: saved.identity, sessionID: sessionID)
             }
@@ -155,6 +160,14 @@ public actor ExternalMarkdownFileSession {
         guard !isClosed else { return }
         isClosed = true
         scope.close()
+    }
+
+    internal func installBeforeSwapTestHook(_ hook: @escaping @Sendable (URL) -> Void) {
+        beforeSwapForTesting = hook
+    }
+
+    internal func installBeforeRollbackTestHook(_ hook: @escaping @Sendable (URL) -> Void) {
+        beforeRollbackForTesting = hook
     }
 
     private struct ReadResult {
@@ -219,7 +232,9 @@ public actor ExternalMarkdownFileSession {
 
     private static func replace(
         at url: URL, expected: Data, identity: ExternalMarkdownFileIdentity,
-        candidate: Data, replacementMayHaveCommitted: inout Bool
+        candidate: Data, replacementMayHaveCommitted: inout Bool,
+        beforeSwapForTesting: (@Sendable (URL) -> Void)?,
+        beforeRollbackForTesting: (@Sendable (URL) -> Void)?
     ) throws -> ReadResult {
         let parentURL = url.deletingLastPathComponent()
         let directory = Darwin.open(parentURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
@@ -240,8 +255,10 @@ public actor ExternalMarkdownFileSession {
         var stageExists = true
         var swapped = false
         defer {
+            if stageExists && !swapped && entryMatches(stage, directory: directory, name: stagingName) {
+                _ = unlinkat(directory, stagingName, 0)
+            }
             Darwin.close(stage)
-            if stageExists && !swapped { _ = unlinkat(directory, stagingName, 0) }
         }
         let originalDescriptor = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         guard originalDescriptor >= 0 else { throw mappedErrno() }
@@ -272,11 +289,36 @@ public actor ExternalMarkdownFileSession {
             throw ExternalMarkdownFileError.changed
         }
         _ = try checkedParent(directory, url: parentURL)
+        guard entryMatches(stage, directory: directory, name: stagingName) else {
+            throw ExternalMarkdownFileError.changed
+        }
+        beforeSwapForTesting?(parentURL.appendingPathComponent(stagingName))
+        var stagedEntryAtSwap = stat()
+        guard fstatat(directory, stagingName, &stagedEntryAtSwap, AT_SYMLINK_NOFOLLOW) == 0 else {
+            throw ExternalMarkdownFileError.changed
+        }
         guard renameatx_np(directory, stagingName, directory, name, UInt32(RENAME_SWAP)) == 0 else {
             throw mappedErrno()
         }
         swapped = true
         replacementMayHaveCommitted = true
+        if !entryMatches(stage, directory: directory, name: name) {
+            // A peer replaced the stage name between its check and the swap.
+            // The original is parked at the stage name; swap it back if it is
+            // still the file we opened. Leave the peer's entry in its own name.
+            beforeRollbackForTesting?(url)
+            if entryMatches(originalDescriptor, directory: directory, name: stagingName),
+                entryMatches(stagedEntryAtSwap, directory: directory, name: name),
+                renameatx_np(directory, stagingName, directory, name, UInt32(RENAME_SWAP)) == 0,
+                entryMatches(originalDescriptor, directory: directory, name: name),
+                entryMatches(stagedEntryAtSwap, directory: directory, name: stagingName)
+            {
+                swapped = false
+                replacementMayHaveCommitted = false
+                throw ExternalMarkdownFileError.changed
+            }
+            throw ExternalMarkdownFileError.commitUncertain
+        }
         do {
             let saved = try readExact(at: url)
             let displaced = try readExact(at: parentURL.appendingPathComponent(stagingName))
@@ -297,6 +339,9 @@ public actor ExternalMarkdownFileSession {
             }
             _ = try checkedParent(directory, url: parentURL)
             guard fsync(directory) == 0 else { throw mappedErrno() }
+            guard entryMatches(originalDescriptor, directory: directory, name: stagingName) else {
+                throw ExternalMarkdownFileError.commitUncertain
+            }
             guard unlinkat(directory, stagingName, 0) == 0 else { throw mappedErrno() }
             stageExists = false
             _ = fsync(directory)
@@ -308,6 +353,23 @@ public actor ExternalMarkdownFileSession {
             // post-swap proof fails. Never delete possibly unique source bytes.
             throw ExternalMarkdownFileError.commitUncertain
         }
+    }
+
+    private static func entryMatches(_ descriptor: Int32, directory: Int32, name: String) -> Bool {
+        var opened = stat()
+        var named = stat()
+        guard fstat(descriptor, &opened) == 0,
+            fstatat(directory, name, &named, AT_SYMLINK_NOFOLLOW) == 0
+        else { return false }
+        return (named.st_mode & S_IFMT) == S_IFREG
+            && opened.st_dev == named.st_dev && opened.st_ino == named.st_ino
+    }
+
+    private static func entryMatches(_ expected: stat, directory: Int32, name: String) -> Bool {
+        var named = stat()
+        guard fstatat(directory, name, &named, AT_SYMLINK_NOFOLLOW) == 0 else { return false }
+        return expected.st_dev == named.st_dev && expected.st_ino == named.st_ino
+            && (expected.st_mode & S_IFMT) == (named.st_mode & S_IFMT)
     }
 
     private static func checkedParent(_ descriptor: Int32, url: URL) throws -> stat {
