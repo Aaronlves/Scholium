@@ -83,9 +83,8 @@ body,
   margin-left: -1px;
 }
 
-/* Writing continuation status is a decoration at the live caret. It is
-   informative text plus a small motion cue, never an editor surface or a
-   second source buffer. */
+/* Writing continuation status follows the live caret. Error badges reserve
+   their small inline footprint so they never cover the source after the caret. */
 .scholium-writing-status {
   display: inline-flex;
   align-items: baseline;
@@ -99,9 +98,27 @@ body,
   user-select: none;
 }
 .scholium-writing-status-error {
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: .2em;
+  display: inline-flex;
+  align-items: center;
+  margin-inline-end: .2em;
+  vertical-align: baseline;
+}
+.scholium-writing-status-badge,
+.scholium-writing-ghost-error-badge {
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.25em;
+  block-size: 1.25em;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+}
+.scholium-writing-status-badge {
+  flex: none;
 }
 .scholium-writing-orb {
   display: inline-flex;

@@ -41,6 +41,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     var onPassageAction: ((DocumentPassageAction) -> Void)? = nil
     var writingContinuationEnabled = false
     var writingContinuationContextKey = ""
+    var writingIndexContextKey = ""
     var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
 
     static func requiresMathRuntime(
@@ -169,6 +170,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.linkPreviews = linkPreviews
         context.coordinator.writingContinuationEnabled = writingContinuationEnabled
         context.coordinator.writingContinuationContextKey = writingContinuationContextKey
+        context.coordinator.writingIndexContextKey = writingIndexContextKey
         context.coordinator.writingContinuationQuery = writingContinuationQuery
         context.coordinator.initialScrollFraction = initialScrollFraction
         context.coordinator.initialScrollAnchor = initialScrollAnchor
@@ -180,6 +182,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.setPresentationCSS(presentationCSS)
         session.setDocumentTitle(documentTitle)
         session.setWritingContinuation(enabled: writingContinuationEnabled, contextKey: writingContinuationContextKey)
+        session.setWritingIndexContext(writingIndexContextKey)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
         session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
@@ -246,6 +249,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             context.coordinator.writingContinuationEnabled = writingContinuationEnabled
             context.coordinator.writingContinuationContextKey = writingContinuationContextKey
             session.setWritingContinuation(enabled: writingContinuationEnabled, contextKey: writingContinuationContextKey)
+        }
+        if context.coordinator.writingIndexContextKey != writingIndexContextKey {
+            context.coordinator.cancelWritingTermQuery()
+            context.coordinator.writingIndexContextKey = writingIndexContextKey
+            session.setWritingIndexContext(writingIndexContextKey)
         }
         context.coordinator.onLinkActivation = onLinkActivation
         context.coordinator.onScrollFractionChange = onScrollFractionChange
@@ -371,6 +379,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             ) async -> [EditorLinkCompletion]
         var writingContinuationEnabled = false
         var writingContinuationContextKey = ""
+        var writingIndexContextKey = ""
         var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
         var onLinkActivation: (String) -> Void
         var onScrollFractionChange: (Double) -> Void
@@ -399,6 +408,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private var mathRuntimeLoadTask: Task<Void, Never>?
         private var linkCompletionQueryTask: Task<Void, Never>?
         private var linkCompletionQueryTaskID: UUID?
+        private var linkCompletionQueryKind: EditorLinkCompletionKind?
         fileprivate let writingContinuation = EditorWritingContinuationController()
         private var documentTitleRenameTask: Task<Void, Never>?
         private var documentTitleRenameRequestID: String?
@@ -631,12 +641,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 let taskID = UUID()
                 cancelLinkCompletionQuery()
                 linkCompletionQueryTaskID = taskID
+                linkCompletionQueryKind = request.completionKind
                 linkCompletionQueryTask = Task { @MainActor [weak self, weak webView = message.webView] in
                     guard let self, let webView else { return }
                     defer {
                         if self.linkCompletionQueryTaskID == taskID {
                             self.linkCompletionQueryTask = nil
                             self.linkCompletionQueryTaskID = nil
+                            self.linkCompletionQueryKind = nil
                         }
                     }
                     let candidates = await linkCompletionQuery(
@@ -803,6 +815,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             linkCompletionQueryTask?.cancel()
             linkCompletionQueryTask = nil
             linkCompletionQueryTaskID = nil
+            linkCompletionQueryKind = nil
+        }
+
+        func cancelWritingTermQuery() {
+            if linkCompletionQueryKind == .term { cancelLinkCompletionQuery() }
         }
 
         private static func publishWritingContinuation(

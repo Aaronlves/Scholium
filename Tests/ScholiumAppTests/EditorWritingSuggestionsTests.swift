@@ -52,4 +52,14 @@ struct EditorWritingSuggestionsTests {
         owner.replace([])
         #expect(owner.terms("控制", notes: [catalog]).isEmpty)
     }
+
+    @Test("Window-local term completion needs no link graph or link-index preparation")
+    func termsWithoutGraph() {
+        let controller = DocumentController()
+        let candidates = controller.editorWritingTermCompletions(
+            matching: "res", catalogNotes: [note("Origin", aliases: ["responsibility"])]
+        )
+        #expect(candidates.first?.label == "responsibility")
+        #expect(candidates.first?.writingAction == "term")
+    }
 }

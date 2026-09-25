@@ -186,6 +186,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
     private var pendingWritingContinuationEnabled = false
     private var pendingWritingContinuationContextKey = ""
+    private var pendingWritingIndexContextKey = ""
     var pendingScrollFraction: Double?
     var pendingScrollAnchor: EditorScrollAnchor?
     @Published private(set) var openingPresentationID = UUID()
@@ -714,6 +715,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 .setWritingContinuation(
                     enabled: pendingWritingContinuationEnabled,
                     contextKey: pendingWritingContinuationContextKey), in: webView)
+        }
+    }
+
+    func setWritingIndexContext(_ contextKey: String) {
+        pendingWritingIndexContextKey = String(contextKey.prefix(256))
+        guard isReady, isLoaded, let webView else { return }
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            _ = try? await send(
+                .setWritingIndexContext(pendingWritingIndexContextKey), in: webView)
         }
     }
 
@@ -2015,6 +2026,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             let linkPreviews = pendingLinkPreviews
             let writingContinuationEnabled = pendingWritingContinuationEnabled
             let writingContinuationContextKey = pendingWritingContinuationContextKey
+            let writingIndexContextKey = pendingWritingIndexContextKey
             _ = try await send(
                 .setDocumentTitle(documentTitle),
                 in: webView,
@@ -2039,6 +2051,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 .setWritingContinuation(
                     enabled: writingContinuationEnabled,
                     contextKey: writingContinuationContextKey), in: webView, requiringRequestEpoch: intendedRequestEpoch)
+            _ = try await send(
+                .setWritingIndexContext(writingIndexContextKey),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
             guard intendedRequestEpoch == requestEpoch,
                 self.documentID == documentID,
                 self.webView === webView
@@ -2050,7 +2067,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 userCSS == pendingUserCSS,
                 linkPreviews == pendingLinkPreviews,
                 writingContinuationEnabled == pendingWritingContinuationEnabled,
-                writingContinuationContextKey == pendingWritingContinuationContextKey
+                writingContinuationContextKey == pendingWritingContinuationContextKey,
+                writingIndexContextKey == pendingWritingIndexContextKey
             {
                 return
             }

@@ -16,6 +16,14 @@ struct MarkdownEditorProtocolTests {
         #expect(!operation.serializesSourceMutation)
     }
 
+    @Test("Writing index context is a separate source-neutral editor operation")
+    func writingIndexContext() throws {
+        let operation = MarkdownEditorOperation.setWritingIndexContext("catalog-2")
+        let data = try JSONEncoder().encode(operation)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+        #expect(!operation.serializesSourceMutation)
+    }
+
     @Test("Continuation lifecycle keeps actionable failures distinct from quiet cancellation")
     func continuationLifecycleReasons() {
         #expect(EditorWritingContinuationStatus.preparing.rawValue == "preparing")
@@ -24,6 +32,7 @@ struct MarkdownEditorProtocolTests {
         #expect(EditorWritingContinuationUnavailableReason.notConnected.showsInEditor)
         #expect(EditorWritingContinuationUnavailableReason.modelUnavailable.showsInEditor)
         #expect(EditorWritingContinuationUnavailableReason.timedOut.showsInEditor)
+        #expect(!EditorWritingContinuationUnavailableReason.noSuggestion.showsInEditor)
         #expect(!EditorWritingContinuationUnavailableReason.invalidContext.showsInEditor)
         #expect(!EditorWritingContinuationUnavailableReason.cancelled.showsInEditor)
     }
@@ -235,7 +244,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 40,
+              "protocolVersion": 41,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -273,7 +282,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 40,
+            "protocolVersion": 41,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -304,7 +313,7 @@ struct MarkdownEditorProtocolTests {
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 40,
+            "protocolVersion": 41,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -345,7 +354,7 @@ struct MarkdownEditorProtocolTests {
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 40,
+            "protocolVersion": 41,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -372,7 +381,7 @@ struct MarkdownEditorProtocolTests {
     func dropFocusRequestUsesExactEnvelope() throws {
         let object: [String: Any] = [
             "type": "requestEditorFocus",
-            "protocolVersion": 40,
+            "protocolVersion": 41,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -405,7 +414,7 @@ struct MarkdownEditorProtocolTests {
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 40,
+            "protocolVersion": 41,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),

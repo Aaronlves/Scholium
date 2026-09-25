@@ -74,34 +74,37 @@ After `/` in a supported Edit context, insertion commands filter as text is
 typed. Acceptance replaces the slash and query in one Undo transaction;
 Escape preserves the text. Deletion remains ordinary editor input.
 
-Slash commands, Wikilink, analysis-reference and Callout candidates retain one bounded native
-list beside the caret, keeping editor focus. Filtering updates the retained
-list with stable width and opening direction; overflow scrolls. Autosave does
-not dismiss it; acceptance, dismissal or invalidated editing context does.
-Pointer and keyboard update one native secondary selection; click or Return
-accepts. Useful identity/path context fits the viewport without another text
-owner. All editing auxiliaries use system text, colors, controls and elevation
-under §19. During composition, menus, candidates and previews yield immediately
-to the input method; application navigation and acceptance resume afterward.
+Slash commands, Wikilink, analysis-reference and Callout candidates share one
+bounded native list beside the caret, retaining editor focus. Filtering preserves
+width and opening direction; overflow scrolls. Autosave keeps it open until
+acceptance, dismissal or invalid context. Pointer/keyboard share one native
+secondary selection; click/Return accepts. Identity/path fits
+without another text owner. During composition, menus,
+candidates and previews yield immediately to input method; navigation and
+acceptance resume afterward.
+Native lists follow §19's system text, colors, controls and elevation.
 
-Edit/Source share an inline preview with dotted underline and ⇥, never a panel.
+Edit/Source preview uses the document font, dotted underline and AI ⇥/Index ⇥
+badge; it clears the caret without a panel.
 Local completion offers authored alias/keyword suffixes, excluding complete terms
 and undeclared titles. AI continuation defaults off. Writing Assistance selects
-one runtime-inventory model shared by continuation, Explain and Polish, independent
-of Chat, with low-cost default and low-or-lower supported effort.
-Unavailable choices never silently switch. Enabling permits bounded writing/retrieved
-context to reach the runtime; remote processing and usage are disclosed.
-After a pause, AI is eligible at a focused caret in an unfinished sentence.
-Completed/protected/structural contexts suppress AI; local completion remains. AI uses
-current-sentence context; suffix cannot cross a sentence/paragraph. An admitted request
-shows phases at the caret; Reduce Motion freezes it. Off stays quiet.
-Connection/model/runtime failures and timeout show a reason;
-cancellation/stale work stay quiet. Waiting shows no preview; late AI ignored.
+one runtime-inventory model shared by continuation, Explain and Polish, independent of Chat;
+defaults are low cost and low-or-lower supported effort.
+Unavailable models never auto-switch. Enabling permits bounded writing/retrieved
+runtime context with disclosed remote processing and usage.
+After a pause, AI may run at a focused unfinished-sentence caret.
+Completed/protected/structural contexts suppress AI, retaining index completion.
+AI uses current-sentence context; suffix cannot cross a sentence/paragraph.
+Requests show caret phases; Reduce Motion freezes; Off stays quiet.
+AI failure/absence falls back to index; success excludes it.
+Configuration/catalog changes invalidate their channel; stale replies are ignored.
+Connection/model/runtime failures and timeout show a badge after the caret.
+Help/accessibility retain reasons; fallback carries the badge. Cancellation/stale
+work stay quiet; waiting hides preview.
 Tab appends in one Undo; Return remains newline. Escape dismisses without fallback;
 preview is not source. Typing/caret/focus/composition/configuration changes cancel
-requests/previews. Literal/code/frontmatter/multiple selections suppress both. Statuses
-never enter source/history. System spelling/grammar remains
-separate from prediction.
+requests/previews. Literal/code/frontmatter/multiple selections suppress both.
+Statuses never enter source/history; spelling/grammar stays separate from prediction.
 
 **Find Writing References…** in Insert (default Shift-Command-J, configurable)
 shares selection recommendations' pane/session. It captures selections,

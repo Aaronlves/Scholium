@@ -309,11 +309,11 @@ final class DocumentController: ObservableObject {
         catalogNotes: [WorkspaceCatalogNote],
         graphGeneration: Int
     ) async -> [EditorLinkCompletion] {
+        guard kind != .term else { return [] }
         await linkCompletionIndex.replace(
             notes: catalogNotes,
             generation: graphGeneration
         )
-        if kind == .term { return writingSuggestions.terms(query, notes: catalogNotes) }
         return
             (try? await linkCompletionIndex.query(
                 kind: kind,
@@ -322,6 +322,13 @@ final class DocumentController: ObservableObject {
                 currentVaultID: currentVaultID,
                 generation: graphGeneration
             )) ?? []
+    }
+
+    func editorWritingTermCompletions(
+        matching query: String,
+        catalogNotes: [WorkspaceCatalogNote]
+    ) -> [EditorLinkCompletion] {
+        writingSuggestions.terms(query, notes: catalogNotes)
     }
 
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument {

@@ -2,9 +2,10 @@
   "sourceLanguage" : "en",
   "strings" : {
     "AI" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI"}}}},
+    "Index" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Index"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "索引"}}}},
     "Accept AI continuation: {text} (Tab)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept AI continuation: {text} (Tab)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受 AI 续写：{text}（Tab）"}}}},
-    "AI continuation timed out; using library completion." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation timed out; using library completion."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写超时，已使用库内补全。"}}}},
-    "AI continuation unavailable; using library completion." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation unavailable; using library completion."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写不可用，已使用库内补全。"}}}},
+    "Accept index suggestion: {text} (Tab)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept index suggestion: {text} (Tab)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受索引建议：{text}（Tab）"}}}},
+    "AI continuation timed out." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation timed out."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写超时。"}}}},
     "AI continuation is preparing." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation is preparing."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写准备中。"}}}},
     "AI continuation is retrieving related context." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation is retrieving related context."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写正在检索相关上下文。"}}}},
     "AI continuation is composing." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation is composing."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写正在组织句子。"}}}},
@@ -23,7 +24,6 @@
     "Finish editing the note title before switching documents." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finish editing the note title before switching documents."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请先完成笔记标题编辑，再切换文档。"}}}},
     "The replacement would make the document too large.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The replacement would make the document too large."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "替换后的文档将超出大小限制。"}}}},
     "Tab": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Tab"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Tab"}}}},
-    "Accept suggestion: {text} (Tab)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept suggestion: {text} (Tab)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受建议：{text}（Tab）"}}}},
 
 
     "Copy" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Copy"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"复制"}}}},

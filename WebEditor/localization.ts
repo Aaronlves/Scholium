@@ -1,10 +1,10 @@
 export const webInterfaceLocalizationKeys = [
   "Tab",
-  "Accept suggestion: {text} (Tab)",
   "AI",
+  "Index",
   "Accept AI continuation: {text} (Tab)",
-  "AI continuation timed out; using library completion.",
-  "AI continuation unavailable; using library completion.",
+  "Accept index suggestion: {text} (Tab)",
+  "AI continuation timed out.",
   "AI continuation is preparing.",
   "AI continuation is retrieving related context.",
   "AI continuation is composing.",

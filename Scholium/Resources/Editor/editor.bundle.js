@@ -13829,11 +13829,11 @@
   // localization.ts
   var webInterfaceLocalizationKeys = [
     "Tab",
-    "Accept suggestion: {text} (Tab)",
     "AI",
+    "Index",
     "Accept AI continuation: {text} (Tab)",
-    "AI continuation timed out; using library completion.",
-    "AI continuation unavailable; using library completion.",
+    "Accept index suggestion: {text} (Tab)",
+    "AI continuation timed out.",
     "AI continuation is preparing.",
     "AI continuation is retrieving related context.",
     "AI continuation is composing.",
@@ -22333,7 +22333,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 40;
+  var EDITOR_PROTOCOL_VERSION = 41;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -22346,6 +22346,7 @@
     "setUserCSS",
     "setLinkPreviews",
     "setWritingContinuation",
+    "setWritingIndexContext",
     "showPreview",
     "measureVisibleProjection",
     "showPreviewAt",
@@ -22442,6 +22443,7 @@
   }
   var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
     "setWritingContinuation",
+    "setWritingIndexContext",
     "setDocumentTitle",
     "queryText",
     "querySelection",
@@ -22488,6 +22490,8 @@
         return Array.isArray(operation.value);
       case "setWritingContinuation":
         return typeof operation.enabled === "boolean" && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
+      case "setWritingIndexContext":
+        return typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
       case "showPreviewAt":
         return typeof operation.x === "number" && Number.isFinite(operation.x) && typeof operation.y === "number" && Number.isFinite(operation.y);
       case "goToLine":
@@ -32356,6 +32360,7 @@ ${fence}
     setMode: "defer",
     setDocumentTitle: "defer",
     setWritingContinuation: "allow",
+    setWritingIndexContext: "allow",
     setPresentationCSS: "defer",
     setUserCSS: "defer",
     setLinkPreviews: "defer",
@@ -34447,7 +34452,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function createEditorInputSuggestions(options) {
     let continuationEnabled = false;
     let continuationContextKey = "";
+    let indexContextKey = "";
     let clearInlineWriting;
+    let clearAIWriting;
+    let clearIndexWriting;
     let showInlineContinuationStatus;
     const pendingContinuations = /* @__PURE__ */ new Map();
     function cancelContinuations() {
@@ -34464,7 +34472,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const timeout = setTimeout(() => {
           pendingContinuations.delete(requestID);
           options.cancelWritingContinuation?.(requestID);
-          resolve({ text: null, reason: localized("AI continuation timed out; using library completion.") });
+          resolve({ text: null, reason: localized("AI continuation timed out.") });
         }, 8e3);
         pendingContinuations.set(requestID, { resolve, timeout });
         if (options.requestWritingContinuation) options.requestWritingContinuation(requestID, state, position);
@@ -34491,17 +34499,25 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       });
     }
     const pendingLinkQueries = /* @__PURE__ */ new Map();
+    function cancelWritingTermQueries() {
+      for (const [requestID, pending] of pendingLinkQueries) {
+        if (!pending.writingTerm) continue;
+        pendingLinkQueries.delete(requestID);
+        globalThis.clearTimeout(pending.timeout);
+        pending.resolve([]);
+      }
+    }
     class Ghost extends WidgetType {
-      constructor(text, accept, ai = false, reason = null) {
+      constructor(text, accept, source, reason = null) {
         super();
         this.text = text;
         this.accept = accept;
-        this.ai = ai;
+        this.source = source;
         this.reason = reason;
       }
       text;
       accept;
-      ai;
+      source;
       reason;
       toDOM() {
         const node = document.createElement("span");
@@ -34511,11 +34527,19 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         suffix.textContent = this.text;
         const hint = document.createElement("span");
         hint.className = "scholium-writing-ghost-key";
-        hint.textContent = this.ai ? `${localized("AI")} \u21E5` : "\u21E5";
+        hint.textContent = `${localized(this.source === "ai" ? "AI" : "Index")} \u21E5`;
         hint.setAttribute("aria-hidden", "true");
-        node.append(suffix, hint);
+        node.append(suffix);
+        if (this.reason) {
+          const badge = document.createElement("span");
+          badge.className = "scholium-writing-ghost-error-badge";
+          badge.textContent = "!";
+          badge.setAttribute("aria-hidden", "true");
+          node.append(badge);
+        }
+        node.append(hint);
         node.setAttribute("role", "button");
-        node.setAttribute("aria-label", localizedTemplate(this.ai ? "Accept AI continuation: {text} (Tab)" : "Accept suggestion: {text} (Tab)", { text: this.text }));
+        node.setAttribute("aria-label", localizedTemplate(this.source === "ai" ? "Accept AI continuation: {text} (Tab)" : "Accept index suggestion: {text} (Tab)", { text: this.text }));
         if (this.reason) {
           node.title = this.reason;
           node.setAttribute("aria-description", this.reason);
@@ -34553,9 +34577,17 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           }
           node.append(orb);
         }
-        const label = document.createElement("span");
-        label.textContent = this.message;
-        node.append(label);
+        if (this.active) {
+          const label = document.createElement("span");
+          label.textContent = this.message;
+          node.append(label);
+        } else {
+          const badge = document.createElement("span");
+          badge.className = "scholium-writing-status-badge";
+          badge.textContent = "!";
+          badge.setAttribute("aria-hidden", "true");
+          node.append(badge);
+        }
         node.setAttribute("role", "status");
         node.setAttribute("aria-live", "polite");
         node.setAttribute("aria-atomic", "true");
@@ -34579,7 +34611,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         };
         context.addEventListener("abort", cancel, { onDocChange: true });
         const timeout = globalThis.setTimeout(cancel, 5e3);
-        pendingLinkQueries.set(requestID, { resolve, timeout });
+        pendingLinkQueries.set(requestID, { resolve, timeout, writingTerm: true });
         options.requestLinkCompletions(requestID, "term", query);
       });
     }
@@ -34597,15 +34629,16 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             label: candidate.label,
             ghostText: termSuffix(context.state, context.pos, candidate),
             apply: (view) => {
-              if (view.composing || !isWritingSuggestionContext(options, view.state) || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection)) return;
+              if (view.composing || !isWritingSuggestionContext(options, view.state) || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection)) return false;
               const text = termSuffix(context.state, context.pos, candidate);
-              if (!exactSourceFitsChanges(view.state, [{ from: context.pos, to: context.pos, insert: text }])) return;
+              if (!exactSourceFitsChanges(view.state, [{ from: context.pos, to: context.pos, insert: text }])) return false;
               view.dispatch({
                 changes: { from: context.pos, insert: text },
                 selection: { anchor: context.pos + text.length },
                 annotations: [Transaction.userEvent.of("input.complete.scholium.writing"), isolateHistory.of("full")]
               });
               options.didApply("Complete Term");
+              return true;
             }
           }))
         };
@@ -34618,6 +34651,18 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           this.clear();
           this.view.dispatch({});
         };
+        clearAIWriting = () => {
+          if (this.source === "ai") {
+            this.clear();
+            this.view.dispatch({});
+          }
+        };
+        clearIndexWriting = () => {
+          if (this.source === "index") {
+            this.clear();
+            this.view.dispatch({});
+          }
+        };
         showInlineContinuationStatus = (requestID, phase) => {
           if (this.continuationRequestID !== requestID || !this.isValidContext()) return;
           this.showStatus(writingContinuationPhaseLabel(phase), true);
@@ -34629,12 +34674,15 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       timer;
       acceptChoice = null;
       continuationRequestID = null;
+      source = null;
       clear() {
         this.generation++;
         clearTimeout(this.timer);
         cancelContinuations();
+        cancelWritingTermQueries();
         this.acceptChoice = null;
         this.continuationRequestID = null;
+        this.source = null;
         this.decorations = Decoration.none;
       }
       isValidContext() {
@@ -34644,14 +34692,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (!this.isValidContext()) return;
         this.decorations = Decoration.set([Decoration.widget({
           widget: new ContinuationStatus(message, active),
-          side: -1
+          side: 1
         }).range(this.view.state.selection.main.head)]);
         this.view.dispatch({});
       }
       accept() {
         if (!this.acceptChoice || this.view.composing || !isWritingSuggestionContext(options, this.view.state)) return false;
-        this.acceptChoice();
-        return true;
+        return this.acceptChoice();
       }
       update(update) {
         if (!isWritingSuggestionContext(options, update.state)) {
@@ -34669,21 +34716,27 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const generation = this.generation;
         const state = this.view.state;
         const valid = () => this.generation === generation && this.view.state.doc === state.doc && this.view.state.selection.eq(state.selection) && this.view.hasFocus && !this.view.composing && isWritingSuggestionContext(options, this.view.state);
+        const position = state.selection.main.head;
+        const aiEligible = continuationEnabled && continuationContextAllowed(options, state, position);
+        this.source = aiEligible ? "ai" : "index";
         this.timer = setTimeout(async () => {
           if (!valid()) return;
-          const position = state.selection.main.head;
           let fallbackReason = null;
-          if (continuationEnabled && continuationContextAllowed(options, state, position)) {
+          if (aiEligible) {
             const request = requestContinuation(state, position);
             this.continuationRequestID = request.requestID;
             this.showStatus(writingContinuationPhaseLabel("preparing"), true);
-            const result = await request.promise;
+            const result2 = await request.promise;
             if (!valid()) return;
             this.continuationRequestID = null;
-            if (result.text) {
-              const text = result.text;
+            if (result2.text) {
+              const text = result2.text;
               this.acceptChoice = () => {
-                if (!valid() || !exactSourceFitsChanges(this.view.state, [{ from: position, to: position, insert: text }])) return;
+                if (!valid() || !exactSourceFitsChanges(this.view.state, [{ from: position, to: position, insert: text }])) {
+                  this.clear();
+                  this.view.dispatch({});
+                  return false;
+                }
                 this.clear();
                 this.view.dispatch({
                   changes: { from: position, insert: text },
@@ -34691,44 +34744,55 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
                   annotations: [Transaction.userEvent.of("input.complete.scholium.continuation"), isolateHistory.of("full")]
                 });
                 options.didApply("Accept AI Continuation");
+                return true;
               };
-              this.decorations = Decoration.set([Decoration.widget({ widget: new Ghost(text, () => this.accept(), true), side: 1 }).range(position)]);
+              this.decorations = Decoration.set([Decoration.widget({ widget: new Ghost(text, () => this.accept(), "ai"), side: 1 }).range(position)]);
               this.view.dispatch({});
               return;
             }
-            fallbackReason = result.reason ?? localized("AI continuation unavailable; using library completion.");
+            fallbackReason = result2.reason;
           }
+          this.source = "index";
+          this.decorations = Decoration.none;
+          this.view.dispatch({});
           const context = new CompletionContext(state, state.selection.main.head, false, this.view);
-          void Promise.resolve(writingCompletionSource(context)).then((result) => {
-            if (this.generation !== generation || this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection) || !this.view.hasFocus || this.view.composing || options.isComposing() || !result) return;
-            const choice = result.options[0];
-            if (!choice?.ghostText || typeof choice.apply !== "function") {
-              if (fallbackReason) this.showStatus(fallbackReason, false);
-              return;
-            }
-            const apply = choice.apply;
-            this.acceptChoice = () => {
-              if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
+          let result = null;
+          try {
+            result = await writingCompletionSource(context);
+          } catch {
+          }
+          if (!valid()) return;
+          const choice = result?.options[0];
+          if (!choice?.ghostText || typeof choice.apply !== "function") {
+            if (fallbackReason) this.showStatus(fallbackReason, false);
+            return;
+          }
+          const apply = choice.apply;
+          this.acceptChoice = () => {
+            if (!valid()) {
               this.clear();
-              apply(this.view, choice, result.from, state.selection.main.head);
-            };
-            const decorations2 = [];
-            if (fallbackReason) decorations2.push(Decoration.widget({
-              widget: new ContinuationStatus(fallbackReason, false),
-              side: -1
-            }).range(state.selection.main.head));
-            decorations2.push(Decoration.widget({
-              widget: new Ghost(choice.ghostText, () => this.accept(), false, fallbackReason),
-              side: 1
-            }).range(state.selection.main.head));
-            this.decorations = Decoration.set(decorations2);
-            this.view.dispatch({});
-          });
-        }, continuationEnabled ? 1200 : 300);
+              this.view.dispatch({});
+              return false;
+            }
+            const accepted = apply(this.view);
+            if (!accepted) {
+              this.clear();
+              this.view.dispatch({});
+            }
+            return accepted;
+          };
+          this.decorations = Decoration.set([Decoration.widget({
+            widget: new Ghost(choice.ghostText, () => this.accept(), "index", fallbackReason),
+            side: 1
+          }).range(state.selection.main.head)]);
+          this.view.dispatch({});
+        }, aiEligible ? 1200 : 300);
       }
       destroy() {
         this.clear();
         clearInlineWriting = void 0;
+        clearAIWriting = void 0;
+        clearIndexWriting = void 0;
         showInlineContinuationStatus = void 0;
       }
     }, {
@@ -34974,8 +35038,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (continuationEnabled === enabled && continuationContextKey === contextKey) return;
         continuationEnabled = enabled;
         continuationContextKey = contextKey;
-        clearInlineWriting?.();
+        clearAIWriting?.();
         cancelContinuations();
+      },
+      configureWritingIndexContext(contextKey) {
+        if (indexContextKey === contextKey) return;
+        indexContextKey = contextKey;
+        clearIndexWriting?.();
+        cancelWritingTermQueries();
       },
       setWritingContinuationStatus: setContinuationStatus,
       resolveWritingContinuation: resolveContinuation,
@@ -35003,9 +35073,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           return visible;
         } }
       ])), nativePresentation, EditorView.baseTheme({
-        ".scholium-writing-ghost": { color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none" },
+        ".scholium-writing-ghost": { color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none", font: "inherit", marginInlineStart: "2px" },
         ".scholium-writing-ghost-text": { textDecorationLine: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "0.2em" },
-        ".scholium-writing-ghost-key": { fontFamily: "system-ui", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap" },
+        ".scholium-writing-ghost-key": { display: "inline-flex", alignItems: "center", border: "1px solid currentColor", borderRadius: "0.35em", paddingInline: "0.3em", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap" },
+        ".scholium-writing-ghost-error-badge": { fontSize: "0.65em", marginInlineStart: "0.4em" },
         // Keep CodeMirror's single accessible list and aria-activedescendant relation.
         // Native rows are a pointer/visual projection and do not duplicate that AX tree.
         ".cm-tooltip-autocomplete.scholium-editor-suggestions": {
@@ -40324,6 +40395,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         break;
       case "setWritingContinuation":
         inputSuggestions.configureWritingContinuation(operation.enabled, operation.contextKey);
+        break;
+      case "setWritingIndexContext":
+        inputSuggestions.configureWritingIndexContext(operation.contextKey);
         break;
       case "showPreview":
         previewPopover.showAtSelection();

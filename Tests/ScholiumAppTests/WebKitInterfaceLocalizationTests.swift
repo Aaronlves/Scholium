@@ -20,6 +20,8 @@ struct WebKitInterfaceLocalizationTests {
                 == "Markdown 编辑器，编辑模式"
         )
         #expect(simplifiedChinese.string("Note title") == "笔记标题")
+        #expect(simplifiedChinese.string("Index") == "索引")
+        #expect(simplifiedChinese.string("Accept index suggestion: {text} (Tab)") == "接受索引建议：{text}（Tab）")
         let philosophicalCalloutLabels = [
             "Callout": "语义块",
             "Orientation": "导读",

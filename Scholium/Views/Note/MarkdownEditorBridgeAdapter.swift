@@ -50,9 +50,9 @@ enum EditorWritingContinuationUnavailableReason: String, Equatable, Sendable {
 
     var showsInEditor: Bool {
         switch self {
-        case .disabled, .invalidContext, .cancelled:
+        case .disabled, .noSuggestion, .invalidContext, .cancelled:
             false
-        case .notConnected, .notReady, .modelUnavailable, .busy, .connectionError, .timedOut, .noSuggestion, .serviceError:
+        case .notConnected, .notReady, .modelUnavailable, .busy, .connectionError, .timedOut, .serviceError:
             true
         }
     }

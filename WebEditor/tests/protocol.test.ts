@@ -32,7 +32,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the exact-insertion byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(40);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(41);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("rejects retired title positioning while retaining blur", () => {
@@ -41,6 +41,10 @@ describe("editor protocol", () => {
   });
   it("accepts the bounded title-focus operation", () => {
     expect(isEditorRequest({...request, operation: {type: "focusTitle"}})).toBe(true);
+  });
+  it("bounds the independent writing index context", () => {
+    expect(isEditorRequest({...request, operation: {type: "setWritingIndexContext", contextKey: "catalog-2"}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "setWritingIndexContext", contextKey: "x".repeat(257)}})).toBe(false);
   });
   it("accepts the bounded performance query", () => {
     expect(isEditorRequest({...request, operation: {type: "queryPerformance"}})).toBe(true);

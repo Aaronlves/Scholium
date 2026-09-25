@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 40;
+export const EDITOR_PROTOCOL_VERSION = 41;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {MAX_SOURCE_UTF8_BYTES, exactSourceFits} from "./source-capacity";
 export {MAX_SOURCE_UTF8_BYTES} from "./source-capacity";
@@ -110,6 +110,7 @@ export type EditorOperation =
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkPreviews"; value: unknown[]}
   | {type: "setWritingContinuation"; enabled: boolean; contextKey: string}
+  | {type: "setWritingIndexContext"; contextKey: string}
   | {type: "showPreview"}
   | {type: "measureVisibleProjection"}
   | {type: "showPreviewAt"; x: number; y: number}
@@ -160,7 +161,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setWritingContinuation", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
+  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setWritingContinuation", "setWritingIndexContext", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
@@ -222,6 +223,7 @@ export function recoveryGenerationCanReplaceCurrent(
 
 const forwardReadableOperationTypes = new Set([
   "setWritingContinuation",
+  "setWritingIndexContext",
   "setDocumentTitle",
   "queryText",
   "querySelection",
@@ -308,6 +310,8 @@ function validOperation(operation: Record<string, unknown>) {
   case "setLinkPreviews": return Array.isArray(operation.value);
   case "setWritingContinuation": return typeof operation.enabled === "boolean"
     && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
+  case "setWritingIndexContext": return typeof operation.contextKey === "string"
+    && operation.contextKey.length <= 256;
   case "showPreviewAt":
     return typeof operation.x === "number" && Number.isFinite(operation.x)
       && typeof operation.y === "number" && Number.isFinite(operation.y);

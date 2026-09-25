@@ -2209,6 +2209,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
   case "setWritingContinuation": inputSuggestions.configureWritingContinuation(operation.enabled, operation.contextKey); break;
+  case "setWritingIndexContext": inputSuggestions.configureWritingIndexContext(operation.contextKey); break;
   case "showPreview": previewPopover.showAtSelection(); break;
   case "measureVisibleProjection": {
     const startedAt = performance.now();

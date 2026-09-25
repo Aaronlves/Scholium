@@ -755,6 +755,9 @@ struct NoteContentView<ShellNotices: View>: View {
                 onPassageAction: { actions.passageAction($0, nil) },
                 writingContinuationEnabled: writingContinuationPreferences.continuationEnabled,
                 writingContinuationContextKey: writingContinuationPreferences.model,
+                writingIndexContextKey: state.workspaceCatalog.map {
+                    "\(state.currentVaultID?.uuidString ?? ""):\($0.generatedAt.timeIntervalSinceReferenceDate.bitPattern)"
+                } ?? "",
                 writingContinuationQuery: actions.writingContinuation
             )
             .id(editorSession.viewReconstructionID)
@@ -1141,11 +1144,15 @@ struct NoteContentView<ShellNotices: View>: View {
         _ query: String
     ) async -> [EditorLinkCompletion] {
         guard let currentVaultID = state.currentVaultID,
-            let catalogNotes = state.workspaceCatalog?.notes,
-            let generation = state.workspaceCatalog?.graph?.generation
+            let catalogNotes = state.workspaceCatalog?.notes
         else {
             return []
         }
+        if kind == .term {
+            return controller.editorWritingTermCompletions(
+                matching: query, catalogNotes: catalogNotes)
+        }
+        guard let generation = state.workspaceCatalog?.graph?.generation else { return [] }
         return await controller.editorLinkCompletions(
             kind: kind,
             matching: query,

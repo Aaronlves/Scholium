@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 40
+let markdownEditorProtocolVersion = 41
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 // Two exact-source strings may each require six JSON bytes per source byte.
@@ -221,6 +221,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setUserCSS(String)
     case setLinkPreviews([MarkdownEditorLinkPreview])
     case setWritingContinuation(enabled: Bool, contextKey: String)
+    case setWritingIndexContext(String)
     case showPreview
     case measureVisibleProjection
     case showPreviewAt(x: Double, y: Double)
@@ -262,7 +263,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             enabled, contextKey
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setWritingContinuation, showPreview,
+        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews,
+            setWritingContinuation, setWritingIndexContext, showPreview,
             measureVisibleProjection, showPreviewAt,
             announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
@@ -295,6 +297,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             self = try .setWritingContinuation(
                 enabled: container.decode(Bool.self, forKey: .enabled),
                 contextKey: container.decode(String.self, forKey: .contextKey))
+        case .setWritingIndexContext:
+            self = try .setWritingIndexContext(container.decode(String.self, forKey: .contextKey))
         case .showPreview: self = .showPreview
         case .measureVisibleProjection: self = .measureVisibleProjection
         case .showPreviewAt:
@@ -375,6 +379,9 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setWritingContinuation(let enabled, let contextKey):
             try container.encode(Kind.setWritingContinuation, forKey: .type)
             try container.encode(enabled, forKey: .enabled)
+            try container.encode(contextKey, forKey: .contextKey)
+        case .setWritingIndexContext(let contextKey):
+            try container.encode(Kind.setWritingIndexContext, forKey: .type)
             try container.encode(contextKey, forKey: .contextKey)
         case .showPreview: try container.encode(Kind.showPreview, forKey: .type)
         case .measureVisibleProjection:

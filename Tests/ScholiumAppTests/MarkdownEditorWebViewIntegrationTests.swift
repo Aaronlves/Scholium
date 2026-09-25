@@ -10,11 +10,122 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Inline writing badges clear mid-line source and preview inherits the editor font", arguments: [MarkdownEditorMode.livePreview, .source])
+    func inlineWritingPresentationGeometry(mode: MarkdownEditorMode) async throws {
+        let source = "A claim about res, although"
+        let harness = EditorHarness(source: source, initialMode: mode, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => candidate.textContent?.includes('A claim about res, although'));
+                if (!line) return null;
+                await document.fonts.ready;
+                const beforeHeight = line.getBoundingClientRect().height;
+                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                let textNode;
+                let candidate;
+                while ((candidate = walker.nextNode())) {
+                  if (candidate.textContent?.includes('res')) textNode = candidate;
+                }
+                if (!textNode) return null;
+                const offset = textNode.textContent.indexOf('res') + 3;
+                const caret = document.createRange();
+                caret.setStart(textNode, offset - 1);
+                caret.setEnd(textNode, offset);
+                const caretBefore = caret.getBoundingClientRect().right;
+                const status = document.createElement('span');
+                status.className = 'scholium-writing-status scholium-writing-status-error';
+                const badge = document.createElement('span');
+                badge.className = 'scholium-writing-status-badge';
+                badge.textContent = '!';
+                status.append(badge);
+                const insertion = document.createRange();
+                insertion.setStart(textNode, offset);
+                insertion.collapse(true);
+                insertion.insertNode(status);
+                const statusRect = status.getBoundingClientRect();
+                const preceding = status.previousSibling;
+                if (!preceding || preceding.nodeType !== Node.TEXT_NODE) return null;
+                const caretAfterRange = document.createRange();
+                caretAfterRange.setStart(preceding, preceding.length - 1);
+                caretAfterRange.setEnd(preceding, preceding.length);
+                const caretAfter = caretAfterRange.getBoundingClientRect().right;
+                const followingWalker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                let commaNode;
+                while ((candidate = followingWalker.nextNode())) {
+                  if (candidate.textContent?.includes(',')) { commaNode = candidate; break; }
+                }
+                if (!commaNode) return null;
+                const commaOffset = commaNode.textContent.indexOf(',');
+                const comma = document.createRange();
+                comma.setStart(commaNode, commaOffset);
+                comma.setEnd(commaNode, commaOffset + 1);
+                const commaX = comma.getBoundingClientRect().left;
+                const badgeRight = badge.getBoundingClientRect().right;
+                const errorHeight = line.getBoundingClientRect().height;
+                const endWalker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                let endNode;
+                while ((candidate = endWalker.nextNode())) {
+                  if (candidate.textContent?.endsWith('although')) endNode = candidate;
+                }
+                if (!endNode) return null;
+                const end = document.createRange();
+                end.setStart(endNode, endNode.length - 1);
+                end.setEnd(endNode, endNode.length);
+                const endX = end.getBoundingClientRect().right;
+                const ghost = document.createElement('span');
+                ghost.className = 'scholium-writing-ghost';
+                const suffix = document.createElement('span');
+                suffix.className = 'scholium-writing-ghost-text';
+                suffix.textContent = 'ponsibility';
+                const hint = document.createElement('span');
+                hint.className = 'scholium-writing-ghost-key';
+                hint.textContent = 'Index ⇥';
+                ghost.append(suffix, hint);
+                line.append(ghost);
+                const previewHeight = line.getBoundingClientRect().height;
+                const lineStyle = getComputedStyle(line);
+                const ghostStyle = getComputedStyle(suffix);
+                const result = {
+                  beforeHeight, errorHeight, previewHeight, statusWidth: statusRect.width,
+                  statusHeight: statusRect.height, caretShift: caretAfter - caretBefore,
+                  sourceGap: commaX - badgeRight,
+                  ghostGap: suffix.getBoundingClientRect().left - endX,
+                  lineFamily: lineStyle.fontFamily, ghostFamily: ghostStyle.fontFamily,
+                  lineSize: lineStyle.fontSize, ghostSize: ghostStyle.fontSize,
+                };
+                ghost.remove();
+                status.remove();
+                return result;
+                """) as? [String: Any])
+        let beforeHeight = try #require((geometry["beforeHeight"] as? NSNumber)?.doubleValue)
+        let errorHeight = try #require((geometry["errorHeight"] as? NSNumber)?.doubleValue)
+        let previewHeight = try #require((geometry["previewHeight"] as? NSNumber)?.doubleValue)
+        let statusWidth = try #require((geometry["statusWidth"] as? NSNumber)?.doubleValue)
+        let statusHeight = try #require((geometry["statusHeight"] as? NSNumber)?.doubleValue)
+        let caretShift = try #require((geometry["caretShift"] as? NSNumber)?.doubleValue)
+        let sourceGap = try #require((geometry["sourceGap"] as? NSNumber)?.doubleValue)
+        let ghostGap = try #require((geometry["ghostGap"] as? NSNumber)?.doubleValue)
+        #expect(abs(beforeHeight - errorHeight) < 0.5)
+        #expect(abs(beforeHeight - previewHeight) < 0.5)
+        #expect(statusWidth > 0 && statusHeight > 0)
+        #expect(abs(caretShift) < 0.5, "Caret shift: \(caretShift); geometry: \(geometry)")
+        #expect(sourceGap >= -0.5, "Badge covers source: \(geometry)")
+        #expect(ghostGap >= 1 && ghostGap <= 5, "Ghost gap: \(ghostGap); geometry: \(geometry)")
+        #expect(geometry["ghostFamily"] as? String == geometry["lineFamily"] as? String)
+        #expect(geometry["ghostSize"] as? String == geometry["lineSize"] as? String)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Unfocused AI continuation sends no requests; configuration preserves exact source and history")
     func writingContinuationUnfocusedSuppressionAndConfiguration() async throws {
         let source = "\u{feff}Intro 😀.\r\n\r\n控制 moral re"
         var requestedCarets: [Int] = []
-        let configurationProbe = WritingContinuationConfigurationProbe()
+        let configurationProbe = WritingConfigurationProbe()
         let harness = EditorHarness(
             source: source,
             bridgeDispatcher: configurationProbe,
@@ -36,18 +147,17 @@ struct MarkdownEditorWebViewIntegrationTests {
         func ghostCount() async throws -> Int {
             (try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-writing-ghost').length;") as? Int) ?? -1
         }
-        func waitForConfiguration(enabled: Bool, model: String) async throws {
-            let expected = MarkdownEditorOperation.setWritingContinuation(enabled: enabled, contextKey: model)
+        func waitForConfiguration(_ expected: MarkdownEditorOperation) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(3))
             while !configurationProbe.applied.contains(expected) {
                 guard ContinuousClock.now < deadline else {
-                    Issue.record("The continuation configuration did not reach the page.")
+                    Issue.record("The writing configuration did not reach the page: \(expected).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
             }
         }
-        try await waitForConfiguration(enabled: true, model: "model-a")
+        try await waitForConfiguration(.setWritingContinuation(enabled: true, contextKey: "model-a"))
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 's');")
         let typed = source + "s"
         #expect(try await harness.session.currentText(for: harness.documentID) == typed)
@@ -59,11 +169,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         } while ContinuousClock.now < idleDeadline
 
         let selection = harness.session.context?.selections
+        harness.configureWritingIndexContext("catalog-2")
+        try await waitForConfiguration(.setWritingIndexContext("catalog-2"))
         harness.configureWritingContinuation(enabled: true, model: "model-b")
-        try await waitForConfiguration(enabled: true, model: "model-b")
+        try await waitForConfiguration(.setWritingContinuation(enabled: true, contextKey: "model-b"))
         #expect(try await harness.session.currentText(for: harness.documentID) == typed)
         harness.configureWritingContinuation(enabled: false, model: "model-b")
-        try await waitForConfiguration(enabled: false, model: "model-b")
+        try await waitForConfiguration(.setWritingContinuation(enabled: false, contextKey: "model-b"))
         #expect(try await harness.session.currentText(for: harness.documentID) == typed)
         #expect(harness.session.context?.selections == selection)
         #expect(requestedCarets.isEmpty)
@@ -79,13 +191,17 @@ struct MarkdownEditorWebViewIntegrationTests {
     }
 
     @MainActor
-    private final class WritingContinuationConfigurationProbe: MarkdownEditorBridgeDispatching {
+    private final class WritingConfigurationProbe: MarkdownEditorBridgeDispatching {
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
         var applied: [MarkdownEditorOperation] = []
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
-            if case .setWritingContinuation = request.operation { applied.append(request.operation) }
+            switch request.operation {
+            case .setWritingContinuation, .setWritingIndexContext:
+                applied.append(request.operation)
+            default: break
+            }
             return result
         }
     }
@@ -7525,6 +7641,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             sourceBox.writingContinuationModel = model
         }
 
+        func configureWritingIndexContext(_ contextKey: String) {
+            sourceBox.writingIndexContextKey = contextKey
+        }
+
         func hideWindowForUnfocusedInputTesting() { window.orderOut(nil) }
 
         init(
@@ -8229,6 +8349,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var userCSS = ""
         @Published var writingContinuationEnabled = false
         @Published var writingContinuationModel = "model-a"
+        @Published var writingIndexContextKey = ""
         var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
         var activatedLinks: [String] = []
         let mode: MarkdownEditorMode
@@ -8324,6 +8445,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 onScrollAnchorChange: { sourceBox.scrollAnchor = $0 },
                 writingContinuationEnabled: sourceBox.writingContinuationEnabled,
                 writingContinuationContextKey: sourceBox.writingContinuationModel,
+                writingIndexContextKey: sourceBox.writingIndexContextKey,
                 writingContinuationQuery: sourceBox.writingContinuationQuery
             )
         }

@@ -4,8 +4,9 @@ import {
   type CompletionSource,
 } from "@codemirror/autocomplete";
 import {EditorSelection, EditorState, StateEffect, Transaction, type Extension, type TransactionSpec} from "@codemirror/state";
-import {EditorView, type DecorationSet} from "@codemirror/view";
+import {EditorView, type DecorationSet, type WidgetType} from "@codemirror/view";
 import {history, undo} from "@codemirror/commands";
+import {parseHTML} from "linkedom";
 import {describe, expect, it, vi} from "vitest";
 import {
   createEditorInputSuggestions,
@@ -18,7 +19,7 @@ import {normalizedDocumentText} from "../state";
 
 function inlineContinuationHarness(source = "A claim about res", options: {
   composing?: boolean; protectedRanges?: readonly {from: number; to: number}[]; multipleSelections?: boolean;
-  mode?: EditorMode; readOnly?: boolean; editable?: boolean;
+  mode?: EditorMode; readOnly?: boolean; editable?: boolean; aiEnabled?: boolean;
 } = {}) {
   const requests: string[] = [], cancelled: string[] = [], terms: string[] = [], labels: string[] = [];
   let state = EditorState.create({doc: normalizedDocumentText(source),
@@ -42,9 +43,23 @@ function inlineContinuationHarness(source = "A claim about res", options: {
     decorations: DecorationSet; schedule(): void; clear(): void; accept(): boolean;
   }};
   const plugin = definition.create(view);
-  suggestions.configureWritingContinuation(true, "model-a");
+  suggestions.configureWritingContinuation(options.aiEnabled ?? true, "model-a");
   plugin.schedule();
   return {suggestions, plugin, requests, cancelled, terms, labels, state: () => state, view};
+}
+
+function renderedInlineWidget(decorations: DecorationSet) {
+  let widget: WidgetType | undefined;
+  let side: number | undefined;
+  decorations.between(0, Number.MAX_SAFE_INTEGER, (_from, _to, decoration) => {
+    widget = decoration.spec.widget;
+    side = decoration.spec.side;
+  });
+  expect(widget).toBeDefined();
+  const {document} = parseHTML("<html><body></body></html>");
+  vi.stubGlobal("document", document);
+  try { return {node: widget!.toDOM({} as EditorView) as HTMLElement, side}; }
+  finally { vi.unstubAllGlobals(); }
 }
 
 describe("AI-first inline continuation", () => {
@@ -70,8 +85,15 @@ describe("AI-first inline continuation", () => {
     expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     expect(h.requests).toHaveLength(1); expect(h.terms).toEqual([]);
+    h.suggestions.configureWritingIndexContext("catalog-1");
+    expect(h.cancelled).toEqual([]);
     h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility needs qualification."});
     await vi.advanceTimersByTimeAsync(0);
+    expect(h.plugin.decorations.size).toBe(1);
+    const ai = renderedInlineWidget(h.plugin.decorations);
+    expect(ai.node.querySelector(".scholium-writing-ghost-key")?.textContent).toBe("AI ⇥");
+    expect(ai.node.getAttribute("aria-label")).toContain("Accept AI continuation:");
+    h.suggestions.configureWritingIndexContext("catalog-2");
     expect(h.plugin.decorations.size).toBe(1);
     expect(h.plugin.accept()).toBe(true);
     expect(h.state().field(exactSourceState).text).toBe("\uFEFFFirst 😀.\r\nA claim about responsibility needs qualification.");
@@ -89,12 +111,22 @@ describe("AI-first inline continuation", () => {
     expect(h.plugin.decorations.size).toBe(1);
     h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "generating"});
     expect(h.plugin.decorations.size).toBe(1);
+    expect(renderedInlineWidget(h.plugin.decorations).side).toBe(1);
     h.suggestions.resolveWritingContinuation(h.requests[0], {
       text: null, reason: "AI continuation could not connect. Check Agents & Chat.",
     });
     await vi.advanceTimersByTimeAsync(0);
+    expect(h.terms).toHaveLength(1);
+    expect(h.plugin.decorations.size).toBe(0);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], []);
+    await vi.advanceTimersByTimeAsync(0);
     expect(h.plugin.decorations.size).toBe(1);
     expect(h.plugin.accept()).toBe(false);
+    const error = renderedInlineWidget(h.plugin.decorations);
+    expect(error.side).toBe(1);
+    expect(error.node.textContent).toBe("!");
+    expect(error.node.getAttribute("aria-label")).toBe("AI continuation could not connect. Check Agents & Chat.");
+    expect(error.node.querySelectorAll(".scholium-writing-status-badge")).toHaveLength(1);
     vi.useRealTimers();
   });
 
@@ -124,8 +156,65 @@ describe("AI-first inline continuation", () => {
     h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "topic.md",
       isAmbiguous: false, writingAction: "term", replacementUTF16Count: 3}]);
     await vi.advanceTimersByTimeAsync(0);
+    const fallback = renderedInlineWidget(h.plugin.decorations);
+    expect(fallback.node.querySelectorAll(".scholium-writing-status")).toHaveLength(0);
+    expect(fallback.node.querySelectorAll(".scholium-writing-ghost-error-badge")).toHaveLength(1);
+    expect(fallback.node.querySelector(".scholium-writing-ghost-key")?.textContent).toBe("Index ⇥");
+    expect(fallback.node.getAttribute("aria-label")).toContain("Accept index suggestion:");
+    expect(fallback.node.getAttribute("aria-description")).toBe("Offline");
+    h.suggestions.configureWritingContinuation(true, "model-b");
+    expect(h.plugin.decorations.size).toBe(1);
     expect(h.plugin.accept()).toBe(true);
     expect(h.state().doc.toString()).toBe("A claim about responsibility");
+    vi.useRealTimers();
+  });
+
+  it("uses the index when AI is off, with no AI request or failure badge", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness("A claim about res", {aiEnabled: false});
+    await vi.advanceTimersByTimeAsync(299);
+    expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.terms).toHaveLength(1);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "topic.md",
+      isAmbiguous: false, writingAction: "term", replacementUTF16Count: 3}]);
+    await vi.advanceTimersByTimeAsync(0);
+    const ghost = renderedInlineWidget(h.plugin.decorations);
+    expect(ghost.node.querySelector(".scholium-writing-ghost-key")?.textContent).toBe("Index ⇥");
+    expect(ghost.node.querySelector(".scholium-writing-ghost-error-badge")).toBeNull();
+    expect(h.plugin.accept()).toBe(true);
+    expect(h.state().doc.toString()).toBe("A claim about responsibility");
+    vi.useRealTimers();
+  });
+
+  it("keeps a quiet AI absence quiet through empty index fallback", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    await vi.advanceTimersByTimeAsync(1_200);
+    h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason: ""});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.terms).toHaveLength(1);
+    expect(h.plugin.decorations.size).toBe(0);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], []);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.plugin.decorations.size).toBe(0);
+    expect(h.plugin.accept()).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("discards an old index result on catalog change", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    await vi.advanceTimersByTimeAsync(1_200);
+    h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason: ""});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.terms).toHaveLength(1);
+    h.suggestions.configureWritingIndexContext("catalog-2");
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "old.md",
+      isAmbiguous: false, writingAction: "term", replacementUTF16Count: 3}]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.plugin.decorations.size).toBe(0);
+    expect(h.plugin.accept()).toBe(false);
     vi.useRealTimers();
   });
 
