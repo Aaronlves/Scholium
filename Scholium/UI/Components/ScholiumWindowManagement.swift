@@ -391,9 +391,9 @@ struct WorkspaceWindowActions {
     let showSettlement: @MainActor () -> Void
 }
 
-/// The AppKit window is the appearance ancestor for native titlebar and
-/// toolbar content. SwiftUI projects the same researcher choice into the
-/// document hierarchy; this boundary maps it once for the native window.
+/// The window owns appearance for native chrome and the embedded split. When
+/// returning from an explicit scheme to System, project the current system
+/// appearance into both so retained hosting views do not keep the old scheme.
 @MainActor
 enum ScholiumWindowAppearance {
     static func apply(_ choice: WindowColorSchemeChoice, to window: NSWindow) {
@@ -401,7 +401,7 @@ enum ScholiumWindowAppearance {
             switch choice {
             case .dark: NSAppearance(named: .darkAqua)
             case .light: NSAppearance(named: .aqua)
-            case .system: nil
+            case .system: NSApplication.shared.effectiveAppearance
             }
     }
 }
@@ -438,6 +438,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private let loadingToolbar: NSToolbar
     private let focusLayout = WorkspaceFocusLayout()
     private var colorScheme = WindowColorSchemeChoice.system
+    private var systemAppearanceObservation: NSKeyValueObservation?
     private var reduceMotion = false
     private var closeIsAuthorized = false
     private var flushInFlight = false
@@ -522,11 +523,33 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     func update(colorScheme: WindowColorSchemeChoice) {
         guard self.colorScheme != colorScheme else { return }
         self.colorScheme = colorScheme
+        applyAppearanceProjection()
+        observeSystemAppearanceIfNeeded()
+    }
+
+    private func applyAppearanceProjection() {
         if let window {
             ScholiumWindowAppearance.apply(colorScheme, to: window)
+            splitController?.nativeSplitViewController.view.appearance = window.effectiveAppearance
         }
         if let searchWindow = advancedSearchWindow?.window {
             ScholiumWindowAppearance.apply(colorScheme, to: searchWindow)
+        }
+    }
+
+    private func observeSystemAppearanceIfNeeded() {
+        guard colorScheme == .system else {
+            systemAppearanceObservation = nil
+            return
+        }
+        guard systemAppearanceObservation == nil else { return }
+        systemAppearanceObservation = NSApplication.shared.observe(
+            \.effectiveAppearance, options: [.new]
+        ) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.colorScheme == .system else { return }
+                self.applyAppearanceProjection()
+            }
         }
     }
 
@@ -604,6 +627,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         // retaining and forwarding to that proxy would create a delegate cycle.
         previousDelegate = appState.isDetachedDocumentWindow ? nil : window.delegate
         window.delegate = self
+        observeSystemAppearanceIfNeeded()
         installToolbarIfPossible()
         markReadyIfPossible()
     }
@@ -613,6 +637,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             resetFocusLayout()
         }
         self.splitController = splitController
+        if let window {
+            splitController.nativeSplitViewController.view.appearance = window.effectiveAppearance
+        }
         if let visible = pendingLibraryVisibility {
             pendingLibraryVisibility = nil
             splitController.setLibraryVisible(visible, animated: !reduceMotion)
@@ -640,6 +667,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func detach() {
+        systemAppearanceObservation = nil
         resetFocusLayout()
         appState.searchController.dismiss()
         closeAdvancedSearch()

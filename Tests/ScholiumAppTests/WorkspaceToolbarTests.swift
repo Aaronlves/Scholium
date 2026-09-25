@@ -35,7 +35,7 @@ struct WorkspaceToolbarTests {
         #expect(window.appearance?.name == .darkAqua)
 
         ScholiumWindowAppearance.apply(.system, to: window)
-        #expect(window.appearance == nil)
+        #expect(window.appearance?.name == NSApplication.shared.effectiveAppearance.name)
     }
 
     @Test("The explicit Apparatus boundary does not invoke Inspector auto-discovery")
