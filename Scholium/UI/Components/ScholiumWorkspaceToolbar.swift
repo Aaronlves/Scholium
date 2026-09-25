@@ -387,27 +387,30 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     ) -> NSToolbarItem {
         let label = ScholiumL10n.dynamicString("Research Inspector")
         let modes = ResearchInspectorMode.allCases
-        let control = NSSegmentedControl(
-            images: modes.compactMap {
-                ScholiumNativeToolbarPresentation.symbol(
-                    named: $0.systemImage,
-                    accessibilityDescription: ScholiumL10n.localized($0.interfaceTitleResource))
-            },
-            trackingMode: .selectOne,
-            target: self,
-            action: #selector(selectInspectorMode(_:))
-        )
+        let control = ScholiumTooltippedSegmentedControl(frame: .zero)
+        control.segmentCount = modes.count
+        control.trackingMode = .selectOne
+        control.target = self
+        control.action = #selector(selectInspectorMode(_:))
         control.controlSize = ScholiumNativeToolbarPresentation.controlSize
         control.segmentStyle = .rounded
+        control.segmentDistribution = .fillEqually
         control.setAccessibilityLabel(label)
         control.setAccessibilityIdentifier("scholium.inspectorMode")
         for (index, mode) in modes.enumerated() {
-            control.setToolTip(
-                ScholiumL10n.localized(mode.interfaceTitleResource),
+            let title = ScholiumL10n.localized(mode.interfaceTitleResource)
+            control.setImage(
+                ScholiumNativeToolbarPresentation.symbol(
+                    named: mode.systemImage,
+                    accessibilityDescription: title
+                ),
                 forSegment: index
             )
             control.setImageScaling(.scaleProportionallyDown, forSegment: index)
         }
+        control.setSegmentToolTips(
+            modes.map { ScholiumL10n.localized($0.interfaceTitleResource) }
+        )
 
         let item = NSToolbarItem(itemIdentifier: identifier)
         item.label = label
@@ -551,7 +554,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
 
         if let item = toolbarItem(Item.inspectorModes),
-            let control = item.view as? NSSegmentedControl
+            let control = item.view as? ScholiumTooltippedSegmentedControl
         {
             let isAvailable = isCommandEnabled(Item.inspectorModes)
             item.isHidden = !isAvailable

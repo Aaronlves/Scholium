@@ -119,7 +119,6 @@ struct ResearchInspectorView: View {
             externalProjectionKey = resourceProjectionKey
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .scholiumSurface(.apparatus)
         .tint(nil as Color?)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchInspector")

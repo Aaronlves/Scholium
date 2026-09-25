@@ -136,12 +136,12 @@ struct ConnectionsProjection {
 
     static func make(
         graph: GraphSnapshot?,
-        catalog: WorkspaceCatalogSnapshot?,
+        catalogNotes: [WorkspaceCatalogNote]?,
         current: VaultQualifiedNoteID?,
         direction: ConnectionDirection
     ) -> Self {
         let notesByID = Dictionary(
-            uniqueKeysWithValues: (catalog?.notes ?? []).map {
+            uniqueKeysWithValues: (catalogNotes ?? []).map {
                 (
                     VaultQualifiedNoteID(
                         vaultID: $0.reference.vaultID,
@@ -194,6 +194,9 @@ struct InspectorLinkGroup: Identifiable {
     let id: String
     let title: String
     let items: [InspectorLinkItem]
+    var directoryContext: String? = nil
+
+    var relativePath: String? { items.first?.peer?.reference.relativePath }
 
     static func make(_ items: [InspectorLinkItem]) -> [Self] {
         var groups: [Self] = []
@@ -208,6 +211,20 @@ struct InspectorLinkGroup: Identifiable {
             } else {
                 groups.append(Self(id: key, title: item.displayTitle, items: [item]))
             }
+        }
+        let titleCounts = Dictionary(
+            groups.map { ($0.title, 1) },
+            uniquingKeysWith: +
+        )
+        for index in groups.indices {
+            guard titleCounts[groups[index].title, default: 0] > 1,
+                let reference = groups[index].items.first?.peer?.reference
+            else { continue }
+            let folder = (reference.relativePath as NSString).deletingLastPathComponent
+            groups[index].directoryContext =
+                folder.isEmpty
+                ? reference.vaultName
+                : reference.vaultName + " / " + folder
         }
         return groups
     }
@@ -230,7 +247,7 @@ struct ConnectionsInspectorView: View {
     private var groups: [InspectorLinkGroup] {
         let term = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let items = ConnectionsProjection.make(
-            graph: context.graph, catalog: context.catalog,
+            graph: context.graph, catalogNotes: context.catalog?.notes,
             current: context.current, direction: direction
         ).items.filter { $0.matches(term) }
         return InspectorLinkGroup.make(items)
@@ -320,6 +337,8 @@ struct ConnectionsInspectorView: View {
                             ResearchNoteGroupHeader(
                                 title: group.title, role: group.items.first?.peer?.reference.vaultRole,
                                 expanded: expanded, occurrenceCount: group.items.count,
+                                directoryContext: group.directoryContext,
+                                relativePath: group.relativePath,
                                 separatesFromPreviousGroup: group.id != noteGroups.first?.id
                             ) {
                                 if let peer = group.items.first?.peer {

@@ -183,11 +183,15 @@ struct WorkspaceToolbarTests {
                 ScholiumWorkspaceToolbarController.Item.inspectorModes,
                 in: toolbar
             ))
-        let modeControl = try #require(inspectorModes.view as? NSSegmentedControl)
+        let modeControl = try #require(inspectorModes.view as? ScholiumTooltippedSegmentedControl)
         #expect(ResearchInspectorMode.allCases == [.links, .related])
         #expect(modeControl.segmentCount == 2)
-        #expect(modeControl.toolTip(forSegment: 0) == ScholiumL10n.localized(ResearchInspectorMode.links.interfaceTitleResource))
-        #expect(modeControl.toolTip(forSegment: 1) == ScholiumL10n.localized(ResearchInspectorMode.related.interfaceTitleResource))
+        #expect(modeControl.segmentDistribution == .fillEqually)
+        #expect(
+            modeControl.segmentToolTipMessages == [
+                ScholiumL10n.localized(ResearchInspectorMode.links.interfaceTitleResource),
+                ScholiumL10n.localized(ResearchInspectorMode.related.interfaceTitleResource),
+            ])
         #expect(inspectorModes.menuFormRepresentation?.submenu?.items.count == 2)
         #expect(
             inspector.possibleLabels == [

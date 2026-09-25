@@ -8,14 +8,15 @@ struct InspectorLinkDirectionControl: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-    func makeNSView(context: Context) -> NSSegmentedControl {
-        let control = NSSegmentedControl(
-            labels: ConnectionDirection.allCases.map { _ in "" },
-            trackingMode: .selectOne, target: context.coordinator,
-            action: #selector(Coordinator.selectDirection(_:)))
+    func makeNSView(context: Context) -> ScholiumTooltippedSegmentedControl {
+        let control = ScholiumTooltippedSegmentedControl(frame: .zero)
+        control.segmentCount = ConnectionDirection.allCases.count
+        control.trackingMode = .selectOne
+        control.target = context.coordinator
+        control.action = #selector(Coordinator.selectDirection(_:))
         control.segmentStyle = .roundRect
         control.borderShape = .capsule
-        control.segmentDistribution = .fill
+        control.segmentDistribution = .fillEqually
         if #available(macOS 27.0, *) { control.role = .tabs }
         control.setAccessibilityLabel(ScholiumL10n.dynamicString("Links"))
         control.setAccessibilityIdentifier("scholium.links.direction")
@@ -25,7 +26,7 @@ struct InspectorLinkDirectionControl: NSViewRepresentable {
         return control
     }
 
-    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+    func updateNSView(_ control: ScholiumTooltippedSegmentedControl, context: Context) {
         context.coordinator.parent = self
         if !isActive, control.window?.firstResponder === control {
             control.window?.makeFirstResponder(nil)
@@ -36,8 +37,11 @@ struct InspectorLinkDirectionControl: NSViewRepresentable {
             control.setLabel(item == direction ? title : "", forSegment: index)
             control.setImage(
                 NSImage(systemSymbolName: item.symbol, accessibilityDescription: title), forSegment: index)
-            control.setToolTip(title, forSegment: index)
         }
+        control.setSegmentToolTips(
+            ConnectionDirection.allCases.map { ScholiumL10n.dynamicString($0.tabTitle) },
+            isActive: isActive
+        )
         control.selectedSegment = ConnectionDirection.allCases.firstIndex(of: direction) ?? 0
         control.invalidateIntrinsicContentSize()
     }

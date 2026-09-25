@@ -530,14 +530,15 @@ names and Help. A local search field matches names and destinations. The system
 owns selector artwork and feedback. Search scope and options live in
 the search-field magnifying-glass menu, with no separate filter row. Direction,
 grouping, and distinct activation targets carry the interaction; no standing explanatory
-caption repeats the controls. Incoming and Outgoing group authored occurrences by linked Note
-identity, with a Note title and occurrence count. Incoming expands to passages in that
-source Note; Outgoing expands to passages in the current Note that link to the named
-destination. The entire group heading, including its Note title and disclosure arrow,
-expands or collapses the passages without navigating. Its contextual Open Linked Note
-action opens the peer when needed. Links passages have a quiet hover affordance and
-retain keyboard activation, but no persistent selected, checked, visited or clicked
-appearance. Passage activation locates its original source in the current Document mode.
+caption repeats the controls. Incoming and Outgoing group occurrences by linked Note
+identity; headings show the Note title and occurrence count. Duplicate titles add
+quiet vault/directory context; Help and accessible names include role and relative path.
+Incoming expands to passages in that source Note; Outgoing expands to passages in
+the current Note that link to the named destination. The entire group heading toggles
+disclosure without navigation; its contextual Open Linked Note action opens the peer.
+Link passages retain keyboard activation and quiet hover, with no persistent selected,
+checked, visited or clicked appearance. Passage activation locates its original source
+in the current Document mode.
 Show meaningful passages and annotations, never source line numbers as visible fields.
 Once the target has been revealed, the Document briefly highlights the corresponding
 visible line in Review or source line in Edit/Source, then returns to ordinary reading;

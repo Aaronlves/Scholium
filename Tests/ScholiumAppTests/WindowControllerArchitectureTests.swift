@@ -609,14 +609,14 @@ struct WindowControllerArchitectureTests {
         #expect(shell.inspector.mode == .links)
 
         document.rememberPresentationMode(.source)
-        shell.selectInspectorMode(.links)
+        shell.selectInspectorMode(.related)
         shell.selectWorkspace(.paperAnalysis)
         document.selectWorkspace(.paperAnalysis)
 
         #expect(document.currentPresentationMode == .livePreview)
         #expect(shell.inspector.mode == .links)
         #expect(document.presentationMode(for: .topicKnowledge) == .source)
-        #expect(shell.inspectorMode(for: .topicKnowledge) == .links)
+        #expect(shell.inspectorMode(for: .topicKnowledge) == .related)
     }
 
     @Test("The current Document mode carries across selected Notes")
