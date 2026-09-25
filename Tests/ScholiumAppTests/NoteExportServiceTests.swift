@@ -35,7 +35,8 @@ struct NoteExportServiceTests {
         }
 
         let withMetadata = NoteDocument(
-            relativePath: "Paper.md", rawContent: "---\nprivate: draft\n---\n# Authored title\n\nThe body."
+            relativePath: "Paper.md",
+            rawContent: "---\nprivate: draft\n---\n# Authored title\n\nThe body."
         )
         let academic = try #require(
             String(
@@ -58,7 +59,8 @@ struct NoteExportServiceTests {
         )
         let bodyIndex = (word.string as NSString).range(of: "A paragraph.").location
         #expect(bodyIndex != NSNotFound)
-        let wordFont = try #require(word.attribute(.font, at: bodyIndex, effectiveRange: nil) as? NSFont)
+        let wordFont = try #require(
+            word.attribute(.font, at: bodyIndex, effectiveRange: nil) as? NSFont)
         #expect(abs(wordFont.pointSize - 12) < 0.5)
         let wordParagraph = try #require(
             word.attribute(.paragraphStyle, at: bodyIndex, effectiveRange: nil) as? NSParagraphStyle
@@ -96,6 +98,54 @@ struct NoteExportServiceTests {
         #expect(imported.string.contains("中文 重点"))
     }
 
+    @Test("Academic Word indentation applies to body paragraphs, not headings or list items")
+    func academicWordParagraphRoles() async throws {
+        let document = NoteDocument(
+            relativePath: "Academic.md",
+            rawContent:
+                "# Main heading\n\nFirst body paragraph.\n\n## Later heading\n\nSecond body paragraph.\n\n- Listed item\n\n> Quoted paragraph."
+        )
+        for style in [NoteExportStyle.apa7, .mla9] {
+            let data = try await NoteExportService.render(
+                document: document, title: "Academic", format: .docx,
+                style: style, textSize: 12, paperSize: .letter
+            )
+            let word = try NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
+                documentAttributes: nil
+            )
+            for (text, indented) in [
+                ("Main heading", false), ("First body paragraph.", true),
+                ("Later heading", false), ("Second body paragraph.", true),
+                ("Quoted paragraph.", false),
+            ] {
+                let location = (word.string as NSString).range(of: text).location
+                let index = try #require(location == NSNotFound ? nil : location)
+                let paragraph = try #require(
+                    word.attribute(.paragraphStyle, at: index, effectiveRange: nil)
+                        as? NSParagraphStyle
+                )
+                #expect(
+                    (paragraph.firstLineHeadIndent >= 35.5) == indented,
+                    "\(text): head=\(paragraph.headIndent), first=\(paragraph.firstLineHeadIndent), lists=\(paragraph.textLists.count)"
+                )
+            }
+            let listLocation = (word.string as NSString).range(of: "Listed item").location
+            let listIndex = try #require(listLocation == NSNotFound ? nil : listLocation)
+            let listParagraph = try #require(
+                word.attribute(.paragraphStyle, at: listIndex, effectiveRange: nil)
+                    as? NSParagraphStyle
+            )
+            // The native DOCX writer positions list text after its bullet;
+            // this is the list margin, not an added academic first-line indent.
+            #expect(listParagraph.headIndent > 0)
+            #expect(listParagraph.firstLineHeadIndent <= listParagraph.headIndent + 0.5)
+            #expect(!word.string.contains("SCHOLIUM-PARAGRAPH"))
+            #expect(!word.string.contains("\u{E000}"))
+        }
+    }
+
     @Test("PDF includes the end of a long Note on later paper pages")
     func pdfRetainsLongDocumentTail() async throws {
         let source = (1...140).map { index in
@@ -114,6 +164,37 @@ struct NoteExportServiceTests {
         for index in 1...140 {
             #expect(extracted.components(separatedBy: "Paragraph \(index):").count == 2)
         }
+    }
+
+    @Test("PDF links remain clickable on both sides of a page break")
+    func pdfRetainsLinkAnnotations() async throws {
+        let middle = (1...110).map { "Paragraph \($0): Words on a long exported page." }
+            .joined(separator: "\n\n")
+        let document = NoteDocument(
+            relativePath: "Links.md",
+            rawContent:
+                "[First](https://example.org/first)\n\n\(middle)\n\n[Last](https://example.org/last)"
+        )
+        let data = try await NoteExportService.render(
+            document: document, title: "Links", format: .pdf,
+            style: .document, textSize: 13, paperSize: .a4
+        )
+        let pdf = try #require(PDFDocument(data: data))
+        #expect(pdf.pageCount > 1)
+        let firstPage = try #require(pdf.page(at: 0))
+        let lastPage = try #require(pdf.page(at: pdf.pageCount - 1))
+        let firstLink = try #require(
+            firstPage.annotations.first {
+                ($0.action as? PDFActionURL)?.url?.absoluteString == "https://example.org/first"
+            })
+        let lastLink = try #require(
+            lastPage.annotations.first {
+                ($0.action as? PDFActionURL)?.url?.absoluteString == "https://example.org/last"
+            })
+        let firstText = try #require(pdf.findString("First", withOptions: []).first)
+        let lastText = try #require(pdf.findString("Last", withOptions: []).last)
+        #expect(firstLink.bounds.intersects(firstText.bounds(for: firstPage)))
+        #expect(lastLink.bounds.intersects(lastText.bounds(for: lastPage)))
     }
 
     @Test("Requested source metadata stays visible before the body")
@@ -220,6 +301,44 @@ struct NoteExportServiceTests {
             } catch {
                 #expect(error.localizedDescription.contains("../outside.png"))
             }
+        }
+    }
+
+    @Test("Word export does not require an image that its format omits")
+    func missingImageDoesNotBlockWord() async throws {
+        let document = NoteDocument(
+            relativePath: "Missing.md",
+            rawContent: "Before ![Missing](media/absent.png) after."
+        )
+        let previewData = try await NoteExportService.renderDOCXPreviewHTML(
+            document: document, title: "Missing", style: .document,
+            textSize: 13, paperSize: .a4
+        )
+        let preview = try #require(String(data: previewData, encoding: .utf8))
+        #expect(preview.contains("Before"))
+        #expect(preview.contains("scholium-media-placeholder"))
+        #expect(preview.contains("after."))
+
+        let data = try await NoteExportService.render(
+            document: document, title: "Missing", format: .docx,
+            style: .document, textSize: 13, paperSize: .a4
+        )
+        let word = try NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
+            documentAttributes: nil
+        )
+        #expect(word.string.contains("Before"))
+        #expect(word.string.contains("after."))
+
+        do {
+            _ = try await NoteExportService.render(
+                document: document, title: "Missing", format: .html,
+                style: .document, textSize: 13, paperSize: .a4
+            )
+            Issue.record("Normal HTML export accepted an unresolved local image")
+        } catch {
+            #expect(error.localizedDescription.contains("media/absent.png"))
         }
     }
 }

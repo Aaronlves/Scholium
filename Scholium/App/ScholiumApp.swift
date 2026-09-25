@@ -55,6 +55,7 @@ final class WindowModel: ObservableObject {
     var noteExportWindowController: ScholiumNoteExportWindowController?
 
     // MARK: Published State
+    @Published var noteExportPreparationInProgress = false
     @Published var vaultConfig: VaultConfig?
     @Published var currentRegisteredVault: RegisteredVault?
     @Published var currentVaultRole: VaultRole = .other

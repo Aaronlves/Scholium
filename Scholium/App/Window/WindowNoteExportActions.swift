@@ -8,8 +8,10 @@ extension WindowModel {
             let note = currentNote
         else { return }
 
+        noteExportPreparationInProgress = true
         Task { @MainActor [weak self] in
             guard let self else { return }
+            defer { self.noteExportPreparationInProgress = false }
             do {
                 let session = self.documentController.session(for: descriptor)
                 let source: String

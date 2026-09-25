@@ -114,14 +114,24 @@ private final class NoteExportPreviewModel: ObservableObject {
         previewData = nil
         renderedKey = nil
         do {
-            let data = try await NoteExportService.render(
-                document: document, title: title,
-                format: key.format == .docx ? .html : key.format,
-                style: key.style, textSize: key.textSize, paperSize: key.paperSize,
-                appearance: appearance,
-                includeYAML: key.includeYAML,
-                embeddedImages: embeddedImages
-            )
+            let data: Data
+            if key.format == .docx {
+                data = try await NoteExportService.renderDOCXPreviewHTML(
+                    document: document, title: title,
+                    style: key.style, textSize: key.textSize, paperSize: key.paperSize,
+                    appearance: appearance,
+                    includeYAML: key.includeYAML,
+                    embeddedImages: embeddedImages
+                )
+            } else {
+                data = try await NoteExportService.render(
+                    document: document, title: title, format: key.format,
+                    style: key.style, textSize: key.textSize, paperSize: key.paperSize,
+                    appearance: appearance,
+                    includeYAML: key.includeYAML,
+                    embeddedImages: embeddedImages
+                )
+            }
             try Task.checkCancellation()
             guard previewKey == key else { return }
             previewData = data
@@ -229,6 +239,8 @@ private enum NoteExportDestinationError: LocalizedError {
 
 @MainActor
 private final class NoteExportChrome: NSObject, NSToolbarDelegate {
+    private static let suggestedTextSizes: [CGFloat] = [11, 12, 12.5, 14]
+
     private enum Item {
         static let format = NSToolbarItem.Identifier("note-export-format")
         static let more = NSToolbarItem.Identifier("note-export-more")
@@ -360,7 +372,15 @@ private final class NoteExportChrome: NSObject, NSToolbarDelegate {
             model.format == .html
             ? style : "\(style) · \(model.paperSize == .a4 ? "A4" : ScholiumL10n.string("US Letter"))"
         stylePopup?.selectItem(at: styleIndex)
-        sizePopup?.selectItem(at: [CGFloat(11), 12, 12.5, 14].firstIndex(of: model.textSize) ?? 2)
+        if let sizePopup {
+            let choices = textSizeChoices
+            let titles = choices.map { "\(Double($0).formatted()) pt" }
+            if sizePopup.itemArray.map(\.title) != titles {
+                sizePopup.removeAllItems()
+                sizePopup.addItems(withTitles: titles)
+            }
+            sizePopup.selectItem(at: choices.firstIndex(of: model.textSize) ?? 0)
+        }
         paperPopup?.selectItem(at: model.paperSize == .a4 ? 0 : 1)
         paperRow?.isHidden = model.format == .html
     }
@@ -371,6 +391,10 @@ private final class NoteExportChrome: NSObject, NSToolbarDelegate {
         case .apa7: 1
         case .mla9: 2
         }
+    }
+
+    private var textSizeChoices: [CGFloat] {
+        Array(Set(Self.suggestedTextSizes + [model.textSize])).sorted()
     }
 
     private func menuItem(_ title: String, action: Selector, tag: Int = 0) -> NSMenuItem {
@@ -439,7 +463,6 @@ private final class NoteExportChrome: NSObject, NSToolbarDelegate {
         stylePopup = style
         stack.addArrangedSubview(optionRow(ScholiumL10n.string("Style"), popup: style))
         let size = NSPopUpButton()
-        size.addItems(withTitles: ["11 pt", "12 pt", "12.5 pt", "14 pt"])
         size.target = self
         size.action = #selector(selectSize(_:))
         sizePopup = size
@@ -477,7 +500,9 @@ private final class NoteExportChrome: NSObject, NSToolbarDelegate {
     }
 
     @objc private func selectSize(_ sender: NSPopUpButton) {
-        model.textSize = [CGFloat(11), 12, 12.5, 14][sender.indexOfSelectedItem]
+        let choices = textSizeChoices
+        guard choices.indices.contains(sender.indexOfSelectedItem) else { return }
+        model.textSize = choices[sender.indexOfSelectedItem]
     }
 
     @objc private func selectPaper(_ sender: NSPopUpButton) {
@@ -509,7 +534,7 @@ private struct NoteExportPreviewView: View {
                     .background(.regularMaterial, in: Capsule())
                     .padding(.bottom, 18)
                 }
-                if let error = model.error {
+                if model.previewData != nil, let error = model.error {
                     Text(error)
                         .foregroundStyle(.red)
                         .padding(12)

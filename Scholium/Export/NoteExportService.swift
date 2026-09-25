@@ -64,6 +64,28 @@ private enum NoteExportError: LocalizedError {
 /// Renders one supplied NoteDocument snapshot without reading or changing its source file.
 @MainActor
 struct NoteExportService {
+    /// A Word preview follows the same HTML layout, but keeps the renderer's
+    /// visible image placeholder for figures the native Word writer omits.
+    static func renderDOCXPreviewHTML(
+        document: NoteDocument,
+        title: String,
+        style: NoteExportStyle,
+        textSize: CGFloat,
+        paperSize: NoteExportPaperSize,
+        appearance: DocumentAppearanceSettings = .defaultSettings,
+        includeYAML: Bool = false,
+        embeddedImages: [String: RenderedMarkdownImage] = [:]
+    ) async throws -> Data {
+        let html = try makeHTML(
+            document: document, title: title, style: style, textSize: textSize,
+            paperSize: paperSize, appearance: appearance, includeYAML: includeYAML,
+            embeddedImages: embeddedImages, requireImages: false, pdfLayout: false
+        )
+        let data = Data(html.utf8)
+        guard !data.isEmpty else { throw NoteExportError.emptyOutput }
+        return data
+    }
+
     static func render(
         document: NoteDocument,
         title: String,
@@ -75,10 +97,71 @@ struct NoteExportService {
         includeYAML: Bool = false,
         embeddedImages: [String: RenderedMarkdownImage] = [:]
     ) async throws -> Data {
+        let html = try makeHTML(
+            document: document, title: title, style: style, textSize: textSize,
+            paperSize: paperSize, appearance: appearance, includeYAML: includeYAML,
+            embeddedImages: embeddedImages, requireImages: format != .docx,
+            pdfLayout: format == .pdf
+        )
+        let htmlData = Data(html.utf8)
+        guard !htmlData.isEmpty else { throw NoteExportError.emptyOutput }
+
+        let output: Data
+        switch format {
+        case .html:
+            output = htmlData
+        case .pdf:
+            output = try await renderPDF(html: html, paperSize: paperSize, style: style)
+        case .docx:
+            // The native writer retains text styling but flattens structures
+            // such as tables and footnotes. Export never becomes source authority.
+            let paragraphMarker = "\u{E000}\(UUID().uuidString)\u{E001}"
+            let wordHTML =
+                style == .document ? html : markBodyParagraphs(in: html, with: paragraphMarker)
+            let imported = try NSAttributedString(
+                data: Data(wordHTML.utf8),
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue,
+                ],
+                documentAttributes: nil
+            )
+            guard imported.length > 0 else { throw NoteExportError.emptyOutput }
+            let attributed = styleWordDocument(
+                imported, style: style, textSize: textSize, appearance: appearance,
+                paragraphMarker: style == .document ? nil : paragraphMarker
+            )
+            output = try attributed.data(
+                from: NSRange(location: 0, length: attributed.length),
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML]
+            )
+        }
+        guard !output.isEmpty else { throw NoteExportError.emptyOutput }
+        if format == .docx, !output.starts(with: [0x50, 0x4B]) {
+            throw NoteExportError.emptyOutput
+        }
+        return output
+    }
+
+    private static func makeHTML(
+        document: NoteDocument,
+        title: String,
+        style: NoteExportStyle,
+        textSize: CGFloat,
+        paperSize: NoteExportPaperSize,
+        appearance: DocumentAppearanceSettings,
+        includeYAML: Bool,
+        embeddedImages: [String: RenderedMarkdownImage],
+        requireImages: Bool,
+        pdfLayout: Bool
+    ) throws -> String {
         guard textSize.isFinite, textSize > 0 else {
             throw NoteExportError.invalidTextSize
         }
         try Task.checkCancellation()
+        if requireImages, document.frontmatterState != .malformed {
+            try requireLocalImages(in: document, embeddedImages: embeddedImages)
+        }
 
         let frontmatter: String?
         let body: String
@@ -91,7 +174,6 @@ struct NoteExportService {
             }
             frontmatter = exactFrontmatter
             let semantic = MarkdownSemanticDocument(parsing: document)
-            try requireLocalImages(in: semantic, embeddedImages: embeddedImages)
             body =
                 SafeMarkdownRenderer.render(
                     document, semantic: semantic, embeddedImages: embeddedImages
@@ -100,11 +182,11 @@ struct NoteExportService {
             // An unclosed opening delimiter has no provable body boundary.
             // Show the entire source literally rather than reinterpret it.
             frontmatter = nil
-            body = "<pre class=\"export-source-fallback\" dir=\"auto\">\(escapeHTML(document.rawContent))</pre>"
+            body =
+                "<pre class=\"export-source-fallback\" dir=\"auto\">\(escapeHTML(document.rawContent))</pre>"
         } else {
             frontmatter = nil
             let semantic = MarkdownSemanticDocument(parsing: document)
-            try requireLocalImages(in: semantic, embeddedImages: embeddedImages)
             body =
                 SafeMarkdownRenderer.render(
                     document, semantic: semantic, embeddedImages: embeddedImages
@@ -119,50 +201,17 @@ struct NoteExportService {
             paperSize: paperSize,
             appearance: appearance,
             includeYAML: includeYAML,
-            pdfLayout: format == .pdf
+            pdfLayout: pdfLayout
         )
-        guard let htmlData = html.data(using: .utf8), !htmlData.isEmpty else {
-            throw NoteExportError.emptyOutput
-        }
-
-        let output: Data
-        switch format {
-        case .html:
-            output = htmlData
-        case .pdf:
-            output = try await renderPDF(html: html, paperSize: paperSize, style: style)
-        case .docx:
-            // The native writer retains text styling but flattens structures
-            // such as tables and footnotes. Export never becomes source authority.
-            let imported = try NSAttributedString(
-                data: htmlData,
-                options: [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue,
-                ],
-                documentAttributes: nil
-            )
-            guard imported.length > 0 else { throw NoteExportError.emptyOutput }
-            let attributed = styleWordDocument(
-                imported, style: style, textSize: textSize, appearance: appearance
-            )
-            output = try attributed.data(
-                from: NSRange(location: 0, length: attributed.length),
-                documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML]
-            )
-        }
-        guard !output.isEmpty else { throw NoteExportError.emptyOutput }
-        if format == .docx, !output.starts(with: [0x50, 0x4B]) {
-            throw NoteExportError.emptyOutput
-        }
-        return output
+        return html
     }
 
     private static func styleWordDocument(
         _ source: NSAttributedString,
         style: NoteExportStyle,
         textSize: CGFloat,
-        appearance: DocumentAppearanceSettings
+        appearance: DocumentAppearanceSettings,
+        paragraphMarker: String?
     ) -> NSMutableAttributedString {
         let result = NSMutableAttributedString(attributedString: source)
         let range = NSRange(location: 0, length: result.length)
@@ -208,25 +257,66 @@ struct NoteExportService {
                     (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
                     ?? NSMutableParagraphStyle()
                 paragraph.paragraphSpacing = 0
-                paragraph.firstLineHeadIndent = 36
+                paragraph.firstLineHeadIndent = 0
                 result.addAttribute(.paragraphStyle, value: paragraph, range: run)
             }
-            let titleEnd = (source.string as NSString).range(of: "\n").location
-            let titleRange = NSRange(
-                location: 0,
-                length: titleEnd == NSNotFound ? result.length : titleEnd + 1
-            )
-            if titleRange.length > 0 {
-                let titleParagraph =
-                    (result.attribute(
-                        .paragraphStyle, at: 0, effectiveRange: nil
-                    ) as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
-                    ?? NSMutableParagraphStyle()
-                titleParagraph.firstLineHeadIndent = 0
-                result.addAttribute(.paragraphStyle, value: titleParagraph, range: titleRange)
+            if let paragraphMarker {
+                let text = result.string as NSString
+                var markerRanges: [NSRange] = []
+                var search = NSRange(location: 0, length: text.length)
+                while search.length > 0 {
+                    let markerRange = text.range(of: paragraphMarker, options: [], range: search)
+                    guard markerRange.location != NSNotFound else { break }
+                    markerRanges.append(markerRange)
+                    let end = NSMaxRange(markerRange)
+                    search = NSRange(location: end, length: text.length - end)
+                }
+                for markerRange in markerRanges {
+                    let paragraphRange = text.paragraphRange(for: markerRange)
+                    let paragraph =
+                        (result.attribute(
+                            .paragraphStyle, at: markerRange.location, effectiveRange: nil
+                        ) as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
+                        ?? NSMutableParagraphStyle()
+                    // AppKit's HTML importer drops CSS text-indent. Only an
+                    // actual <p> at the normal body margin receives this indent.
+                    if paragraph.headIndent == 0 {
+                        paragraph.firstLineHeadIndent = 36
+                        result.addAttribute(.paragraphStyle, value: paragraph, range: paragraphRange)
+                    }
+                }
+                for markerRange in markerRanges.reversed() {
+                    result.deleteCharacters(in: markerRange)
+                }
             }
         }
         return result
+    }
+
+    private static func markBodyParagraphs(in html: String, with marker: String) -> String {
+        let tags = try! NSRegularExpression(pattern: "</?([A-Za-z][A-Za-z0-9-]*)\\b[^>]*>")
+        let source = html as NSString
+        let excludedContainers: Set<String> = ["li", "blockquote", "td", "th"]
+        var insideMain = false
+        var excludedDepth = 0
+        var cursor = 0
+        var marked = ""
+        for match in tags.matches(in: html, range: NSRange(location: 0, length: source.length)) {
+            let end = NSMaxRange(match.range)
+            marked += source.substring(with: NSRange(location: cursor, length: end - cursor))
+            let tag = source.substring(with: match.range(at: 1)).lowercased()
+            let closing = source.substring(with: match.range).hasPrefix("</")
+            if tag == "main" { insideMain = !closing }
+            if excludedContainers.contains(tag) {
+                excludedDepth += closing ? -1 : 1
+            }
+            if tag == "p", !closing, insideMain, excludedDepth == 0 {
+                marked += marker
+            }
+            cursor = end
+        }
+        marked += source.substring(from: cursor)
+        return marked
     }
 
     private static func standaloneHTML(
@@ -324,58 +414,21 @@ struct NoteExportService {
     }
 
     private static func requireLocalImages(
-        in semantic: MarkdownSemanticDocument,
-        embeddedImages: [String: RenderedMarkdownImage],
-        depth: Int = 0
+        in document: NoteDocument,
+        embeddedImages: [String: RenderedMarkdownImage]
     ) throws {
-        guard depth < 12 else { throw NoteExportError.invalidSource }
-        let linksBySpan = Dictionary(
-            semantic.links.filter { $0.syntax == .embed }.map { ($0.span, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        for inline in semantic.inlines where inline.kind == .image {
-            guard let link = linksBySpan[inline.span] else {
-                throw NoteExportError.missingLocalImage("an unresolved Markdown image")
+        for reference in ExportMarkdownImageReferences.references(in: document) {
+            switch reference {
+            case .local(let file):
+                let destination = file.destination.removingPercentEncoding ?? file.destination
+                guard embeddedImages[destination] != nil else {
+                    throw NoteExportError.missingLocalImage(destination)
+                }
+            case .remote:
+                break
+            case .unavailable(let destination):
+                throw NoteExportError.missingLocalImage(destination)
             }
-            let target = link.target
-            if link.isExternal,
-                !target.lowercased().hasPrefix("file:"),
-                !target.lowercased().hasPrefix("data:")
-            {
-                continue
-            }
-            guard link.fragment == nil, !target.contains("?"),
-                embeddedImages[target] != nil
-            else {
-                throw NoteExportError.missingLocalImage(target.isEmpty ? "an empty path" : target)
-            }
-        }
-        for definition in semantic.footnoteDefinitions {
-            let fragment = NoteDocument(relativePath: "footnote.md", rawContent: definition.content)
-            try requireLocalImages(
-                in: MarkdownSemanticDocument(parsing: fragment),
-                embeddedImages: embeddedImages,
-                depth: depth + 1
-            )
-        }
-        for callout in semantic.callouts {
-            let fragment = NoteDocument(relativePath: "callout.md", rawContent: callout.bodySource)
-            try requireLocalImages(
-                in: MarkdownSemanticDocument(parsing: fragment),
-                embeddedImages: embeddedImages,
-                depth: depth + 1
-            )
-        }
-        for annotation in semantic.links.compactMap(\.annotation) {
-            let fragment = NoteDocument(
-                relativePath: "link-annotation.md",
-                rawContent: annotation.markdown
-            )
-            try requireLocalImages(
-                in: MarkdownSemanticDocument(parsing: fragment),
-                embeddedImages: embeddedImages,
-                depth: depth + 1
-            )
         }
     }
 
@@ -550,7 +603,52 @@ struct NoteExportService {
         else {
             throw NoteExportError.invalidPDF
         }
-        return result
+        // Core Graphics draws page content but never carries PDF annotations.
+        // Apply the same page translation to each captured link rectangle so
+        // the final PDF retains working links at the visible text positions.
+        for (index, data) in captures.enumerated() {
+            guard let source = PDFDocument(data: data),
+                let sourcePage = source.page(at: 0),
+                let outputPage = check.page(at: index)
+            else { throw NoteExportError.invalidPDF }
+            let bounds = sourcePage.bounds(for: .mediaBox)
+            let transform = CGAffineTransform(
+                translationX: -bounds.minX,
+                y: paperSize.height - margin - bounds.maxY
+            )
+            for annotation in sourcePage.annotations {
+                guard
+                    annotation.type == "Link"
+                        || annotation.type == PDFAnnotationSubtype.link.rawValue
+                else { continue }
+                let action: PDFAction
+                if let url = (annotation.action as? PDFActionURL)?.url {
+                    action = PDFActionURL(url: url)
+                } else if let goTo = annotation.action as? PDFActionGoTo,
+                    goTo.destination.page === sourcePage
+                {
+                    let point = goTo.destination.point
+                    let destination = PDFDestination(
+                        page: outputPage, at: point.applying(transform)
+                    )
+                    destination.zoom = goTo.destination.zoom
+                    action = PDFActionGoTo(destination: destination)
+                } else {
+                    continue
+                }
+                let translated = PDFAnnotation(
+                    bounds: annotation.bounds.applying(transform),
+                    forType: .link,
+                    withProperties: nil
+                )
+                translated.action = action
+                outputPage.addAnnotation(translated)
+            }
+        }
+        guard let annotated = check.dataRepresentation(), !annotated.isEmpty else {
+            throw NoteExportError.invalidPDF
+        }
+        return annotated
     }
 }
 

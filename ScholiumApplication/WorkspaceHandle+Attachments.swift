@@ -14,10 +14,10 @@ extension WorkspaceHandle {
         // The caller may have an unsaved editor buffer. Parse that exact source,
         // while checking that the selected Note still belongs to this vault.
         _ = try await repository.load(relativePath: note.relativePath)
-        let body = NoteDocument(relativePath: note.relativePath, rawContent: markdownSource).body
-        let references = SourceResourceReferences.files(
-            in: body, noteRelativePath: note.relativePath
-        ).filter(\.isImage)
+        let document = NoteDocument(relativePath: note.relativePath, rawContent: markdownSource)
+        let references = ExportMarkdownImageReferences.references(in: document).compactMap {
+            if case .local(let file) = $0 { file } else { nil }
+        }
         guard !references.isEmpty else { return [:] }
 
         let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
@@ -69,17 +69,21 @@ extension WorkspaceHandle {
                 }
             } catch is CancellationError {
                 throw CancellationError()
-            } catch let error as CocoaError where error.code == .fileReadTooLarge {
-                throw DocumentExportImageError.unsupported(destination)
             } catch {
-                throw DocumentExportImageError.unavailable(destination)
+                // Validation of required images belongs to HTML/PDF export.
+                // Keep preparing the remaining images so a broken attachment
+                // does not prevent opening the preview or exporting DOCX.
+                continue
             }
             guard bytes.count <= 80 * 1_024 * 1_024 - totalBytes else {
-                throw DocumentExportImageError.totalSizeExceeded
+                continue
             }
-            resolved[destination] = try ExportImageDataValidator.validate(
-                bytes, destination: destination
-            )
+            guard
+                let validated = try? ExportImageDataValidator.validate(
+                    bytes, destination: destination
+                )
+            else { continue }
+            resolved[destination] = validated
             totalBytes += bytes.count
         }
         return resolved

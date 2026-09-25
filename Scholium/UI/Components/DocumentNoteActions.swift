@@ -169,7 +169,7 @@ extension WindowModel {
         case .agentChanges: return currentDocumentDescriptor != nil && windowWorkspaceController.activeCapabilities != nil
         case .export:
             return currentDocumentDescriptor != nil && presentationRouter.sheet == nil
-                && noteExportWindowController == nil
+                && !noteExportPreparationInProgress && noteExportWindowController == nil
         case .find: return documentController.selectedDocument != nil
         case .revealInFinder: return currentNoteFileURL != nil
         case .moveWindow, .close: return documentTabController.selectedTabID != nil
