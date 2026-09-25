@@ -391,7 +391,7 @@ public actor TriptychMoveCoordinator {
         guard plan.blockedIncomingLinks.isEmpty else {
             let first = plan.blockedIncomingLinks[0]
             throw TriptychTransactionError.invalidPlan(
-                "An incoming link in \(first.source.relativePath) at line \(first.span.start.line) cannot identify the moved note at its new path without ambiguity."
+                "A link in \(first.source.relativePath) at line \(first.span.start.line) cannot retain its target after this move without ambiguity."
             )
         }
 
@@ -674,7 +674,7 @@ public actor TriptychMoveCoordinator {
                     intendedRevision: intended,
                     observedRevision: observed?.fingerprint,
                     state: state,
-                    detail: "Incoming link rewrite for \(rewrite.plan.rewrittenOccurrences) resolved occurrence(s)."
+                    detail: "Link rewrite for \(rewrite.plan.rewrittenOccurrences) resolved occurrence(s)."
                 ))
         }
         return files

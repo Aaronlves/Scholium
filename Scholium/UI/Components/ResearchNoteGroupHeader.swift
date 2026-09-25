@@ -6,6 +6,7 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
     let title: String
     let role: VaultRole?
     @Binding var expanded: Bool
+    var occurrenceCount: Int? = nil
     var entranceProgress: CGFloat = 1
     var directoryContext: String? = nil
     var relativePath: String? = nil
@@ -19,7 +20,13 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
     private var showsActions: Bool { hovered || keyboardFocused || accessibilityFocused }
 
     private var sourceIdentity: String {
-        ([title] + [role.map { ScholiumL10n.dynamicString($0.displayName) }, relativePath].compactMap { $0 })
+        ([title]
+            + [
+                occurrenceCount.map { count in
+                    count == 1 ? ScholiumL10n.string("1 link") : ScholiumL10n.string("\(count) links")
+                },
+                role.map { ScholiumL10n.dynamicString($0.displayName) }, relativePath,
+            ].compactMap { $0 })
             .joined(separator: ", ")
     }
 
@@ -44,6 +51,11 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
                         HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                             ResearchText(text: Text(verbatim: title)).font(ScholiumTypography.interface(.control, emphasis: .strong))
                                 .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                            if let occurrenceCount {
+                                Text(occurrenceCount.formatted())
+                                    .font(ScholiumTypography.interface(.small))
+                                    .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                            }
                             Image(systemName: expanded ? "chevron.down" : "chevron.right")
                                 .font(.caption)
                                 .opacity(showsActions ? 1 : 0)

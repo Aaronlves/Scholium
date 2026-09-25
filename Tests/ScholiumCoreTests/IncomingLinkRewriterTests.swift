@@ -6,6 +6,47 @@ import Testing
 
 @Suite("Source-located incoming link rewrites")
 struct IncomingLinkRewriterTests {
+    @Test("An emoji in a Markdown destination survives parsing and targeted rewrite")
+    func emojiDestination() {
+        let vaultID = UUID()
+        let target = NoteDocument(relativePath: "Topic😀.md", rawContent: "# Topic\n")
+        let source = NoteDocument(relativePath: "A.md", rawContent: "[emoji](Topic😀.md#Claim)\n")
+
+        let plan = standalonePlan(
+            vaultID: vaultID, documents: [source, target],
+            moving: "Topic😀.md", to: "Renamed😀.md"
+        )
+
+        #expect(plan.count == 1)
+        #expect(plan[0].updatedSource == "[emoji](Renamed😀.md#Claim)\n")
+    }
+
+    @Test("Valid titled, angle and parenthesized Markdown links retain all text outside the path")
+    func titledAndParenthesizedMarkdownLinks() {
+        let vaultID = UUID()
+        let target = NoteDocument(relativePath: "Topics/B(1).md", rawContent: "# B\n")
+        let raw = #"""
+            [angle](<Topics/B(1).md#Claim> "a title") [balanced](Topics/B(1).md#Claim 'another title')
+            [escaped](Topics/B\(1\).md#Claim "third title") [reference][id]
+            [id]: Topics/B(1).md
+            ` [code](Topics/B(1).md) `
+            """#
+        let source = NoteDocument(relativePath: "A.md", rawContent: raw)
+
+        let plan = standalonePlan(
+            vaultID: vaultID, documents: [source, target],
+            moving: "Topics/B(1).md", to: "Topics/Renamed B(2).md"
+        )
+
+        #expect(plan.count == 1)
+        #expect(plan[0].rewrittenOccurrences == 3)
+        #expect(plan[0].updatedSource.contains(#"[angle](<Topics/Renamed B(2).md#Claim> "a title")"#))
+        #expect(plan[0].updatedSource.contains(#"[balanced](Topics/Renamed%20B%282%29.md#Claim 'another title')"#))
+        #expect(plan[0].updatedSource.contains(#"[escaped](Topics/Renamed%20B%282%29.md#Claim "third title")"#))
+        #expect(plan[0].updatedSource.contains("[reference][id]\n[id]: Topics/B(1).md"))
+        #expect(plan[0].updatedSource.contains("` [code](Topics/B(1).md) `"))
+    }
+
     @Test("A confirmed move rewrites only links resolved to the moved note")
     func rewritesResolvedIncomingLinks() {
         let vaultID = UUID()
@@ -29,8 +70,101 @@ struct IncomingLinkRewriterTests {
         #expect(plan[0].rewrittenOccurrences == 3)
         #expect(plan[0].updatedSource.contains("[[Topics/Renamed B|alias]]"))
         #expect(plan[0].updatedSource.contains("[[Topics/Renamed B#Claim]]{{Keep this annotation exact.}}"))
-        #expect(plan[0].updatedSource.contains("[B](Topics/Renamed B.md#Claim)"))
+        #expect(plan[0].updatedSource.contains("[B](Topics/Renamed%20B.md#Claim)"))
         #expect(plan[0].updatedSource.contains("`[[Topics/B]]`"))
+    }
+
+    @Test("Moving a source note keeps its resolved outgoing target")
+    func movingSourceDoesNotRetargetOutgoingLink() {
+        let vaultID = UUID()
+        let source = NoteDocument(relativePath: "Old/Source.md", rawContent: "[[Target]]\n")
+        let target = NoteDocument(relativePath: "Old/Target.md", rawContent: "old target\n")
+        let collision = NoteDocument(relativePath: "New/Target.md", rawContent: "different target\n")
+        let qualified = Dictionary(
+            uniqueKeysWithValues: [source, target, collision].map {
+                (VaultQualifiedNoteID(vaultID: vaultID, relativePath: $0.relativePath), $0)
+            })
+        let graph = workspaceGraph(qualified)
+        let moving = VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath)
+        let destination = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "New/Source.md")
+        let complete = IncomingLinkRewriter.plan(documents: qualified, graph: graph, moving: moving, to: destination)
+        let catalog = qualified.map { id, document in LinkCatalogNote(vaultID: id.vaultID, document: document) }
+        let snapshot = IncomingLinkRewriter.planUsingValidatedSnapshot(
+            documents: qualified, catalog: catalog, graph: graph, moving: moving, to: destination
+        )
+
+        #expect(complete.rewrites.first?.updatedSource == "[[Old/Target]]\n")
+        #expect(snapshot == complete)
+    }
+
+    @Test("Fragment-only self links keep their authored bytes during a move")
+    func fragmentOnlySelfLinkStaysRelative() {
+        let vaultID = UUID()
+        let source = NoteDocument(relativePath: "Old/Source.md", rawContent: "# Claim\n[[#Claim]]\n")
+        let documents = [VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath): source]
+        let graph = workspaceGraph(documents)
+        let sourceID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath)
+        let destination = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "New/Source.md")
+        let plan = IncomingLinkRewriter.plan(
+            documents: documents, graph: graph, moving: sourceID, to: destination
+        )
+
+        #expect(plan.blockedIncomingLinks.isEmpty)
+        #expect(plan.rewrites.isEmpty)
+    }
+
+    @Test("Fragment-only Markdown self links keep their authored bytes during a move")
+    func markdownFragmentOnlySelfLinkStaysRelative() {
+        let vaultID = UUID()
+        let source = NoteDocument(relativePath: "Old/Source.md", rawContent: "# Claim\n[claim](#Claim)\n")
+        let documents = [VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath): source]
+        let graph = workspaceGraph(documents)
+        let sourceID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath)
+        let destination = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "New/Source.md")
+        let plan = IncomingLinkRewriter.plan(
+            documents: documents, graph: graph, moving: sourceID, to: destination
+        )
+
+        #expect(plan.blockedIncomingLinks.isEmpty)
+        #expect(plan.rewrites.isEmpty)
+    }
+
+    @Test("A folder move preserves unaffected outgoing syntax while rewriting moved targets")
+    func folderMovePreservesOutgoingLinks() throws {
+        let vaultID = UUID()
+        let sourceFolder = try VaultRelativeFolderPath("Old")
+        let destinationFolder = try VaultRelativeFolderPath("New/Old")
+        let source = NoteDocument(relativePath: "Old/Source.md", rawContent: "[[../Shared/Target]] [[Old/Inside]]\n")
+        let inside = NoteDocument(relativePath: "Old/Inside.md", rawContent: "inside\n")
+        let target = NoteDocument(relativePath: "Shared/Target.md", rawContent: "target\n")
+        let collision = NoteDocument(relativePath: "New/Shared/Target.md", rawContent: "collision\n")
+        let documents = Dictionary(
+            uniqueKeysWithValues: [source, inside, target, collision].map {
+                (VaultQualifiedNoteID(vaultID: vaultID, relativePath: $0.relativePath), $0)
+            })
+        let moves = [source, inside].map { document in
+            FolderNoteMovePlan(
+                stableNoteID: UUID(),
+                source: VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath),
+                destination: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "New/" + document.relativePath),
+                expectedRevision: document.fingerprint
+            )
+        }
+        let graph = workspaceGraph(documents)
+        let complete = IncomingLinkRewriter.folderPlan(
+            documents: documents, graph: graph, vaultID: vaultID,
+            sourceFolder: sourceFolder, destinationFolder: destinationFolder, noteMoves: moves
+        )
+        let catalog = documents.map { id, document in LinkCatalogNote(vaultID: id.vaultID, document: document) }
+        let snapshot = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
+            documents: documents, catalog: catalog, graph: graph, vaultID: vaultID,
+            sourceFolder: sourceFolder, destinationFolder: destinationFolder, noteMoves: moves
+        )
+
+        #expect(
+            complete.rewrites.first { $0.source.relativePath == source.relativePath }?.updatedSource
+                == "[[../Shared/Target]] [[New/Old/Inside]]\n")
+        #expect(snapshot == complete)
     }
 
     @Test("Ambiguous stems are never rewritten")
@@ -77,7 +211,7 @@ struct IncomingLinkRewriterTests {
         #expect(plan.rewrites.count == 1)
         #expect(plan.rewrites[0].source.vaultID == topicVault)
         #expect(plan.rewrites[0].updatedSource.contains("[[Sources/Étude finale#Thèse|source]]{{Original context.}}"))
-        #expect(plan.rewrites[0].updatedSource.contains("[paper](Sources/Étude finale.md#Th%C3%A8se)"))
+        #expect(plan.rewrites[0].updatedSource.contains("[paper](Sources/%C3%89tude%20finale.md#Th%C3%A8se)"))
     }
 
     @Test("Same relative paths in two remote vaults remain ambiguous and untouched")

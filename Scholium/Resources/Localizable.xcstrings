@@ -1,6 +1,13 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld links": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "%lld links"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 处链接"}}}},
+    "1 link": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "1 link"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "1 处链接"}}}},
+    "Missing target note": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Missing target note"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "目标笔记缺失"}}}},
+    "Ambiguous target note": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Ambiguous target note"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "目标笔记不明确"}}}},
+    "Ambiguous heading": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Ambiguous heading"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "标题不明确"}}}},
+    "Missing paragraph anchor": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Missing paragraph anchor"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "段落锚点缺失"}}}},
+    "Ambiguous paragraph anchor": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Ambiguous paragraph anchor"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "段落锚点不明确"}}}},
     "Choose Original…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose Original…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "选择原始文件…"}}}},
     "Mode": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Mode"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "模式"}}}},
     "Open Note: %@": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Note: %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开笔记：%@"}}}},

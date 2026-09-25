@@ -523,7 +523,8 @@ public enum MarkdownSemanticParser {
             body: document.body,
             bodyUTF16Offset: bodyOffset,
             sourceMapper: sourceMapper,
-            excluded: literalRanges
+            excluded: literalRanges,
+            inlines: inlines
         )
         return MarkdownSemanticDocument(
             fingerprint: document.fingerprint,
@@ -1196,12 +1197,12 @@ public enum MarkdownSemanticParser {
         body: String,
         bodyUTF16Offset: Int,
         sourceMapper: SemanticSourceMapper,
-        excluded: [NSRange]
+        excluded: [NSRange],
+        inlines: [MarkdownInline]
     ) -> LinkParseResult {
         let nsBody = body as NSString
         let fullRange = NSRange(location: 0, length: nsBody.length)
         let wikiRegex = try? NSRegularExpression(pattern: #"\[\[([^\]\r\n]+)\]\]"#)
-        let markdownRegex = try? NSRegularExpression(pattern: #"(!)?\[([^\]\r\n]*)\]\(([^)\r\n]+)\)"#)
         var links: [LinkOccurrence] = []
         var diagnostics: [MarkdownDiagnostic] = []
 
@@ -1259,25 +1260,38 @@ public enum MarkdownSemanticParser {
             }
         }
 
-        if let markdownRegex {
-            for match in markdownRegex.matches(in: body, range: fullRange) {
-                guard !intersectsExcluded(match.range, excluded), !isEscaped(at: match.range.location, in: nsBody) else { continue }
-                let isEmbed = match.range(at: 1).location != NSNotFound
-                let alias = optionalTrimmed(nsBody.substring(with: match.range(at: 2)))
-                let rawDestination = nsBody.substring(with: match.range(at: 3)).trimmingCharacters(in: .whitespaces)
-                let destination = splitTargetAndFragment(rawDestination)
-                guard let span = sourceMapper.span(for: shifted(match.range, by: bodyUTF16Offset)) else { continue }
-                links.append(
-                    LinkOccurrence(
-                        syntax: isEmbed ? .embed : .markdown,
-                        target: destination.target.removingPercentEncoding ?? destination.target,
-                        alias: alias,
-                        fragment: destination.fragment,
-                        localContext: localContext(in: nsBody, containing: match.range),
-                        isExternal: isExternalDestination(rawDestination),
-                        span: span
-                    ))
-            }
+        for inline in inlines where inline.kind == .link || inline.kind == .image {
+            let range = NSRange(
+                location: inline.span.utf16LowerBound - bodyUTF16Offset,
+                length: inline.span.utf16UpperBound - inline.span.utf16LowerBound
+            )
+            guard range.location >= 0, NSMaxRange(range) <= nsBody.length,
+                !intersectsExcluded(range, excluded)
+            else { continue }
+            let raw = nsBody.substring(with: range) as NSString
+            // The Markdown AST establishes validity and the whole source span.
+            // This locator admits only inline syntax with a destination owned by
+            // that span; reference definitions are deliberately not rewritten.
+            guard let located = MarkdownInlineLinkSource(raw) else { continue }
+            let rawDestination = raw.substring(with: located.destinationRange)
+            let rawPath = raw.substring(with: located.pathRange)
+            let rawFragment = (rawDestination as NSString).substring(
+                from: located.pathRange.length
+            )
+            let path = MarkdownInlineLinkSource.unescape(rawPath)
+            guard let span = sourceMapper.span(for: shifted(range, by: bodyUTF16Offset)) else { continue }
+            links.append(
+                LinkOccurrence(
+                    syntax: inline.kind == .image ? .embed : .markdown,
+                    target: path.removingPercentEncoding ?? path,
+                    alias: located.alias,
+                    fragment: rawFragment.hasPrefix("#")
+                        ? optionalTrimmed(MarkdownInlineLinkSource.unescape(String(rawFragment.dropFirst())))
+                        : nil,
+                    localContext: localContext(in: nsBody, containing: range),
+                    isExternal: isExternalDestination(rawDestination),
+                    span: span
+                ))
         }
 
         return LinkParseResult(

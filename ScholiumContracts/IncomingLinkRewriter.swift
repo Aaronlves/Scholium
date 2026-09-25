@@ -58,10 +58,10 @@ public struct IncomingLinkRewriteBlock: Codable, Hashable, Sendable {
     }
 }
 
-/// Plans exact-source incoming-link updates before a confirmed in-app move.
-/// Only occurrences already resolved by the supplied workspace graph to the
-/// moved vault-qualified note are changed. Broken and ambiguous links are never
-/// guessed, and the writable source always comes from the exact NoteDocument.
+/// Plans exact-source link updates before a confirmed in-app move.
+/// Incoming links to moved Notes and outgoing links from moved Notes retain
+/// their previously resolved targets. Broken and ambiguous links are never
+/// guessed, and writable source always comes from the exact NoteDocument.
 public enum IncomingLinkRewriter {
     /// Plans link edits for one directory-path change while preserving note
     /// identity as the unit of movement. Every note move is evaluated against
@@ -210,14 +210,19 @@ public enum IncomingLinkRewriter {
             )
         }.sorted { $0.source < $1.source }
 
+        let preserved = preserveOutgoingLinksFromMovedSources(
+            documents: documents, graph: graph, currentCatalog: currentCatalog,
+            futureCatalog: futureCatalog, destinations: destinations,
+            rewrites: rewrites, blocked: blocked
+        )
         return FolderIncomingLinkRewritePlan(
             vaultID: vaultID,
             sourceFolder: sourceFolder,
             destinationFolder: destinationFolder,
             graphGeneration: graph.generation,
             noteMoves: noteMoves,
-            rewrites: rewrites,
-            blockedIncomingLinks: blocked.sorted {
+            rewrites: preserved.rewrites,
+            blockedIncomingLinks: preserved.blocked.sorted {
                 if $0.source != $1.source { return $0.source < $1.source }
                 return $0.span.utf16LowerBound < $1.span.utf16LowerBound
             }
@@ -286,13 +291,27 @@ public enum IncomingLinkRewriter {
                 )
             })
         guard !suppliedKeys.isEmpty else {
+            let futureCatalog = catalog.map { note in
+                guard let destination = destinations[note.id] else { return note }
+                return LinkCatalogNote(
+                    id: destination, title: note.title, aliases: note.aliases,
+                    headings: note.headings, blockAnchors: note.blockAnchors,
+                    ambiguousBlockAnchors: note.ambiguousBlockAnchors
+                )
+            }
+            let preserved = preserveOutgoingLinksFromMovedSources(
+                documents: documents, graph: graph, currentCatalog: catalog,
+                futureCatalog: futureCatalog, destinations: destinations,
+                rewrites: [], blocked: []
+            )
             return FolderIncomingLinkRewritePlan(
                 vaultID: vaultID,
                 sourceFolder: sourceFolder,
                 destinationFolder: destinationFolder,
                 graphGeneration: graph.generation,
                 noteMoves: noteMoves,
-                rewrites: []
+                rewrites: preserved.rewrites,
+                blockedIncomingLinks: preserved.blocked
             )
         }
 
@@ -333,7 +352,8 @@ public enum IncomingLinkRewriter {
                 title: note.title,
                 aliases: note.aliases,
                 headings: note.headings,
-                blockAnchors: note.blockAnchors
+                blockAnchors: note.blockAnchors,
+                ambiguousBlockAnchors: note.ambiguousBlockAnchors
             )
         }
         let futureResolutionIndex = LinkGraphBuilder.ResolutionIndex(
@@ -404,14 +424,19 @@ public enum IncomingLinkRewriter {
                 ))
         }
 
+        let preserved = preserveOutgoingLinksFromMovedSources(
+            documents: documents, graph: graph, currentCatalog: catalog,
+            futureCatalog: futureCatalog, destinations: destinations,
+            rewrites: rewrites, blocked: blocked
+        )
         return FolderIncomingLinkRewritePlan(
             vaultID: vaultID,
             sourceFolder: sourceFolder,
             destinationFolder: destinationFolder,
             graphGeneration: graph.generation,
             noteMoves: noteMoves,
-            rewrites: rewrites.sorted { $0.source < $1.source },
-            blockedIncomingLinks: blocked.sorted {
+            rewrites: preserved.rewrites,
+            blockedIncomingLinks: preserved.blocked.sorted {
                 if $0.source != $1.source { return $0.source < $1.source }
                 return $0.span.utf16LowerBound < $1.span.utf16LowerBound
             }
@@ -537,12 +562,17 @@ public enum IncomingLinkRewriter {
             }
             .sorted { $0.source < $1.source }
 
+        let preserved = preserveOutgoingLinksFromMovedSources(
+            documents: documents, graph: graph, currentCatalog: currentCatalog,
+            futureCatalog: futureCatalog, destinations: [source: destination],
+            rewrites: rewrites, blocked: blocked
+        )
         return IncomingLinkRewritePlan(
             movedNote: source,
             destination: destination,
             graphGeneration: graph.generation,
-            rewrites: rewrites,
-            blockedIncomingLinks: blocked.sorted {
+            rewrites: preserved.rewrites,
+            blockedIncomingLinks: preserved.blocked.sorted {
                 if $0.source != $1.source { return $0.source < $1.source }
                 return $0.span.utf16LowerBound < $1.span.utf16LowerBound
             }
@@ -583,11 +613,25 @@ public enum IncomingLinkRewriter {
                 eligibleKey(for: edge, resolvedTo: source)
             })
         guard !suppliedKeys.isEmpty else {
+            let futureCatalog = catalog.map { note in
+                guard note.id == source else { return note }
+                return LinkCatalogNote(
+                    id: destination, title: note.title, aliases: note.aliases,
+                    headings: note.headings, blockAnchors: note.blockAnchors,
+                    ambiguousBlockAnchors: note.ambiguousBlockAnchors
+                )
+            }
+            let preserved = preserveOutgoingLinksFromMovedSources(
+                documents: documents, graph: graph, currentCatalog: catalog,
+                futureCatalog: futureCatalog, destinations: [source: destination],
+                rewrites: [], blocked: []
+            )
             return IncomingLinkRewritePlan(
                 movedNote: source,
                 destination: destination,
                 graphGeneration: graph.generation,
-                rewrites: []
+                rewrites: preserved.rewrites,
+                blockedIncomingLinks: preserved.blocked
             )
         }
 
@@ -625,7 +669,8 @@ public enum IncomingLinkRewriter {
                 title: note.title,
                 aliases: note.aliases,
                 headings: note.headings,
-                blockAnchors: note.blockAnchors
+                blockAnchors: note.blockAnchors,
+                ambiguousBlockAnchors: note.ambiguousBlockAnchors
             )
         }
         let futureResolutionIndex = LinkGraphBuilder.ResolutionIndex(
@@ -686,16 +731,121 @@ public enum IncomingLinkRewriter {
                 ))
         }
 
+        let preserved = preserveOutgoingLinksFromMovedSources(
+            documents: documents, graph: graph, currentCatalog: catalog,
+            futureCatalog: futureCatalog, destinations: [source: destination],
+            rewrites: rewrites, blocked: blocked
+        )
         return IncomingLinkRewritePlan(
             movedNote: source,
             destination: destination,
             graphGeneration: graph.generation,
-            rewrites: rewrites,
-            blockedIncomingLinks: blocked.sorted {
+            rewrites: preserved.rewrites,
+            blockedIncomingLinks: preserved.blocked.sorted {
                 if $0.source != $1.source { return $0.source < $1.source }
                 return $0.span.utf16LowerBound < $1.span.utf16LowerBound
             }
         )
+    }
+
+    /// Re-plan the moved Notes' own links against their new source locations.
+    /// An unchanged target can otherwise be silently retargeted when a new
+    /// neighbor has the same basename. Rebuild each moved source from its
+    /// original bytes so incoming and outgoing replacements share exact spans.
+    private static func preserveOutgoingLinksFromMovedSources(
+        documents: [VaultQualifiedNoteID: NoteDocument],
+        graph: GraphSnapshot,
+        currentCatalog: [LinkCatalogNote],
+        futureCatalog: [LinkCatalogNote],
+        destinations: [VaultQualifiedNoteID: VaultQualifiedNoteID],
+        rewrites: [IncomingLinkRewrite],
+        blocked: [IncomingLinkRewriteBlock]
+    ) -> (rewrites: [IncomingLinkRewrite], blocked: [IncomingLinkRewriteBlock]) {
+        let currentIndex = LinkGraphBuilder.ResolutionIndex(catalog: currentCatalog)
+        let futureIndex = LinkGraphBuilder.ResolutionIndex(catalog: futureCatalog)
+        var rewritten = rewrites.filter { destinations[$0.source] == nil }
+        var blockedLinks = blocked.filter { destinations[$0.source] == nil }
+
+        for source in destinations.keys.sorted() {
+            guard let document = documents[source], let futureSource = destinations[source],
+                let edges = graph.outgoing[source], !edges.isEmpty
+            else { continue }
+            let eligible = Dictionary(
+                grouping: edges.compactMap { edge -> (EligibleOccurrenceKey, VaultQualifiedNoteID)? in
+                    guard case .resolved(let target) = edge.occurrence.resolution else { return nil }
+                    return (
+                        EligibleOccurrenceKey(
+                            source: source, syntax: edge.occurrence.syntax,
+                            target: edge.occurrence.target, span: edge.occurrence.linkSpan
+                        ), target
+                    )
+                },
+                by: { $0.0 }
+            )
+            var replacements: [Replacement] = []
+            for occurrence in MarkdownSemanticDocument(parsing: document).links where !occurrence.isExternal {
+                guard
+                    case .resolved(let currentTarget) = currentIndex.resolve(
+                        occurrence.target, from: source, scope: .workspace
+                    )
+                else { continue }
+                let key = EligibleOccurrenceKey(
+                    source: source, syntax: occurrence.syntax,
+                    target: occurrence.target, span: occurrence.linkSpan
+                )
+                guard eligible[key]?.contains(where: { $0.1 == currentTarget }) == true else { continue }
+                let futureTarget = destinations[currentTarget] ?? currentTarget
+                if occurrence.target.isEmpty, currentTarget == source,
+                    futureTarget == futureSource
+                {
+                    continue
+                }
+                if destinations[currentTarget] == nil,
+                    futureIndex.resolve(occurrence.target, from: futureSource, scope: .workspace)
+                        == .resolved(currentTarget)
+                {
+                    continue
+                }
+                guard
+                    futureIndex.resolve(
+                        futureTarget.relativePath, from: futureSource, scope: .workspace
+                    ) == .resolved(futureTarget),
+                    let planned = replacement(
+                        for: occurrence, in: document.rawContent,
+                        newRelativePath: futureTarget.relativePath
+                    )
+                else {
+                    blockedLinks.append(
+                        IncomingLinkRewriteBlock(
+                            source: source, sourceFingerprint: document.fingerprint,
+                            span: occurrence.linkSpan,
+                            reason: "The moved source cannot retain this link's resolved target without ambiguity."
+                        ))
+                    continue
+                }
+                replacements.append(planned)
+            }
+            guard !replacements.isEmpty else { continue }
+            let mutable = NSMutableString(string: document.rawContent)
+            var appliedRanges: Set<ReplacementKey> = []
+            var applied = 0
+            for planned in replacements.sorted(by: { $0.range.location > $1.range.location }) {
+                let key = ReplacementKey(location: planned.range.location, length: planned.range.length)
+                guard appliedRanges.insert(key).inserted,
+                    NSMaxRange(planned.range) <= mutable.length
+                else { continue }
+                mutable.replaceCharacters(in: planned.range, with: planned.text)
+                applied += 1
+            }
+            if applied > 0 {
+                rewritten.append(
+                    IncomingLinkRewrite(
+                        source: source, expectedRevision: document.fingerprint,
+                        updatedSource: mutable as String, rewrittenOccurrences: applied
+                    ))
+            }
+        }
+        return (rewritten.sorted { $0.source < $1.source }, blockedLinks)
     }
 
     private struct Replacement {
@@ -784,38 +934,23 @@ public enum IncomingLinkRewriter {
         occurrenceRange: NSRange,
         newRelativePath: String
     ) -> Replacement? {
-        let marker = rawOccurrence.range(of: "](")
-        guard marker.location != NSNotFound else { return nil }
-        var targetStart = NSMaxRange(marker)
-        while targetStart < rawOccurrence.length,
-            UnicodeScalar(rawOccurrence.character(at: targetStart)).map(
-                CharacterSet.whitespacesAndNewlines.contains
-            ) == true
-        {
-            targetStart += 1
-        }
-        let tail = NSRange(location: targetStart, length: rawOccurrence.length - targetStart)
-        let close = rawOccurrence.range(of: ")", options: [.backwards], range: tail)
-        guard close.location != NSNotFound else { return nil }
-        let hash = rawOccurrence.range(
-            of: "#",
-            options: [],
-            range: NSRange(location: targetStart, length: close.location - targetStart)
-        )
-        let targetEnd = hash.location == NSNotFound ? close.location : hash.location
-        guard targetEnd > targetStart else { return nil }
-
-        let originalTarget = rawOccurrence.substring(
-            with: NSRange(location: targetStart, length: targetEnd - targetStart)
-        )
+        guard let located = MarkdownInlineLinkSource(rawOccurrence),
+            located.pathRange.length > 0
+        else { return nil }
+        let originalTarget = rawOccurrence.substring(with: located.pathRange)
         let encoded =
             originalTarget.contains("%")
+                || newRelativePath.contains(where: { character in
+                    character == "#" || character == "<" || character == ">"
+                        || (!located.isAngleDestination
+                            && (character.isWhitespace || character == "(" || character == ")"))
+                })
             ? percentEncodedMarkdownPath(newRelativePath)
             : newRelativePath
         return Replacement(
             range: NSRange(
-                location: occurrenceRange.location + targetStart,
-                length: targetEnd - targetStart
+                location: occurrenceRange.location + located.pathRange.location,
+                length: located.pathRange.length
             ),
             text: encoded
         )
@@ -823,7 +958,7 @@ public enum IncomingLinkRewriter {
 
     private static func percentEncodedMarkdownPath(_ path: String) -> String {
         var allowed = CharacterSet.urlPathAllowed
-        allowed.remove(charactersIn: "#?()")
+        allowed.remove(charactersIn: "#?()<>")
         return path.addingPercentEncoding(withAllowedCharacters: allowed) ?? path
     }
 }

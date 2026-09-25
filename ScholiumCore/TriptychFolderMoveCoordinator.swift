@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-/// Commits one directory rename and the exact incoming-link edits implied by
+/// Commits one directory rename and the exact link edits implied by
 /// every moved note. The folder has no identity; note identities are committed
 /// by the Application layer after this source transaction succeeds.
 public actor TriptychFolderMoveCoordinator {
@@ -42,7 +42,7 @@ public actor TriptychFolderMoveCoordinator {
         guard plan.blockedIncomingLinks.isEmpty else {
             let first = plan.blockedIncomingLinks[0]
             throw TriptychTransactionError.invalidPlan(
-                "An incoming link in \(first.source.relativePath) at line \(first.span.start.line) cannot identify its moved note without ambiguity."
+                "A link in \(first.source.relativePath) at line \(first.span.start.line) cannot retain its target after this move without ambiguity."
             )
         }
         guard let sourceRepository = repositories[plan.vaultID],
@@ -361,7 +361,7 @@ public actor TriptychFolderMoveCoordinator {
                     intendedRevision: intended,
                     observedRevision: observed?.fingerprint,
                     state: state,
-                    detail: "Incoming link rewrite for \(rewrite.prepared.plan.rewrittenOccurrences) resolved occurrence(s)."
+                    detail: "Link rewrite for \(rewrite.prepared.plan.rewrittenOccurrences) resolved occurrence(s)."
                 ))
         }
         let detail = ([cause.localizedDescription] + rollbackErrors).joined(separator: "\n")

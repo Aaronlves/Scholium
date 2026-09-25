@@ -6,6 +6,36 @@ import Testing
 
 @Suite("Application document operations")
 struct DocumentOperationsTests {
+    @Test("Application move preserves a source Note's outgoing target")
+    func ordinaryMovePreservesOutgoingTarget() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let vaultID = fixture.targetID.vaultID
+        let sourceID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Old/Source.md")
+        let source = try await handle.documents.importMarkdownSource(
+            "[[LocalTarget]]\n", at: sourceID
+        ).committedValue
+        _ = try await handle.documents.importMarkdownSource(
+            "old target\n", at: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Old/LocalTarget.md")
+        ).committedValue
+        _ = try await handle.documents.importMarkdownSource(
+            "other target\n", at: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "New/LocalTarget.md")
+        ).committedValue
+        _ = try await handle.refresh()
+
+        _ = try await handle.documents.move(
+            sourceID, to: "New/Source.md", expectedRevision: source.fingerprint
+        ).committedValue
+
+        let moved = try await handle.documents.load(
+            VaultQualifiedNoteID(vaultID: vaultID, relativePath: "New/Source.md")
+        )
+        #expect(moved.rawContent == "[[Old/LocalTarget]]\n")
+        await runtime.shutdown()
+    }
+
     @Test("Former action folders are ordinary Notes and orphan action state is inert")
     func formerActionFoldersUseOrdinaryFileOperations() async throws {
         let fixture = try await LifecycleFixture.make()

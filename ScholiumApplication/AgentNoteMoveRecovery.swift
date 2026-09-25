@@ -22,8 +22,10 @@ extension WorkspaceHandle {
             throw AgentCollaborationError.invalidRequest("The current link scope cannot authorize this move inverse.")
         }
         let expectedSources = Set(move.effects.filter { $0.rewrittenOccurrences > 0 }.map(\.destination))
-        guard ordinary.blockedIncomingLinks.isEmpty, Set(ordinary.rewrites.map(\.source)) == expectedSources else {
-            throw AgentCollaborationError.invalidRequest("The incoming-link scope changed after the move. Review the current links before restoring it.")
+        guard ordinary.blockedIncomingLinks.isEmpty,
+            Set(ordinary.rewrites.map(\.source)).isSubset(of: expectedSources)
+        else {
+            throw AgentCollaborationError.invalidRequest("The link scope changed after the move. Review the current links before restoring it.")
         }
         var restored = context.documents
         guard let primarySource = NoteDocument.decodeUTF8PreservingBOM(beforeData) else { throw AgentChangeError.invalid(evidence.change.id) }
@@ -38,7 +40,11 @@ extension WorkspaceHandle {
             let id = item.id == primary.destination ? primary.source : item.id
             guard let document = restored[id] else { return nil }
             let derived = LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: semantics[id])
-            return LinkCatalogNote(id: id, title: derived.title, aliases: item.aliases, headings: derived.headings, blockAnchors: derived.blockAnchors)
+            return LinkCatalogNote(
+                id: id, title: derived.title, aliases: item.aliases,
+                headings: derived.headings, blockAnchors: derived.blockAnchors,
+                ambiguousBlockAnchors: derived.ambiguousBlockAnchors
+            )
         }
         let futureGraph = LinkGraphBuilder.build(
             generation: context.graph.generation, catalog: futureCatalog,
@@ -55,7 +61,9 @@ extension WorkspaceHandle {
             for (current, future) in zip(currentLinks, futureLinks) {
                 guard !current.occurrence.target.utf8.elementsEqual(future.occurrence.target.utf8) else { continue }
                 rewritten += 1
-                guard current.occurrence.resolution == .resolved(primary.destination), future.occurrence.resolution == .resolved(primary.source),
+                guard case .resolved(let currentTarget) = current.occurrence.resolution,
+                    case .resolved(let futureTarget) = future.occurrence.resolution,
+                    futureTarget == (currentTarget == primary.destination ? primary.source : currentTarget),
                     current.occurrence.fragment == future.occurrence.fragment, current.occurrence.syntax == future.occurrence.syntax
                 else {
                     throw AgentCollaborationError.invalidRequest(

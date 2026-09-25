@@ -183,7 +183,7 @@ Import tasks bind their initiating workspace/window; reassignment or committed
 close stops remaining files without reclassifying prior commits.
 
 Folder moves freeze descendant inventory, commit one descriptor-relative
-no-replace rename, rewrite proved incoming links and rebind identities. Other
+no-replace rename, rewrite proved links and rebind identities. Other
 directory contents move with the inode without parsing. A coherent exact-source
 cohort/Graph may limit reparsing to candidate incoming Notes; incomplete or
 source-ahead state requires complete derivation. Core always re-enumerates and

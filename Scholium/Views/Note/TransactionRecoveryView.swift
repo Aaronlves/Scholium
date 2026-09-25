@@ -747,7 +747,7 @@ private struct RecoveryFileRow: View {
         case .movedNote: "Moved note"
         case .movedFolder:
             String(localized: "Moved folder", table: "Localizable", bundle: .module)
-        case .incomingLinkRewrite: "Incoming link rewrite"
+        case .incomingLinkRewrite: "Link rewrite"
         case .trashedNote: "Note moved to system Trash"
         case .trashedFolder: "Folder moved to system Trash"
         }

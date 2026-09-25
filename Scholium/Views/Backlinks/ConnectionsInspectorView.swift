@@ -29,6 +29,7 @@ struct InspectorLinkItem: Identifiable {
     let peer: WorkspaceCatalogNote?
     let source: WorkspaceCatalogNote?
     let direction: ConnectionDirection
+    let diagnostic: LinkGraphDiagnostic?
 
     var id: String {
         [
@@ -47,6 +48,29 @@ struct InspectorLinkItem: Identifiable {
                     .deletingPathExtension
             }
             ?? edge.occurrence.target
+    }
+
+    func matches(_ term: String) -> Bool {
+        term.isEmpty
+            || [
+                displayTitle,
+                peer?.reference.relativePath ?? "",
+                edge.occurrence.target,
+                edge.occurrence.localContext,
+                edge.occurrence.annotation?.text ?? "",
+            ].contains { $0.localizedStandardContains(term) }
+    }
+
+    var diagnosticTitle: String? {
+        guard let diagnostic else { return nil }
+        switch diagnostic.code {
+        case .broken: return ScholiumL10n.string("Missing target note")
+        case .ambiguous: return ScholiumL10n.string("Ambiguous target note")
+        case .missingHeading: return ScholiumL10n.string("Missing heading")
+        case .ambiguousHeading: return ScholiumL10n.string("Ambiguous heading")
+        case .missingBlock: return ScholiumL10n.string("Missing paragraph anchor")
+        case .ambiguousBlock: return ScholiumL10n.string("Ambiguous paragraph anchor")
+        }
     }
 }
 
@@ -105,6 +129,11 @@ enum ConnectionDirection: String, CaseIterable, Identifiable, Sendable {
 struct ConnectionsProjection {
     let items: [InspectorLinkItem]
 
+    private struct OccurrenceLocation: Hashable {
+        let source: VaultQualifiedNoteID
+        let span: SourceSpan
+    }
+
     static func make(
         graph: GraphSnapshot?,
         catalog: WorkspaceCatalogSnapshot?,
@@ -123,6 +152,10 @@ struct ConnectionsProjection {
         guard let graph, let current else {
             return Self(items: [])
         }
+        let diagnosticsByLocation = Dictionary(
+            grouping: graph.diagnostics,
+            by: { OccurrenceLocation(source: $0.source, span: $0.span) }
+        )
 
         let edges: [LinkGraphEdge] =
             switch direction {
@@ -137,7 +170,10 @@ struct ConnectionsProjection {
                 edge: edge,
                 peer: peer,
                 source: notesByID[edge.source],
-                direction: direction
+                direction: direction,
+                diagnostic: diagnosticsByLocation[
+                    OccurrenceLocation(source: edge.source, span: edge.occurrence.span)
+                ]?.first
             )
         }.sorted {
             if $0.displayTitle != $1.displayTitle {
@@ -196,13 +232,7 @@ struct ConnectionsInspectorView: View {
         let items = ConnectionsProjection.make(
             graph: context.graph, catalog: context.catalog,
             current: context.current, direction: direction
-        ).items.filter { item in
-            term.isEmpty
-                || [
-                    item.displayTitle, item.edge.occurrence.localContext,
-                    item.edge.occurrence.annotation?.text ?? "",
-                ].contains { $0.localizedStandardContains(term) }
-        }
+        ).items.filter { $0.matches(term) }
         return InspectorLinkGroup.make(items)
     }
 
@@ -289,7 +319,7 @@ struct ConnectionsInspectorView: View {
                             )
                             ResearchNoteGroupHeader(
                                 title: group.title, role: group.items.first?.peer?.reference.vaultRole,
-                                expanded: expanded,
+                                expanded: expanded, occurrenceCount: group.items.count,
                                 separatesFromPreviousGroup: group.id != noteGroups.first?.id
                             ) {
                                 if let peer = group.items.first?.peer {
@@ -358,6 +388,12 @@ private struct LinkOccurrenceRow: View {
                             emphasized: .accent
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        if let diagnosticTitle = item.diagnosticTitle {
+                            Label(diagnosticTitle, systemImage: "exclamationmark.triangle")
+                                .font(ScholiumTypography.interface(.small))
+                                .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                                .help(diagnosticTitle)
+                        }
                         if let annotation = item.edge.occurrence.annotation {
                             Divider()
                             HStack(alignment: .top, spacing: 8) {
@@ -386,7 +422,7 @@ private struct LinkOccurrenceRow: View {
             )
             .disabled(item.source == nil)
             .help("Show this passage")
-            .accessibilityLabel(Text(contextText))
+            .accessibilityLabel(Text(verbatim: [item.diagnosticTitle, contextText].compactMap { $0 }.joined(separator: ", ")))
             .accessibilityValue(Text(item.edge.occurrence.annotation?.text ?? ""))
             .accessibilityIdentifier("scholium.links.occurrence." + item.id)
             if item.direction == .outgoing, item.edge.occurrence.fragment != nil,

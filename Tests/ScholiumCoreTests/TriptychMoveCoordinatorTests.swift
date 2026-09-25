@@ -6,6 +6,32 @@ import Testing
 
 @Suite("Triptych transactional note movement")
 struct TriptychMoveCoordinatorTests {
+    @Test("Moving a linked source commits the corrected link in the moved file")
+    func commitsMovedSourceOutgoingRewrite() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let source = try await fixture.create(
+            vault: .topicKnowledge, path: "Old/Source.md", content: "[[Target]]\r\n"
+        )
+        _ = try await fixture.create(vault: .topicKnowledge, path: "Old/Target.md", content: "original\n")
+        _ = try await fixture.create(vault: .topicKnowledge, path: "New/Target.md", content: "other\n")
+        let plan = try await fixture.planMove(
+            from: fixture.id(.topicKnowledge, "Old/Source.md"), to: "New/Source.md"
+        )
+
+        let commit = try await fixture.moveCoordinator().move(plan, expectedRevision: source.fingerprint)
+
+        #expect(commit.rewrites.count == 1)
+        #expect(
+            try await fixture.repository(.topicKnowledge).load(
+                relativePath: "New/Source.md"
+            ).rawContent == "[[Old/Target]]\r\n")
+        let (_, rebuiltGraph) = try await fixture.workspaceGraph()
+        #expect(
+            rebuiltGraph.outgoing[fixture.id(.topicKnowledge, "New/Source.md")]?
+                .first?.destination?.note == fixture.id(.topicKnowledge, "Old/Target.md"))
+    }
+
     @Test("A move commits cross-vault resolved incoming rewrites")
     func commitsMoveAndCrossVaultRewrites() async throws {
         let fixture = try Fixture()

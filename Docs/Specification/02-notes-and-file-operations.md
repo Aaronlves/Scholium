@@ -152,16 +152,19 @@ inline title control in Edit; there is no separate Note Rename command or sheet.
 Paths are locations; Notes have stable app-owned identities. Duplicate creates
 a new identity and copies exact source, but not
 Settlement. An inline filename change and Move preserve identity and exact
-resolved incoming-link updates. Ambiguous external rename keeps source readable
-but blocks identity-dependent mutation until resolved.
+resolved incoming-link updates. Moving a source Note also preserves its resolved
+outgoing targets when the new location would otherwise retarget them.
+Ambiguous external rename keeps source readable but blocks identity-dependent
+mutation until resolved.
 
 Folders are vault-relative filesystem locations with no UUID, Metadata, Record,
 or recovery identity. Empty folders remain visible. Rename or Move flushes
 open editors, rechecks the complete descendant inventory, performs one
 nonreplacing directory operation, preserves descendant identities, and updates
-only unambiguous already-resolved incoming links. Symlink boundaries,
-collisions, stale inventories, or ambiguous links abort without partial source
-reinterpretation. Non-Markdown contents move without parsing.
+only unambiguous already-resolved links under the Note Move rule above.
+Symlink boundaries, collisions, stale inventories, or ambiguous links abort
+without partial source reinterpretation. Non-Markdown contents move without
+parsing.
 
 Note and Folder drag-and-drop are redundant Move routes using process-private
 identity/path payloads. File menu and named accessibility actions remain
