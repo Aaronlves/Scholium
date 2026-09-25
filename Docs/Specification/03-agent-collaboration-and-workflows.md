@@ -12,7 +12,10 @@ Scholium provides a native client for supported runtimes; authentication and
 the Agent execution loop remain runtime-owned. The researcher's
 current instruction supplies the task, scope, and any permission to create,
 modify, move (including a filename change), undo a named change, or move a Note
-to system Trash.
+to system Trash. Within the selected Triptych, the Agent may browse, search,
+and read any Note and accessible authored attachment needed for the research
+task without per-read approval. Exact source identity, revision, and reading
+coverage support provenance, not a per-Note permission gate.
 
 Scholium separates three instruction owners:
 

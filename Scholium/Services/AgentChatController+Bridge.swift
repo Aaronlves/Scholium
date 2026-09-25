@@ -29,8 +29,10 @@ extension AgentChatController {
             let admission = executions[conversationID]?.admissionID
         else { return refusal("The conversation is not accepting operations.") }
         func isAdmitted() -> Bool {
-            executions[conversationID]?.admissionID == admission
+            executions[conversationID]?.state == .working
+                && executions[conversationID]?.admissionID == admission
                 && runtimeContext(for: requestToken) == context
+                && conversation(conversationID)?.isAvailable == true
         }
         let rawTriptych = request.arguments["triptych_id"]?.stringValue
         guard rawTriptych == nil || rawTriptych.flatMap(UUID.init(uuidString:)) == triptychID else {
@@ -56,7 +58,11 @@ extension AgentChatController {
         }
         record(.running)
         if request.tool.isChatControl {
-            let response = await handleCapabilityTool(request, conversationID: conversationID)
+            let response = await handleCapabilityTool(
+                request, conversationID: conversationID,
+                admitted: {
+                    !Task.isCancelled && isAdmitted()
+                })
             activity.status =
                 response.error == nil
                 ? .completed : (response.error?.code == .operationUncertain ? .uncertain : .failed)
@@ -253,20 +259,22 @@ extension AgentChatController {
 
     private func handleCapabilityTool(
         _ request: ScholiumMCPBridgeRequest,
-        conversationID: UUID
+        conversationID: UUID,
+        admitted: @MainActor () -> Bool
     ) async -> ScholiumMCPBridgeResponse {
         do {
+            try requireAgentCapabilityAdmission(admitted)
             let result: MCPJSONValue
             switch request.tool {
             case .capabilities:
                 try agentRequireOnly(request.arguments, keys: [])
-                result = try await agentCapabilitiesValue(for: conversationID)
+                result = try await agentCapabilitiesValue(for: conversationID, admitted: admitted)
             case .configureSkill:
-                result = try await agentConfigureSkill(request.arguments, conversationID: conversationID)
+                result = try await agentConfigureSkill(request.arguments, conversationID: conversationID, admitted: admitted)
             case .configureTool:
-                result = try await agentConfigureTool(request.arguments, conversationID: conversationID)
+                result = try await agentConfigureTool(request.arguments, conversationID: conversationID, admitted: admitted)
             case .configureChat:
-                result = try await agentConfigureChat(request.arguments, conversationID: conversationID)
+                result = try await agentConfigureChat(request.arguments, conversationID: conversationID, admitted: admitted)
             default:
                 throw ScholiumMCPFailure(
                     code: .invalidRequest,
@@ -303,9 +311,9 @@ extension AgentChatController {
         }
     }
 
-    private func agentCapabilitiesValue(for conversationID: UUID) async throws -> MCPJSONValue {
+    private func agentCapabilitiesValue(for conversationID: UUID, admitted: @MainActor () -> Bool) async throws -> MCPJSONValue {
         let threadID = conversation(conversationID)?.threadID
-        let snapshot = try await capabilities.agentCapabilitySnapshot(threadID: threadID)
+        let snapshot = try await capabilities.agentCapabilitySnapshot(threadID: threadID, admitted: admitted)
         return .object([
             "schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion),
             "status": .string("ok"),
@@ -322,7 +330,8 @@ extension AgentChatController {
 
     private func agentConfigureSkill(
         _ arguments: [String: MCPJSONValue],
-        conversationID: UUID
+        conversationID: UUID,
+        admitted: @MainActor () -> Bool
     ) async throws -> MCPJSONValue {
         try agentRequireOnly(arguments, keys: ["action", "path", "name"])
         let action = try agentRequiredString(arguments["action"], name: "action")
@@ -331,8 +340,9 @@ extension AgentChatController {
         case "enable", "disable":
             let path = try agentRequiredString(arguments["path"], name: "path")
             let name = try agentOptionalString(arguments["name"], name: "name")
-            let method = try await capabilities.agentSetSkill(path: path, name: name, enabled: action == "enable", threadID: threadID)
-            let roots = (try? await capabilities.agentCapabilitySnapshot(threadID: threadID).skillRoots) ?? capabilities.skillRoots
+            let method = try await capabilities.agentSetSkill(
+                path: path, name: name, enabled: action == "enable", threadID: threadID, admitted: admitted)
+            let roots = capabilities.skillRoots
             return agentOK([
                 "action": .string(action), "path": .string(method.selection.path),
                 "effective_enabled": .bool(method.enabled), "skill_roots": .array(roots.map(MCPJSONValue.string)),
@@ -345,7 +355,8 @@ extension AgentChatController {
 
     private func agentConfigureTool(
         _ arguments: [String: MCPJSONValue],
-        conversationID: UUID
+        conversationID: UUID,
+        admitted: @MainActor () -> Bool
     ) async throws -> MCPJSONValue {
         try agentRequireOnly(
             arguments,
@@ -357,7 +368,7 @@ extension AgentChatController {
         let threadID = conversation(conversationID)?.threadID
         if action == "sign_in" {
             let name = try agentRequiredString(arguments["name"], name: "name")
-            let url = try await capabilities.agentSignIn(name: name, threadID: threadID)
+            let url = try await capabilities.agentSignIn(name: name, threadID: threadID, admitted: admitted)
             return agentOK([
                 "action": .string(action), "applies_to": .string("authorization_flow"),
                 "authorization_url": .string(url.absoluteString), "configuration": .object([:]),
@@ -370,7 +381,7 @@ extension AgentChatController {
             _ = try agentRequiredString(arguments["name"], name: "name")
         }
         let expectedVersion = try agentRequiredString(arguments["expected_version"], name: "expected_version")
-        let snapshot = try await capabilities.agentCapabilitySnapshot(threadID: threadID)
+        let snapshot = try await capabilities.agentCapabilitySnapshot(threadID: threadID, admitted: admitted)
         let existing: AgentChatToolConnection?
         if let name = try agentOptionalString(arguments["name"], name: "name") {
             existing = snapshot.configuration.connections.first { $0.name == name }
@@ -391,7 +402,8 @@ extension AgentChatController {
         let reuse = try agentOptionalBool(arguments["reuse_access_settings"], name: "reuse_access_settings") ?? false
         let result = try await capabilities.agentWriteTool(
             connection, originalName: existing?.name,
-            expectedVersion: expectedVersion, removing: removing, reuseAccessSettings: reuse, threadID: threadID)
+            expectedVersion: expectedVersion, removing: removing, reuseAccessSettings: reuse,
+            threadID: threadID, admitted: admitted)
         return agentOK([
             "action": .string(action), "applies_to": .string("runtime_configuration"),
             "authorization_url": .null,
@@ -401,7 +413,8 @@ extension AgentChatController {
 
     private func agentConfigureChat(
         _ arguments: [String: MCPJSONValue],
-        conversationID: UUID
+        conversationID: UUID,
+        admitted: @MainActor () -> Bool
     ) async throws -> MCPJSONValue {
         try agentRequireOnly(arguments, keys: ["action", "permission", "model", "effort", "web_search", "skill_paths"])
         guard let current = conversation(conversationID), current.isAvailable == true else {
@@ -442,7 +455,7 @@ extension AgentChatController {
             update(in: conversationID) { $0.preferences.webSearch = mode }
         case "set_selected_skills":
             let paths = try agentRequiredStringArray(arguments["skill_paths"], name: "skill_paths")
-            let inventory = try await capabilities.agentCapabilitySnapshot(threadID: current.threadID)
+            let inventory = try await capabilities.agentCapabilitySnapshot(threadID: current.threadID, admitted: admitted)
             var selections: [AgentChatMethodSelection] = []
             for path in paths {
                 guard let method = inventory.methods.methods.first(where: { $0.selection.path == path && $0.enabled && !$0.isProtected }) else {
@@ -456,6 +469,7 @@ extension AgentChatController {
             guard Set(selections.map(\.path)).count == selections.count else {
                 throw agentInvalid("skill_paths", "Do not repeat a Skill path.")
             }
+            try requireAgentCapabilityAdmission(admitted)
             update(in: conversationID) { $0.selectedMethods = selections.isEmpty ? nil : selections }
         default:
             throw agentInvalid("action", "Choose set_permission, set_model, set_effort, set_web_search or set_selected_skills.")

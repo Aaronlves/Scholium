@@ -15,6 +15,22 @@ struct AgentChatToolWriteResult: Sendable {
     let overridden: Bool
 }
 
+/// A stopped turn cannot begin a new capability operation. Once a runtime
+/// mutation has been sent, loss of admission makes its outcome uncertain.
+@MainActor
+func requireAgentCapabilityAdmission(_ admitted: () -> Bool, afterCommit: Bool = false) throws {
+    guard admitted() else {
+        throw ScholiumMCPFailure(
+            code: afterCommit ? .operationUncertain : .invalidRequest,
+            message: afterCommit
+                ? "The turn ended after the capability change began; its result may have been saved."
+                : "The turn ended before the capability operation began.",
+            recovery: afterCommit
+                ? "Inspect current Scholium capabilities before trying this change again."
+                : "Start a new turn and inspect current capabilities before retrying.")
+    }
+}
+
 /// Connection-scoped runtime observations; installed configuration stays runtime-owned.
 @MainActor
 final class AgentChatCapabilitiesController: ObservableObject {
@@ -369,7 +385,8 @@ final class AgentChatCapabilitiesController: ObservableObject {
     /// active Chat turn may perform an explicit, runtime-owned configuration
     /// change requested by the researcher. The operation remains serialized,
     /// version checked and connection-generation checked.
-    func agentCapabilitySnapshot(threadID: String?) async throws -> AgentChatCapabilitySnapshot {
+    func agentCapabilitySnapshot(threadID: String?, admitted: @MainActor () -> Bool) async throws -> AgentChatCapabilitySnapshot {
+        try requireAgentCapabilityAdmission(admitted)
         guard let runtime, let cwd, let home = configurationHome else {
             throw ScholiumMCPFailure(
                 code: .workspaceNotReady,
@@ -381,12 +398,18 @@ final class AgentChatCapabilitiesController: ObservableObject {
         }
         let roots = skillRoots
         let methods = try await runtime.chatMethods(cwd: cwd)
+        try requireAgentCapabilityAdmission(admitted)
         let tools = try await runtime.chatConnectedTools(threadID: threadID)
+        try requireAgentCapabilityAdmission(admitted)
         let configuration = try await runtime.chatToolConfiguration(home: home)
+        try requireAgentCapabilityAdmission(admitted)
         return .init(methods: methods, tools: tools, configuration: configuration, skillRoots: roots)
     }
 
-    func agentSetSkill(path: String, name: String?, enabled: Bool, threadID: String?) async throws -> AgentChatMethod {
+    func agentSetSkill(
+        path: String, name: String?, enabled: Bool, threadID: String?, admitted: @MainActor () -> Bool
+    ) async throws -> AgentChatMethod {
+        try requireAgentCapabilityAdmission(admitted)
         guard let runtime, let cwd else {
             throw ScholiumMCPFailure(
                 code: .workspaceNotReady,
@@ -401,6 +424,8 @@ final class AgentChatCapabilitiesController: ObservableObject {
         isChanging = true
         defer { if connectionGeneration == connection { isChanging = false } }
         let inventory = try await runtime.chatMethods(cwd: cwd)
+        try requireAgentCapabilityAdmission(admitted)
+        guard connectionGeneration == connection else { throw CancellationError() }
         guard
             let method = inventory.methods.first(where: {
                 $0.selection.path == path && (name == nil || $0.selection.name == name)
@@ -416,8 +441,21 @@ final class AgentChatCapabilitiesController: ObservableObject {
                 code: .invalidRequest,
                 message: "The Scholium Core Protocol is protected and cannot be disabled.", recovery: "Choose a researcher-owned Skill instead.")
         }
-        let effective = try await runtime.setChatMethod(method, enabled: enabled)
-        guard connectionGeneration == connection, !Task.isCancelled else { throw CancellationError() }
+        let effective: Bool
+        do {
+            effective = try await runtime.setChatMethod(method, enabled: enabled)
+        } catch {
+            throw ScholiumMCPFailure(
+                code: .operationUncertain,
+                message: "The Skill change was sent, but its result was not confirmed.",
+                recovery: "Inspect the current Skill setting before trying again.")
+        }
+        try requireAgentCapabilityAdmission(admitted, afterCommit: true)
+        guard connectionGeneration == connection else {
+            throw ScholiumMCPFailure(
+                code: .operationUncertain, message: "The Skill change was saved on a replaced connection.",
+                recovery: "Inspect the current Skill setting before trying again.")
+        }
         refresh(threadID: threadID)
         return .init(
             selection: method.selection, description: method.description, enabled: effective,
@@ -430,8 +468,10 @@ final class AgentChatCapabilitiesController: ObservableObject {
         expectedVersion: String,
         removing: Bool,
         reuseAccessSettings: Bool,
-        threadID: String?
+        threadID: String?,
+        admitted: @MainActor () -> Bool
     ) async throws -> AgentChatToolWriteResult {
+        try requireAgentCapabilityAdmission(admitted)
         guard let runtime, let home = configurationHome else {
             throw ScholiumMCPFailure(
                 code: .workspaceNotReady,
@@ -446,22 +486,23 @@ final class AgentChatCapabilitiesController: ObservableObject {
         isChanging = true
         defer { if connectionGeneration == generation { isChanging = false } }
         let snapshot = try await runtime.chatToolConfiguration(home: home)
+        try requireAgentCapabilityAdmission(admitted)
+        guard connectionGeneration == generation else { throw CancellationError() }
         guard snapshot.version == expectedVersion else {
             throw ScholiumMCPFailure(
                 code: .staleRevision,
                 message: "The tool configuration changed before this Agent operation.",
                 recovery: "Inspect capabilities again and retry with its current configuration version.")
         }
+        let overridden: Bool
         do {
-            let overridden = try await runtime.writeChatTool(
+            overridden = try await runtime.writeChatTool(
                 connection, originalName: originalName,
                 snapshot: snapshot, removing: removing, reuseAccessSettings: reuseAccessSettings)
-            guard connectionGeneration == generation, !Task.isCancelled else { throw CancellationError() }
-            let current = try await runtime.chatToolConfiguration(home: home)
-            refresh(threadID: threadID)
-            return .init(configuration: current, overridden: overridden)
         } catch let failure as ScholiumMCPFailure {
             throw failure
+        } catch let error as CodexChatToolConfigurationError {
+            throw error
         } catch let error as CodexConnectionError {
             if case .server(let message) = error, message.localizedCaseInsensitiveContains("changed") {
                 throw ScholiumMCPFailure(
@@ -469,11 +510,43 @@ final class AgentChatCapabilitiesController: ObservableObject {
                     message: "The tool configuration changed before this Agent operation.",
                     recovery: "Inspect capabilities again and retry with its current configuration version.")
             }
-            throw error
+            throw ScholiumMCPFailure(
+                code: .operationUncertain,
+                message: "The tool configuration change was sent, but its result was not confirmed.",
+                recovery: "Inspect the current tool configuration version before trying again.")
+        } catch {
+            throw ScholiumMCPFailure(
+                code: .operationUncertain,
+                message: "The tool configuration change was sent, but its result was not confirmed.",
+                recovery: "Inspect the current tool configuration version before trying again.")
         }
+        try requireAgentCapabilityAdmission(admitted, afterCommit: true)
+        guard connectionGeneration == generation else {
+            throw ScholiumMCPFailure(
+                code: .operationUncertain, message: "The tool configuration was saved on a replaced connection.",
+                recovery: "Inspect the current tool configuration version before trying again.")
+        }
+        let current: CodexChatToolConfiguration
+        do {
+            current = try await runtime.chatToolConfiguration(home: home)
+        } catch {
+            throw ScholiumMCPFailure(
+                code: .operationUncertain,
+                message: "The tool configuration was saved, but its current version could not be read.",
+                recovery: "Inspect the current tool configuration version before trying again.")
+        }
+        try requireAgentCapabilityAdmission(admitted, afterCommit: true)
+        guard connectionGeneration == generation else {
+            throw ScholiumMCPFailure(
+                code: .operationUncertain, message: "The tool configuration was saved on a replaced connection.",
+                recovery: "Inspect the current tool configuration version before trying again.")
+        }
+        refresh(threadID: threadID)
+        return .init(configuration: current, overridden: overridden)
     }
 
-    func agentSignIn(name: String, threadID: String?) async throws -> URL {
+    func agentSignIn(name: String, threadID: String?, admitted: @MainActor () -> Bool) async throws -> URL {
+        try requireAgentCapabilityAdmission(admitted)
         guard let runtime, !name.isEmpty else {
             throw ScholiumMCPFailure(
                 code: .workspaceNotReady,
@@ -485,8 +558,11 @@ final class AgentChatCapabilitiesController: ObservableObject {
                 message: "Another tool sign-in is already waiting.", recovery: "Complete the existing authorization flow before starting another.")
         }
         agentAuthenticationThreadIDs[name] = threadID ?? ""
+        let connection = connectionGeneration
         do {
             let tools = try await runtime.chatConnectedTools(threadID: threadID)
+            try requireAgentCapabilityAdmission(admitted)
+            guard connectionGeneration == connection else { throw CancellationError() }
             guard let tool = tools.first(where: { $0.name == name }) else {
                 throw ScholiumMCPFailure(
                     code: .notFound,
@@ -499,7 +575,22 @@ final class AgentChatCapabilitiesController: ObservableObject {
                     message: "This MCP connection does not currently require sign-in.",
                     recovery: "Inspect its current authentication and connection status before retrying.")
             }
-            return try await runtime.chatToolSignIn(name: name, threadID: threadID)
+            let url: URL
+            do {
+                url = try await runtime.chatToolSignIn(name: name, threadID: threadID)
+            } catch {
+                throw ScholiumMCPFailure(
+                    code: .operationUncertain,
+                    message: "The sign-in request was sent, but its result was not confirmed.",
+                    recovery: "Inspect this connection's sign-in status before trying again.")
+            }
+            try requireAgentCapabilityAdmission(admitted, afterCommit: true)
+            guard connectionGeneration == connection else {
+                throw ScholiumMCPFailure(
+                    code: .operationUncertain, message: "The sign-in request completed on a replaced connection.",
+                    recovery: "Inspect this connection's sign-in status before trying again.")
+            }
+            return url
         } catch {
             agentAuthenticationThreadIDs.removeValue(forKey: name)
             throw error

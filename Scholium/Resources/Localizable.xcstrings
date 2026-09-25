@@ -25171,12 +25171,12 @@
         }
       }
     },
-    "Scholium uses Zotero Desktop's localhost API, not its private database. Chat imports and item changes require explicit confirmation. No account or API key is needed." : {
+    "Scholium uses Zotero Desktop's localhost API, not its private database. Chat item changes require confirmation and Zotero's local write authorization. Import BibTeX and RIS in Zotero." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 使用 Zotero Desktop 的 localhost API，不访问其私有数据库。Chat 导入和条目修改需要明确确认；无需账户或 API 密钥。"
+            "value" : "Scholium 使用 Zotero Desktop 的 localhost API，不访问其私有数据库。Chat 修改条目需要确认及 Zotero 本地写入授权。请在 Zotero 中导入 BibTeX 和 RIS。"
           }
         }
       }
@@ -28150,18 +28150,18 @@
         }
       }
     },
-    "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text, imports and confirmed item changes. No separate runtime installation is required." : {
+    "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text and confirmed item changes. Import BibTeX and RIS in Zotero. No separate runtime installation is required." : {
         "localizations" : {
           "en" : {
             "stringUnit" : {
               "state" : "translated",
-              "value" : "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text, imports and confirmed item changes. No separate runtime installation is required."
+              "value" : "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text and confirmed item changes. Import BibTeX and RIS in Zotero. No separate runtime installation is required."
             }
           },
           "zh-Hans" : {
             "stringUnit" : {
               "state" : "translated",
-              "value" : "Chat 使用 Scholium 随附的 Zotero 连接读取文献库和索引附件文本，并在确认后导入和修改条目。不需要额外安装运行时。"
+              "value" : "Chat 使用 Scholium 随附的 Zotero 连接读取文献库和索引附件文本，并在确认后修改条目。请在 Zotero 中导入 BibTeX 和 RIS。不需要额外安装运行时。"
             }
           }
         }

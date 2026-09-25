@@ -239,7 +239,7 @@ struct ZoteroSettingsView: View {
                 }
             }
             Text(
-                "Scholium uses Zotero Desktop's localhost API, not its private database. Chat imports and item changes require explicit confirmation. No account or API key is needed."
+                "Scholium uses Zotero Desktop's localhost API, not its private database. Chat item changes require confirmation and Zotero's local write authorization. Import BibTeX and RIS in Zotero."
             )
             .font(.callout)
             .foregroundStyle(.secondary)

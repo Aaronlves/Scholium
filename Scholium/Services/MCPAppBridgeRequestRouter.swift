@@ -803,19 +803,34 @@ final class MCPAppBridgeRequestRouter {
         let snapshot = try await currentSnapshot(triptychID: triptychID)
         let note = try resolveNote(noteID, snapshot: snapshot)
         let handle = try await runtime.openWorkspace(id: triptychID)
-        let edges = try await handle.discovery.links(for: note.id, direction: direction)
+        guard let graph = snapshot.discovery.catalog.graph else {
+            throw ScholiumMCPFailure(
+                code: .workspaceNotReady, message: "The current link generation is unavailable.",
+                recovery: "Refresh the Triptych and call workspace status again."
+            )
+        }
+        let edges: [LinkGraphEdge] =
+            switch direction {
+            case .incoming: graph.incoming[note.id] ?? []
+            case .outgoing: graph.outgoing[note.id] ?? []
+            }
         let page = Array(edges.dropFirst(min(offset, edges.count)).prefix(limit))
         var documents: [VaultQualifiedNoteID: NoteDocument] = [:]
         var values: [MCPJSONValue] = []
         for edge in page {
+            guard let sourceSnapshot = snapshot.document(id: edge.source) else {
+                throw ScholiumMCPFailure(
+                    code: .conflict, message: "The link source is absent from the current source generation.",
+                    recovery: "Read workspace status and request the current links again."
+                )
+            }
             let sourceDocument: NoteDocument
             if let existing = documents[edge.source] {
                 sourceDocument = existing
             } else {
-                if let sourceID = stableIdentity(for: edge.source, snapshot: snapshot) {
+                if let sourceID = sourceSnapshot.stableIdentity.resolvedID {
                     let current = try await handle.agentCollaboration.currentNoteSource(noteID: sourceID)
                     guard current.note == edge.source,
-                        snapshot.document(id: edge.source)?.fingerprint == current.fingerprint,
                         let content = NoteDocument.decodeUTF8PreservingBOM(current.source)
                     else {
                         throw ScholiumMCPFailure(
@@ -827,6 +842,12 @@ final class MCPAppBridgeRequestRouter {
                     sourceDocument = NoteDocument(relativePath: current.note.relativePath, rawContent: content)
                 } else {
                     sourceDocument = try await handle.documents.load(edge.source)
+                }
+                guard sourceDocument.fingerprint == sourceSnapshot.fingerprint else {
+                    throw ScholiumMCPFailure(
+                        code: .conflict, message: "The link source changed after the current link generation was built.",
+                        recovery: "Read workspace status and request the current links again."
+                    )
                 }
                 documents[edge.source] = sourceDocument
             }
@@ -882,9 +903,7 @@ final class MCPAppBridgeRequestRouter {
             "triptych_id": .string(triptychID.uuidString.lowercased()),
             "note_id": .string(noteID.uuidString.lowercased()),
             "direction": .string(rawDirection),
-            "graph_generation": snapshot.discovery.catalog.graph.map {
-                .integer($0.generation)
-            } ?? .null,
+            "graph_generation": .integer(graph.generation),
             "offset": .integer(offset),
             "limit": .integer(limit),
             "has_more": .bool(offset + page.count < edges.count),

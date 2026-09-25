@@ -79,21 +79,6 @@ extension ZoteroMCPServer {
             properties: [:]
         ),
         tool(
-            name: "zotero_import_bibtex",
-            description:
-                "Import BibTeX text through Zotero Connector into the currently selected editable library or collection. Requires explicit confirmation.",
-            properties: importProperties,
-            required: ["text", "confirm", "target_fingerprint"],
-            readOnly: false
-        ),
-        tool(
-            name: "zotero_import_ris",
-            description: "Import RIS text through Zotero Connector into the currently selected editable library or collection. Requires explicit confirmation.",
-            properties: importProperties,
-            required: ["text", "confirm", "target_fingerprint"],
-            readOnly: false
-        ),
-        tool(
             name: "zotero_update_item",
             description:
                 "Modify one Zotero item through the local API. Requires explicit confirmation, the exact library and the item's current version; omitted fields are preserved.",
@@ -130,16 +115,6 @@ extension ZoteroMCPServer {
     private static let startProperty: ZoteroMCPJSONValue = .object([
         "type": .string("integer"), "minimum": .integer(0), "maximum": .integer(10_000), "default": .integer(0),
     ])
-
-    private static let importProperties: [String: ZoteroMCPJSONValue] = [
-        "text": .object(["type": .string("string"), "minLength": .integer(1), "maxLength": .integer(1_048_576)]),
-        "confirm": .object(["type": .string("boolean"), "const": .bool(true)]),
-        "target_fingerprint": .object([
-            "type": .string("string"), "pattern": .string("^[0-9a-f]{64}$"),
-            "description": .string("Fingerprint returned by zotero_selected_target; it binds the import to the inspected target."),
-        ]),
-        "session": .object(["type": .string("string"), "maxLength": .integer(128)]),
-    ]
 
     func inventory(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
         guard arguments.keys.allSatisfy(["library", "include_children", "limit", "start"].contains),
@@ -404,41 +379,19 @@ extension ZoteroMCPServer {
         return .object(["endpoints": .array(rows)])
     }
 
-    func importRecords(_ arguments: [String: ZoteroMCPJSONValue], kind: String) async throws -> ZoteroMCPJSONValue {
-        guard arguments.keys.allSatisfy(["text", "confirm", "target_fingerprint", "session"].contains),
-            arguments["confirm"]?.boolValue == true,
-            let text = arguments["text"]?.stringValue,
-            let expectedTarget = arguments["target_fingerprint"]?.stringValue,
-            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            text.utf8.count <= 1 * 1_024 * 1_024
-        else { throw ZoteroMCPServiceError.confirmationRequired }
-        let target = try await selectedTarget()
-        guard target.isWritable else { throw ZoteroMCPServiceError.targetNotWritable }
-        if expectedTarget != target.fingerprint {
-            throw ZoteroMCPServiceError.materialChanged
-        }
-        let session = arguments["session"]?.stringValue ?? "scholium-\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
-        guard let request = ZoteroMCPRequestFactory.connectorImport(session: session, text: text) else {
-            throw ZoteroMCPServiceError.invalidRequest
-        }
-        let response = try await sendConnector(request)
-        let result = (try? decodeJSON(response.body)) ?? .string(String(decoding: response.body, as: UTF8.self))
-        return .object([
-            "status": .string("imported"), "format": .string(kind), "session": .string(session),
-            "target": target.value, "response": result,
-        ])
-    }
-
     func updateItem(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
         guard arguments.keys.allSatisfy(["library", "item_key", "data", "expected_version", "confirm"].contains),
-            arguments["confirm"]?.boolValue == true,
+            let library = arguments["library"]?.stringValue,
             let key = normalizedKey(arguments["item_key"]?.stringValue),
             let patch = arguments["data"]?.objectValue,
             !patch.isEmpty,
             let expectedVersion = arguments["expected_version"]?.intValue,
             expectedVersion > 0
-        else { throw ZoteroMCPServiceError.confirmationRequired }
-        let route = try await singleLibraryRoute(arguments["library"]?.stringValue)
+        else { throw ZoteroMCPServiceError.invalidArguments }
+        guard arguments["confirm"]?.boolValue == true else {
+            throw ZoteroMCPServiceError.confirmationRequired
+        }
+        let route = try await singleLibraryRoute(library)
         guard let currentRequest = ZoteroMCPRequestFactory.api(route: route, resource: .item(itemKey: key)) else {
             throw ZoteroMCPServiceError.invalidRequest
         }
@@ -451,6 +404,10 @@ extension ZoteroMCPServer {
         guard let currentVersion = current["version"]?.intValue ?? currentResponse.header(named: "Last-Modified-Version").flatMap(Int.init),
             currentVersion == expectedVersion
         else { throw ZoteroMCPServiceError.materialChanged }
+        guard let serverID = currentResponse.header(named: "Zotero-Server-ID"),
+            (1...128).contains(serverID.utf8.count),
+            serverID.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "-" })
+        else { throw ZoteroMCPServiceError.localAPIAuthorizationUnavailable }
         if let patchKey = patch["key"]?.stringValue, normalizedKey(patchKey) != key { throw ZoteroMCPServiceError.invalidArguments }
         if patch["version"] != nil { throw ZoteroMCPServiceError.invalidArguments }
         if let itemType = patch["itemType"]?.stringValue, itemType != currentData["itemType"]?.stringValue { throw ZoteroMCPServiceError.invalidArguments }
@@ -459,24 +416,104 @@ extension ZoteroMCPServer {
         merged["key"] = .string(key)
         if let itemType = currentData["itemType"] { merged["itemType"] = itemType }
         let body = try encodeJSON(.object(merged), maximum: 256 * 1_024)
-        guard let request = ZoteroMCPRequestFactory.apiWrite(route: route, itemKey: key, body: body, expectedVersion: expectedVersion) else {
-            throw ZoteroMCPServiceError.invalidRequest
+        var apiKey = try await authorizedLocalAPIKey(serverID: serverID)
+        var response = try await submitItemUpdate(
+            route: route, key: key, body: body, expectedVersion: expectedVersion,
+            serverID: serverID, apiKey: apiKey
+        )
+        if response.statusCode == 401 {
+            localAPIAuthorization = nil
+            apiKey = try await authorizedLocalAPIKey(serverID: serverID)
+            response = try await submitItemUpdate(
+                route: route, key: key, body: body, expectedVersion: expectedVersion,
+                serverID: serverID, apiKey: apiKey
+            )
         }
-        _ = try await sendAPI(request)
-        guard let verificationRequest = ZoteroMCPRequestFactory.api(route: route, resource: .item(itemKey: key)) else {
-            throw ZoteroMCPServiceError.invalidRequest
+        switch response.statusCode {
+        case 200..<300: break
+        case 401: throw ZoteroMCPServiceError.localAPIAuthorizationUnavailable
+        case 403:
+            if String(decoding: response.body, as: UTF8.self) == "Local API is not enabled" {
+                throw ZoteroMCPServiceError.localAPIDisabled
+            }
+            throw ZoteroMCPServiceError.targetNotWritable
+        case 404: throw ZoteroMCPServiceError.itemMissing
+        case 412: throw ZoteroMCPServiceError.materialChanged
+        default:
+            throw ZoteroMCPUncertainItemUpdate(
+                library: route.value, itemKey: key, previousVersion: expectedVersion,
+                explanation: "Zotero did not confirm whether the item update was applied. Read the current item and version before another update."
+            )
         }
-        let verifiedResponse = try await sendAPI(verificationRequest)
-        let verified = try decodeObject(verifiedResponse.body)
-        let verifiedData = try decodeObjectValue(verified["data"] ?? .object(verified))
-        for (field, value) in patch {
-            guard verifiedData[field] == value else { throw ZoteroMCPServiceError.invalidResponse }
+        let verifiedResponse: ZoteroMCPHTTPResponse
+        let verified: [String: ZoteroMCPJSONValue]
+        do {
+            guard let verificationRequest = ZoteroMCPRequestFactory.api(route: route, resource: .item(itemKey: key)) else {
+                throw ZoteroMCPServiceError.invalidRequest
+            }
+            verifiedResponse = try await sendAPI(verificationRequest)
+            guard verifiedResponse.header(named: "Zotero-Server-ID") == serverID else {
+                throw ZoteroMCPServiceError.invalidResponse
+            }
+            verified = try decodeObject(verifiedResponse.body)
+            let verifiedData = try decodeObjectValue(verified["data"] ?? .object(verified))
+            for (field, value) in patch {
+                guard verifiedData[field] == value else { throw ZoteroMCPServiceError.invalidResponse }
+            }
+        } catch {
+            throw ZoteroMCPUncertainItemUpdate(
+                library: route.value, itemKey: key, previousVersion: expectedVersion,
+                explanation:
+                    "Zotero accepted the item update, but the current item could not be verified. Read its current data and version before another update."
+            )
         }
         return .object([
             "status": .string("updated"), "library": route.value, "item_key": .string(key),
             "previous_version": .integer(expectedVersion),
             "version": verified["version"] ?? verifiedResponse.header(named: "Last-Modified-Version").flatMap { .integer(Int($0) ?? expectedVersion) } ?? .null,
         ])
+    }
+
+    private func authorizedLocalAPIKey(serverID: String) async throws -> String {
+        if let cached = localAPIAuthorization, cached.serverID == serverID { return cached.key }
+        localAPIAuthorization = nil
+        guard let request = ZoteroMCPRequestFactory.apiAuthorize(serverID: serverID) else {
+            throw ZoteroMCPServiceError.invalidRequest
+        }
+        let response = try await clientSend(request)
+        switch response.statusCode {
+        case 200:
+            let payload = try decodeObject(response.body)
+            guard let key = payload["key"]?.stringValue,
+                (1...128).contains(key.utf8.count),
+                key.unicodeScalars.allSatisfy(CharacterSet.alphanumerics.contains),
+                let remember = payload["remember"]?.boolValue
+            else { throw ZoteroMCPServiceError.invalidResponse }
+            if remember { localAPIAuthorization = .init(serverID: serverID, key: key) }
+            return key
+        case 403: throw ZoteroMCPServiceError.localAPIAuthorizationDenied
+        default: throw ZoteroMCPServiceError.localAPIAuthorizationUnavailable
+        }
+    }
+
+    private func submitItemUpdate(
+        route: LibraryRoute, key: String, body: Data, expectedVersion: Int,
+        serverID: String, apiKey: String
+    ) async throws -> ZoteroMCPHTTPResponse {
+        guard
+            let request = ZoteroMCPRequestFactory.apiWrite(
+                route: route, itemKey: key, body: body, expectedVersion: expectedVersion,
+                serverID: serverID, apiKey: apiKey
+            )
+        else { throw ZoteroMCPServiceError.invalidRequest }
+        do {
+            return try await clientSend(request)
+        } catch {
+            throw ZoteroMCPUncertainItemUpdate(
+                library: route.value, itemKey: key, previousVersion: expectedVersion,
+                explanation: "Zotero may have applied the item update before its response was lost. Read the current item and version before another update."
+            )
+        }
     }
 
     private func singleLibraryRoute(_ selector: String?) async throws -> LibraryRoute {

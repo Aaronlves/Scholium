@@ -12,10 +12,10 @@ struct AgentChatCapabilityToolTests {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     }
 
-    private func wait(_ condition: () -> Bool) async throws {
+    private func wait(_ condition: () -> Bool, reason: String = "expected state") async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(10))
         while !condition() {
-            try #require(ContinuousClock.now < deadline, "Agent capability fixture did not reach expected state")
+            try #require(ContinuousClock.now < deadline, "Agent capability fixture did not reach \(reason)")
             try await Task.sleep(for: .milliseconds(10))
         }
     }
@@ -32,14 +32,15 @@ struct AgentChatCapabilityToolTests {
         let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
-        try await wait { controller.isLoaded }
+        try await wait({ controller.isLoaded }, reason: "loaded")
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
-        try await wait { controller.state == .ready && controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
+        try await wait(
+            { controller.state == .ready && controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }, reason: "ready capabilities")
 
         controller.editDraft("hold capability configuration")
         controller.send()
-        try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
+        try await wait({ controller.state == .working && controller.selected?.pendingMessageID == nil }, reason: "working turn")
         let token = try #require(controller.token)
         let context = try #require(controller.runtimeContext(for: token))
 
@@ -124,6 +125,163 @@ struct AgentChatCapabilityToolTests {
 
         controller.stop()
         try await wait { controller.state == .ready && !controller.isBusy }
+        await controller.disconnect()
+    }
+
+    @Test(
+        "Stop during capability discovery prevents later configuration writes",
+        arguments: [
+            "selected_skills", "skill_enable", "tool_write", "sign_in",
+        ])
+    func stoppedDiscoveryDoesNotWrite(_ operation: String) async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/capability-stop-\(UUID())")
+        let suite = "scholium.agent-capability-stop.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await wait { controller.isLoaded }
+        if operation == "sign_in" {
+            FileManager.default.createFile(atPath: controller.runtimeHome.appendingPathComponent("oauth-fixture").path, contents: Data())
+        }
+        let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
+        try await wait { controller.state == .ready && controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
+        controller.editDraft("hold capability configuration")
+        controller.send()
+        try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
+        let token = try #require(controller.token)
+        let context = try #require(controller.runtimeContext(for: token))
+        let method = try #require(controller.capabilities.methods.first { !$0.isProtected })
+        let inventory = await controller.handle(.init(tool: .capabilities, conversationToken: token, runtimeContext: context))
+        let version = try #require(inventory.result?.objectValue?["tool_configuration"]?.objectValue?["version"]?.stringValue)
+        let hold = operation == "sign_in" ? "tools-list" : "skills-list"
+        let home = controller.runtimeHome
+        FileManager.default.createFile(atPath: home.appendingPathComponent("hold-capability-\(hold)").path, contents: Data())
+        let request: ScholiumMCPBridgeRequest
+        switch operation {
+        case "selected_skills":
+            request = .init(
+                tool: .configureChat,
+                arguments: [
+                    "action": .string("set_selected_skills"), "skill_paths": .array([.string(method.selection.path)]),
+                ], conversationToken: token, runtimeContext: context)
+        case "skill_enable":
+            request = .init(
+                tool: .configureSkill,
+                arguments: [
+                    "action": .string("disable"), "path": .string(method.selection.path),
+                ], conversationToken: token, runtimeContext: context)
+        case "tool_write":
+            request = .init(
+                tool: .configureTool,
+                arguments: [
+                    "action": .string("add"), "expected_version": .string(version),
+                    "name": .string("stopped-parser"), "kind": .string("remote"),
+                    "address": .string("https://parser.example.invalid/mcp"),
+                ], conversationToken: token, runtimeContext: context)
+        default:
+            request = .init(
+                tool: .configureTool,
+                arguments: [
+                    "action": .string("sign_in"), "name": .string("fixture-library"),
+                ], conversationToken: token, runtimeContext: context)
+        }
+        let call = Task { @MainActor in await controller.handle(request) }
+        try await wait { FileManager.default.fileExists(atPath: home.appendingPathComponent("pending-capability-\(hold)").path) }
+        controller.stop()
+        let response = await call.value
+        #expect(response.error?.code == .invalidRequest)
+        #expect(controller.selected?.selectedMethods == nil)
+        #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("method-disabled").path))
+        #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("fixture-tool-config.json").path))
+        #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("capability-sign-in-requested").path))
+        try await wait { controller.state == .ready && !controller.isBusy }
+        await controller.disconnect()
+    }
+
+    @Test("A saved tool configuration with failed readback reports an uncertain outcome")
+    func savedToolWithLostReadbackIsUncertain() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/capability-readback-\(UUID())")
+        let suite = "scholium.agent-capability-readback.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await wait({ controller.isLoaded }, reason: "readback fixture loaded")
+        let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
+        try await wait(
+            { controller.state == .ready && controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }, reason: "readback fixture ready")
+        controller.editDraft("hold capability configuration")
+        controller.send()
+        try await wait({ controller.state == .working && controller.selected?.pendingMessageID == nil }, reason: "readback working turn")
+        let token = try #require(controller.token)
+        let context = try #require(controller.runtimeContext(for: token))
+        let inspected = await controller.handle(.init(tool: .capabilities, conversationToken: token, runtimeContext: context))
+        let version = try #require(inspected.result?.objectValue?["tool_configuration"]?.objectValue?["version"]?.stringValue)
+        FileManager.default.createFile(
+            atPath: controller.runtimeHome.appendingPathComponent("fail-config-read-after-write").path, contents: Data())
+        let result = await controller.handle(
+            .init(
+                tool: .configureTool,
+                arguments: [
+                    "action": .string("add"), "expected_version": .string(version),
+                    "name": .string("saved-parser"), "kind": .string("remote"),
+                    "address": .string("https://parser.example.invalid/mcp"),
+                ], conversationToken: token, runtimeContext: context))
+        #expect(result.error?.code == .operationUncertain)
+        let saved = try String(contentsOf: controller.runtimeHome.appendingPathComponent("fixture-tool-config.json"), encoding: .utf8)
+        #expect(saved.contains("saved-parser"))
+        controller.stop()
+        await controller.disconnect()
+    }
+
+    @Test("Stop after a Skill write begins reports an uncertain outcome")
+    func stoppedSkillWriteIsUncertain() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/capability-skill-ack-\(UUID())")
+        let suite = "scholium.agent-capability-skill-ack.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await wait({ controller.isLoaded }, reason: "Skill fixture loaded")
+        let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
+        try await wait(
+            { controller.state == .ready && controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }, reason: "Skill fixture ready")
+        controller.editDraft("hold capability configuration")
+        controller.send()
+        try await wait({ controller.state == .working && controller.selected?.pendingMessageID == nil }, reason: "Skill working turn")
+        let token = try #require(controller.token)
+        let context = try #require(controller.runtimeContext(for: token))
+        let method = try #require(controller.capabilities.methods.first { !$0.isProtected })
+        let home = controller.runtimeHome
+        FileManager.default.createFile(atPath: home.appendingPathComponent("hold-capability-skill-ack").path, contents: Data())
+        let call = Task { @MainActor in
+            await controller.handle(
+                .init(
+                    tool: .configureSkill,
+                    arguments: ["action": .string("disable"), "path": .string(method.selection.path)],
+                    conversationToken: token, runtimeContext: context))
+        }
+        try await wait({ FileManager.default.fileExists(atPath: home.appendingPathComponent("pending-capability-skill-ack").path) }, reason: "Skill write sent")
+        controller.stop()
+        let result = await call.value
+        #expect(result.error?.code == .operationUncertain)
+        #expect(FileManager.default.fileExists(atPath: home.appendingPathComponent("method-disabled").path))
         await controller.disconnect()
     }
 }

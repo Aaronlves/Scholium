@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import ScholiumContracts
 
@@ -68,8 +67,8 @@ public struct ZoteroMCPURLSessionClient: ZoteroMCPHTTPClient, Sendable {
 }
 
 /// A first-party stdio MCP implementation for Zotero Desktop.
-/// Zotero remains the data authority: metadata, imports and item mutations go
-/// through its localhost API/Connector, while original reads open only an
+/// Zotero remains the data authority: metadata and item mutations go through
+/// its localhost API, while original reads open only an
 /// exact API-resolved attachment and never SQLite.
 public actor ZoteroMCPServer {
     public static let protocolVersion = "2025-11-25"
@@ -77,6 +76,7 @@ public actor ZoteroMCPServer {
     public static let serverVersion = ScholiumProductIdentity.marketingVersion
 
     let client: any ZoteroMCPHTTPClient
+    var localAPIAuthorization: ZoteroMCPLocalAPIAuthorization?
 
     public init(
         client: any ZoteroMCPHTTPClient = ZoteroMCPURLSessionClient()
@@ -85,7 +85,7 @@ public actor ZoteroMCPServer {
     }
 
     /// Handles one JSON-RPC message body. Notifications intentionally return
-    /// nil. Diagnostics and errors never echo search text or import content.
+    /// nil. Diagnostics and errors never echo search text or item data.
     public func handle(requestData: Data, access: ZoteroMCPAccess) async -> Data? {
         let request: RPCRequest
         do {
@@ -198,12 +198,6 @@ public actor ZoteroMCPServer {
                 execution = .success(try await citations(arguments))
             case "zotero_probe":
                 execution = .success(try await probe())
-            case "zotero_import_bibtex":
-                guard access == .full else { throw ZoteroMCPServiceError.writeNotAuthorized }
-                execution = .success(try await importRecords(arguments, kind: "BibTeX"))
-            case "zotero_import_ris":
-                guard access == .full else { throw ZoteroMCPServiceError.writeNotAuthorized }
-                execution = .success(try await importRecords(arguments, kind: "RIS"))
             case "zotero_update_item":
                 guard access == .full else { throw ZoteroMCPServiceError.writeNotAuthorized }
                 execution = .success(try await updateItem(arguments))
@@ -214,6 +208,19 @@ public actor ZoteroMCPServer {
                 (name == "zotero_read_original_file" || name == "zotero_read_original_page")
                 && arguments["mode"]?.stringValue == "image"
             return toolResult(execution.value, isError: execution.isError, includesImage: includesImage)
+        } catch let error as ZoteroMCPUncertainItemUpdate {
+            return toolResult(
+                .object([
+                    "status": .string("outcome_uncertain"),
+                    "error_code": .string("write_outcome_uncertain"),
+                    "operation": .string("update_item"),
+                    "library": error.library,
+                    "item_key": .string(error.itemKey),
+                    "previous_version": .integer(error.previousVersion),
+                    "error": .string(error.explanation),
+                ]),
+                isError: true
+            )
         } catch let error as ZoteroMCPServiceError {
             return toolResult(
                 .object([
@@ -247,7 +254,6 @@ public actor ZoteroMCPServer {
             "local_api": .string(apiState),
             "connector": .string(connectorState),
             "retrieval_mode": .string("localhost-api-and-connector"),
-            "guarded_imports": .bool(access == .full),
             "item_modification": .bool(access == .full),
             "access_mode": .string(access.rawValue),
             "direct_database_access": .bool(false),
@@ -400,11 +406,16 @@ public actor ZoteroMCPServer {
         else {
             throw ZoteroMCPServiceError.invalidResponse
         }
+        guard libraryID > 0 else { throw ZoteroMCPServiceError.invalidResponse }
         let selectedID: String?
-        if let integer = object["id"]?.intValue {
+        if object["id"] == .null || object["id"] == nil {
+            selectedID = nil
+        } else if let integer = object["id"]?.intValue, integer > 0 {
+            selectedID = String(integer)
+        } else if let value = object["id"]?.stringValue, let integer = Int(value), integer > 0 {
             selectedID = String(integer)
         } else {
-            selectedID = object["id"]?.stringValue
+            throw ZoteroMCPServiceError.invalidResponse
         }
         return SelectedTarget(
             libraryID: libraryID,
@@ -727,6 +738,18 @@ public actor ZoteroMCPServer {
 
 }
 
+struct ZoteroMCPUncertainItemUpdate: Error, Sendable {
+    let library: ZoteroMCPJSONValue
+    let itemKey: String
+    let previousVersion: Int
+    let explanation: String
+}
+
+struct ZoteroMCPLocalAPIAuthorization: Sendable {
+    let serverID: String
+    let key: String
+}
+
 enum ZoteroMCPServiceError: LocalizedError, Sendable {
     case invalidArguments
     case invalidRequest
@@ -743,6 +766,8 @@ enum ZoteroMCPServiceError: LocalizedError, Sendable {
     case writeNotAuthorized
     case confirmationRequired
     case targetNotWritable
+    case localAPIAuthorizationDenied
+    case localAPIAuthorizationUnavailable
     case unsafePath
     case fileMissing
     case originalUnavailable
@@ -770,8 +795,10 @@ enum ZoteroMCPServiceError: LocalizedError, Sendable {
         case .ambiguousItem: "The item key exists in more than one library; specify the library."
         case .materialChanged: "The selected Zotero material changed. Refresh the selection before reading it."
         case .writeNotAuthorized: "This Zotero MCP connection is read-only; use the full Scholium Zotero connection for writes."
-        case .confirmationRequired: "This Zotero write requires explicit confirmation and a current target or item version."
-        case .targetNotWritable: "The selected Zotero library or collection is not editable."
+        case .confirmationRequired: "This Zotero item update requires explicit confirmation."
+        case .targetNotWritable: "The requested Zotero library is not editable."
+        case .localAPIAuthorizationDenied: "Zotero did not authorize Scholium to modify its local library."
+        case .localAPIAuthorizationUnavailable: "Zotero's local write authorization is unavailable. Check the Zotero version and local API setting."
         case .unsafePath: "Scholium refused a path outside the current Chat workspace or containing a symlink."
         case .fileMissing: "The requested workspace file does not exist."
         case .originalUnavailable:
@@ -811,6 +838,8 @@ enum ZoteroMCPServiceError: LocalizedError, Sendable {
         case .writeNotAuthorized: "write_not_authorized"
         case .confirmationRequired: "confirmation_required"
         case .targetNotWritable: "target_not_writable"
+        case .localAPIAuthorizationDenied: "local_api_authorization_denied"
+        case .localAPIAuthorizationUnavailable: "local_api_authorization_unavailable"
         case .unsafePath: "unsafe_path"
         case .fileMissing: "file_missing"
         case .originalUnavailable: "original_unavailable"
@@ -923,14 +952,6 @@ struct SelectedTarget: Sendable {
     let selectedName: String
 
     var isCollection: Bool { selectedID != nil }
-    var isWritable: Bool { libraryEditable && editable }
-    var fingerprint: String {
-        let source = [
-            String(libraryID), libraryName, String(libraryEditable), String(editable),
-            selectedID ?? "library-root", selectedName,
-        ].joined(separator: "\u{1f}")
-        return SHA256.hash(data: Data(source.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
     var value: ZoteroMCPJSONValue {
         .object([
             "kind": .string(isCollection ? "collection" : "library"),
@@ -940,7 +961,6 @@ struct SelectedTarget: Sendable {
             "target_id": selectedID.map(ZoteroMCPJSONValue.string) ?? .null,
             "target_name": .string(selectedName),
             "target_editable": .bool(editable),
-            "target_fingerprint": .string(fingerprint),
         ])
     }
 }
@@ -1167,9 +1187,13 @@ enum ZoteroMCPRequestFactory {
         route: LibraryRoute,
         itemKey: String,
         body: Data,
-        expectedVersion: Int
+        expectedVersion: Int,
+        serverID: String,
+        apiKey: String
     ) -> URLRequest? {
-        guard validKey(itemKey), body.count <= 256 * 1_024 else { return nil }
+        guard validKey(itemKey), body.count <= 256 * 1_024,
+            !serverID.isEmpty, !apiKey.isEmpty
+        else { return nil }
         var components = URLComponents()
         components.scheme = "http"
         components.host = "127.0.0.1"
@@ -1182,7 +1206,27 @@ enum ZoteroMCPRequestFactory {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("3", forHTTPHeaderField: "Zotero-API-Version")
+        request.setValue(serverID, forHTTPHeaderField: "Zotero-Server-ID")
+        request.setValue(apiKey, forHTTPHeaderField: "Zotero-API-Key")
         request.setValue(String(expectedVersion), forHTTPHeaderField: "If-Unmodified-Since-Version")
+        return request
+    }
+
+    static func apiAuthorize(serverID: String) -> URLRequest? {
+        guard !serverID.isEmpty else { return nil }
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = 23119
+        components.path = "/api/local/authorize"
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = Data(#"{"appName":"Scholium"}"#.utf8)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("3", forHTTPHeaderField: "Zotero-API-Version")
+        request.setValue(serverID, forHTTPHeaderField: "Zotero-Server-ID")
         return request
     }
 
@@ -1209,30 +1253,6 @@ enum ZoteroMCPRequestFactory {
         request.httpBody = body.isEmpty ? nil : body
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        request.setValue("3", forHTTPHeaderField: "X-Zotero-Connector-API-Version")
-        return request
-    }
-
-    static func connectorImport(session: String, text: String) -> URLRequest? {
-        guard session.utf8.count <= 128,
-            !session.isEmpty,
-            session.unicodeScalars.allSatisfy({
-                CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"
-            }),
-            text.utf8.count <= 1 * 1_024 * 1_024
-        else { return nil }
-        var components = URLComponents()
-        components.scheme = "http"
-        components.host = "127.0.0.1"
-        components.port = 23119
-        components.path = "/connector/import"
-        components.queryItems = [URLQueryItem(name: "session", value: session)]
-        guard let url = components.url else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.httpBody = Data(text.utf8)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.setValue("3", forHTTPHeaderField: "X-Zotero-Connector-API-Version")
         return request
     }

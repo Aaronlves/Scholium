@@ -71,7 +71,7 @@ public actor ScholiumMCPServer {
                             "version": .string(Self.serverVersion),
                         ]),
                         "instructions": .string(
-                            "Begin with scholium_workspace_status. Markdown source is authoritative. Search, Metadata, and links are retrieval aids. Mutations require current fingerprints. Tool availability is not permission; act only on the researcher's explicit instruction."
+                            "Begin with scholium_workspace_status. In the selected Triptych, browse, search, and read Notes and accessible authored attachments as needed without per-read approval; retain exact source and coverage. Markdown source is authoritative; Search, Metadata, and links are retrieval aids. Note mutations require the researcher's instruction and current fingerprints."
                         ),
                     ])))
         case "ping":

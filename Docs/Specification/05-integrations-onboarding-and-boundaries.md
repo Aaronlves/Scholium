@@ -9,9 +9,11 @@
 The built-in integration connects to Zotero Desktop through its localhost API
 and Connector. It uses no online Web API credential, researcher-deployed
 server, community MCP, Python runtime or private SQLite access. Zotero remains
-the sole library authority. Reads and confirmed imports/item modifications are
-available to the independent `scholium-zotero` MCP connection; the local API
-preference remains a Zotero-owned prerequisite.
+the sole library authority. Reads and confirmed, version-checked item
+modifications are available to the independent `scholium-zotero` MCP connection;
+the local API preference remains a Zotero-owned prerequisite. Researchers can
+continue importing BibTeX and RIS directly in Zotero. Agent import tools are
+unavailable until a Zotero interface can bind the destination before writing.
 
 Settings shows connection status, **Open Zotero**, **Check Connection**, clear
 history, last successful time, and a concise local privacy statement.
@@ -39,12 +41,14 @@ requested Zotero library change.
 In-app Chat injects the managed `scholium-zotero` local MCP server alongside
 the Scholium workspace server. The Agent may use its bounded Zotero surface:
 search, item/collection/tag/group/child inspection, indexed full text,
-originals, annotations, file URLs, BibTeX/citation export, and Connector
-imports or local-API item updates. PDF originals use a page-specific read with
+originals, annotations, file URLs, BibTeX/citation export, and local-API item
+updates. PDF originals use a page-specific read with
 an exact one-based physical page; non-PDF text and image originals use the
-separate bounded file read. Import and update tools are destructive MCP
-operations: they require explicit confirmation, and updates additionally
-require the exact library and current Zotero item version.
+separate bounded file read. Item updates require explicit confirmation, the
+exact library, and the current Zotero item version. Zotero controls local API
+write authorization and may ask the researcher to allow Scholium. A Zotero
+write receipt followed by failed readback is an uncertain outcome; inspect
+the current item before retrying.
 
 No separate runtime installation or user-configurable Zotero connection is
 required. If Zotero is closed or its local API/Connector is disabled, Chat

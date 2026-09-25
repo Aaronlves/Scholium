@@ -6,6 +6,7 @@ import os
 import sys
 import uuid
 import copy
+import time
 from pathlib import Path
 
 home = Path(os.environ['CODEX_HOME'])
@@ -86,7 +87,13 @@ for line in sys.stdin:
             'supportedReasoningEfforts': [{'reasoningEffort': e, 'description': e}
                 for e in ['low', 'medium', 'high']]}]}
     elif method == 'config/read':
+        if (home / 'hold-capability-config-read').exists():
+            (home / 'pending-capability-config-read').touch()
+            time.sleep(0.5)
         config = tool_config()
+        if config['version'] > 0 and (home / 'fail-config-read-after-write').exists():
+            write({'id': request['id'], 'error': {'code': -32603, 'message': 'Fixture readback unavailable'}})
+            continue
         result = {'config': {'model': 'fixture-model', 'model_reasoning_effort': 'low',
             'web_search': 'cached', 'mcp_servers': config['servers']},
             'layers': [{'name': {'type': 'user', 'file': str(home / 'config.toml')},
@@ -113,6 +120,9 @@ for line in sys.stdin:
         tool_config_file.write_text(json.dumps(config))
         result = {'filePath': str(home / 'config.toml'), 'version': str(config['version']), 'status': 'ok'}
     elif method == 'skills/list':
+        if (home / 'hold-capability-skills-list').exists():
+            (home / 'pending-capability-skills-list').touch()
+            time.sleep(0.5)
         completion = home / 'finish-tool-auth'
         if completion.exists() and oauth_request:
             success = completion.read_text() == 'success'
@@ -147,8 +157,14 @@ for line in sys.stdin:
             flag.unlink(missing_ok=True)
         else:
             flag.touch()
+        if (home / 'hold-capability-skill-ack').exists():
+            (home / 'pending-capability-skill-ack').touch()
+            time.sleep(0.5)
         result = {'effectiveEnabled': params['enabled']}
     elif method == 'mcpServerStatus/list':
+        if (home / 'hold-capability-tools-list').exists():
+            (home / 'pending-capability-tools-list').touch()
+            time.sleep(0.5)
         result = {'data': [{'name': 'scholium', 'authStatus': 'unsupported',
             'runtimeStatus': 'connected' if params.get('threadId') else None,
             'tools': {'scholium_read_note': {}, 'scholium_search': {}},
@@ -162,6 +178,7 @@ for line in sys.stdin:
                 'runtimeStatus': 'notStarted' if config.get('enabled', True) else 'disabled',
                 'tools': {}, 'resources': [], 'resourceTemplates': []})
     elif method == 'mcpServer/oauth/login':
+        (home / 'capability-sign-in-requested').touch()
         oauth_request = params
         if (home / 'hold-tool-auth').exists():
             continue

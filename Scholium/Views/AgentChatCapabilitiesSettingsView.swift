@@ -377,7 +377,7 @@ struct AgentChatCapabilitiesSettingsView: View {
             Text(zoteroStatusText, bundle: .module)
                 .foregroundStyle(.secondary)
             Text(
-                "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text, imports and confirmed item changes. No separate runtime installation is required.",
+                "Chat uses Scholium's bundled Zotero connection for library reads, indexed attachment text and confirmed item changes. Import BibTeX and RIS in Zotero. No separate runtime installation is required.",
                 bundle: .module
             )
             .font(.caption).foregroundStyle(.secondary)

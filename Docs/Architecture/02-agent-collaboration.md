@@ -15,8 +15,8 @@ an exact stable workspace identity.
 External clients and in-app Chat use the same Application research-operation
 owners. Chat adds a connection-bound conversation route and exact runtime
 thread/turn metadata. Transport authentication is not mutation permission.
-The registry resolves the route and rechecks active execution admission before
-an operation and after every approval wait. Stop/completion revoke turn admission;
+The registry resolves the route and rechecks turn admission before each effect
+after suspension. Stop/completion revoke turn admission;
 connection replacement invalidates routes. Pending server-request identities must
 be unique across the connection: ambiguity revokes all admission before teardown.
 Queued replies recheck connection generation and exact turn before I/O.
@@ -222,15 +222,15 @@ library access. The connection uses only Zotero Desktop's localhost API and
 Connector, never a community server, Python runtime, private SQLite database,
 or a second Scholium-side library authority. Its read surface includes search,
 metadata, collections, tags, groups, children, indexed full text, attachment
-URLs, annotations, originals, exports and citations. Its write surface is
-explicitly confirmed Connector import and version-checked item modification.
+URLs, annotations, originals, exports and citations. Writes use Zotero-authorized,
+version-checked item updates; Connector imports lack prewrite target binding.
 
 The native Zotero service remains the Application owner for settings and links;
 the same Application boundary composes the independent MCP server for Chat and
 external hosts. A Zotero result is not promoted to Scholium source evidence;
 metadata, indexed text, annotations and original-file bytes remain distinct.
-Write tools report the selected target or expected item version and never
-silently guess an ambiguous library.
+Item updates require an exact library and version; failed readback reports
+an uncertain outcome.
 
 ### Native presentation boundary
 

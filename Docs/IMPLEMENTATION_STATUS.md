@@ -25,9 +25,9 @@ the running App; it is not a standalone/headless workspace product.
 
 Optional in-app Chat reaches conversations, materials, runtime settings,
 Skills/tools, questions/approvals, branching, concurrent turns and delegated-Agent
-observation. Its managed `scholium-zotero` route uses Zotero's localhost API and
-Connector for access, exports, confirmed imports and version-checked updates;
-native service remains Application owner for status. Reports,
+observation. Managed `scholium-zotero` reads via localhost API/Connector and
+updates version-checked items with Zotero authorization. Agent imports remain
+unavailable without prewrite target binding; native service owns status. Reports,
 access and receipts remain distinct from evidence. There is no Research Action,
 Reading Lead, passage Discussion or
 Review Comment lifecycle or MCP research-result API.

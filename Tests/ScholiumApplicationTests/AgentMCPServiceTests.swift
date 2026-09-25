@@ -25,7 +25,8 @@ struct AgentMCPServiceTests {
             let names = Set(tools.compactMap { $0["name"] as? String })
             #expect(names.contains("zotero_search"))
             #expect(names.contains("zotero_fulltext"))
-            #expect(names.contains("zotero_import_bibtex") == expectsWrites)
+            #expect(!names.contains("zotero_import_bibtex"))
+            #expect(!names.contains("zotero_import_ris"))
             #expect(names.contains("zotero_update_item") == expectsWrites)
             if expectsWrites {
                 let update = try #require(tools.first { $0["name"] as? String == "zotero_update_item" })

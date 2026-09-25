@@ -6,7 +6,7 @@ import Testing
 
 @Suite("First-party Zotero MCP transport")
 struct ZoteroMCPServerTests {
-    @Test("Read-only mode publishes only read tools and refuses forged imports before contacting Zotero")
+    @Test("Read-only mode publishes only read tools and refuses forged writes before contacting Zotero")
     func readOnlyAdmission() async throws {
         let client = MockZoteroMCPHTTPClient()
         let server = ZoteroMCPServer(client: client)
@@ -18,21 +18,28 @@ struct ZoteroMCPServerTests {
                 "zotero_read_original_file", "zotero_read_original_page", "zotero_inventory", "zotero_collections", "zotero_tags", "zotero_groups",
                 "zotero_children", "zotero_fulltext", "zotero_file_url", "zotero_export_bibtex", "zotero_citations", "zotero_probe",
             ])
-        for name in ["zotero_import_bibtex", "zotero_import_ris"] {
-            let response = try await rpc(
-                server, id: 2, method: "tools/call",
-                params: [
-                    "name": name,
-                    "arguments": ["dry_run": false, "confirm": true, "authorization_token": "forged"],
-                ], access: .readOnly)
-            #expect(try toolIsError(response))
-        }
+        let fullList = try await rpc(server, id: 3, method: "tools/list", params: [:], access: .full)
+        let fullTools = try #require(object(fullList["result"])["tools"] as? [[String: Any]])
+        let fullNames = Set(fullTools.compactMap { $0["name"] as? String })
+        #expect(fullNames.contains("zotero_update_item"))
+        #expect(!fullNames.contains("zotero_import_bibtex"))
+        #expect(!fullNames.contains("zotero_import_ris"))
+        let denied = try await rpc(
+            server, id: 2, method: "tools/call",
+            params: [
+                "name": "zotero_update_item",
+                "arguments": [
+                    "library": "user", "item_key": "ITEM0001", "data": ["title": "Forged"],
+                    "expected_version": 7, "confirm": true,
+                ],
+            ], access: .readOnly)
+        #expect(try toolIsError(denied))
         #expect(await client.recordedRequests().isEmpty)
         await client.enqueue(method: "GET", path: "/api/users/0/items", response: .init(statusCode: 200, body: Data("[]".utf8)))
         await client.enqueue(method: "GET", path: "/connector/ping", response: .init(statusCode: 200))
         let status = try structuredContent(
             await rpc(server, id: 3, method: "tools/call", params: ["name": "zotero_status", "arguments": [:]], access: .readOnly))
-        #expect(status["access_mode"] as? String == "read-only" && status["guarded_imports"] as? Bool == false)
+        #expect(status["access_mode"] as? String == "read-only" && status["item_modification"] as? Bool == false)
         #expect(await client.recordedRequests().count == 2)
     }
 
@@ -119,9 +126,16 @@ struct ZoteroMCPServerTests {
         let client = MockZoteroMCPHTTPClient()
         let before = #"{"key":"ITEM0001","version":7,"data":{"key":"ITEM0001","itemType":"book","title":"Before","abstractNote":"Preserve me"}}"#
         let after = #"{"key":"ITEM0001","version":8,"data":{"key":"ITEM0001","itemType":"book","title":"After","abstractNote":"Preserve me"}}"#
-        await client.enqueueJSON(method: "GET", path: "/api/users/0/items/ITEM0001", json: before)
+        await client.enqueueJSON(
+            method: "GET", path: "/api/users/0/items/ITEM0001", json: before,
+            headers: ["Zotero-Server-ID": "SERVER123456"])
+        await client.enqueueJSON(
+            method: "POST", path: "/api/local/authorize",
+            json: #"{"key":"AUTH123456789","remember":true}"#)
         await client.enqueue(method: "PUT", path: "/api/users/0/items/ITEM0001", response: .init(statusCode: 204))
-        await client.enqueueJSON(method: "GET", path: "/api/users/0/items/ITEM0001", json: after)
+        await client.enqueueJSON(
+            method: "GET", path: "/api/users/0/items/ITEM0001", json: after,
+            headers: ["Zotero-Server-ID": "SERVER123456"])
         let server = ZoteroMCPServer(client: client)
 
         let response = try await rpc(
@@ -137,9 +151,13 @@ struct ZoteroMCPServerTests {
         #expect(result["status"] as? String == "updated")
         #expect(result["version"] as? Int == 8)
         let requests = await client.recordedRequests()
-        #expect(requests.compactMap(\.httpMethod) == ["GET", "PUT", "GET"])
-        #expect(requests[1].value(forHTTPHeaderField: "If-Unmodified-Since-Version") == "7")
-        let body = try #require(requests[1].httpBody)
+        #expect(requests.compactMap(\.httpMethod) == ["GET", "POST", "PUT", "GET"])
+        #expect(requests[1].url?.path == "/api/local/authorize")
+        #expect(requests[1].value(forHTTPHeaderField: "Zotero-Server-ID") == "SERVER123456")
+        #expect(requests[2].value(forHTTPHeaderField: "If-Unmodified-Since-Version") == "7")
+        #expect(requests[2].value(forHTTPHeaderField: "Zotero-Server-ID") == "SERVER123456")
+        #expect(requests[2].value(forHTTPHeaderField: "Zotero-API-Key") == "AUTH123456789")
+        let body = try #require(requests[2].httpBody)
         let object = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(object["title"] as? String == "After")
         #expect(object["abstractNote"] as? String == "Preserve me")
@@ -153,47 +171,121 @@ struct ZoteroMCPServerTests {
         for arguments: [String: Any] in [
             ["library": "user", "item_key": "ITEM0001", "data": ["title": "Nope"], "expected_version": 7, "confirm": false],
             ["library": "user", "item_key": "ITEM0001", "data": ["title": "Nope"], "confirm": true],
+            ["item_key": "ITEM0001", "data": ["title": "Nope"], "expected_version": 7, "confirm": true],
         ] {
             let response = try await rpc(
                 server, id: 1, method: "tools/call",
                 params: ["name": "zotero_update_item", "arguments": arguments], access: .full)
             #expect(try toolIsError(response))
+            if arguments["library"] == nil {
+                #expect(try structuredContent(response)["error_code"] as? String == "invalid_arguments")
+            }
         }
         #expect(await client.recordedRequests().isEmpty)
     }
 
-    @Test("Connector imports bind to the inspected editable target")
-    func importsUseSelectedTargetAndSession() async throws {
+    @Test("A missing Zotero server identity prevents update authorization and writing")
+    func updateRequiresServerIdentity() async throws {
         let client = MockZoteroMCPHTTPClient()
-        let target = Self.targetJSON(libraryName: "My Library", selectedName: "Sources")
-        await client.enqueueJSON(method: "POST", path: "/connector/getSelectedCollection", json: target)
+        await client.enqueueJSON(
+            method: "GET", path: "/api/users/0/items/ITEM0001",
+            json: #"{"key":"ITEM0001","version":7,"data":{"key":"ITEM0001","itemType":"book","title":"Before"}}"#)
         let server = ZoteroMCPServer(client: client)
-        let selected = try structuredContent(
-            await rpc(server, id: 1, method: "tools/call", params: ["name": "zotero_selected_target", "arguments": [:]], access: .full))
-        let fingerprint = try #require(selected["target_fingerprint"] as? String)
-        await client.enqueueJSON(method: "POST", path: "/connector/getSelectedCollection", json: target)
-        await client.enqueueJSON(method: "POST", path: "/connector/import", json: #"{"success":1}"#)
         let response = try await rpc(
-            server, id: 2, method: "tools/call",
+            server, id: 1, method: "tools/call",
             params: [
-                "name": "zotero_import_bibtex",
+                "name": "zotero_update_item",
                 "arguments": [
-                    "text": "@book{key, title={A}}", "confirm": true,
-                    "target_fingerprint": fingerprint, "session": "test-session",
+                    "library": "user", "item_key": "ITEM0001", "data": ["title": "After"],
+                    "expected_version": 7, "confirm": true,
                 ],
             ], access: .full)
         let result = try structuredContent(response)
-        #expect(result["status"] as? String == "imported")
-        let requests = await client.recordedRequests()
-        #expect(requests.count == 3)
-        let importRequest = try #require(requests.last)
-        #expect(importRequest.httpMethod == "POST")
-        #expect(importRequest.url?.path == "/connector/import")
-        #expect(
-            URLComponents(url: try #require(importRequest.url), resolvingAgainstBaseURL: false)?.queryItems == [
-                URLQueryItem(name: "session", value: "test-session")
-            ])
-        #expect(String(decoding: try #require(importRequest.httpBody), as: UTF8.self) == "@book{key, title={A}}")
+        #expect(result["error_code"] as? String == "local_api_authorization_unavailable")
+        #expect(await client.recordedRequests().count == 1)
+    }
+
+    @Test("Zotero denial of local API authorization prevents item writes")
+    func updateRespectsZoteroAuthorizationDenial() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        await client.enqueueJSON(
+            method: "GET", path: "/api/users/0/items/ITEM0001",
+            json: #"{"key":"ITEM0001","version":7,"data":{"key":"ITEM0001","itemType":"book","title":"Before"}}"#,
+            headers: ["Zotero-Server-ID": "SERVER123456"])
+        await client.enqueue(method: "POST", path: "/api/local/authorize", response: .init(statusCode: 403))
+        let server = ZoteroMCPServer(client: client)
+        let response = try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": "zotero_update_item",
+                "arguments": [
+                    "library": "user", "item_key": "ITEM0001", "data": ["title": "After"],
+                    "expected_version": 7, "confirm": true,
+                ],
+            ], access: .full)
+        let result = try structuredContent(response)
+        #expect(result["error_code"] as? String == "local_api_authorization_denied")
+        #expect(await client.recordedRequests().compactMap(\.httpMethod) == ["GET", "POST"])
+    }
+
+    @Test("Accepted item update with failed readback reports uncertainty")
+    func updateReadbackFailureDoesNotClaimFailure() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        let before = #"{"key":"ITEM0001","version":7,"data":{"key":"ITEM0001","itemType":"book","title":"Before"}}"#
+        await client.enqueueJSON(
+            method: "GET", path: "/api/users/0/items/ITEM0001", json: before,
+            headers: ["Zotero-Server-ID": "SERVER123456"])
+        await client.enqueueJSON(
+            method: "POST", path: "/api/local/authorize",
+            json: #"{"key":"AUTH123456789","remember":false}"#)
+        await client.enqueue(method: "PUT", path: "/api/users/0/items/ITEM0001", response: .init(statusCode: 204))
+        await client.enqueue(method: "GET", path: "/api/users/0/items/ITEM0001", response: .init(statusCode: 503))
+        let server = ZoteroMCPServer(client: client)
+
+        let response = try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": "zotero_update_item",
+                "arguments": [
+                    "library": "user", "item_key": "ITEM0001", "data": ["title": "After"],
+                    "expected_version": 7, "confirm": true,
+                ],
+            ], access: .full)
+        let result = try structuredContent(response)
+        #expect(try toolIsError(response))
+        #expect(result["status"] as? String == "outcome_uncertain")
+        #expect(result["operation"] as? String == "update_item")
+        #expect(result["item_key"] as? String == "ITEM0001")
+        #expect(result["previous_version"] as? Int == 7)
+    }
+
+    @Test("An item readback from a different Zotero instance is not proof of the write")
+    func updateReadbackRequiresSameServer() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        let before = #"{"key":"ITEM0001","version":7,"data":{"key":"ITEM0001","itemType":"book","title":"Before"}}"#
+        let after = #"{"key":"ITEM0001","version":8,"data":{"key":"ITEM0001","itemType":"book","title":"After"}}"#
+        await client.enqueueJSON(
+            method: "GET", path: "/api/users/0/items/ITEM0001", json: before,
+            headers: ["Zotero-Server-ID": "SERVER123456"])
+        await client.enqueueJSON(
+            method: "POST", path: "/api/local/authorize",
+            json: #"{"key":"AUTH123456789","remember":true}"#)
+        await client.enqueue(method: "PUT", path: "/api/users/0/items/ITEM0001", response: .init(statusCode: 204))
+        await client.enqueueJSON(
+            method: "GET", path: "/api/users/0/items/ITEM0001", json: after,
+            headers: ["Zotero-Server-ID": "OTHERSERVER12"])
+        let server = ZoteroMCPServer(client: client)
+        let response = try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": "zotero_update_item",
+                "arguments": [
+                    "library": "user", "item_key": "ITEM0001", "data": ["title": "After"],
+                    "expected_version": 7, "confirm": true,
+                ],
+            ], access: .full)
+        #expect(try toolIsError(response))
+        #expect(try structuredContent(response)["status"] as? String == "outcome_uncertain")
     }
 
     @Test("Search uses only bounded local API routes and retains library identity")
@@ -306,18 +398,6 @@ struct ZoteroMCPServerTests {
         } catch let error as MCPFrameError {
             #expect(error.errorDescription?.contains("frame header") == true)
         }
-    }
-
-    private static func targetJSON(
-        libraryName: String,
-        selectedName: String,
-        libraryID: Int = 1,
-        selectedID: Int? = nil
-    ) -> String {
-        let selectedIDValue = selectedID.map(String.init) ?? "null"
-        return """
-            {"libraryID":\(libraryID),"libraryName":"\(libraryName)","libraryEditable":true,"filesEditable":true,"editable":true,"id":\(selectedIDValue),"name":"\(selectedName)","targets":[],"tags":{}}
-            """
     }
 
     private func toolCall(
@@ -541,14 +621,15 @@ private actor MockZoteroMCPHTTPClient: ZoteroMCPHTTPClient {
         method: String,
         path: String,
         statusCode: Int = 200,
-        json: String
+        json: String,
+        headers: [String: String] = [:]
     ) {
         enqueue(
             method: method,
             path: path,
             response: ZoteroMCPHTTPResponse(
                 statusCode: statusCode,
-                headers: ["Content-Type": "application/json"],
+                headers: ["Content-Type": "application/json"].merging(headers, uniquingKeysWith: { _, new in new }),
                 body: Data(json.utf8)
             )
         )

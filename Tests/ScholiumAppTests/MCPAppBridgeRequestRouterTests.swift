@@ -843,6 +843,47 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(occurrence["destination_note_id"]?.stringValue == fixture.topicNoteID.uuidString.lowercased())
     }
 
+    @Test("Links from an unresolved Note retain current source and graph revisions")
+    func unresolvedLinkSourceUsesCurrentRevision() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.dispose() }
+        let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
+        let analyses = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses")
+        let alpha = analyses.appendingPathComponent("Alpha.md")
+        let beta = analyses.appendingPathComponent("Beta.md")
+        let gamma = analyses.appendingPathComponent("Gamma.md")
+        let original = try Data(contentsOf: alpha)
+        try original.write(to: beta)
+        _ = try await handle.discovery.refresh()
+        try FileManager.default.removeItem(at: alpha)
+        try FileManager.default.removeItem(at: beta)
+        try original.write(to: gamma)
+        let ambiguous = try await handle.discovery.refresh()
+        let source = try #require(ambiguous.vaults.flatMap(\.documents).first { $0.id.relativePath == "Gamma.md" })
+        #expect(source.stableIdentity.resolvedID == nil)
+
+        let router = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
+        let arguments: [String: MCPJSONValue] = [
+            "triptych_id": .string(fixture.assignment.id.uuidString),
+            "note_id": .string(fixture.topicNoteID.uuidString),
+            "direction": .string("incoming"),
+        ]
+        let first = try result(await router.handle(.init(tool: .listLinks, arguments: arguments)))
+        let firstSource = try #require(try array(first["links"]).first?.objectValue)
+        #expect(firstSource["source_note_id"] == .null)
+        #expect(firstSource["source_relative_path"]?.stringValue == "Gamma.md")
+        #expect(firstSource["occurrence_markup"]?.stringValue == "[[Topic]]{{A scoped reason.}}")
+        #expect(try decodedFingerprint(firstSource["source_fingerprint"]) == source.fingerprint)
+
+        let changed = Data("# Gamma\n\nBefore the link: [[Topic]]{{A revised reason.}}\n".utf8)
+        try changed.write(to: gamma)
+        let second = try result(await router.handle(.init(tool: .listLinks, arguments: arguments)))
+        let secondSource = try #require(try array(second["links"]).first?.objectValue)
+        #expect(secondSource["occurrence_markup"]?.stringValue == "[[Topic]]{{A revised reason.}}")
+        #expect(try decodedFingerprint(secondSource["source_fingerprint"]) == DocumentFingerprint(data: changed))
+    }
+
     @Test("Several open Triptychs require explicit scope without using window recency")
     func statusRequiresExplicitSelection() async throws {
         let first = try await Fixture.make(name: "First")

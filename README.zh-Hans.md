@@ -182,11 +182,12 @@ bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明�
 
 在 Zotero“设置 → 高级”中启用“允许本机其他应用与 Zotero 通信”。Chat 使用随
 Scholium 提供的 `scholium-zotero` 连接搜索、读取和导出 Zotero 内容；在明确确认后，
-也可以通过 Zotero 自己的 API/Connector 导入记录和修改条目。不需要安装社区 Zotero
+也可以通过 Zotero 本地 API 修改条目。BibTeX 和 RIS 仍由研究者在 Zotero 中导入。
+不需要安装社区 Zotero
 服务、Python 运行时或单独的依赖包。
 
-Zotero 仍是文献库的唯一权威。导入会绑定当前可编辑的库或集合；条目修改必须指定
-准确的文献库并提供当前 Zotero 版本。Scholium 不直接访问 Zotero 私有数据库。完整范围
+Zotero 仍是文献库的唯一权威。条目修改必须指定准确的文献库、提供当前 Zotero 版本，
+并取得 Zotero 本地写入授权。Scholium 不直接访问 Zotero 私有数据库。完整范围
 与引用规则见[规范 §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)。
 
 ## 存储与安全

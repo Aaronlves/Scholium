@@ -1415,6 +1415,48 @@ struct AgentChatTests {
             await controller.handle(.init(tool: tool, conversationToken: current, runtimeContext: controller.runtimeContext(for: current))).error != nil)
     }
 
+    @Test("Ask permits exact Note reading without approval and retains source observation")
+    func askReadsWithoutApproval() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let noteID = UUID()
+        let source = "Exact current source.\n"
+        let fingerprint = DocumentFingerprint(content: source)
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
+            #expect(request.tool == .readNote)
+            return try! .init(
+                requestID: request.requestID,
+                result: .object([
+                    "note_id": .string(noteID.uuidString),
+                    "relative_path": .string("Ideas/理由.md"),
+                    "source": .string(source),
+                    "fingerprint": .object([
+                        "sha256": .string(fingerprint.sha256), "byte_count": .integer(fingerprint.byteCount),
+                    ]),
+                    "start_line": .integer(1), "line_count": .integer(1),
+                    "complete": .bool(true), "next_line": .null,
+                ]))
+        }
+        try await connect(controller)
+        controller.editDraft("hold source reading")
+        controller.send()
+        try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
+        #expect(controller.selected?.permission == .ask)
+        let token = try #require(controller.token)
+        let response = await controller.handle(
+            .init(
+                tool: .readNote, arguments: ["note_id": .string(noteID.uuidString)],
+                conversationToken: token, runtimeContext: controller.runtimeContext(for: token)))
+        #expect(response.error == nil && controller.approvals.isEmpty)
+        let activity = try #require(controller.selected?.messages.last?.activity)
+        #expect(activity.kind == .read && activity.status == .completed)
+        #expect(activity.files.first?.effect == .read)
+        #expect(activity.sourceObservation != nil)
+        controller.stop()
+        try await eventually { controller.state == .ready }
+        await controller.disconnect()
+    }
+
     @Test("Live bridge activity distinguishes reads, no-op updates, confirmed edits and failed writes")
     func operationEvidence() async throws {
         let root = try root()
