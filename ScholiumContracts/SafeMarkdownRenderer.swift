@@ -1,6 +1,50 @@
 import Foundation
 import Markdown
 
+public enum RenderedMarkdownImageError: Error, Equatable, Sendable {
+    case unsupportedType
+    case invalidData
+    case tooLarge
+}
+
+/// Caller-authorized local image bytes. The renderer never resolves a path or URL.
+public struct RenderedMarkdownImage: Hashable, Sendable {
+    public static let maximumByteCount = 10 * 1_024 * 1_024
+
+    public let data: Data
+    public let mimeType: String
+
+    public init(data: Data, mimeType: String) throws {
+        guard data.count <= Self.maximumByteCount else {
+            throw RenderedMarkdownImageError.tooLarge
+        }
+        let bytes = [UInt8](data.prefix(12))
+        let hasMatchingHeader: Bool
+        switch mimeType {
+        case "image/png":
+            hasMatchingHeader = bytes.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        case "image/jpeg":
+            hasMatchingHeader = bytes.starts(with: [0xFF, 0xD8, 0xFF])
+        case "image/gif":
+            hasMatchingHeader =
+                bytes.starts(with: Array("GIF87a".utf8))
+                || bytes.starts(with: Array("GIF89a".utf8))
+        case "image/webp":
+            hasMatchingHeader =
+                bytes.count >= 12
+                && bytes[0..<4].elementsEqual("RIFF".utf8)
+                && bytes[8..<12].elementsEqual("WEBP".utf8)
+        default:
+            throw RenderedMarkdownImageError.unsupportedType
+        }
+        guard hasMatchingHeader else {
+            throw RenderedMarkdownImageError.invalidData
+        }
+        self.data = data
+        self.mimeType = mimeType
+    }
+}
+
 public struct RenderedMarkdownDocument: Hashable, Sendable {
     public let htmlBody: String
     public let semanticDocument: MarkdownSemanticDocument
@@ -43,9 +87,12 @@ private final class RenderedMarkdownObjects {
 /// Produces inert HTML from the shared semantic projection. The output contains
 /// no scripts, event-handler attributes, remote media, or user-authored raw HTML.
 public enum SafeMarkdownRenderer {
-    public static func render(_ document: NoteDocument) -> RenderedMarkdownDocument {
+    public static func render(
+        _ document: NoteDocument,
+        embeddedImages: [String: RenderedMarkdownImage] = [:]
+    ) -> RenderedMarkdownDocument {
         let semantic = MarkdownSemanticDocument(parsing: document)
-        return render(document, semantic: semantic)
+        return render(document, semantic: semantic, embeddedImages: embeddedImages)
     }
 
     /// Reuses an immutable source-bound semantic projection when its exact
@@ -53,13 +100,17 @@ public enum SafeMarkdownRenderer {
     /// and falls back to the ordinary parse path.
     public static func render(
         _ document: NoteDocument,
-        semantic: MarkdownSemanticDocument
+        semantic: MarkdownSemanticDocument,
+        embeddedImages: [String: RenderedMarkdownImage] = [:]
     ) -> RenderedMarkdownDocument {
         guard semantic.fingerprint == document.fingerprint else {
-            return render(document)
+            return render(document, embeddedImages: embeddedImages)
         }
         let objects = RenderedMarkdownObjects()
-        let html = renderBody(document: document, semantic: semantic, depth: 0, objects: objects)
+        let html = renderBody(
+            document: document, semantic: semantic, depth: 0,
+            objects: objects, embeddedImages: embeddedImages
+        )
         return RenderedMarkdownDocument(htmlBody: html, semanticDocument: semantic, objects: objects.values)
     }
 
@@ -77,6 +128,7 @@ public enum SafeMarkdownRenderer {
         semantic: MarkdownSemanticDocument,
         depth: Int,
         objects: RenderedMarkdownObjects?,
+        embeddedImages: [String: RenderedMarkdownImage],
         locatedLinkSpans: [SourceSpan]? = nil
     ) -> String {
         guard depth < 12 else {
@@ -134,7 +186,8 @@ public enum SafeMarkdownRenderer {
             blockHTML[key] = renderCallout(
                 callout,
                 locatedLinkSpans: nestedLinkSpans,
-                depth: depth + 1, objects: objects
+                depth: depth + 1, objects: objects,
+                embeddedImages: embeddedImages
             )
             replacements.append(
                 Replacement(
@@ -200,7 +253,21 @@ public enum SafeMarkdownRenderer {
                 ))
         }
 
+        let mappedLinkSpans = Set(
+            semantic.links.compactMap { link -> SourceSpan? in
+                guard link.syntax == .embed, !link.isExternal,
+                    link.fragment == nil,
+                    embeddedImages[link.target] != nil
+                else { return nil }
+                return link.span
+            })
+        let mappedImageSpans = Set(
+            semantic.inlines.filter { $0.kind == .image }.map(\.span)
+        ).intersection(mappedLinkSpans)
         for (index, link) in semantic.links.enumerated() where link.syntax != .markdown {
+            // Only a matched Markdown Image may reach visitImage. Other embeds
+            // keep their established navigation-only presentation.
+            if mappedImageSpans.contains(link.span) { continue }
             guard let relative = relativeRange(link.span, bodyStart: bodyStart, bodyLength: bodyLength),
                 !overlaps(relative, replacements.map(\.range))
             else { continue }
@@ -212,7 +279,8 @@ public enum SafeMarkdownRenderer {
                     from: locatedLinkSpans,
                     fallback: link.linkSpan
                 ),
-                depth: depth + 1
+                depth: depth + 1,
+                embeddedImages: embeddedImages
             )
             replacements.append(Replacement(range: relative, text: key))
         }
@@ -270,6 +338,7 @@ public enum SafeMarkdownRenderer {
             inlineHTML: inlineHTML,
             blockSourceSpans: blockSourceSpans,
             quoteDepths: quoteDepths,
+            embeddedImages: embeddedImages,
             source: transformed, objects: objects,
             tableSources: visibleBlocks.filter { $0.kind == .table }.map {
                 (document.rawContent as NSString).substring(with: $0.span.nsRange)
@@ -279,7 +348,8 @@ public enum SafeMarkdownRenderer {
 
         let footnoteSection = renderFootnoteSection(
             semantic.footnoteDefinitions,
-            depth: depth + 1, objects: objects
+            depth: depth + 1, objects: objects,
+            embeddedImages: embeddedImages
         )
         return visitor.renderedHTML(
             source: document.body,
@@ -290,7 +360,8 @@ public enum SafeMarkdownRenderer {
     private static func renderCallout(
         _ callout: CalloutBlock,
         locatedLinkSpans: [SourceSpan],
-        depth: Int, objects: RenderedMarkdownObjects?
+        depth: Int, objects: RenderedMarkdownObjects?,
+        embeddedImages: [String: RenderedMarkdownImage]
     ) -> String {
         let roleLabel = escapeHTML(callout.role.displayLabel)
         let purpose = escapeAttribute(callout.role.purpose)
@@ -304,7 +375,7 @@ public enum SafeMarkdownRenderer {
             + "title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
         let titleHTML =
             if let title = callout.title {
-                "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown(title))</span>"
+                "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown(title, embeddedImages: embeddedImages))</span>"
             } else {
                 "<span class=\"scholium-callout-title scholium-callout-default-title\" dir=\"auto\">\(roleLabel)</span>"
             }
@@ -316,6 +387,7 @@ public enum SafeMarkdownRenderer {
             semantic: fragmentSemantic,
             depth: depth,
             objects: objects,
+            embeddedImages: embeddedImages,
             locatedLinkSpans: fragmentSemantic.links.count == locatedLinkSpans.count
                 ? locatedLinkSpans
                 : nil
@@ -380,13 +452,17 @@ public enum SafeMarkdownRenderer {
             "<\(tag) class=\"scholium-math scholium-math-\(kind)\" dir=\"ltr\" data-math-kind=\"\(kind)\" data-math-source=\"\(encoded)\" \(sourceAttributes(expression.span)) data-scholium-protected=\"math\"><code class=\"scholium-math-source\" dir=\"ltr\">\(escapeHTML(rawSource))</code></\(tag)>"
     }
 
-    private static func renderInlineMarkdown(_ source: String) -> String {
+    private static func renderInlineMarkdown(
+        _ source: String,
+        embeddedImages: [String: RenderedMarkdownImage] = [:]
+    ) -> String {
         let parsed = Document(parsing: source)
         var visitor = SafeHTMLVisitor(
             blockHTML: [:],
             inlineHTML: [:],
             blockSourceSpans: [:],
-            quoteDepths: [:]
+            quoteDepths: [:],
+            embeddedImages: embeddedImages
         )
         visitor.visit(parsed)
         let rendered = visitor.renderedHTML(source: source, bodyUTF16Offset: 0)
@@ -399,7 +475,8 @@ public enum SafeMarkdownRenderer {
 
     private static func renderFootnoteSection(
         _ definitions: [FootnoteDefinition],
-        depth: Int, objects: RenderedMarkdownObjects?
+        depth: Int, objects: RenderedMarkdownObjects?,
+        embeddedImages: [String: RenderedMarkdownImage]
     ) -> String {
         let referenced = definitions.filter { $0.ordinal != nil }
         guard !referenced.isEmpty else { return "" }
@@ -409,7 +486,8 @@ public enum SafeMarkdownRenderer {
             let content = renderBody(
                 document: fragment,
                 semantic: MarkdownSemanticDocument(parsing: fragment),
-                depth: depth, objects: objects
+                depth: depth, objects: objects,
+                embeddedImages: embeddedImages
             )
             return
                 "<li id=\"fn-\(ordinal)\" dir=\"auto\" data-footnote=\"\(ordinal)\" \(sourceAttributes(definition.span))><div class=\"footnote-content\">\(content)</div><button type=\"button\" class=\"footnote-return\" data-footnote=\"\(ordinal)\" aria-label=\"Return to footnote reference \(ordinal)\">↩</button></li>"
@@ -421,7 +499,8 @@ public enum SafeMarkdownRenderer {
     private static func renderWikilink(
         _ link: LinkOccurrence,
         locatedSpan: SourceSpan,
-        depth: Int
+        depth: Int,
+        embeddedImages: [String: RenderedMarkdownImage]
     ) -> String {
         let display = link.alias ?? (link.target.isEmpty ? link.fragment ?? "Link" : link.target)
         let destination = link.target + (link.fragment.map { "#\($0)" } ?? "")
@@ -441,7 +520,8 @@ public enum SafeMarkdownRenderer {
         let annotationHTML = renderBody(
             document: fragment,
             semantic: MarkdownSemanticDocument(parsing: fragment),
-            depth: depth, objects: nil
+            depth: depth, objects: nil,
+            embeddedImages: embeddedImages
         )
         let label = escapeAttribute("Show link annotation for \(display)")
         let target = escapeAttribute(display)
@@ -866,6 +946,7 @@ private struct SafeHTMLVisitor: MarkupWalker {
     let inlineHTML: [String: String]
     let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]]
     let quoteDepths: [SourceSpan: Int]
+    var embeddedImages: [String: RenderedMarkdownImage] = [:]
     var source = ""
     var sourceLines: [(text: String, ending: String)]? = nil
     var objects: RenderedMarkdownObjects? = nil
@@ -975,6 +1056,22 @@ private struct SafeHTMLVisitor: MarkupWalker {
         result += "</a>"
     }
     mutating func visitImage(_ image: Image) {
+        if let source = image.source,
+            !source.contains("?"), !source.contains("#"),
+            !source.hasPrefix("//"),
+            URLComponents(string: source)?.scheme == nil
+        {
+            let destination = source.removingPercentEncoding ?? source
+            if let embedded = embeddedImages[destination] {
+                let title =
+                    image.title.map {
+                        " title=\"\(SafeMarkdownRenderer.escapeAttribute($0))\""
+                    } ?? ""
+                result +=
+                    "<img class=\"scholium-embedded-image\" src=\"data:\(embedded.mimeType);base64,\(embedded.data.base64EncodedString())\" alt=\"\(SafeMarkdownRenderer.escapeAttribute(image.plainText))\"\(title)>"
+                return
+            }
+        }
         result += "<span class=\"scholium-media-placeholder\">Image"
         if let title = image.title, !title.isEmpty {
             result += ": \(SafeMarkdownRenderer.escapeHTML(title))"

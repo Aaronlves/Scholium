@@ -6,7 +6,7 @@
 
 Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
 one exact Markdown buffer; autosave; create, duplicate, import, move,
-Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
+export, Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
 source properties, Agent Changes, conflicts, and recovery.
 
 ### 5.1 Document modes and YAML
@@ -236,6 +236,23 @@ Uncertain outcomes require existing Recovery before another attempt. Closing a
 result does not discard the last result or recovery evidence. Batch organization
 preserves the current document and dirty-source safeguards; only an actually removed
 document may close through the existing deletion path.
+
+### 5.6 Single-Note export
+
+**Export Note…** writes a standalone HTML, paginated PDF, or editable DOCX copy
+of the current Note to a researcher-chosen location outside the Triptych. It
+captures one immutable source snapshot, including unsaved editor text only after
+composition ends; export never saves, changes, or settles the Note. Cancellation
+creates no file. Failure leaves the source and editor state intact and reports
+the unsuccessful destination write.
+
+The readable export includes the body; an option adds authored YAML. A leading
+authored H1 supplies the title; otherwise the filename does. HTML and PDF
+retain supported structures and visible fallbacks. DOCX keeps editable text,
+font size and emphasis; tables and footnotes flatten, while link destinations,
+images and exact line spacing are omitted. A copy never becomes a second
+Markdown authority, an evidence claim, or a linked project archive. §18.4 owns
+the format, style, size, and destination interface.
 
 ## 6. System Trash deletion and recovery
 

@@ -153,7 +153,7 @@ to read or edit.** as one read-only accessibility group.
 
 Menu group order:
 
-- **File**: create/open; close; import; duplicate/rename/move; attachments; reveal; Trash.
+- **File**: create/open; close; import; duplicate/rename/move; Export Note; attachments; reveal; Trash.
 - **Edit**: native editing; Markdown paste; Find.
 - **Format**: styles; headings/lists; quotations/code; tables.
 - **Insert**: links; footnotes; images; tables/breaks; comments/Callouts.

@@ -27,7 +27,8 @@ state the accepted profile; an unaccepted optional profile is labelled
 
 - Bootstrap, registration/restoration, independent windows, and storage failure;
 - create/open/read/edit/autosave, Review/Edit/Source, Find/Replace, Search,
-  YAML, Links, inline attachments, Settle, Library, tabs, and cross-vault navigation;
+  YAML, Links, inline attachments, single-Note HTML/PDF/DOCX export, Settle,
+  Library, tabs, and cross-vault navigation;
 - formatting, Callouts, Wikilinks, multiline link annotations, Analysis references, image
   Import/Index, statistics, spelling, and exact YAML/source fidelity;
 - native split behavior, focus, keyboard, light/dark, enlarged text, minimum

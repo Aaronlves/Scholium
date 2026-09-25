@@ -112,6 +112,9 @@ private struct ScholiumFileDocumentCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(appState?.canPerformFileSelectionMutation != true)
+        Button("Export Note…") { appState?.requestCurrentNoteExport() }
+            .scholiumActivationPointer()
+            .disabled(appState?.canPerformNoteAction(.export) != true)
         Divider()
         Button("Attach a Copy…") { editorActions?.attachDocumentCopy() }
             .scholiumActivationPointer()
@@ -706,8 +709,6 @@ struct ScholiumCommands: Commands {
         }
         CommandGroup(after: .newItem) {
             ScholiumCloseTabCommandContent(commandRevision: commandRevision)
-        }
-        CommandGroup(after: .saveItem) {
             fileDocumentCommand
         }
         CommandGroup(after: .pasteboard) {

@@ -67,6 +67,12 @@ public extension LibraryMutationUseCases {
 public protocol DocumentUseCases: LibraryMutationUseCases {
     func snapshot() async throws -> [WorkspaceVaultSnapshot]
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument
+    /// Resolves only locally authorized images authored in this Note source.
+    /// Remote images remain nonloading placeholders in the export renderer.
+    func exportImages(
+        for note: VaultQualifiedNoteID,
+        markdownSource: String
+    ) async throws -> [String: RenderedMarkdownImage]
     func importImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
@@ -150,6 +156,23 @@ public protocol DocumentUseCases: LibraryMutationUseCases {
         sourceFingerprint: DocumentFingerprint,
         graphGeneration: Int
     ) async throws -> DocumentPreviewCatalog
+}
+
+public enum DocumentExportImageError: LocalizedError, Sendable {
+    case unavailable(String)
+    case unsupported(String)
+    case totalSizeExceeded
+
+    public var errorDescription: String? {
+        switch self {
+        case .unavailable(let destination):
+            "The image at \(destination) is missing or cannot be accessed. Restore access or remove the image reference, then export again."
+        case .unsupported(let destination):
+            "The image at \(destination) is unsupported, damaged, or exceeds the export size limit. Replace it with a PNG, JPEG, GIF, or WebP image up to 10 MiB, then export again."
+        case .totalSizeExceeded:
+            "The Note's local images exceed the 80 MiB export limit. Remove or reduce some images, then export again."
+        }
+    }
 }
 
 public extension DocumentUseCases {

@@ -153,7 +153,7 @@ the selected runtime owns its Skills and tools, with in-app management under §8
 Zotero remains authoritative for its library
 and PDFs; external Agents remain authoritative for optional open-ended work.
 
-Outside Beta/1.0 are document/project/HTML/PDF/DOCX export, executable
+Outside Beta/1.0 are multi-Note/project export, executable
 extensions and Skill marketplace/evolution/sharing, Work finding overlays,
 and active-table-cell hybrid editing. Note attachments already have the target
 Quick Look and external-opening routes in §18.4; a persistent embedded PDF

@@ -26,13 +26,11 @@ composition and restoration remain unchanged.
 Edit keeps text selection unobscured, without a floating formatting toolbar.
 A nonempty body selection offers Explain, Polish and More Actions in
 Review, Edit and Source. More Actions contains Ask Agent and enabled custom
-operations; instructions stay in Chat. Native controls own layout, transitions,
-hover, pressed, disabled, focus and menu feedback. Peer labels use primary text;
-hover uses system Accent with minimal gaps. No custom skin or animation engine.
-Explain and Polish replace the toolbar with one bounded native popover anchored
-to the passage, preferably below. Progress, Stop, completed content and errors
-share it. Replace Selection stays trailing; Regenerate becomes Stop.
-Copy, Chat handoff and version navigation remain. Results scroll.
+operations; instructions stay in Chat. Native controls own feedback and layout;
+peer labels use primary text and hover uses system Accent. Explain and Polish
+use one bounded passage-anchored popover for progress, Stop, results and errors.
+Replace Selection stays trailing; Regenerate becomes Stop. Copy, Chat handoff,
+version navigation and scrolling remain.
 Custom operations dismiss the toolbar and open Chat under §8.7. No document
 padding, dimming or stacked toolbar is added. Selection changes, scrolling,
 Escape, composition, mode changes and departure dismiss presentation; native
@@ -52,23 +50,18 @@ keyboard shortcuts, and exact Markdown input. These routes preserve the current
 selection and share the existing source transaction and Undo behavior.
 
 Document Find is one compact nonmodal floating panel at the document's logical
-upper trailing corner. Native material, colors and control treatment follow
-§19.1. There is no full-width band, backdrop dimming or blocked document input.
-Opening, closing, and disclosure preserve prose geometry and scroll position; the panel
-never adds document padding or reserves layout space. Find shows the query, match count,
+upper trailing corner, using §19.1's native treatment. It neither dims nor
+blocks the document, reserves space, or changes prose geometry or scroll. Find shows query, count,
 Previous/Next, and Close; empty input has no no-match message. The native search-field
-menu owns case and whole-word options, with active options also visible in quiet text.
-Replace expands downward inside the same panel with aligned input fields; Find and
-Replace opens it directly. Review has no replacement controls. Opening/closing uses a
-short trailing-edge translation and fade, while replacement disclosure changes panel
-height. Both remain reversible; Reduce Motion presents final states immediately.
+menu owns case and whole-word options, also shown quietly when active.
+Replace expands downward with aligned fields; Find and Replace opens it directly.
+Review has no replacement controls. Opening uses a short trailing-edge translation
+and fade; disclosure changes panel height. Reduce Motion presents final states immediately.
 Return/Shift-Return navigate matches through normal document scrolling. Escape or Close
 returns native and embedded document focus without changing the current exact selection.
-Clicking the document keeps Find open. Reopening Find focuses its query even when
-already open. Drafts/options remain local to the retained document; narrow reflow
-retains the native fields and never changes source. Query and replacement use native
-field editors. Marked text remains local until committed; incoming results cannot
-overwrite composition or consume its Return/Escape commands.
+Clicking the document keeps Find open; reopening focuses its query. Drafts/options
+stay with the document; narrow reflow retains native fields. Marked text remains
+local until committed; results cannot overwrite composition or consume Return/Escape.
 
 After `/` in a supported Edit context, insertion commands filter as text is
 typed. Acceptance replaces the slash and query in one Undo transaction;
@@ -386,6 +379,16 @@ protected information. Callout semantics, folding, footnotes, provenance,
 diagnostics, conflicts, recovery, and chrome remain app-owned. Invalid snippets
 stay disabled with errors. Rendering failure enters persistent CSS Safe Mode
 until the researcher disables or selectively re-enables managed copies.
+
+### 18.4.2 Export Note
+
+**Export Note…** opens a preview. A native toolbar shows
+format, More and Export; a titlebar accessory reveals Match Document, APA 7,
+MLA 9, text size and PDF/DOCX paper size. The system draws the scroll edge as
+content moves behind the titlebar. Match Document uses Document Appearance.
+YAML is optional; presets format pages without rewriting citations.
+**Export** opens a native Save panel. Content stays opaque under §§19–20.
+DOCX preview is indicative; failure stays actionable and cancellation is quiet.
 
 ## 18.5 Contextual research and Agent Changes
 

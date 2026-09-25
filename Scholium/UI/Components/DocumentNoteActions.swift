@@ -2,12 +2,12 @@ import AppKit
 import ScholiumContracts
 
 enum DocumentNoteAction: String, CaseIterable {
-    case copyLink, addToChat, move, duplicate, merge, find, agentChanges
+    case copyLink, addToChat, move, duplicate, merge, find, agentChanges, export
     case revealInFinder, moveWindow, close, trash
 
     static let groups: [[Self]] = [
         [.copyLink, .addToChat], [.move, .duplicate, .merge],
-        [.find, .agentChanges], [.revealInFinder, .moveWindow, .close], [.trash],
+        [.find, .agentChanges, .export], [.revealInFinder, .moveWindow, .close], [.trash],
     ]
 
     func title(detached: Bool) -> String {
@@ -19,6 +19,7 @@ enum DocumentNoteAction: String, CaseIterable {
         case .merge: "Merge into Another Note…"
         case .find: "Find…"
         case .agentChanges: "Agent Changes…"
+        case .export: "Export Note…"
         case .revealInFinder: "Reveal in Finder"
         case .moveWindow: detached ? "Move to Main Window" : "Move to Separate Window"
         case .close: detached ? "Close Window" : "Close Tab"
@@ -166,6 +167,9 @@ extension WindowModel {
         case .merge: return canMergeCurrentNote
         case .trash: return currentDocumentCapabilities.allows(.moveToSystemTrash)
         case .agentChanges: return currentDocumentDescriptor != nil && windowWorkspaceController.activeCapabilities != nil
+        case .export:
+            return currentDocumentDescriptor != nil && presentationRouter.sheet == nil
+                && noteExportWindowController == nil
         case .find: return documentController.selectedDocument != nil
         case .revealInFinder: return currentNoteFileURL != nil
         case .moveWindow, .close: return documentTabController.selectedTabID != nil
@@ -212,6 +216,7 @@ extension WindowModel {
         case .merge: requestMergeCurrentNote()
         case .find: presentCurrentDocumentFind()
         case .agentChanges: presentationRouter.present(.agentChanges(scope: .current))
+        case .export: requestCurrentNoteExport()
         case .revealInFinder:
             if let url = currentNoteFileURL { workspaceStore.revealInFinder(url) }
         case .moveWindow:

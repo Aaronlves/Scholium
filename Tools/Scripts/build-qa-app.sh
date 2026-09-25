@@ -104,6 +104,7 @@ cp "${ROOT}/Tools/Packaging/ScholiumIcon.icns" "${APP}/Contents/Resources/"
   -c "Add :LSEnvironment dict" \
   -c "Add :LSEnvironment:SCHOLIUM_HOME string ${QA_HOME}" \
   -c "Add :LSEnvironment:CFFIXED_USER_HOME string ${QA_HOME}" \
+  -c "Add :LSEnvironment:SCHOLIUM_UI_TEST_WORKSPACE_ROOT string ${FIXTURE_COPY}" \
   "${APP}/Contents/Info.plist"
 
 [[ "$(plutil -extract LSEnvironment.SCHOLIUM_HOME raw "${APP}/Contents/Info.plist")" == "${QA_HOME}" ]] || {
@@ -112,6 +113,10 @@ cp "${ROOT}/Tools/Packaging/ScholiumIcon.icns" "${APP}/Contents/Resources/"
 }
 [[ "$(plutil -extract LSEnvironment.CFFIXED_USER_HOME raw "${APP}/Contents/Info.plist")" == "${QA_HOME}" ]] || {
   print -u2 "The QA bundle does not declare its isolated CFFIXED_USER_HOME."
+  exit 1
+}
+[[ "$(plutil -extract LSEnvironment.SCHOLIUM_UI_TEST_WORKSPACE_ROOT raw "${APP}/Contents/Info.plist")" == "${FIXTURE_COPY}" ]] || {
+  print -u2 "The QA bundle does not point to its disposable Triptych."
   exit 1
 }
 xattr -cr "${APP}"

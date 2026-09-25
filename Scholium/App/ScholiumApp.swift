@@ -52,6 +52,7 @@ final class WindowModel: ObservableObject {
 
     var windowSessionID = UUID()
     let nativeWindowID: UUID
+    var noteExportWindowController: ScholiumNoteExportWindowController?
 
     // MARK: Published State
     @Published var vaultConfig: VaultConfig?

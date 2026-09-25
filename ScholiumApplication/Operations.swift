@@ -47,6 +47,14 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.loadDocument(id)
     }
 
+    public func exportImages(
+        for note: VaultQualifiedNoteID,
+        markdownSource: String
+    ) async throws -> [String: RenderedMarkdownImage] {
+        let handle = try await reference.requireHandle()
+        return try await handle.exportImages(for: note, markdownSource: markdownSource)
+    }
+
     public func documentPreviewCatalog(
         source: VaultQualifiedNoteID,
         sourceFingerprint: DocumentFingerprint,

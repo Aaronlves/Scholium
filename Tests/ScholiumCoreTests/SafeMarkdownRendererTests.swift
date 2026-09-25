@@ -6,6 +6,37 @@ import Testing
 
 @Suite("Safe Markdown Read renderer")
 struct SafeMarkdownRendererTests {
+    @Test("Only authorized Markdown images become escaped inline data images")
+    func mappedLocalImage() throws {
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let image = try RenderedMarkdownImage(data: png, mimeType: "image/png")
+        let source = "![A & B](media/a%20b.png)\n\n![Remote](https://example.com/private.png)"
+        let document = NoteDocument(relativePath: "image.md", rawContent: source)
+        let html = SafeMarkdownRenderer.render(
+            document,
+            embeddedImages: [
+                "media/a b.png": image,
+                "https://example.com/private.png": image,
+            ]
+        ).htmlBody
+
+        #expect(html.contains("src=\"data:image/png;base64,"))
+        #expect(html.contains("alt=\"A &amp; B\""))
+        #expect(html.components(separatedBy: "<img ").count - 1 == 1)
+        #expect(html.contains("scholium-embed"))
+        #expect(!html.contains("src=\"https://"))
+    }
+
+    @Test("Embedded image values reject unsupported or malformed bytes")
+    func invalidEmbeddedImageData() {
+        #expect(throws: RenderedMarkdownImageError.invalidData) {
+            try RenderedMarkdownImage(data: Data("not a PNG".utf8), mimeType: "image/png")
+        }
+        #expect(throws: RenderedMarkdownImageError.unsupportedType) {
+            try RenderedMarkdownImage(data: Data("<svg/>".utf8), mimeType: "image/svg+xml")
+        }
+    }
+
     @Test("A matching workspace semantic projection produces identical safe HTML")
     func matchingSemanticProjectionIsReusable() {
         let document = NoteDocument(
