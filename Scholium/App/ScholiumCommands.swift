@@ -430,7 +430,7 @@ private struct ScholiumViewCommandContent: View {
         .scholiumKeyboardShortcut(.toggleLibrary)
         .disabled(workspaceWindowActions == nil || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
         Button("Library") {
-            workspaceWindowActions?.activateSidebar(.triptych)
+            workspaceWindowActions?.activateSidebar(.library)
         }
         .disabled(workspaceWindowActions == nil || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
         Button("Chat") { workspaceWindowActions?.activateSidebar(.chat) }

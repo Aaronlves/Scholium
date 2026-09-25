@@ -5,7 +5,7 @@ extension WindowModel {
     /// nil means the File menu belongs to the document; an empty array means
     /// the focused Library selection is not a valid group of writable Notes.
     var focusedLibraryMutationTargets: [NoteMutationTarget]? {
-        guard shellState.libraryVisible, shellState.sidebarContent == .triptych,
+        guard shellState.libraryVisible, shellState.sidebarContent == .library,
             let outline = NSApp.keyWindow?.firstResponder as? SidebarOutlineView,
             !outline.isHiddenOrHasHiddenAncestor,
             outline.window?.identifier?.rawValue == "scholium-main-\(nativeWindowID.uuidString)"

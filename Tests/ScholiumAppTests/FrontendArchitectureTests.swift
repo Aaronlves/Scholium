@@ -1049,7 +1049,7 @@ struct FrontendArchitectureTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: EmptyView(),
-            chat: EmptyView(), sidebarContent: .triptych,
+            chat: EmptyView(), sidebarContent: .library,
             document: EmptyView(),
             apparatus: EmptyView()
         )
@@ -1067,6 +1067,36 @@ struct FrontendArchitectureTests {
         #expect(
             controller.minimumThicknessForInlineSidebars == NSSplitViewController.automaticDimension
         )
+    }
+
+    @Test("Sidebar pages have distinct accessibility names and identifiers")
+    func sidebarPagesHaveDistinctAccessibilityIdentities() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let content = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/Views/ContentView.swift"),
+            encoding: .utf8
+        )
+        let pageSurface = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/ScholiumSidebarPageSurface.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(
+            content.contains(
+                "ScholiumSidebarPageSurface(label: \"Library\", identifier: \"scholium.librarySurface\")"
+            ))
+        #expect(
+            content.contains(
+                "ScholiumSidebarPageSurface(label: \"Chat\", identifier: \"scholium.chatSurface\")"
+            ))
+        #expect(!content.contains("private struct LibrarySurface"))
+        #expect(pageSurface.contains(".accessibilityLabel(label)"))
+        #expect(pageSurface.contains(".accessibilityIdentifier(identifier)"))
     }
 
     @Test("Peripheral visibility controls occupy their native toolbar planes")
@@ -1326,7 +1356,7 @@ struct FrontendArchitectureTests {
                 splitControllerDidAttach: { _ in },
                 splitControllerDidDetach: { _ in },
                 library: EmptyView(),
-                chat: EmptyView(), sidebarContent: .triptych,
+                chat: EmptyView(), sidebarContent: .library,
                 document: EmptyView(),
                 apparatus: EmptyView()
             )
@@ -1359,7 +1389,7 @@ struct FrontendArchitectureTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: EmptyView(),
-            chat: EmptyView(), sidebarContent: .triptych,
+            chat: EmptyView(), sidebarContent: .library,
             document: EmptyView(),
             apparatus: EmptyView()
         )

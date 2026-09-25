@@ -10,15 +10,15 @@ struct WorkspaceToolbarTests {
     @Test("Sidebar modes switch in place and repeating the visible mode collapses it")
     func sidebarModes() {
         let state = WindowShellState()
-        #expect(state.sidebarContent == .triptych && state.libraryVisible)
+        #expect(state.sidebarContent == .library && state.libraryVisible)
         #expect(state.activateSidebar(.chat))
         state.recordLibraryVisibility(true)
         #expect(state.sidebarContent == .chat)
         #expect(!state.activateSidebar(.chat))
         state.recordLibraryVisibility(false)
-        #expect(state.activateSidebar(.triptych))
+        #expect(state.activateSidebar(.library))
         state.recordLibraryVisibility(true)
-        #expect(!state.activateSidebar(.triptych))
+        #expect(!state.activateSidebar(.library))
         state.recordLibraryVisibility(false)
         #expect(state.activateSidebar(.chat))
     }
@@ -225,7 +225,7 @@ struct WorkspaceToolbarTests {
         }
         controller.invalidate()
         controller.activateSidebar(.chat)
-        #expect(model.shellState.sidebarContent == .triptych)
+        #expect(model.shellState.sidebarContent == .library)
         #expect(toolbar.delegate == nil)
         for command in toolbar.items {
             #expect(command.action == nil && command.target == nil && !command.isEnabled)

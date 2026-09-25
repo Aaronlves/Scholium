@@ -559,7 +559,7 @@ struct WindowLifecycleTests {
         coordinator.actions.setResearchInspectorVisible(true)
         coordinator.actions.activateSidebar(.chat)
         #expect(!split.libraryIsVisible && !split.researchInspectorIsVisible)
-        #expect(model.shellState.sidebarContent == .triptych)
+        #expect(model.shellState.sidebarContent == .library)
         coordinator.windowDidEnterFullScreen(Notification(name: NSWindow.didEnterFullScreenNotification, object: window))
         coordinator.windowDidFailToExitFullScreen(window)
         #expect(model.shellState.isFocusLayoutLockedByFullScreen)
@@ -644,7 +644,7 @@ struct WindowLifecycleTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: Text("Library"),
-            chat: Text("Chat"), sidebarContent: .triptych,
+            chat: Text("Chat"), sidebarContent: .library,
             document: Text("Document"),
             apparatus: Text("Research")
         )
@@ -671,7 +671,7 @@ struct WindowLifecycleTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: Text("Library"),
-            chat: Text("Chat"), sidebarContent: .triptych,
+            chat: Text("Chat"), sidebarContent: .library,
             document: Text("Document"),
             apparatus: Text("Research")
         )
@@ -724,7 +724,7 @@ struct WindowLifecycleTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: Text("Library"),
-            chat: Text("Chat"), sidebarContent: .triptych,
+            chat: Text("Chat"), sidebarContent: .library,
             document: Text("Document"),
             apparatus: Text("Research")
         )
@@ -995,7 +995,7 @@ struct WindowLifecycleTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: Text("Library"),
-            chat: Text("Chat"), sidebarContent: .triptych,
+            chat: Text("Chat"), sidebarContent: .library,
             document: Text("Document"),
             apparatus: Text("Research")
         )

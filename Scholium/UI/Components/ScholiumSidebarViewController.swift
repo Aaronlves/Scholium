@@ -110,12 +110,20 @@ final class ScholiumSidebarViewController<Library: View, Chat: View>: NSViewCont
 
     private func synchronizeVisibility() {
         let hidden = selection == .chat ? libraryHost.view : chatHost.view
-        if let responder = view.window?.firstResponder as? NSView,
-            responder === hidden || responder.isDescendant(of: hidden)
+        let firstResponder = view.window?.firstResponder
+        let responderView =
+            (firstResponder as? NSTextView)?.delegate as? NSView
+            ?? firstResponder as? NSView
+        if let responderView,
+            responderView === hidden || responderView.isDescendant(of: hidden)
         {
             view.window?.makeFirstResponder(nil)
         }
-        libraryHost.view.isHidden = selection != .triptych
-        chatHost.view.isHidden = selection != .chat
+        let libraryIsVisible = selection == .library
+        let chatIsVisible = selection == .chat
+        libraryHost.view.isHidden = !libraryIsVisible
+        libraryHost.view.setAccessibilityHidden(!libraryIsVisible)
+        chatHost.view.isHidden = !chatIsVisible
+        chatHost.view.setAccessibilityHidden(!chatIsVisible)
     }
 }

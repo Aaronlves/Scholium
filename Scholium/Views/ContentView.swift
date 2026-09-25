@@ -140,7 +140,7 @@ struct ContentView: View {
                 windowCoordinator.detach(splitController: $0)
             }
         ) {
-            LibrarySurface {
+            ScholiumSidebarPageSurface(label: "Library", identifier: "scholium.librarySurface") {
                 ResearchSearchSurface(
                     controller: discoveryController, searchController: searchController,
                     shellState: shellState, workspaceProjectionController: workspaceProjectionController,
@@ -153,7 +153,7 @@ struct ContentView: View {
             .buttonStyle(.automatic)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } chat: {
-            LibrarySurface {
+            ScholiumSidebarPageSurface(label: "Chat", identifier: "scholium.chatSurface") {
                 if let chat = appState.chatController {
                     AgentChatView(
                         controller: chat,
@@ -172,8 +172,8 @@ struct ContentView: View {
                         },
                         showInLibrary: { url in
                             if appState.openChatReference(url) {
-                                if !shellState.libraryVisible || shellState.sidebarContent != .triptych {
-                                    windowCoordinator.actions.activateSidebar(.triptych)
+                                if !shellState.libraryVisible || shellState.sidebarContent != .library {
+                                    windowCoordinator.actions.activateSidebar(.library)
                                 }
                             }
                         },
@@ -246,7 +246,7 @@ struct ContentView: View {
             switch searchController.presentation {
             case .sidebar:
                 if shellState.isFocusLayoutLockedByFullScreen { return }
-                _ = shellState.activateSidebar(.triptych)
+                _ = shellState.activateSidebar(.library)
                 windowCoordinator.actions.setLibraryVisible(true)
                 windowCoordinator.closeAdvancedSearch()
             case .advanced:
@@ -897,21 +897,6 @@ private struct RelatedMaterialPreparationObserver: View {
             .onChange(of: editor.isLoaded) { _, _ in prepare() }
             .onChange(of: searchGeneration) { _, _ in prepare() }
             .onDisappear { session.stopBackgroundPreparation(sessionID: editor.sessionID) }
-    }
-}
-
-private struct LibrarySurface<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Library")
-            .accessibilityIdentifier("scholium.librarySurface")
     }
 }
 

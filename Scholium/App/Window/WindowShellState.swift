@@ -51,7 +51,7 @@ struct WindowOperationIssue: Equatable, Identifiable {
 }
 
 enum SidebarContent: Int, CaseIterable {
-    case triptych, chat
+    case library, chat
 }
 
 /// Presentation state owned by one complete configured window.
@@ -70,7 +70,7 @@ final class WindowShellState: ObservableObject {
     @Published private(set) var libraryVisible = true
     @Published private(set) var isFocusLayoutActive = false
     @Published private(set) var isFocusLayoutLockedByFullScreen = false
-    @Published private(set) var sidebarContent: SidebarContent = .triptych
+    @Published private(set) var sidebarContent: SidebarContent = .library
     @Published private(set) var hasCompletedInitialRestore = false
     @Published var colorScheme: WindowColorSchemeChoice {
         didSet {
