@@ -71,7 +71,7 @@ and buffer.
 The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
 current-Document mode,
-Settlement, Note Actions, confirmed Agent Changes when present, Inspector
+Settlement, Note Actions, Inspector
 projection, and Inspector visibility. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,
 including embedded editors. Native overflow preserves access. Toolbar customization is not required.

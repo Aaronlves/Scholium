@@ -35848,7 +35848,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
 
   // heading-accessibility.ts
   function bodyHeadingAccessibilityLevel(markdownLevel) {
-    return Math.min(6, Math.max(1, markdownLevel) + 1);
+    return Math.min(6, Math.max(1, markdownLevel)) + 1;
   }
 
   // live-semantic-layout.ts

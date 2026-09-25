@@ -35,10 +35,10 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
         control.titles = WorkspaceVaultSlot.allCases.map {
             ScholiumL10n.dynamicString($0.displayName)
         }
+        control.setSegmentToolTips(control.titles)
         control.setAccessibilityLabel(ScholiumL10n.string("Triptych", locale: locale))
         for (index, slot) in WorkspaceVaultSlot.allCases.enumerated() {
             control.setEnabled(noteCounts.count(for: slot) != nil, forSegment: index)
-            control.setToolTip(control.titles[index], forSegment: index)
         }
         control.selectedSegment =
             selectedSlot.flatMap {
@@ -65,7 +65,7 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
 }
 
 @MainActor
-final class WorkspaceSegmentedControl: NSSegmentedControl {
+final class WorkspaceSegmentedControl: ScholiumTooltippedSegmentedControl {
     var titles: [String] = []
     private(set) var usesSymbols = false
     private let symbols = ["doc.text.magnifyingglass", "point.3.connected.trianglepath.dotted", "square.and.pencil"]

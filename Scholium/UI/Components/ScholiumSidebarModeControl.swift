@@ -1,7 +1,7 @@
 import AppKit
 
 /// A native segment remains a navigation control and accepts explicit Note copies on Chat.
-final class ScholiumSidebarModeControl: NSSegmentedControl {
+final class ScholiumSidebarModeControl: ScholiumTooltippedSegmentedControl {
     var validateNotes: (([SidebarNoteDragItem]) -> Bool)?
     var acceptNotes: (([SidebarNoteDragItem]) -> Bool)?
 

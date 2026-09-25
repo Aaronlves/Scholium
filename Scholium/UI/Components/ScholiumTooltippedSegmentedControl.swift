@@ -9,7 +9,7 @@ struct SegmentToolTipRegistration: Equatable {
 /// Uses AppKit's view-level tooltip rectangles because segmented-cell tooltip
 /// values are stored but are not currently displayed by AppKit.
 @MainActor
-final class ScholiumTooltippedSegmentedControl: NSSegmentedControl, NSViewToolTipOwner {
+class ScholiumTooltippedSegmentedControl: NSSegmentedControl, NSViewToolTipOwner {
     private(set) var segmentToolTipMessages: [String] = []
     private var segmentToolTipsAreActive = true
     private var installedBounds: NSRect?

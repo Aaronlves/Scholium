@@ -7,6 +7,37 @@ import Testing
 @Suite("Workspace toolbar")
 @MainActor
 struct WorkspaceToolbarTests {
+    @Test("The bell reports an exact total only when both notification sources are known")
+    func notificationCountSummary() {
+        let partial = WorkspaceNotificationCountSummary(
+            settlementCount: 2,
+            agentChangeCount: nil
+        )
+        #expect(partial.exactTotal == nil)
+        #expect(partial.hasConfirmedNotifications)
+
+        let complete = WorkspaceNotificationCountSummary(
+            settlementCount: 2,
+            agentChangeCount: 3
+        )
+        #expect(complete.exactTotal == 5)
+        #expect(complete.hasConfirmedNotifications)
+
+        let partialZero = WorkspaceNotificationCountSummary(
+            settlementCount: 0,
+            agentChangeCount: nil
+        )
+        #expect(partialZero.exactTotal == nil)
+        #expect(!partialZero.hasConfirmedNotifications)
+
+        let empty = WorkspaceNotificationCountSummary(
+            settlementCount: 0,
+            agentChangeCount: 0
+        )
+        #expect(empty.exactTotal == 0)
+        #expect(!empty.hasConfirmedNotifications)
+    }
+
     @Test("Sidebar modes switch in place and repeating the visible mode collapses it")
     func sidebarModes() {
         let state = WindowShellState()
@@ -96,11 +127,17 @@ struct WorkspaceToolbarTests {
         let toolbar = try #require(window.toolbar)
         #expect(window.toolbarStyle == .unified)
         #expect(toolbar.itemIdentifiers == ScholiumWorkspaceToolbarController.itemIdentifiers)
+        let notifications = try #require(
+            item(ScholiumWorkspaceToolbarController.Item.notifications, in: toolbar)
+        )
+        #expect(notifications.image?.accessibilityDescription != notifications.label)
         let modeIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.documentMode))
         #expect(toolbar.itemIdentifiers[modeIndex + 1] == ScholiumWorkspaceToolbarController.Item.noteActions)
         let noteActions = try #require(item(ScholiumWorkspaceToolbarController.Item.noteActions, in: toolbar) as? DocumentNoteActionsToolbarItem)
         #expect(!noteActions.showsIndicator)
         #expect(!noteActions.isEnabled)
+        #expect(noteActions.label == "Note Actions")
+        #expect(noteActions.image?.accessibilityDescription != noteActions.label)
         #expect(noteActions.menuFormRepresentation?.submenu === noteActions.menu)
 
         #expect(window.titleVisibility == .hidden)
@@ -125,6 +162,7 @@ struct WorkspaceToolbarTests {
             #expect(command.isBordered)
             #expect(command.style == .plain)
             #expect(command.view == nil)
+            #expect(command.image?.accessibilityDescription != command.label)
             let overflowCommand = try #require(command.menuFormRepresentation)
             #expect(overflowCommand.target === expectedTarget)
             #expect(overflowCommand.action == command.action)
@@ -161,7 +199,7 @@ struct WorkspaceToolbarTests {
                 ScholiumWorkspaceToolbarController.Item.sidebar,
                 in: toolbar
             ))
-        let selector = try #require(sidebar.view as? NSSegmentedControl)
+        let selector = try #require(sidebar.view as? ScholiumSidebarModeControl)
         #expect(selector.segmentStyle == .rounded)
         #expect(selector.selectedSegmentBezelColor == nil)
         #expect(selector.trackingMode == .selectOne)
@@ -171,7 +209,11 @@ struct WorkspaceToolbarTests {
         #expect(selector.isSelected(forSegment: 0))
         #expect(!selector.isSelected(forSegment: 1))
         #expect(!selector.isEnabled(forSegment: 1))
-        #expect(selector.toolTip(forSegment: 1) == String(localized: "No Triptych Open"))
+        #expect(
+            selector.segmentToolTipMessages == [
+                ScholiumL10n.string("Library"),
+                String(localized: "No Triptych Open"),
+            ])
 
         let inspector = try #require(
             item(

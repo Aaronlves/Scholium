@@ -4,6 +4,20 @@ import Foundation
 import ScholiumContracts
 import SwiftUI
 
+struct WorkspaceNotificationCountSummary: Equatable {
+    let settlementCount: Int?
+    let agentChangeCount: Int?
+
+    var exactTotal: Int? {
+        guard let settlementCount, let agentChangeCount else { return nil }
+        return settlementCount + agentChangeCount
+    }
+
+    var hasConfirmedNotifications: Bool {
+        (settlementCount ?? 0) > 0 || (agentChangeCount ?? 0) > 0
+    }
+}
+
 /// The configured window has one native toolbar. Tracking separators establish
 /// Library, Document, and Apparatus sections. Sidebar and document-history
 /// controls belong to their Sidebar and Document sections respectively. The Inspector projection
@@ -280,7 +294,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
 
     private func refreshNotifications() {
         guard let item = toolbarItem(Item.notifications) else { return }
-        let total = notificationTotal
+        let summary = notificationSummary
+        let total = summary.exactTotal
         let value: String
         if let total {
             value =
@@ -295,8 +310,13 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
         let label = ScholiumL10n.string("Open Triptych Notifications")
         update(
-            item, label: label, systemImage: (total ?? 0) > 0 ? "bell.badge" : "bell",
-            isEnabled: true, toolTip: "\(label) · \(value)", accessibilityValue: "\(label), \(value)")
+            item,
+            label: label,
+            systemImage: summary.hasConfirmedNotifications ? "bell.badge" : "bell",
+            isEnabled: true,
+            toolTip: "\(label) · \(value)",
+            accessibilityValue: value
+        )
         let session = appState.attentionPopoverSession
         if session.isPresented(from: .toolbar) {
             if !notificationsPopover.isShown {
@@ -318,18 +338,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
     }
 
-    private var notificationTotal: Int? {
-        let settlementCount = appState.researchController.researchSnapshot?
-            .settlementRequirements.count
-        let agentChangeCount = appState.researchController.agentChanges?.count
-        let knownTotal =
-            (settlementCount ?? 0)
-            + (agentChangeCount ?? 0)
-        if knownTotal > 0 { return knownTotal }
-        guard settlementCount != nil, agentChangeCount != nil else {
-            return nil
-        }
-        return 0
+    private var notificationSummary: WorkspaceNotificationCountSummary {
+        WorkspaceNotificationCountSummary(
+            settlementCount: appState.researchController.researchSnapshot?
+                .settlementRequirements.count,
+            agentChangeCount: appState.researchController.agentChanges?.count
+        )
     }
 
     private var notificationError: String? {
@@ -436,8 +450,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         item.title = ""
         item.toolTip = label
         item.image = ScholiumNativeToolbarPresentation.symbol(
-            named: systemImage,
-            accessibilityDescription: label
+            named: systemImage
         )
         item.visibilityPriority = visibilityPriority
         // With no custom view, AppKit creates the toolbar control and owns its
@@ -488,7 +501,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
         refreshNotifications()
 
-        if let control = toolbarItem(Item.sidebar)?.view as? NSSegmentedControl {
+        if let control = toolbarItem(Item.sidebar)?.view as? ScholiumSidebarModeControl {
             control.selectedSegment = shellState.libraryVisible ? shellState.sidebarContent.rawValue : -1
             let unavailable = appState.workspaceAssignment == nil
             control.setEnabled(!unavailable, forSegment: SidebarContent.chat.rawValue)
@@ -497,7 +510,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 unavailable
                 ? ScholiumL10n.string("No Triptych Open")
                 : awaitingInput ? String(localized: "Chat Needs Your Input") : String(localized: "Chat")
-            control.setToolTip(title, forSegment: SidebarContent.chat.rawValue)
+            control.setSegmentToolTips([sidebarModeLabels[0], title])
             control.setImage(
                 ScholiumNativeToolbarPresentation.symbol(
                     named: awaitingInput ? "exclamationmark.bubble" : "bubble.left.and.bubble.right",
@@ -541,8 +554,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             item.paletteLabel = label
             item.toolTip = help
             item.image = ScholiumNativeToolbarPresentation.symbol(
-                named: DocumentSettlementToolbarPresentation.symbol(for: presentation.state),
-                accessibilityDescription: label
+                named: DocumentSettlementToolbarPresentation.symbol(for: presentation.state)
             )
             item.isEnabled = isCommandEnabled(Item.settlement)
             item.menuFormRepresentation?.title = ScholiumL10n.localized(action.title)
@@ -637,7 +649,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         item.toolTip = toolTip ?? label
         item.image = ScholiumNativeToolbarPresentation.symbol(
             named: systemImage,
-            accessibilityDescription: accessibilityValue ?? label
+            accessibilityDescription: accessibilityValue
         )
         item.isEnabled = isEnabled
         item.menuFormRepresentation?.title = label
@@ -655,8 +667,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         refreshPresentation()
     }
 
+    private var sidebarModeLabels: [String] {
+        [ScholiumL10n.string("Library"), ScholiumL10n.string("Chat")]
+    }
+
     private func sidebarModeItem(identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
-        let labels = [ScholiumL10n.string("Library"), ScholiumL10n.string("Chat")]
+        let labels = sidebarModeLabels
         let symbols = ["books.vertical", "bubble.left.and.bubble.right"]
         let images = zip(symbols, labels).compactMap {
             ScholiumNativeToolbarPresentation.symbol(named: $0, accessibilityDescription: $1)
@@ -676,8 +692,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             }
             return true
         }
+        control.setSegmentToolTips(labels)
         for index in labels.indices {
-            control.setToolTip(labels[index], forSegment: index)
             control.setImageScaling(.scaleProportionallyDown, forSegment: index)
         }
         control.segmentStyle = .rounded
@@ -692,7 +708,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             let entry = NSMenuItem(title: labels[mode.rawValue], action: #selector(selectSidebarMenu(_:)), keyEquivalent: "")
             entry.target = self
             entry.tag = mode.rawValue
-            entry.image = control.image(forSegment: mode.rawValue)
+            entry.image = ScholiumNativeToolbarPresentation.symbol(
+                named: symbols[mode.rawValue]
+            )
             menu.addItem(entry)
         }
         let overflow = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")

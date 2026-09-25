@@ -21,7 +21,7 @@ const context = (blocks: string[] = [], inline: string[] = []): EditorContext =>
 describe("editor accessibility contract", () => {
   it("places authored headings beneath the app-owned Note title", () => {
     expect([1, 2, 3, 4, 5, 6].map(bodyHeadingAccessibilityLevel))
-      .toEqual([2, 3, 4, 5, 6, 6]);
+      .toEqual([2, 3, 4, 5, 6, 7]);
   });
 
   it("keeps one labeled multiline textbox without a duplicate value representation", () => {

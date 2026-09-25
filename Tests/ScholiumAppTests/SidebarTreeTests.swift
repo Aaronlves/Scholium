@@ -540,11 +540,15 @@ struct SidebarTreeTests {
         let coordinator = ScholiumTriptychWorkspaceNavigator.Coordinator(select: { requestedSlot = $0 })
         let control = WorkspaceSegmentedControl(frame: NSRect(x: 0, y: 0, width: 360, height: 28))
         control.segmentCount = 3
+        control.segmentDistribution = .fillEqually
         control.titles = ["Analyses", "Topics", "Works"]
+        control.setSegmentToolTips(control.titles)
         control.selectedSegment = 0
         control.setEnabled(false, forSegment: 1)
         control.updateLabels()
         #expect(!control.usesSymbols)
+        #expect(control.segmentToolTipMessages == ["Analyses", "Topics", "Works"])
+        #expect(control.toolTipRegistrations.count == 3)
         #expect(control.label(forSegment: 0) == "Analyses")
         control.selectedSegment = 1
         coordinator.selectWorkspace(control)
@@ -557,6 +561,11 @@ struct SidebarTreeTests {
         control.updateLabels()
         #expect(control.usesSymbols)
         #expect(control.image(forSegment: 0) != nil)
+        #expect(control.toolTipRegistrations.map(\.message) == ["Analyses", "Topics", "Works"])
+        #expect(
+            control.toolTipRegistrations[0].rect.width
+                == control.bounds.width / CGFloat(control.segmentCount)
+        )
         #expect(control.selectedSegment == 2)
         #expect(requestedSlot == nil)
         control.frame.size.width = 360

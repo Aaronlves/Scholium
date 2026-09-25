@@ -950,7 +950,7 @@
 
   // heading-accessibility.ts
   function bodyHeadingAccessibilityLevel(markdownLevel) {
-    return Math.min(6, Math.max(1, markdownLevel) + 1);
+    return Math.min(6, Math.max(1, markdownLevel)) + 1;
   }
 
   // interaction-reporting.ts

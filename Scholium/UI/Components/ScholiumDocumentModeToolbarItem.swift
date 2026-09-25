@@ -42,7 +42,7 @@ final class ScholiumDocumentModeToolbarItem: NSToolbarItem {
         paletteLabel = label
         title = ""
         toolTip = presentation.toolTip
-        image = ScholiumNativeToolbarPresentation.symbol(named: presentation.symbol, accessibilityDescription: presentation.mode.title)
+        image = ScholiumNativeToolbarPresentation.symbol(named: presentation.symbol)
         isEnabled = Self.isAvailable(in: model)
         isHidden = model.currentNote == nil
         menuFormRepresentation?.title = label

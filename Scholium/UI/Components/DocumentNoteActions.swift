@@ -37,10 +37,10 @@ final class DocumentNoteActionsToolbarItem: NSMenuToolbarItem, NSMenuDelegate {
     init(identifier: NSToolbarItem.Identifier, model: WindowModel) {
         self.model = model
         super.init(itemIdentifier: identifier)
-        label = ScholiumL10n.string("More")
+        label = ScholiumL10n.string("Note Actions")
         paletteLabel = label
         toolTip = ScholiumL10n.string("Note Actions")
-        image = ScholiumNativeToolbarPresentation.symbol(named: "ellipsis", accessibilityDescription: toolTip)
+        image = ScholiumNativeToolbarPresentation.symbol(named: "ellipsis")
         showsIndicator = false
         isBordered = true
         style = .plain

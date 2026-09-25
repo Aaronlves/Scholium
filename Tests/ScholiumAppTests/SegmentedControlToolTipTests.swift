@@ -6,6 +6,20 @@ import Testing
 @Suite("Segmented control tooltips")
 @MainActor
 struct SegmentedControlToolTipTests {
+    @Test("Sidebar mode segments use the shared Help-region owner")
+    func sidebarModeToolTipsUseSharedOwner() {
+        let control = ScholiumSidebarModeControl(
+            frame: NSRect(x: 0, y: 0, width: 200, height: 28)
+        )
+        control.segmentCount = 2
+        control.enableNoteDrops()
+        control.setSegmentToolTips(["Library", "Chat"])
+
+        #expect(control.toolTipRegistrations.count == 2)
+        #expect(control.toolTipRegistrations.map(\.message) == ["Library", "Chat"])
+        control.invalidateNoteDrops()
+    }
+
     @Test("Active segments register distinct Help regions and hidden panes remove them")
     func activeToolTipsFollowControlGeometry() {
         let control = ScholiumTooltippedSegmentedControl(
