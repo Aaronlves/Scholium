@@ -12,19 +12,18 @@ release; close flushes before membership removal. Clean unleased sessions discar
 source, Undo, rendered content and previews, retaining only bounded volatile
 position state. Equal paths across vaults remain distinct.
 
-Each document session owns one persistent editor/flush identity, checked exact
-mirror and committed revision, atomic presentation phase, pending intent,
+Each document session owns a persistent editor/flush identity, checked exact
+mirror and committed revision, presentation phase, pending intent,
 allocation/configuration, source-bound scroll anchor, save tasks and conflict/
-retry/comparison state. Review and allocated editor hosts retain identity across
-mode/layout/theme changes; hidden hosts cannot receive input or accessibility
-focus. Requested mode is not presented fact until matching acknowledgment.
+retry/comparison state. The editor host retains identity across mode/layout/theme
+changes; hidden hosts cannot receive input or accessibility focus. Mount the
+committed Review projection only in Review or read recovery; reconstruct it when
+returning from Edit or Source. Requested mode is not presented until acknowledged.
 
-The document host owns one visible native surface. A retained Review
-or editor WebView may remain allocated for identity, recovery and readiness, but
-its native container is explicitly hidden from compositing and accessibility
-when inactive; SwiftUI z-order and hit-testing are not the visibility authority.
-Review and editor keep separate viewport observations. Mode handoff is the only
-route that copies an anchor or fallback fraction between them.
+The document host owns one visible native surface. Review and editor keep
+separate viewport observations; mode handoff alone copies anchors or fallback
+fractions. Unmount Review outside Review or read recovery; restore its saved
+position when Review returns.
 
 Detachment atomically freezes input and captures exact source, selection and
 history. Detached saves require unchanged document/revision/generation proof;

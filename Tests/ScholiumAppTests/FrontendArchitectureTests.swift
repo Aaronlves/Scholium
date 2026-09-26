@@ -436,6 +436,10 @@ struct FrontendArchitectureTests {
     func editorHostPresentationGate() {
         var gate = DocumentEditorPresentationGate()
 
+        #expect(gate.mountsReadSurface(presentsEditor: false, allowsPendingRecovery: false))
+        #expect(!gate.mountsReadSurface(presentsEditor: true, allowsPendingRecovery: false))
+        #expect(gate.mountsReadSurface(presentsEditor: true, allowsPendingRecovery: true))
+
         gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
         #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsReady: false))
 

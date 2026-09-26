@@ -20,10 +20,10 @@ extension EnvironmentValues {
     }
 }
 
-/// Owns only the native visibility handoff between two retained surfaces.
-/// Initial Review -> editor entry waits for the requested bridge mode, while
-/// an already presented CodeMirror surface stays visible during its atomic
-/// Edit <-> Source compartment reconfiguration.
+/// Owns the editor acknowledgement and recovery handoff. Initial Review ->
+/// editor entry waits for the requested bridge mode, while an already
+/// presented CodeMirror surface stays visible during its atomic Edit <->
+/// Source compartment reconfiguration.
 struct DocumentEditorPresentationGate: Equatable {
     private(set) var presentedDocumentID: String?
 
@@ -37,6 +37,10 @@ struct DocumentEditorPresentationGate: Equatable {
 
     func showsEditor(documentID: String, presentsEditor: Bool, editorIsReady: Bool) -> Bool {
         presentsEditor && (presentedDocumentID == documentID || editorIsReady)
+    }
+
+    func mountsReadSurface(presentsEditor: Bool, allowsPendingRecovery: Bool) -> Bool {
+        !presentsEditor || allowsPendingRecovery
     }
 
     func allowsReadHitTesting(
@@ -67,9 +71,9 @@ struct DocumentEditorPresentationGate: Equatable {
 }
 
 /// Owns the presentation boundary between the committed Read projection and
-/// the exact-source editor. Once the editor has been created, ordinary mode
-/// switches change native visibility and focus only; they do not remove either
-/// WebKit surface from the hierarchy.
+/// the exact-source editor. The read-only WebKit surface is mounted only while
+/// Review or pending read recovery is presented. The editor remains retained
+/// after allocation so its source, selection, composition, and Undo stay live.
 struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     let documentID: String
     let presentsEditor: Bool
@@ -109,27 +113,23 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
 
     var body: some View {
         ZStack {
-            readSurface
-                // SwiftUI modifiers are not a sufficient occlusion boundary
-                // for an embedded NSView/WKWebView. The representable applies
-                // this state to its native container as well, so a retained
-                // surface cannot paint through the active document plane.
-                .environment(
-                    \.scholiumDocumentSurfaceVisibility,
-                    presentsEditor && !allowsPendingReadRecovery
-                        ? .retained
-                        : .active
-                )
-                .allowsHitTesting(
-                    presentationGate.allowsReadHitTesting(
-                        documentID: documentID,
-                        presentsEditor: presentsEditor,
-                        editorIsReady: editorIsReady,
-                        allowsPendingRecovery: allowsPendingReadRecovery
+            if presentationGate.mountsReadSurface(
+                presentsEditor: presentsEditor,
+                allowsPendingRecovery: allowsPendingReadRecovery
+            ) {
+                readSurface
+                    .environment(\.scholiumDocumentSurfaceVisibility, .active)
+                    .allowsHitTesting(
+                        presentationGate.allowsReadHitTesting(
+                            documentID: documentID,
+                            presentsEditor: presentsEditor,
+                            editorIsReady: editorIsReady,
+                            allowsPendingRecovery: allowsPendingReadRecovery
+                        )
                     )
-                )
-                .accessibilityHidden(presentsEditor && !allowsPendingReadRecovery)
-                .zIndex(showsEditor ? 0 : 1)
+                    .accessibilityHidden(false)
+                    .zIndex(showsEditor ? 0 : 1)
+            }
 
             if retainsEditor {
                 editorSurface
