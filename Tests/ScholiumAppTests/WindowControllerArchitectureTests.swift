@@ -553,7 +553,6 @@ struct WindowControllerArchitectureTests {
         #expect(session.pendingEditorMode == .livePreview)
         #expect(controller.currentPresentationMode == .livePreview)
         #expect(controller.chromeProjection.mode == .livePreview)
-        #expect(controller.chromeProjection.isPreparingMode)
         #expect(session.scrollFraction == 0.64)
         let semanticAnchor = EditorScrollAnchor(
             sourceFingerprint: "revision-bound-fingerprint",
@@ -639,7 +638,6 @@ struct WindowControllerArchitectureTests {
         firstSession.preparePresentationMode(.source)
         controller.rememberPresentationMode(.source)
         #expect(controller.chromeProjection.mode == .source)
-        #expect(controller.chromeProjection.isPreparingMode)
 
         controller.installOpenedDocument(second)
         let secondSession = controller.session(for: second)
@@ -647,7 +645,6 @@ struct WindowControllerArchitectureTests {
         #expect(secondSession.presentationMode == .read)
         #expect(secondSession.pendingEditorMode == .source)
         #expect(controller.chromeProjection.mode == .source)
-        #expect(controller.chromeProjection.isPreparingMode)
 
         secondSession.preparePresentationMode(.livePreview)
         controller.rememberPresentationMode(.livePreview)
@@ -798,6 +795,36 @@ struct WindowControllerArchitectureTests {
         #expect(session.originalEditingSource == source)
         #expect(session.editingRevision == revision)
         #expect(!session.hasUnsavedChanges)
+    }
+
+    @Test("An uninitialized editor can safely return to Review")
+    func uninitializedEditorCanReturnToReview() throws {
+        let reference = fixtureReference(path: "Topics/Pending Editor.md")
+        let descriptor = WindowDocumentDescriptor(
+            sessionKey: DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID()),
+            reference: reference
+        )
+        let controller = DocumentController()
+        controller.installOpenedDocument(descriptor)
+        let session = controller.session(for: descriptor)
+        let target = DocumentEditingTarget.workspace(descriptor.sessionKey)
+
+        controller.beginEditing(
+            session: session,
+            target: target,
+            source: "# Pending\n",
+            revision: DocumentFingerprint(content: "# Pending\n"),
+            mode: .livePreview
+        )
+
+        #expect(!session.editorSession.isLoaded)
+        #expect(session.pendingPresentationMode == .livePreview)
+        try controller.finishEditing(session: session, target: target)
+        controller.rememberPresentationMode(.read)
+
+        #expect(session.presentationMode == .read)
+        #expect(session.pendingPresentationMode == nil)
+        #expect(controller.chromeProjection.mode == .read)
     }
 
     @Test("A rename updates projection without replacing the editor session")

@@ -111,8 +111,6 @@ struct DocumentChromeProjection: Equatable, Sendable {
     let document: WindowSelectedDocument?
     /// The selected document's current intended mode.
     let mode: NotePresentationMode
-    /// Prevents mode commands while the selected editor is loading or changing mode.
-    let isPreparingMode: Bool
     let dirtyState: DocumentChromeDirtyState
     let isSaving: Bool
     let failureState: DocumentChromeFailureState
@@ -120,7 +118,6 @@ struct DocumentChromeProjection: Equatable, Sendable {
     static let empty = DocumentChromeProjection(
         document: nil,
         mode: .read,
-        isPreparingMode: false,
         dirtyState: .clean,
         isSaving: false,
         failureState: .none
@@ -1232,7 +1229,6 @@ final class DocumentController: ObservableObject {
         let next = DocumentChromeProjection(
             document: selectedDocument,
             mode: pendingPresentationMode ?? session.presentationMode,
-            isPreparingMode: pendingPresentationMode != nil,
             dirtyState: session.hasUnsavedChanges ? .dirty : .clean,
             isSaving: session.isSavingEdit,
             failureState: failureState

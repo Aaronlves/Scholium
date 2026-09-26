@@ -1229,7 +1229,6 @@ struct FrontendArchitectureTests {
         #expect(modeItemSource.contains("toolTip = presentation.toolTip"))
         #expect(modeItemSource.contains("label = presentation.accessibilityLabel"))
         #expect(modeItemSource.contains("mode: chrome.mode"))
-        #expect(modeItemSource.contains("!chrome.isPreparingMode"))
         #expect(modeItemSource.contains("model.requestDocumentMode("))
         #expect(!toolbarSource.contains("NSSegmentedControl(frame: .zero)"))
         #expect(!toolbarSource.contains("scholium.documentModeToggle"))

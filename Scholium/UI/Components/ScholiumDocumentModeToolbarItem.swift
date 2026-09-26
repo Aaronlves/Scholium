@@ -26,10 +26,8 @@ final class ScholiumDocumentModeToolbarItem: NSToolbarItem {
     static func isAvailable(in model: WindowModel) -> Bool {
         guard !model.transferInProgress, let document = model.documentController.selectedDocument else { return false }
         let session = model.documentController.session(for: document.editingTarget)
-        let chrome = model.documentController.chromeProjection
         let presentation = modePresentation(in: model)
-        return !chrome.isPreparingMode
-            && !session.editorSession.isComposing
+        return !session.editorSession.isComposing
             && (presentation.destination == .read || model.canEditCurrentNote)
     }
 

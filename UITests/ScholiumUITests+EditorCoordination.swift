@@ -362,30 +362,28 @@ extension ScholiumUITests {
             ) / 1_000_000
 
         selectMode("Edit")
-        XCTAssertTrue(editor.waitForExistence(timeout: 8))
         XCTAssertTrue(
-            waitUntil(timeout: 8) { mode.label == "Document Mode, Edit" },
-            "The toolbar must leave its preparation state after the editor acknowledges Edit."
+            waitUntil(timeout: 8) { editor.exists && editor.isHittable },
+            "Edit must become visible only after the editor acknowledges the requested mode."
         )
         let firstToSecondStart = DispatchTime.now().uptimeNanoseconds
         XCTAssertEqual(documentModeState(mode), "Edit")
         var firstToSecondToolbarLabels = [mode.label]
+        var firstToSecondToolbarEnabledStates = [mode.isEnabled]
         _ = clickLibraryRow("QA Autosave B.md")
+        XCTAssertTrue(
+            mode.isEnabled,
+            "The Review/Edit control must remain available immediately after selecting another Note."
+        )
         XCTAssertTrue(
             waitUntil(timeout: 8) {
                 let label = mode.label
                 firstToSecondToolbarLabels.append(label)
-                if !mode.isEnabled {
-                    XCTAssertEqual(
-                        label,
-                        "Document Mode, Edit",
-                        "Preparing the next Note must preserve the toolbar's target-mode label."
-                    )
-                }
+                firstToSecondToolbarEnabledStates.append(mode.isEnabled)
                 return self.documentTitle() == "QA Autosave B"
                     && self.app.descendants(matching: .any)[
                         "Markdown editor, Edit mode"
-                    ].exists
+                    ].isHittable
                     && mode.label == "Document Mode, Edit"
             })
         XCTAssertTrue(
@@ -393,6 +391,10 @@ extension ScholiumUITests {
                 $0 == "Document Mode, Edit"
             },
             "Switching Notes in the retained Edit mode must not expose an intermediate Review toolbar state."
+        )
+        XCTAssertTrue(
+            firstToSecondToolbarEnabledStates.allSatisfy { $0 },
+            "The Review/Edit control must remain available while the selected Note's editor prepares."
         )
         XCTAssertEqual(mode.label, "Document Mode, Edit")
         XCTAssertTrue(mode.isEnabled)

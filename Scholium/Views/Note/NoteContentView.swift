@@ -1500,6 +1500,14 @@ struct NoteContentView<ShellNotices: View>: View {
                 return
             }
             guard !returnToReadAfterSave else { return }
+            if !editorSession.isLoaded {
+                do {
+                    try finishEditing()
+                } catch {
+                    reportReviewHandoffError(error)
+                }
+                return
+            }
             let handoffID = UUID()
             documentSession.reviewHandoffID = handoffID
             returnToReadAfterSave = true
@@ -1556,11 +1564,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     return
                 } catch {
                     guard documentSession.reviewHandoffID == handoffID else { return }
-                    documentSession.editError = error.localizedDescription
-                    documentSession.canRetrySave = DocumentController.saveFailureAllowsRetry(error)
-                    if controller.selectedDocument?.editingTarget == target {
-                        controller.setSaveError(error.localizedDescription)
-                    }
+                    reportReviewHandoffError(error)
                 }
             }
             return
@@ -1711,6 +1715,14 @@ struct NoteContentView<ShellNotices: View>: View {
     private func finishEditing() throws {
         try controller.finishEditing(session: documentSession, target: target)
         actions.rememberPresentationMode(.read)
+    }
+
+    private func reportReviewHandoffError(_ error: Error) {
+        documentSession.editError = error.localizedDescription
+        documentSession.canRetrySave = DocumentController.saveFailureAllowsRetry(error)
+        if controller.selectedDocument?.editingTarget == target {
+            controller.setSaveError(error.localizedDescription)
+        }
     }
 
     private func reloadFromDisk() {

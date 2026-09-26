@@ -1045,10 +1045,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
     @MainActor
     private func documentModeState(_ control: XCUIElement) -> String? {
-        let normalizedLabel = control.label.replacingOccurrences(of: "，", with: ",")
-        let components = normalizedLabel.split(separator: ",", omittingEmptySubsequences: false)
-        guard components.count > 1 else { return nil }
-        return components[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        control.label.split(separator: ",", maxSplits: 1)
+            .last?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @MainActor
