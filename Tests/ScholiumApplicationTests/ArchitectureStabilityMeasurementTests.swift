@@ -196,7 +196,8 @@ struct ArchitectureStabilityMeasurementTests {
             #expect(initial.readFiles == 800)
             #expect(initial.parsedDocuments == 800)
             #expect(initial.projectedDocuments == 0)
-            #expect(initial.restoredSearchProjections == 800)
+            // Reopening a compatible complete index needs no decoded Search projections.
+            #expect(initial.restoredSearchProjections == 0)
             for measurement in [added, edited, renamed] {
                 #expect(measurement.enumeratedFiles == 0)
                 #expect(measurement.readFiles == 1)

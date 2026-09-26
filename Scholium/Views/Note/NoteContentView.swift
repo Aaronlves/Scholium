@@ -514,6 +514,7 @@ struct NoteContentView<ShellNotices: View>: View {
             outlineEntries = entries
         }
         .task(id: readProjectionTaskIdentity) {
+            guard documentSession.requiresReadProjection, !Task.isCancelled else { return }
             PerformanceProbe.shared.markReadTaskStarted(
                 documentID: note.relativePath
             )
@@ -525,10 +526,15 @@ struct NoteContentView<ShellNotices: View>: View {
             let fingerprint = noteFingerprint
             if !isEditing {
                 documentSession.readSelection = nil
-                documentSession.requestReadScrollRestore(
-                    fingerprint: fingerprint.sha256,
-                    reason: .documentLoad
-                )
+                // Entering Review now starts this task too. Preserve an
+                // explicit mode-handoff or navigation request for this exact
+                // revision instead of replacing its restoration identity.
+                if documentSession.scrollRestoreRequest?.fingerprint != fingerprint.sha256 {
+                    documentSession.requestReadScrollRestore(
+                        fingerprint: fingerprint.sha256,
+                        reason: .documentLoad
+                    )
+                }
             }
             if note.document.hasExactEmptyBody {
                 // A header-only Note is already a complete Review state. Do
@@ -542,15 +548,17 @@ struct NoteContentView<ShellNotices: View>: View {
                 }
                 return
             }
-            let html = await controller.readProjectionHTML(
-                target: target,
-                relativePath: relativePath,
-                source: source,
-                fingerprint: fingerprint,
-                workspaceID: state.currentVaultID,
-                semantic: note.workspaceSnapshot?.cachedSemanticDocument
-            )
-            guard !Task.isCancelled, fingerprint == noteFingerprint else { return }
+            let html = await documentSession.loadReadProjectionIfNeeded {
+                await controller.readProjectionHTML(
+                    target: target,
+                    relativePath: relativePath,
+                    source: source,
+                    fingerprint: fingerprint,
+                    workspaceID: state.currentVaultID,
+                    semantic: note.workspaceSnapshot?.cachedSemanticDocument
+                )
+            }
+            guard let html, !Task.isCancelled, fingerprint == noteFingerprint else { return }
             PerformanceProbe.shared.markReadHTMLReady(documentID: relativePath)
             renderedReadHTML = html
             renderedReadFingerprint = fingerprint.sha256
@@ -641,8 +649,8 @@ struct NoteContentView<ShellNotices: View>: View {
         }
     }
 
-    private var readProjectionTaskIdentity: String {
-        "\(note.relativePath):\(noteFingerprint.sha256)"
+    private var readProjectionTaskIdentity: String? {
+        documentSession.readProjectionTaskIdentity(relativePath: note.relativePath, fingerprint: noteFingerprint)
     }
 
     private var outlineSource: String {

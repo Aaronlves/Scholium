@@ -11,20 +11,22 @@ struct VaultSourceProjectionCacheTests {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         let first = try await fixture.catalog().snapshot(refreshFolders: false)
-        #expect(first.measurement.projectedDocuments == 1)
-        #expect(first.measurement.restoredSearchProjections == 0)
+        let firstSearch = try await fixture.index(first)
+        #expect(firstSearch.projectedDocuments == 1)
+        #expect(firstSearch.restoredSearchProjections == 0)
 
         let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
+        let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.measurement.readFiles == 1)
         #expect(reopened.measurement.parsedDocuments == 1)
-        #expect(reopened.measurement.projectedDocuments == 0)
-        #expect(reopened.measurement.restoredSearchProjections == 1)
+        #expect(reopenedSearch.projectedDocuments == 0)
+        #expect(reopenedSearch.restoredSearchProjections == 1)
         #expect(reopened.documents.map(\.rawContent) == [fixture.source])
         #expect(try Data(contentsOf: fixture.noteURL) == Data(fixture.source.utf8))
         #expect(reopened.sourceVersions == first.sourceVersions)
         #expect(reopened.fileMetadata == first.fileMetadata)
         #expect(reopened.semantics == first.semantics)
-        #expect(reopened.searchProjections == first.searchProjections)
+        #expect(fixture.projections(in: reopened) == fixture.projections(in: first))
     }
 
     @Test("Same-content atomic replacement reuses projections and refreshes observed file facts")
@@ -32,6 +34,7 @@ struct VaultSourceProjectionCacheTests {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         let first = try await fixture.catalog().snapshot(refreshFolders: false)
+        _ = try await fixture.index(first)
         let oldVersion = try #require(first.sourceVersions[Fixture.path])
         try Data(fixture.source.utf8).write(to: fixture.noteURL, options: .atomic)
         let replacementDate = Date(timeIntervalSince1970: 1_600_000_000)
@@ -39,6 +42,7 @@ struct VaultSourceProjectionCacheTests {
             [.modificationDate: replacementDate], ofItemAtPath: fixture.noteURL.path)
 
         let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
+        let reopenedSearch = try await fixture.index(reopened)
         let newVersion = try #require(reopened.sourceVersions[Fixture.path])
         let newMetadata = try #require(reopened.fileMetadata[Fixture.path])
         #expect(newVersion.fingerprint == oldVersion.fingerprint)
@@ -47,10 +51,10 @@ struct VaultSourceProjectionCacheTests {
         #expect(reopened.fileMetadata != first.fileMetadata)
         #expect(reopened.measurement.readFiles == 1)
         #expect(reopened.measurement.parsedDocuments == 1)
-        #expect(reopened.measurement.restoredSearchProjections == 1)
-        #expect(reopened.measurement.projectedDocuments == 0)
+        #expect(reopenedSearch.restoredSearchProjections == 1)
+        #expect(reopenedSearch.projectedDocuments == 0)
         #expect(reopened.documents.map(\.rawContent) == [fixture.source])
-        #expect(reopened.searchProjections == first.searchProjections)
+        #expect(fixture.projections(in: reopened) == fixture.projections(in: first))
     }
 
     @Test("A same-size edit with restored mtime misses the cache and parses new authored links")
@@ -58,6 +62,7 @@ struct VaultSourceProjectionCacheTests {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         let first = try await fixture.catalog().snapshot(refreshFolders: false)
+        _ = try await fixture.index(first)
         let oldMetadata = try #require(first.fileMetadata[Fixture.path])
         let oldDate = try #require(oldMetadata.modificationDate)
         let edited = fixture.source.replacingOccurrences(of: "Target", with: "NewOne")
@@ -67,10 +72,11 @@ struct VaultSourceProjectionCacheTests {
             [.modificationDate: oldDate], ofItemAtPath: fixture.noteURL.path)
 
         let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
+        let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.measurement.readFiles == 1)
         #expect(reopened.measurement.parsedDocuments == 1)
-        #expect(reopened.measurement.restoredSearchProjections == 0)
-        #expect(reopened.measurement.projectedDocuments == 1)
+        #expect(reopenedSearch.restoredSearchProjections == 0)
+        #expect(reopenedSearch.projectedDocuments == 1)
         #expect(reopened.documents.map(\.rawContent) == [edited])
         #expect(reopened.documents.map(\.fingerprint) != first.documents.map(\.fingerprint))
         let semantic = try #require(reopened.semantics[Fixture.path])
@@ -79,29 +85,30 @@ struct VaultSourceProjectionCacheTests {
 
         let clean = try await fixture.catalog(useCache: false).snapshot(refreshFolders: false)
         #expect(reopened.semantics == clean.semantics)
-        #expect(reopened.searchProjections == clean.searchProjections)
+        #expect(fixture.projections(in: reopened) == fixture.projections(in: clean))
     }
 
     @Test("A deleted source cannot be restored from a persisted Search projection")
     func missingSource() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
-        _ = try await fixture.catalog().snapshot(refreshFolders: false)
+        _ = try await fixture.index(fixture.catalog().snapshot(refreshFolders: false))
         #expect(fixture.hasPersistedProjection)
         try FileManager.default.removeItem(at: fixture.noteURL)
 
         let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
+        let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.documents.isEmpty)
         #expect(reopened.semantics.isEmpty)
-        #expect(reopened.searchProjections.isEmpty)
-        #expect(reopened.measurement.restoredSearchProjections == 0)
+        #expect(fixture.projections(in: reopened).isEmpty)
+        #expect(reopenedSearch.restoredSearchProjections == 0)
     }
 
     @Test("A source replaced by a symlink cannot borrow the original cached projection")
     func symlinkSource() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
-        _ = try await fixture.catalog().snapshot(refreshFolders: false)
+        _ = try await fixture.index(fixture.catalog().snapshot(refreshFolders: false))
         #expect(fixture.hasPersistedProjection)
         let outside = fixture.root.appendingPathComponent("Outside.md")
         let sentinel = Data(fixture.source.utf8)
@@ -111,9 +118,10 @@ struct VaultSourceProjectionCacheTests {
 
         let catalog = try await fixture.catalog()
         let reopened = try await catalog.snapshot(refreshFolders: false)
+        let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.documents.isEmpty)
-        #expect(reopened.searchProjections.isEmpty)
-        #expect(reopened.measurement.restoredSearchProjections == 0)
+        #expect(fixture.projections(in: reopened).isEmpty)
+        #expect(reopenedSearch.restoredSearchProjections == 0)
         // Enumeration excludes symbolic links. A later path hint still cannot
         // bypass the repository's descriptor-relative source authorization.
         await #expect(throws: (any Error).self) {
@@ -182,7 +190,36 @@ struct VaultSourceProjectionCacheTests {
                     repository: repository, vaultRole: .topicKnowledge,
                     applicationSupportURL: supportURL, vaultID: vaultID)
             }
-            return VaultSourceCatalog(repository: repository, vaultRole: .topicKnowledge)
+            return VaultSourceCatalog(repository: repository)
+        }
+
+        func index(_ snapshot: VaultSourceCatalogSnapshot) async throws -> (projectedDocuments: Int, restoredSearchProjections: Int) {
+            let index = await handle.services.searchIndex
+            let generation = try await index.workspaceGeneration()
+            // Clear only this stopped fixture runtime's disposable index so
+            // the next publication must prepare the source-derived rows.
+            _ = try await index.synchronize([], workspaceGeneration: generation + 1)
+            _ = try await index.synchronize(
+                snapshot.documents.map { document in
+                    SearchIndexDocument(
+                        vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                        document: document, semantic: snapshot.semantics[document.relativePath])
+                },
+                sourceProjectionCaches: snapshot.searchProjectionCache.map { [vaultID: $0] } ?? [:],
+                workspaceGeneration: generation + 2)
+            let measurement = try #require(await index.lastSynchronizationTimings)
+            return (measurement.projectedDocuments, measurement.restoredSearchProjections)
+        }
+
+        func projections(in snapshot: VaultSourceCatalogSnapshot) -> [String: SearchDocumentProjection] {
+            Dictionary(
+                uniqueKeysWithValues: snapshot.documents.map { document in
+                    (
+                        document.relativePath,
+                        snapshot.searchProjectionCache?.load(for: document)
+                            ?? SearchDocumentProjection(document: document, semantic: snapshot.semantics[document.relativePath])
+                    )
+                })
         }
 
         func remove() { try? FileManager.default.removeItem(at: root) }

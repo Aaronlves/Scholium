@@ -103,7 +103,8 @@ struct WorkspaceRefreshDiagnosticsTests {
                 await handle.awaitOpeningCompletionForTesting()
                 let refreshed = await handle.latestRefreshMeasurement
                 #expect(refreshed.projectedDocuments == 0)
-                #expect(refreshed.restoredSearchProjections == 500)
+                // Compatible indexed revisions need no decoded Search projection on reopen.
+                #expect(refreshed.restoredSearchProjections == 0)
                 let response = try await handle.discovery.search(
                     SearchRequest(
                         query: "refreshdiagnosticneedle",

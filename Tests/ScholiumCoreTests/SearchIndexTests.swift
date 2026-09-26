@@ -511,7 +511,7 @@ struct SearchIndexTests {
         let source = fixture.item(fixture.analyses, "Preserved.md", "---\ntitle: Preserved\n---\nexact source remains external")
         _ = try await index?.synchronize([source])
         index = nil
-        try setSchemaVersion(1, in: fixture.databaseURL)
+        try setSchemaVersion(SearchContract.schemaVersion - 1, in: fixture.databaseURL)
         let opened = try TriptychSearchIndex.openRecovering(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
         #expect(opened.recoveredCorruption)
         let result = try await opened.index.synchronize([source])

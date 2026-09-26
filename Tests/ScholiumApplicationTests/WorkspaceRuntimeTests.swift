@@ -1527,8 +1527,7 @@ struct WorkspaceRuntimeTests {
         let clean = try await VaultSourceCatalog(
             repository: try #require(
                 services.repositories[fixture.analysisNoteID.vaultID]
-            ),
-            vaultRole: .sourceCorpus
+            )
         ).snapshot(refreshFolders: false)
         #expect(
             incremental.documents.map(\.relativePath)
@@ -1590,42 +1589,51 @@ struct WorkspaceRuntimeTests {
         await cleanRuntime.shutdown()
     }
 
-    @Test("Library projection defers Search offsets without rereading source")
-    func sourceCatalogDefersSearchProjection() async throws {
+    @Test("Source snapshots leave Search preparation to the index and reuse unchanged revisions")
+    func sourceCatalogLeavesSearchPreparationToIndex() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let runtime = try await WorkspaceRuntime.snapshot(
             applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )
+            workspaceRegistryStorageURL: fixture.registryStorageURL)
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let services = await handle.services
+        let vaultID = fixture.analysisNoteID.vaultID
+        let cacheSupport = fixture.rootURL.appendingPathComponent("Separate Projection Cache")
+        try FileManager.default.createDirectory(at: cacheSupport, withIntermediateDirectories: true)
         let catalog = VaultSourceCatalog(
-            repository: try #require(
-                services.repositories[fixture.analysisNoteID.vaultID]
-            ),
-            vaultRole: .sourceCorpus
-        )
+            repository: try #require(services.repositories[vaultID]), vaultRole: .sourceCorpus,
+            applicationSupportURL: cacheSupport, vaultID: vaultID)
+        let first = try await catalog.snapshot(refreshFolders: false)
+        let firstDocument = try #require(first.documents.first)
+        let cache = try #require(first.searchProjectionCache)
+        #expect(first.semantics.count == first.documents.count)
+        #expect(first.measurement.readFiles == first.documents.count)
+        #expect(cache.load(for: firstDocument) == nil)
 
-        let library = try await catalog.snapshot(
-            refreshFolders: false,
-            projectionRequirement: .library
-        )
-        #expect(!library.documents.isEmpty)
-        #expect(library.semantics.count == library.documents.count)
-        #expect(library.searchProjections.isEmpty)
-        #expect(library.measurement.readFiles == library.documents.count)
-        #expect(library.measurement.projectedDocuments == 0)
-
-        let search = try await catalog.snapshot(
-            refreshFolders: false,
-            projectionRequirement: .search
-        )
-        #expect(search.documents.map(\.fingerprint) == library.documents.map(\.fingerprint))
-        #expect(search.searchProjections.count == search.documents.count)
-        #expect(search.measurement.readFiles == 0)
-        #expect(search.measurement.parsedDocuments == 0)
-        #expect(search.measurement.projectedDocuments == search.documents.count)
+        let index = services.searchIndex
+        let generation = try await index.workspaceGeneration()
+        _ = try await index.synchronize([], workspaceGeneration: generation + 1)
+        func inputs(_ source: VaultSourceCatalogSnapshot) -> [SearchIndexDocument] {
+            source.documents.map { document in
+                SearchIndexDocument(
+                    vaultID: vaultID, vaultName: "Analyses", vaultRole: .sourceCorpus,
+                    document: document, semantic: source.semantics[document.relativePath])
+            }
+        }
+        _ = try await index.synchronize(inputs(first), sourceProjectionCaches: [vaultID: cache], workspaceGeneration: generation + 2)
+        #expect(await index.lastSynchronizationTimings?.projectedDocuments == first.documents.count)
+        #expect(cache.load(for: firstDocument) != nil)
+        try await catalog.reconcile()
+        let unchanged = try await catalog.snapshot(refreshFolders: false)
+        #expect(unchanged.documents.map(\.fingerprint) == first.documents.map(\.fingerprint))
+        #expect(unchanged.semantics == first.semantics)
+        #expect(unchanged.measurement.readFiles == 0)
+        #expect(unchanged.measurement.parsedDocuments == 0)
+        let result = try await index.synchronize(inputs(unchanged), sourceProjectionCaches: [vaultID: cache], workspaceGeneration: generation + 3)
+        #expect(result.disposition == .unchanged)
+        #expect(await index.lastSynchronizationTimings?.projectedDocuments == 0)
+        #expect(await index.lastSynchronizationTimings?.restoredSearchProjections == 0)
         await runtime.shutdown()
     }
 

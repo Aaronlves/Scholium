@@ -1,16 +1,19 @@
-import CryptoKit
 import Darwin
 import Foundation
 import SQLite3
 import ScholiumContracts
 import os
 
-struct SearchSynchronizationTimings: Sendable {
-    let documentCount: Int
-    let changedCount: Int
-    let hashMissCount: Int
-    let preparationMilliseconds: Double
-    let publicationMilliseconds: Double
+package struct SearchSynchronizationTimings: Sendable {
+    package let documentCount: Int
+    package let changedCount: Int
+    package let projectedDocuments: Int
+    package let restoredSearchProjections: Int
+    package let projectionDuration: Duration
+    package let cacheReadDuration: Duration
+    package let cacheWriteDuration: Duration
+    package let preparationMilliseconds: Double
+    package let publicationMilliseconds: Double
 }
 
 public struct TriptychSearchIndexOpenResult: Sendable {
@@ -45,15 +48,12 @@ public struct SearchIndexDocumentEligibility: Hashable, Sendable {
 struct SearchIndexDelta: Sendable {
     let workspaceGeneration: UInt64
     let upserts: [SearchIndexDocument]
-    /// Prepared comparison hashes reused by the writer; source generations and
-    /// exact document fingerprints remain publication authority.
-    let indexedProjectionHashes: [String: String]
     let deletions: [VaultQualifiedNoteID]
 }
 
 public actor TriptychSearchIndex {
     private static let logger = Logger(subsystem: "com.scholium.app", category: "SearchIndex")
-    private(set) var lastSynchronizationTimings: SearchSynchronizationTimings?
+    package private(set) var lastSynchronizationTimings: SearchSynchronizationTimings?
     private let triptychID: UUID
     private let databaseURL: URL
     private let configuredVaults: [UUID: RegisteredVault]
@@ -67,13 +67,13 @@ public actor TriptychSearchIndex {
     private var recoveredGeneratedDatabase: Bool
     private var activeSynchronization: ActiveSynchronization?
     private var latestWorkspaceGeneration: UInt64 = 0
-    // Pure derived hashes, keyed by every immutable input to the existing hash.
-    // Replaced with each desired inventory; never used as publication authority.
-    private var projectionHashes: [String: (input: ProjectionHashInput, hash: String)] = [:]
     private var relatedPassageMemo = RelatedContentSourceProjectionMemo()
     private var relatedBackgroundPreparation = RelatedContentBackgroundPreparation()
     var relatedBackgroundPreparationStatistics: RelatedContentBackgroundPreparation.Statistics {
         relatedBackgroundPreparation.statistics
+    }
+    var relatedBackgroundPreparationRetention: (entries: Int, estimatedBytes: Int) {
+        (relatedBackgroundPreparation.entryCount, relatedBackgroundPreparation.estimatedByteCount)
     }
     var relatedPassagePreparationStatistics: RelatedContentSourceProjectionMemo.Statistics {
         relatedPassageMemo.statistics
@@ -89,19 +89,15 @@ public actor TriptychSearchIndex {
         (rankedSearchCache.count, rankedSearchCache.values.reduce(0) { $0 + $1.items.count })
     }
 
-    private struct ProjectionHashInput: Equatable {
-        // Swift String equality is canonical-equivalence, while JSON hashing is
-        // byte-sensitive. Bind the memo to exact source bytes as well.
-        let fingerprint: DocumentFingerprint
-        let sourceHash: String
-        let properties: SearchPropertyProjection
-        let paragraphs: [SearchParagraphProjection]
+    private struct SearchPublication: Sendable {
+        let result: TriptychSearchIndexSyncResult
+        let preparation: SearchProjectionPreparation
     }
 
     private struct ActiveSynchronization {
         let id: UUID
         let previous: SearchGenerationID?
-        let task: Task<TriptychSearchIndexSyncResult, Error>
+        let task: Task<SearchPublication, Error>
         let progress: ProgressDelivery?
     }
 
@@ -270,7 +266,8 @@ public actor TriptychSearchIndex {
     /// Standalone index test support. Workspace production must provide the
     /// coordinator-owned generation explicitly.
     func synchronize(
-        _ documents: [SearchIndexDocument]
+        _ documents: [SearchIndexDocument],
+        sourceProjectionCaches: [UUID: SourceSearchProjectionCache] = [:]
     ) async throws -> TriptychSearchIndexSyncResult {
         let latest = try workspaceGeneration()
         guard latest < UInt64(Int.max) else {
@@ -281,12 +278,14 @@ public actor TriptychSearchIndex {
         let workspaceGeneration = latest + 1
         return try await synchronize(
             documents,
+            sourceProjectionCaches: sourceProjectionCaches,
             workspaceGeneration: workspaceGeneration
         )
     }
 
     public func synchronize(
         _ documents: [SearchIndexDocument],
+        sourceProjectionCaches: [UUID: SourceSearchProjectionCache] = [:],
         workspaceGeneration: UInt64
     ) async throws -> TriptychSearchIndexSyncResult {
         try Task.checkCancellation()
@@ -305,6 +304,7 @@ public actor TriptychSearchIndex {
             try Task.checkCancellation()
             return try await synchronize(
                 documents,
+                sourceProjectionCaches: sourceProjectionCaches,
                 workspaceGeneration: workspaceGeneration
             )
         }
@@ -334,41 +334,14 @@ public actor TriptychSearchIndex {
         let manifestHash = Self.manifestHash(for: Array(desired.values))
         let previous = try generation()
         let stored = try Self.indexedProjectionState(in: database)
-        var desiredState: [String: IndexedProjectionState] = [:]
-        var nextProjectionHashes: [String: (input: ProjectionHashInput, hash: String)] = [:]
-        var hashMissCount = 0
-        for (key, value) in desired {
-            let fingerprint = value.document.fingerprint
-            let input = ProjectionHashInput(
-                fingerprint: fingerprint,
-                sourceHash: value.projection.projectionHash,
-                properties: value.propertyProjection, paragraphs: value.projection.paragraphs)
-            let hash: String
-            if let cached = projectionHashes[key], cached.input == input {
-                hash = cached.hash
-            } else {
-                hashMissCount += 1
-                hash = try Self.indexedProjectionHash(value)
-            }
-            nextProjectionHashes[key] = (input, hash)
-            desiredState[key] = IndexedProjectionState(
-                fingerprint: fingerprint,
-                projectionHash: hash,
-                vaultName: value.vaultName,
-                vaultRole: value.vaultRole,
-                stableNoteID: value.stableNoteID,
-                evidentialLayer: value.evidentialLayer
-            )
-        }
-        projectionHashes = nextProjectionHashes
+        let desiredState = desired.mapValues(IndexedProjectionState.init)
         let changedKeys = desired.keys.filter { stored[$0] != desiredState[$0] }
         let removedKeys = Set(stored.keys).subtracting(desired.keys)
         let delta = SearchIndexDelta(
             workspaceGeneration: workspaceGeneration,
             upserts: changedKeys.compactMap { desired[$0] },
-            indexedProjectionHashes: desiredState.mapValues(\.projectionHash),
             deletions: try removedKeys.map {
-                try Self.noteReference(documentKey: $0)
+                try Self.noteReference(documentKey: String(decoding: $0, as: UTF8.self))
             }
         )
         let preparationMilliseconds = Self.milliseconds(since: preparationStarted)
@@ -387,9 +360,10 @@ public actor TriptychSearchIndex {
                 )
             }
             currentAvailability = .current(previous)
+            relatedBackgroundPreparation.retain(generation: previous)
             recordSynchronizationTimings(
                 documentCount: desired.count, changedCount: changedKeys.count,
-                hashMissCount: hashMissCount, preparationMilliseconds: preparationMilliseconds,
+                preparation: .init(), preparationMilliseconds: preparationMilliseconds,
                 publicationStarted: publicationStarted)
             return TriptychSearchIndexSyncResult(
                 generation: previous,
@@ -442,6 +416,7 @@ public actor TriptychSearchIndex {
             try Self.publish(
                 delta: delta,
                 desired: desired,
+                sourceProjectionCaches: sourceProjectionCaches,
                 manifestHash: manifestHash,
                 previous: previous,
                 recoveredGeneratedDatabase: recovered,
@@ -458,12 +433,12 @@ public actor TriptychSearchIndex {
             progress: progress
         )
         activeSynchronization = active
-        let result = try await finishSynchronization(active)
+        let publication = try await finishSynchronization(active)
         recordSynchronizationTimings(
             documentCount: desired.count, changedCount: changedKeys.count,
-            hashMissCount: hashMissCount, preparationMilliseconds: preparationMilliseconds,
+            preparation: publication.preparation, preparationMilliseconds: preparationMilliseconds,
             publicationStarted: publicationStarted)
-        return result
+        return publication.result
     }
 
     private nonisolated static func milliseconds(since started: ContinuousClock.Instant) -> Double {
@@ -472,16 +447,21 @@ public actor TriptychSearchIndex {
     }
 
     private func recordSynchronizationTimings(
-        documentCount: Int, changedCount: Int, hashMissCount: Int,
+        documentCount: Int, changedCount: Int, preparation: SearchProjectionPreparation,
         preparationMilliseconds: Double, publicationStarted: ContinuousClock.Instant
     ) {
         let publicationMilliseconds = Self.milliseconds(since: publicationStarted)
         lastSynchronizationTimings = SearchSynchronizationTimings(
-            documentCount: documentCount, changedCount: changedCount, hashMissCount: hashMissCount,
+            documentCount: documentCount, changedCount: changedCount,
+            projectedDocuments: preparation.projectedDocuments,
+            restoredSearchProjections: preparation.restoredSearchProjections,
+            projectionDuration: preparation.projectionDuration,
+            cacheReadDuration: preparation.cacheReadDuration,
+            cacheWriteDuration: preparation.cacheWriteDuration,
             preparationMilliseconds: preparationMilliseconds,
             publicationMilliseconds: publicationMilliseconds)
         Self.logger.info(
-            "sync documents=\(documentCount, privacy: .public) changed=\(changedCount, privacy: .public) hash_misses=\(hashMissCount, privacy: .public) preparation_ms=\(preparationMilliseconds, privacy: .public) publication_ms=\(publicationMilliseconds, privacy: .public)"
+            "sync documents=\(documentCount, privacy: .public) changed=\(changedCount, privacy: .public) projected=\(preparation.projectedDocuments, privacy: .public) restored=\(preparation.restoredSearchProjections, privacy: .public) preparation_ms=\(preparationMilliseconds, privacy: .public) publication_ms=\(publicationMilliseconds, privacy: .public)"
         )
     }
 
@@ -502,22 +482,24 @@ public actor TriptychSearchIndex {
 
     private func finishSynchronization(
         _ synchronization: ActiveSynchronization
-    ) async throws -> TriptychSearchIndexSyncResult {
+    ) async throws -> SearchPublication {
         do {
-            let result = try await withTaskCancellationHandler {
+            let publication = try await withTaskCancellationHandler {
                 try await synchronization.task.value
             } onCancel: {
                 synchronization.task.cancel()
             }
             await finishProgress(synchronization)
+            let result = publication.result
             if activeSynchronization?.id == synchronization.id {
                 activeSynchronization = nil
                 recoveredGeneratedDatabase = false
                 currentAvailability = .current(result.generation)
+                relatedBackgroundPreparation.retain(generation: result.generation)
                 rankedSearchCache.removeAll(keepingCapacity: true)
                 rankedSearchAccessClock = 0
             }
-            return result
+            return publication
         } catch is CancellationError {
             await finishProgress(synchronization)
             if activeSynchronization?.id == synchronization.id {
@@ -555,7 +537,8 @@ public actor TriptychSearchIndex {
 
     private nonisolated static func publish(
         delta: SearchIndexDelta,
-        desired: [String: SearchIndexDocument],
+        desired: [Data: SearchIndexDocument],
+        sourceProjectionCaches: [UUID: SourceSearchProjectionCache],
         manifestHash: String,
         previous: SearchGenerationID?,
         recoveredGeneratedDatabase: Bool,
@@ -563,7 +546,8 @@ public actor TriptychSearchIndex {
         triptychID: UUID,
         database: SearchSQLiteDatabase,
         progress: (@Sendable (Int) -> Void)?
-    ) throws -> TriptychSearchIndexSyncResult {
+    ) throws -> SearchPublication {
+        var preparation = SearchProjectionPreparation()
         try database.transaction {
             try Task.checkCancellation()
             try requireNewerWorkspaceGeneration(
@@ -574,7 +558,7 @@ public actor TriptychSearchIndex {
                 if $0.vaultID != $1.vaultID {
                     return $0.vaultID.uuidString < $1.vaultID.uuidString
                 }
-                return $0.relativePath < $1.relativePath
+                return $0.relativePath.utf8.lexicographicallyPrecedes($1.relativePath.utf8)
             }) {
                 try deleteDocument(
                     key: documentKey(
@@ -585,8 +569,8 @@ public actor TriptychSearchIndex {
                 )
             }
             let orderedUpserts = delta.upserts.sorted {
-                documentKey(vaultID: $0.vaultID, path: $0.relativePath)
-                    < documentKey(vaultID: $1.vaultID, path: $1.relativePath)
+                documentKey(vaultID: $0.vaultID, path: $0.relativePath).utf8
+                    .lexicographicallyPrecedes(documentKey(vaultID: $1.vaultID, path: $1.relativePath).utf8)
             }
             for (offset, document) in orderedUpserts.enumerated() {
                 try Task.checkCancellation()
@@ -594,11 +578,14 @@ public actor TriptychSearchIndex {
                     vaultID: document.vaultID,
                     path: document.relativePath
                 )
-                guard let projectionHash = delta.indexedProjectionHashes[key] else {
-                    throw SearchIndexError.invalidDocuments("Search delta is missing its prepared projection hash.")
-                }
+                // Hydrate only this changed Note on the existing writer task.
+                // Last-good readers remain available and each iteration releases
+                // its complete text/coordinate projection after insertion.
+                let prepared = PreparedSearchIndexDocument(
+                    source: document, cache: sourceProjectionCaches[document.vaultID])
+                preparation.add(prepared.preparation)
                 try deleteDocument(key: key, from: database)
-                try insert(document, projectionHash: projectionHash, into: database)
+                try insert(prepared, into: database)
                 let completed = offset + 1
                 if completed == orderedUpserts.count || completed.isMultiple(of: 32) {
                     progress?(completed)
@@ -643,10 +630,9 @@ public actor TriptychSearchIndex {
         } else {
             disposition = .incrementallyUpdated
         }
-        return TriptychSearchIndexSyncResult(
-            generation: published,
-            disposition: disposition
-        )
+        return SearchPublication(
+            result: TriptychSearchIndexSyncResult(generation: published, disposition: disposition),
+            preparation: preparation)
     }
 
     public func search(
@@ -1901,11 +1887,31 @@ public actor TriptychSearchIndex {
 
     private struct IndexedProjectionState: Equatable, Sendable {
         let fingerprint: DocumentFingerprint
-        let projectionHash: String
-        let vaultName: String
+        let vaultNameUTF8: Data
         let vaultRole: VaultRole
-        let stableNoteID: String?
+        let stableNoteIDUTF8: Data?
         let evidentialLayer: EvidentialLayer
+        let hasBrokenLink: Bool
+
+        init(_ source: SearchIndexDocument) {
+            self.init(
+                fingerprint: source.document.fingerprint,
+                vaultNameUTF8: Data(source.vaultName.utf8), vaultRole: source.vaultRole,
+                stableNoteIDUTF8: source.stableNoteID.map { Data($0.utf8) },
+                evidentialLayer: source.evidentialLayer, hasBrokenLink: source.hasBrokenLink)
+        }
+
+        init(
+            fingerprint: DocumentFingerprint, vaultNameUTF8: Data, vaultRole: VaultRole,
+            stableNoteIDUTF8: Data?, evidentialLayer: EvidentialLayer, hasBrokenLink: Bool
+        ) {
+            self.fingerprint = fingerprint
+            self.vaultNameUTF8 = vaultNameUTF8
+            self.vaultRole = vaultRole
+            self.stableNoteIDUTF8 = stableNoteIDUTF8
+            self.evidentialLayer = evidentialLayer
+            self.hasBrokenLink = hasBrokenLink
+        }
     }
 
     nonisolated static func encodedParagraphs(_ paragraphs: [SearchParagraphProjection]) throws
@@ -1920,65 +1926,50 @@ public actor TriptychSearchIndex {
         try decodeGeneratedJSON([StoredParagraph].self, from: json).map { try $0.projection() }
     }
 
-    /// Binds source-derived text, authored-property entries and issues, and
-    /// complete paragraph projections to each indexed Note comparison.
-    private nonisolated static func indexedProjectionHash(
-        _ document: SearchIndexDocument
-    ) throws -> String {
-        let propertyData = try JSONEncoder.searchIndex.encode(
-            document.propertyProjection.entries
-        )
-        var material = Data(document.projection.projectionHash.utf8)
-        material.append(0)
-        material.append(propertyData)
-        material.append(try JSONEncoder.searchIndex.encode(document.propertyProjection.issues))
-        material.append(try encodedParagraphs(document.projection.paragraphs))
-        return SHA256.hash(data: material)
-            .map { String(format: "%02x", $0) }
-            .joined()
-    }
-
     private nonisolated static func indexedProjectionState(
         in database: SearchSQLiteDatabase
-    ) throws -> [String: IndexedProjectionState] {
-        var result: [String: IndexedProjectionState] = [:]
+    ) throws -> [Data: IndexedProjectionState] {
+        var result: [Data: IndexedProjectionState] = [:]
         try database.query(
             """
             SELECT vault_id, relative_path, fingerprint_sha256, fingerprint_byte_count,
-                   projection_hash, vault_name, role, stable_note_id, evidential_layer
+                   has_broken_link, vault_name, role, stable_note_id, evidential_layer
             FROM search_documents ORDER BY vault_id, relative_path;
             """
         ) { row in
             guard let vault = row.text(at: 0), let path = row.text(at: 1),
-                let sha = row.text(at: 2), let hash = row.text(at: 4),
+                let sha = row.text(at: 2),
                 let vaultName = row.text(at: 5), let roleText = row.text(at: 6),
                 let vaultRole = VaultRole(rawValue: roleText),
                 let layerText = row.text(at: 8),
                 let evidentialLayer = EvidentialLayer(rawValue: layerText)
             else { return }
-            result["\(vault)/\(path)"] = IndexedProjectionState(
+            result[Data("\(vault)/\(path)".utf8)] = IndexedProjectionState(
                 fingerprint: DocumentFingerprint(sha256: sha, byteCount: row.int(at: 3)),
-                projectionHash: hash,
-                vaultName: vaultName,
-                vaultRole: vaultRole,
-                stableNoteID: row.text(at: 7),
-                evidentialLayer: evidentialLayer
-            )
+                vaultNameUTF8: Data(vaultName.utf8), vaultRole: vaultRole,
+                stableNoteIDUTF8: row.text(at: 7).map { Data($0.utf8) },
+                evidentialLayer: evidentialLayer, hasBrokenLink: row.int(at: 4) == 1)
+
         }
         return result
     }
 
     private static func validatedDocuments(
         _ documents: [SearchIndexDocument]
-    ) throws -> [String: SearchIndexDocument] {
-        var result: [String: SearchIndexDocument] = [:]
+    ) throws -> [Data: SearchIndexDocument] {
+        var result: [Data: SearchIndexDocument] = [:]
+        var canonicalKeys = Set<String>()
         for document in documents {
             let key = documentKey(vaultID: document.vaultID, path: document.relativePath)
-            guard result.updateValue(document, forKey: key) == nil else {
+            // Keep the established Note identity domain: two simultaneous
+            // canonically equivalent paths are ambiguous, even when their bytes
+            // differ. Data keys below still detect a single exact-path rename.
+            guard canonicalKeys.insert(key).inserted else {
                 throw SearchIndexError.invalidDocuments(
                     "duplicate Search document \(document.vaultID)/\(document.relativePath)"
                 )
             }
+            result[Data(key.utf8)] = document
         }
         return result
     }
@@ -1995,11 +1986,11 @@ public actor TriptychSearchIndex {
     }
 
     private static func insert(
-        _ item: SearchIndexDocument,
-        projectionHash: String,
+        _ prepared: PreparedSearchIndexDocument,
         into database: SearchSQLiteDatabase
     ) throws {
-        let projection = item.projection
+        let item = prepared.source
+        let projection = prepared.projection
         // Prepared in the same publication transaction as the exact source
         // fingerprint. Queries never trigger first-use paragraph parsing for
         // an indexed revision, including after application restart.
@@ -2016,10 +2007,10 @@ public actor TriptychSearchIndex {
                 document_key, vault_id, vault_name, role, role_order, relative_path,
                 stable_note_id, title, normalized_title, title_key, filename_key, path_key,
                 fingerprint_sha256, fingerprint_byte_count, evidential_layer,
-                callout_roles, has_broken_link, projection_hash, line_starts,
+                callout_roles, has_broken_link, line_starts,
                 source_utf16_count, property_issues, paragraphs, paragraphs_complete,
                 related_projection, related_projection_hash, related_lexical, related_lexical_hash
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             bindings: [
                 .text(documentKey(vaultID: item.vaultID, path: item.relativePath)),
@@ -2037,10 +2028,9 @@ public actor TriptychSearchIndex {
                 .text(item.evidentialLayer.rawValue),
                 .text(" " + projection.calloutRoles.sorted().joined(separator: " ") + " "),
                 .int(projection.hasBrokenLink ? 1 : 0),
-                .text(projectionHash),
                 .text(lineStarts),
                 .int(item.document.rawContent.utf16.count),
-                .text(String(decoding: try JSONEncoder.searchIndex.encode(item.propertyProjection.issues), as: UTF8.self)),
+                .text(String(decoding: try JSONEncoder.searchIndex.encode(prepared.properties.issues), as: UTF8.self)),
                 .text(String(decoding: try encodedParagraphs(projection.paragraphs), as: UTF8.self)),
                 .int(item.document.hasProvableBodyBoundary ? 1 : 0),
                 .blob(relatedProjection),
@@ -2096,7 +2086,7 @@ public actor TriptychSearchIndex {
                 ]
             )
         }
-        for property in item.propertyProjection.entries {
+        for property in prepared.properties.entries {
             let members: [SearchPropertyProjection.StringMember?] =
                 property.stringMembers.isEmpty
                 ? [nil]
@@ -2227,7 +2217,6 @@ public actor TriptychSearchIndex {
                 evidential_layer TEXT NOT NULL,
                 callout_roles TEXT NOT NULL,
                 has_broken_link INTEGER NOT NULL,
-                projection_hash TEXT NOT NULL,
                 line_starts TEXT NOT NULL,
                 source_utf16_count INTEGER NOT NULL,
                 property_issues TEXT NOT NULL,
@@ -2542,27 +2531,53 @@ public actor TriptychSearchIndex {
 }
 
 extension TriptychSearchIndex {
-    /// Warm the existing revision-checked paragraph memo without scoring or
-    /// selecting results. The caller still supplies current, authorized source
-    /// documents; candidate identity and fingerprint are verified by that memo.
+    /// A complete candidate scan's cache protection, not source authority. It
+    /// holds no source documents or projections and expires with its generation.
+    public struct RelatedPassagePreparation: Sendable {
+        fileprivate let generation: SearchGenerationID
+        fileprivate let seedNoteID: VaultQualifiedNoteID
+        fileprivate let roles: [RelatedContentCandidateRole]
+        fileprivate let protection: RelatedContentSourceProjectionMemo.ScanProtection
+    }
+
+    public func beginRelatedPassagePreparation(
+        _ request: RelatedContentRequest, candidates: [RelatedContentCandidate], generation: SearchGenerationID
+    ) throws -> RelatedPassagePreparation {
+        try Task.checkCancellation()
+        return try database.readTransaction {
+            guard currentAvailability == .current(generation),
+                try Self.readGeneration(in: database, triptychID: triptychID) == generation
+            else { throw CancellationError() }
+            let protection = relatedPassageMemo.scanProtection(
+                for: candidates.lazy.filter { candidate in
+                    candidate.note != request.seed.noteID
+                        && request.candidateRoles.contains { $0.vaultRole == candidate.vaultRole }
+                })
+            return .init(generation: generation, seedNoteID: request.seed.noteID, roles: request.candidateRoles, protection: protection)
+        }
+    }
+
+    /// Warm one bounded batch without scoring or selecting results. Reuse the
+    /// same protection across every batch so early misses cannot evict the
+    /// resident tail of an over-budget scan. No transaction spans actor calls.
     public func prepareRelatedPassages(
-        _ request: RelatedContentRequest, sources: [RelatedContentSource]
+        _ preparation: RelatedPassagePreparation, sources: [RelatedContentSource]
     ) throws {
         try Task.checkCancellation()
-        let eligible = sources.filter { source in
-            source.candidate.note != request.seed.noteID
-                && request.candidateRoles.contains { $0.vaultRole == source.candidate.vaultRole }
-        }
-        let protection = relatedPassageMemo.scanProtection(for: eligible)
         try database.readTransaction {
+            guard currentAvailability == .current(preparation.generation),
+                try Self.readGeneration(in: database, triptychID: triptychID) == preparation.generation
+            else { throw CancellationError() }
             var seen = Set<VaultQualifiedNoteID>()
-            for source in eligible {
+            for source in sources {
                 try Task.checkCancellation()
-                guard source.document.fingerprint == source.candidate.fingerprint,
+                guard source.candidate.note != preparation.seedNoteID,
+                    preparation.roles.contains(where: { $0.vaultRole == source.candidate.vaultRole }),
+                    source.document.fingerprint == source.candidate.fingerprint,
                     Data(source.document.relativePath.utf8) == Data(source.candidate.note.relativePath.utf8),
                     seen.insert(source.candidate.note).inserted
                 else { continue }
-                _ = try relatedSourceProjection(for: source, protection: protection)
+                _ = try relatedSourceProjection(for: source, protection: preparation.protection)
             }
             try Task.checkCancellation()
         }

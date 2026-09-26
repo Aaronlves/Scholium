@@ -154,7 +154,7 @@ struct RelatedContentSourceProjectionMemo {
         var lastAccess: UInt64
     }
 
-    /// Immutable protection for one synchronous scan. It owns no projections
+    /// Immutable protection for one complete scan, including a batched warmup. It owns no projections
     /// and never changes source eligibility or the result of a cache miss.
     struct ScanProtection: Sendable {
         fileprivate let notes: Set<VaultQualifiedNoteID>
@@ -176,16 +176,25 @@ struct RelatedContentSourceProjectionMemo {
     }
 
     func scanProtection(for sources: [RelatedContentSource]) -> ScanProtection {
+        scanProtection(
+            for: sources.lazy.compactMap { source -> RelatedContentCandidate? in
+                guard source.document.fingerprint == source.candidate.fingerprint,
+                    source.document.relativePath.utf8.elementsEqual(source.candidate.note.relativePath.utf8)
+                else { return nil }
+                return source.candidate
+            })
+    }
+
+    /// Candidate metadata can protect an already resident revision before its
+    /// fresh source is loaded. This never authorizes a projection hit: the
+    /// source still passes the exact path/fingerprint checks in `projection`.
+    func scanProtection(for candidates: some Sequence<RelatedContentCandidate>) -> ScanProtection {
         var notes = Set<VaultQualifiedNoteID>()
         var byteCount = 0
-        for source in sources {
-            let candidate = source.candidate
-            let document = source.document
+        for candidate in candidates {
             guard let entry = entries[candidate.note],
-                entry.fingerprint == document.fingerprint,
-                document.fingerprint == candidate.fingerprint,
+                entry.fingerprint == candidate.fingerprint,
                 entry.role == candidate.vaultRole,
-                entry.relativePathUTF8 == Data(document.relativePath.utf8),
                 entry.relativePathUTF8 == Data(candidate.note.relativePath.utf8),
                 notes.insert(candidate.note).inserted
             else { continue }

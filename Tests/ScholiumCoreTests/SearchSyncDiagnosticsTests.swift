@@ -79,7 +79,9 @@ struct SearchSyncDiagnosticsTests {
                 ))
         }
         let totalBytes = documents.reduce(0) { $0 + $1.document.fingerprint.byteCount }
-        let totalSegments = documents.reduce(0) { $0 + $1.projection.segments.count }
+        let totalSegments = documents.reduce(0) {
+            $0 + SearchDocumentProjection(document: $1.document, semantic: $1.semantic).segments.count
+        }
         print(
             "SEARCH_SYNC_DIAGNOSTIC fixture notes=\(documents.count) bytes=\(totalBytes) segments=\(totalSegments)"
         )
@@ -113,7 +115,7 @@ struct SearchSyncDiagnosticsTests {
     private func report(_ index: TriptychSearchIndex, scenario: String, sample: Int) async {
         guard let timing = await index.lastSynchronizationTimings else { return }
         print(
-            "SEARCH_SYNC_DIAGNOSTIC sample=\(sample) scenario=\(scenario) preparation_ms=\(timing.preparationMilliseconds) publication_ms=\(timing.publicationMilliseconds) changed=\(timing.changedCount) hash_misses=\(timing.hashMissCount)"
+            "SEARCH_SYNC_DIAGNOSTIC sample=\(sample) scenario=\(scenario) preparation_ms=\(timing.preparationMilliseconds) publication_ms=\(timing.publicationMilliseconds) changed=\(timing.changedCount) projected=\(timing.projectedDocuments) restored=\(timing.restoredSearchProjections)"
         )
     }
 }

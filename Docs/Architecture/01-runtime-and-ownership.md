@@ -69,13 +69,14 @@ reconciliation. Initial document visible-layout readiness delays competing full
 reconcile, with a bounded fallback for Library-only or failed-renderer cases.
 Shutdown cancels and awaits completion; it never creates a second source runtime.
 
-Each workspace handle owns one Note Search index; pooled vault catalogs retain
-exact documents, descriptor-observed file facts, source versions and disposable
-semantic/search projections, not another index. Watchers start before reconcile.
-Precise events update catalog entries; event loss triggers complete reconcile.
-Compatible cached projections require fresh source reads and fingerprint proof.
-Independent vault preparation may overlap, but Graph construction, index
-synchronization and snapshot publication remain ordered in one refresh cycle.
+Each workspace owns one Search index. Vault catalogs retain exact documents,
+descriptor-observed facts, source versions and semantics. Watchers precede
+reconciliation; precise events update entries; event loss requires full
+reconciliation. Search compares complete source inventory and dynamic metadata;
+its writer prepares/restores changed Notes' projections and releases each after
+insertion. Cache reuse requires fresh source reads and fingerprint proof. Vault
+preparation may overlap; Graph, Search synchronization and snapshot publication
+remain ordered.
 
 One refresh coordinator serializes prepare → Search synchronize → snapshot
 publish. Requests arriving after a cycle captures its cohort belong to the next

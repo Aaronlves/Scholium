@@ -67,6 +67,10 @@ public struct SourceSearchProjectionCache: Sendable {
         }
     }
 
+    func isBound(to vaultID: UUID, role: VaultRole) -> Bool {
+        self.vaultID == vaultID && self.role == role
+    }
+
     /// Persistence failures are nonfatal: the freshly generated projection
     /// remains usable and the next process recomputes it from exact source.
     public func store(_ projection: SearchDocumentProjection, for document: NoteDocument) {

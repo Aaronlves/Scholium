@@ -222,6 +222,28 @@ final class DocumentSessionModel: ObservableObject {
         renderedReadReadyFingerprint = ""
     }
 
+    var requiresReadProjection: Bool {
+        !isEnteringManagedCreation
+            && presentation.requiresReadProjection(
+                editorIsLoaded: editorSession.isLoaded,
+                hasEditorError: editorSession.errorMessage != nil
+            )
+    }
+
+    func readProjectionTaskIdentity(relativePath: String, fingerprint: DocumentFingerprint) -> String? {
+        requiresReadProjection ? "\(relativePath):\(fingerprint.sha256)" : nil
+    }
+
+    /// The task can be queued before a mode change or finish after one. Both
+    /// edges require current demand; the caller still checks source revision
+    /// before publishing HTML. This never clears a previously viewed Review.
+    func loadReadProjectionIfNeeded(using render: () async -> String) async -> String? {
+        guard requiresReadProjection, !Task.isCancelled else { return nil }
+        let html = await render()
+        guard requiresReadProjection, !Task.isCancelled else { return nil }
+        return html
+    }
+
     func preparePresentationMode(_ mode: NotePresentationMode) {
         updatePresentation { $0.prepare(mode) }
     }

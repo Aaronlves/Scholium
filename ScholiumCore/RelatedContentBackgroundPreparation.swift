@@ -111,13 +111,22 @@ struct RelatedContentBackgroundPreparation {
         estimatedByteCount += cost
     }
 
+    /// Publication invalidates obsolete pools even when no later retrieval
+    /// occurs. Keep the current generation through unchanged synchronization.
+    mutating func retain(generation: SearchGenerationID) {
+        for key in Array(entries.keys) where key.generation != generation {
+            remove(key)
+        }
+    }
+
     private mutating func remove(_ key: Key) {
         if let removed = entries.removeValue(forKey: key) { estimatedByteCount -= removed.cost }
     }
 
     private mutating func invalidateIncompatible(with key: Key) {
+        retain(generation: key.generation)
         for existing in Array(entries.keys)
-        where existing.generation != key.generation || (existing.note == key.note && existing != key) {
+        where existing.note == key.note && existing != key {
             remove(existing)
         }
     }

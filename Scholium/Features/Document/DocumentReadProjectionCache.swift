@@ -54,6 +54,17 @@ actor DocumentReadProjectionCache {
         guard DocumentFingerprint(content: source) == key.fingerprint else {
             return ""
         }
+        // Keep one requested revision per Note. Old HTML can be regenerated
+        // after Undo; retaining every save otherwise crowds out other Notes.
+        // Do this even when the new projection is too large to cache.
+        for previous in entries.keys.filter({
+            $0.workspaceID == key.workspaceID
+                && $0.stableTarget == key.stableTarget
+                && $0.relativePath == key.relativePath
+                && $0 != key
+        }) {
+            entries.removeValue(forKey: previous)
+        }
         nextAccess &+= 1
         if var cached = entries[key] {
             cached.access = nextAccess
@@ -84,6 +95,10 @@ actor DocumentReadProjectionCache {
 
     func entryCount(workspaceID: UUID?) -> Int {
         entries.keys.filter { $0.workspaceID == workspaceID }.count
+    }
+
+    func retainedHTMLByteCount(workspaceID: UUID?) -> Int {
+        entries.reduce(0) { $0 + ($1.key.workspaceID == workspaceID ? $1.value.byteCount : 0) }
     }
 
     private func evictIfNeeded(workspaceID: UUID?) {

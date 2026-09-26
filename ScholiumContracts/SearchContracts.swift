@@ -235,23 +235,19 @@ public enum SearchResult: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Canonical source inventory for one complete Search generation. Search-specific
+/// text, coordinates and property projections are prepared only for changed Notes
+/// by the index owner; this value never retains those derived projections.
 public struct SearchIndexDocument: Sendable {
     public let vaultID: UUID
     public let vaultName: String
     public let vaultRole: VaultRole
     public let relativePath: String
     public let stableNoteID: String?
-    public let title: String
-    public let aliases: [String]
-    public let authors: [String]
-    public let publicationDate: String?
-    public let tags: [String]
     public let document: NoteDocument
     public let semantic: MarkdownSemanticDocument
     public let evidentialLayer: EvidentialLayer
     public let hasBrokenLink: Bool
-    public let projection: SearchDocumentProjection
-    public let propertyProjection: SearchPropertyProjection
 
     public init(
         vaultID: UUID,
@@ -262,81 +258,18 @@ public struct SearchIndexDocument: Sendable {
         semantic: MarkdownSemanticDocument? = nil,
         hasBrokenLink: Bool = false
     ) {
-        self.init(
-            vaultID: vaultID,
-            vaultName: vaultName,
-            vaultRole: vaultRole,
-            document: document,
-            stableNoteID: stableNoteID,
-            resolvedSemantic: semantic
-                ?? MarkdownSemanticDocument(
-                    parsing: document
-                ),
-            sourceProjection: nil,
-            hasBrokenLink: hasBrokenLink
-        )
-    }
-
-    package init(
-        vaultID: UUID,
-        vaultName: String,
-        vaultRole: VaultRole,
-        document: NoteDocument,
-        stableNoteID: String? = nil,
-        semantic: MarkdownSemanticDocument,
-        cachedSourceProjection: SearchDocumentProjection,
-        hasBrokenLink: Bool = false
-    ) {
-        self.init(
-            vaultID: vaultID,
-            vaultName: vaultName,
-            vaultRole: vaultRole,
-            document: document,
-            stableNoteID: stableNoteID,
-            resolvedSemantic: semantic,
-            sourceProjection: cachedSourceProjection,
-            hasBrokenLink: hasBrokenLink
-        )
-    }
-
-    private init(
-        vaultID: UUID,
-        vaultName: String,
-        vaultRole: VaultRole,
-        document: NoteDocument,
-        stableNoteID: String?,
-        resolvedSemantic: MarkdownSemanticDocument,
-        sourceProjection cachedSourceProjection: SearchDocumentProjection?,
-        hasBrokenLink: Bool
-    ) {
         self.vaultID = vaultID
         self.vaultName = vaultName
         self.vaultRole = vaultRole
         self.document = document
-        self.semantic = resolvedSemantic
         relativePath = document.relativePath
         self.stableNoteID = stableNoteID
-        let profile = WorkflowProfileResolver.resolve(vaultRole: vaultRole)
-        title = ResearchNoteTitleResolver.resolve(document: document)
-        let yaml = SearchPropertyProjection(document: document)
-        aliases = yaml.textValues(forExactKey: "aliases")
-        authors = yaml.textValues(forExactKey: "authors") + yaml.textValues(forExactKey: "author")
-        publicationDate = yaml.textValues(forExactKey: "publication_date").first
-        tags = yaml.stringListMembers(forExactKey: "keywords").map(\.value)
+        // Reuse only a projection bound to these exact canonical bytes. A stale
+        // derived value cannot replace or reinterpret the supplied source.
+        self.semantic =
+            semantic?.fingerprint == document.fingerprint
+            ? semantic! : MarkdownSemanticDocument(parsing: document)
         self.hasBrokenLink = hasBrokenLink
-        let sourceProjection =
-            (cachedSourceProjection
-                ?? SearchDocumentProjection(
-                    document: document,
-                    profile: profile,
-                    semantic: self.semantic
-                ))
-        projection = sourceProjection.applyingDynamicState(
-            hasBrokenLink: hasBrokenLink
-        )
-        // One Yams compose per note. `SearchPropertyProjection` does not vary
-        // by profile, so re-deriving it here only repeated the parse.
-        propertyProjection = yaml
         evidentialLayer =
             switch vaultRole {
             case .sourceCorpus: .paperAnalysis

@@ -73,7 +73,8 @@ struct ParagraphSearchTests {
         let result = try #require(response.noteResults.first)
         #expect(result.relativePath == "Exact.md")
         #expect(result.fingerprint == document.document.fingerprint)
-        #expect(result.paragraphRanges.first == document.projection.paragraphs.last?.range)
+        let projection = SearchDocumentProjection(document: document.document)
+        #expect(result.paragraphRanges.first == projection.paragraphs.last?.range)
         #expect(Data(document.document.rawContent.utf8) == Data(source.utf8))
     }
 

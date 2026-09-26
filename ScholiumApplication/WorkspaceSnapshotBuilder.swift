@@ -77,7 +77,7 @@ enum WorkspaceSnapshotBuilder {
         let allDocuments: [NoteDocument]
         let activeDocuments: [NoteDocument]
         let semantics: [String: MarkdownSemanticDocument]
-        let searchProjections: [String: SearchDocumentProjection]
+        let searchProjectionCache: SourceSearchProjectionCache?
         let identityStates: [String: WorkspaceNoteIdentityState]
         let identityRecovery: NoteIdentityRecoveryState
         let identityHealthIssues: [String]
@@ -134,8 +134,7 @@ enum WorkspaceSnapshotBuilder {
 
         let sourceSnapshot = try await sourceCatalog.snapshot(
             refreshFolders: false,
-            consumePendingMeasurement: true,
-            projectionRequirement: .library
+            consumePendingMeasurement: true
         )
         let allDocuments = sourceSnapshot.documents
         let activeDocuments = allDocuments
@@ -274,14 +273,14 @@ enum WorkspaceSnapshotBuilder {
                 enumeratedFiles: measurement.enumeratedFiles,
                 readFiles: measurement.readFiles,
                 parsedDocuments: measurement.parsedDocuments,
-                projectedDocuments: measurement.projectedDocuments,
-                restoredSearchProjections: measurement.restoredSearchProjections,
+                projectedDocuments: 0,
+                restoredSearchProjections: 0,
                 enumerationDuration: measurement.enumerationDuration,
                 readDuration: measurement.readDuration,
                 parseDuration: measurement.parseDuration,
-                projectionDuration: measurement.projectionDuration,
-                cacheReadDuration: measurement.cacheReadDuration,
-                cacheWriteDuration: measurement.cacheWriteDuration,
+                projectionDuration: .zero,
+                cacheReadDuration: .zero,
+                cacheWriteDuration: .zero,
                 identityProjectionDuration: identityProjectionDuration,
                 linkCatalogProjectionDuration: .zero,
                 graphDuration: .zero,
@@ -455,7 +454,7 @@ enum WorkspaceSnapshotBuilder {
                     allDocuments: allDocuments,
                     activeDocuments: activeDocuments,
                     semantics: semantics,
-                    searchProjections: sourceSnapshot.searchProjections,
+                    searchProjectionCache: sourceSnapshot.searchProjectionCache,
                     identityStates: identityStates,
                     identityRecovery: identityRecovery,
                     identityHealthIssues: identityHealthIssues
@@ -517,10 +516,7 @@ enum WorkspaceSnapshotBuilder {
                         vaultID: loaded.vault.id,
                         relativePath: document.relativePath
                     )
-                    guard let semantic = loaded.semantics[document.relativePath],
-                        let cachedSourceProjection = loaded.searchProjections[
-                            document.relativePath
-                        ]
+                    guard let semantic = loaded.semantics[document.relativePath]
                     else {
                         throw ScholiumApplicationError.incompleteTriptych(
                             assignment.id
@@ -539,7 +535,6 @@ enum WorkspaceSnapshotBuilder {
                         document: document,
                         stableNoteID: stableNoteID,
                         semantic: semantic,
-                        cachedSourceProjection: cachedSourceProjection,
                         hasBrokenLink: brokenNoteIDs.contains(id)
                     )
                 })
@@ -550,8 +545,13 @@ enum WorkspaceSnapshotBuilder {
         let searchStart = clock.now
         let searchPublication = try await dependencies.searchIndex.synchronize(
             searchDocuments,
+            sourceProjectionCaches: Dictionary(
+                uniqueKeysWithValues: loadedVaults.compactMap { loaded in
+                    loaded.searchProjectionCache.map { (loaded.vault.id, $0) }
+                }),
             workspaceGeneration: workspaceGeneration
         )
+        let searchPreparation = await dependencies.searchIndex.lastSynchronizationTimings
         let searchDuration = searchStart.duration(to: clock.now)
         guard searchPublication.generation.sourceManifestHash == sourceManifestHash else {
             throw SearchIndexError.invalidDocuments(
@@ -694,12 +694,8 @@ enum WorkspaceSnapshotBuilder {
                 parsedDocuments: sourceMeasurements.reduce(0) {
                     $0 + $1.parsedDocuments
                 },
-                projectedDocuments: sourceMeasurements.reduce(0) {
-                    $0 + $1.projectedDocuments
-                },
-                restoredSearchProjections: sourceMeasurements.reduce(0) {
-                    $0 + $1.restoredSearchProjections
-                },
+                projectedDocuments: searchPreparation?.projectedDocuments ?? 0,
+                restoredSearchProjections: searchPreparation?.restoredSearchProjections ?? 0,
                 enumerationDuration: sourceMeasurements.reduce(.zero) {
                     $0 + $1.enumerationDuration
                 },
@@ -709,15 +705,9 @@ enum WorkspaceSnapshotBuilder {
                 parseDuration: sourceMeasurements.reduce(.zero) {
                     $0 + $1.parseDuration
                 },
-                projectionDuration: sourceMeasurements.reduce(.zero) {
-                    $0 + $1.projectionDuration
-                },
-                cacheReadDuration: sourceMeasurements.reduce(.zero) {
-                    $0 + $1.cacheReadDuration
-                },
-                cacheWriteDuration: sourceMeasurements.reduce(.zero) {
-                    $0 + $1.cacheWriteDuration
-                },
+                projectionDuration: searchPreparation?.projectionDuration ?? .zero,
+                cacheReadDuration: searchPreparation?.cacheReadDuration ?? .zero,
+                cacheWriteDuration: searchPreparation?.cacheWriteDuration ?? .zero,
                 identityProjectionDuration: identityProjectionDuration,
                 linkCatalogProjectionDuration: linkCatalogProjectionDuration,
                 graphDuration: graphDuration,

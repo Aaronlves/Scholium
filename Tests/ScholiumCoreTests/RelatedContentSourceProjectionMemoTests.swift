@@ -278,7 +278,7 @@ struct RelatedContentSourceProjectionMemoTests {
         #expect(oversize.estimatedByteCount == 0)
     }
 
-    @Test("Repeated over-budget scans reuse resident requested Notes without omitting uncached projections")
+    @Test("Complete metadata protection reuses an over-budget scan's unread tail across source batches")
     func protectedFullScans() throws {
         let a = source("A.md", "needle freedom.")
         let b = source("B.md", "needle freedom.")
@@ -291,7 +291,7 @@ struct RelatedContentSourceProjectionMemoTests {
         for input in [a, b, c] { _ = try memo.projection(for: input) }
         for _ in 0..<2 {
             let before = memo.statistics
-            let protection = memo.scanProtection(for: [a, b, c])
+            let protection = memo.scanProtection(for: [a, b, c].map(\.candidate))
             var preparations: [String] = []
             for input in [a, b, c] {
                 let result = try memo.projection(for: input, protection: protection) { document in

@@ -440,7 +440,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     /// only graph state changed. Source catalog versions bind the cached
     /// projection to the exact `NoteDocument`; this copy operation updates
     /// only the dynamic Search field and its projection hash.
-    func applyingDynamicState(
+    package func applyingDynamicState(
         hasBrokenLink: Bool
     ) -> SearchDocumentProjection {
         var updated = self

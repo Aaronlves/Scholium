@@ -579,8 +579,8 @@ struct TriptychSearchIndexTests {
         #expect(response.noteResults.first?.evidentialLayer == .topicNote)
     }
 
-    @Test("Canonically equivalent source edits do not reuse a byte-distinct projection hash")
-    func canonicalUnicodeHashMemo() async throws {
+    @Test("Canonically equivalent source edits publish their exact byte-distinct revision")
+    func canonicalUnicodeSourcePublication() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)

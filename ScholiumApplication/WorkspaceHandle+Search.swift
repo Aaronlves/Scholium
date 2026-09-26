@@ -98,10 +98,19 @@ private func currentNoteCompletionTerms(
 }
 
 extension WorkspaceHandle {
+    struct RelatedContentPreparationMeasurement: Sendable {
+        var sourceCount = 0
+        var peakBufferedSourceCount = 0
+        /// Exact freshly read source Data held by the batch, excluding parsed
+        /// fields, Core memos and allocator overhead; not a process footprint.
+        var peakBufferedSourceBytes = 0
+    }
+
     /// Best-effort preparation uses the same registered scope, source reads and
     /// Core projections as foreground retrieval. It publishes no workspace or
     /// result state, and never replaces the foreground's current-source checks.
-    func prepareRelatedContent(_ request: RelatedContentRequest) async throws {
+    @discardableResult
+    func prepareRelatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentPreparationMeasurement? {
         try requireActive()
         try Task.checkCancellation()
         guard currentSnapshot.phase.isComplete else { throw ScholiumApplicationError.workspaceStillLoading(id) }
@@ -122,30 +131,54 @@ extension WorkspaceHandle {
             captured.discovery.searchGeneration == generation,
             currentSnapshot.discovery.searchGeneration == generation,
             currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
-        else { return }
+        else { return nil }
+        let preparation = try await services.searchIndex.beginRelatedPassagePreparation(
+            background, candidates: response.identityCandidates + response.lexicalCandidates, generation: generation)
+        func requireCurrentPreparation() throws {
+            try requireActive()
+            try Task.checkCancellation()
+            guard currentSnapshot.discovery.searchGeneration == generation,
+                currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
+            else { throw CancellationError() }
+        }
+        try requireCurrentPreparation()
         var sources: [RelatedContentSource] = []
+        sources.reserveCapacity(16)
+        var measurement = RelatedContentPreparationMeasurement()
+        var bufferedSourceBytes = 0
         var seen = Set<VaultQualifiedNoteID>()
         for candidate in response.identityCandidates + response.lexicalCandidates where seen.insert(candidate.note).inserted {
             try Task.checkCancellation()
+            let document: NoteDocument
             do {
-                let document = try await loadDocument(candidate.note)
-                guard document.fingerprint == candidate.fingerprint,
-                    document.rawContent.utf16.count <= RelatedContentContract.maximumSeedUTF16Count
-                else { continue }
-                sources.append(.init(candidate: candidate, document: document))
+                document = try await loadDocument(candidate.note)
             } catch is CancellationError { throw CancellationError() } catch { continue }
+            try Task.checkCancellation()
+            guard document.fingerprint == candidate.fingerprint,
+                document.rawContent.utf16.count <= RelatedContentContract.maximumSeedUTF16Count
+            else { continue }
+            sources.append(.init(candidate: candidate, document: document))
+            measurement.sourceCount += 1
+            bufferedSourceBytes += document.sourceBytes.count
+            measurement.peakBufferedSourceCount = max(measurement.peakBufferedSourceCount, sources.count)
+            measurement.peakBufferedSourceBytes = max(measurement.peakBufferedSourceBytes, bufferedSourceBytes)
+            // Flush at either bound. A single large permitted Note may cross
+            // the byte bound, but cannot cause the following Notes to accumulate.
+            if sources.count == 16 || bufferedSourceBytes >= 1_024 * 1_024 {
+                try requireCurrentPreparation()
+                try await services.searchIndex.prepareRelatedPassages(preparation, sources: sources)
+                sources.removeAll(keepingCapacity: true)
+                bufferedSourceBytes = 0
+                try requireCurrentPreparation()
+                await Task.yield()
+            }
         }
-        try requireActive()
-        try Task.checkCancellation()
-        guard currentSnapshot.discovery.searchGeneration == generation,
-            currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
-        else { return }
-        try await services.searchIndex.prepareRelatedPassages(background, sources: sources)
-        try requireActive()
-        try Task.checkCancellation()
-        guard currentSnapshot.discovery.searchGeneration == generation,
-            currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
-        else { throw CancellationError() }
+        try requireCurrentPreparation()
+        if !sources.isEmpty {
+            try await services.searchIndex.prepareRelatedPassages(preparation, sources: sources)
+        }
+        try requireCurrentPreparation()
+        return measurement
     }
 
     func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {

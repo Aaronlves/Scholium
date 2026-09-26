@@ -32,8 +32,10 @@ struct SearchProjectionNormalizationTests {
             pendingWhitespace = nil
             let folded = SearchTextNormalization.lexicalNormalize(value)
             expectedText.append(folded)
-            expectedMappings.append((
-                normalizedOffset..<(normalizedOffset + folded.utf16.count), range))
+            expectedMappings.append(
+                (
+                    normalizedOffset..<(normalizedOffset + folded.utf16.count), range
+                ))
             normalizedOffset += folded.utf16.count
         }
         #expect(body.normalizedText == expectedText)

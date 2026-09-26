@@ -108,7 +108,8 @@ preimage comparison, not query macros or hidden expansion.
 Recommendation retrieval shares Search's transaction/decoder/parser. Core owns
 bounded, revision/generation/role-bound Note preparation reused by independent
 focused recall. Application validates current sources before scoring; prewarming
-authorizes no results. The window owns silent preparation cancellation and
+reads bounded batches under one protection snapshot covering all candidates and checks
+the generation at each batch. It authorizes no results. The window owns cancellation and
 foreground priority. Complete comparison sets precede bounded excerpts; exact
 source ranges remain separate from readable highlights. Deduplication preserves
 provenance; contextual weighting implies no philosophical interpretation.

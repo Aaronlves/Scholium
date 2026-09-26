@@ -531,11 +531,12 @@ struct SearchProtocolContractsTests {
             document: document,
             stableNoteID: stableID
         )
+        let projection = SearchDocumentProjection(document: indexed.document, semantic: indexed.semantic)
         #expect(indexed.stableNoteID == stableID)
-        #expect(indexed.aliases.isEmpty)
-        #expect(indexed.authors == ["T. Scanlon", "Legacy Author"])
-        #expect(indexed.publicationDate == "1998")
-        #expect(indexed.tags.isEmpty)
+        #expect(projection.aliases.isEmpty)
+        #expect(projection.authors == ["T. Scanlon", "Legacy Author"])
+        #expect(projection.publicationDate == "1998")
+        #expect(projection.tags.isEmpty)
 
     }
 
@@ -614,28 +615,14 @@ struct SearchProtocolContractsTests {
             profile: .analysis,
             semantic: semantic
         )
-        let reused = SearchIndexDocument(
-            vaultID: UUID(),
-            vaultName: "Analyses",
-            vaultRole: .sourceCorpus,
-            document: document,
-            semantic: semantic,
-            cachedSourceProjection: cached,
-            hasBrokenLink: true
-        )
-        let rebuilt = SearchIndexDocument(
-            vaultID: reused.vaultID,
-            vaultName: reused.vaultName,
-            vaultRole: reused.vaultRole,
-            document: document,
-            semantic: semantic,
-            hasBrokenLink: true
-        )
+        let reused = cached.applyingDynamicState(hasBrokenLink: true)
+        let rebuilt = SearchDocumentProjection(
+            document: document, profile: .analysis, semantic: semantic, hasBrokenLink: true)
 
-        #expect(reused.projection == rebuilt.projection)
-        #expect(reused.projection.segments == cached.segments)
-        #expect(reused.projection.hasBrokenLink)
-        #expect(reused.projection.projectionHash != cached.projectionHash)
+        #expect(reused == rebuilt)
+        #expect(reused.segments == cached.segments)
+        #expect(reused.hasBrokenLink)
+        #expect(reused.projectionHash != cached.projectionHash)
     }
 
     @Test("BOM, CRLF, emoji, and RTL text retain exact UTF-16 source ranges")

@@ -99,4 +99,82 @@ struct DocumentReadProjectionCacheTests {
         #expect(await cache.entryCount(workspaceID: firstWorkspace) == 2)
         #expect(await cache.entryCount(workspaceID: secondWorkspace) == 1)
     }
+
+    @Test("Repeated committed revisions retain only the last requested HTML and preserve other Notes")
+    func supersededRevisionsReleaseHTML() async {
+        let cache = DocumentReadProjectionCache()
+        let workspaceID = UUID()
+        let otherWorkspaceID = UUID()
+        let otherSource = "# Other Note\n\nKeep this projection.\n"
+        let otherHTML = await cache.html(
+            for: key(workspaceID: workspaceID, target: "other", path: "Other.md", source: otherSource),
+            source: otherSource)
+        let otherWorkspaceHTML = await cache.html(
+            for: key(workspaceID: otherWorkspaceID, source: otherSource), source: otherSource)
+        let body = String(repeating: "A paragraph about memory and exact source.\n\n", count: 256)
+        var latestHTML = ""
+        for revision in 0..<32 {
+            let source = "# Revision \(revision)\n\n" + body
+            latestHTML = await cache.html(for: key(workspaceID: workspaceID, source: source), source: source)
+            #expect(latestHTML.contains("Revision \(revision)"))
+        }
+
+        let retainedBytes = await cache.retainedHTMLByteCount(workspaceID: workspaceID)
+        let expectedBytes = latestHTML.utf8.count + otherHTML.utf8.count
+        print("Read HTML cache after 32 committed revisions: \(retainedBytes) retained UTF-8 bytes; latest revision plus other Note: \(expectedBytes) bytes")
+        #expect(await cache.entryCount(workspaceID: workspaceID) == 2)
+        #expect(retainedBytes == expectedBytes)
+        #expect(await cache.entryCount(workspaceID: otherWorkspaceID) == 1)
+        #expect(await cache.retainedHTMLByteCount(workspaceID: otherWorkspaceID) == otherWorkspaceHTML.utf8.count)
+
+        // Undo or an older in-flight request may legitimately request exact old
+        // bytes again. Retention follows requests, not monotonic revisions.
+        let revertedSource = "# Revision 0\n\n" + body
+        let revertedHTML = await cache.html(
+            for: key(workspaceID: workspaceID, source: revertedSource), source: revertedSource)
+        #expect(revertedHTML.contains("Revision 0"))
+        #expect(await cache.entryCount(workspaceID: workspaceID) == 2)
+        #expect(await cache.retainedHTMLByteCount(workspaceID: workspaceID) == revertedHTML.utf8.count + otherHTML.utf8.count)
+    }
+
+    @Test("An oversized revision releases old HTML without evicting another Note")
+    func oversizedRevisionDiscardsSupersededHTML() async {
+        let cache = DocumentReadProjectionCache(maximumBytesPerWorkspace: 4_096)
+        let workspaceID = UUID()
+        let source = "# Small\n"
+        _ = await cache.html(for: key(workspaceID: workspaceID, source: source), source: source)
+        let otherSource = "# Other\n"
+        let otherHTML = await cache.html(
+            for: key(workspaceID: workspaceID, target: "other", path: "Other.md", source: otherSource),
+            source: otherSource)
+
+        let oversizedSource = String(repeating: "A large revision.\n\n", count: 512)
+        let oversizedHTML = await cache.html(
+            for: key(workspaceID: workspaceID, source: oversizedSource), source: oversizedSource)
+        #expect(oversizedHTML.utf8.count > 4_096)
+        #expect(await cache.entryCount(workspaceID: workspaceID) == 1)
+        #expect(await cache.retainedHTMLByteCount(workspaceID: workspaceID) == otherHTML.utf8.count)
+    }
+
+    @Test("A mismatched source cannot evict the valid revision")
+    func invalidFingerprintPreservesCachedHTML() async {
+        let cache = DocumentReadProjectionCache()
+        let workspaceID = UUID()
+        let source = "# Valid\n"
+        let html = await cache.html(for: key(workspaceID: workspaceID, source: source), source: source)
+        let rejectedHTML = await cache.html(
+            for: key(workspaceID: workspaceID, source: "# Different revision\n"), source: "# Wrong bytes\n")
+
+        #expect(rejectedHTML.isEmpty)
+        #expect(await cache.entryCount(workspaceID: workspaceID) == 1)
+        #expect(await cache.retainedHTMLByteCount(workspaceID: workspaceID) == html.utf8.count)
+    }
+
+    private func key(
+        workspaceID: UUID, target: String = "changing-note", path: String = "Changing.md", source: String
+    ) -> DocumentReadProjectionKey {
+        .init(
+            workspaceID: workspaceID, stableTarget: target, relativePath: path,
+            fingerprint: DocumentFingerprint(content: source))
+    }
 }

@@ -7,28 +7,13 @@ private enum VaultSourceCatalogError: Error {
     case incompleteAuthorization(String)
 }
 
-enum VaultSourceCatalogProjectionRequirement: Equatable, Sendable {
-    /// Authoritative source plus the semantic projection needed by Library and
-    /// Document presentation. Search-specific visible text and offset maps may
-    /// be completed later by the same catalog actor.
-    case library
-    /// The complete source-bound Search projection required by a Triptych
-    /// generation.
-    case search
-}
-
 struct VaultSourceCatalogMeasurement: Equatable, Sendable {
     let enumeratedFiles: Int
     let readFiles: Int
     let parsedDocuments: Int
-    let projectedDocuments: Int
-    let restoredSearchProjections: Int
     let enumerationDuration: Duration
     let readDuration: Duration
     let parseDuration: Duration
-    let projectionDuration: Duration
-    let cacheReadDuration: Duration
-    let cacheWriteDuration: Duration
 }
 
 struct VaultSourceCatalogSnapshot: Sendable {
@@ -37,7 +22,8 @@ struct VaultSourceCatalogSnapshot: Sendable {
     let sourceVersions: [String: SourceVersion]
     let fileMetadata: [String: WorkspaceFileMetadata]
     let semantics: [String: MarkdownSemanticDocument]
-    let searchProjections: [String: SearchDocumentProjection]
+    /// Storage capability only; decoded Search material is prepared by the index on demand.
+    let searchProjectionCache: SourceSearchProjectionCache?
     let folders: [VaultRelativeFolderPath]
     let measurement: VaultSourceCatalogMeasurement
 }
@@ -50,21 +36,15 @@ actor VaultSourceCatalog {
         let document: NoteDocument
         let version: SourceVersion
         let fileMetadata: WorkspaceFileMetadata
-        let semantic: MarkdownSemanticDocument?
-        let searchProjection: SearchDocumentProjection?
+        let semantic: MarkdownSemanticDocument
     }
 
     private struct AuthorizedRecord: Sendable {
         let record: Record?
         let didRead: Bool
         let didParse: Bool
-        let didProject: Bool
-        let didRestore: Bool
         let readDuration: Duration
         let parseDuration: Duration
-        let projectionDuration: Duration
-        let cacheReadDuration: Duration
-        let cacheWriteDuration: Duration
     }
 
     private struct CandidateAuthorization: Sendable {
@@ -73,7 +53,6 @@ actor VaultSourceCatalog {
     }
 
     private let repository: VaultRepository
-    private let vaultRole: VaultRole
     private let searchProjectionCache: SourceSearchProjectionCache?
     private var records: [String: Record] = [:]
     private var folders: [VaultRelativeFolderPath] = []
@@ -84,24 +63,18 @@ actor VaultSourceCatalog {
         enumeratedFiles: 0,
         readFiles: 0,
         parsedDocuments: 0,
-        projectedDocuments: 0,
-        restoredSearchProjections: 0,
         enumerationDuration: .zero,
         readDuration: .zero,
-        parseDuration: .zero,
-        projectionDuration: .zero,
-        cacheReadDuration: .zero,
-        cacheWriteDuration: .zero
+        parseDuration: .zero
     )
     private var lastMeasurement = VaultSourceCatalog.emptyMeasurement
     private var pendingMeasurement = VaultSourceCatalog.emptyMeasurement
 
     init(
-        repository: VaultRepository, vaultRole: VaultRole,
+        repository: VaultRepository,
         searchProjectionCache: SourceSearchProjectionCache? = nil
     ) {
         self.repository = repository
-        self.vaultRole = vaultRole
         self.searchProjectionCache = searchProjectionCache
     }
 
@@ -110,7 +83,6 @@ actor VaultSourceCatalog {
         applicationSupportURL: URL, vaultID: UUID
     ) {
         self.repository = repository
-        self.vaultRole = vaultRole
         self.searchProjectionCache = SourceSearchProjectionCache(
             applicationSupportURL: applicationSupportURL, vaultID: vaultID, role: vaultRole
         )
@@ -118,17 +90,11 @@ actor VaultSourceCatalog {
 
     func snapshot(
         refreshFolders: Bool = true,
-        consumePendingMeasurement: Bool = false,
-        projectionRequirement: VaultSourceCatalogProjectionRequirement = .search
+        consumePendingMeasurement: Bool = false
     ) async throws -> VaultSourceCatalogSnapshot {
         if !isInitialized || needsFullReconcile {
-            try await reconcile(projectionRequirement: projectionRequirement)
+            try await reconcile()
         } else {
-            if projectionRequirement == .search,
-                records.contains(where: { $0.value.searchProjection == nil })
-            {
-                try completeSearchProjections()
-            }
             if refreshFolders {
                 let observedFolders = try await repository.folderRelativePaths()
                 if observedFolders != folders {
@@ -147,9 +113,7 @@ actor VaultSourceCatalog {
         return makeSnapshot(measurement: measurement)
     }
 
-    func reconcile(
-        projectionRequirement: VaultSourceCatalogProjectionRequirement = .search
-    ) async throws {
+    func reconcile() async throws {
         let clock = ContinuousClock()
         let enumerationStart = clock.now
         let paths = try await repository.markdownRelativePaths()
@@ -160,19 +124,13 @@ actor VaultSourceCatalog {
         var nextRecords = records
         var readFiles = 0
         var parsedDocuments = 0
-        var projectedDocuments = 0
-        var restoredSearchProjections = 0
         var readDuration = Duration.zero
         var parseDuration = Duration.zero
-        var projectionDuration = Duration.zero
-        var cacheReadDuration = Duration.zero
-        var cacheWriteDuration = Duration.zero
 
         let candidates = pathSet.union(nextRecords.keys).sorted()
         let authorizations = try await authorizeCandidates(
             candidates,
-            existingRecords: nextRecords,
-            projectionRequirement: projectionRequirement
+            existingRecords: nextRecords
         )
         for path in candidates {
             try Task.checkCancellation()
@@ -182,16 +140,11 @@ actor VaultSourceCatalog {
             }
             readDuration += authorized.readDuration
             parseDuration += authorized.parseDuration
-            projectionDuration += authorized.projectionDuration
-            cacheReadDuration += authorized.cacheReadDuration
-            cacheWriteDuration += authorized.cacheWriteDuration
             if authorized.didRead { readFiles += 1 }
             if authorized.didParse { parsedDocuments += 1 }
-            if authorized.didProject { projectedDocuments += 1 }
-            if authorized.didRestore { restoredSearchProjections += 1 }
             if let record = authorized.record {
                 nextRecords[path] = record
-                if authorized.didRead || authorized.didProject || authorized.didRestore { changed = true }
+                if authorized.didRead { changed = true }
             } else {
                 nextRecords[path] = nil
                 if existing != nil { changed = true }
@@ -209,14 +162,9 @@ actor VaultSourceCatalog {
                 enumeratedFiles: paths.count,
                 readFiles: readFiles,
                 parsedDocuments: parsedDocuments,
-                projectedDocuments: projectedDocuments,
-                restoredSearchProjections: restoredSearchProjections,
                 enumerationDuration: enumerationDuration,
                 readDuration: readDuration,
-                parseDuration: parseDuration,
-                projectionDuration: projectionDuration,
-                cacheReadDuration: cacheReadDuration,
-                cacheWriteDuration: cacheWriteDuration
+                parseDuration: parseDuration
             ))
     }
 
@@ -229,36 +177,25 @@ actor VaultSourceCatalog {
         var nextRecords = records
         var readFiles = 0
         var parsedDocuments = 0
-        var projectedDocuments = 0
-        var restoredSearchProjections = 0
         let clock = ContinuousClock()
         var enumerationDuration = Duration.zero
         var readDuration = Duration.zero
         var parseDuration = Duration.zero
-        var projectionDuration = Duration.zero
-        var cacheReadDuration = Duration.zero
-        var cacheWriteDuration = Duration.zero
         for path in deletions.union(upserts).sorted() {
             try Task.checkCancellation()
             guard (try? MarkdownRelativePath(path)) != nil else { continue }
             let existing = nextRecords[path]
             let authorized = try await authorizedRecord(
                 relativePath: path,
-                existing: existing,
-                projectionRequirement: .search
+                existing: existing
             )
             readDuration += authorized.readDuration
             parseDuration += authorized.parseDuration
-            projectionDuration += authorized.projectionDuration
-            cacheReadDuration += authorized.cacheReadDuration
-            cacheWriteDuration += authorized.cacheWriteDuration
             if authorized.didRead { readFiles += 1 }
             if authorized.didParse { parsedDocuments += 1 }
-            if authorized.didProject { projectedDocuments += 1 }
-            if authorized.didRestore { restoredSearchProjections += 1 }
             if let record = authorized.record {
                 nextRecords[path] = record
-                if authorized.didRead || authorized.didProject || authorized.didRestore { changed = true }
+                if authorized.didRead { changed = true }
             } else {
                 nextRecords[path] = nil
                 if existing != nil { changed = true }
@@ -282,14 +219,9 @@ actor VaultSourceCatalog {
                 enumeratedFiles: 0,
                 readFiles: readFiles,
                 parsedDocuments: parsedDocuments,
-                projectedDocuments: projectedDocuments,
-                restoredSearchProjections: restoredSearchProjections,
                 enumerationDuration: enumerationDuration,
                 readDuration: readDuration,
-                parseDuration: parseDuration,
-                projectionDuration: projectionDuration,
-                cacheReadDuration: cacheReadDuration,
-                cacheWriteDuration: cacheWriteDuration
+                parseDuration: parseDuration
             ))
     }
 
@@ -340,13 +272,10 @@ actor VaultSourceCatalog {
     /// failed reconcile cannot partially replace the retained catalog.
     private func authorizeCandidates(
         _ candidates: [String],
-        existingRecords: [String: Record],
-        projectionRequirement: VaultSourceCatalogProjectionRequirement
+        existingRecords: [String: Record]
     ) async throws -> [String: AuthorizedRecord] {
         guard !candidates.isEmpty else { return [:] }
         let repository = repository
-        let vaultRole = vaultRole
-        let searchProjectionCache = searchProjectionCache
         let workerCount = min(
             candidates.count,
             max(2, ProcessInfo.processInfo.activeProcessorCount)
@@ -363,11 +292,8 @@ actor VaultSourceCatalog {
                         relativePath: path,
                         authorizedRecord: try await Self.authorizedRecord(
                             repository: repository,
-                            vaultRole: vaultRole,
-                            searchProjectionCache: searchProjectionCache,
                             relativePath: path,
-                            existing: existing,
-                            projectionRequirement: projectionRequirement
+                            existing: existing
                         )
                     )
                 }
@@ -387,11 +313,8 @@ actor VaultSourceCatalog {
                             relativePath: path,
                             authorizedRecord: try await Self.authorizedRecord(
                                 repository: repository,
-                                vaultRole: vaultRole,
-                                searchProjectionCache: searchProjectionCache,
                                 relativePath: path,
-                                existing: existing,
-                                projectionRequirement: projectionRequirement
+                                existing: existing
                             )
                         )
                     }
@@ -403,26 +326,19 @@ actor VaultSourceCatalog {
 
     private func authorizedRecord(
         relativePath: String,
-        existing: Record?,
-        projectionRequirement: VaultSourceCatalogProjectionRequirement
+        existing: Record?
     ) async throws -> AuthorizedRecord {
         try await Self.authorizedRecord(
             repository: repository,
-            vaultRole: vaultRole,
-            searchProjectionCache: searchProjectionCache,
             relativePath: relativePath,
-            existing: existing,
-            projectionRequirement: projectionRequirement
+            existing: existing
         )
     }
 
     private static func authorizedRecord(
         repository: VaultRepository,
-        vaultRole: VaultRole,
-        searchProjectionCache: SourceSearchProjectionCache?,
         relativePath: String,
-        existing: Record?,
-        projectionRequirement: VaultSourceCatalogProjectionRequirement
+        existing: Record?
     ) async throws -> AuthorizedRecord {
         if let existing {
             do {
@@ -430,37 +346,12 @@ actor VaultSourceCatalog {
                     relativePath: relativePath,
                     version: existing.version
                 ) {
-                    if projectionRequirement == .search,
-                        existing.semantic != nil,
-                        existing.searchProjection == nil
-                    {
-                        let completed = recordByCompletingSearchProjection(
-                            existing, vaultRole: vaultRole, cache: searchProjectionCache
-                        )
-                        return AuthorizedRecord(
-                            record: completed.record,
-                            didRead: false,
-                            didParse: false,
-                            didProject: !completed.projection.restored,
-                            didRestore: completed.projection.restored,
-                            readDuration: .zero,
-                            parseDuration: .zero,
-                            projectionDuration: completed.projection.computeDuration,
-                            cacheReadDuration: completed.projection.cacheReadDuration,
-                            cacheWriteDuration: completed.projection.cacheWriteDuration
-                        )
-                    }
                     return AuthorizedRecord(
                         record: existing,
                         didRead: false,
                         didParse: false,
-                        didProject: false,
-                        didRestore: false,
                         readDuration: .zero,
-                        parseDuration: .zero,
-                        projectionDuration: .zero,
-                        cacheReadDuration: .zero,
-                        cacheWriteDuration: .zero
+                        parseDuration: .zero
                     )
                 }
             } catch VaultRepositoryError.fileDoesNotExist {
@@ -468,13 +359,8 @@ actor VaultSourceCatalog {
                     record: nil,
                     didRead: false,
                     didParse: false,
-                    didProject: false,
-                    didRestore: false,
                     readDuration: .zero,
-                    parseDuration: .zero,
-                    projectionDuration: .zero,
-                    cacheReadDuration: .zero,
-                    cacheWriteDuration: .zero
+                    parseDuration: .zero
                 )
             }
         }
@@ -487,155 +373,38 @@ actor VaultSourceCatalog {
             let parseStart = clock.now
             let semantic = MarkdownSemanticDocument(parsing: loaded.document)
             let parseDuration = parseStart.duration(to: clock.now)
-            let projection =
-                projectionRequirement == .search
-                ? makeSearchProjection(
-                    document: loaded.document, semantic: semantic,
-                    vaultRole: vaultRole, cache: searchProjectionCache
-                ) : nil
             return AuthorizedRecord(
                 record: Record(
                     document: loaded.document,
                     version: loaded.version,
                     fileMetadata: loaded.fileMetadata,
-                    semantic: semantic,
-                    searchProjection: projection?.value
+                    semantic: semantic
                 ),
                 didRead: true,
                 didParse: true,
-                didProject: projection != nil && projection?.restored == false,
-                didRestore: projection?.restored == true,
                 readDuration: loaded.readDuration,
-                parseDuration: parseDuration,
-                projectionDuration: projection?.computeDuration ?? .zero,
-                cacheReadDuration: projection?.cacheReadDuration ?? .zero,
-                cacheWriteDuration: projection?.cacheWriteDuration ?? .zero
+                parseDuration: parseDuration
             )
         } catch VaultRepositoryError.fileDoesNotExist {
             return AuthorizedRecord(
                 record: nil,
                 didRead: false,
                 didParse: false,
-                didProject: false,
-                didRestore: false,
                 readDuration: .zero,
-                parseDuration: .zero,
-                projectionDuration: .zero,
-                cacheReadDuration: .zero,
-                cacheWriteDuration: .zero
+                parseDuration: .zero
             )
         }
-    }
-
-    private func completeSearchProjections() throws {
-        var nextRecords = records
-        var projectedDocuments = 0
-        var restoredSearchProjections = 0
-        var projectionDuration = Duration.zero
-        var cacheReadDuration = Duration.zero
-        var cacheWriteDuration = Duration.zero
-        for (path, record) in records
-        where record.semantic != nil && record.searchProjection == nil {
-            try Task.checkCancellation()
-            let completed = Self.recordByCompletingSearchProjection(
-                record, vaultRole: vaultRole, cache: searchProjectionCache
-            )
-            nextRecords[path] = completed.record
-            if completed.projection.restored { restoredSearchProjections += 1 } else { projectedDocuments += 1 }
-            projectionDuration += completed.projection.computeDuration
-            cacheReadDuration += completed.projection.cacheReadDuration
-            cacheWriteDuration += completed.projection.cacheWriteDuration
-        }
-        guard projectedDocuments + restoredSearchProjections > 0 else { return }
-        try advanceGeneration()
-        records = nextRecords
-        record(
-            VaultSourceCatalogMeasurement(
-                enumeratedFiles: 0, readFiles: 0, parsedDocuments: 0,
-                projectedDocuments: projectedDocuments,
-                restoredSearchProjections: restoredSearchProjections,
-                enumerationDuration: .zero, readDuration: .zero, parseDuration: .zero,
-                projectionDuration: projectionDuration,
-                cacheReadDuration: cacheReadDuration, cacheWriteDuration: cacheWriteDuration
-            ))
-    }
-
-    private struct SearchProjectionResult {
-        let value: SearchDocumentProjection
-        let restored: Bool
-        let computeDuration: Duration
-        let cacheReadDuration: Duration
-        let cacheWriteDuration: Duration
-    }
-
-    private static func makeSearchProjection(
-        document: NoteDocument, semantic: MarkdownSemanticDocument,
-        vaultRole: VaultRole, cache: SourceSearchProjectionCache?
-    ) -> SearchProjectionResult {
-        let clock = ContinuousClock()
-        let readStart = clock.now
-        if let cached = cache?.load(for: document) {
-            return SearchProjectionResult(
-                value: cached, restored: true, computeDuration: .zero,
-                cacheReadDuration: readStart.duration(to: clock.now), cacheWriteDuration: .zero
-            )
-        }
-        let cacheReadDuration = cache == nil ? Duration.zero : readStart.duration(to: clock.now)
-        let computeStart = clock.now
-        let projection = SearchDocumentProjection(
-            document: document,
-            profile: WorkflowProfileResolver.resolve(vaultRole: vaultRole), semantic: semantic
-        )
-        let computeDuration = computeStart.duration(to: clock.now)
-        let writeStart = clock.now
-        cache?.store(projection, for: document)
-        return SearchProjectionResult(
-            value: projection, restored: false, computeDuration: computeDuration,
-            cacheReadDuration: cacheReadDuration,
-            cacheWriteDuration: cache == nil ? .zero : writeStart.duration(to: clock.now)
-        )
-    }
-
-    private static func recordByCompletingSearchProjection(
-        _ record: Record, vaultRole: VaultRole, cache: SourceSearchProjectionCache?
-    ) -> (record: Record, projection: SearchProjectionResult) {
-        // Library records have already been descriptor-read in this catalog's
-        // lifetime. Persistent projections never provide source or semantics.
-        let projection = makeSearchProjection(
-            document: record.document, semantic: record.semantic!,
-            vaultRole: vaultRole, cache: cache
-        )
-        return (
-            Record(
-                document: record.document, version: record.version,
-                fileMetadata: record.fileMetadata, semantic: record.semantic,
-                searchProjection: projection.value
-            ), projection
-        )
     }
 
     private func record(_ measurement: VaultSourceCatalogMeasurement) {
         lastMeasurement = measurement
         pendingMeasurement = VaultSourceCatalogMeasurement(
-            enumeratedFiles: pendingMeasurement.enumeratedFiles
-                + measurement.enumeratedFiles,
+            enumeratedFiles: pendingMeasurement.enumeratedFiles + measurement.enumeratedFiles,
             readFiles: pendingMeasurement.readFiles + measurement.readFiles,
-            parsedDocuments: pendingMeasurement.parsedDocuments
-                + measurement.parsedDocuments,
-            projectedDocuments: pendingMeasurement.projectedDocuments
-                + measurement.projectedDocuments,
-            restoredSearchProjections: pendingMeasurement.restoredSearchProjections
-                + measurement.restoredSearchProjections,
-            enumerationDuration: pendingMeasurement.enumerationDuration
-                + measurement.enumerationDuration,
-            readDuration: pendingMeasurement.readDuration
-                + measurement.readDuration,
-            parseDuration: pendingMeasurement.parseDuration
-                + measurement.parseDuration,
-            projectionDuration: pendingMeasurement.projectionDuration
-                + measurement.projectionDuration,
-            cacheReadDuration: pendingMeasurement.cacheReadDuration + measurement.cacheReadDuration,
-            cacheWriteDuration: pendingMeasurement.cacheWriteDuration + measurement.cacheWriteDuration
+            parsedDocuments: pendingMeasurement.parsedDocuments + measurement.parsedDocuments,
+            enumerationDuration: pendingMeasurement.enumerationDuration + measurement.enumerationDuration,
+            readDuration: pendingMeasurement.readDuration + measurement.readDuration,
+            parseDuration: pendingMeasurement.parseDuration + measurement.parseDuration
         )
     }
 
@@ -650,15 +419,8 @@ actor VaultSourceCatalog {
             documents: ordered,
             sourceVersions: records.mapValues(\.version),
             fileMetadata: records.mapValues(\.fileMetadata),
-            semantics: Dictionary(
-                uniqueKeysWithValues: records.compactMap {
-                    path, record in record.semantic.map { (path, $0) }
-                }),
-            searchProjections: Dictionary(
-                uniqueKeysWithValues: records.compactMap { path, record in
-                    record.searchProjection.map { (path, $0) }
-                }
-            ),
+            semantics: records.mapValues(\.semantic),
+            searchProjectionCache: searchProjectionCache,
             folders: folders,
             measurement: measurement
         )

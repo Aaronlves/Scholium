@@ -7,6 +7,55 @@ import Testing
 
 @Suite("Two-layer related-content preparation")
 struct RelatedContentBackgroundPreparationTests {
+    @Test("Publication releases obsolete preparation without another query and unchanged synchronization retains it")
+    func publicationReleasesObsoletePreparation() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        var documents = fixture.documents + [fixture.item(fixture.works, "SecondDraft.md", "Orchard geology writing.")]
+        let initial = try await index.synchronize(documents)
+        _ = try await index.relatedMaterialSourceCandidates(fixture.request())
+        _ = try await index.relatedMaterialSourceCandidates(fixture.request(path: "SecondDraft.md"))
+        let prepared = await index.relatedBackgroundPreparationRetention
+        #expect(prepared.entries == 2)
+        #expect(prepared.estimatedBytes > 0)
+
+        let unchanged = try await index.synchronize(documents)
+        #expect(unchanged.generation == initial.generation)
+        #expect(unchanged.disposition == .unchanged)
+        let retained = await index.relatedBackgroundPreparationRetention
+        #expect(retained.entries == prepared.entries)
+        #expect(retained.estimatedBytes == prepared.estimatedBytes)
+        let hitsBefore = await index.relatedBackgroundPreparationStatistics.hits
+        _ = try await index.relatedMaterialSourceCandidates(fixture.request())
+        #expect(await index.relatedBackgroundPreparationStatistics.hits == hitsBefore + 1)
+
+        documents[0] = fixture.item(fixture.analyses, "Context.md", "Orchard geology records a revised source.")
+        let cancelledDocuments = documents
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await index.synchronize(cancelledDocuments)
+        }
+        do {
+            _ = try await cancelled.value
+            Issue.record("Cancelled synchronization must not publish a generation")
+        } catch is CancellationError {}
+        #expect(try await index.generation() == initial.generation)
+        let afterCancellation = await index.relatedBackgroundPreparationRetention
+        #expect(afterCancellation.entries == prepared.entries)
+        #expect(afterCancellation.estimatedBytes == prepared.estimatedBytes)
+
+        let changed = try await index.synchronize(documents)
+        #expect(changed.generation != initial.generation)
+        // Inspect retention directly: no retrieval may trigger lazy invalidation.
+        let released = await index.relatedBackgroundPreparationRetention
+        print(
+            "Background generation retention: \(prepared.entries) entries / \(prepared.estimatedBytes) estimated bytes before publication; \(released.entries) entries / \(released.estimatedBytes) afterward"
+        )
+        #expect(released.entries == 0)
+        #expect(released.estimatedBytes == 0)
+    }
+
     @Test("Cold, background-prepared, reopened and rebuilt requests preserve exact candidates and passages")
     func coldAndPreparedEquivalence() async throws {
         let fixture = try Fixture()
@@ -19,7 +68,7 @@ struct RelatedContentBackgroundPreparationTests {
         let focus = fixture.request(focus: "magnetic compass calibration")
         let backgroundResponse = try await prepared.relatedMaterialSourceCandidates(background)
         #expect(Set(backgroundResponse.lexicalCandidates.map(\.note.relativePath)) == ["Context.md", "Shared.md"])
-        try await prepared.prepareRelatedPassages(background, sources: fixture.sources(backgroundResponse))
+        try await preparePassages(on: prepared, background, sources: fixture.sources(backgroundResponse))
         let warmedMemo = await prepared.relatedPassagePreparationStatistics
         #expect(warmedMemo.misses == 2)
 
@@ -95,7 +144,7 @@ struct RelatedContentBackgroundPreparationTests {
         let background = try await index.relatedMaterialSourceCandidates(fixture.request())
         #expect(background.lexicalCandidates.count == 27)
         #expect(!background.lexicalCandidates.contains { $0.note.relativePath == "Rare.md" })
-        try await index.prepareRelatedPassages(fixture.request(), sources: fixture.sources(background, documents: documents))
+        try await preparePassages(on: index, fixture.request(), sources: fixture.sources(background, documents: documents))
         let warm = try await index.relatedMaterialSourceCandidates(request)
         assertCandidates(warm, equalTo: cold)
         #expect(warm.identityCandidates.isEmpty)
@@ -252,7 +301,7 @@ struct RelatedContentBackgroundPreparationTests {
         let sources = fixture.sources(response)
         let cancelledPassages = Task {
             withUnsafeCurrentTask { $0?.cancel() }
-            try await index.prepareRelatedPassages(request, sources: sources)
+            try await preparePassages(on: index, request, sources: sources)
         }
         do {
             try await cancelledPassages.value
@@ -260,7 +309,7 @@ struct RelatedContentBackgroundPreparationTests {
         } catch is CancellationError {}
         let memo = await index.relatedPassagePreparationStatistics
         #expect(memo == .init())
-        try await index.prepareRelatedPassages(request, sources: sources)
+        try await preparePassages(on: index, request, sources: sources)
         #expect(try await index.relatedPassages(request, sources: sources) == TriptychSearchIndex.relatedPassages(request, sources: sources))
     }
 
@@ -281,7 +330,7 @@ struct RelatedContentBackgroundPreparationTests {
                 note: fixture.request().seed.noteID, vaultRole: .draftProject, title: "Draft", fingerprint: seed.document.fingerprint,
                 reason: valid.candidate.reason), document: seed.document)
         let narrowed = fixture.request(roles: [.analysis, .work])
-        try await index.prepareRelatedPassages(narrowed, sources: [wrongRevision, wrongPath, seedSource] + sources + sources)
+        try await preparePassages(on: index, narrowed, sources: [wrongRevision, wrongPath, seedSource] + sources + sources)
         let statistics = await index.relatedPassagePreparationStatistics
         #expect(statistics.misses == 1)
         #expect(statistics.hits == 0)
@@ -293,9 +342,71 @@ struct RelatedContentBackgroundPreparationTests {
                 note: valid.candidate.note, vaultRole: valid.candidate.vaultRole, title: valid.candidate.title,
                 fingerprint: updated.fingerprint, reason: valid.candidate.reason), document: updated)
         // Index is still old: both APIs must use the exact current document fallback.
-        try await index.prepareRelatedPassages(request, sources: [current])
+        try await preparePassages(on: index, request, sources: [current])
         #expect(try await index.relatedPassages(request, sources: [current]) == TriptychSearchIndex.relatedPassages(request, sources: [current]))
         #expect(try await index.relatedPassages(request, sources: [wrongRevision]).isEmpty)
+    }
+
+    @Test("Batched preparation rejects cancellation and a publication between source batches")
+    func batchedPreparationFreshness() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        let initial = try await index.synchronize(fixture.documents)
+        let request = fixture.request()
+        let response = try await index.relatedMaterialSourceCandidates(request)
+        let sources = fixture.sources(response)
+        #expect(sources.count == 2)
+        let preparation = try await index.beginRelatedPassagePreparation(
+            request, candidates: sources.map(\.candidate), generation: initial.generation)
+        try await index.prepareRelatedPassages(preparation, sources: Array(sources.prefix(1)))
+        let before = await index.relatedPassagePreparationStatistics
+
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await index.prepareRelatedPassages(preparation, sources: Array(sources.suffix(1)))
+        }
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        #expect(await index.relatedPassagePreparationStatistics == before)
+
+        // An unchanged publication must not invalidate the in-flight scan.
+        _ = try await index.synchronize(fixture.documents)
+        try await index.prepareRelatedPassages(preparation, sources: Array(sources.suffix(1)))
+        #expect(await index.relatedPassagePreparationStatistics.misses == 2)
+
+        // A second connection can publish before this actor observes a new
+        // availability. Each batch must check the actual read-transaction generation.
+        let writer = try fixture.index()
+        let changed =
+            fixture.documents.filter { $0.relativePath != "Context.md" }
+            + [fixture.item(fixture.analyses, "Context.md", "Orchard geology changed between batches.")]
+        _ = try await writer.synchronize(changed)
+        let beforeStale = await index.relatedPassagePreparationStatistics
+        await #expect(throws: CancellationError.self) {
+            try await index.prepareRelatedPassages(preparation, sources: sources)
+        }
+        await #expect(throws: CancellationError.self) {
+            _ = try await index.beginRelatedPassagePreparation(request, candidates: sources.map(\.candidate), generation: initial.generation)
+        }
+        #expect(await index.relatedPassagePreparationStatistics == beforeStale)
+
+        let current = try await index.synchronize(changed)
+        let freshResponse = try await index.relatedMaterialSourceCandidates(request)
+        let freshSources = fixture.sources(freshResponse, documents: changed)
+        let fresh = try await index.beginRelatedPassagePreparation(
+            request, candidates: freshSources.map(\.candidate), generation: current.generation)
+        for source in freshSources { try await index.prepareRelatedPassages(fresh, sources: [source]) }
+        #expect(
+            try await index.relatedPassages(request, sources: freshSources)
+                == TriptychSearchIndex.relatedPassages(request, sources: freshSources))
+    }
+
+    private func preparePassages(
+        on index: TriptychSearchIndex, _ request: RelatedContentRequest, sources: [RelatedContentSource]
+    ) async throws {
+        let generation = try #require(await index.generation())
+        let preparation = try await index.beginRelatedPassagePreparation(request, candidates: sources.map(\.candidate), generation: generation)
+        try await index.prepareRelatedPassages(preparation, sources: sources)
     }
 
     private func assertCandidates(_ actual: RelatedContentResponse, equalTo expected: RelatedContentResponse) {

@@ -37,7 +37,8 @@ Managed creation installs exact committed source and initial intent together.
 Initialization/focus acknowledgments and mapped selection must match before
 readiness; failure preserves source behind retry/Source. Clean external publication
 replaces pending source/boundary together. Revision changes invalidate stale
-readiness and refresh hidden Review. Document owns lightweight position/focus,
+readiness; Review HTML is generated only for Review or required read recovery.
+Document owns lightweight position/focus,
 not another writable path-mapped presentation record.
 
 ### Editor boundary contract
