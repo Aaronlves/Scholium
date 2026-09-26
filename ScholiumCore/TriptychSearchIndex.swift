@@ -79,9 +79,15 @@ public actor TriptychSearchIndex {
         relatedPassageMemo.statistics
     }
     /// Query-local derived state is valid only for one complete Search
-    /// generation. It is intentionally bounded to the maximum public result
-    /// window plus one `hasMore` probe; larger offsets use the canonical scan.
+    /// generation. Each query retains at most the maximum public result window
+    /// plus one `hasMore` probe; a small LRU also bounds distinct completed
+    /// queries. Larger offsets use the canonical scan.
     private var rankedSearchCache: [RankedSearchCacheKey: RankedSearchCacheValue] = [:]
+    private var rankedSearchAccessClock: UInt64 = 0
+
+    var rankedSearchCacheRetention: (queries: Int, results: Int) {
+        (rankedSearchCache.count, rankedSearchCache.values.reduce(0) { $0 + $1.items.count })
+    }
 
     private struct ProjectionHashInput: Equatable {
         // Swift String equality is canonical-equivalence, while JSON hashing is
@@ -117,8 +123,10 @@ public actor TriptychSearchIndex {
         let items: [RankedSearchItem]
         let total: Int
         let indeterminate: Int
+        var lastAccess: UInt64
     }
 
+    private static let maximumCachedRankedQueries = 8
     private static let maximumCachedRankedResults = SearchContract.maximumNoteResults + 1
 
     private struct ProgressDelivery {
@@ -507,6 +515,7 @@ public actor TriptychSearchIndex {
                 recoveredGeneratedDatabase = false
                 currentAvailability = .current(result.generation)
                 rankedSearchCache.removeAll(keepingCapacity: true)
+                rankedSearchAccessClock = 0
             }
             return result
         } catch is CancellationError {
@@ -1095,7 +1104,10 @@ public actor TriptychSearchIndex {
         let rankedItems: [RankedSearchItem]
         let total: Int
         let indeterminate: Int
-        if let cacheKey, let cached = rankedSearchCache[cacheKey], required <= cached.items.count {
+        if let cacheKey, var cached = rankedSearchCache[cacheKey], required <= cached.items.count {
+            rankedSearchAccessClock &+= 1
+            cached.lastAccess = rankedSearchAccessClock
+            rankedSearchCache[cacheKey] = cached
             rankedItems = cached.items
             total = cached.total
             indeterminate = cached.indeterminate
@@ -1166,10 +1178,18 @@ public actor TriptychSearchIndex {
             total = evaluatedTotal
             indeterminate = evaluatedIndeterminate
             if let cacheKey {
+                if rankedSearchCache[cacheKey] == nil,
+                    rankedSearchCache.count >= Self.maximumCachedRankedQueries,
+                    let oldest = rankedSearchCache.min(by: { $0.value.lastAccess < $1.value.lastAccess })?.key
+                {
+                    rankedSearchCache.removeValue(forKey: oldest)
+                }
+                rankedSearchAccessClock &+= 1
                 rankedSearchCache[cacheKey] = RankedSearchCacheValue(
                     items: rankedItems,
                     total: total,
-                    indeterminate: indeterminate)
+                    indeterminate: indeterminate,
+                    lastAccess: rankedSearchAccessClock)
             }
         }
         // Counting and ranking need exact predicate values, but only this page needs

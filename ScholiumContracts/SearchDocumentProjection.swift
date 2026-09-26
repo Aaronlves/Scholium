@@ -42,8 +42,7 @@ public struct SearchSegmentOffset: Codable, Hashable, Sendable {
         guard mappingKind == .linear else {
             return sourceUTF16LowerBound..<sourceUTF16UpperBound
         }
-        return (sourceUTF16LowerBound + overlapLower - normalizedUTF16LowerBound)..<(
-            sourceUTF16LowerBound + overlapUpper - normalizedUTF16LowerBound)
+        return (sourceUTF16LowerBound + overlapLower - normalizedUTF16LowerBound)..<(sourceUTF16LowerBound + overlapUpper - normalizedUTF16LowerBound)
     }
 }
 
@@ -584,9 +583,8 @@ private enum SearchProjectionBuilder {
         normalized.reserveCapacity(text.utf16.count)
         var normalizedUTF16Count = 0
         var map: [SearchSegmentOffset] = []
-        // Most source text is represented by one linear mapping per run, so
-        // reserve for sparse boundaries rather than every UTF-16 code unit.
-        map.reserveCapacity(min(text.utf16.count, 256))
+        // Grow with actual mapping runs. Reserving from source length retains
+        // unused capacity for every cached segment after linear runs coalesce.
 
         func appendMapping(
             normalizedRange: Range<Int>,
@@ -600,12 +598,14 @@ private enum SearchProjectionBuilder {
                 let canMerge: Bool
                 switch kind {
                 case .linear:
-                    canMerge = last.sourceUTF16UpperBound == sourceRange.lowerBound
+                    canMerge =
+                        last.sourceUTF16UpperBound == sourceRange.lowerBound
                         && last.normalizedUTF16UpperBound - last.normalizedUTF16LowerBound
                             == last.sourceUTF16UpperBound - last.sourceUTF16LowerBound
                         && normalizedRange.count == sourceRange.count
                 case .sourceSpan:
-                    canMerge = last.sourceUTF16LowerBound == sourceRange.lowerBound
+                    canMerge =
+                        last.sourceUTF16LowerBound == sourceRange.lowerBound
                         && last.sourceUTF16UpperBound == sourceRange.upperBound
                 }
                 if canMerge {
@@ -671,8 +671,7 @@ private enum SearchProjectionBuilder {
                             let originalLower = localUTF16
                             let originalUpper = localUTF16 + characterLength
                             localUTF16 = originalUpper
-                            let mappedSource = (sourceRange.lowerBound + originalLower)..<(
-                                sourceRange.lowerBound + originalUpper)
+                            let mappedSource = (sourceRange.lowerBound + originalLower)..<(sourceRange.lowerBound + originalUpper)
                             appendMapping(
                                 normalizedRange: (lower + originalLower)..<(lower + originalUpper),
                                 sourceRange: mappedSource,
@@ -729,7 +728,8 @@ private enum SearchProjectionBuilder {
                 normalizedUTF16Count += folded.utf16.count
                 let upper = normalizedUTF16Count
                 if let mappedSource {
-                    let linear = characterLength == 1 && folded.utf16.count == 1
+                    let linear =
+                        characterLength == 1 && folded.utf16.count == 1
                         && mappedSource.count == 1
                     appendMapping(
                         normalizedRange: lower..<upper,

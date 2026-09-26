@@ -13,6 +13,41 @@ struct RelatedContentSourceProjection: Codable, Sendable {
         let normalizedDisplayText: String
         let textIndex: RelatedContentTextIndex
         let scoringDocument: RelatedContentBM25F.Document
+
+        private enum CodingKeys: String, CodingKey { case range, displayText, matchingText, scoringDocument }
+
+        init(
+            range: SearchSourceRange, displayText: String, normalizedDisplayText: String,
+            textIndex: RelatedContentTextIndex, scoringDocument: RelatedContentBM25F.Document
+        ) {
+            let shared = scoringDocument.sharingPreparedText(normalizedDisplayText, index: textIndex)
+            self.range = range
+            self.displayText = displayText.utf8.elementsEqual(shared.text.utf8) ? shared.text : displayText
+            self.normalizedDisplayText = shared.text
+            self.textIndex = shared.index
+            self.scoringDocument = scoringDocument
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            scoringDocument = try container.decode(RelatedContentBM25F.Document.self, forKey: .scoringDocument)
+            let matching = try container.decode(RelatedContentBM25F.Document.StoredText.self, forKey: .matchingText)
+                .resolve(in: scoringDocument)
+            range = try container.decode(SearchSourceRange.self, forKey: .range)
+            displayText = try container.decodeIfPresent(String.self, forKey: .displayText) ?? matching.text
+            normalizedDisplayText = matching.text
+            textIndex = matching.index
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(range, forKey: .range)
+            if !displayText.utf8.elementsEqual(normalizedDisplayText.utf8) {
+                try container.encode(displayText, forKey: .displayText)
+            }
+            try container.encode(scoringDocument, forKey: .scoringDocument)
+            try container.encode(scoringDocument.storedText(normalizedDisplayText, index: textIndex), forKey: .matchingText)
+        }
     }
 
     let noteScoringDocument: RelatedContentBM25F.Document
@@ -36,6 +71,7 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             let exact = String(document.rawContent[sourceRange])
             let snippet = NoteDocument(relativePath: document.relativePath, rawContent: exact)
             let displayText = ResearchExcerptPresentation.readableText(exact, includingAnnotations: true)
+            let normalizedDisplayText = SearchTextNormalization.lexicalNormalize(displayText)
             try Task.checkCancellation()
             let segments = SearchDocumentProjection(document: snippet).segments.filter {
                 $0.sourceRange != nil && $0.field != .title && $0.field != .alias
@@ -50,8 +86,8 @@ struct RelatedContentSourceProjection: Codable, Sendable {
                         endLine: block.span.end.line,
                         endColumn: block.span.end.utf16Column),
                     displayText: displayText,
-                    normalizedDisplayText: SearchTextNormalization.lexicalNormalize(displayText),
-                    textIndex: .init(SearchTextNormalization.lexicalNormalize(displayText)),
+                    normalizedDisplayText: normalizedDisplayText,
+                    textIndex: .init(normalizedDisplayText),
                     scoringDocument: .init(segments: segments)))
         }
         try Task.checkCancellation()

@@ -42,6 +42,52 @@ struct RelatedContentBM25F {
                 && fieldLengths.values.allSatisfy { $0.isFinite && $0 >= 0 }
                 && textIndexes.values.allSatisfy(\.isValid)
         }
+
+        /// Matching and scoring often retain the same normalized prose and word
+        /// counts. Share immutable Swift storage only after exact value checks;
+        /// independently decoded dictionaries do not share through COW alone.
+        func sharingPreparedText(
+            _ text: String, index: RelatedContentTextIndex
+        ) -> (text: String, index: RelatedContentTextIndex) {
+            guard let field = matchingPreparedField(text, index: index) else { return (text, index) }
+            return (fields[field]!, textIndexes[field]!)
+        }
+
+        /// Private persisted references avoid decoding duplicate normalized
+        /// strings and frequency dictionaries only to discard them afterward.
+        enum StoredText: Codable {
+            case scoringField(String)
+            case independent(text: String, index: RelatedContentTextIndex)
+
+            func resolve(in document: Document) throws -> (text: String, index: RelatedContentTextIndex) {
+                switch self {
+                case .scoringField(let field):
+                    guard let text = document.fields[field], let index = document.textIndexes[field] else {
+                        throw SearchIndexError.corruptDatabase
+                    }
+                    return (text, index)
+                case .independent(let text, let index):
+                    return (text, index)
+                }
+            }
+        }
+
+        func storedText(_ text: String, index: RelatedContentTextIndex) -> StoredText {
+            if let field = matchingPreparedField(text, index: index) { return .scoringField(field) }
+            return .independent(text: text, index: index)
+        }
+
+        private func matchingPreparedField(_ text: String, index: RelatedContentTextIndex) -> String? {
+            for (field, candidate) in fields {
+                guard candidate.utf8.elementsEqual(text.utf8),
+                    let candidateIndex = textIndexes[field],
+                    candidateIndex.containsCJK == index.containsCJK,
+                    candidateIndex.words == index.words
+                else { continue }
+                return field
+            }
+            return nil
+        }
     }
 
     static func parameters(_ field: RelatedContentRankingField, role: VaultRole? = nil) -> (weight: Double, length: Double) {
