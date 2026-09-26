@@ -5732,16 +5732,20 @@ struct MarkdownEditorWebViewIntegrationTests {
                             && getComputedStyle(line).overflow !== 'hidden'};
                     """) as? [String: Any])
         }
+        func expectedAccessibleHeadingLevel(forMarkdownLevel level: Int) -> String {
+            // The app-owned Note title is level 1, so Markdown H6 follows at level 7.
+            String(level + 1)
+        }
         for character in String(repeating: "#", count: level) + " " {
             _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, text)", arguments: ["text": String(character)])
         }
         let initial = try await presentation()
-        #expect(initial["level"] as? String == String(min(level + 1, 6)))
+        #expect(initial["level"] as? String == expectedAccessibleHeadingLevel(forMarkdownLevel: level))
         #expect(initial["markerVisible"] as? Bool == true)
         for character in "dd中文" {
             _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, text)", arguments: ["text": String(character)])
             let current = try await presentation()
-            #expect(current["level"] as? String == String(min(level + 1, 6)))
+            #expect(current["level"] as? String == expectedAccessibleHeadingLevel(forMarkdownLevel: level))
             #expect(current["fontSize"] as? String == initial["fontSize"] as? String)
             #expect(current["markerVisible"] as? Bool == true)
         }
@@ -5760,7 +5764,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             _ = try await harness.callPageJavaScript("document.execCommand('delete', false)")
             try await harness.waitUntilSelection(head: 0, stage: "deleted heading marker")
             let current = try await presentation()
-            #expect(current["level"] as? String == (remaining == 0 ? "" : String(min(remaining + 1, 6))))
+            #expect(
+                current["level"] as? String
+                    == (remaining == 0 ? "" : expectedAccessibleHeadingLevel(forMarkdownLevel: remaining))
+            )
             if remaining > 0 { #expect(current["markerVisible"] as? Bool == true) }
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == " dd中文\n\nFollowing paragraph.\n")

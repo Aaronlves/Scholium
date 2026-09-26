@@ -311,6 +311,10 @@ report_swift_test_failure() {
   print -u2 "Complete log: ${log}"
 }
 
+swift_test_selected_no_cases() {
+  rg -q 'No matching test cases were run' "$1"
+}
+
 run_swift_test_once() {
   local label="$1"
   local log_name="$2"
@@ -327,6 +331,11 @@ run_swift_test_once() {
   command_status=$?
   set -e
   if (( command_status == 0 )); then
+    if swift_test_selected_no_cases "${log}"; then
+      print -u2 "${label} returned success without executing a matching test case."
+      report_swift_test_failure "${label}" "${log}"
+      return 65
+    fi
     report_swift_test_success "${label}" "${log}"
     return 0
   fi
@@ -356,13 +365,6 @@ run_swift_test_product() {
   local -a parallelism_arguments selection_arguments
   parallelism_arguments=()
   selection_arguments=(--filter "${test_product}")
-  if [[ "${test_product}" == "ScholiumCoreTests" ]]; then
-    # Runtime microbenchmarks need a quiet process boundary. Running them
-    # beside graph, index, and filesystem stress suites measures scheduler
-    # contention instead of the declared workload. They run immediately after
-    # the complete nonperformance Core set, with the same build and thresholds.
-    selection_arguments+=(--skip 'PerformanceRegressionMicrobenchmarkTests')
-  fi
   if [[ "${test_product}" == "ScholiumAppTests" ]]; then
     # This target owns AppKit windows and WebKit processes. Make Swift
     # Testing's in-process execution order explicit at that shared boundary.
@@ -385,6 +387,11 @@ run_swift_test_product() {
     command_status=$?
     set -e
     if (( command_status == 0 )); then
+      if swift_test_selected_no_cases "${log}"; then
+        print -u2 "${test_product} returned success without executing a matching test case."
+        report_swift_test_failure "${test_product}" "${log}"
+        return 65
+      fi
       report_swift_test_success "${test_product}" "${log}"
       return 0
     fi
@@ -414,13 +421,7 @@ for test_product in \
   else
     run_swift_test_product "${test_product}"
   fi
-  if [[ "${test_product}" == "ScholiumCoreTests" ]]; then
-    run_measurement_test \
-      "ScholiumCoreTests performance" \
-      "ScholiumCoreTests-performance" \
-      --no-parallel \
-      --filter 'ScholiumCoreTests.PerformanceRegressionMicrobenchmarkTests'
-  elif [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
+  if [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
     run_measurement_test \
       "ScholiumApplicationTests architecture measurement" \
       "ScholiumApplicationTests-architecture" \

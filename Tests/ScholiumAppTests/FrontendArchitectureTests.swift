@@ -827,6 +827,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let tooltippedSegmentedControlSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumTooltippedSegmentedControl.swift"
+            ),
+            encoding: .utf8
+        )
         let windowManagementSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumWindowManagement.swift"
@@ -1005,7 +1011,11 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("control.segmentStyle = .rounded"))
         #expect(!noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
-        #expect(toolbarSource.contains("NSSegmentedControl("))
+        #expect(toolbarSource.contains("ScholiumTooltippedSegmentedControl(frame: .zero)"))
+        #expect(
+            tooltippedSegmentedControlSource.contains(
+                "class ScholiumTooltippedSegmentedControl: NSSegmentedControl"
+            ))
         #expect(toolbarSource.contains("Item.inspectorModes"))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
