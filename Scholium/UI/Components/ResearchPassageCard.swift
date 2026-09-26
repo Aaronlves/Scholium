@@ -11,7 +11,7 @@ struct ResearchPassageCard<Content: View>: View {
                 .lineSpacing(ScholiumGrid.Apparatus.passageLineSpacing)
                 // GroupBox contributes its native gutter. The remaining inset
                 // brings passage text onto the note heading's text rail.
-                .padding(.leading, ScholiumGrid.Apparatus.iconColumnWidth)
+                .padding(.leading, ScholiumGrid.Apparatus.passageCardLeadingInset)
                 .padding(.trailing, ScholiumGrid.Apparatus.connectionOccurrenceVerticalInset)
                 .padding(.vertical, ScholiumGrid.Apparatus.connectionOccurrenceVerticalInset)
                 .fixedSize(horizontal: false, vertical: true)
