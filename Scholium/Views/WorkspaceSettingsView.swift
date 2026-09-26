@@ -522,8 +522,8 @@ private struct AppearanceSettingsView: View {
                 "This removes the selected configuration from this Mac. Research documents are not changed."
             )
         }
-        .confirmationDialog("Recover Default Appearance?", isPresented: $confirmsAppearanceRecovery, titleVisibility: .visible) {
-            Button("Recover Default Appearance", role: .destructive) { store.restoreAppearanceDefaults() }
+        .confirmationDialog("Restore Default Appearance?", isPresented: $confirmsAppearanceRecovery, titleVisibility: .visible) {
+            Button("Restore Defaults", role: .destructive) { store.restoreAppearanceDefaults() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
@@ -594,7 +594,7 @@ private struct AppearanceSettingsView: View {
         if let error = store.appearanceError {
             Section("Appearance Recovery") {
                 Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
-                Button("Recover Default Appearance…") { confirmsAppearanceRecovery = true }
+                Button("Restore Default Appearance…") { confirmsAppearanceRecovery = true }
                     .disabled(store.isRestoringAppearance)
                     .accessibilityIdentifier("scholium.settings.appearance.recover")
             }

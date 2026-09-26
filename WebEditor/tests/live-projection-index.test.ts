@@ -5,9 +5,9 @@ import {createLiveProjectionIndexController} from "../live-projection-index";
 import type {MarkdownEditingDialect} from "../protocol";
 
 const dialect: MarkdownEditingDialect = {
-  version: 5,
+  version: 6,
   callouts: [
-    {identifier: "state", aliases: [], label: "Statement", meaning: "Statement"},
+    {identifier: "state", label: "Statement", meaning: "Statement"},
   ],
   linkAnnotation: {
     openingDelimiter: "{{", closingDelimiter: "}}", escapeCharacter: "\\",

@@ -22,6 +22,7 @@ public actor StyleOperations: StyleUseCases {
     private var storeError: String?
     private var manifestLoadFailure: Error?
     private var appearanceLoadFailure: Error?
+    private var canRepairAppearance = false
     private var loadedSnippetBytes: Data?
     private var didLoad = false
     private var loadedAppearanceBytes: Data?
@@ -61,9 +62,13 @@ public actor StyleOperations: StyleUseCases {
             selectedAppearanceProfileID = manifest.selectedProfileID
             loadedAppearanceBytes = bytes
             appearanceLoadFailure = nil
+            canRepairAppearance = false
             return snapshot()
         } catch {
             appearanceLoadFailure = error
+            canRepairAppearance =
+                !usesUnsupportedAppearanceFormat(loadedAppearanceBytes ?? Data())
+                && !appearanceProfiles.isEmpty
             throw error
         }
     }
@@ -375,6 +380,7 @@ public actor StyleOperations: StyleUseCases {
                     let manifest = try decodeAppearance(bytes)
                     appearanceProfiles = manifest.profiles
                     selectedAppearanceProfileID = manifest.selectedProfileID
+                    canRepairAppearance = false
                 } catch {
                     appearanceLoadFailure = error
                     // Derive a usable projection, preserving readable fields.
@@ -383,6 +389,9 @@ public actor StyleOperations: StyleUseCases {
                     if let recovered = recoverAppearance(bytes) {
                         appearanceProfiles = recovered.profiles
                         selectedAppearanceProfileID = recovered.selectedProfileID
+                        canRepairAppearance = true
+                    } else {
+                        canRepairAppearance = false
                     }
                 }
             } else {
@@ -393,6 +402,7 @@ public actor StyleOperations: StyleUseCases {
             }
         } catch {
             appearanceLoadFailure = error
+            canRepairAppearance = false
         }
         if let persisted = try? String(contentsOf: safeModeURL, encoding: .utf8), !persisted.isEmpty {
             safeModeReason = persisted
@@ -448,6 +458,7 @@ public actor StyleOperations: StyleUseCases {
             storeError: storeError,
             canModify: manifestLoadFailure == nil,
             canModifyAppearance: appearanceLoadFailure == nil,
+            canRepairAppearance: canRepairAppearance,
             appearanceError: appearanceLoadFailure?.localizedDescription,
             snippetError: manifestLoadFailure?.localizedDescription
         )
@@ -513,6 +524,7 @@ public actor StyleOperations: StyleUseCases {
         )
         appearanceProfiles = normalizedProfiles
         selectedAppearanceProfileID = resolvedSelectedID
+        canRepairAppearance = false
         storeError = nil
     }
 
@@ -564,6 +576,15 @@ public actor StyleOperations: StyleUseCases {
 
     public func restoreAppearanceDefaults() throws -> StyleSnapshot {
         ensureLoaded()
+        if appearanceLoadFailure == nil,
+            appearanceProfiles.count == 1,
+            let current = appearanceProfiles.first,
+            current.name == "Custom",
+            current.settings == DocumentAppearanceSettings.defaultSettings,
+            selectedAppearanceProfileID == current.id
+        {
+            return snapshot()
+        }
         try ensureDirectory()
         let current = fileManager.fileExists(atPath: appearanceManifestURL.path) ? try readRecoveryBytes(at: appearanceManifestURL) : nil
         let profile = DocumentAppearanceProfile(name: "Custom")
@@ -573,13 +594,15 @@ public actor StyleOperations: StyleUseCases {
         appearanceProfiles = [profile]
         selectedAppearanceProfileID = profile.id
         appearanceLoadFailure = nil
+        canRepairAppearance = false
         storeError = nil
         return snapshot()
     }
 
     public func repairAppearanceProfile(_ profile: DocumentAppearanceProfile) throws -> StyleSnapshot {
         ensureLoaded()
-        guard appearanceLoadFailure != nil, appearanceProfiles.contains(where: { $0.id == profile.id }),
+        guard appearanceLoadFailure != nil, canRepairAppearance,
+            appearanceProfiles.contains(where: { $0.id == profile.id }),
             let original = loadedAppearanceBytes,
             var root = try JSONSerialization.jsonObject(with: original) as? [String: Any],
             var objects = root["profiles"] as? [Any],
@@ -600,11 +623,15 @@ public actor StyleOperations: StyleUseCases {
             appearanceProfiles = manifest.profiles
             selectedAppearanceProfileID = manifest.selectedProfileID
             appearanceLoadFailure = nil
+            canRepairAppearance = false
         } catch {
             appearanceLoadFailure = error
             if let recovered = recoverAppearance(bytes) {
                 appearanceProfiles = recovered.profiles
                 selectedAppearanceProfileID = recovered.selectedProfileID
+                canRepairAppearance = true
+            } else {
+                canRepairAppearance = false
             }
         }
         storeError = nil
@@ -702,10 +729,23 @@ public actor StyleOperations: StyleUseCases {
         }
     }
 
+    private func usesUnsupportedAppearanceFormat(_ bytes: Data) -> Bool {
+        guard let root = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+            let profiles = root["profiles"] as? [Any]
+        else { return false }
+        return profiles.contains { value in
+            guard let profile = value as? [String: Any],
+                let settings = profile["settings"] as? [String: Any]
+            else { return false }
+            return settings["hyphenation"] == nil
+        }
+    }
+
     private func recoverAppearance(_ bytes: Data) -> AppearanceManifest? {
         guard let root = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
             let objects = root["profiles"] as? [Any], objects.count <= 100
         else { return nil }
+        guard !usesUnsupportedAppearanceFormat(bytes) else { return nil }
         var recovered: [DocumentAppearanceProfile] = []
         for rawObject in objects {
             guard let object = rawObject as? [String: Any], let rawID = object["id"] as? String, let id = UUID(uuidString: rawID),

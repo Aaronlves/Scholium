@@ -4,15 +4,15 @@ import {projectDialectSemantics} from "./parity-projection";
 import type {MarkdownEditingDialect} from "../protocol";
 
 const dialect: MarkdownEditingDialect = {
-  version: 5,
+  version: 6,
   callouts: [
-    {identifier: "orient", aliases: ["mini"], label: "Orientation", meaning: "Scope"},
-    {identifier: "cite", aliases: ["bibli", "bibliography", "cited"], label: "Source", meaning: "Source"},
-    {identifier: "connect", aliases: ["project"], label: "Connections", meaning: "Connections"},
-    {identifier: "state", aliases: ["definition", "principle", "theorem", "argument", "objection", "reply"], label: "Statement", meaning: "Statement"},
-    {identifier: "illustrate", aliases: ["example", "case", "dialogue"], label: "Illustration", meaning: "Illustration"},
-    {identifier: "quote", aliases: ["quotation", "author", "long-quote"], label: "Quotation", meaning: "Quotation"},
-    {identifier: "flag", aliases: ["warning", "caution", "source-warning", "torn", "question"], label: "Caution", meaning: "Caution"},
+    {identifier: "orient", label: "Orientation", meaning: "Scope"},
+    {identifier: "cite", label: "Source", meaning: "Source"},
+    {identifier: "connect", label: "Connections", meaning: "Connections"},
+    {identifier: "state", label: "Statement", meaning: "Statement"},
+    {identifier: "illustrate", label: "Illustration", meaning: "Illustration"},
+    {identifier: "quote", label: "Quotation", meaning: "Quotation"},
+    {identifier: "flag", label: "Caution", meaning: "Caution"},
   ],
   linkAnnotation: {
     openingDelimiter: "{{", closingDelimiter: "}}", escapeCharacter: "\\",

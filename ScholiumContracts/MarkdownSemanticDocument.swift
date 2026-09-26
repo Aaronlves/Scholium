@@ -137,27 +137,14 @@ public enum CalloutSemanticVocabulary {
         "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
     ]
 
-    public static let aliasesByCanonicalIdentifier: [String: [String]] = [
-        "orient": ["mini"],
-        "cite": ["bibli", "bibliography", "cited"],
-        "connect": ["project"],
-        "state": ["definition", "principle", "theorem", "argument", "objection", "reply"],
-        "illustrate": ["example", "case", "dialogue"],
-        "quote": ["quotation", "author", "long-quote"],
-        "flag": ["warning", "caution", "source-warning", "torn", "question"],
-    ]
-
-    public static func canonicalIdentifier(for raw: String) -> String {
-        let normalized =
-            raw
+    public static func normalizedIdentifier(for raw: String) -> String {
+        raw
             .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ":")))
             .lowercased()
-        return aliasesByCanonicalIdentifier.first(where: { $0.value.contains(normalized) })?.key
-            ?? normalized
     }
 
     public static func role(for raw: String) -> CalloutSemanticRole {
-        CalloutSemanticRole(rawValue: canonicalIdentifier(for: raw)) ?? .neutral
+        CalloutSemanticRole(rawValue: normalizedIdentifier(for: raw)) ?? .neutral
     }
 }
 
@@ -168,7 +155,6 @@ public enum CalloutSemanticVocabulary {
 public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
     public struct Callout: Codable, Hashable, Sendable {
         public let identifier: String
-        public let aliases: [String]
         public let label: String
         public let meaning: String
     }
@@ -219,12 +205,11 @@ public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
     }
 
     public static let current = MarkdownEditingDialect(
-        version: 5,
+        version: 6,
         callouts: CalloutSemanticRole.allCases.compactMap { role in
             guard role != .neutral else { return nil }
             return Callout(
                 identifier: role.rawValue,
-                aliases: CalloutSemanticVocabulary.aliasesByCanonicalIdentifier[role.rawValue] ?? [],
                 label: role.displayLabel,
                 meaning: role.purpose
             )
@@ -717,7 +702,7 @@ public enum MarkdownSemanticParser {
             }
 
             let rawKind = nsBody.substring(with: match.range(at: 2))
-            let normalizedKind = CalloutSemanticVocabulary.canonicalIdentifier(for: rawKind)
+            let normalizedKind = CalloutSemanticVocabulary.normalizedIdentifier(for: rawKind)
             let title = optionalTrimmed(nsBody.substring(with: match.range(at: 4)))
             let foldState: CalloutFoldState =
                 switch match.range(at: 3).location == NSNotFound

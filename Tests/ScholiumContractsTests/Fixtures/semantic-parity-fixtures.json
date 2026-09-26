@@ -2,7 +2,7 @@
   {
     "name": "canonical scholarly semantics with multiline link annotations",
     "source": "> [!mini] Scope\n\n[[Support]]{{Supports the conclusion with **text**.\n\n- second reason}} [[Ground]] [[Conflict]]{{Open question.}} [[Neutral]]\n\n[Web](https://example.test)\n\nClaim[^1] with $x + y$.\n\n[^1]: Basis\n",
-    "callouts": ["orient"],
+    "callouts": ["mini"],
     "links": [
       {"target": "Support", "annotation": "Supports the conclusion with **text**.\n\n- second reason"},
       {"target": "Ground", "annotation": null},
@@ -40,9 +40,9 @@
     }
   },
   {
-    "name": "canonical aliases and unknown callouts exclude fenced literals",
+    "name": "built-in and unknown callouts exclude fenced literals",
     "source": "```md\n> [!flag] Not semantic\n```\n\n> [!orient] Scope\n\n> [!bibli:] Sources\n\n> [!project:] Connections\n\n> [!objection] Claim\n\n> [!case] Example\n\n> [!author] Quotation\n\n> [!torn] Caution\n\n> [!bespoke] Preserved\n",
-    "callouts": ["orient", "cite", "connect", "state", "illustrate", "quote", "flag", "bespoke"],
+    "callouts": ["orient", "bibli", "project", "objection", "case", "author", "torn", "bespoke"],
     "links": [],
     "footnoteDefinitions": [],
     "footnoteDefinitionContents": [],

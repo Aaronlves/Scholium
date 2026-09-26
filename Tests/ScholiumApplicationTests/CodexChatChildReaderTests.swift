@@ -34,16 +34,34 @@ struct CodexChatChildReaderTests {
             try await CodexChatChildReader.older(childID: "child", cursor: nil, request: { try await fixture.request($0, $1) })
         }
     }
+
+    @Test("Child metadata requires an explicit supported history mode")
+    func historyModeIsRequired() async throws {
+        let modes: [String?] = [nil, "future-mode"]
+        for mode in modes {
+            let fixture = ChildReadFixture(parents: ["child": "root"], historyMode: mode)
+            await #expect(throws: CodexConnectionError.self) {
+                try await CodexChatChildReader.load(
+                    childID: "child", parentID: "root",
+                    request: { try await fixture.request($0, $1) }
+                )
+            }
+        }
+    }
 }
 
 private actor ChildReadFixture {
     let parents: [String: String]
-    let paginated: Bool
+    let historyMode: String?
     var methods: [String] = []
     var summary = false
     init(parents: [String: String], paginated: Bool = false) {
         self.parents = parents
-        self.paginated = paginated
+        self.historyMode = paginated ? "paginated" : "legacy"
+    }
+    init(parents: [String: String], historyMode: String?) {
+        self.parents = parents
+        self.historyMode = historyMode
     }
     func useSummary() { summary = true }
     func request(_ method: String, _ params: [String: MCPJSONValue]) throws -> MCPJSONValue {
@@ -67,13 +85,12 @@ private actor ChildReadFixture {
         guard method == "thread/read", let id = params["threadId"]?.stringValue,
             let parent = parents[id]
         else { throw CodexConnectionError.invalidMessage }
-        return .object([
-            "thread": .object([
-                "id": .string(id), "parentThreadId": .string(parent),
-                "historyMode": .string(paginated ? "paginated" : "legacy"),
-                "status": .object(["type": .string("active"), "activeFlags": .array([])]),
-                "turns": .array(params["includeTurns"] == .bool(true) ? [turn("active")] : []),
-            ])
-        ])
+        var thread: [String: MCPJSONValue] = [
+            "id": .string(id), "parentThreadId": .string(parent),
+            "status": .object(["type": .string("active"), "activeFlags": .array([])]),
+            "turns": .array(params["includeTurns"] == .bool(true) ? [turn("active")] : []),
+        ]
+        if let historyMode { thread["historyMode"] = .string(historyMode) }
+        return .object(["thread": .object(thread)])
     }
 }

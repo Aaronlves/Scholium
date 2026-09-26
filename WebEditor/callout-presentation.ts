@@ -5,7 +5,6 @@ export type ResolvedCallout = MarkdownEditingDialect["callouts"][number];
 
 const neutralCallout: ResolvedCallout = {
   identifier: "neutral",
-  aliases: [],
   label: localized("Note"),
   meaning: localized("Preserves an unsupported callout without assigning a research role."),
 };
@@ -15,9 +14,7 @@ export function calloutDefinition(
   rawKind: string,
 ): ResolvedCallout {
   const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-  const definition = dialect?.callouts.find((callout) =>
-    callout.identifier === kind || callout.aliases.includes(kind),
-  ) ?? neutralCallout;
+  const definition = dialect?.callouts.find((callout) => callout.identifier === kind) ?? neutralCallout;
   return {...definition, ...localizedCallout(definition.identifier, definition)};
 }
 

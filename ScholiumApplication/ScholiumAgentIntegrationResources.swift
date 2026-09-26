@@ -10,36 +10,29 @@ public enum ScholiumAgentIntegrationResources {
         return URL(fileURLWithPath: path)
     }
 
-    public static func codexRuntimeURL() -> URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let applicationBundles = [
-            URL(fileURLWithPath: "/Applications/Codex.app", isDirectory: true),
-            URL(fileURLWithPath: "/Applications/ChatGPT.app", isDirectory: true),
-            home.appendingPathComponent("Applications/Codex.app", isDirectory: true),
-            home.appendingPathComponent("Applications/ChatGPT.app", isDirectory: true),
-        ]
-        let standaloneCandidates = [
-            URL(fileURLWithPath: "/opt/homebrew/bin/codex"),
-            URL(fileURLWithPath: "/usr/local/bin/codex"),
-            home.appendingPathComponent(".local/bin/codex"),
-            home.appendingPathComponent(".npm-global/bin/codex"),
-        ]
-        return codexRuntimeURL(
-            applicationBundles: applicationBundles,
-            standaloneCandidates: standaloneCandidates)
+    /// Finds a Codex CLI bundled in a Launch Services-registered application.
+    public static func codexRuntimeURL(registeredApplicationBundles: [URL]) -> URL? {
+        registeredApplicationBundles
+            .lazy
+            .flatMap { codexRuntimeCandidates(in: $0) }
+            .compactMap { executableURL(at: $0.path) }
+            .first
     }
 
-    static func codexRuntimeURL(applicationBundles: [URL], standaloneCandidates: [URL]) -> URL? {
-        let candidates = applicationBundles.flatMap { codexRuntimeCandidates(in: $0) } + standaloneCandidates
-        return candidates.lazy.compactMap { executableURL(at: $0.path) }.first
-    }
+    private static func codexRuntimeCandidates(in applicationBundle: URL) -> [URL] {
+        let cliApplicationsDirectory =
+            applicationBundle
+            .appendingPathComponent("Contents/Resources/codex-cli", isDirectory: true)
+        let bundledRuntimes =
+            (try? FileManager.default.contentsOfDirectory(
+                at: cliApplicationsDirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]))?
+            .filter { $0.pathExtension == "app" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .map { $0.appendingPathComponent("Contents/MacOS/codex") } ?? []
 
-    static func codexRuntimeCandidates(in applicationBundle: URL) -> [URL] {
-        [
-            applicationBundle.appendingPathComponent("Contents/Resources/codex"),
-            applicationBundle.appendingPathComponent(
-                "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"),
-        ]
+        return bundledRuntimes
     }
 
     public static func coreProtocolSkillDirectoryURL() throws -> URL {

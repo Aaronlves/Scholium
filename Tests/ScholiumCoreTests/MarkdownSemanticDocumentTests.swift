@@ -240,10 +240,17 @@ struct MarkdownSemanticDocumentTests {
                 .orient, .cite, .connect, .state, .illustrate, .quote, .flag,
             ])
         #expect(
-            Array(semantic.callouts.dropFirst(7).prefix(7).map(\.kind)) == [
-                "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
+            Array(semantic.callouts.dropFirst(7).map(\.kind)) == [
+                "mini", "bibli", "project", "theorem", "dialogue", "author", "torn", "bespoke",
             ])
         #expect(semantic.callouts[7].rawKind == "mini")
+        #expect(semantic.callouts[7].role == .neutral)
+        #expect(semantic.callouts[8].role == .neutral)
+        #expect(semantic.callouts[9].role == .neutral)
+        #expect(semantic.callouts[10].role == .neutral)
+        #expect(semantic.callouts[11].role == .neutral)
+        #expect(semantic.callouts[12].role == .neutral)
+        #expect(semantic.callouts[13].role == .neutral)
         #expect(semantic.callouts[1].foldState == .collapsed)
         #expect(semantic.callouts[6].foldState == .expanded)
         #expect(semantic.callouts[3].bodySource == "A reason that counts in favour.")

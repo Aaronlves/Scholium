@@ -22468,7 +22468,7 @@
     const annotation = dialect.linkAnnotation;
     const footnotes = dialect.footnotes;
     const mathematics = dialect.mathematics;
-    return dialect.version === 5 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31 && callouts.every((callout) => Boolean(callout) && typeof callout.identifier === "string" && callout.identifier.length <= 64 && Array.isArray(callout.aliases) && callout.aliases.length <= 31 && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64) && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
+    return dialect.version === 6 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31 && callouts.every((callout) => Boolean(callout) && Object.keys(callout).length === 3 && typeof callout.identifier === "string" && callout.identifier.length <= 64 && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
   }
   function validOperation(operation) {
     switch (operation.type) {
@@ -35101,15 +35101,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   // callout-presentation.ts
   var neutralCallout = {
     identifier: "neutral",
-    aliases: [],
     label: localized("Note"),
     meaning: localized("Preserves an unsupported callout without assigning a research role.")
   };
   function calloutDefinition(dialect, rawKind) {
     const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-    const definition = dialect?.callouts.find(
-      (callout) => callout.identifier === kind || callout.aliases.includes(kind)
-    ) ?? neutralCallout;
+    const definition = dialect?.callouts.find((callout) => callout.identifier === kind) ?? neutralCallout;
     return { ...definition, ...localizedCallout(definition.identifier, definition) };
   }
   function calloutHeader(text) {

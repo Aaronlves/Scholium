@@ -284,10 +284,10 @@ describe("AI-first inline continuation", () => {
 });
 
 const dialect: MarkdownEditingDialect = {
-  version: 5,
+  version: 6,
   callouts: [
-    {identifier: "orient", aliases: ["mini"], label: "Orient", meaning: "Purpose and route."},
-    {identifier: "state", aliases: ["definition"], label: "State", meaning: "A compact claim."},
+    {identifier: "orient", label: "Orient", meaning: "Purpose and route."},
+    {identifier: "state", label: "State", meaning: "A compact claim."},
   ],
   linkAnnotation: {
     openingDelimiter: "{{", closingDelimiter: "}}", escapeCharacter: "\\",

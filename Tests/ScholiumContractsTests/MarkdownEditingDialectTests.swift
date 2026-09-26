@@ -8,13 +8,16 @@ struct MarkdownEditingDialectTests {
     func dialectProjection() throws {
         let dialect = MarkdownEditingDialect.current
 
-        #expect(dialect.version == 5)
+        #expect(dialect.version == 6)
         #expect(
             dialect.callouts.map(\.identifier) == [
                 "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
             ])
-        #expect(dialect.callouts.first { $0.identifier == "orient" }?.aliases == ["mini"])
-        #expect(dialect.callouts.first { $0.identifier == "state" }?.aliases.contains("objection") == true)
+        let encodedObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(dialect)) as? [String: Any]
+        )
+        let callouts = try #require(encodedObject["callouts"] as? [[String: Any]])
+        #expect(callouts.allSatisfy { Set($0.keys) == ["identifier", "label", "meaning"] })
         #expect(dialect.linkAnnotation.openingDelimiter == "{{")
         #expect(dialect.linkAnnotation.closingDelimiter == "}}")
         #expect(dialect.linkAnnotation.escapeCharacter == "\\")
@@ -36,13 +39,15 @@ struct MarkdownEditingDialectTests {
         #expect(try JSONDecoder().decode(MarkdownEditingDialect.self, from: encoded) == dialect)
     }
 
-    @Test("Every advertised alias resolves to its advertised canonical identifier")
-    func aliasesResolve() {
-        for callout in MarkdownEditingDialect.current.callouts {
-            #expect(CalloutSemanticVocabulary.canonicalIdentifier(for: callout.identifier) == callout.identifier)
-            for alias in callout.aliases {
-                #expect(CalloutSemanticVocabulary.canonicalIdentifier(for: alias) == callout.identifier)
-            }
+    @Test("Only built-in callout identifiers receive semantic roles")
+    func calloutIdentifiers() {
+        for identifier in CalloutSemanticVocabulary.preferredIdentifiers {
+            #expect(CalloutSemanticVocabulary.normalizedIdentifier(for: identifier) == identifier)
+            #expect(CalloutSemanticVocabulary.role(for: identifier).rawValue == identifier)
+        }
+        for unsupported in ["mini", "bibliography", "project", "theorem", "objection", "case", "author", "torn"] {
+            #expect(CalloutSemanticVocabulary.normalizedIdentifier(for: unsupported) == unsupported)
+            #expect(CalloutSemanticVocabulary.role(for: unsupported) == .neutral)
         }
     }
 

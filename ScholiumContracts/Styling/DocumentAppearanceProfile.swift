@@ -303,8 +303,6 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
         case hyphenation
     }
 
-    /// Older appearance files do not contain the hyphenation field; they
-    /// retain the conservative no-automatic-hyphenation default when decoded.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         lineWidthCharacterUnits = try container.decode(Double.self, forKey: .lineWidthCharacterUnits)
@@ -312,7 +310,7 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
         source = try container.decode(DocumentSourceAppearance.self, forKey: .source)
         headings = try container.decode(DocumentHeadingAppearance.self, forKey: .headings)
         callouts = try container.decode([DocumentCalloutAppearance].self, forKey: .callouts)
-        hyphenation = try container.decodeIfPresent(DocumentHyphenation.self, forKey: .hyphenation) ?? .none
+        hyphenation = try container.decode(DocumentHyphenation.self, forKey: .hyphenation)
     }
 
     public func encode(to encoder: Encoder) throws {

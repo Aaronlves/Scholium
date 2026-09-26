@@ -66,6 +66,7 @@ struct CodexChatTranscriptTests {
             .object([
                 "thread": .object([
                     "id": .string("child"), "parentThreadId": .string("parent"),
+                    "historyMode": .string("legacy"),
                     "status": .object(["type": .string("idle")]), "turns": .array([value]),
                 ])
             ])

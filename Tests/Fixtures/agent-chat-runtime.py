@@ -350,7 +350,7 @@ for line in sys.stdin:
             if 'nested-child' in text:
                 parent = tid + '-coordinator'
                 threads[parent] = {'id': parent, 'parentThreadId': tid, 'agentNickname': 'Coordinator',
-                    'status': {'type': 'idle'}, 'turns': []}
+                    'status': {'type': 'idle'}, 'historyMode': 'legacy', 'turns': []}
             for index, child in enumerate(children):
                 child_turn = {'id': child + '-turn', 'status': 'inProgress' if index == 0 else 'completed', 'items': [
                     {'id': child + '-request', 'type': 'userMessage', 'content': [{'type': 'text', 'text': '核对所选原文，保留页码。'},
@@ -366,14 +366,15 @@ for line in sys.stdin:
             if 'nested-report' in text:
                 grandchild = children[0] + '-reader'
                 threads[grandchild] = {'id': grandchild, 'parentThreadId': children[0],
-                    'agentNickname': '段落核对', 'status': {'type': 'idle'}, 'turns': [
+                    'agentNickname': '段落核对', 'status': {'type': 'idle'}, 'historyMode': 'legacy', 'turns': [
                         {'id': grandchild + '-turn', 'status': 'completed', 'items': [
                             {'id': grandchild + '-reply', 'type': 'agentMessage', 'text': '第二页第三段：只核对这一段。'},
                             {'id': grandchild + '-report', 'type': 'collabAgentToolCall',
                                 'senderThreadId': grandchild, 'tool': 'sendMessage', 'status': 'completed',
                                 'receiverThreadIds': [children[0]], 'agentsStates': {}}]}]}
                 threads['unrelated-report-target'] = {'id': 'unrelated-report-target',
-                    'parentThreadId': 'other-conversation', 'status': {'type': 'idle'}, 'turns': []}
+                    'parentThreadId': 'other-conversation', 'status': {'type': 'idle'},
+                    'historyMode': 'legacy', 'turns': []}
                 threads[children[0]]['turns'][-1]['items'].append({
                     'id': children[0] + '-report', 'type': 'collabAgentToolCall',
                     'senderThreadId': children[0], 'tool': 'sendMessage', 'status': 'completed',

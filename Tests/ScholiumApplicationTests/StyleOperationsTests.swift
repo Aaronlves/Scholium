@@ -130,8 +130,8 @@ struct StyleOperationsTests {
         #expect(removed.selectedAppearanceProfileID == original.id)
     }
 
-    @Test("Legacy appearance files default missing hyphenation to Never")
-    func legacyAppearanceDefaultsHyphenation() async throws {
+    @Test("Appearance files without hyphenation stay opaque until explicit default restoration")
+    func unsupportedAppearanceRequiresWholeFileRestore() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "ScholiumLegacyAppearance-\(UUID().uuidString)",
             isDirectory: true
@@ -156,11 +156,31 @@ struct StyleOperationsTests {
         try legacyBytes.write(to: url, options: .atomic)
 
         let reloaded = StyleOperations(applicationSupportURL: support)
-        let snapshot = try await reloaded.reloadAppearanceConfiguration()
-        #expect(snapshot.appearanceProfiles.first?.settings.hyphenation == DocumentHyphenation.none)
-        #expect(snapshot.canModifyAppearance)
+        await #expect(throws: StyleUseCaseError.self) {
+            _ = try await reloaded.reloadAppearanceConfiguration()
+        }
+        let snapshot = try await reloaded.styleSnapshot()
+        #expect(snapshot.appearanceProfiles.isEmpty)
+        #expect(snapshot.appearanceError != nil)
+        #expect(!snapshot.canModifyAppearance)
+        #expect(!snapshot.canRepairAppearance)
         #expect(try Data(contentsOf: url) == legacyBytes)
         #expect(initial.appearanceProfiles.first?.settings.hyphenation == DocumentHyphenation.none)
+
+        let restored = try await reloaded.restoreAppearanceDefaults()
+        #expect(restored.appearanceError == nil)
+        #expect(restored.canModifyAppearance)
+        #expect(restored.appearanceProfiles.count == 1)
+        #expect(restored.appearanceProfiles.first?.settings == DocumentAppearanceSettings.defaultSettings)
+        let recoveryCopies = try FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("\(url.lastPathComponent).recovery-") }
+        #expect(recoveryCopies.count == 1)
+        #expect(try Data(contentsOf: try #require(recoveryCopies.first)) == legacyBytes)
+
+        _ = try await reloaded.restoreAppearanceDefaults()
+        let afterRepeatedRestore = try FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("\(url.lastPathComponent).recovery-") }
+        #expect(afterRepeatedRestore.count == 1)
     }
 
     @Test("Appearance line width normalizes to the supported finite range")

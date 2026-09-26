@@ -72,16 +72,34 @@ struct AgentMCPServiceTests {
     @Test func discoversCodexInCurrentChatGPTBundleLayout() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let chatGPT = root.appendingPathComponent("ChatGPT.app", isDirectory: true)
+        let chatGPT = root.appendingPathComponent("Custom Location/ChatGPT.app", isDirectory: true)
         let executable = chatGPT.appendingPathComponent(
-            "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex")
+            "Contents/Resources/codex-cli/Runtime Bundle.app/Contents/MacOS/codex")
         try FileManager.default.createDirectory(
             at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("fixture runtime".utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
 
-        #expect(
+        let discoveredRuntime = try #require(
             ScholiumAgentIntegrationResources.codexRuntimeURL(
-                applicationBundles: [chatGPT], standaloneCandidates: []) == executable)
+                registeredApplicationBundles: [chatGPT]))
+        #expect(discoveredRuntime.standardizedFileURL.path == executable.standardizedFileURL.path)
+    }
+
+    @Test func doesNotSearchConventionalOrStandalonePathsWithoutRegisteredApplications() {
+        #expect(ScholiumAgentIntegrationResources.codexRuntimeURL(registeredApplicationBundles: []) == nil)
+    }
+
+    @Test func ignoresLegacyDirectResourcesRuntime() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let application = root.appendingPathComponent("Legacy.app", isDirectory: true)
+        let executable = application.appendingPathComponent("Contents/Resources/codex")
+        try FileManager.default.createDirectory(
+            at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("legacy runtime".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+
+        #expect(ScholiumAgentIntegrationResources.codexRuntimeURL(registeredApplicationBundles: [application]) == nil)
     }
 }

@@ -338,14 +338,14 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("data-scholium-protected=\"callout\""))
     }
 
-    @Test("Legacy callout identifiers preserve source identity while using the new semantic role")
-    func legacyCallout() {
+    @Test("Unknown callout identifiers preserve source identity without receiving a semantic role")
+    func unknownCalloutRemainsNeutral() {
         let rendered = SafeMarkdownRenderer.render(
             NoteDocument(relativePath: "legacy-callout.md", rawContent: "> [!torn]- Limit\n> Check the source.\n")
         ).htmlBody
 
-        #expect(rendered.contains("scholium-callout-flag"))
-        #expect(rendered.contains("data-callout=\"flag\""))
+        #expect(rendered.contains("scholium-callout-neutral"))
+        #expect(rendered.contains("data-callout=\"torn\""))
         #expect(rendered.contains("data-callout-source=\"torn\""))
         #expect(rendered.contains("<details"))
         #expect(!rendered.contains("<details open"))

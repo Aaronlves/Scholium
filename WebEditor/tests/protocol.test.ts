@@ -16,8 +16,8 @@ const request = {
 };
 
 const dialect = {
-  version: 5,
-  callouts: [{identifier: "state", aliases: ["definition"], label: "Statement", meaning: "Claim"}],
+  version: 6,
+  callouts: [{identifier: "state", label: "Statement", meaning: "Claim"}],
   linkAnnotation: {
     openingDelimiter: "{{", closingDelimiter: "}}", escapeCharacter: "\\",
     allowsMultiline: true, allowsNesting: false,
@@ -137,6 +137,16 @@ describe("editor protocol", () => {
       operation: {
         ...initialize,
         dialect: {...dialect, footnotes: {...dialect.footnotes, continuationIndentSpaces: 4}},
+      },
+    })).toBe(false);
+    expect(isEditorRequest({
+      ...request,
+      operation: {
+        ...initialize,
+        dialect: {
+          ...dialect,
+          callouts: [{identifier: "state", aliases: ["theorem"], label: "Statement", meaning: "Claim"}],
+        },
       },
     })).toBe(false);
   });

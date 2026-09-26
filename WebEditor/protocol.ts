@@ -44,7 +44,7 @@ export interface EditorScrollAnchor {
 }
 export interface MarkdownEditingDialect {
   version: number;
-  callouts: Array<{identifier: string; aliases: string[]; label: string; meaning: string}>;
+  callouts: Array<{identifier: string; label: string; meaning: string}>;
   linkAnnotation: {
     openingDelimiter: "{{";
     closingDelimiter: "}}";
@@ -264,12 +264,11 @@ function validDialect(value: unknown): value is MarkdownEditingDialect {
   const annotation = dialect.linkAnnotation;
   const footnotes = dialect.footnotes;
   const mathematics = dialect.mathematics;
-  return dialect.version === 5
+  return dialect.version === 6
     && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31
     && callouts.every((callout) => Boolean(callout)
+      && Object.keys(callout).length === 3
       && typeof callout.identifier === "string" && callout.identifier.length <= 64
-      && Array.isArray(callout.aliases) && callout.aliases.length <= 31
-      && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64)
       && typeof callout.label === "string" && callout.label.length <= 120
       && typeof callout.meaning === "string" && callout.meaning.length <= 1_000)
     && Boolean(annotation)

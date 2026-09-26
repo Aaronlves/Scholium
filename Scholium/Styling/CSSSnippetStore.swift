@@ -19,6 +19,7 @@ final class CSSSnippetStore: ObservableObject {
     @Published private(set) var storeError: String?
     @Published private(set) var canModify = false
     @Published private(set) var canModifyAppearance = false
+    @Published private(set) var canRepairAppearance = false
     @Published private(set) var appearanceError: String?
     @Published private(set) var snippetError: String?
     @Published private(set) var isRestoringAppearance = false
@@ -47,8 +48,6 @@ final class CSSSnippetStore: ObservableObject {
         directoryWatcher?.cancel()
         for watcher in snippetWatchers.values { watcher.cancel() }
     }
-
-    var canRepairAppearance: Bool { !canModifyAppearance && !appearanceProfiles.isEmpty }
 
     var enabledCount: Int { snippets.lazy.filter(\.isEnabled).count }
     var selectedAppearanceProfile: DocumentAppearanceProfile? {
@@ -300,6 +299,7 @@ final class CSSSnippetStore: ObservableObject {
         storeError = snapshot.storeError
         canModify = snapshot.canModify
         canModifyAppearance = snapshot.canModifyAppearance
+        canRepairAppearance = snapshot.canRepairAppearance
         appearanceError = snapshot.appearanceError
         snippetError = snapshot.snippetError
     }

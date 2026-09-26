@@ -707,6 +707,32 @@ struct TriptychControlTests {
         #expect(try await store.manifest().vaultIDs == ids)
     }
 
+    @Test("Incomplete identity files are rejected and preserved as one opaque control bundle")
+    func incompleteIdentityFileRequiresRecovery() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        _ = try await store.bootstrap(vaultIDs: ids)
+
+        let control = fixture.root.appendingPathComponent(".scholium", isDirectory: true)
+        let identityURL = control.appendingPathComponent("identities.json")
+        let incompleteBytes = Data("{}".utf8)
+        try incompleteBytes.write(to: identityURL, options: .atomic)
+
+        await #expect(throws: TriptychControlError.self) {
+            try await store.validateExistingSupportedControlState()
+        }
+        let preserved = try await TriptychControlStore.preserveUnsupportedControlBundle(
+            worksVaultURL: fixture.works
+        )
+
+        #expect(!FileManager.default.fileExists(atPath: control.path))
+        #expect(try Data(contentsOf: preserved.appendingPathComponent("identities.json")) == incompleteBytes)
+        let reset = try await TriptychControlStore(worksVaultURL: fixture.works).bootstrap(vaultIDs: ids)
+        #expect(reset.vaultIDs == ids)
+    }
+
     @Test("Stable identities survive moves and duplicates receive new IDs")
     func stableIdentityRules() async throws {
         let fixture = try Fixture()

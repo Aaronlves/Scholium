@@ -121,9 +121,7 @@ export function projectBaseSyntax(source: string): BaseSyntaxProjection {
 export function projectDialectSemantics(source: string, dialect: MarkdownEditingDialect): DialectSemanticProjection {
   const canonicalCallout = (raw: string) => {
     const value = raw.toLowerCase().replace(/:+$/, "").trim();
-    return dialect.callouts.find(
-      (callout) => callout.identifier === value || callout.aliases.includes(value),
-    )?.identifier ?? value;
+    return dialect.callouts.find((callout) => callout.identifier === value)?.identifier ?? value;
   };
   const parserInput = normalizedParserInput(source);
   const state = EditorState.create({doc: parserInput.normalized, extensions: [scholiumNoteLanguage]});

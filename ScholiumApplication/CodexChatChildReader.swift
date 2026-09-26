@@ -67,7 +67,9 @@ public enum CodexChatChildReader {
             let state = object["status"]?.objectValue,
             let status = state["type"]?.stringValue.flatMap(AgentChatChildHistory.Metadata.Status.init(rawValue:))
         else { throw CodexConnectionError.invalidMessage }
-        let history = object["historyMode"]?.stringValue ?? "legacy"
+        guard let history = object["historyMode"]?.stringValue else {
+            throw CodexConnectionError.invalidMessage
+        }
         guard ["legacy", "paginated"].contains(history) else { throw CodexConnectionError.invalidMessage }
         var flags: [String] = []
         if status == .active {

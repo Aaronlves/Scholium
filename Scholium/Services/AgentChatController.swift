@@ -147,7 +147,11 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     var suggestedRuntimePath: String? {
-        ScholiumAgentIntegrationResources.codexRuntimeURL()?.path
+        let registeredApplications = NSWorkspace.shared.urlsForApplications(
+            withBundleIdentifier: "com.openai.codex")
+        return
+            ScholiumAgentIntegrationResources
+            .codexRuntimeURL(registeredApplicationBundles: registeredApplications)?.path
     }
 
     func selectNotification(_ route: AgentChatNotificationRoute) async -> Bool {

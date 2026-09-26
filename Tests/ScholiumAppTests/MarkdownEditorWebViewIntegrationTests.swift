@@ -4551,7 +4551,7 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Edit callout roles use styling without duplicate visible labels")
     func editCalloutRolesUseStylingWithoutVisibleLabels() async throws {
         let source =
-            "> [!warning]+ Limitation\n> First body.\n\n"
+            "> [!flag]+ Limitation\n> First body.\n\n"
             + "> [!state]+ Claim\n> Second body.\n\n"
             + "> [!quote]+ Source\n> Third body.\n\n"
             + "> [!orient] Route\n> Supporting prose.\n\n"
@@ -4601,7 +4601,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test("Edit callouts project default titles only for untitled source")
     func editCalloutsProjectDefaultTitleOnlyWhenUntitled() async throws {
-        let source = "> [!warning]\n> Warning body.\n\n> [!warning]-\n> Foldable body.\n"
+        let source = "> [!flag]\n> Warning body.\n\n> [!flag]-\n> Foldable body.\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()

@@ -40,27 +40,6 @@ public actor TriptychControlStore {
             self.pendingRebindings = pendingRebindings
             self.unresolvedAmbiguities = unresolvedAmbiguities
         }
-
-        private enum CodingKeys: String, CodingKey {
-            case records
-            case pendingRebindings
-            case unresolvedAmbiguities
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            records = try container.decodeIfPresent([NoteIdentityRecord].self, forKey: .records) ?? []
-            pendingRebindings =
-                try container.decodeIfPresent(
-                    [NoteIdentityPendingRebinding].self,
-                    forKey: .pendingRebindings
-                ) ?? []
-            unresolvedAmbiguities =
-                try container.decodeIfPresent(
-                    [StoredIdentityAmbiguity].self,
-                    forKey: .unresolvedAmbiguities
-                ) ?? []
-        }
     }
 
     private struct IdentityFileSnapshot {

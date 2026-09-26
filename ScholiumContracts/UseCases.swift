@@ -302,6 +302,7 @@ public struct StyleSnapshot: Codable, Hashable, Sendable {
     public let storeError: String?
     public let canModify: Bool
     public let canModifyAppearance: Bool
+    public let canRepairAppearance: Bool
     public let appearanceError: String?
     public let snippetError: String?
 
@@ -316,6 +317,7 @@ public struct StyleSnapshot: Codable, Hashable, Sendable {
         storeError: String?,
         canModify: Bool,
         canModifyAppearance: Bool,
+        canRepairAppearance: Bool,
         appearanceError: String?,
         snippetError: String?
     ) {
@@ -329,6 +331,7 @@ public struct StyleSnapshot: Codable, Hashable, Sendable {
         self.storeError = storeError
         self.canModify = canModify
         self.canModifyAppearance = canModifyAppearance
+        self.canRepairAppearance = canRepairAppearance
         self.appearanceError = appearanceError
         self.snippetError = snippetError
     }
