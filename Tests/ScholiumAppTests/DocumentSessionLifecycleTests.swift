@@ -99,20 +99,54 @@ struct DocumentSessionLifecycleTests {
         session.preparePresentationMode(.source)
         #expect(session.presentationMode == .read)
         #expect(session.pendingEditorMode == .source)
+        #expect(session.pendingPresentationMode == .source)
         #expect(!session.isEditing)
         #expect(!session.retainsEditorSurface)
 
         session.beginEditing(in: .source)
         #expect(session.presentationMode == .source)
+        #expect(session.pendingPresentationMode == .source)
         #expect(session.activeEditorMode == .source)
         #expect(session.pendingEditorMode == nil)
         #expect(session.isEditing)
         #expect(session.retainsEditorSurface)
 
+        #expect(
+            session.presentation.pendingPresentationMode(
+                editorIsLoaded: true,
+                acknowledgedEditorMode: .source,
+                hasEditorError: false
+            ) == nil
+        )
+
         session.switchEditorMode(to: .livePreview)
         #expect(session.presentationMode == .livePreview)
+        #expect(session.pendingPresentationMode == .livePreview)
         #expect(session.activeEditorMode == .livePreview)
         #expect(session.retainedEditorMode == .livePreview)
+
+        // Only the matching WebKit acknowledgment settles the requested mode.
+        #expect(
+            session.presentation.pendingPresentationMode(
+                editorIsLoaded: true,
+                acknowledgedEditorMode: .source,
+                hasEditorError: false
+            ) == .livePreview
+        )
+        #expect(
+            session.presentation.pendingPresentationMode(
+                editorIsLoaded: true,
+                acknowledgedEditorMode: .livePreview,
+                hasEditorError: false
+            ) == nil
+        )
+        #expect(
+            session.presentation.pendingPresentationMode(
+                editorIsLoaded: true,
+                acknowledgedEditorMode: .livePreview,
+                hasEditorError: true
+            ) == nil
+        )
 
         session.finishEditing()
         #expect(session.presentationMode == .read)

@@ -363,15 +363,39 @@ extension ScholiumUITests {
 
         selectMode("Edit")
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { mode.label == "Document Mode, Edit" },
+            "The toolbar must leave its preparation state after the editor acknowledges Edit."
+        )
         let firstToSecondStart = DispatchTime.now().uptimeNanoseconds
+        XCTAssertEqual(documentModeState(mode), "Edit")
+        var firstToSecondToolbarLabels = [mode.label]
         _ = clickLibraryRow("QA Autosave B.md")
         XCTAssertTrue(
             waitUntil(timeout: 8) {
-                self.documentTitle() == "QA Autosave B"
+                let label = mode.label
+                firstToSecondToolbarLabels.append(label)
+                if !mode.isEnabled {
+                    XCTAssertEqual(
+                        label,
+                        "Document Mode, Edit",
+                        "Preparing the next Note must preserve the toolbar's target-mode label."
+                    )
+                }
+                return self.documentTitle() == "QA Autosave B"
                     && self.app.descendants(matching: .any)[
                         "Markdown editor, Edit mode"
                     ].exists
+                    && mode.label == "Document Mode, Edit"
             })
+        XCTAssertTrue(
+            firstToSecondToolbarLabels.allSatisfy {
+                $0 == "Document Mode, Edit"
+            },
+            "Switching Notes in the retained Edit mode must not expose an intermediate Review toolbar state."
+        )
+        XCTAssertEqual(mode.label, "Document Mode, Edit")
+        XCTAssertTrue(mode.isEnabled)
         let firstToSecondMilliseconds =
             Double(
                 DispatchTime.now().uptimeNanoseconds - firstToSecondStart

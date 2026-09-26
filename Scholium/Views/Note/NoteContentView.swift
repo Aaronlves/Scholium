@@ -771,7 +771,7 @@ struct NoteContentView<ShellNotices: View>: View {
     private var documentBodySurface: some View {
         DocumentEditorHost(
             documentID: editorSession.openingPresentationID.uuidString,
-            presentsEditor: isEditing,
+            presentsEditor: isEditing || documentSession.pendingEditorMode != nil,
             retainsEditor: documentSession.retainsEditorSurface,
             editorIsReady: editorSession.isLoaded
                 && editorSession.presentedMode == documentSession.activeEditorMode,

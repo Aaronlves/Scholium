@@ -130,6 +130,13 @@ final class DocumentSessionModel: ObservableObject {
     var retainedEditorMode: MarkdownEditorMode { presentation.retainedEditorMode }
     var activeEditorMode: MarkdownEditorMode? { presentation.activeEditorMode }
     var pendingEditorMode: MarkdownEditorMode? { presentation.pendingEditorMode }
+    var pendingPresentationMode: NotePresentationMode? {
+        presentation.pendingPresentationMode(
+            editorIsLoaded: editorSession.isLoaded,
+            acknowledgedEditorMode: editorSession.presentedMode,
+            hasEditorError: editorSession.errorMessage != nil
+        )
+    }
     var retainsEditorSurface: Bool { presentation.retainsEditorSurface }
     var isEnteringManagedCreation: Bool {
         managedCreationBodyStartUTF16 != nil

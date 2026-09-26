@@ -80,6 +80,23 @@ struct DocumentPresentationState: Equatable, Sendable {
         return editorIntent
     }
 
+    func pendingPresentationMode(
+        editorIsLoaded: Bool,
+        acknowledgedEditorMode: MarkdownEditorMode?,
+        hasEditorError: Bool
+    ) -> NotePresentationMode? {
+        guard !hasEditorError else { return nil }
+        switch phase {
+        case .review(let editorIntent):
+            return editorIntent?.presentationMode
+        case .editing(let mode):
+            guard editorIsLoaded, acknowledgedEditorMode == mode else {
+                return mode.presentationMode
+            }
+            return nil
+        }
+    }
+
     var isEditing: Bool { activeEditorMode != nil }
 
     mutating func prepare(_ mode: NotePresentationMode) {

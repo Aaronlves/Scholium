@@ -26,8 +26,11 @@ final class ScholiumDocumentModeToolbarItem: NSToolbarItem {
     static func isAvailable(in model: WindowModel) -> Bool {
         guard !model.transferInProgress, let document = model.documentController.selectedDocument else { return false }
         let session = model.documentController.session(for: document.editingTarget)
-        let destination = ScholiumDocumentModeToolbarButtonPresentation(mode: model.documentController.chromeProjection.mode).destination
-        return !session.editorSession.isComposing && (destination == .read || model.canEditCurrentNote)
+        let chrome = model.documentController.chromeProjection
+        let presentation = modePresentation(in: model)
+        return !chrome.isPreparingMode
+            && !session.editorSession.isComposing
+            && (presentation.destination == .read || model.canEditCurrentNote)
     }
 
     override func validate() { refreshPresentation() }
@@ -37,7 +40,7 @@ final class ScholiumDocumentModeToolbarItem: NSToolbarItem {
             isEnabled = false
             return
         }
-        let presentation = ScholiumDocumentModeToolbarButtonPresentation(mode: model.documentController.chromeProjection.mode)
+        let presentation = Self.modePresentation(in: model)
         label = presentation.accessibilityLabel
         paletteLabel = label
         title = ""
@@ -52,6 +55,13 @@ final class ScholiumDocumentModeToolbarItem: NSToolbarItem {
 
     @objc private func toggleMode() {
         guard let model, Self.isAvailable(in: model) else { return }
-        model.requestDocumentMode(ScholiumDocumentModeToolbarButtonPresentation(mode: model.documentController.chromeProjection.mode).destination)
+        model.requestDocumentMode(Self.modePresentation(in: model).destination)
+    }
+
+    private static func modePresentation(
+        in model: WindowModel
+    ) -> ScholiumDocumentModeToolbarButtonPresentation {
+        let chrome = model.documentController.chromeProjection
+        return ScholiumDocumentModeToolbarButtonPresentation(mode: chrome.mode)
     }
 }
