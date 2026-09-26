@@ -44,9 +44,7 @@ struct AgentChatView: View {
     @State private var focusRequest: UUID?
     @State private var replyNavigation: AgentChatReplyNavigation?
     @State private var showsAccountUsage = false
-    @State private var showsDiagnostics = false
-    @State private var diagnosticMessageID: String?
-    @State private var diagnosticError: String?
+    @State private var diagnosticsPresentation: AgentChatDiagnosticsPresentation?
     @State private var renameID: UUID?
     @State private var showsRename = false
     @State private var renameTitle = ""
@@ -76,11 +74,6 @@ struct AgentChatView: View {
         .clipped()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.chat")
-        .popover(isPresented: $showsDiagnostics) {
-            AgentChatDiagnosticsView(
-                messages: controller.selected?.messages ?? [], selectedID: diagnosticMessageID,
-                error: diagnosticError ?? controller.error, close: { showsDiagnostics = false })
-        }
         .sheet(isPresented: $showsAccountUsage) {
             AgentChatAccountUsageView(
                 quotas: controller.quotas, error: controller.quotaError,
@@ -102,11 +95,13 @@ struct AgentChatView: View {
             Task { @MainActor in await controller.addLocalFiles(urls, to: id) }
             return true
         }
-        .onChange(of: showsConversationList) { _, _ in markVisibleConversationRead() }
+        .onChange(of: showsConversationList) { _, _ in
+            diagnosticsPresentation = nil
+            markVisibleConversationRead()
+        }
         .onChange(of: controller.selectedID) { _, id in
             _ = detailStore.presentation(for: id)
-            showsDiagnostics = false
-            diagnosticError = nil
+            diagnosticsPresentation = nil
             renameID = nil
             showsRename = false
             markVisibleConversationRead()
@@ -115,8 +110,7 @@ struct AgentChatView: View {
         .onChange(of: controller.selected?.unreadAt) { _, _ in markVisibleConversationRead() }
         .onChange(of: isVisible) { _, visible in
             if !visible {
-                showsDiagnostics = false
-                diagnosticError = nil
+                diagnosticsPresentation = nil
             }
             markVisibleConversationRead()
         }
@@ -142,7 +136,7 @@ struct AgentChatView: View {
             newConversation: newConversation, renameConversation: renameConversation,
             showConversationChanges: showConversationChanges,
             showAccountUsage: { showsAccountUsage = true },
-            showDiagnostics: { presentDiagnostics(error: $0) }
+            diagnosticsPresentation: $diagnosticsPresentation
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(pageTransition(from: .leading))
@@ -174,7 +168,7 @@ struct AgentChatView: View {
             didRestoreConversation: { listState.showsArchived = false },
             renameConversation: renameConversation,
             showAccountUsage: { showsAccountUsage = true },
-            showDiagnostics: { presentDiagnostics(messageID: $0, error: $1) }
+            diagnosticsPresentation: $diagnosticsPresentation
         )
         .id(controller.selectedID)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -211,12 +205,6 @@ struct AgentChatView: View {
         renameTitle = conversation.title
         renameID = conversation.id
         showsRename = true
-    }
-
-    private func presentDiagnostics(messageID: String? = nil, error: String? = nil) {
-        diagnosticMessageID = messageID
-        diagnosticError = error
-        showsDiagnostics = true
     }
 
     private func markVisibleConversationRead() {

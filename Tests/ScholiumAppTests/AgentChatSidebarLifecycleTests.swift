@@ -129,7 +129,7 @@ struct AgentChatSidebarLifecycleTests {
                     showConversationChanges: { _ in }, presentation: presentation, readingSession: session,
                     focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
                     newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
-                    showAccountUsage: {}, showDiagnostics: { _, _ in })
+                    showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
             }
             let host = NSHostingView(rootView: AnyView(detail()))
             let window = mount(host)
@@ -234,7 +234,7 @@ struct AgentChatSidebarLifecycleTests {
             showConversationChanges: { _ in }, presentation: presentation, readingSession: session,
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
-            showAccountUsage: {}, showDiagnostics: { _, _ in })
+            showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
         let host = NSHostingView(rootView: AnyView(detail))
         let entryStart = ContinuousClock.now
         let window = mount(host)

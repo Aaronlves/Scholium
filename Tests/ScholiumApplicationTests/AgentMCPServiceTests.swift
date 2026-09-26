@@ -68,4 +68,20 @@ struct AgentMCPServiceTests {
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         #expect(ScholiumAgentIntegrationResources.chatHelperURL(bundleURL: root) == executable)
     }
+
+    @Test func discoversCodexInCurrentChatGPTBundleLayout() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let chatGPT = root.appendingPathComponent("ChatGPT.app", isDirectory: true)
+        let executable = chatGPT.appendingPathComponent(
+            "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex")
+        try FileManager.default.createDirectory(
+            at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("fixture runtime".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+
+        #expect(
+            ScholiumAgentIntegrationResources.codexRuntimeURL(
+                applicationBundles: [chatGPT], standaloneCandidates: []) == executable)
+    }
 }

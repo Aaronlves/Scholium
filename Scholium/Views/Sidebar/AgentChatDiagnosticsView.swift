@@ -1,6 +1,67 @@
 import ScholiumContracts
 import SwiftUI
 
+struct AgentChatDiagnosticsPresentation: Equatable {
+    enum Anchor: Equatable {
+        case connectionStatus(UUID)
+        case conversationOptions
+        case activityMessage(String)
+    }
+
+    let anchor: Anchor
+    var selectedID: String? = nil
+    var error: String? = nil
+
+    static func binding(_ presentation: Binding<Self?>, at anchor: Anchor) -> Binding<Bool> {
+        Binding(
+            get: { presentation.wrappedValue?.anchor == anchor },
+            set: { isPresented in
+                guard !isPresented, presentation.wrappedValue?.anchor == anchor else { return }
+                presentation.wrappedValue = nil
+            })
+    }
+
+    static func dismiss(_ presentation: Binding<Self?>, at anchor: Anchor) {
+        guard presentation.wrappedValue?.anchor == anchor else { return }
+        presentation.wrappedValue = nil
+    }
+}
+
+struct AgentChatDiagnosticsPopover: View {
+    @ObservedObject var controller: AgentChatController
+    let presentation: AgentChatDiagnosticsPresentation
+    let close: () -> Void
+
+    var body: some View {
+        AgentChatDiagnosticsView(
+            messages: controller.selected?.messages ?? [], selectedID: presentation.selectedID,
+            error: presentation.error ?? controller.error, close: close)
+    }
+}
+
+struct AgentChatDiagnosticsButton: View {
+    @ObservedObject var controller: AgentChatController
+    @Binding var presentation: AgentChatDiagnosticsPresentation?
+    let error: String
+    @State private var anchorID = UUID()
+
+    private var anchor: AgentChatDiagnosticsPresentation.Anchor { .connectionStatus(anchorID) }
+    private var isPresented: Binding<Bool> { AgentChatDiagnosticsPresentation.binding($presentation, at: anchor) }
+
+    var body: some View {
+        Button("Diagnostics…") {
+            presentation = .init(anchor: anchor, error: error)
+        }
+        .popover(isPresented: isPresented) {
+            if let request = presentation, request.anchor == anchor {
+                AgentChatDiagnosticsPopover(
+                    controller: controller, presentation: request,
+                    close: { AgentChatDiagnosticsPresentation.dismiss($presentation, at: anchor) })
+            }
+        }
+    }
+}
+
 /// Technical evidence stays inspectable without becoming the research transcript.
 struct AgentChatDiagnosticsView: View {
     let messages: [AgentChatMessage]

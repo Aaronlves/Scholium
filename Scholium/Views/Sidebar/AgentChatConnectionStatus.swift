@@ -3,8 +3,8 @@ import SwiftUI
 /// Shared connection projection; the shell presents diagnostics.
 struct AgentChatConnectionStatus: View {
     @ObservedObject var controller: AgentChatController
+    @Binding var diagnosticsPresentation: AgentChatDiagnosticsPresentation?
     @Environment(\.openSettings) private var openSettings
-    let showDiagnostics: (String) -> Void
 
     private var executionError: String? {
         controller.selectedID.flatMap { controller.executions[$0]?.error }
@@ -16,9 +16,8 @@ struct AgentChatConnectionStatus: View {
             if let error = controller.settingsRenewalError {
                 ScholiumSidebarState(Text("Settings Could Not Be Applied"), indicator: .symbol("exclamationmark.triangle", role: .attention)) {
                     Button("Retry") { controller.renewSettingsWhenIdle() }
-                    Button("Diagnostics…") {
-                        showDiagnostics(error)
-                    }
+                    AgentChatDiagnosticsButton(
+                        controller: controller, presentation: $diagnosticsPresentation, error: error)
                 }
             } else {
                 ScholiumSidebarState(Text("Applying Settings…"), indicator: .progress)
@@ -32,7 +31,8 @@ struct AgentChatConnectionStatus: View {
                         indicator: .symbol("exclamationmark.triangle", role: .attention)
                     ) {
                         Button("Retry") { controller.connectConfigured() }
-                        Button("Diagnostics…") { showDiagnostics(error) }
+                        AgentChatDiagnosticsButton(
+                            controller: controller, presentation: $diagnosticsPresentation, error: error)
                     }
                 } else {
                     ScholiumSidebarState(Text("Not Connected"), indicator: .symbol("network")) {
@@ -49,7 +49,8 @@ struct AgentChatConnectionStatus: View {
                         indicator: .symbol("exclamationmark.triangle", role: .attention)
                     ) {
                         Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy)
-                        Button("Diagnostics…") { showDiagnostics(error) }
+                        AgentChatDiagnosticsButton(
+                            controller: controller, presentation: $diagnosticsPresentation, error: error)
                     }
                 } else {
                     ScholiumSidebarState(Text("Sign-In Required"), indicator: .symbol("person.crop.circle")) {
@@ -63,9 +64,8 @@ struct AgentChatConnectionStatus: View {
                 Button("Refresh Skills") {
                     controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true)
                 }.disabled(controller.isBusy || controller.capabilities.isRefreshing)
-                Button("Diagnostics…") {
-                    showDiagnostics(error)
-                }
+                AgentChatDiagnosticsButton(
+                    controller: controller, presentation: $diagnosticsPresentation, error: error)
             }
         }
         if controller.historyUnavailable {
@@ -80,9 +80,8 @@ struct AgentChatConnectionStatus: View {
         }
         if let error = executionError {
             ScholiumSidebarState(Text("Conversation Needs Attention"), indicator: .symbol("exclamationmark.triangle", role: .attention)) {
-                Button("Diagnostics…") {
-                    showDiagnostics(error)
-                }
+                AgentChatDiagnosticsButton(
+                    controller: controller, presentation: $diagnosticsPresentation, error: error)
                 if controller.connectionState == .disconnected {
                     Button("Agent Settings…") {
                         SettingsNavigationRequest.select(.agents, agentCategory: .connection)

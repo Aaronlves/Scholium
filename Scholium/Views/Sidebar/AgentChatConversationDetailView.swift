@@ -41,7 +41,7 @@ struct AgentChatConversationDetailView: View {
     let didRestoreConversation: () -> Void
     let renameConversation: (AgentChatConversation) -> Void
     let showAccountUsage: () -> Void
-    let showDiagnostics: (String?, String?) -> Void
+    @Binding var diagnosticsPresentation: AgentChatDiagnosticsPresentation?
 
     var body: some View {
         conversationDetail
@@ -63,7 +63,10 @@ struct AgentChatConversationDetailView: View {
                     AgentChatUpdateComparisonSheet(controller: controller, requestID: request.id, preview: preview)
                 }
             }
-            .onDisappear { fileSelectionTask?.cancel() }
+            .onDisappear {
+                fileSelectionTask?.cancel()
+                diagnosticsPresentation = nil
+            }
             .onChange(of: focusRequest, initial: true) { _, request in
                 guard let request else { return }
                 presentation.messageIsFocused = isVisible
@@ -112,7 +115,9 @@ struct AgentChatConversationDetailView: View {
                     Button("Context Window") { presentation.contextAnchor = .conversation }
                 }
                 Button("Diagnostics…") {
-                    showDiagnostics(nil, nil)
+                    presentation.contextAnchor = nil
+                    presentation.showsTurns = false
+                    diagnosticsPresentation = .init(anchor: .conversationOptions)
                 }
             } label: {
                 ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.more.symbol)
@@ -129,6 +134,20 @@ struct AgentChatConversationDetailView: View {
                 ) { id in
                     presentation.showsTurns = false
                     revealMessage(id)
+                }
+            }
+            .popover(
+                isPresented: AgentChatDiagnosticsPresentation.binding(
+                    $diagnosticsPresentation, at: .conversationOptions),
+                arrowEdge: .leading
+            ) {
+                if let request = diagnosticsPresentation, request.anchor == .conversationOptions {
+                    AgentChatDiagnosticsPopover(
+                        controller: controller, presentation: request,
+                        close: {
+                            AgentChatDiagnosticsPresentation.dismiss(
+                                $diagnosticsPresentation, at: .conversationOptions)
+                        })
                 }
             }
         }
@@ -229,7 +248,7 @@ struct AgentChatConversationDetailView: View {
     private var conversationTopBar: some View {
         VStack(spacing: 0) {
             header
-            AgentChatConnectionStatus(controller: controller) { showDiagnostics(nil, $0) }
+            AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: $diagnosticsPresentation)
             if controller.selected?.pendingMessageID != nil, !controller.isBusy {
                 Button("Continue Without Resending") { controller.confirmContinueAfterUncertainDelivery() }
                     .buttonStyle(ScholiumContentActionButtonStyle())
@@ -630,6 +649,7 @@ struct AgentChatConversationDetailView: View {
     @ViewBuilder
     private func activityRow(_ message: AgentChatMessage, activeActivityID: String?) -> some View {
         if let activity = message.activity {
+            let diagnosticsAnchor = AgentChatDiagnosticsPresentation.Anchor.activityMessage(message.id)
             let isCurrent = isVisible && activeActivityID == message.id
             let orbStyle = isCurrent ? AgentChatActivityOrbStyle.style(for: activity) : nil
             let noteTarget = AgentChatActivityProjection.noteTarget(activity, notes: noteChoices)
@@ -676,7 +696,20 @@ struct AgentChatConversationDetailView: View {
             .font(.callout)
             .contextMenu {
                 Button("Diagnostics…") {
-                    showDiagnostics(message.id, nil)
+                    diagnosticsPresentation = .init(anchor: diagnosticsAnchor, selectedID: message.id)
+                }
+            }
+            .popover(
+                isPresented: AgentChatDiagnosticsPresentation.binding(
+                    $diagnosticsPresentation, at: diagnosticsAnchor)
+            ) {
+                if let request = diagnosticsPresentation, request.anchor == diagnosticsAnchor {
+                    AgentChatDiagnosticsPopover(
+                        controller: controller, presentation: request,
+                        close: {
+                            AgentChatDiagnosticsPresentation.dismiss(
+                                $diagnosticsPresentation, at: diagnosticsAnchor)
+                        })
                 }
             }
             .accessibilityElement(children: .contain)
