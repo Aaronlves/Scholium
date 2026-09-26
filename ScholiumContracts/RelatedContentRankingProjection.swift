@@ -31,8 +31,9 @@ extension SearchTextSegment {
             }
             let mapping = mapIndex < offsetMap.count ? offsetMap[mapIndex] : nil
             var attributed: RelatedContentRankingField? = base
-            if let mapping, mapping.normalizedUTF16LowerBound < end {
-                let source = mapping.sourceUTF16LowerBound..<mapping.sourceUTF16UpperBound
+            if let mapping,
+                let source = mapping.sourceUTF16Range(forNormalizedUTF16Range: offset..<end)
+            {
                 // Annotation already has its own segment. Never count the same
                 // occurrence again through a containing callout or footnote.
                 if base != .annotation && annotations.contains(where: { $0.span.utf16Range.overlaps(source) }) {

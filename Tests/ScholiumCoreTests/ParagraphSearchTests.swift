@@ -43,8 +43,9 @@ struct ParagraphSearchTests {
         _ = try #require(segments.first?["offsetMap"] as? String)
         // A truncated record, or a well-formed record whose normalized upper
         // bound is outside the owning segment. Format and semantic checks differ.
-        var malformed = Data([0x53, 0x4f, 0x4d, 0x31, 1, 0, 0, 0])
+        var malformed = Data([0x53, 0x4f, 0x4d, 0x32, 1, 0, 0, 0])
         if outOfBounds {
+            malformed.append(SearchSegmentOffset.MappingKind.sourceSpan.rawValue)
             for value: UInt64 in [0, 100_000, 0, 1] {
                 var littleEndian = value.littleEndian
                 withUnsafeBytes(of: &littleEndian) { malformed.append(contentsOf: $0) }

@@ -12,7 +12,7 @@ struct SearchProjectionNormalizationTests {
         let projection = SearchDocumentProjection(document: NoteDocument(relativePath: "Unicode.md", rawContent: source))
         let body = try #require(projection.segments.first { $0.field == .body })
         var expectedText = ""
-        var expectedMap: [SearchSegmentOffset] = []
+        var expectedMappings: [(normalized: Range<Int>, source: Range<Int>)] = []
         var sourceOffset = 0
         var normalizedOffset = 0
         var pendingWhitespace: Range<Int>?
@@ -26,35 +26,30 @@ struct SearchProjectionNormalizationTests {
             }
             if let pendingWhitespace {
                 expectedText.append(" ")
-                expectedMap.append(
-                    SearchSegmentOffset(
-                        normalizedUTF16LowerBound: normalizedOffset,
-                        normalizedUTF16UpperBound: normalizedOffset + 1,
-                        sourceUTF16LowerBound: pendingWhitespace.lowerBound, sourceUTF16UpperBound: pendingWhitespace.upperBound))
+                expectedMappings.append((normalizedOffset..<(normalizedOffset + 1), pendingWhitespace))
                 normalizedOffset += 1
             }
             pendingWhitespace = nil
             let folded = SearchTextNormalization.lexicalNormalize(value)
             expectedText.append(folded)
-            expectedMap.append(
-                SearchSegmentOffset(
-                    normalizedUTF16LowerBound: normalizedOffset,
-                    normalizedUTF16UpperBound: normalizedOffset + folded.utf16.count,
-                    sourceUTF16LowerBound: range.lowerBound, sourceUTF16UpperBound: range.upperBound))
+            expectedMappings.append((
+                normalizedOffset..<(normalizedOffset + folded.utf16.count), range))
             normalizedOffset += folded.utf16.count
         }
         #expect(body.normalizedText == expectedText)
-        #expect(body.offsetMap == expectedMap)
+        #expect(body.offsetMap.count < expectedMappings.count)
         #expect(projection.paragraphs.first?.segments.first?.normalizedText == body.normalizedText)
         #expect(projection.paragraphs.first?.segments.first?.offsetMap == body.offsetMap)
-        // Every folded unit, including expansions and surrogate pairs, recovers
-        // the complete original grapheme rather than slicing its source encoding.
-        for offset in expectedMap where offset.normalizedUTF16UpperBound > offset.normalizedUTF16LowerBound {
-            for index in offset.normalizedUTF16LowerBound..<offset.normalizedUTF16UpperBound {
-                #expect(
-                    body.sourceUTF16Range(forNormalizedUTF16Range: index..<(index + 1))
-                        == offset.sourceUTF16LowerBound..<offset.sourceUTF16UpperBound)
+        // Every normalized code unit recovers the same grapheme or collapsed
+        // source span as the uncompressed per-character oracle.
+        for index in 0..<expectedText.utf16.count {
+            let expected = expectedMappings.filter {
+                $0.normalized.lowerBound <= index && $0.normalized.upperBound > index
             }
+            let expectedMapping = try #require(expected.first)
+            #expect(
+                body.sourceUTF16Range(forNormalizedUTF16Range: index..<(index + 1))
+                    == expectedMapping.source)
         }
     }
 }

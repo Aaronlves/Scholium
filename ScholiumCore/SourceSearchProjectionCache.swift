@@ -19,7 +19,7 @@ public struct SourceSearchProjectionCache: Sendable {
         let rankingVersion: Int
 
         static let current = Policy(
-            formatVersion: 1, projectionVersion: 1, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
+            formatVersion: 1, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
             tokenizerVersion: SearchContract.tokenizerPolicyVersion, rankingVersion: SearchContract.rankingPolicyVersion)
     }

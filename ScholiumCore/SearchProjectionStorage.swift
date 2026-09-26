@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-/// Private storage reuses the checked SOM1 representation already used by
+/// Private storage reuses the checked SOM2 representation already used by
 /// search_segments. Public semantic projections retain exact offset arrays.
 struct StoredParagraph: Codable {
     let range: SearchSourceRange
@@ -61,9 +61,9 @@ struct StoredParagraphSegment: Codable {
 /// spans. Search schema changes rebuild this disposable state instead of
 /// retaining a second decoder for older encodings.
 enum SearchOffsetMapCodec {
-    private static let magic = Data([0x53, 0x4f, 0x4d, 0x31])  // SOM1
+    private static let magic = Data([0x53, 0x4f, 0x4d, 0x32])  // SOM2
     private static let headerByteCount = 8
-    private static let entryByteCount = 32
+    private static let entryByteCount = 33
 
     static func encode(_ offsets: [SearchSegmentOffset]) throws -> Data {
         guard let count = UInt32(exactly: offsets.count),
@@ -82,6 +82,7 @@ enum SearchOffsetMapCodec {
         data.append(magic)
         append(count, to: &data)
         for offset in offsets {
+            data.append(offset.mappingKind.rawValue)
             append(UInt64(offset.normalizedUTF16LowerBound), to: &data)
             append(UInt64(offset.normalizedUTF16UpperBound), to: &data)
             append(UInt64(offset.sourceUTF16LowerBound), to: &data)
@@ -101,7 +102,7 @@ enum SearchOffsetMapCodec {
         }
     }
 
-    /// Checks the same SOM1 fields and semantic bounds as decoding plus
+    /// Checks the same SOM2 fields and semantic bounds as decoding plus
     /// `SearchProjectionValidation`, without retaining discarded offset arrays.
     static func validate(
         _ data: Data?,
@@ -151,8 +152,11 @@ enum SearchOffsetMapCodec {
 
     private static func offset(in bytes: UnsafeRawBufferPointer, index: Int) throws -> SearchSegmentOffset {
         let cursor = headerByteCount + index * entryByteCount
+        guard let mappingKind = SearchSegmentOffset.MappingKind(rawValue: bytes[cursor]) else {
+            throw SearchIndexError.corruptDatabase
+        }
         func value(_ component: Int) -> UInt64 {
-            UInt64(littleEndian: bytes.loadUnaligned(fromByteOffset: cursor + component * 8, as: UInt64.self))
+            UInt64(littleEndian: bytes.loadUnaligned(fromByteOffset: cursor + 1 + component * 8, as: UInt64.self))
         }
         let normalizedLower = value(0)
         let normalizedUpper = value(1)
@@ -163,7 +167,8 @@ enum SearchOffsetMapCodec {
         }
         return SearchSegmentOffset(
             normalizedUTF16LowerBound: Int(normalizedLower), normalizedUTF16UpperBound: Int(normalizedUpper),
-            sourceUTF16LowerBound: Int(sourceLower), sourceUTF16UpperBound: Int(sourceUpper))
+            sourceUTF16LowerBound: Int(sourceLower), sourceUTF16UpperBound: Int(sourceUpper),
+            mappingKind: mappingKind)
     }
 
     private static func append<Value: FixedWidthInteger>(
@@ -210,6 +215,9 @@ enum SearchProjectionValidation {
             && offset.sourceUTF16UpperBound >= offset.sourceUTF16LowerBound
             && offset.sourceUTF16LowerBound >= sourceUTF16Bounds.lower
             && offset.sourceUTF16UpperBound <= sourceUTF16Bounds.upper
+            && (offset.mappingKind != .linear
+                || offset.normalizedUTF16UpperBound - offset.normalizedUTF16LowerBound
+                    == offset.sourceUTF16UpperBound - offset.sourceUTF16LowerBound)
     }
 
     static func ordered(_ previous: SearchSegmentOffset, _ next: SearchSegmentOffset) -> Bool {

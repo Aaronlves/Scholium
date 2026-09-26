@@ -75,7 +75,7 @@ struct SourceSearchProjectionCacheTests {
         fixture.cache.store(SearchDocumentProjection(document: document), for: document)
         let original = try JSONDecoder().decode(SourceSearchProjectionCache.Frame.self, from: Data(contentsOf: fixture.record(document)))
         let policy = SourceSearchProjectionCache.Policy(
-            formatVersion: 0, projectionVersion: 1, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
+            formatVersion: 0, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
             tokenizerVersion: SearchContract.tokenizerPolicyVersion, rankingVersion: SearchContract.rankingPolicyVersion)
         try fixture.write(
@@ -85,7 +85,7 @@ struct SourceSearchProjectionCacheTests {
                 payloadDigest: original.payloadDigest, payload: original.payload), for: document)
         #expect(fixture.cache.load(for: document) == nil)
         let outdatedYAML = SourceSearchProjectionCache.Policy(
-            formatVersion: 1, projectionVersion: 1, markdownParserVersion: "0.8.0", yamlParserVersion: "6.0.0",
+            formatVersion: 1, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.0.0",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
             tokenizerVersion: SearchContract.tokenizerPolicyVersion, rankingVersion: SearchContract.rankingPolicyVersion)
         try fixture.write(
@@ -97,7 +97,7 @@ struct SourceSearchProjectionCacheTests {
         var payload = try #require(PropertyListSerialization.propertyList(from: original.payload, format: nil) as? [String: Any])
         var segments = try #require(payload["segments"] as? [[String: Any]])
         #expect(!segments.isEmpty)
-        segments[0]["offsetMap"] = Data([0x53, 0x4f, 0x4d, 0x31, 0, 0, 0, 0, 1])
+        segments[0]["offsetMap"] = Data([0x53, 0x4f, 0x4d, 0x32, 0, 0, 0, 0, 1])
         payload["segments"] = segments
         let malformed = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
         try fixture.write(

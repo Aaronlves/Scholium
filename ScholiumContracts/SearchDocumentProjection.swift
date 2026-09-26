@@ -3,21 +3,47 @@ import Foundation
 import Markdown
 
 public struct SearchSegmentOffset: Codable, Hashable, Sendable {
+    public enum MappingKind: UInt8, Codable, Hashable, Sendable {
+        /// Each normalized UTF-16 unit maps to the corresponding source unit.
+        /// Runs are coalesced only across single-unit graphemes.
+        case linear = 0
+        /// Every overlapping normalized unit maps to the complete source span.
+        /// This preserves grapheme, fold-expansion, collapsed-whitespace, and
+        /// non-exact projection behavior.
+        case sourceSpan = 1
+    }
+
     public let normalizedUTF16LowerBound: Int
     public let normalizedUTF16UpperBound: Int
     public let sourceUTF16LowerBound: Int
     public let sourceUTF16UpperBound: Int
+    public let mappingKind: MappingKind
 
     public init(
         normalizedUTF16LowerBound: Int,
         normalizedUTF16UpperBound: Int,
         sourceUTF16LowerBound: Int,
-        sourceUTF16UpperBound: Int
+        sourceUTF16UpperBound: Int,
+        mappingKind: MappingKind = .sourceSpan
     ) {
         self.normalizedUTF16LowerBound = normalizedUTF16LowerBound
         self.normalizedUTF16UpperBound = normalizedUTF16UpperBound
         self.sourceUTF16LowerBound = sourceUTF16LowerBound
         self.sourceUTF16UpperBound = sourceUTF16UpperBound
+        self.mappingKind = mappingKind
+    }
+
+    public func sourceUTF16Range(
+        forNormalizedUTF16Range range: Range<Int>
+    ) -> Range<Int>? {
+        let overlapLower = max(range.lowerBound, normalizedUTF16LowerBound)
+        let overlapUpper = min(range.upperBound, normalizedUTF16UpperBound)
+        guard overlapLower < overlapUpper else { return nil }
+        guard mappingKind == .linear else {
+            return sourceUTF16LowerBound..<sourceUTF16UpperBound
+        }
+        return (sourceUTF16LowerBound + overlapLower - normalizedUTF16LowerBound)..<(
+            sourceUTF16LowerBound + overlapUpper - normalizedUTF16LowerBound)
     }
 }
 
@@ -53,14 +79,17 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
     public func sourceUTF16Range(
         forNormalizedUTF16Range range: Range<Int>
     ) -> Range<Int>? {
-        let overlapping = offsetMap.filter {
-            $0.normalizedUTF16LowerBound < range.upperBound
-                && $0.normalizedUTF16UpperBound > range.lowerBound
+        var sourceLower: Int?
+        var sourceUpper: Int?
+        for mapping in offsetMap {
+            guard let mapped = mapping.sourceUTF16Range(forNormalizedUTF16Range: range) else { continue }
+            sourceLower = min(sourceLower ?? mapped.lowerBound, mapped.lowerBound)
+            sourceUpper = max(sourceUpper ?? mapped.upperBound, mapped.upperBound)
         }
-        guard !overlapping.isEmpty else {
+        guard let sourceLower, let sourceUpper else {
             return sourceRange.map { $0.utf16LowerBound..<$0.utf16UpperBound }
         }
-        return overlapping.map(\.sourceUTF16LowerBound).min()!..<overlapping.map(\.sourceUTF16UpperBound).max()!
+        return sourceLower..<sourceUpper
     }
 }
 
@@ -555,7 +584,48 @@ private enum SearchProjectionBuilder {
         normalized.reserveCapacity(text.utf16.count)
         var normalizedUTF16Count = 0
         var map: [SearchSegmentOffset] = []
-        map.reserveCapacity(text.utf16.count)
+        // Most source text is represented by one linear mapping per run, so
+        // reserve for sparse boundaries rather than every UTF-16 code unit.
+        map.reserveCapacity(min(text.utf16.count, 256))
+
+        func appendMapping(
+            normalizedRange: Range<Int>,
+            sourceRange: Range<Int>,
+            kind: SearchSegmentOffset.MappingKind
+        ) {
+            if let last = map.last,
+                last.mappingKind == kind,
+                last.normalizedUTF16UpperBound == normalizedRange.lowerBound
+            {
+                let canMerge: Bool
+                switch kind {
+                case .linear:
+                    canMerge = last.sourceUTF16UpperBound == sourceRange.lowerBound
+                        && last.normalizedUTF16UpperBound - last.normalizedUTF16LowerBound
+                            == last.sourceUTF16UpperBound - last.sourceUTF16LowerBound
+                        && normalizedRange.count == sourceRange.count
+                case .sourceSpan:
+                    canMerge = last.sourceUTF16LowerBound == sourceRange.lowerBound
+                        && last.sourceUTF16UpperBound == sourceRange.upperBound
+                }
+                if canMerge {
+                    map[map.count - 1] = SearchSegmentOffset(
+                        normalizedUTF16LowerBound: last.normalizedUTF16LowerBound,
+                        normalizedUTF16UpperBound: normalizedRange.upperBound,
+                        sourceUTF16LowerBound: last.sourceUTF16LowerBound,
+                        sourceUTF16UpperBound: kind == .linear ? sourceRange.upperBound : last.sourceUTF16UpperBound,
+                        mappingKind: kind)
+                    return
+                }
+            }
+            map.append(
+                SearchSegmentOffset(
+                    normalizedUTF16LowerBound: normalizedRange.lowerBound,
+                    normalizedUTF16UpperBound: normalizedRange.upperBound,
+                    sourceUTF16LowerBound: sourceRange.lowerBound,
+                    sourceUTF16UpperBound: sourceRange.upperBound,
+                    mappingKind: kind))
+        }
         var hasPendingWhitespace = false
         var pendingWhitespaceSource: Range<Int>?
         let fragments =
@@ -579,11 +649,8 @@ private enum SearchProjectionBuilder {
                 ))
 
             // Most visible prose is already in the lexical comparison form.
-            // Normalize that fragment once, then retain the per-grapheme map
-            // without paying Foundation folding cost once per Character. The
-            // exact source mapping remains one entry per grapheme, including
-            // non-exact projected fragments whose source range is intentionally
-            // broad.
+            // Normalize that fragment once, then coalesce exact single-unit
+            // graphemes into linear runs. Larger graphemes retain atomic spans.
             if !hasPendingWhitespace,
                 !fragmentText.contains(where: { $0.isWhitespace }),
                 SearchTextNormalization.lexicalNormalize(fragmentText) == fragmentText
@@ -592,23 +659,25 @@ private enum SearchProjectionBuilder {
                 normalized.append(contentsOf: fragmentText)
                 normalizedUTF16Count += fragmentText.utf16.count
                 if let sourceRange = fragment.sourceRange {
-                    var localUTF16 = 0
-                    for character in fragmentText {
-                        let characterLength = String(character).utf16.count
-                        let originalLower = localUTF16
-                        let originalUpper = localUTF16 + characterLength
-                        localUTF16 = originalUpper
-                        let mappedSource =
-                            fragment.exact
-                            ? (sourceRange.lowerBound + originalLower)..<(sourceRange.lowerBound + originalUpper)
-                            : sourceRange
-                        map.append(
-                            SearchSegmentOffset(
-                                normalizedUTF16LowerBound: lower + originalLower,
-                                normalizedUTF16UpperBound: lower + originalUpper,
-                                sourceUTF16LowerBound: mappedSource.lowerBound,
-                                sourceUTF16UpperBound: mappedSource.upperBound
-                            ))
+                    if !fragment.exact {
+                        appendMapping(
+                            normalizedRange: lower..<normalizedUTF16Count,
+                            sourceRange: sourceRange,
+                            kind: .sourceSpan)
+                    } else {
+                        var localUTF16 = 0
+                        for character in fragmentText {
+                            let characterLength = String(character).utf16.count
+                            let originalLower = localUTF16
+                            let originalUpper = localUTF16 + characterLength
+                            localUTF16 = originalUpper
+                            let mappedSource = (sourceRange.lowerBound + originalLower)..<(
+                                sourceRange.lowerBound + originalUpper)
+                            appendMapping(
+                                normalizedRange: (lower + originalLower)..<(lower + originalUpper),
+                                sourceRange: mappedSource,
+                                kind: characterLength == 1 ? .linear : .sourceSpan)
+                        }
                     }
                 }
                 continue
@@ -637,13 +706,10 @@ private enum SearchProjectionBuilder {
                     normalized.append(" ")
                     normalizedUTF16Count += 1
                     if let pendingWhitespaceSource {
-                        map.append(
-                            SearchSegmentOffset(
-                                normalizedUTF16LowerBound: lower,
-                                normalizedUTF16UpperBound: lower + 1,
-                                sourceUTF16LowerBound: pendingWhitespaceSource.lowerBound,
-                                sourceUTF16UpperBound: pendingWhitespaceSource.upperBound
-                            ))
+                        appendMapping(
+                            normalizedRange: lower..<(lower + 1),
+                            sourceRange: pendingWhitespaceSource,
+                            kind: pendingWhitespaceSource.count == 1 ? .linear : .sourceSpan)
                     }
                     hasPendingWhitespace = false
                     pendingWhitespaceSource = nil
@@ -663,13 +729,12 @@ private enum SearchProjectionBuilder {
                 normalizedUTF16Count += folded.utf16.count
                 let upper = normalizedUTF16Count
                 if let mappedSource {
-                    map.append(
-                        SearchSegmentOffset(
-                            normalizedUTF16LowerBound: lower,
-                            normalizedUTF16UpperBound: upper,
-                            sourceUTF16LowerBound: mappedSource.lowerBound,
-                            sourceUTF16UpperBound: mappedSource.upperBound
-                        ))
+                    let linear = characterLength == 1 && folded.utf16.count == 1
+                        && mappedSource.count == 1
+                    appendMapping(
+                        normalizedRange: lower..<upper,
+                        sourceRange: mappedSource,
+                        kind: linear ? .linear : .sourceSpan)
                 }
             }
         }
