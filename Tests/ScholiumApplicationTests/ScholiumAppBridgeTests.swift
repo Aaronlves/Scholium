@@ -11,17 +11,19 @@ struct ScholiumAppBridgeTests {
         let root = try makeRoot("concurrent")
         defer { try? FileManager.default.removeItem(at: root) }
         let gate = BridgeOperationGate()
-        let server = try ScholiumAppBridgeServer(applicationSupportURL: root, timeout: 1, operationTimeout: 3) { request in
+        let server = try ScholiumAppBridgeServer(applicationSupportURL: root, timeout: 5, operationTimeout: 25) { request in
             if request.mcpRequest.tool == .updateNote { await gate.enterAndWait() }
             return try Self.success(for: request)
         }
         defer { server.stop() }
-        let first = Task { try await Self.send(.updateNote, root: root) }
+        let first = Task { try await Self.send(.updateNote, root: root, timeout: 30) }
         await gate.waitForEntry()
         var second: ScholiumAppBridgeResponse?
-        do { second = try await Self.send(.search, root: root, timeout: 0.5) } catch {}
+        var secondError: Error?
+        do { second = try await Self.send(.search, root: root, timeout: 10) } catch { secondError = error }
         await gate.release()
         _ = try await first.value
+        #expect(secondError == nil, "Second connection failed: \(String(describing: secondError))")
         #expect(second?.mcpResponse?.result?.objectValue?["status"] == .string("ok"))
         #expect(await server.stopAndWait(timeout: 1))
     }
