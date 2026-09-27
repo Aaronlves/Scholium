@@ -131,23 +131,75 @@ struct RelatedContentBM25F {
         let hasDistinctiveMatch: [Bool]
     }
 
+    /// Query-bound scalar material for an FTS candidate. The complete lexical
+    /// projection may be released after this is prepared; it owns no field text
+    /// or word index. Passage scoring continues to read its full Documents.
+    struct PreparedCorpus {
+        struct Row {
+            let fieldLengths: [String: Double]
+            let countsByField: [String: [Int]]
+        }
+
+        let terms: [String]
+        fileprivate let matcher: RelatedContentTermMatcher
+        private(set) var rows: [Row] = []
+
+        init(terms: [String]) {
+            self.terms = Array(Set(terms)).sorted()
+            matcher = RelatedContentTermMatcher(terms: self.terms)
+        }
+
+        mutating func append(_ document: Document) throws {
+            var countsByField: [String: [Int]] = [:]
+            for field in RelatedContentRankingField.allCases {
+                try Task.checkCancellation()
+                guard let text = document.fields[field.rawValue] else { continue }
+                countsByField[field.rawValue] =
+                    document.textIndexes[field.rawValue].map { matcher.counts(in: text, index: $0) }
+                    ?? Array(repeating: 0, count: terms.count)
+            }
+            rows.append(.init(fieldLengths: document.fieldLengths, countsByField: countsByField))
+        }
+    }
+
     static func evaluate(documents: [Document], terms: [String], roles: [VaultRole]? = nil) throws -> Evaluation {
-        guard roles == nil || roles?.count == documents.count else {
+        let terms = Array(Set(terms)).sorted()
+        return try evaluate(
+            rows: documents, terms: terms, matcher: .init(terms: terms), roles: roles,
+            fieldLength: { $0.fieldLengths[$1] ?? 0 },
+            fieldCounts: { document, field, matcher in
+                guard let text = document.fields[field] else { return nil }
+                return document.textIndexes[field].map { matcher.counts(in: text, index: $0) }
+                    ?? Array(repeating: 0, count: terms.count)
+            })
+    }
+
+    static func evaluate(prepared corpus: PreparedCorpus, roles: [VaultRole]? = nil) throws -> Evaluation {
+        try evaluate(
+            rows: corpus.rows, terms: corpus.terms, matcher: corpus.matcher, roles: roles,
+            fieldLength: { $0.fieldLengths[$1] ?? 0 },
+            fieldCounts: { row, field, _ in row.countsByField[field] })
+    }
+
+    private static func evaluate<Row>(
+        rows: [Row], terms: [String], matcher: RelatedContentTermMatcher,
+        roles: [VaultRole]?, fieldLength: (Row, String) -> Double,
+        fieldCounts: (Row, String, RelatedContentTermMatcher) -> [Int]?
+    ) throws -> Evaluation {
+        guard roles == nil || roles?.count == rows.count else {
             throw SearchIndexError.invalidDocuments("Related-content roles must correspond to every scoring document.")
         }
-        let terms = Array(Set(terms)).sorted()
-        guard !documents.isEmpty, !terms.isEmpty else {
-            let zero = Array(repeating: 0.0, count: documents.count)
-            return Evaluation(scores: zero, coverage: zero, hasDistinctiveMatch: Array(repeating: false, count: documents.count))
+        guard !rows.isEmpty, !terms.isEmpty else {
+            let zero = Array(repeating: 0.0, count: rows.count)
+            return Evaluation(scores: zero, coverage: zero, hasDistinctiveMatch: Array(repeating: false, count: rows.count))
         }
-        let matcher = RelatedContentTermMatcher(terms: terms)
         let fields = RelatedContentRankingField.allCases
         var average = Array(repeating: 0.0, count: fields.count)
         var nonempty = Array(repeating: 0.0, count: fields.count)
-        for document in documents {
+        for row in rows {
             try Task.checkCancellation()
             for (f, field) in fields.enumerated() {
-                let length = document.fieldLengths[field.rawValue] ?? 0
+                let length = fieldLength(row, field.rawValue)
                 if length > 0 {
                     average[f] += length
                     nonempty[f] += 1
@@ -160,23 +212,19 @@ struct RelatedContentBM25F {
                 (role, fields.map { parameters($0, role: role) })
             })
         var frequencies = [[Double]]()
-        frequencies.reserveCapacity(documents.count)
+        frequencies.reserveCapacity(rows.count)
         var documentFrequency = Array(repeating: 0.0, count: terms.count)
-        for (d, document) in documents.enumerated() {
+        for (d, row) in rows.enumerated() {
             try Task.checkCancellation()
             let fieldParameters = parametersByRole[roles?[d] ?? .other]!
             var frequency = Array(repeating: 0.0, count: terms.count)
-            // Absent fields contribute zero. Normalize each present field once,
-            // and retain only the per-term sum, in the original field order.
-            // This avoids a document x field x term matrix and repeated field
-            // normalization without changing corpus statistics or arithmetic.
+            // Absent fields contribute zero. Fold each present field once in
+            // the original order. Full passage Documents compute term counts
+            // transiently; compact candidates already carry those counts.
             for (f, field) in fields.enumerated() {
-                guard let text = document.fields[field.rawValue] else { continue }
+                guard let counts = fieldCounts(row, field.rawValue, matcher) else { continue }
                 let p = fieldParameters[f]
-                let normalization = 1 - p.length + p.length * (document.fieldLengths[field.rawValue] ?? 0) / average[f]
-                let counts =
-                    document.textIndexes[field.rawValue].map { matcher.counts(in: text, index: $0) }
-                    ?? Array(repeating: 0, count: terms.count)
+                let normalization = 1 - p.length + p.length * fieldLength(row, field.rawValue) / average[f]
                 for t in terms.indices {
                     frequency[t] += p.weight * Double(counts[t]) / normalization
                 }
@@ -185,20 +233,20 @@ struct RelatedContentBM25F {
             frequencies.append(frequency)
         }
         let k1 = 1.2
-        let information = documentFrequency.map { log(1 + (Double(documents.count) - $0 + 0.5) / ($0 + 0.5)) }
+        let information = documentFrequency.map { log(1 + (Double(rows.count) - $0 + 0.5) / ($0 + 0.5)) }
         // Absent vocabulary cannot supply comparison information. In particular,
         // an unmatched script must not drown out the authored bilingual anchors.
         let totalInformation = information.indices.reduce(0.0) { $0 + (documentFrequency[$1] > 0 ? information[$1] : 0) }
-        var coverage = Array(repeating: 0.0, count: documents.count)
-        var distinctive = Array(repeating: false, count: documents.count)
-        let scores = try documents.indices.map { d in
+        var coverage = Array(repeating: 0.0, count: rows.count)
+        var distinctive = Array(repeating: false, count: rows.count)
+        let scores = try rows.indices.map { d in
             try Task.checkCancellation()
             return terms.indices.reduce(0.0) { score, t in
                 let frequency = frequencies[d][t]
                 let idf = information[t]
                 if frequency > 0 {
                     coverage[d] += idf / totalInformation
-                    if documentFrequency[t] <= max(1, Double(documents.count) * 0.2) { distinctive[d] = true }
+                    if documentFrequency[t] <= max(1, Double(rows.count) * 0.2) { distinctive[d] = true }
                 }
                 return score + idf * (k1 + 1) * frequency / (k1 + frequency)
             }

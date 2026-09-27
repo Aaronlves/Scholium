@@ -52,6 +52,31 @@ struct SearchIndexDelta: Sendable {
 }
 
 public actor TriptychSearchIndex {
+    #if DEBUG
+        enum RelatedLexicalPoolPhase: Sendable { case begin, row, end }
+
+        struct RelatedLexicalPoolObservation: Sendable {
+            let phase: RelatedLexicalPoolPhase
+            let candidateCount: Int
+            let retainedProjectionCount: Int
+            /// Cost of the complete pool seen so far, even after its full
+            /// projections have been released on crossing the cache budget.
+            let completePoolEstimatedBytes: Int
+        }
+
+        private var relatedLexicalPoolObserverForTesting: (@Sendable (RelatedLexicalPoolObservation) -> Void)?
+
+        func setRelatedLexicalPoolObserverForTesting(
+            _ observer: (@Sendable (RelatedLexicalPoolObservation) -> Void)?
+        ) {
+            relatedLexicalPoolObserverForTesting = observer
+        }
+
+        func setRelatedBackgroundPreparationBudgetForTesting(_ bytes: Int) {
+            relatedBackgroundPreparation = RelatedContentBackgroundPreparation(maximumByteCount: bytes)
+        }
+    #endif
+
     private static let logger = Logger(subsystem: "com.scholium.app", category: "SearchIndex")
     package private(set) var lastSynchronizationTimings: SearchSynchronizationTimings?
     private let triptychID: UUID
@@ -1012,16 +1037,22 @@ public actor TriptychSearchIndex {
             // it never synchronously rebuilds the whole-Note background pool.
             // Both paths use the same complete FTS pool and current payload checks.
             let pool = try relatedContentCandidates(
-                terms: scoringTerms,
+                terms: scoringTerms, material: material, preparationKey: preparationKey,
+                prepareBackgroundPool: !focused,
                 excluding: request.seed.noteID,
                 candidateRoles: request.candidateRoles,
                 reusing: prepared
             )
-            let lexical = try Self.relatedLexicalResults(pool.candidates, material: material, terms: scoringTerms)
-            if !focused {
+            let lexical = try Self.relatedLexicalResults(pool)
+            if !focused, let preparation = pool.preparation {
                 // Only a complete background scan publishes preparation. A
                 // focused subset cannot overwrite a previously prepared Note.
-                try relatedBackgroundPreparation.store(pool.preparation, for: preparationKey)
+                switch preparation {
+                case .complete(let value):
+                    try relatedBackgroundPreparation.store(value, for: preparationKey)
+                case .oversized:
+                    try relatedBackgroundPreparation.rejectOversizedCompletePool(for: preparationKey)
+                }
             }
             try Task.checkCancellation()
             let lexicalHasMore = lexical.count > request.lexicalLimit
@@ -1051,19 +1082,31 @@ public actor TriptychSearchIndex {
         }
     }
 
-    private nonisolated static func relatedLexicalResults(
-        _ candidates: [SearchCandidate], material: RelatedContentSeedMaterial, terms: [String]
-    ) throws -> [RelatedLexicalCandidate] {
-        let scores = try RelatedContentBM25F.scores(
-            documents: candidates.map { $0.document.relatedLexical!.scoringDocument }, terms: terms,
-            roles: candidates.map { $0.document.vaultRole })
+    private struct RelatedLexicalInput {
+        let candidate: SearchCandidate
+        let reason: RelatedContentLexicalReason
+    }
+
+    private enum RelatedPoolPreparation {
+        case complete(RelatedContentBackgroundPreparation.Value)
+        case oversized
+    }
+
+    private struct RelatedCandidatePool {
+        let candidates: [RelatedLexicalInput]
+        let scoring: RelatedContentBM25F.PreparedCorpus
+        let preparation: RelatedPoolPreparation?
+    }
+
+    private nonisolated static func relatedLexicalResults(_ pool: RelatedCandidatePool) throws -> [RelatedLexicalCandidate] {
+        let evaluation = try RelatedContentBM25F.evaluate(
+            prepared: pool.scoring, roles: pool.candidates.map { $0.candidate.document.vaultRole })
         var results: [RelatedLexicalCandidate] = []
-        for (candidate, score) in zip(candidates, scores) {
+        for (input, score) in zip(pool.candidates, evaluation.scores) {
             try Task.checkCancellation()
             guard score > 0 else { continue }
-            let reason = material.lexicalReason(for: candidate)
-            guard !reason.seedMatches.isEmpty else { continue }
-            results.append(.init(candidate: candidate, reason: reason, score: score))
+            guard !input.reason.seedMatches.isEmpty else { continue }
+            results.append(.init(candidate: input.candidate, reason: input.reason, score: score))
         }
         return results.sorted(by: RelatedLexicalCandidate.precedes)
     }
@@ -1352,20 +1395,35 @@ public actor TriptychSearchIndex {
     }
 
     private func relatedContentCandidates(
-        terms: [String],
+        terms: [String], material: RelatedContentSeedMaterial,
+        preparationKey: RelatedContentBackgroundPreparation.Key,
+        prepareBackgroundPool: Bool,
         excluding seed: VaultQualifiedNoteID,
         candidateRoles: [RelatedContentCandidateRole],
         reusing prepared: RelatedContentBackgroundPreparation.Value
-    ) throws -> (candidates: [SearchCandidate], preparation: RelatedContentBackgroundPreparation.Value) {
-        guard !terms.isEmpty else { return ([], .init()) }
+    ) throws -> RelatedCandidatePool {
+        var scoring = RelatedContentBM25F.PreparedCorpus(terms: terms)
+        guard !terms.isEmpty else {
+            return .init(
+                candidates: [], scoring: scoring,
+                preparation: prepareBackgroundPool ? .complete(.init()) : nil)
+        }
         let expression = terms.map { term in
             let escaped = term.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
         }.joined(separator: " OR ")
         let rolePlaceholders = candidateRoles.map { _ in "?" }
             .joined(separator: ", ")
-        var result: [SearchCandidate] = []
+        var result: [RelatedLexicalInput] = []
         var preparation = RelatedContentBackgroundPreparation.Value()
+        var preparationEstimatedBytes = preparation.estimatedByteCount
+        var preparationOversized = false
+        #if DEBUG
+            relatedLexicalPoolObserverForTesting?(
+                .init(
+                    phase: .begin, candidateCount: 0, retainedProjectionCount: 0,
+                    completePoolEstimatedBytes: preparationEstimatedBytes))
+        #endif
         try database.query(
             """
             SELECT \(Self.documentColumns(includingSourceEvidence: false, includingRelatedRankingText: true)), d.id
@@ -1393,16 +1451,54 @@ public actor TriptychSearchIndex {
                     includingSourceEvidence: false, includingRelatedRankingText: true,
                     preparedRelatedLexical: prepared.documents[row.int(at: 23)])
             else { return }
-            preparation.documents[document.rowID] = .init(
-                fingerprint: document.fingerprint, checksum: row.text(at: 22)!, projection: document.relatedLexical!)
+            let projection = document.relatedLexical!
+            try scoring.append(projection.scoringDocument)
+            try Task.checkCancellation()
+            let reason = material.lexicalReason(for: projection)
+            var compactDocument = document
+            compactDocument.relatedLexical = nil
             result.append(
-                SearchCandidate(
-                    document: document,
-                    identityPriority: 10,
-                    lexicalRank: 0
-                ))
+                .init(
+                    candidate: .init(document: compactDocument, identityPriority: 10, lexicalRank: 0),
+                    reason: reason))
+            if prepareBackgroundPool {
+                let cacheDocument = RelatedContentBackgroundPreparation.LexicalDocument(
+                    fingerprint: document.fingerprint, checksum: row.text(at: 22)!, projection: projection)
+                let (nextEstimate, overflow) = preparationEstimatedBytes.addingReportingOverflow(
+                    64 + cacheDocument.estimatedByteCount)
+                preparationEstimatedBytes = overflow ? Int.max : nextEstimate
+                if !preparationOversized {
+                    if overflow
+                        || !self.relatedBackgroundPreparation.fitsBudget(
+                            valueEstimatedByteCount: nextEstimate, for: preparationKey)
+                    {
+                        // A partial pool cannot be a cache hit. Release the
+                        // entire candidate before scoring compact records.
+                        preparation.documents.removeAll(keepingCapacity: false)
+                        preparationOversized = true
+                    } else {
+                        preparation.documents[document.rowID] = cacheDocument
+                    }
+                }
+            }
+            #if DEBUG
+                self.relatedLexicalPoolObserverForTesting?(
+                    .init(
+                        phase: .row, candidateCount: result.count,
+                        retainedProjectionCount: preparation.documents.count,
+                        completePoolEstimatedBytes: preparationEstimatedBytes))
+            #endif
         }
-        return (result, preparation)
+        #if DEBUG
+            relatedLexicalPoolObserverForTesting?(
+                .init(
+                    phase: .end, candidateCount: result.count,
+                    retainedProjectionCount: preparation.documents.count,
+                    completePoolEstimatedBytes: preparationEstimatedBytes))
+        #endif
+        let cacheCandidate: RelatedPoolPreparation? =
+            prepareBackgroundPool ? (preparationOversized ? .oversized : .complete(preparation)) : nil
+        return .init(candidates: result, scoring: scoring, preparation: cacheCandidate)
     }
 
     private func searchCurrentNote(

@@ -97,7 +97,7 @@ struct RelatedContentBackgroundPreparation {
         invalidateIncompatible(with: key)
         remove(key)
         let cost = key.estimatedByteCount + value.estimatedByteCount + 64
-        guard cost <= maximumByteCount else {
+        guard fitsBudget(valueEstimatedByteCount: value.estimatedByteCount, for: key) else {
             statistics.oversizeSkips += 1
             return
         }
@@ -109,6 +109,21 @@ struct RelatedContentBackgroundPreparation {
         clock &+= 1
         entries[key] = Entry(value: value, cost: cost, lastAccess: clock)
         estimatedByteCount += cost
+    }
+
+    /// The scanner can release an already over-budget complete pool before
+    /// scoring. Admission and the skip count still belong to this memo owner.
+    func fitsBudget(valueEstimatedByteCount: Int, for key: Key) -> Bool {
+        let overhead = key.estimatedByteCount + 64
+        return overhead <= maximumByteCount
+            && valueEstimatedByteCount <= maximumByteCount - overhead
+    }
+
+    mutating func rejectOversizedCompletePool(for key: Key) throws {
+        try Task.checkCancellation()
+        invalidateIncompatible(with: key)
+        remove(key)
+        statistics.oversizeSkips += 1
     }
 
     /// Publication invalidates obsolete pools even when no later retrieval

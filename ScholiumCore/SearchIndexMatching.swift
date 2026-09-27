@@ -238,13 +238,11 @@ struct RelatedContentSeedMaterial {
             : RelatedContentIdentityMentionReason(mentions: mentions)
     }
 
-    func lexicalReason(
-        for candidate: SearchCandidate
-    ) -> RelatedContentLexicalReason {
+    func lexicalReason(for projection: RelatedContentLexicalProjection) -> RelatedContentLexicalReason {
         var fields: [SearchMatchedField] = []
         var seedMatches: [RelatedContentSeedTermMatch] = []
         var matchingFieldsByTerm: [String: [SearchMatchedField]] = [:]
-        for segment in candidate.document.relatedLexical?.segments ?? [] {
+        for segment in projection.segments {
             for term in termMatcher.matchingTerms(in: segment.text, index: segment.index) {
                 if !matchingFieldsByTerm[term, default: []].contains(segment.field) {
                     matchingFieldsByTerm[term, default: []].append(segment.field)

@@ -313,6 +313,50 @@ struct RelatedContentBackgroundPreparationTests {
         #expect(try await index.relatedPassages(request, sources: sources) == TriptychSearchIndex.relatedPassages(request, sources: sources))
     }
 
+    #if DEBUG
+        @Test("An over-budget complete pool preserves candidates and rejects partial, cancelled or corrupt preparation")
+        func oversizedCandidatePool() async throws {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let index = try fixture.index()
+            let control = try fixture.index(name: "control.sqlite")
+            _ = try await index.synchronize(fixture.documents)
+            _ = try await control.synchronize(fixture.documents)
+            await index.setRelatedBackgroundPreparationBudgetForTesting(1)
+            let request = fixture.request()
+            let expected = try await control.relatedMaterialSourceCandidates(request)
+            let actual = try await index.relatedMaterialSourceCandidates(request)
+            assertCandidates(actual, equalTo: expected)
+            #expect(await index.relatedBackgroundPreparationRetention.entries == 0)
+            #expect(await index.relatedBackgroundPreparationStatistics.oversizeSkips == 1)
+
+            let warm = try await control.relatedMaterialSourceCandidates(request)
+            assertCandidates(warm, equalTo: expected)
+            #expect(await control.relatedBackgroundPreparationRetention.entries == 1)
+            #expect(await control.relatedBackgroundPreparationStatistics.hits == 1)
+
+            await index.setRelatedLexicalPoolObserverForTesting { observation in
+                if observation.phase == .row && observation.candidateCount == 1 {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
+            }
+            let cancelled = Task { try await index.relatedMaterialSourceCandidates(request) }
+            await #expect(throws: CancellationError.self) { try await cancelled.value }
+            await index.setRelatedLexicalPoolObserverForTesting(nil)
+            #expect(await index.relatedBackgroundPreparationRetention.entries == 0)
+            #expect(await index.relatedBackgroundPreparationStatistics.oversizeSkips == 1)
+
+            try fixture.execute(
+                "UPDATE search_documents SET related_lexical_hash = 'incorrect' WHERE relative_path = 'Shared.md';")
+            do {
+                _ = try await index.relatedMaterialSourceCandidates(request)
+                Issue.record("An oversized scan must still validate every persisted projection")
+            } catch SearchIndexError.corruptDatabase {}
+            #expect(await index.relatedBackgroundPreparationRetention.entries == 0)
+            #expect(await index.relatedBackgroundPreparationStatistics.oversizeSkips == 1)
+        }
+    #endif
+
     @Test("Passage warmup excludes the seed and out-of-scope or mismatched current documents")
     func prewarmSourceValidation() async throws {
         let fixture = try Fixture()
