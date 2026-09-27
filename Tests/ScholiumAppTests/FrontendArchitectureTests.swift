@@ -249,9 +249,11 @@ struct FrontendArchitectureTests {
                 range: tokenOwner.lowerBound..<source.endIndex
             )
         )
+        // The following Debug-only memory observer has a separate owner. Stop
+        // before it so this check covers only release-reachable actions.
         let registrationEnd = try #require(
             source.range(
-                of: "searchController.loadSavedSearches()",
+                of: "#if DEBUG",
                 range: registrationStart.upperBound..<source.endIndex
             )
         )
@@ -278,7 +280,6 @@ struct FrontendArchitectureTests {
             registration.contains(
                 "--scholium-performance-library-reveal-notifications"
             ))
-        #expect(!registration.contains("#if DEBUG"))
         #expect(!registration.contains("Bundle.main.bundleIdentifier"))
         #expect(requests.contains("PerformanceProbe.shared.isEnabled"))
         #expect(requests.contains("exercisesLargeCJKCorrectness"))
