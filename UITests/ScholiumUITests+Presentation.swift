@@ -357,6 +357,8 @@ extension ScholiumUITests {
     @MainActor
     func testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys() throws {
         waitForCurrentDocumentSurface()
+        app.activate()
+        focusWorkspaceWindow(app.windows.firstMatch)
         let navigator = app.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
         let originalTitle = documentTitle()
         let originalNavigatorFrame = navigator.frame
