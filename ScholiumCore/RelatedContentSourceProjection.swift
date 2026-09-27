@@ -113,7 +113,6 @@ struct RelatedContentSourceProjection: Codable, Sendable {
                 SearchProjectionValidation.valid(paragraphRange: paragraph.range, sourceUTF16Count: sourceUTF16Count)
                     && paragraph.range.utf16UpperBound - paragraph.range.utf16LowerBound <= RelatedContentContract.maximumPassageUTF16Count
                     && paragraph.scoringDocument.isValid
-                    && paragraph.textIndex.isValid
             })
         else { throw SearchIndexError.corruptDatabase }
         return value

@@ -55,6 +55,16 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
 
     var lastInsertRowID: Int { Int(sqlite3_last_insert_rowid(handle)) }
 
+    /// Diagnostic only. Sample after the index writer has settled; no page
+    /// contents or source text cross this boundary.
+    var cacheUsedBytes: Int {
+        var current: Int32 = 0
+        var highWater: Int32 = 0
+        guard sqlite3_db_status(handle, SQLITE_DBSTATUS_CACHE_USED, &current, &highWater, 0) == SQLITE_OK
+        else { return -1 }
+        return Int(current)
+    }
+
     func execute(_ sql: String, bindings: [SearchSQLiteBinding] = []) throws {
         if bindings.isEmpty {
             var error: UnsafeMutablePointer<CChar>?

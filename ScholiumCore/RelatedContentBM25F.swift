@@ -36,11 +36,12 @@ struct RelatedContentBM25F {
         }
 
         var isValid: Bool {
+            // RelatedContentTextIndex validates its immutable packed words
+            // while constructing or decoding them.
             Set(fields.keys).isSubset(of: Set(RelatedContentRankingField.allCases.map(\.rawValue)))
                 && Set(fields.keys) == Set(fieldLengths.keys)
                 && Set(textIndexes.keys) == Set(fields.keys)
                 && fieldLengths.values.allSatisfy { $0.isFinite && $0 >= 0 }
-                && textIndexes.values.allSatisfy(\.isValid)
         }
 
         /// Matching and scoring often retain the same normalized prose and word
@@ -82,7 +83,7 @@ struct RelatedContentBM25F {
                 guard candidate.utf8.elementsEqual(text.utf8),
                     let candidateIndex = textIndexes[field],
                     candidateIndex.containsCJK == index.containsCJK,
-                    candidateIndex.words == index.words
+                    candidateIndex.hasSameWordCounts(as: index)
                 else { continue }
                 return field
             }

@@ -80,6 +80,15 @@ public actor TriptychSearchIndex {
     var relatedPassagePreparationStatistics: RelatedContentSourceProjectionMemo.Statistics {
         relatedPassageMemo.statistics
     }
+    var relatedPassagePreparationRetention: (entries: Int, estimatedBytes: Int) {
+        (relatedPassageMemo.entryCount, relatedPassageMemo.estimatedByteCount)
+    }
+    /// The writer connection may be running an async transaction outside this
+    /// actor. Sample its SQLite status only after that task has finished.
+    var sqlitePageCacheRetention: (readerBytes: Int, writerBytes: Int)? {
+        guard activeSynchronization == nil else { return nil }
+        return (database.cacheUsedBytes, writerDatabase.cacheUsedBytes)
+    }
     /// Query-local derived state is valid only for one complete Search
     /// generation. Each query retains at most the maximum public result window
     /// plus one `hasMore` probe; a small LRU also bounds distinct completed

@@ -27,7 +27,7 @@ struct RelatedContentStorageSharingTests {
         #expect(decoded.displayText == "needle needle 自由")
         #expect(decoded.normalizedDisplayText == decoded.displayText)
         #expect(decoded.range.utf16LowerBound == 0 && decoded.range.utf16UpperBound == 16)
-        #expect(decoded.textIndex.words == ["needle": 2])
+        #expect(decoded.textIndex.count(forASCIIWord: "needle") == 2)
         let invalidParagraph = Data(String(decoding: paragraph, as: UTF8.self).replacingOccurrences(of: #""_0":"body""#, with: #""_0":"absent""#).utf8)
         #expect(throws: SearchIndexError.self) {
             try JSONDecoder().decode(RelatedContentSourceProjection.Paragraph.self, from: invalidParagraph)
@@ -48,7 +48,7 @@ struct RelatedContentStorageSharingTests {
         let differentCounts = try JSONDecoder().decode(
             RelatedContentTextIndex.self, from: Data(#"{"words":{"needle":2},"containsCJK":true}"#.utf8))
         let retainedCounts = scoring.sharingPreparedText("é needle 自由", index: differentCounts)
-        #expect(retainedCounts.index.words?["needle"] == 2)
+        #expect(retainedCounts.index.count(forASCIIWord: "needle") == 2)
         let differentCJK = try JSONDecoder().decode(
             RelatedContentTextIndex.self, from: Data(#"{"words":{"needle":1},"containsCJK":false}"#.utf8))
         #expect(!scoring.sharingPreparedText("é needle 自由", index: differentCJK).index.containsCJK)
@@ -66,7 +66,7 @@ struct RelatedContentStorageSharingTests {
         for (actual, expected) in zip(decoded.segments, lexical.segments) {
             #expect(actual.field == expected.field)
             #expect(actual.text.utf8.elementsEqual(expected.text.utf8))
-            #expect(actual.index.words == expected.index.words)
+            #expect(actual.index.hasSameWordCounts(as: expected.index))
             #expect(actual.index.containsCJK == expected.index.containsCJK)
             #expect(matcher.counts(in: actual.text, index: actual.index) == matcher.counts(in: expected.text))
         }
@@ -78,7 +78,7 @@ struct RelatedContentStorageSharingTests {
         for (actual, expected) in zip(restored.paragraphs, passages.paragraphs) {
             #expect(actual.displayText.utf8.elementsEqual(expected.displayText.utf8))
             #expect(actual.normalizedDisplayText.utf8.elementsEqual(expected.normalizedDisplayText.utf8))
-            #expect(actual.textIndex.words == expected.textIndex.words)
+            #expect(actual.textIndex.hasSameWordCounts(as: expected.textIndex))
             #expect(actual.textIndex.containsCJK == expected.textIndex.containsCJK)
             #expect(matcher.counts(in: actual.normalizedDisplayText, index: actual.textIndex) == matcher.counts(in: expected.normalizedDisplayText))
         }

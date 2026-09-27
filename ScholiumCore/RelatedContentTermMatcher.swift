@@ -65,10 +65,10 @@ struct RelatedContentTermMatcher {
     }
 
     func counts(in normalizedText: String, index: RelatedContentTextIndex) -> [Int] {
-        guard let words = index.words else { return exactCounts(in: normalizedText) }
+        guard index.hasPreparedWords else { return exactCounts(in: normalizedText) }
         var result = Array(repeating: 0, count: terms.count)
         for (word, indices) in wordIndices {
-            let count = words[word, default: 0]
+            let count = index.count(forASCIIWord: word) ?? 0
             for i in indices { result[i] = count }
         }
         for i in otherIndices {
@@ -82,9 +82,9 @@ struct RelatedContentTermMatcher {
         // Admission and explanations need presence, not full frequencies.
         // Keep BM25's counting path separate, and stop Unicode/phrase scans at
         // their first canonical match without allocating a query-sized array.
-        guard let words = index.words else { return exactMatchingTerms(in: normalizedText) }
+        guard index.hasPreparedWords else { return exactMatchingTerms(in: normalizedText) }
         var result = Set<String>()
-        for (word, indices) in wordIndices where words[word, default: 0] > 0 {
+        for (word, indices) in wordIndices where (index.count(forASCIIWord: word) ?? 0) > 0 {
             for i in indices { result.insert(terms[i]) }
         }
         for i in otherIndices {

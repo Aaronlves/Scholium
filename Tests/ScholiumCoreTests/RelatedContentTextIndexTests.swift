@@ -33,7 +33,6 @@ struct RelatedContentTextIndexTests {
         for source in sources {
             let text = SearchTextNormalization.lexicalNormalize(source)
             let index = RelatedContentTextIndex(text)
-            #expect(index.isValid)
             for terms in groups {
                 let matcher = RelatedContentTermMatcher(terms: terms)
                 let expected = terms.map { canonicalCount(term: $0, text: text) }
@@ -70,26 +69,86 @@ struct RelatedContentTextIndexTests {
     func persistedComplexBoundary() throws {
         let text = SearchTextNormalization.lexicalNormalize("a\u{200D}b a agency reason freedom value")
         let index = RelatedContentTextIndex(text)
-        #expect(index.words == nil)
+        #expect(!index.hasPreparedWords)
         let restored = try JSONDecoder().decode(RelatedContentTextIndex.self, from: JSONEncoder().encode(index))
-        #expect(restored.words == nil)
+        #expect(!restored.hasPreparedWords)
         let terms = ["a", "agency", "reason", "freedom", "value"]
         let matcher = RelatedContentTermMatcher(terms: terms)
         #expect(matcher.counts(in: text, index: restored) == terms.map { canonicalCount(term: $0, text: text) })
     }
 
-    @Test("Persistent prepared counts reject malformed keys and nonpositive counts")
+    @Test("Independent word-object payloads retain counts and reject malformed keys and ranges")
     func persistedValidation() throws {
         let original = RelatedContentTextIndex("reason reason value foo_bar")
         let restored = try JSONDecoder().decode(RelatedContentTextIndex.self, from: JSONEncoder().encode(original))
-        #expect(restored.isValid)
-        #expect(restored.words == ["reason": 2, "value": 1, "foo_bar": 1])
+        #expect(restored.hasPreparedWords)
+        #expect(restored.hasSameWordCounts(as: original))
+        #expect(restored.count(forASCIIWord: "reason") == 2)
+        #expect(restored.count(forASCIIWord: "value") == 1)
+        #expect(restored.count(forASCIIWord: "foo_bar") == 1)
+        #expect(restored.count(forASCIIWord: "absent") == 0)
+        let independent = try JSONDecoder().decode(
+            RelatedContentTextIndex.self,
+            from: Data(#"{"words":{"z_9":3,"a":1},"containsCJK":true}"#.utf8))
+        #expect(independent.containsCJK)
+        #expect(independent.count(forASCIIWord: "z_9") == 3)
+        #expect(independent.count(forASCIIWord: "a") == 1)
+        let maximumCount = try JSONDecoder().decode(
+            RelatedContentTextIndex.self,
+            from: Data(#"{"words":{"word":4294967295},"containsCJK":false}"#.utf8))
+        #expect(maximumCount.count(forASCIIWord: "word") == Int(UInt32.max))
         for malformed in [
-            #"{"words":{"reason":0},"containsCJK":false}"#, #"{"words":{"reason":-1},"containsCJK":false}"#, #"{"words":{"two words":1},"containsCJK":false}"#,
+            #"{"words":{"reason":0},"containsCJK":false}"#,
+            #"{"words":{"reason":-1},"containsCJK":false}"#,
+            #"{"words":{"two words":1},"containsCJK":false}"#,
+            #"{"words":{"é":1},"containsCJK":false}"#,
+            #"{"words":{"reason":4294967296},"containsCJK":false}"#,
         ] {
-            let decoded = try JSONDecoder().decode(RelatedContentTextIndex.self, from: Data(malformed.utf8))
-            #expect(!decoded.isValid)
+            #expect(throws: DecodingError.self) {
+                try JSONDecoder().decode(RelatedContentTextIndex.self, from: Data(malformed.utf8))
+            }
         }
+    }
+
+    @Test("Compact lookup preserves long ASCII prefix ordering and nil versus empty preparation")
+    func compactPrefixLookup() throws {
+        var counts = Dictionary(
+            uniqueKeysWithValues: (0..<512).map { ("conceptualword0_\($0)", ($0 % 3) + 1) })
+        counts["conceptualword0_5extra"] = 4
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "words": counts, "containsCJK": false,
+        ])
+        let index = try JSONDecoder().decode(RelatedContentTextIndex.self, from: payload)
+        #expect(index.hasPreparedWords)
+        for (word, count) in counts { #expect(index.count(forASCIIWord: word) == count) }
+        for absent in ["conceptualword0", "conceptualword0_", "conceptualword0_51extra", "conceptualword0_512"] {
+            #expect(index.count(forASCIIWord: absent) == 0)
+        }
+        let adjacent = RelatedContentTextIndex("a aa a0 a_ aa")
+        #expect(adjacent.count(forASCIIWord: "a") == 1)
+        #expect(adjacent.count(forASCIIWord: "aa") == 2)
+        #expect(adjacent.count(forASCIIWord: "a0") == 1)
+        #expect(adjacent.count(forASCIIWord: "a_") == 1)
+        #expect(adjacent.count(forASCIIWord: "a1") == 0)
+        let text = counts.sorted { $0.key < $1.key }
+            .flatMap { Array(repeating: $0.key, count: $0.value) }.joined(separator: " ")
+        let normalized = SearchTextNormalization.lexicalNormalize(text)
+        let terms = ["conceptualword0_5", "conceptualword0_5extra", "conceptualword0_50", "conceptualword0_512"]
+        let matcher = RelatedContentTermMatcher(terms: terms)
+        #expect(matcher.counts(in: normalized, index: index) == matcher.counts(in: normalized))
+        #expect(matcher.matchingTerms(in: normalized, index: index) == matcher.matchingTerms(in: normalized))
+
+        let empty = try JSONDecoder().decode(
+            RelatedContentTextIndex.self, from: Data(#"{"words":{},"containsCJK":false}"#.utf8))
+        let fallback = try JSONDecoder().decode(
+            RelatedContentTextIndex.self, from: Data(#"{"words":null,"containsCJK":false}"#.utf8))
+        #expect(empty.hasPreparedWords && empty.count(forASCIIWord: "agency") == 0)
+        #expect(!fallback.hasPreparedWords && fallback.count(forASCIIWord: "agency") == nil)
+        let freshEmpty = RelatedContentTextIndex("")
+        let restoredEmpty = try JSONDecoder().decode(
+            RelatedContentTextIndex.self, from: JSONEncoder().encode(freshEmpty))
+        #expect(freshEmpty.hasPreparedWords && restoredEmpty.hasPreparedWords)
+        #expect(restoredEmpty.count(forASCIIWord: "agency") == 0)
     }
 
     /// Frozen canonical string-search policy, independent of prepared word

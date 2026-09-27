@@ -65,7 +65,7 @@ struct RelatedContentLexicalProjection: Codable, Sendable {
         }
         let result: Self
         do { result = try JSONDecoder().decode(Self.self, from: data) } catch { throw SearchIndexError.corruptDatabase }
-        guard result.scoringDocument.isValid, result.segments.allSatisfy({ $0.index.isValid }) else {
+        guard result.scoringDocument.isValid else {
             throw SearchIndexError.corruptDatabase
         }
         return result
