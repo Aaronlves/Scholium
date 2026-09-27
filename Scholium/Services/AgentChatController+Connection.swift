@@ -5,14 +5,23 @@ import ScholiumContracts
 
 @MainActor
 extension AgentChatController {
-    func connect(executable: URL, home: URL, helper: URL, signInIfNeeded: Bool = false) {
+    func connect(
+        executable: URL, home: URL, helper: URL, signInIfNeeded: Bool = false,
+        automaticallyDiscovered: Bool = false
+    ) {
         guard !isRenewingSettings else { return }
-        beginConnection(executable: executable, home: home, helper: helper, signInIfNeeded: signInIfNeeded)
+        beginConnection(
+            executable: executable, home: home, helper: helper,
+            signInIfNeeded: signInIfNeeded, automaticallyDiscovered: automaticallyDiscovered)
     }
 
-    func beginConnection(executable: URL, home: URL, helper: URL, signInIfNeeded: Bool) {
+    func beginConnection(
+        executable: URL, home: URL, helper: URL, signInIfNeeded: Bool,
+        automaticallyDiscovered: Bool = false
+    ) {
         guard connectionState == .disconnected, isLoaded else { return }
         connectedExecutable = executable
+        connectedAutomaticallyDiscovered = automaticallyDiscovered
         connectionState = .connecting
         connectionError = nil
         let connection = CodexAppServer()
@@ -36,7 +45,10 @@ extension AgentChatController {
                 guard self.connectionID == connectionToken, !Task.isCancelled else { return }
                 let workspace = try AgentChatWorkspace.prepare(directory, runtimeHome: home)
                 workingDirectory = workspace
-                try await connection.start(executable: executable, home: home, workingDirectory: workspace)
+                try await connection.start(
+                    executable: executable, home: home,
+                    workingDirectory: workspace,
+                    automaticallyDiscovered: automaticallyDiscovered)
                 guard self.connectionID == connectionToken else {
                     await connection.close()
                     return

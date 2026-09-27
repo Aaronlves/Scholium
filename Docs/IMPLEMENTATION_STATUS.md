@@ -34,8 +34,8 @@ Review Comment lifecycle or MCP research-result API.
 
 The public release profile is Core App Beta. External Agent Collaboration and
 optional in-app Chat remain Preview; reachability is not implicit acceptance.
-The distribution is an App with bundled helpers. The latest artifact's exact proof
-and packaged clean-account smoke are recorded below; source reachability does
+The distribution is an App with bundled helpers. The dated artifact proof below
+is limited to its stated tags; source reachability does
 not establish packaged external-host, managed-Zotero, physical-input or release acceptance.
 
 ## Status chapters

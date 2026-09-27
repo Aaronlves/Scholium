@@ -104,9 +104,8 @@ extension AgentChatController {
         connectionDefaults = defaults
         automaticConnection = true
         if !automatically { reconnectAttempt = 0 }
-        let executable =
-            defaults.string(forKey: "agent.codex.executable").flatMap { $0.isEmpty ? nil : $0 }
-            ?? suggestedRuntimePath
+        let customExecutable = defaults.string(forKey: "agent.codex.executable").flatMap { $0.isEmpty ? nil : $0 }
+        let executable = customExecutable ?? suggestedRuntimePath
         let helper =
             defaults.string(forKey: "agent.scholium.helper").flatMap { $0.isEmpty ? nil : $0 }
             ?? suggestedHelperPath
@@ -123,7 +122,8 @@ extension AgentChatController {
         connect(
             executable: executableURL,
             home: home.isEmpty ? runtimeHome : URL(fileURLWithPath: home),
-            helper: helperURL, signInIfNeeded: !automatically)
+            helper: helperURL, signInIfNeeded: !automatically,
+            automaticallyDiscovered: customExecutable == nil)
     }
 
     func editDraft(_ text: String) {
@@ -173,6 +173,7 @@ extension AgentChatController {
         guard connectionState == .ready, settingsRenewalTask == nil, let runtime,
             let executable = connectedExecutable, let home = connectedHome, let helper = helperURL
         else { return }
+        let automaticallyDiscovered = connectedAutomaticallyDiscovered
         let id = UUID()
         let connection = connectionID
         settingsRenewalID = id
@@ -194,7 +195,9 @@ extension AgentChatController {
                         else { continue }
                         await self.closeConnection(retainingAutomaticConnection: true, forSettingsRenewal: true)
                         guard !Task.isCancelled, self.settingsRenewalID == id else { return }
-                        self.beginConnection(executable: executable, home: home, helper: helper, signInIfNeeded: false)
+                        self.beginConnection(
+                            executable: executable, home: home, helper: helper,
+                            signInIfNeeded: false, automaticallyDiscovered: automaticallyDiscovered)
                         await self.connectionTask?.value
                         guard self.settingsRenewalID == id else { return }
                         self.isRenewingSettings = false

@@ -73,6 +73,9 @@ struct AgentMCPServiceTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let chatGPT = root.appendingPathComponent("Custom Location/ChatGPT.app", isDirectory: true)
+        let info = chatGPT.appendingPathComponent("Contents/Info.plist")
+        try FileManager.default.createDirectory(at: info.deletingLastPathComponent(), withIntermediateDirectories: true)
+        #expect(((["CFBundleIdentifier": "com.openai.codex"] as NSDictionary).write(to: info, atomically: true)))
         let executable = chatGPT.appendingPathComponent(
             "Contents/Resources/codex-cli/Runtime Bundle.app/Contents/MacOS/codex")
         try FileManager.default.createDirectory(
@@ -82,8 +85,40 @@ struct AgentMCPServiceTests {
 
         let discoveredRuntime = try #require(
             ScholiumAgentIntegrationResources.codexRuntimeURL(
-                registeredApplicationBundles: [chatGPT]))
+                registeredApplicationBundles: [chatGPT],
+                trustedApplication: { $0 == chatGPT },
+                trustedNestedRuntime: { $0.lastPathComponent == "Runtime Bundle.app" }))
         #expect(discoveredRuntime.standardizedFileURL.path == executable.standardizedFileURL.path)
+        #expect(
+            ScholiumAgentIntegrationResources.codexRuntimeURL(
+                registeredApplicationBundles: [chatGPT], trustedApplication: { _ in true },
+                trustedNestedRuntime: { _ in false }) == nil)
+        // A copied bundle ID without OpenAI's signature cannot authorize automatic execution.
+        #expect(
+            ScholiumAgentIntegrationResources.codexRuntimeURL(
+                registeredApplicationBundles: [chatGPT]) == nil)
+    }
+
+    @Test func rejectsRuntimeEscapingSignedApplicationLayout() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let application = root.appendingPathComponent("ChatGPT.app", isDirectory: true)
+        let info = application.appendingPathComponent("Contents/Info.plist")
+        try FileManager.default.createDirectory(at: info.deletingLastPathComponent(), withIntermediateDirectories: true)
+        #expect(((["CFBundleIdentifier": "com.openai.codex"] as NSDictionary).write(to: info, atomically: true)))
+        let outside = root.appendingPathComponent("Outside.app/Contents/MacOS/codex")
+        try FileManager.default.createDirectory(at: outside.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("foreign runtime".utf8).write(to: outside)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: outside.path)
+        let cli = application.appendingPathComponent("Contents/Resources/codex-cli")
+        try FileManager.default.createDirectory(at: cli, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: cli.appendingPathComponent("Outside.app"),
+            withDestinationURL: outside.deletingLastPathComponent().deletingLastPathComponent())
+        #expect(
+            ScholiumAgentIntegrationResources.codexRuntimeURL(
+                registeredApplicationBundles: [application], trustedApplication: { _ in true },
+                trustedNestedRuntime: { _ in true }) == nil)
     }
 
     @Test func doesNotSearchConventionalOrStandalonePathsWithoutRegisteredApplications() {

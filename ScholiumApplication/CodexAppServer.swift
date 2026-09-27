@@ -53,7 +53,10 @@ public actor CodexAppServer {
         continuation.finish()
     }
 
-    public func start(executable: URL, home: URL, workingDirectory: URL) async throws {
+    public func start(
+        executable: URL, home: URL, workingDirectory: URL,
+        automaticallyDiscovered: Bool = false
+    ) async throws {
         // A replacement never overlaps the preceding child's teardown.
         while isClosing, let task = connectionTask { await task.value }
         try Task.checkCancellation()
@@ -70,10 +73,20 @@ public actor CodexAppServer {
             // Own exactly one task for the connection. All process handles stay inside run.
             connectionTask = Task { [weak self] in
                 do {
+                    // Discovery happened before workspace preparation. Verify again at
+                    // the process boundary, after that suspension.
+                    let launchExecutable: URL
+                    if automaticallyDiscovered {
+                        guard let verified = ScholiumAgentIntegrationResources.verifiedCodexRuntimeURL(at: executable)
+                        else { throw CodexConnectionError.server("The Codex installation changed. Reconnect after checking the installation.") }
+                        launchExecutable = verified
+                    } else {
+                        launchExecutable = executable
+                    }
                     var options = PlatformOptions()
                     options.teardownSequence = [.gracefulShutDown(allowedDurationToNextStep: .seconds(2))]
                     _ = try await Subprocess.run(
-                        .path(.init(executable.path)),
+                        .path(.init(launchExecutable.path)),
                         arguments: [
                             "app-server", "--stdio", "-c", "analytics.enabled=false",
                             "-c", "project_doc_max_bytes=32768", "-c", "project_root_markers=[]",

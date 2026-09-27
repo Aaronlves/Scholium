@@ -758,6 +758,30 @@ struct AgentChatTests {
         await controller.disconnect()
     }
 
+    @Test("Settings renewal rechecks an automatically discovered runtime before relaunch")
+    func searchRenewalRetainsRuntimeDiscoveryBoundary() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
+        try await connect(controller)
+        controller.editDraft("establish")
+        controller.send()
+        try await eventually { !controller.isBusy && controller.selected?.pendingMessageID == nil }
+        let thread = controller.selected?.threadID
+        let count = controller.selected?.messages.count
+        // The fixture can start as a custom path. Mark its active connection as
+        // discovered to exercise the renewal handoff without a signed app fixture.
+        controller.connectedAutomaticallyDiscovered = true
+        controller.editDraft("retained after rejected renewal")
+        controller.setWebSearch(.live)
+        try await eventually { controller.connectionState == .disconnected && controller.connectionError != nil }
+        #expect(!controller.isRenewingSettings)
+        #expect(controller.selected?.draft == "retained after rejected renewal")
+        #expect(controller.selected?.messages.count == count && controller.selected?.threadID == thread)
+        #expect(try String(contentsOf: controller.runtimeHome.appendingPathComponent("runtime-launches"), encoding: .utf8) == "1")
+        await controller.disconnect()
+    }
+
     @Test("Conversation settings reach the runtime and survive reopening without altering another conversation")
     func runtimePreferences() async throws {
         let root = try root()

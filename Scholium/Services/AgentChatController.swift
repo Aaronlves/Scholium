@@ -56,6 +56,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var settingsRenewalID: UUID?
     var settingsRenewalTask: Task<Void, Never>?
     var connectedExecutable: URL?
+    var connectedAutomaticallyDiscovered = false
     var state: State { state(for: selectedID) }
     var approvals: [AgentChatApproval] { selectedID.flatMap { executions[$0]?.approvals } ?? [] }
     var error: String? { selectedID.flatMap { executions[$0]?.error } ?? connectionError }
