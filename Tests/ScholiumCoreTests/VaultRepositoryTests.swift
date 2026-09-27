@@ -81,6 +81,26 @@ struct VaultRepositoryTests {
         return (root, support, note)
     }
 
+    @Test("Markdown and folder inventories continue past a symlink without entering it")
+    func inventoriesSkipSymlinkAndContinue() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let outside = f.root.deletingLastPathComponent().appendingPathComponent("outside")
+        let laterFolder = f.root.appendingPathComponent("zz-later")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: f.root.appendingPathComponent("aa-link"), withDestinationURL: outside)
+        try FileManager.default.createDirectory(at: laterFolder, withIntermediateDirectories: true)
+        try Data("outside".utf8).write(to: outside.appendingPathComponent("escaped.md"))
+        try Data("inside".utf8).write(to: laterFolder.appendingPathComponent("later.md"))
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil),
+            applicationSupportURL: f.support)
+        #expect(try await Set(repository.markdownRelativePaths()) == ["topics/note.md", "zz-later/later.md"])
+        #expect(try await Set(repository.folderRelativePaths().map(\.rawValue)) == ["topics", "zz-later"])
+    }
+
     @Test("FIFO, socket, and directory leaves are rejected without blocking")
     func specialFilesAreRejectedWithoutBlocking() async throws {
         let f = try fixture()

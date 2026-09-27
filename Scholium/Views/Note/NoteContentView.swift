@@ -91,6 +91,7 @@ enum DocumentIntegrityPresentation: Hashable {
 
 struct DocumentFeatureState {
     let notes: [WindowDocumentLocation]
+    let activeNote: WorkspaceNoteSnapshot?
     let selectedDocumentPath: String?
     let ordinarySearchScope: SearchPresentationScope
     let currentVaultID: UUID?
@@ -164,15 +165,17 @@ struct DocumentFeatureView<ShellNotices: View>: View {
 
     var body: some View {
         if let selectedDocumentPath = state.selectedDocumentPath,
-            let note = state.notes.first(where: { $0.relativePath == selectedDocumentPath })
+            let active = state.activeNote,
+            active.id.relativePath == selectedDocumentPath
         {
+            let note = active
             let selectedWorkspaceKey = controller.activeDocument.flatMap { descriptor in
                 descriptor.reference.relativePath == selectedDocumentPath
                     ? descriptor.sessionKey
                     : nil
             }
             let projectedWorkspaceKey = state.currentVaultID.flatMap { vaultID in
-                state.noteIdentityByPath[note.relativePath].map { noteID in
+                state.noteIdentityByPath[note.id.relativePath].map { noteID in
                     DocumentSessionKey(vaultID: vaultID, noteID: noteID)
                 }
             }
@@ -193,8 +196,8 @@ struct DocumentFeatureView<ShellNotices: View>: View {
                     note: note,
                     controller: controller,
                     target: .unavailable(
-                        vaultID: note.vaultID,
-                        relativePath: note.relativePath
+                        vaultID: note.id.vaultID,
+                        relativePath: note.id.relativePath
                     ),
                     state: state,
                     actions: actions,
@@ -208,7 +211,7 @@ struct DocumentFeatureView<ShellNotices: View>: View {
 }
 
 private struct DocumentSessionFallback<ShellNotices: View>: View {
-    let note: WindowDocumentLocation
+    let note: WorkspaceNoteSnapshot
     let controller: DocumentController
     let target: DocumentEditingTarget
     let state: DocumentFeatureState
@@ -237,7 +240,7 @@ struct NoteContentView<ShellNotices: View>: View {
     @ObservedObject private var documentSession: DocumentSessionModel
     @ObservedObject private var writingContinuationPreferences = WritingAssistancePreferences.shared
     let target: DocumentEditingTarget
-    let note: WindowDocumentLocation
+    let note: WorkspaceNoteSnapshot
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     let hasShellNotices: Bool
@@ -256,7 +259,7 @@ struct NoteContentView<ShellNotices: View>: View {
     init(
         controller: DocumentController,
         target: DocumentEditingTarget,
-        note: WindowDocumentLocation,
+        note: WorkspaceNoteSnapshot,
         documentSession: DocumentSessionModel,
         state: DocumentFeatureState,
         actions: DocumentFeatureActions,
@@ -337,12 +340,12 @@ struct NoteContentView<ShellNotices: View>: View {
 
     private var documentAttachmentTarget: SourceAttachmentTarget? {
         guard case .workspace(let key) = target,
-            key.vaultID == note.vaultID
+            key.vaultID == note.id.vaultID
         else { return nil }
         return SourceAttachmentTarget(
             noteID: key.noteID,
             vaultID: key.vaultID,
-            relativePath: note.relativePath
+            relativePath: note.id.relativePath
         )
     }
 
@@ -379,7 +382,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 .focusedSceneValue(
                     \.scholiumEditorActions,
                     ScholiumFocusedEditorActions(
-                        documentID: isEditing ? editorSession.documentID : note.relativePath,
+                        documentID: isEditing ? editorSession.documentID : note.id.relativePath,
                         isComposing: isEditing && editorSession.context?.composing == true,
                         allowsReplace: isEditing,
                         isAvailable: { command in
@@ -476,18 +479,18 @@ struct NoteContentView<ShellNotices: View>: View {
             if !isEditing,
                 documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
             {
-                markReadPresentationReady(documentID: note.relativePath)
+                markReadPresentationReady(documentID: note.id.relativePath)
             }
         }
         .onChange(of: editorSession.presentedMode) { _, presentedMode in
             focusEditorIfPresented()
             if let presentedMode {
                 PerformanceProbe.shared.markEditorModeAcknowledged(
-                    documentID: note.relativePath,
+                    documentID: note.id.relativePath,
                     mode: presentedMode
                 )
                 PerformanceProbe.shared.markEditorModeReady(
-                    documentID: note.relativePath,
+                    documentID: note.id.relativePath,
                     mode: presentedMode
                 )
             }
@@ -505,7 +508,7 @@ struct NoteContentView<ShellNotices: View>: View {
         }
         .task(id: outlineTaskIdentity) {
             let entries = DocumentOutlineProjection.make(
-                relativePath: note.relativePath,
+                relativePath: note.id.relativePath,
                 source: outlineSource
             )
             guard !Task.isCancelled else { return }
@@ -516,13 +519,13 @@ struct NoteContentView<ShellNotices: View>: View {
         .task(id: readProjectionTaskIdentity) {
             guard documentSession.requiresReadProjection, !Task.isCancelled else { return }
             PerformanceProbe.shared.markReadTaskStarted(
-                documentID: note.relativePath
+                documentID: note.id.relativePath
             )
             documentSession.prepareReadProjection(
                 for: noteFingerprint.sha256
             )
-            let source = note.rawContent
-            let relativePath = note.relativePath
+            let source = note.document.rawContent
+            let relativePath = note.id.relativePath
             let fingerprint = noteFingerprint
             if !isEditing {
                 documentSession.readSelection = nil
@@ -555,7 +558,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     source: source,
                     fingerprint: fingerprint,
                     workspaceID: state.currentVaultID,
-                    semantic: note.workspaceSnapshot?.cachedSemanticDocument
+                    semantic: note.cachedSemanticDocument
                 )
             }
             guard let html, !Task.isCancelled, fingerprint == noteFingerprint else { return }
@@ -650,11 +653,11 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private var readProjectionTaskIdentity: String? {
-        documentSession.readProjectionTaskIdentity(relativePath: note.relativePath, fingerprint: noteFingerprint)
+        documentSession.readProjectionTaskIdentity(relativePath: note.id.relativePath, fingerprint: noteFingerprint)
     }
 
     private var outlineSource: String {
-        isEditing ? editingSource : note.rawContent
+        isEditing ? editingSource : note.document.rawContent
     }
 
     private var outlineTaskIdentity: String {
@@ -673,14 +676,14 @@ struct NoteContentView<ShellNotices: View>: View {
     private func rebuildPreviewCatalog() async {
         guard let vaultID = state.currentVaultID,
             let graph = state.workspaceCatalog?.graph,
-            state.selectedDocumentPath == note.relativePath,
+            state.selectedDocumentPath == note.id.relativePath,
             presentationMode != .source,
             !hasUnsavedChanges
         else {
             documentSession.previewCatalog = nil
             return
         }
-        let sourceID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
+        let sourceID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.id.relativePath)
         let expectedFingerprint = noteFingerprint
         let expectedGeneration = graph.generation
         do {
@@ -706,7 +709,7 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private var noteFingerprint: DocumentFingerprint {
-        state.documentRevisions[note.relativePath] ?? DocumentFingerprint(content: note.rawContent)
+        state.documentRevisions[note.id.relativePath] ?? DocumentFingerprint(content: note.document.rawContent)
     }
 
     private var bodyEditor: AnyView {
@@ -714,8 +717,8 @@ struct NoteContentView<ShellNotices: View>: View {
             MarkdownEditorWebView(
                 session: editorSession,
                 documentID: editorSession.bridgeDocumentID,
-                documentTitle: note.displayName,
-                performanceDocumentID: note.relativePath,
+                documentTitle: note.summary.title,
+                performanceDocumentID: note.id.relativePath,
                 source: editingSource,
                 mode: documentSession.retainedEditorMode,
                 presentationCSS: documentPresentationCSS,
@@ -743,7 +746,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 },
                 onRequestFind: handleDocumentFindShortcut,
                 onRequestDocumentTitleRename: { expectedTitle, requestedTitle in
-                    try await actions.renameNote(note, expectedTitle, requestedTitle)
+                    try await actions.renameNote(.hydrated(note), expectedTitle, requestedTitle)
                 },
                 onPasteImage: handlePastedImage,
                 onLinkActivation: openAuthoredLink,
@@ -801,11 +804,11 @@ struct NoteContentView<ShellNotices: View>: View {
                     generation: "\(noteFingerprint.sha256):\(presentedMode.rawValue)"
                 ) {
                     PerformanceProbe.shared.markEditorModeVisible(
-                        documentID: note.relativePath,
+                        documentID: note.id.relativePath,
                         mode: presentedMode
                     )
                     PerformanceProbe.shared.markEditorVisible(
-                        documentID: note.relativePath
+                        documentID: note.id.relativePath
                     )
                     actions.openingDocumentPresentationDidComplete()
                 }
@@ -1011,10 +1014,10 @@ struct NoteContentView<ShellNotices: View>: View {
 
     private var readDocumentSurface: some View {
         SafeMarkdownReadWebView(
-            documentID: note.relativePath,
-            documentTitle: note.displayName,
+            documentID: note.id.relativePath,
+            documentTitle: note.summary.title,
             fingerprint: noteFingerprint.sha256,
-            source: note.rawContent,
+            source: note.document.rawContent,
             htmlBody: renderedReadHTML,
             presentationCSS: documentPresentationCSS,
             userCSS: state.readCSS,
@@ -1044,7 +1047,7 @@ struct NoteContentView<ShellNotices: View>: View {
             onRenderingReady: {
                 documentSession.renderedReadReadyFingerprint = noteFingerprint.sha256
                 if !isEditing {
-                    markReadPresentationReady(documentID: note.relativePath)
+                    markReadPresentationReady(documentID: note.id.relativePath)
                 }
             },
             findRequest: isEditing ? nil : documentFind.request,
@@ -1125,7 +1128,7 @@ struct NoteContentView<ShellNotices: View>: View {
     private var readConfigurationRevision: String {
         [
             noteFingerprint.sha256,
-            String(note.displayName.hashValue),
+            String(note.summary.title.hashValue),
         ].joined(separator: ":")
     }
 
@@ -1163,7 +1166,7 @@ struct NoteContentView<ShellNotices: View>: View {
         return await controller.editorLinkCompletions(
             kind: kind,
             matching: query,
-            sourcePath: note.relativePath,
+            sourcePath: note.id.relativePath,
             currentVaultID: currentVaultID,
             catalogNotes: catalogNotes,
             graphGeneration: generation
@@ -1175,7 +1178,7 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private var indexedImageAvailabilityTaskIdentity: String {
-        "\(note.relativePath):\(noteFingerprint.sha256):\(indexedImageAvailabilityGeneration)"
+        "\(note.id.relativePath):\(noteFingerprint.sha256):\(indexedImageAvailabilityGeneration)"
     }
 
     private func openAuthoredLink(_ destination: String) {
@@ -1189,7 +1192,7 @@ struct NoteContentView<ShellNotices: View>: View {
             actions.openExternalURL(reference.url)
             return
         }
-        guard let file = SourceResourceReferences.file(destination: destination, noteRelativePath: note.relativePath),
+        guard let file = SourceResourceReferences.file(destination: destination, noteRelativePath: note.id.relativePath),
             let attachmentTarget = documentAttachmentTarget
         else {
             actions.openInternalLink(destination)
@@ -1252,7 +1255,7 @@ struct NoteContentView<ShellNotices: View>: View {
 
     @MainActor
     private func checkIndexedImageAvailability() async {
-        let source = isEditing ? editingSource : note.rawContent
+        let source = isEditing ? editingSource : note.document.rawContent
         guard source.contains("](/") else {
             announcedUnavailableIndexedImages = []
             return
@@ -1330,9 +1333,9 @@ struct NoteContentView<ShellNotices: View>: View {
         else { return }
         isInsertingImage = true
         let expectedDocumentID = editorSession.documentID
-        let expectedPath = note.relativePath
+        let expectedPath = note.id.relativePath
         let noteID = VaultQualifiedNoteID(
-            vaultID: note.vaultID,
+            vaultID: note.id.vaultID,
             relativePath: expectedPath
         )
 
@@ -1362,7 +1365,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     return
                 }
                 guard isEditing,
-                    note.relativePath == expectedPath,
+                    note.id.relativePath == expectedPath,
                     editorSession.documentID == expectedDocumentID
                 else {
                     throw MarkdownEditorSession.SessionError.staleRequest
@@ -1382,7 +1385,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     }
                 prepared = preparation
                 guard isEditing,
-                    note.relativePath == expectedPath,
+                    note.id.relativePath == expectedPath,
                     editorSession.documentID == expectedDocumentID
                 else {
                     throw MarkdownEditorSession.SessionError.staleRequest
@@ -1421,9 +1424,9 @@ struct NoteContentView<ShellNotices: View>: View {
         else { return false }
         isInsertingImage = true
         let expectedDocumentID = editorSession.documentID
-        let expectedPath = note.relativePath
+        let expectedPath = note.id.relativePath
         let noteID = VaultQualifiedNoteID(
-            vaultID: note.vaultID,
+            vaultID: note.id.vaultID,
             relativePath: expectedPath
         )
 
@@ -1435,7 +1438,7 @@ struct NoteContentView<ShellNotices: View>: View {
             var prepared: PreparedSourceAttachment?
             do {
                 guard isEditing,
-                    note.relativePath == expectedPath,
+                    note.id.relativePath == expectedPath,
                     editorSession.documentID == expectedDocumentID
                 else {
                     throw MarkdownEditorSession.SessionError.staleRequest
@@ -1456,7 +1459,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 }
                 prepared = preparation
                 guard isEditing,
-                    note.relativePath == expectedPath,
+                    note.id.relativePath == expectedPath,
                     editorSession.documentID == expectedDocumentID
                 else {
                     throw MarkdownEditorSession.SessionError.staleRequest
@@ -1664,8 +1667,8 @@ struct NoteContentView<ShellNotices: View>: View {
         controller.beginEditing(
             session: documentSession,
             target: target,
-            source: note.rawContent,
-            revision: state.documentRevisions[note.relativePath],
+            source: note.document.rawContent,
+            revision: state.documentRevisions[note.id.relativePath],
             mode: mode
         )
     }
@@ -1874,16 +1877,18 @@ private struct ConflictComparisonSheet: View {
         rawContent: "---\ntitle: Consciousness\n---\n\n# Consciousness\n\nThis is a test note.",
         vaultRole: .topicKnowledge
     )
+    let active = note.hydratedSnapshot!
     let state = DocumentFeatureState(
         notes: [note],
-        selectedDocumentPath: note.relativePath,
+        activeNote: active,
+        selectedDocumentPath: active.id.relativePath,
         ordinarySearchScope: .triptych,
-        currentVaultID: note.workspaceSnapshot?.id.vaultID,
+        currentVaultID: active.id.vaultID,
         vaultRole: .topicKnowledge,
         noteIdentityByPath: [
-            note.relativePath: note.workspaceSnapshot?.stableIdentity.resolvedID
+            active.id.relativePath: active.stableIdentity.resolvedID
         ].compactMapValues { $0 },
-        documentRevisions: [note.relativePath: note.document.fingerprint],
+        documentRevisions: [active.id.relativePath: active.document.fingerprint],
         workspaceCatalog: nil,
         canEdit: false,
         documentTextScale: 1,
@@ -1919,10 +1924,10 @@ private struct ConflictComparisonSheet: View {
     NoteContentView(
         controller: controller,
         target: .unavailable(
-            vaultID: note.vaultID,
-            relativePath: note.relativePath
+            vaultID: active.id.vaultID,
+            relativePath: active.id.relativePath
         ),
-        note: note,
+        note: active,
         documentSession: DocumentSessionModel(key: nil),
         state: state,
         actions: actions,

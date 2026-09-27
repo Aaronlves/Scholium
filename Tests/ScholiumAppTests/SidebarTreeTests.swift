@@ -81,7 +81,7 @@ struct SidebarTreeTests {
             revised.value.roots
                 .first(where: { $0.id == "Cluster" })?
                 .children.first?
-                .note?.rawContent == "# Revised\n"
+                .note?.workspaceSnapshot?.fingerprint == DocumentFingerprint(content: "# Revised\n")
         )
     }
 
@@ -1255,7 +1255,7 @@ struct SidebarTreeTests {
                     broken: 0,
                     ambiguous: 0
                 )
-            ))
+            ).summary)
     }
 }
 

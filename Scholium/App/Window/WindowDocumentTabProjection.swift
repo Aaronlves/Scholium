@@ -132,7 +132,7 @@ extension WindowModel {
     func removeDocumentTabs(
         vaultID: UUID,
         removedPaths: Set<String>
-    ) throws {
+    ) async throws {
         let matchingIDs = Set(
             documentTabController.tabs.compactMap { tab -> UUID? in
                 guard let descriptor = tab.document.workspaceDescriptor,
@@ -150,10 +150,10 @@ extension WindowModel {
             reconcileDocumentSessionLeases()
             return
         }
-        try removeDocumentTabs(withIDs: matchingIDs)
+        try await removeDocumentTabs(withIDs: matchingIDs)
     }
 
-    func removeDocumentTabs(withIDs matchingIDs: Set<UUID>) throws {
+    func removeDocumentTabs(withIDs matchingIDs: Set<UUID>) async throws {
         guard !matchingIDs.isEmpty else {
             reconcileDocumentSessionLeases()
             return
@@ -167,7 +167,7 @@ extension WindowModel {
             let plan = documentTabController.closePlan(forTabWithID: selectedID)
         {
             if let documentToActivate = plan.documentToActivate {
-                try activateResolvedDocument(
+                try await activateResolvedDocument(
                     documentToActivate, tabActivation: .preserveTabMembership
                 )
             } else {
@@ -187,22 +187,45 @@ extension WindowModel {
             documentTabController.tabs.compactMap { tab in
                 targets.contains(tab.document.editingTarget) ? tab.id : nil
             })
-        do {
-            try removeDocumentTabs(withIDs: matchingIDs)
-        } catch {
-            documentTabController.removeTabs(withIDs: matchingIDs)
-            documentController.clearSelectionAfterClosingLastTab()
-            reconcileDocumentSessionLeases()
-            reportOperationIssue(
-                String(
-                    localized:
-                        "The deleted note was removed, but Scholium could not activate the adjacent tab. Choose a document to continue. \(error.localizedDescription)",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                kind: .warning
-            )
+        guard !matchingIDs.isEmpty else { return }
+        documentTransitionCoordinator.enqueueCleanup { [weak self] mayActivateNeighbor in
+            guard let self else { return }
+            guard mayActivateNeighbor() else {
+                discardExternallyDeletedTabs(withIDs: matchingIDs, targets: targets)
+                return
+            }
+            activeDocumentTransitionCurrency = mayActivateNeighbor
+            defer { activeDocumentTransitionCurrency = nil }
+            do {
+                try await removeDocumentTabs(withIDs: matchingIDs)
+            } catch is CancellationError {
+                discardExternallyDeletedTabs(withIDs: matchingIDs, targets: targets)
+            } catch {
+                discardExternallyDeletedTabs(withIDs: matchingIDs, targets: targets)
+                reportOperationIssue(
+                    String(
+                        localized:
+                            "The deleted note was removed, but Scholium could not activate the adjacent tab. Choose a document to continue. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
+                    kind: .warning
+                )
+            }
         }
+    }
+
+    private func discardExternallyDeletedTabs(
+        withIDs ids: Set<UUID>,
+        targets: Set<DocumentEditingTarget>
+    ) {
+        documentTabController.removeTabs(withIDs: ids)
+        if documentController.selectedDocument.map({
+            targets.contains($0.editingTarget)
+        }) == true {
+            documentController.clearSelectionAfterClosingLastTab()
+        }
+        reconcileDocumentSessionLeases()
     }
 
     func refreshDocumentTabProjections() {

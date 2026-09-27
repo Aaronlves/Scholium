@@ -205,7 +205,7 @@ extension WindowModel {
     private func replaceCachedWorkspaceNote(_ note: WorkspaceNoteSnapshot) {
         guard
             let vault = workspaceProjectionController.recordCommittedNote(
-                note,
+                note.summary,
                 visibleVaultID: currentRegisteredVault?.id,
                 visibleSourceScope: noteSourceScope
             )
@@ -272,25 +272,28 @@ extension WindowModel {
                     ambiguous: 0
                 )
             }
-            savedSnapshot = WorkspaceNoteSnapshot(
-                id: VaultQualifiedNoteID(
-                    vaultID: context.vaultID,
-                    relativePath: document.relativePath
-                ),
+            let id = VaultQualifiedNoteID(
+                vaultID: context.vaultID,
+                relativePath: document.relativePath
+            )
+            let summary = WorkspaceNoteSummary(
+                id: id,
                 vaultRole: context.vaultRole,
                 stableIdentity: identity,
                 document: document,
+                semantic: semantic,
                 fileMetadata: metadata,
                 graphCounts: graphCounts,
-                headings: semantic.headings,
-                derivedProjectionState: .sourceAhead,
-                cachedSemanticDocument: semantic,
-                cachedTitleProjection: WorkspaceNoteTitleProjection(document: document)
+                derivedProjectionState: .sourceAhead
+            )
+            savedSnapshot = WorkspaceNoteSnapshot(
+                summary: summary, document: document,
+                cachedSemanticDocument: semantic
             )
         }
 
         replaceCachedWorkspaceNote(savedSnapshot)
-        let saved = WindowDocumentLocation.workspace(savedSnapshot)
+        let saved = WindowDocumentLocation.hydrated(savedSnapshot)
         if currentRegisteredVault?.id == context.vaultID {
             return notes.first(where: { $0.relativePath == document.relativePath }) ?? saved
         }

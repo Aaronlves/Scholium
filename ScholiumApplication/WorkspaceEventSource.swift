@@ -50,7 +50,7 @@ public actor WorkspaceEventSource {
 
     func publishSourceCommitted(
         snapshot: WorkspaceSnapshot,
-        note: WorkspaceNoteSnapshot,
+        note: WorkspaceNoteSummary,
         kind: WorkspaceSourceCommitKind
     ) {
         publish(

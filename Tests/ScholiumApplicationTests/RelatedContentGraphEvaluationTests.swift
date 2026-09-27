@@ -141,7 +141,7 @@ struct RelatedContentGraphEvaluationTests {
                 #expect(response.state == .current)
                 #expect(response.omittedSourceCount == 0)
                 #expect(response.seedFingerprint == request.seed.fingerprint)
-                try verifyLocators(response, scenario: scenario, topicVaultID: topicVaultID, snapshot: snapshot, graph: graph)
+                try await verifyLocators(response, scenario: scenario, topicVaultID: topicVaultID, snapshot: snapshot, graph: graph, handle: handle)
             }
             for item in scenario.items {
                 #expect(try Data(contentsOf: fixture.topicsURL.appendingPathComponent(item.path)) == Data(item.source.utf8))
@@ -167,8 +167,9 @@ struct RelatedContentGraphEvaluationTests {
 
     private func verifyLocators(
         _ response: RelatedContentResponse, scenario: Scenario, topicVaultID: UUID,
-        snapshot: WorkspaceSnapshot, graph: GraphSnapshot
-    ) throws {
+        snapshot: WorkspaceSnapshot, graph: GraphSnapshot,
+        handle: WorkspaceHandle
+    ) async throws {
         for passage in response.passages {
             #expect(passage.candidate.note.vaultID == topicVaultID)
             #expect(passage.candidate.vaultRole == .topicKnowledge)
@@ -198,7 +199,8 @@ struct RelatedContentGraphEvaluationTests {
             for path in candidate.graphContext?.paths ?? [] {
                 #expect(path.isValid)
                 for step in path.steps {
-                    let source = try #require(snapshot.document(id: step.source)?.document.rawContent)
+                    let summary = try #require(snapshot.document(id: step.source))
+                    let source = try await handle.documents.hydrate(summary).document.rawContent
                     let range = try #require(Range(step.occurrence.span.nsRange, in: source))
                     #expect(String(source[range]) == "[[\(step.occurrence.target)|connection]]")
                     #expect(step.occurrence.resolution == .resolved(step.destination))

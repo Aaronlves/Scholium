@@ -232,7 +232,7 @@ extension WorkspaceHandle {
         noteID: UUID,
         expectedFingerprint: DocumentFingerprint,
         update: AgentNoteUpdate
-    ) async throws -> (target: WorkspaceNoteSnapshot, current: NoteDocument, changeSet: NoteChangeSet, intended: NoteDocument) {
+    ) async throws -> (target: WorkspaceNoteSummary, current: NoteDocument, changeSet: NoteChangeSet, intended: NoteDocument) {
         try Task.checkCancellation()
         let target = try await currentAgentNote(noteID: noteID)
         let current = try await loadDocument(target.id)
@@ -462,7 +462,7 @@ extension WorkspaceHandle {
 
     private func prepareAgentChangeUndo(
         id: UUID, expectedAfterFingerprint: DocumentFingerprint
-    ) async throws -> (change: AgentChange, target: WorkspaceNoteSnapshot, current: NoteDocument, beforeData: Data) {
+    ) async throws -> (change: AgentChange, target: WorkspaceNoteSummary, current: NoteDocument, beforeData: Data) {
         try Task.checkCancellation()
         let change = try await services.agentChangeStore.change(id: id)
         guard change.operation == .update, change.state == .confirmed,
@@ -513,7 +513,7 @@ extension WorkspaceHandle {
 
     func currentAgentNote(
         noteID: UUID
-    ) async throws -> WorkspaceNoteSnapshot {
+    ) async throws -> WorkspaceNoteSummary {
         let refreshed = try await refresh()
         let matches = refreshed.vaults.flatMap(\.documents).filter {
             $0.stableIdentity.resolvedID == noteID

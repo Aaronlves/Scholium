@@ -18,12 +18,33 @@ struct DocumentSessionTransferTests {
                 )))
     }
 
+    private func snapshot(for selection: WindowSelectedDocument, source: String) -> WorkspaceNoteSnapshot {
+        guard case .workspace(let descriptor) = selection else {
+            preconditionFailure("The fixture must select a workspace Note")
+        }
+        let document = NoteDocument(relativePath: descriptor.reference.relativePath, rawContent: source)
+        return WorkspaceNoteSnapshot(
+            id: VaultQualifiedNoteID(
+                vaultID: descriptor.sessionKey.vaultID,
+                relativePath: descriptor.reference.relativePath),
+            vaultRole: descriptor.reference.vaultRole,
+            stableIdentity: .resolved(descriptor.sessionKey.noteID),
+            document: document,
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: document.sourceBytes.count,
+                creationDate: nil,
+                modificationDate: nil),
+            graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0)
+        )
+    }
+
     @Test("Switching retained tabs preserves dirty source, mode, and scroll without saving")
     func retainedTabSelection() throws {
         let controller = DocumentController()
         let first = document("First.md")
         let second = document("Second.md")
-        controller.selectDocument(first)
+        controller.installOpenedDocument(
+            snapshot(for: first, source: "Saved"), vaultName: "Fixture", vaultRole: .topicKnowledge)
         let session = controller.session(for: first.editingTarget)
         session.beginEditing(in: .source)
         session.originalEditingSource = "Saved"
@@ -31,7 +52,8 @@ struct DocumentSessionTransferTests {
         session.scrollFraction = 0.62
         session.editError = "Retained save failure"
         session.suppressAutosave = true
-        controller.selectDocument(second)
+        controller.installOpenedDocument(
+            snapshot(for: second, source: "Other"), vaultName: "Fixture", vaultRole: .topicKnowledge)
         #expect(controller.selectRetainedDocument(first))
         #expect(controller.session(for: first.editingTarget) === session)
         #expect(controller.currentPresentationMode == .source)

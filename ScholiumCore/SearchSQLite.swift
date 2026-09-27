@@ -120,6 +120,24 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
         }
     }
 
+    /// Used only by TriptychSearchIndex's one ActiveSynchronization writer
+    /// task. The separate actor-owned reader connection can continue serving
+    /// its last committed WAL generation while source loads suspend here.
+    func asyncTransaction<Result: Sendable>(
+        _ operation: @Sendable () async throws -> Result
+    ) async throws -> Result {
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            let result = try await operation()
+            try Task.checkCancellation()
+            try execute("COMMIT;")
+            return result
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
     func readTransaction<Result>(_ operation: () throws -> Result) throws -> Result {
         try execute("BEGIN DEFERRED;")
         readStatements = [:]

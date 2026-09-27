@@ -8,6 +8,40 @@ import Testing
 @Suite("Document controller convergence")
 @MainActor
 struct DocumentControllerConvergenceTests {
+    @MainActor
+    private final class HydrationGate {
+        private var started = false
+        private var returned = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var returnWaiters: [CheckedContinuation<Void, Never>] = []
+        private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+        func pause() async {
+            started = true
+            for waiter in startWaiters { waiter.resume() }
+            startWaiters.removeAll()
+            await withCheckedContinuation { releaseContinuation = $0 }
+            returned = true
+            for waiter in returnWaiters { waiter.resume() }
+            returnWaiters.removeAll()
+        }
+
+        func waitUntilStarted() async {
+            if started { return }
+            await withCheckedContinuation { startWaiters.append($0) }
+        }
+
+        func release() {
+            releaseContinuation?.resume()
+            releaseContinuation = nil
+        }
+
+        func waitUntilReturned() async {
+            if returned { return }
+            await withCheckedContinuation { returnWaiters.append($0) }
+        }
+    }
+
     enum ReloadInterleaving: CaseIterable { case unchanged, newerConflict, sourceNormalization }
 
     @Test("Reload completes only the accepted conflict and preserves concurrent changes", arguments: ReloadInterleaving.allCases)
@@ -30,7 +64,8 @@ struct DocumentControllerConvergenceTests {
                 paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
                 portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Conflict reload fixture")
             let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
-            let snapshot = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
+            let summary = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
+            let snapshot = try await capabilities.documents.hydrate(summary)
             let controller = DocumentController()
             controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
             let descriptor = try #require(controller.activeDocument)
@@ -192,13 +227,20 @@ struct DocumentControllerConvergenceTests {
     }
 
     @Test("External publication reconciles inactive retained editors without changing selection", arguments: [false, true])
-    func inactiveExternalPublication(dirty: Bool) throws {
+    func inactiveExternalPublication(dirty: Bool) async throws {
         let vault = UUID()
         let id = UUID()
         let original = note(vaultID: vault, noteID: id, path: "First.md", source: "Original\n")
         let other = note(vaultID: vault, noteID: UUID(), path: "Other.md", source: "Other\n")
         let external = note(vaultID: vault, noteID: id, path: "First.md", source: "External revision\n")
-        let controller = DocumentController()
+        var hydrationCount = 0
+        let controller = DocumentController(hydrationLoader: { expected in
+            hydrationCount += 1
+            guard expected.hasSameSourceBinding(as: external.summary) else {
+                throw WorkspaceHydrationError.staleSnapshot
+            }
+            return external
+        })
         controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
         let firstDocument = try #require(controller.selectedDocument)
         let session = controller.session(for: firstDocument.editingTarget)
@@ -211,6 +253,9 @@ struct DocumentControllerConvergenceTests {
         let selectedSession = controller.session(for: selected.editingTarget)
         let publication = workspace(vaultID: vault, notes: [external, other])
         controller.receive(publication, openDocuments: [firstDocument, selected])
+        await controller.waitForPendingHydrations()
+        #expect(hydrationCount == 1)
+        #expect(controller.pendingHydrationCount == 0)
         let current = try #require(controller.selectedDocument)
         #expect(current.editingTarget == selected.editingTarget)
         #expect(current.relativePath == selected.relativePath)
@@ -231,6 +276,120 @@ struct DocumentControllerConvergenceTests {
         }
         #expect(controller.selectRetainedDocument(firstDocument))
         #expect((session.conflict != nil) == dirty)
+    }
+
+    @Test("Unchanged and metadata-only publications do not hydrate retained source")
+    func unchangedPublicationUsesRetainedSource() throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "First.md", source: "\u{FEFF}Body\r\n")
+        var hydrationCount = 0
+        let controller = DocumentController(hydrationLoader: { _ in
+            hydrationCount += 1
+            throw WorkspaceHydrationError.staleSnapshot
+        })
+        controller.installOpenedDocument(original, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let metadata = WorkspaceNoteSummary(
+            id: original.id,
+            vaultRole: original.vaultRole,
+            stableIdentity: original.stableIdentity,
+            document: original.document,
+            fileMetadata: original.fileMetadata,
+            graphCounts: WorkspaceGraphCounts(incoming: 2, outgoing: 1, broken: 0, ambiguous: 0),
+            derivedProjectionState: .current
+        )
+        let changed = WorkspaceNoteSnapshot(summary: metadata, document: original.document)
+        _ = controller.receive(workspace(vaultID: vault, notes: [changed]))
+        #expect(hydrationCount == 0)
+        #expect(controller.pendingHydrationCount == 0)
+        #expect(controller.activeSnapshot?.document.rawContent == original.document.rawContent)
+        #expect(controller.activeSnapshot?.graphCounts.incoming == 2)
+    }
+
+    @Test("Sequentially opening and closing thirty documents retains no full-source cache")
+    func sequentialSessionsReleaseFullSnapshots() throws {
+        let vault = UUID()
+        let controller = DocumentController()
+        for index in 0..<30 {
+            let current = note(
+                vaultID: vault, noteID: UUID(), path: "Note-\(index).md",
+                source: "---\r\nunknown: exact\r\n---\r\n\u{FEFF}Body \(index) 🦉\r\n"
+            )
+            controller.installOpenedDocument(current, vaultName: "Works", vaultRole: .draftProject)
+            let selected = try #require(controller.selectedDocument)
+            controller.reconcileSessionLeases(leasedDocuments: [selected], selectedDocument: selected)
+            #expect(controller.retainedFullSnapshotCount <= 1)
+            controller.clearSelectionAfterClosingLastTab()
+            controller.reconcileSessionLeases(leasedDocuments: [], selectedDocument: nil)
+            controller.reapDetachedSessions()
+            #expect(controller.retainedFullSnapshotCount == 0)
+            #expect(controller.pendingHydrationCount == 0)
+        }
+        #expect(controller.retainedSessionCount == 0)
+    }
+
+    @Test("A late cancelled hydration cannot replace a newer retained revision")
+    func lateHydrationCannotReplaceNewerRevision() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let base = note(vaultID: vault, noteID: id, path: "Race.md", source: "Base\n")
+        let older = note(vaultID: vault, noteID: id, path: "Race.md", source: "First external\n")
+        let newer = note(vaultID: vault, noteID: id, path: "Race.md", source: "Second external\n")
+        let gate = HydrationGate()
+        var hydrationCount = 0
+        let controller = DocumentController(hydrationLoader: { expected in
+            hydrationCount += 1
+            if expected.fingerprint == older.fingerprint {
+                await gate.pause()
+                return older
+            }
+            guard expected.hasSameSourceBinding(as: newer.summary) else {
+                throw WorkspaceHydrationError.staleSnapshot
+            }
+            return newer
+        })
+        controller.installOpenedDocument(base, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        _ = controller.receive(workspace(vaultID: vault, notes: [older]))
+        await gate.waitUntilStarted()
+        defer { gate.release() }
+        #expect(controller.pendingHydrationCount == 1)
+
+        _ = controller.receive(workspace(vaultID: vault, notes: [newer]))
+        await controller.waitForPendingHydrations()
+        #expect(hydrationCount == 2)
+        #expect(controller.activeSnapshot?.document.rawContent == "Second external\n")
+        gate.release()
+        await gate.waitUntilReturned()
+        await Task.yield()
+        #expect(controller.activeSnapshot?.document.rawContent == "Second external\n")
+        #expect(controller.pendingHydrationCount == 0)
+        #expect(controller.retainedFullSnapshotCount == 1)
+    }
+
+    @Test("Unbinding cancels a pending external read without replacing exact source")
+    func unbindCancelsPendingHydration() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let base = note(vaultID: vault, noteID: id, path: "Unbind.md", source: "Base\n")
+        let external = note(vaultID: vault, noteID: id, path: "Unbind.md", source: "External\n")
+        let gate = HydrationGate()
+        let controller = DocumentController(hydrationLoader: { _ in
+            await gate.pause()
+            return external
+        })
+        controller.installOpenedDocument(base, vaultName: "Topics", vaultRole: .topicKnowledge)
+        _ = controller.receive(workspace(vaultID: vault, notes: [external]))
+        await gate.waitUntilStarted()
+        defer { gate.release() }
+        #expect(controller.pendingHydrationCount == 1)
+
+        controller.unbind()
+        #expect(controller.pendingHydrationCount == 0)
+        gate.release()
+        await gate.waitUntilReturned()
+        await Task.yield()
+        #expect(controller.activeSnapshot?.document.rawContent == "Base\n")
+        #expect(controller.retainedFullSnapshotCount == 1)
     }
 
     @Test("Accepted workspace updates invalidate attachment listings without replacing an unsaved document")
@@ -966,7 +1125,7 @@ struct DocumentControllerConvergenceTests {
                         caseSensitive: true,
                         normalizationSensitive: true
                     ),
-                    documents: notes,
+                    documents: notes.map(\.summary),
                     identityRecovery: NoteIdentityRecoveryState(
                         identities: [:],
                         ambiguities: [],

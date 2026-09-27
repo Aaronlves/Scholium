@@ -263,7 +263,8 @@ struct WorkspaceRuntimeTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let snapshot = try await handle.discovery.refresh()
         let graph = try #require(snapshot.discovery.catalog.graph)
-        let source = try #require(snapshot.document(id: fixture.analysisNoteID)?.document)
+        let sourceSummary = try #require(snapshot.document(id: fixture.analysisNoteID))
+        let source = try await handle.documents.hydrate(sourceSummary).document
 
         let catalog = try await handle.documents.documentPreviewCatalog(
             source: fixture.analysisNoteID,
@@ -326,8 +327,9 @@ struct WorkspaceRuntimeTests {
                 ))
         if case .snapshot(let event) = initial {
             let analysis = try #require(event.snapshot.document(id: fixture.analysisNoteID))
-            #expect(analysis.document.rawContent.contains("Freedom enables action"))
-            #expect(analysis.fileMetadata.byteCount == analysis.document.sourceBytes.count)
+            let hydrated = try await first.documents.hydrate(analysis)
+            #expect(hydrated.document.rawContent.contains("Freedom enables action"))
+            #expect(analysis.fileMetadata.byteCount == hydrated.document.sourceBytes.count)
             #expect(analysis.fileMetadata.modificationDate != nil)
             #expect(analysis.graphCounts.incoming == 0)
         } else {
@@ -1379,7 +1381,7 @@ struct WorkspaceRuntimeTests {
                     SearchSourceSnapshot(
                         noteID: authorizedNote.id,
                         editorSessionID: UUID(),
-                        source: authorizedNote.document.rawContent,
+                        source: try await handle.documents.hydrate(authorizedNote).document.rawContent,
                         editorRevision: 1
                     )),
                 limit: 20
@@ -1466,7 +1468,7 @@ struct WorkspaceRuntimeTests {
             initial
                 == Dictionary(
                     uniqueKeysWithValues:
-                        firstSnapshot.documents.map { ($0.relativePath, $0.fingerprint) }))
+                        firstSnapshot.projections.map { ($0.relativePath, $0.fingerprint) }))
         #expect(firstSnapshot.measurement.readFiles == initial.count)
 
         let noteURL = fixture.analysesURL.appendingPathComponent("Exact.md")
@@ -1479,7 +1481,7 @@ struct WorkspaceRuntimeTests {
         #expect(added.count == initial.count + 1)
         #expect(added["Exact.md"] == DocumentFingerprint(data: bytes))
         let addedSnapshot = try await catalog.snapshot(refreshFolders: false)
-        #expect(addedSnapshot.documents.first { $0.relativePath == "Exact.md" }?.sourceBytes == bytes)
+        #expect(addedSnapshot.projections.first { $0.relativePath == "Exact.md" }?.fingerprint == DocumentFingerprint(data: bytes))
 
         let replacement = Data("# Changed\n".utf8)
         try replacement.write(to: noteURL)
@@ -1540,7 +1542,7 @@ struct WorkspaceRuntimeTests {
                 rootChanged: false
             ))
         #expect(
-            try await catalog.snapshot(refreshFolders: false).documents
+            try await catalog.snapshot(refreshFolders: false).projections
                 .contains { $0.relativePath == fixture.analysisNoteID.relativePath })
 
         let addedURL = fixture.analysesURL.appendingPathComponent("Added.md")
@@ -1588,14 +1590,14 @@ struct WorkspaceRuntimeTests {
             )
         ).snapshot(refreshFolders: false)
         #expect(
-            incremental.documents.map(\.relativePath)
-                == clean.documents.map(\.relativePath))
+            incremental.projections.map(\.relativePath)
+                == clean.projections.map(\.relativePath))
         #expect(
-            incremental.documents.map(\.fingerprint)
-                == clean.documents.map(\.fingerprint))
+            incremental.projections.map(\.fingerprint)
+                == clean.projections.map(\.fingerprint))
         #expect(incremental.sourceVersions == clean.sourceVersions)
         #expect(incremental.fileMetadata == clean.fileMetadata)
-        #expect(Set(incremental.semantics.keys) == Set(clean.semantics.keys))
+        #expect(incremental.projections == clean.projections)
         #expect(incremental.folders == clean.folders)
 
         let incrementalWorkspace = try await handle.discovery.refresh()
@@ -1662,33 +1664,57 @@ struct WorkspaceRuntimeTests {
         let catalog = VaultSourceCatalog(
             repository: try #require(services.repositories[vaultID]), vaultRole: .sourceCorpus,
             applicationSupportURL: cacheSupport, vaultID: vaultID)
+        let repository = try #require(services.repositories[vaultID])
         let first = try await catalog.snapshot(refreshFolders: false)
-        let firstDocument = try #require(first.documents.first)
+        let firstProjection = try #require(first.projections.first)
+        let firstDocument = try await repository.load(relativePath: firstProjection.relativePath)
         let cache = try #require(first.searchProjectionCache)
-        #expect(first.semantics.count == first.documents.count)
-        #expect(first.measurement.readFiles == first.documents.count)
+        #expect(first.measurement.readFiles == first.projections.count)
         #expect(cache.load(for: firstDocument) == nil)
 
         let index = services.searchIndex
         let generation = try await index.workspaceGeneration()
-        _ = try await index.synchronize([], workspaceGeneration: generation + 1)
-        func inputs(_ source: VaultSourceCatalogSnapshot) -> [SearchIndexDocument] {
-            source.documents.map { document in
-                SearchIndexDocument(
+        _ = try await index.synchronizeManifest(
+            [], workspaceGeneration: generation + 1,
+            loadChanged: { _ in throw SearchIndexError.invalidDocuments("unexpected fixture source") },
+            validateManifest: {})
+        func inputs(_ source: VaultSourceCatalogSnapshot) -> [SearchIndexManifestEntry] {
+            source.projections.map { projection in
+                SearchIndexManifestEntry(
                     vaultID: vaultID, vaultName: "Analyses", vaultRole: .sourceCorpus,
-                    document: document, semantic: source.semantics[document.relativePath])
+                    relativePath: projection.relativePath, stableNoteID: nil,
+                    fingerprint: projection.fingerprint, hasBrokenLink: false)
             }
         }
-        _ = try await index.synchronize(inputs(first), sourceProjectionCaches: [vaultID: cache], workspaceGeneration: generation + 2)
-        #expect(await index.lastSynchronizationTimings?.projectedDocuments == first.documents.count)
+        func synchronize(_ source: VaultSourceCatalogSnapshot, generation: UInt64) async throws -> TriptychSearchIndexSyncResult {
+            try await index.synchronizeManifest(
+                inputs(source), sourceProjectionCaches: [vaultID: cache],
+                workspaceGeneration: generation,
+                loadChanged: { entry in
+                    let loaded = try await repository.loadCatalogSource(relativePath: entry.relativePath)
+                    guard loaded.version == source.sourceVersions[entry.relativePath] else {
+                        throw WorkspaceHydrationError.staleSnapshot
+                    }
+                    return SearchIndexDocument(
+                        vaultID: vaultID, vaultName: "Analyses", vaultRole: .sourceCorpus,
+                        document: loaded.document)
+                },
+                validateManifest: {
+                    for (path, version) in source.sourceVersions {
+                        guard try await repository.sourceVersionIsCurrent(relativePath: path, version: version)
+                        else { throw WorkspaceHydrationError.staleSnapshot }
+                    }
+                })
+        }
+        _ = try await synchronize(first, generation: generation + 2)
+        #expect(await index.lastSynchronizationTimings?.projectedDocuments == first.projections.count)
         #expect(cache.load(for: firstDocument) != nil)
         try await catalog.reconcile()
         let unchanged = try await catalog.snapshot(refreshFolders: false)
-        #expect(unchanged.documents.map(\.fingerprint) == first.documents.map(\.fingerprint))
-        #expect(unchanged.semantics == first.semantics)
+        #expect(unchanged.projections == first.projections)
         #expect(unchanged.measurement.readFiles == 0)
         #expect(unchanged.measurement.parsedDocuments == 0)
-        let result = try await index.synchronize(inputs(unchanged), sourceProjectionCaches: [vaultID: cache], workspaceGeneration: generation + 3)
+        let result = try await synchronize(unchanged, generation: generation + 3)
         #expect(result.disposition == .unchanged)
         #expect(await index.lastSynchronizationTimings?.projectedDocuments == 0)
         #expect(await index.lastSynchronizationTimings?.restoredSearchProjections == 0)
@@ -1714,7 +1740,7 @@ struct WorkspaceRuntimeTests {
         let initial = try await catalog.snapshot(refreshFolders: false)
         let initialGeneration = initial.generation
         let initialTarget = try #require(
-            initial.documents.first {
+            initial.projections.first {
                 $0.relativePath == fixture.analysisNoteID.relativePath
             })
         let targetURL = fixture.analysesURL.appendingPathComponent(
@@ -1730,7 +1756,7 @@ struct WorkspaceRuntimeTests {
         let retained = try await catalog.snapshot(refreshFolders: false)
         #expect(retained.generation == initialGeneration)
         #expect(
-            retained.documents.first {
+            retained.projections.first {
                 $0.relativePath == fixture.analysisNoteID.relativePath
             }?.fingerprint == initialTarget.fingerprint)
 
@@ -1738,7 +1764,7 @@ struct WorkspaceRuntimeTests {
         let repaired = try await catalog.snapshot(refreshFolders: false)
         #expect(repaired.generation > initialGeneration)
         #expect(
-            repaired.documents.first {
+            repaired.projections.first {
                 $0.relativePath == fixture.analysisNoteID.relativePath
             }?.fingerprint != initialTarget.fingerprint)
         await runtime.shutdown()

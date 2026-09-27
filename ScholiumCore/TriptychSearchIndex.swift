@@ -47,7 +47,7 @@ public struct SearchIndexDocumentEligibility: Hashable, Sendable {
 /// an older refresh from publishing after a newer source generation.
 struct SearchIndexDelta: Sendable {
     let workspaceGeneration: UInt64
-    let upserts: [SearchIndexDocument]
+    let upserts: [SearchIndexManifestEntry]
     let deletions: [VaultQualifiedNoteID]
 }
 
@@ -66,6 +66,8 @@ public actor TriptychSearchIndex {
     private var currentAvailability: SearchAvailability
     private var recoveredGeneratedDatabase: Bool
     private var activeSynchronization: ActiveSynchronization?
+    private var synchronizationQueuedForTesting: (@Sendable (UInt64) async -> Void)?
+    private var joinedSynchronizationWaitForTesting: (@Sendable () async -> Void)?
     private var latestWorkspaceGeneration: UInt64 = 0
     private var relatedPassageMemo = RelatedContentSourceProjectionMemo()
     private var relatedBackgroundPreparation = RelatedContentBackgroundPreparation()
@@ -263,38 +265,38 @@ public actor TriptychSearchIndex {
         return latestWorkspaceGeneration
     }
 
-    /// Standalone index test support. Workspace production must provide the
-    /// coordinator-owned generation explicitly.
-    func synchronize(
-        _ documents: [SearchIndexDocument],
-        sourceProjectionCaches: [UUID: SourceSearchProjectionCache] = [:]
-    ) async throws -> TriptychSearchIndexSyncResult {
-        let latest = try workspaceGeneration()
-        guard latest < UInt64(Int.max) else {
-            throw SearchIndexError.invalidDocuments(
-                "Search workspace generation IDs were exhausted."
-            )
-        }
-        let workspaceGeneration = latest + 1
-        return try await synchronize(
-            documents,
-            sourceProjectionCaches: sourceProjectionCaches,
-            workspaceGeneration: workspaceGeneration
-        )
+    func setSynchronizationQueuedForTesting(
+        _ callback: (@Sendable (UInt64) async -> Void)?
+    ) {
+        synchronizationQueuedForTesting = callback
     }
 
-    public func synchronize(
-        _ documents: [SearchIndexDocument],
+    func setJoinedSynchronizationWaitForTesting(
+        _ callback: (@Sendable () async -> Void)?
+    ) {
+        joinedSynchronizationWaitForTesting = callback
+    }
+
+    /// Production path: compare a compact complete manifest and descriptor-load
+    /// one changed row at a time on the sole writer task. The validation closure
+    /// checks every captured SourceVersion immediately before commit.
+    public func synchronizeManifest(
+        _ documents: [SearchIndexManifestEntry],
         sourceProjectionCaches: [UUID: SourceSearchProjectionCache] = [:],
-        workspaceGeneration: UInt64
+        workspaceGeneration: UInt64,
+        loadChanged: @escaping @Sendable (SearchIndexManifestEntry) async throws -> SearchIndexDocument,
+        validateManifest: @escaping @Sendable () async throws -> Void
     ) async throws -> TriptychSearchIndexSyncResult {
         try Task.checkCancellation()
         // Finish the one older writer before validating the new request. This
         // lets the recursive retry compare against the generation that writer
         // actually committed instead of the pre-wait watermark.
         if let active = activeSynchronization {
+            if let callback = synchronizationQueuedForTesting {
+                await callback(workspaceGeneration)
+            }
             do {
-                _ = try await finishSynchronization(active)
+                _ = try await finishSynchronization(active, joinedWaiter: true)
             } catch is CancellationError {
                 if Task.isCancelled { throw CancellationError() }
             } catch {
@@ -302,10 +304,12 @@ public actor TriptychSearchIndex {
                 // repair a failed earlier refresh.
             }
             try Task.checkCancellation()
-            return try await synchronize(
+            return try await synchronizeManifest(
                 documents,
                 sourceProjectionCaches: sourceProjectionCaches,
-                workspaceGeneration: workspaceGeneration
+                workspaceGeneration: workspaceGeneration,
+                loadChanged: loadChanged,
+                validateManifest: validateManifest
             )
         }
 
@@ -330,7 +334,7 @@ public actor TriptychSearchIndex {
 
         let preparationStarted = ContinuousClock.now
         let desired = try Self.validatedDocuments(documents)
-        relatedPassageMemo.retain(Array(desired.values))
+        relatedPassageMemo.retainManifest(Array(desired.values))
         let manifestHash = Self.manifestHash(for: Array(desired.values))
         let previous = try generation()
         let stored = try Self.indexedProjectionState(in: database)
@@ -349,26 +353,31 @@ public actor TriptychSearchIndex {
         if previous?.sourceManifestHash == manifestHash, stored == desiredState,
             let previous
         {
-            try writerDatabase.transaction {
-                try Self.requireNewerWorkspaceGeneration(
-                    workspaceGeneration,
-                    in: writerDatabase
-                )
-                try writerDatabase.execute(
-                    "UPDATE search_index_state SET workspace_generation = ? WHERE singleton = 1;",
-                    bindings: [.int(Int(workspaceGeneration))]
-                )
+            let identifier = UUID()
+            let writer = writerDatabase
+            let task = Task.detached(priority: .utility) {
+                try await writer.asyncTransaction {
+                    try await validateManifest()
+                    try Self.requireNewerWorkspaceGeneration(
+                        workspaceGeneration, in: writer)
+                    try writer.execute(
+                        "UPDATE search_index_state SET workspace_generation = ? WHERE singleton = 1;",
+                        bindings: [.int(Int(workspaceGeneration))])
+                }
+                return SearchPublication(
+                    result: TriptychSearchIndexSyncResult(
+                        generation: previous, disposition: .unchanged),
+                    preparation: .init())
             }
-            currentAvailability = .current(previous)
-            relatedBackgroundPreparation.retain(generation: previous)
+            let active = ActiveSynchronization(
+                id: identifier, previous: previous, task: task, progress: nil)
+            activeSynchronization = active
+            let publication = try await finishSynchronization(active)
             recordSynchronizationTimings(
                 documentCount: desired.count, changedCount: changedKeys.count,
                 preparation: .init(), preparationMilliseconds: preparationMilliseconds,
                 publicationStarted: publicationStarted)
-            return TriptychSearchIndexSyncResult(
-                generation: previous,
-                disposition: .unchanged
-            )
+            return publication.result
         }
 
         if let previous, previous.sequence > 0 {
@@ -413,7 +422,7 @@ public actor TriptychSearchIndex {
             progressReporter = nil
         }
         let task = Task.detached(priority: .utility) {
-            try Self.publish(
+            try await Self.publish(
                 delta: delta,
                 desired: desired,
                 sourceProjectionCaches: sourceProjectionCaches,
@@ -423,7 +432,9 @@ public actor TriptychSearchIndex {
                 configuredVaults: configuredVaults,
                 triptychID: triptychID,
                 database: writer,
-                progress: progressReporter
+                progress: progressReporter,
+                loadChanged: loadChanged,
+                validateManifest: validateManifest
             )
         }
         let active = ActiveSynchronization(
@@ -481,13 +492,19 @@ public actor TriptychSearchIndex {
     }
 
     private func finishSynchronization(
-        _ synchronization: ActiveSynchronization
+        _ synchronization: ActiveSynchronization,
+        joinedWaiter: Bool = false
     ) async throws -> SearchPublication {
         do {
             let publication = try await withTaskCancellationHandler {
-                try await synchronization.task.value
+                if joinedWaiter, let callback = joinedSynchronizationWaitForTesting {
+                    await callback()
+                }
+                return try await synchronization.task.value
             } onCancel: {
-                synchronization.task.cancel()
+                // A superseding caller may stop waiting without cancelling
+                // the older request's sole transaction owner.
+                if !joinedWaiter { synchronization.task.cancel() }
             }
             await finishProgress(synchronization)
             let result = publication.result
@@ -537,7 +554,7 @@ public actor TriptychSearchIndex {
 
     private nonisolated static func publish(
         delta: SearchIndexDelta,
-        desired: [Data: SearchIndexDocument],
+        desired: [Data: SearchIndexManifestEntry],
         sourceProjectionCaches: [UUID: SourceSearchProjectionCache],
         manifestHash: String,
         previous: SearchGenerationID?,
@@ -545,10 +562,12 @@ public actor TriptychSearchIndex {
         configuredVaults: [UUID: (String, VaultRole)],
         triptychID: UUID,
         database: SearchSQLiteDatabase,
-        progress: (@Sendable (Int) -> Void)?
-    ) throws -> SearchPublication {
-        var preparation = SearchProjectionPreparation()
-        try database.transaction {
+        progress: (@Sendable (Int) -> Void)?,
+        loadChanged: @escaping @Sendable (SearchIndexManifestEntry) async throws -> SearchIndexDocument,
+        validateManifest: @escaping @Sendable () async throws -> Void
+    ) async throws -> SearchPublication {
+        let preparation = try await database.asyncTransaction {
+            var preparation = SearchProjectionPreparation()
             try Task.checkCancellation()
             try requireNewerWorkspaceGeneration(
                 delta.workspaceGeneration,
@@ -572,8 +591,22 @@ public actor TriptychSearchIndex {
                 documentKey(vaultID: $0.vaultID, path: $0.relativePath).utf8
                     .lexicographicallyPrecedes(documentKey(vaultID: $1.vaultID, path: $1.relativePath).utf8)
             }
-            for (offset, document) in orderedUpserts.enumerated() {
+            for (offset, entry) in orderedUpserts.enumerated() {
                 try Task.checkCancellation()
+                let document = try await loadChanged(entry)
+                guard document.vaultID == entry.vaultID,
+                    document.vaultName == entry.vaultName,
+                    document.vaultRole == entry.vaultRole,
+                    document.relativePath.utf8.elementsEqual(entry.relativePath.utf8),
+                    document.stableNoteID == entry.stableNoteID,
+                    document.document.fingerprint == entry.fingerprint,
+                    document.hasBrokenLink == entry.hasBrokenLink,
+                    document.evidentialLayer == entry.evidentialLayer
+                else {
+                    throw SearchIndexError.invalidDocuments(
+                        "Changed Search source no longer matches its captured manifest"
+                    )
+                }
                 let key = documentKey(
                     vaultID: document.vaultID,
                     path: document.relativePath
@@ -617,7 +650,9 @@ public actor TriptychSearchIndex {
                     .text(manifestHash),
                 ]
             )
+            try await validateManifest()
             try Task.checkCancellation()
+            return preparation
         }
         guard let published = try readGeneration(in: database, triptychID: triptychID) else {
             throw SearchIndexError.invalidDocuments("Search v10 did not publish a generation")
@@ -1893,9 +1928,9 @@ public actor TriptychSearchIndex {
         let evidentialLayer: EvidentialLayer
         let hasBrokenLink: Bool
 
-        init(_ source: SearchIndexDocument) {
+        init(_ source: SearchIndexManifestEntry) {
             self.init(
-                fingerprint: source.document.fingerprint,
+                fingerprint: source.fingerprint,
                 vaultNameUTF8: Data(source.vaultName.utf8), vaultRole: source.vaultRole,
                 stableNoteIDUTF8: source.stableNoteID.map { Data($0.utf8) },
                 evidentialLayer: source.evidentialLayer, hasBrokenLink: source.hasBrokenLink)
@@ -1955,9 +1990,9 @@ public actor TriptychSearchIndex {
     }
 
     private static func validatedDocuments(
-        _ documents: [SearchIndexDocument]
-    ) throws -> [Data: SearchIndexDocument] {
-        var result: [Data: SearchIndexDocument] = [:]
+        _ documents: [SearchIndexManifestEntry]
+    ) throws -> [Data: SearchIndexManifestEntry] {
+        var result: [Data: SearchIndexManifestEntry] = [:]
         var canonicalKeys = Set<String>()
         for document in documents {
             let key = documentKey(vaultID: document.vaultID, path: document.relativePath)
@@ -1974,13 +2009,13 @@ public actor TriptychSearchIndex {
         return result
     }
 
-    private static func manifestHash(for documents: [SearchIndexDocument]) -> String {
+    private static func manifestHash(for documents: [SearchIndexManifestEntry]) -> String {
         SearchSourceManifest.hash(
             documents.map {
                 SearchSourceManifestEntry(
                     vaultID: $0.vaultID,
                     relativePath: $0.relativePath,
-                    fingerprint: $0.document.fingerprint
+                    fingerprint: $0.fingerprint
                 )
             })
     }

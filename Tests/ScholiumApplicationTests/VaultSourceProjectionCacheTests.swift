@@ -21,12 +21,12 @@ struct VaultSourceProjectionCacheTests {
         #expect(reopened.measurement.parsedDocuments == 1)
         #expect(reopenedSearch.projectedDocuments == 0)
         #expect(reopenedSearch.restoredSearchProjections == 1)
-        #expect(reopened.documents.map(\.rawContent) == [fixture.source])
+        #expect(reopened.projections.map(\.fingerprint) == [DocumentFingerprint(data: Data(fixture.source.utf8))])
         #expect(try Data(contentsOf: fixture.noteURL) == Data(fixture.source.utf8))
         #expect(reopened.sourceVersions == first.sourceVersions)
         #expect(reopened.fileMetadata == first.fileMetadata)
-        #expect(reopened.semantics == first.semantics)
-        #expect(fixture.projections(in: reopened) == fixture.projections(in: first))
+        #expect(reopened.projections == first.projections)
+        #expect(try await fixture.projections(in: reopened) == fixture.projections(in: first))
     }
 
     @Test("Same-content atomic replacement reuses projections and refreshes observed file facts")
@@ -53,8 +53,8 @@ struct VaultSourceProjectionCacheTests {
         #expect(reopened.measurement.parsedDocuments == 1)
         #expect(reopenedSearch.restoredSearchProjections == 1)
         #expect(reopenedSearch.projectedDocuments == 0)
-        #expect(reopened.documents.map(\.rawContent) == [fixture.source])
-        #expect(fixture.projections(in: reopened) == fixture.projections(in: first))
+        #expect(reopened.projections == first.projections)
+        #expect(try await fixture.projections(in: reopened) == fixture.projections(in: first))
     }
 
     @Test("A same-size edit with restored mtime misses the cache and parses new authored links")
@@ -77,15 +77,14 @@ struct VaultSourceProjectionCacheTests {
         #expect(reopened.measurement.parsedDocuments == 1)
         #expect(reopenedSearch.restoredSearchProjections == 0)
         #expect(reopenedSearch.projectedDocuments == 1)
-        #expect(reopened.documents.map(\.rawContent) == [edited])
-        #expect(reopened.documents.map(\.fingerprint) != first.documents.map(\.fingerprint))
-        let semantic = try #require(reopened.semantics[Fixture.path])
-        #expect(semantic.links.map(\.target) == ["NewOne"])
-        #expect(semantic.fingerprint == reopened.documents.first?.fingerprint)
+        #expect(reopened.projections.map(\.fingerprint) == [DocumentFingerprint(data: Data(edited.utf8))])
+        #expect(reopened.projections.map(\.fingerprint) != first.projections.map(\.fingerprint))
+        let projection = try #require(reopened.projections.first)
+        #expect(projection.authoredLinks.map(\.target) == ["NewOne"])
 
         let clean = try await fixture.catalog(useCache: false).snapshot(refreshFolders: false)
-        #expect(reopened.semantics == clean.semantics)
-        #expect(fixture.projections(in: reopened) == fixture.projections(in: clean))
+        #expect(reopened.projections == clean.projections)
+        #expect(try await fixture.projections(in: reopened) == fixture.projections(in: clean))
     }
 
     @Test("A deleted source cannot be restored from a persisted Search projection")
@@ -98,9 +97,8 @@ struct VaultSourceProjectionCacheTests {
 
         let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
         let reopenedSearch = try await fixture.index(reopened)
-        #expect(reopened.documents.isEmpty)
-        #expect(reopened.semantics.isEmpty)
-        #expect(fixture.projections(in: reopened).isEmpty)
+        #expect(reopened.projections.isEmpty)
+        #expect(try await fixture.projections(in: reopened).isEmpty)
         #expect(reopenedSearch.restoredSearchProjections == 0)
     }
 
@@ -119,8 +117,8 @@ struct VaultSourceProjectionCacheTests {
         let catalog = try await fixture.catalog()
         let reopened = try await catalog.snapshot(refreshFolders: false)
         let reopenedSearch = try await fixture.index(reopened)
-        #expect(reopened.documents.isEmpty)
-        #expect(fixture.projections(in: reopened).isEmpty)
+        #expect(reopened.projections.isEmpty)
+        #expect(try await fixture.projections(in: reopened).isEmpty)
         #expect(reopenedSearch.restoredSearchProjections == 0)
         // Enumeration excludes symbolic links. A later path hint still cannot
         // bypass the repository's descriptor-relative source authorization.
@@ -128,7 +126,7 @@ struct VaultSourceProjectionCacheTests {
             try await catalog.apply(upserts: [Fixture.path], deletions: [], refreshFolders: false)
         }
         #expect(try Data(contentsOf: outside) == sentinel)
-        #expect(try await catalog.snapshot(refreshFolders: false).documents.isEmpty)
+        #expect(try await catalog.snapshot(refreshFolders: false).projections.isEmpty)
     }
 
     private struct Fixture {
@@ -195,31 +193,52 @@ struct VaultSourceProjectionCacheTests {
 
         func index(_ snapshot: VaultSourceCatalogSnapshot) async throws -> (projectedDocuments: Int, restoredSearchProjections: Int) {
             let index = await handle.services.searchIndex
+            let repository = try #require(await handle.services.repositories[vaultID])
             let generation = try await index.workspaceGeneration()
             // Clear only this stopped fixture runtime's disposable index so
             // the next publication must prepare the source-derived rows.
-            _ = try await index.synchronize([], workspaceGeneration: generation + 1)
-            _ = try await index.synchronize(
-                snapshot.documents.map { document in
-                    SearchIndexDocument(
+            _ = try await index.synchronizeManifest(
+                [], workspaceGeneration: generation + 1,
+                loadChanged: { _ in throw SearchIndexError.invalidDocuments("unexpected fixture source") },
+                validateManifest: {})
+            _ = try await index.synchronizeManifest(
+                snapshot.projections.map { projection in
+                    SearchIndexManifestEntry(
                         vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
-                        document: document, semantic: snapshot.semantics[document.relativePath])
+                        relativePath: projection.relativePath, stableNoteID: nil,
+                        fingerprint: projection.fingerprint, hasBrokenLink: false)
                 },
                 sourceProjectionCaches: snapshot.searchProjectionCache.map { [vaultID: $0] } ?? [:],
-                workspaceGeneration: generation + 2)
+                workspaceGeneration: generation + 2,
+                loadChanged: { entry in
+                    let loaded = try await repository.loadCatalogSource(relativePath: entry.relativePath)
+                    guard loaded.version == snapshot.sourceVersions[entry.relativePath] else {
+                        throw WorkspaceHydrationError.staleSnapshot
+                    }
+                    return SearchIndexDocument(
+                        vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                        document: loaded.document)
+                },
+                validateManifest: {
+                    for (path, version) in snapshot.sourceVersions {
+                        guard try await repository.sourceVersionIsCurrent(relativePath: path, version: version)
+                        else { throw WorkspaceHydrationError.staleSnapshot }
+                    }
+                })
             let measurement = try #require(await index.lastSynchronizationTimings)
             return (measurement.projectedDocuments, measurement.restoredSearchProjections)
         }
 
-        func projections(in snapshot: VaultSourceCatalogSnapshot) -> [String: SearchDocumentProjection] {
-            Dictionary(
-                uniqueKeysWithValues: snapshot.documents.map { document in
-                    (
-                        document.relativePath,
-                        snapshot.searchProjectionCache?.load(for: document)
-                            ?? SearchDocumentProjection(document: document, semantic: snapshot.semantics[document.relativePath])
-                    )
-                })
+        func projections(in snapshot: VaultSourceCatalogSnapshot) async throws -> [String: SearchDocumentProjection] {
+            let repository = try #require(await handle.services.repositories[vaultID])
+            var result: [String: SearchDocumentProjection] = [:]
+            for projection in snapshot.projections {
+                let document = try await repository.load(relativePath: projection.relativePath)
+                result[projection.relativePath] =
+                    snapshot.searchProjectionCache?.load(for: document)
+                    ?? SearchDocumentProjection(document: document)
+            }
+            return result
         }
 
         func remove() { try? FileManager.default.removeItem(at: root) }

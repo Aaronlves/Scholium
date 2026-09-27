@@ -1019,7 +1019,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
                 portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Paragraph save fixture")
             let sourceVault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
-            let snapshot = try #require(sourceVault.documents.first { $0.id.relativePath == "Source.md" })
+            let summary = try #require(sourceVault.documents.first { $0.id.relativePath == "Source.md" })
+            let snapshot = try await capabilities.documents.hydrate(summary)
             let controller = DocumentController()
             controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
             let descriptor = try #require(controller.activeDocument)

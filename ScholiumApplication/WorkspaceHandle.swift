@@ -91,6 +91,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     var managedCreationPreLeaseBarrierForTesting: (@Sendable () async -> Void)?
     var managedCreationPostSourceBarrierForTesting: (@Sendable () async -> Void)?
     var progressiveActivationReconciliationBarrierForTesting: (@Sendable () async -> Void)?
+    var hydrationPostReadBarrierForTesting: (@Sendable () async -> Void)?
     var didCompleteActivationReconciliation = false
 
     func setManagedCreationPreLeaseBarrierForTesting(
@@ -109,6 +110,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ barrier: (@Sendable () async -> Void)?
     ) {
         progressiveActivationReconciliationBarrierForTesting = barrier
+    }
+
+    func setHydrationPostReadBarrierForTesting(
+        _ barrier: (@Sendable () async -> Void)?
+    ) {
+        hydrationPostReadBarrierForTesting = barrier
     }
 
     private init(
@@ -443,12 +450,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         source: VaultQualifiedNoteID,
         sourceFingerprint: DocumentFingerprint,
         graphGeneration: Int
-    ) throws -> DocumentPreviewCatalog {
+    ) async throws -> DocumentPreviewCatalog {
         try requireActive()
         guard let graph = currentSnapshot.discovery.catalog.graph,
             graph.generation == graphGeneration,
-            let sourceDocument = currentSnapshot.document(id: source)?.document,
-            sourceDocument.fingerprint == sourceFingerprint
+            currentSnapshot.document(id: source)?.fingerprint == sourceFingerprint
         else {
             return DocumentPreviewCatalog(
                 graphGeneration: graphGeneration,
@@ -458,13 +464,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
         }
         let targetIDs = Set(
-            (graph.outgoing[source] ?? []).compactMap {
-                $0.destination?.note
-            })
-        let targetDocuments = Dictionary(
-            uniqueKeysWithValues: targetIDs.compactMap { id in
-                currentSnapshot.document(id: id).map { (id, $0.document) }
-            })
+            (graph.outgoing[source] ?? [])
+                .sorted { $0.occurrence.span.utf16LowerBound < $1.occurrence.span.utf16LowerBound }
+                .prefix(DocumentPreviewCatalogBuilder.maximumLinkCount)
+                .compactMap {
+                    $0.destination?.note
+                })
+        var targetDocuments: [VaultQualifiedNoteID: NoteDocument] = [:]
+        for id in targetIDs.sorted() {
+            try Task.checkCancellation()
+            guard let summary = currentSnapshot.document(id: id) else { continue }
+            targetDocuments[id] = try await hydrate(summary).document
+        }
+        guard currentSnapshot.discovery.catalog.graph?.generation == graphGeneration,
+            currentSnapshot.document(id: source)?.fingerprint == sourceFingerprint
+        else { throw WorkspaceHydrationError.staleSnapshot }
         let targetProfiles = Dictionary(
             uniqueKeysWithValues: targetIDs.compactMap { id in
                 currentSnapshot.document(id: id).map { (id, $0.schemaProfile) }
@@ -510,6 +524,49 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try requireActive()
         let repository = try repository(vaultID: id.vaultID)
         return try await repository.load(relativePath: id.relativePath)
+    }
+
+    func hydrate(_ expected: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot {
+        try requireActive()
+        guard let initial = currentSnapshot.document(id: expected.id),
+            Self.sameSourceBinding(initial, expected),
+            let catalog = services.sourceCatalogs[expected.id.vaultID],
+            let version = await catalog.sourceVersion(
+                relativePath: expected.id.relativePath,
+                fingerprint: expected.fingerprint)
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        let repository = try repository(vaultID: expected.id.vaultID)
+        let loaded = try await repository.loadCatalogSource(
+            relativePath: expected.id.relativePath)
+        if let barrier = hydrationPostReadBarrierForTesting {
+            await barrier()
+        }
+        try Task.checkCancellation()
+        guard loaded.version == version,
+            loaded.document.fingerprint == expected.fingerprint,
+            loaded.document.relativePath.utf8.elementsEqual(expected.id.relativePath.utf8),
+            try await repository.sourceVersionIsCurrent(
+                relativePath: expected.id.relativePath, version: version)
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        let finalCatalogVersion = await catalog.sourceVersion(
+            relativePath: expected.id.relativePath,
+            fingerprint: expected.fingerprint)
+        try requireActive()
+        guard finalCatalogVersion == version,
+            let current = currentSnapshot.document(id: expected.id),
+            Self.sameSourceBinding(current, expected)
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        return WorkspaceNoteSnapshot(summary: current, document: loaded.document)
+    }
+
+    private nonisolated static func sameSourceBinding(
+        _ lhs: WorkspaceNoteSummary,
+        _ rhs: WorkspaceNoteSummary
+    ) -> Bool {
+        lhs.id == rhs.id
+            && lhs.id.relativePath.utf8.elementsEqual(rhs.id.relativePath.utf8)
+            && lhs.fingerprint == rhs.fingerprint
+            && lhs.stableIdentity == rhs.stableIdentity
     }
 
     /// Releases the deferred complete-Triptych reconcile after the opening

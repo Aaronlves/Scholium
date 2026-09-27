@@ -66,6 +66,7 @@ public extension LibraryMutationUseCases {
 
 public protocol DocumentUseCases: LibraryMutationUseCases {
     func snapshot() async throws -> [WorkspaceVaultSnapshot]
+    func hydrate(_ expected: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument
     /// Resolves only locally authorized images authored in this Note source.
     /// Remote images remain nonloading placeholders in the export renderer.

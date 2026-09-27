@@ -194,6 +194,20 @@ public struct LinkResolutionCatalog: Sendable {
 }
 
 public enum LinkGraphBuilder {
+    package static func build(
+        generation: Int,
+        catalog: [LinkCatalogNote],
+        authoredLinks: [VaultQualifiedNoteID: [LinkOccurrence]],
+        resolutionScope: LinkResolutionScope = .sourceVault,
+        sourceManifestHash: String = ""
+    ) -> GraphSnapshot {
+        build(
+            generation: generation, catalog: catalog,
+            links: authoredLinks, resolutionScope: resolutionScope,
+            sourceManifestHash: sourceManifestHash, cancellationCheck: {}
+        )
+    }
+
     public static func build(
         generation: Int,
         catalog: [LinkCatalogNote],
@@ -230,10 +244,42 @@ public enum LinkGraphBuilder {
         )
     }
 
+    package static func buildCancellable(
+        generation: Int,
+        catalog: [LinkCatalogNote],
+        authoredLinks: [VaultQualifiedNoteID: [LinkOccurrence]],
+        resolutionScope: LinkResolutionScope = .sourceVault,
+        sourceManifestHash: String = ""
+    ) throws -> GraphSnapshot {
+        try build(
+            generation: generation, catalog: catalog,
+            links: authoredLinks, resolutionScope: resolutionScope,
+            sourceManifestHash: sourceManifestHash,
+            cancellationCheck: { try Task.checkCancellation() }
+        )
+    }
+
     private static func build(
         generation: Int,
         catalog: [LinkCatalogNote],
         documents: [VaultQualifiedNoteID: MarkdownSemanticDocument],
+        resolutionScope: LinkResolutionScope,
+        sourceManifestHash: String,
+        cancellationCheck: () throws -> Void
+    ) rethrows -> GraphSnapshot {
+        try build(
+            generation: generation, catalog: catalog,
+            links: documents.mapValues(\.links),
+            resolutionScope: resolutionScope,
+            sourceManifestHash: sourceManifestHash,
+            cancellationCheck: cancellationCheck
+        )
+    }
+
+    private static func build(
+        generation: Int,
+        catalog: [LinkCatalogNote],
+        links: [VaultQualifiedNoteID: [LinkOccurrence]],
         resolutionScope: LinkResolutionScope,
         sourceManifestHash: String,
         cancellationCheck: () throws -> Void
@@ -245,11 +291,11 @@ public enum LinkGraphBuilder {
         var diagnostics: [LinkGraphDiagnostic] = []
         var processedLinkCount = 0
 
-        for source in documents.keys.sorted() {
+        for source in links.keys.sorted() {
             try cancellationCheck()
-            guard let semantic = documents[source] else { continue }
+            guard let authored = links[source] else { continue }
             var edges: [LinkGraphEdge] = []
-            for original in semantic.links where !original.isExternal {
+            for original in authored where !original.isExternal {
                 if original.syntax != .wikilink,
                     SourceResourceReferences.file(destination: original.target, noteRelativePath: source.relativePath) != nil
                 {

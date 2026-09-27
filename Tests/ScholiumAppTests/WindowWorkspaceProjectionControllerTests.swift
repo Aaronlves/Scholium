@@ -152,7 +152,7 @@ struct WindowWorkspaceProjectionControllerTests {
                 runtimeIdentity: fixture.runtimeIdentity,
                 context: fixture.context(sourceScope: .library)
             ) == nil)
-        #expect(controller.notes.first?.rawContent == "# Generation 5\n")
+        #expect(controller.notes.first?.workspaceSnapshot?.fingerprint == DocumentFingerprint(content: "# Generation 5\n"))
 
         let foreign = TriptychRuntimeIdentity(
             triptychID: fixture.triptych.id,
@@ -170,7 +170,7 @@ struct WindowWorkspaceProjectionControllerTests {
                 runtimeIdentity: foreign,
                 context: fixture.context(sourceScope: .library)
             ) == nil)
-        #expect(controller.notes.first?.rawContent == "# Generation 5\n")
+        #expect(controller.notes.first?.workspaceSnapshot?.fingerprint == DocumentFingerprint(content: "# Generation 5\n"))
 
         let configurationOnly = WorkspaceResearchConfigurationInvalidatedEvent(
             generation: 6,
@@ -182,7 +182,7 @@ struct WindowWorkspaceProjectionControllerTests {
                 runtimeIdentity: fixture.runtimeIdentity,
                 context: fixture.context(sourceScope: .library)
             ) == nil)
-        #expect(controller.notes.first?.rawContent == "# Generation 5\n")
+        #expect(controller.notes.first?.workspaceSnapshot?.fingerprint == DocumentFingerprint(content: "# Generation 5\n"))
 
         let sameGeneration = fixture.snapshot(
             activeSource: "# Same Generation\n",
@@ -202,7 +202,7 @@ struct WindowWorkspaceProjectionControllerTests {
             context: fixture.context(sourceScope: .library)
         )
         #expect(commit?.searchGenerationChanged == true)
-        #expect(controller.notes.first?.rawContent == "# Generation 7\n")
+        #expect(controller.notes.first?.workspaceSnapshot?.fingerprint == DocumentFingerprint(content: "# Generation 7\n"))
     }
 
     @Test("A dirty deleted editor remains visible until conflict recovery")
@@ -281,13 +281,13 @@ struct WindowWorkspaceProjectionControllerTests {
         )
 
         let vault = controller.recordCommittedNote(
-            replacement,
+            replacement.summary,
             visibleVaultID: fixture.vault.id,
             visibleSourceScope: .library
         )
 
         #expect(vault?.id == fixture.vault.id)
-        #expect(controller.notes.first?.rawContent.contains("# After") == true)
+        #expect(controller.notes.first?.workspaceSnapshot?.fingerprint == replacement.fingerprint)
         #expect(controller.tags == ["updated"])
         #expect(controller.authors == ["Arendt"])
         #expect(controller.documentRevisions["Active.md"] == replacement.fingerprint)
@@ -324,7 +324,7 @@ struct WindowWorkspaceProjectionControllerTests {
                 slot: .paperAnalysis,
                 vault: fixture.vault,
                 pathComparisonPolicy: fixture.pathComparisonPolicy,
-                documents: [replacementAtOldPath, movedOriginal],
+                documents: [replacementAtOldPath.summary, movedOriginal.summary],
                 identityRecovery: NoteIdentityRecoveryState(
                     identities: [:],
                     ambiguities: [],
@@ -379,7 +379,7 @@ struct WindowWorkspaceProjectionControllerTests {
         )
 
         _ = controller.recordCommittedNote(
-            commit.sourceAheadSnapshot,
+            commit.sourceAheadSummary,
             visibleVaultID: fixture.vault.id,
             visibleSourceScope: .library
         )
@@ -388,7 +388,8 @@ struct WindowWorkspaceProjectionControllerTests {
             controller.notes.first {
                 $0.relativePath == "Untitled.md"
             })
-        #expect(visible.rawContent.isEmpty)
+        #expect(visible.workspaceSnapshot?.fingerprint == document.fingerprint)
+        #expect(visible.hydratedSnapshot == nil)
         #expect(visible.workspaceSnapshot?.derivedProjectionState == .sourceAhead)
         guard case .stale(let issue)? = controller.derivedRefreshStatus else {
             Issue.record("The source-ahead window overlay claimed current derived state.")
@@ -461,7 +462,7 @@ struct WindowWorkspaceProjectionControllerTests {
         )
         let destinationDocument = NoteDocument(
             relativePath: destinationID.relativePath,
-            rawContent: source.document.rawContent
+            rawContent: "# Active\n"
         )
         let commit = FolderMoveCommit(
             vaultID: fixture.vault.id,
@@ -747,7 +748,7 @@ struct WindowWorkspaceProjectionControllerTests {
                 slot: .paperAnalysis,
                 vault: vault,
                 pathComparisonPolicy: pathComparisonPolicy,
-                documents: documents,
+                documents: documents.map(\.summary),
                 folders: folders,
                 identityRecovery: NoteIdentityRecoveryState(
                     identities: [:],

@@ -90,11 +90,12 @@ and shared control-store coordination, independently of source prose.
 
 ## Shared read models and source properties
 
-An immutable Note snapshot carries exact document, vault-qualified stable identity,
-descriptor-observed file facts and disposable graph/search state. Filename is
-display identity; no second writable metadata record exists. Yams-backed property
-projection proves source ranges and refuses ambiguity. Semantic field projection
-supports discovery, not bibliographic validation.
+Workspace summaries carry identity, revision, facts and projections
+without source. Hydration validates descriptor version, exact path, fingerprint
+and identity before returning source to sessions or bounded operations.
+Filename identifies display; metadata cannot authorize writes. Yams-backed
+projection proves ranges, refusing ambiguity. Semantics support discovery,
+not bibliographic validation.
 
 Disposable source-projection caches bind exact path/fingerprint, role/profile,
 parser/search policy and checked coordinates/payload digest. Fresh descriptor reads

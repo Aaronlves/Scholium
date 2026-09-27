@@ -351,7 +351,7 @@ extension WindowModel {
             requested == "first"
             ? notes.sorted(by: notesAreOrdered).first?.relativePath
             : requested
-        if let path { openNote(path) }
+        if let path { requestOpenNote(path) }
     }
 
     private func preparePerformancePresentationModeIfNeeded() {

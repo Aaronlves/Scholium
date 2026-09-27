@@ -330,7 +330,7 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("Retry Edit"))
         #expect(noteSource.contains("managedCreationBodyStartUTF16"))
         #expect(noteSource.contains(".id(editorSession.viewReconstructionID)"))
-        #expect(noteSource.contains("note.relativePath):"))
+        #expect(noteSource.contains("note.id.relativePath):"))
         #expect(!noteSource.contains("guard presentationMode == .read else { return }"))
 
         let sessionSource = try String(
@@ -3290,13 +3290,14 @@ struct FrontendArchitectureTests {
             from: "private func workspaceFolderMovePlan(",
             to: "func workspaceMovePlan("
         )
-        #expect(folderPlan.contains("snapshotCanAuthorizeFastPlan"))
-        #expect(folderPlan.contains("graph.sourceManifestHash == sourceManifestHash"))
+        #expect(folderPlan.contains("freshScopedMoveProjectionContext()"))
+        #expect(folderPlan.contains("context.graph.outgoing.values"))
+        #expect(folderPlan.contains("loadScopedMoveDocuments(candidateIDs, context: context)"))
         #expect(
             folderPlan.contains(
                 "IncomingLinkRewriter.folderPlanUsingValidatedSnapshot("
             ))
-        #expect(folderPlan.contains("repository.markdownRelativePaths()"))
+        #expect(folderPlan.contains("validateScopedMoveCohort(context)"))
 
         let controllerSource = try String(
             contentsOf: repository.appendingPathComponent(

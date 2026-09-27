@@ -26,7 +26,7 @@ extension WindowModel {
             descriptor.sessionKey.noteID,
             descriptor.reference.vaultID,
             descriptor.reference.vaultRole,
-            note.document.fingerprint,
+            note.workspaceSnapshot!.fingerprint,
             note
         )
     }
@@ -50,7 +50,7 @@ extension WindowModel {
         else {
             throw NoteIdentityRecoveryError.identityUnresolved(target.relativePath)
         }
-        return currentNote.document.fingerprint
+        return currentNote.workspaceSnapshot!.fingerprint
     }
 
     func registerEditorFlush(
@@ -118,7 +118,7 @@ extension WindowModel {
     ) {
         guard !transferInProgress else { return }
         var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
-        documentTransitionCoordinator.enqueue(
+        documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
@@ -153,7 +153,13 @@ extension WindowModel {
                     break
                 }
             },
-            operation: operation,
+            operation: { [weak self] isCurrent in
+                guard let self, isCurrent() else { throw CancellationError() }
+                self.activeDocumentTransitionCurrency = isCurrent
+                defer { self.activeDocumentTransitionCurrency = nil }
+                try await operation()
+                guard isCurrent() else { throw CancellationError() }
+            },
             didFail: { [weak self] error in
                 guard let self else { return }
                 self.revealRetainedDocumentAfterTransitionFailure()

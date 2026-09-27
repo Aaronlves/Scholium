@@ -9,14 +9,15 @@ import ScholiumContracts
         let terms: [String]
     }
     private var vocabulary: [VaultQualifiedNoteID: Vocabulary] = [:]
-    func replace(_ notes: [WorkspaceNoteSnapshot]) {
+    func replace(_ notes: [WorkspaceNoteSummary]) {
         var updated: [VaultQualifiedNoteID: Vocabulary] = [:]
         for note in notes {
             if let cached = vocabulary[note.id], cached.fingerprint == note.fingerprint {
                 updated[note.id] = cached
             } else {
-                let properties = SearchPropertyProjection(document: note.document)
-                let terms = ["keywords", "aliases"].flatMap { properties.textValues(forExactKey: $0) }
+                let terms =
+                    (note.propertyTextValues["keywords"] ?? [])
+                    + (note.propertyTextValues["aliases"] ?? [])
                 updated[note.id] = .init(fingerprint: note.fingerprint, terms: terms)
             }
         }

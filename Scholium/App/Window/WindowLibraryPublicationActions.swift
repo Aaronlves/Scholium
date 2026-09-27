@@ -16,7 +16,7 @@ extension WindowModel {
             let sourceAheadSnapshot = commit.sourceAheadSnapshot
             guard
                 workspaceProjectionController.recordCommittedNote(
-                    sourceAheadSnapshot,
+                    sourceAheadSnapshot.summary,
                     visibleVaultID: currentRegisteredVault?.id,
                     visibleSourceScope: noteSourceScope
                 ) != nil
@@ -37,16 +37,14 @@ extension WindowModel {
                         stableNoteID: noteID.uuidString.lowercased()
                     ),
                     tabActivation: .place(.replaceSelected),
-                    managedCreationBodyStartUTF16: document.bodyUTF16Offset
+                    managedCreationBodyStartUTF16: document.bodyUTF16Offset,
+                    committedSnapshot: sourceAheadSnapshot
                 )
             } else {
                 PerformanceProbe.shared.beginReadActivation(
                     documentID: document.relativePath
                 )
-                documentController.selectUnavailableDocument(
-                    vaultID: vault.id,
-                    relativePath: document.relativePath
-                )
+                documentController.selectUnavailableDocument(sourceAheadSnapshot)
                 synchronizeDocumentTabs(after: .place(.replaceSelected))
             }
             revealCreatedNoteInLibrary(document.relativePath, vaultID: vault.id)
@@ -109,9 +107,11 @@ extension WindowModel {
                 visibleSourceScope: noteSourceScope
             )
         {
-            for note in projection.notes {
-                documentController.recordCommittedSnapshot(
+            for move in commit.noteMoves {
+                guard let note = projection.notes.first(where: { $0.id == move.destination }) else { continue }
+                documentController.recordCommittedSourceIfRetained(
                     note,
+                    rawContent: move.committedRawContent,
                     vaultName: projection.vault.name,
                     vaultRole: projection.vault.role
                 )
@@ -238,7 +238,7 @@ extension WindowModel {
         do {
             try await refreshCachedWorkspaceVaultSnapshot(vaultID: target.documentID.vaultID)
             try await browseRegisteredVault(vault)
-            openNote(destination)
+            try await openNote(destination)
         } catch {
             presentationWarning = error.localizedDescription
         }
@@ -282,11 +282,8 @@ extension WindowModel {
                 visibleSourceScope: noteSourceScope
             )
         {
-            documentController.recordCommittedSnapshot(
-                projection.note,
-                vaultName: projection.vault.name,
-                vaultRole: projection.vault.role
-            )
+            // The move receipt has no source bytes. The changed retained
+            // document converges from the authorized snapshot publication.
             if !preservesDocument {
                 do {
                     try await activateWorkspaceReference(
@@ -313,7 +310,7 @@ extension WindowModel {
                     vaultID: target.documentID.vaultID
                 )
                 try await browseRegisteredVault(vault)
-                if !preservesDocument { openNote(destination) }
+                if !preservesDocument { try await openNote(destination) }
             } catch {
                 presentationWarning = error.localizedDescription
             }
@@ -374,7 +371,7 @@ extension WindowModel {
         let removedPaths = plannedPaths.subtracting(currentPaths)
         guard !removedPaths.isEmpty else { return }
         do {
-            try removeDocumentTabs(vaultID: vaultID, removedPaths: removedPaths)
+            try await removeDocumentTabs(vaultID: vaultID, removedPaths: removedPaths)
         } catch {
             if currentDocumentVaultID == vaultID {
                 documentController.clearSelection(forRemovedPaths: removedPaths)

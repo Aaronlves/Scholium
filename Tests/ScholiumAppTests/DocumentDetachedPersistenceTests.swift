@@ -107,7 +107,8 @@ struct DocumentDetachedPersistenceTests {
                 paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
                 portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Detached save fixture")
             let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
-            let snapshot = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
+            let summary = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
+            let snapshot = try await capabilities.documents.hydrate(summary)
             let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: try #require(snapshot.stableIdentity.resolvedID))
             let document = WindowSelectedDocument.workspace(
                 .init(

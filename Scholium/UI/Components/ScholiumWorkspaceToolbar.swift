@@ -858,7 +858,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             .settlementRequirements.first { $0.noteID == noteID }
         return SettlementPresentation.resolve(
             noteID: noteID,
-            currentRevision: appState.currentNote?.document.fingerprint,
+            currentRevision: appState.currentNote?.workspaceSnapshot?.fingerprint,
             requirement: requirement,
             settlements: appState.researchController.researchSnapshot?.settlements ?? []
         )
@@ -866,8 +866,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
 
     private var currentSettlementTarget: DocumentSettlementTarget? {
         guard let note = appState.currentNote,
+            let summary = note.workspaceSnapshot,
             let vaultID = appState.currentDocumentVaultID,
-            note.workspaceSnapshot?.stableIdentity.resolvedID != nil,
+            summary.stableIdentity.resolvedID != nil,
             appState.currentDocumentVaultRole != .other
         else { return nil }
         return DocumentSettlementTarget(
@@ -875,7 +876,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 vaultID: vaultID,
                 relativePath: note.relativePath
             ),
-            fingerprint: note.document.fingerprint
+            fingerprint: summary.fingerprint
         )
     }
 

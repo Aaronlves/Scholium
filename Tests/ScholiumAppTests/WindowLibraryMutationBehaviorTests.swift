@@ -213,7 +213,8 @@ private final class LibraryMutationFixture {
             portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Library mutation fixture")
         let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
         let snapshot = try #require(vault.documents.first { $0.id.relativePath == "Drafts/Note.md" })
-        return try .init(capabilities: capabilities, vault: vault.vault, file: file, snapshot: snapshot)
+        let hydrated = try await capabilities.documents.hydrate(snapshot)
+        return try .init(capabilities: capabilities, vault: vault.vault, file: file, snapshot: hydrated)
     }
 
     func prepareTrash(folder: Bool) async throws {

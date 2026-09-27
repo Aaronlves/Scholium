@@ -501,7 +501,7 @@ final class MCPAppBridgeRequestRouter {
             }
             entries += vault.documents.filter { isChild($0.id.relativePath) }.sorted { $0.id.relativePath < $1.id.relativePath }.map {
                 entry(
-                    kind: "note", role: role, path: $0.id.relativePath, title: ResearchNoteTitleResolver.resolve(document: $0.document),
+                    kind: "note", role: role, path: $0.id.relativePath, title: $0.title,
                     noteID: $0.stableIdentity.resolvedID, fingerprint: $0.fingerprint)
             }
         } else {
@@ -1226,7 +1226,7 @@ final class MCPAppBridgeRequestRouter {
     private func resolveNote(
         _ noteID: UUID,
         snapshot: WorkspaceSnapshot
-    ) throws -> WorkspaceNoteSnapshot {
+    ) throws -> WorkspaceNoteSummary {
         let matches = snapshot.vaults.flatMap(\.documents).filter {
             $0.stableIdentity.resolvedID == noteID
         }

@@ -344,6 +344,7 @@ struct ContentView: View {
         let path = note?.relativePath
         return DocumentFeatureState(
             notes: appState.currentDocumentNotes,
+            activeNote: appState.currentNote?.hydratedSnapshot,
             selectedDocumentPath: appState.selectedDocumentPath,
             ordinarySearchScope: appState.searchController.ordinaryScope,
             currentVaultID: appState.currentDocumentVaultID,
@@ -787,12 +788,12 @@ struct ContentView: View {
 
     @ViewBuilder
     private var apparatusRegion: some View {
-        if let note = appState.currentNote {
+        if let note = appState.currentNote?.hydratedSnapshot {
             ResearchInspectorView(
                 research: researchController,
                 editor: appState.presentedDocumentMode == .read ? nil : currentNoteDocumentSession?.editorSession,
                 noteURL: appState.workspaceAssignment?.vaults.values.first(where: { $0.id == appState.currentDocumentVaultID }).map {
-                    URL(fileURLWithPath: $0.canonicalPath).appendingPathComponent(note.relativePath)
+                    URL(fileURLWithPath: $0.canonicalPath).appendingPathComponent(note.id.relativePath)
                 },
                 vaultRoots: appState.workspaceAssignment?.vaults.values.map { URL(fileURLWithPath: $0.canonicalPath) } ?? [],
                 openExternalURL: { appState.openExternalURL($0) },

@@ -210,7 +210,7 @@ struct RelatedContentSourceProjectionMemoTests {
                 vaultRole: $0.candidate.vaultRole,
                 document: $0.document)
         }
-        memo.retain(documents)
+        memo.retainManifest(documents.map(SearchIndexManifestEntry.init(document:)))
         #expect(memo.entryCount == 1)
         #expect(memo.estimatedByteCount > 0)
 
@@ -224,7 +224,7 @@ struct RelatedContentSourceProjectionMemoTests {
         _ = try #require(deletedPrepared)
         #expect(memo.statistics.misses == 5)
 
-        memo.retain(documents)
+        memo.retainManifest(documents.map(SearchIndexManifestEntry.init(document:)))
         #expect(memo.entryCount == 1)
         let changedPrepared = try memo.projection(for: changed)
         let replacement = try #require(changedPrepared)
@@ -232,7 +232,7 @@ struct RelatedContentSourceProjectionMemoTests {
         #expect(memo.statistics.misses == 6)
         #expect(memo.entryCount == 2)
 
-        memo.retain([])
+        memo.retainManifest([])
         #expect(memo.entryCount == 0)
         #expect(memo.estimatedByteCount == 0)
     }

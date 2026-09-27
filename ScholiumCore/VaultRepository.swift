@@ -231,7 +231,8 @@ public actor VaultRepository {
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey])
             if values.isSymbolicLink == true {
-                enumerator.skipDescendants()
+                // FileManager does not descend symlinks; skipDescendants here
+                // can also suppress a following real sibling directory.
                 continue
             }
             guard let relativePath = VaultPath.relativePath(for: url, in: canonicalRoot) else {
@@ -274,7 +275,7 @@ public actor VaultRepository {
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
             if values.isSymbolicLink == true {
-                enumerator.skipDescendants()
+                // Preserve later real siblings while excluding the link itself.
                 continue
             }
             guard values.isDirectory == true,

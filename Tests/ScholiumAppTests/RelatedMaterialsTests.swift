@@ -49,9 +49,29 @@ struct RelatedMaterialsTests {
     }
 
     private func descriptor(_ path: String) -> WindowDocumentDescriptor {
-        .init(
-            sessionKey: .init(vaultID: vault, noteID: UUID()),
-            reference: .init(vaultID: vault, vaultName: "Topics", vaultRole: .topicKnowledge, relativePath: path))
+        let key = DocumentSessionKey(vaultID: vault, noteID: UUID())
+        return .init(
+            sessionKey: key,
+            reference: .init(
+                vaultID: vault, vaultName: "Topics", vaultRole: .topicKnowledge,
+                relativePath: path, stableNoteID: key.noteID.uuidString))
+    }
+
+    private func open(_ descriptor: WindowDocumentDescriptor, in controller: DocumentController) {
+        let source = "# \(descriptor.reference.relativePath)\n"
+        let document = NoteDocument(relativePath: descriptor.reference.relativePath, rawContent: source)
+        let snapshot = WorkspaceNoteSnapshot(
+            id: VaultQualifiedNoteID(
+                vaultID: descriptor.sessionKey.vaultID,
+                relativePath: descriptor.reference.relativePath),
+            vaultRole: descriptor.reference.vaultRole,
+            stableIdentity: .resolved(descriptor.sessionKey.noteID),
+            document: document,
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: document.sourceBytes.count, creationDate: nil, modificationDate: nil),
+            graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0)
+        )
+        controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
     }
 
     private func identityPassage(_ reference: VaultNoteReference, title: String, line: Int = 1) -> RelatedContentPassage {
@@ -110,7 +130,7 @@ struct RelatedMaterialsTests {
         let research = ResearchController(selectedDocuments: documents.$selectedDocument.eraseToAnyPublisher())
         let otherWindow = RelatedMaterialsSession()
         let first = descriptor("Draft.md")
-        documents.installOpenedDocument(first)
+        open(first, in: documents)
         var seed = seed()
         seed.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 1, selection: .init(anchor: 3, head: 3))
         let captured = seed
@@ -130,7 +150,7 @@ struct RelatedMaterialsTests {
         if closing {
             documents.clearSelectionAfterClosingLastTab()
         } else {
-            documents.installOpenedDocument(descriptor("Second.md"))
+            open(descriptor("Second.md"), in: documents)
         }
         // No await or view callback between navigation and these expectations.
         #expect(model.cards.isEmpty && model.seed == nil && model.insertionPoint == nil)
@@ -149,7 +169,7 @@ struct RelatedMaterialsTests {
         let documents = DocumentController()
         let research = ResearchController(selectedDocuments: documents.$selectedDocument.eraseToAnyPublisher())
         let first = descriptor("Draft.md")
-        documents.installOpenedDocument(first)
+        open(first, in: documents)
         let model = research.relatedMaterials
         let original = seed()
         let response = populatedResponse(original)
@@ -166,7 +186,7 @@ struct RelatedMaterialsTests {
                 return "[[Source]]"
             })
         for await _ in ready.stream {}
-        documents.installOpenedDocument(descriptor("Second.md"))
+        open(descriptor("Second.md"), in: documents)
         if returnToFirst { #expect(documents.selectRetainedDocument(.workspace(first))) }
         let current = seed("current context")
         let currentResponse = self.response(current.request)

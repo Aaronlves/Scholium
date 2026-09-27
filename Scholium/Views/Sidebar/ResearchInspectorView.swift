@@ -20,7 +20,7 @@ struct ResearchInspectorView: View {
     let vaultRoots: [URL]
     let openExternalURL: (URL) -> Void
     @ObservedObject var research: ResearchController
-    let note: WindowDocumentLocation
+    let note: WorkspaceNoteSnapshot
     let graph: GraphSnapshot?
     let catalog: WorkspaceCatalogSnapshot?
     let currentVaultID: UUID?
@@ -39,7 +39,7 @@ struct ResearchInspectorView: View {
         noteURL: URL?,
         vaultRoots: [URL],
         openExternalURL: @escaping (URL) -> Void,
-        note: WindowDocumentLocation,
+        note: WorkspaceNoteSnapshot,
         shellState: WindowShellState,
         graph: GraphSnapshot?,
         catalog: WorkspaceCatalogSnapshot?,
@@ -134,7 +134,7 @@ struct ResearchInspectorView: View {
             graph: graph,
             catalog: catalog,
             current: currentVaultID.map {
-                VaultQualifiedNoteID(vaultID: $0, relativePath: note.relativePath)
+                VaultQualifiedNoteID(vaultID: $0, relativePath: note.id.relativePath)
             },
             freshness: researchInspectorContentContext.freshness,
             retryRefresh: researchInspectorContentContext.retryRefresh,

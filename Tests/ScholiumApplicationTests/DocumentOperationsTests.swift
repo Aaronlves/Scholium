@@ -1083,9 +1083,8 @@ struct DocumentOperationsTests {
                 contentsOf: fixture.analysesURL.appendingPathComponent("Target.md")
             ) == recoveryBytes)
         #expect(try await handle.documents.interruptedSaveRecoveries().isEmpty)
-        #expect(
-            try await handle.snapshot().document(id: fixture.targetID)?.document.sourceBytes
-                == recoveryBytes)
+        let restoredSummary = try #require(await handle.snapshot().document(id: fixture.targetID))
+        #expect(try await handle.documents.hydrate(restoredSummary).document.sourceBytes == recoveryBytes)
         await runtime.shutdown()
     }
 }

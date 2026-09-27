@@ -55,16 +55,16 @@ extension WindowModel {
                 let session = self.documentController.session(for: descriptor)
                 let snapshot: MarkdownSourceSelectionSnapshot
                 if let captured {
-                    guard let note = self.currentNote, !session.hasUnsavedChanges,
-                        captured.source.utf8.elementsEqual(note.rawContent.utf8)
+                    guard let note = self.currentNote?.hydratedSnapshot, !session.hasUnsavedChanges,
+                        captured.source.utf8.elementsEqual(note.document.rawContent.utf8)
                     else { throw AgentChatNoteMaterialError.changedSource }
                     snapshot = captured
                 } else if self.presentedDocumentMode == .read {
-                    guard let selection = expectedReadSelection, let note = self.currentNote,
-                        let selected = MarkdownReviewSourceSelection.review(selection, source: note.rawContent)
+                    guard let selection = expectedReadSelection, let note = self.currentNote?.hydratedSnapshot,
+                        let selected = MarkdownReviewSourceSelection.review(selection, source: note.document.rawContent)
                     else { throw AgentChatNoteMaterialError.selectionUnavailable }
                     if let paragraph = try? ParagraphAnchorPlanner.paragraph(in: note.document, atUTF16: selected.sourceRange.utf16LowerBound) {
-                        snapshot = MarkdownReviewSourceSelection.passage(selection, source: note.rawContent, paragraphSpan: paragraph) ?? selected
+                        snapshot = MarkdownReviewSourceSelection.passage(selection, source: note.document.rawContent, paragraphSpan: paragraph) ?? selected
                     } else {
                         snapshot = selected
                     }
@@ -201,8 +201,8 @@ extension WindowModel {
                 sourceText = captured.source
             } else if presentedDocumentMode != .read {
                 sourceText = try await documentController.session(for: descriptor).editorSession.currentText()
-            } else if let note = currentNote {
-                sourceText = note.rawContent
+            } else if let note = currentNote?.hydratedSnapshot {
+                sourceText = note.document.rawContent
             } else {
                 throw AgentChatNoteMaterialError.unavailable
             }
@@ -210,8 +210,11 @@ extension WindowModel {
             let vaults = try await capabilities.documents.snapshot()
             guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, presentationRouter.sheet == nil,
                 let vault = vaults.first(where: { $0.vault.id == descriptor.reference.vaultID }),
-                let source = vault.documents.first(where: { $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID }),
-                source.document.rawContent.utf8.elementsEqual(sourceText.utf8)
+                let source = vault.documents.first(where: { $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID })
+            else { throw AgentChatNoteMaterialError.changedSource }
+            let hydrated = try await capabilities.documents.hydrate(source)
+            guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                hydrated.document.rawContent.utf8.elementsEqual(sourceText.utf8)
             else { throw AgentChatNoteMaterialError.changedSource }
             let range: Range<Int>?
             if let captured,

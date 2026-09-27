@@ -38,13 +38,13 @@ extension WindowModel {
     /// Select the retained neighbor before releasing the outgoing session.
     /// Native toolbar observers must never see an artificial empty document
     /// between two real selections during a move.
-    func takeDocumentForTransfer(tabID: UUID) throws -> DocumentSessionTransfer {
+    func takeDocumentForTransfer(tabID: UUID) async throws -> DocumentSessionTransfer {
         guard let tab = documentTabController.tabs.first(where: { $0.id == tabID }),
             let plan = documentTabController.closePlan(forTabWithID: tabID)
         else { throw DocumentControllerError.documentUnavailable }
         let previous = documentController.selectedDocument
         if let next = plan.documentToActivate {
-            try activateResolvedDocument(next, tabActivation: .preserveTabMembership)
+            try await activateResolvedDocument(next, tabActivation: .preserveTabMembership)
         }
         guard let transfer = documentController.takeSessionForTransfer(tab.document) else {
             if let previous { _ = documentController.selectRetainedDocument(previous) }

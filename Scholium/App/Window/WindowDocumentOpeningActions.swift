@@ -7,41 +7,20 @@ extension WindowModel {
     func openNote(
         _ path: String,
         tabActivation: DocumentTabActivation = .place(.replaceSelected)
-    ) {
-        guard !transferInProgress else { return }
-        if let descriptor = selectionDescriptor(for: path),
-            workspaceStore.documentLocations.revealExisting(descriptor, excluding: self)
-        {
-            return
-        }
-        guard let location = notes.first(where: { $0.relativePath == path }) else {
-            reportOperationIssue(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
-            return
-        }
-        PerformanceProbe.shared.beginReadActivation(documentID: path)
-        if let snapshot = location.workspaceSnapshot,
-            snapshot.stableIdentity.resolvedID != nil,
+    ) async throws {
+        guard !transferInProgress else { throw CancellationError() }
+        guard let location = notes.first(where: { $0.relativePath == path }),
+            let summary = location.workspaceSnapshot,
             let vault = currentRegisteredVault
-        {
-            if let workspace = workspaceSlot(for: vault) {
-                documentController.selectWorkspace(workspace)
-                shellState.selectDocumentWorkspace(workspace)
-            }
-            documentController.installOpenedDocument(
-                snapshot,
-                vaultName: vault.name,
-                vaultRole: vault.role
-            )
-        } else if let descriptor = selectionDescriptor(for: path) {
-            documentController.selectDocument(descriptor)
-        } else {
-            reportOperationIssue(
-                String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module),
-                kind: .warning
-            )
-            return
-        }
-        synchronizeDocumentTabs(after: tabActivation)
+        else { throw WindowNavigationError.noteUnavailable(path) }
+        let reference = VaultNoteReference(
+            vaultID: vault.id,
+            vaultName: vault.name,
+            vaultRole: vault.role,
+            relativePath: summary.id.relativePath,
+            stableNoteID: summary.stableIdentity.resolvedID?.uuidString.lowercased()
+        )
+        try await activateWorkspaceReference(reference, tabActivation: tabActivation)
     }
 
     func openingDocumentPresentationDidComplete() {
@@ -88,7 +67,7 @@ extension WindowModel {
                 }
             )
         }
-        try activateResolvedDocument(
+        try await activateResolvedDocument(
             document,
             tabActivation: tabActivation,
             recordsNavigationHistory: recordsNavigationHistory
@@ -99,24 +78,24 @@ extension WindowModel {
         _ document: WindowSelectedDocument,
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true
-    ) throws {
+    ) async throws {
         if case .preserveTabMembership = tabActivation {
             try validateDocumentIsAvailable(document)
-            if let vaultID = document.vaultID,
-                let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
-                let workspace = workspaceSlot(for: vault)
-            {
-                documentController.selectWorkspace(workspace)
-                shellState.selectDocumentWorkspace(workspace)
-            }
             if documentController.selectRetainedDocument(document) {
+                if let vaultID = document.vaultID,
+                    let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
+                    let workspace = workspaceSlot(for: vault)
+                {
+                    documentController.selectWorkspace(workspace)
+                    shellState.selectDocumentWorkspace(workspace)
+                }
                 synchronizeDocumentTabs(after: tabActivation, recordsNavigationHistory: recordsNavigationHistory)
                 return
             }
         }
         switch document {
         case .workspace(let descriptor):
-            try activateResolvedWorkspaceReference(
+            try await activateResolvedWorkspaceReference(
                 descriptor.reference,
                 tabActivation: tabActivation,
                 recordsNavigationHistory: recordsNavigationHistory
@@ -124,10 +103,19 @@ extension WindowModel {
         case .unavailable(let vaultID, let relativePath):
             try validateDocumentIsAvailable(document)
             PerformanceProbe.shared.beginReadActivation(documentID: relativePath)
-            documentController.selectUnavailableDocument(
-                vaultID: vaultID,
-                relativePath: relativePath
-            )
+            guard
+                let summary = workspaceProjectionController.cachedNote(
+                    vaultID: vaultID, relativePath: relativePath
+                )
+            else { throw WindowNavigationError.noteUnavailable(relativePath) }
+            let hydrated = try await hydrateForOpening(summary)
+            if let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
+                let workspace = workspaceSlot(for: vault)
+            {
+                documentController.selectWorkspace(workspace)
+                shellState.selectDocumentWorkspace(workspace)
+            }
+            documentController.selectUnavailableDocument(hydrated)
             synchronizeDocumentTabs(
                 after: tabActivation,
                 recordsNavigationHistory: recordsNavigationHistory
@@ -140,6 +128,7 @@ extension WindowModel {
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true,
         managedCreationBodyStartUTF16: Int? = nil,
+        committedSnapshot: WorkspaceNoteSnapshot? = nil,
         validateDisplay: @MainActor () throws -> Void = {}
     ) async throws {
         guard !transferInProgress else { throw CancellationError() }
@@ -182,11 +171,13 @@ extension WindowModel {
                 }
             )
         }
-        try activateResolvedWorkspaceReference(
+        try await activateResolvedWorkspaceReference(
             reference,
             tabActivation: tabActivation,
             recordsNavigationHistory: recordsNavigationHistory,
-            managedCreationBodyStartUTF16: managedCreationBodyStartUTF16
+            managedCreationBodyStartUTF16: managedCreationBodyStartUTF16,
+            committedSnapshot: committedSnapshot,
+            validateDisplay: validateDisplay
         )
     }
 
@@ -194,8 +185,10 @@ extension WindowModel {
         _ reference: VaultNoteReference,
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true,
-        managedCreationBodyStartUTF16: Int? = nil
-    ) throws {
+        managedCreationBodyStartUTF16: Int? = nil,
+        committedSnapshot: WorkspaceNoteSnapshot? = nil,
+        validateDisplay: @MainActor () throws -> Void = {}
+    ) async throws {
         if workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
         guard
             let vault = workspaceAssignment?.vaults.values.first(where: {
@@ -214,31 +207,99 @@ extension WindowModel {
         else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
         }
+        let hydrated: WorkspaceNoteSnapshot
+        if let committedSnapshot {
+            guard committedSnapshot.summary.hasSameSourceBinding(as: snapshot) else {
+                throw WorkspaceHydrationError.staleSnapshot
+            }
+            hydrated = WorkspaceNoteSnapshot(
+                summary: snapshot, document: committedSnapshot.document,
+                cachedSemanticDocument: committedSnapshot.cachedSemanticDocument
+            )
+        } else if let stableID = snapshot.stableIdentity.resolvedID {
+            let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: stableID)
+            if let retained = documentController.snapshots[key],
+                retained.fingerprint == snapshot.fingerprint,
+                retained.id.relativePath.utf8.elementsEqual(snapshot.id.relativePath.utf8)
+            {
+                hydrated = WorkspaceNoteSnapshot(
+                    summary: snapshot, document: retained.document,
+                    cachedSemanticDocument: retained.cachedSemanticDocument
+                )
+            } else {
+                hydrated = try await hydrateForOpening(snapshot)
+            }
+        } else {
+            hydrated = try await hydrateForOpening(snapshot)
+        }
+        try validateDisplay()
+        guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
+        guard
+            let currentSummary = workspaceProjectionController.cachedNote(
+                vaultID: hydrated.id.vaultID,
+                stableNoteID: requestedStableID,
+                relativePath: hydrated.id.relativePath
+            ), currentSummary.hasSameSourceBinding(as: hydrated.summary)
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        let current = WorkspaceNoteSnapshot(
+            summary: currentSummary, document: hydrated.document,
+            cachedSemanticDocument: hydrated.cachedSemanticDocument
+        )
         if let workspace = workspaceSlot(for: vault) {
             documentController.selectWorkspace(workspace)
             shellState.selectDocumentWorkspace(workspace)
         }
         if managedCreationBodyStartUTF16 == nil {
-            PerformanceProbe.shared.beginReadActivation(
-                documentID: snapshot.id.relativePath
-            )
+            PerformanceProbe.shared.beginReadActivation(documentID: current.id.relativePath)
         }
-        if snapshot.stableIdentity.resolvedID != nil {
+        if current.stableIdentity.resolvedID != nil {
             documentController.installOpenedDocument(
-                snapshot,
+                current,
                 vaultName: vault.name,
                 vaultRole: vault.role,
                 managedCreationBodyStartUTF16: managedCreationBodyStartUTF16
             )
         } else {
-            documentController.selectUnavailableDocument(
-                vaultID: vault.id,
-                relativePath: snapshot.id.relativePath
-            )
+            documentController.selectUnavailableDocument(current)
         }
         synchronizeDocumentTabs(
             after: tabActivation,
             recordsNavigationHistory: recordsNavigationHistory
+        )
+    }
+
+    private func hydrateForOpening(_ summary: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot {
+        guard let capabilities = windowWorkspaceController.activeCapabilities else {
+            throw WindowNavigationError.noteUnavailable(summary.id.relativePath)
+        }
+        let runtimeIdentity = capabilities.runtimeIdentity
+        let hydrated: WorkspaceNoteSnapshot
+        do {
+            hydrated = try await capabilities.documents.hydrate(summary)
+        } catch WorkspaceHydrationError.staleSnapshot {
+            guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
+            guard
+                let newer = workspaceProjectionController.cachedNote(
+                    vaultID: summary.id.vaultID,
+                    stableNoteID: summary.stableIdentity.resolvedID,
+                    relativePath: summary.id.relativePath
+                ), newer != summary,
+                newer.stableIdentity == summary.stableIdentity
+            else { throw WorkspaceHydrationError.staleSnapshot }
+            hydrated = try await capabilities.documents.hydrate(newer)
+        }
+        try Task.checkCancellation()
+        guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
+        guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity,
+            let currentSummary = workspaceProjectionController.cachedNote(
+                vaultID: hydrated.id.vaultID,
+                stableNoteID: hydrated.stableIdentity.resolvedID,
+                relativePath: hydrated.id.relativePath
+            ), currentSummary.hasSameSourceBinding(as: hydrated.summary)
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        return WorkspaceNoteSnapshot(
+            summary: currentSummary, document: hydrated.document,
+            cachedSemanticDocument: hydrated.cachedSemanticDocument
         )
     }
 

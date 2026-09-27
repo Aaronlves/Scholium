@@ -287,10 +287,10 @@ struct RelatedContentSourceProjectionMemo {
         }
     }
 
-    mutating func retain(_ documents: [SearchIndexDocument]) {
+    mutating func retainManifest(_ documents: [SearchIndexManifestEntry]) {
         let current = Dictionary(
             documents.map {
-                (VaultQualifiedNoteID(vaultID: $0.vaultID, relativePath: $0.relativePath), $0.document.fingerprint)
+                (VaultQualifiedNoteID(vaultID: $0.vaultID, relativePath: $0.relativePath), $0.fingerprint)
             }, uniquingKeysWith: { first, _ in first })
         for (note, entry) in entries where current[note] != entry.fingerprint {
             invalidate(note: note)

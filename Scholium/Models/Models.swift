@@ -1,6 +1,17 @@
 import Foundation
 import ScholiumContracts
 
+extension WorkspaceNoteSummary {
+    /// Metadata-only publication may advance graph state while the exact
+    /// source and stable Note identity remain the same.
+    func hasSameSourceBinding(as other: WorkspaceNoteSummary) -> Bool {
+        id.vaultID == other.id.vaultID
+            && id.relativePath.utf8.elementsEqual(other.id.relativePath.utf8)
+            && fingerprint == other.fingerprint
+            && stableIdentity == other.stableIdentity
+    }
+}
+
 struct MarkdownReviewSelection: Equatable, Sendable {
     let startLine: Int
     let endLine: Int
@@ -75,38 +86,37 @@ enum WindowDocumentLocation: Identifiable, Hashable, Sendable {
         case workspace(VaultQualifiedNoteID)
     }
 
-    case workspace(WorkspaceNoteSnapshot)
+    case workspace(WorkspaceNoteSummary)
+    case hydrated(WorkspaceNoteSnapshot)
 
     var id: ID {
         switch self {
         case .workspace(let snapshot): .workspace(snapshot.id)
+        case .hydrated(let snapshot): .workspace(snapshot.id)
         }
     }
 
-    var workspaceSnapshot: WorkspaceNoteSnapshot? {
-        guard case .workspace(let snapshot) = self else { return nil }
+    var summary: WorkspaceNoteSummary {
+        switch self {
+        case .workspace(let snapshot): snapshot
+        case .hydrated(let snapshot): snapshot.summary
+        }
+    }
+
+    var workspaceSnapshot: WorkspaceNoteSummary? { summary }
+
+    var hydratedSnapshot: WorkspaceNoteSnapshot? {
+        guard case .hydrated(let snapshot) = self else { return nil }
         return snapshot
     }
 
-    var document: NoteDocument {
-        switch self {
-        case .workspace(let snapshot): snapshot.document
-        }
-    }
-
     static func == (lhs: Self, rhs: Self) -> Bool {
-        switch (lhs, rhs) {
-        case (.workspace(let lhs), .workspace(let rhs)):
-            lhs == rhs
-        }
+        lhs.summary == rhs.summary
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
-        hasher.combine(document.fingerprint)
-        switch self {
-        case .workspace(let snapshot): hasher.combine(snapshot)
-        }
+        hasher.combine(summary)
     }
 }
 
@@ -124,28 +134,21 @@ extension WindowDocumentLocation {
             relativePath: relativePath,
             rawContent: rawContent
         )
-        return .workspace(
-            WorkspaceNoteSnapshot(
-                id: VaultQualifiedNoteID(
-                    vaultID: UUID(),
-                    relativePath: relativePath
-                ),
-                vaultRole: vaultRole,
-                stableIdentity: .resolved(noteID),
-                document: document,
-                fileMetadata: WorkspaceFileMetadata(
-                    byteCount: document.sourceBytes.count,
-                    creationDate: nil,
-                    modificationDate: nil
-                ),
-                graphCounts: WorkspaceGraphCounts(
-                    incoming: 0,
-                    outgoing: 0,
-                    broken: 0,
-                    ambiguous: 0
-                )
-
-            ))
+        let summary = WorkspaceNoteSummary(
+            id: VaultQualifiedNoteID(vaultID: UUID(), relativePath: relativePath),
+            vaultRole: vaultRole,
+            stableIdentity: .resolved(noteID),
+            document: document,
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: document.sourceBytes.count,
+                creationDate: nil,
+                modificationDate: nil
+            ),
+            graphCounts: WorkspaceGraphCounts(
+                incoming: 0, outgoing: 0, broken: 0, ambiguous: 0
+            )
+        )
+        return .hydrated(WorkspaceNoteSnapshot(summary: summary, document: document))
     }
 }
 
@@ -153,43 +156,29 @@ extension WindowDocumentLocation {
     var vaultID: UUID {
         switch self {
         case .workspace(let snapshot): snapshot.id.vaultID
+        case .hydrated(let snapshot): snapshot.id.vaultID
         }
     }
-    var relativePath: String { document.relativePath }
+    var relativePath: String { summary.id.relativePath }
     var fileName: String { (relativePath as NSString).lastPathComponent }
     var displayName: String {
-        if let cached = workspaceSnapshot?.cachedTitleProjection {
-            return cached.title
-        }
-        return ResearchNoteTitleResolver.resolve(document: document)
+        summary.title
     }
     var vaultRole: VaultRole { workspaceSnapshot?.vaultRole ?? .other }
     var profile: NoteProfile {
         NoteProfile.infer(vaultRole: vaultRole)
     }
-    /// Malformed frontmatter remains readable as exact source. Structured
-    /// properties use only Core's parsed projection and never reconstruct bytes.
-    var frontmatter: [String: YAMLValue] { document.parsedFrontmatter }
-    var body: String {
-        document.validationWarnings.isEmpty ? document.body : document.rawContent
-    }
-    var rawContent: String { document.rawContent }
-
     var title: String? { displayName }
     var aliases: [String] {
-        frontmatter["aliases"]?.canonicalStringList ?? []
+        summary.aliases
     }
-    var tags: [String] { frontmatter["keywords"]?.canonicalStringList ?? [] }
+    var tags: [String] { summary.keywords }
     var authors: [String] {
-        let fields = SearchPropertyProjection(document: document)
-        return fields.textValues(forExactKey: "authors") + fields.textValues(forExactKey: "author")
+        summary.authors
     }
 
     func filterableProperties() -> [String: [String]] {
-        Dictionary(
-            uniqueKeysWithValues: SearchPropertyProjection(document: document).entries.map {
-                ($0.key, $0.stringMembers.map(\.value))
-            })
+        summary.propertyTextValues
     }
 
     var fileModifiedAt: Date {

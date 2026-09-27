@@ -187,7 +187,7 @@ extension WindowModel {
                 restoredPresentation.selectedDocument,
                 selected.vaultID == restoredAssignment.vault(for: selectedWorkspace)?.id
             {
-                openNote(selected.relativePath)
+                requestOpenNote(selected.relativePath)
             } else {
                 openRequestedTestNoteIfNeeded()
             }

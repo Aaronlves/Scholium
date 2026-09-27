@@ -225,11 +225,8 @@ extension WorkspaceHandle {
             {
                 graphResult = try RelatedContentGraphCandidates.build(
                     request: request, graph: graph, searchGeneration: generation, catalog: catalog,
-                    linkCatalog: notes.map {
-                        LinkCatalogNote(
-                            vaultID: $0.id.vaultID, document: $0.document, profile: $0.schemaProfile,
-                            semantic: $0.cachedSemanticDocument)
-                    }, existingCandidates: response.identityCandidates + response.lexicalCandidates)
+                    linkCatalog: notes.map(\.linkCatalog),
+                    existingCandidates: response.identityCandidates + response.lexicalCandidates)
             }
         }
         let identityCandidates = response.identityCandidates.map {

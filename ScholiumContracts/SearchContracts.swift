@@ -280,6 +280,50 @@ public struct SearchIndexDocument: Sendable {
     }
 }
 
+/// Source-free desired row for one complete Search generation. The index
+/// compares these before asking its authorized loader for changed source.
+public struct SearchIndexManifestEntry: Sendable {
+    public let vaultID: UUID
+    public let vaultName: String
+    public let vaultRole: VaultRole
+    public let relativePath: String
+    public let stableNoteID: String?
+    public let fingerprint: DocumentFingerprint
+    public let hasBrokenLink: Bool
+    public let evidentialLayer: EvidentialLayer
+
+    public init(
+        vaultID: UUID, vaultName: String, vaultRole: VaultRole,
+        relativePath: String, stableNoteID: String?,
+        fingerprint: DocumentFingerprint, hasBrokenLink: Bool
+    ) {
+        self.vaultID = vaultID
+        self.vaultName = vaultName
+        self.vaultRole = vaultRole
+        self.relativePath = relativePath
+        self.stableNoteID = stableNoteID
+        self.fingerprint = fingerprint
+        self.hasBrokenLink = hasBrokenLink
+        evidentialLayer =
+            switch vaultRole {
+            case .sourceCorpus: .paperAnalysis
+            case .topicKnowledge: .topicNote
+            case .draftProject: .draftProse
+            case .other: .topicNote
+            }
+    }
+
+    public init(document: SearchIndexDocument) {
+        self.init(
+            vaultID: document.vaultID, vaultName: document.vaultName,
+            vaultRole: document.vaultRole, relativePath: document.relativePath,
+            stableNoteID: document.stableNoteID,
+            fingerprint: document.document.fingerprint,
+            hasBrokenLink: document.hasBrokenLink
+        )
+    }
+}
+
 public enum SearchIndexSyncDisposition: String, Codable, Hashable, Sendable {
     case unchanged
     case incrementallyUpdated

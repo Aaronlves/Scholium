@@ -29,7 +29,7 @@ final class DocumentTransitionCoordinator {
 
     func enqueueCurrencyAware(
         prepare: @escaping @MainActor () async throws -> Void,
-        operation: @escaping @MainActor (Currency) async throws -> Void,
+        operation: @escaping @MainActor (@escaping Currency) async throws -> Void,
         didFail: @escaping @MainActor (Error) -> Void,
         didSucceed: @escaping @MainActor () -> Void = {},
         didFinish: @escaping @MainActor () -> Void = {}
@@ -62,6 +62,28 @@ final class DocumentTransitionCoordinator {
             } catch {
                 didFail(error)
             }
+        }
+        tasks[taskID] = task
+        tailID = taskID
+        tail = task
+    }
+
+    /// Filesystem deletion is bookkeeping, not a new navigation request. It
+    /// waits behind any active transition without invalidating that request;
+    /// a newer researcher request suppresses only automatic neighbor choice.
+    func enqueueCleanup(
+        _ operation: @escaping @MainActor (@escaping Currency) async -> Void
+    ) {
+        let generationAtEnqueue = generation
+        let previous = tail
+        let taskID = UUID()
+        let task = Task { [weak self] in
+            defer { self?.taskDidFinish(taskID) }
+            _ = await previous?.value
+            let mayActivateNeighbor: Currency = { [weak self] in
+                self?.generation == generationAtEnqueue
+            }
+            await operation(mayActivateNeighbor)
         }
         tasks[taskID] = task
         tailID = taskID

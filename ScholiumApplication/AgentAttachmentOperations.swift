@@ -27,8 +27,8 @@ extension AgentCollaborationOperations {
 }
 
 extension WorkspaceHandle {
-    func agentAttachments(noteID: UUID, currentNote: WorkspaceNoteSnapshot? = nil) async throws -> AgentAttachmentListing {
-        let note: WorkspaceNoteSnapshot
+    func agentAttachments(noteID: UUID, currentNote: WorkspaceNoteSummary? = nil) async throws -> AgentAttachmentListing {
+        let note: WorkspaceNoteSummary
         if let currentNote { note = currentNote } else { note = try await currentAgentNote(noteID: noteID) }
         let source = try await loadDocument(note.id)
         guard source.fingerprint == note.fingerprint else {

@@ -47,6 +47,11 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.loadDocument(id)
     }
 
+    public func hydrate(_ expected: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.hydrate(expected)
+    }
+
     public func exportImages(
         for note: VaultQualifiedNoteID,
         markdownSource: String

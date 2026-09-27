@@ -18,10 +18,9 @@ struct VaultSourceCatalogMeasurement: Equatable, Sendable {
 
 struct VaultSourceCatalogSnapshot: Sendable {
     let generation: UInt64
-    let documents: [NoteDocument]
+    let projections: [WorkspaceSourceProjection]
     let sourceVersions: [String: SourceVersion]
     let fileMetadata: [String: WorkspaceFileMetadata]
-    let semantics: [String: MarkdownSemanticDocument]
     /// Storage capability only; decoded Search material is prepared by the index on demand.
     let searchProjectionCache: SourceSearchProjectionCache?
     let folders: [VaultRelativeFolderPath]
@@ -29,14 +28,13 @@ struct VaultSourceCatalogSnapshot: Sendable {
 }
 
 /// Rebuildable, descriptor-backed source projection for one pooled vault.
-/// Markdown remains authority; cached documents and semantics can be deleted
-/// and recreated without changing research data.
+/// Markdown remains authority; only exact-revision compact projections remain
+/// resident after each authorized source read and semantic parse.
 actor VaultSourceCatalog {
     private struct Record: Sendable {
-        let document: NoteDocument
+        let projection: WorkspaceSourceProjection
         let version: SourceVersion
         let fileMetadata: WorkspaceFileMetadata
-        let semantic: MarkdownSemanticDocument
     }
 
     private struct AuthorizedRecord: Sendable {
@@ -110,7 +108,17 @@ actor VaultSourceCatalog {
         refreshFolders: Bool = true
     ) async throws -> [String: DocumentFingerprint] {
         try await prepareSnapshot(refreshFolders: refreshFolders)
-        return records.mapValues { $0.document.fingerprint }
+        return records.mapValues { $0.projection.fingerprint }
+    }
+
+    func sourceVersion(
+        relativePath: String,
+        fingerprint: DocumentFingerprint
+    ) -> SourceVersion? {
+        guard let record = records[relativePath],
+            record.projection.fingerprint == fingerprint
+        else { return nil }
+        return record.version
     }
 
     private func prepareSnapshot(refreshFolders: Bool) async throws {
@@ -384,15 +392,20 @@ actor VaultSourceCatalog {
             let loaded = try await repository.loadCatalogSource(
                 relativePath: relativePath
             )
+            let vaultID = await repository.identity.id
             let parseStart = clock.now
             let semantic = MarkdownSemanticDocument(parsing: loaded.document)
+            let projection = WorkspaceSourceProjection(
+                vaultID: vaultID,
+                document: loaded.document,
+                semantic: semantic
+            )
             let parseDuration = parseStart.duration(to: clock.now)
             return AuthorizedRecord(
                 record: Record(
-                    document: loaded.document,
+                    projection: projection,
                     version: loaded.version,
-                    fileMetadata: loaded.fileMetadata,
-                    semantic: semantic
+                    fileMetadata: loaded.fileMetadata
                 ),
                 didRead: true,
                 didParse: true,
@@ -425,15 +438,14 @@ actor VaultSourceCatalog {
     private func makeSnapshot(
         measurement: VaultSourceCatalogMeasurement
     ) -> VaultSourceCatalogSnapshot {
-        let ordered = records.values.map(\.document).sorted {
+        let ordered = records.values.map(\.projection).sorted {
             $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
         }
         return VaultSourceCatalogSnapshot(
             generation: generation,
-            documents: ordered,
+            projections: ordered,
             sourceVersions: records.mapValues(\.version),
             fileMetadata: records.mapValues(\.fileMetadata),
-            semantics: records.mapValues(\.semantic),
             searchProjectionCache: searchProjectionCache,
             folders: folders,
             measurement: measurement

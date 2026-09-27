@@ -330,7 +330,7 @@ struct AppCompositionRootTests {
         let observation = window.documentController.$selectedDocument.dropFirst().sink { observedSelections.append($0) }
         defer { observation.cancel() }
         let outgoingID = try #require(window.documentTabController.selectedTabID)
-        let transfer = try window.takeDocumentForTransfer(tabID: outgoingID)
+        let transfer = try await window.takeDocumentForTransfer(tabID: outgoingID)
         #expect(transfer.session === session)
         #expect(!observedSelections.contains(where: { $0 == nil }))
         #expect(window.documentController.selectedDocument == first)
@@ -912,6 +912,70 @@ struct AppCompositionRootTests {
         #expect(await replacementHandle.ownedBackgroundTaskCount == 0)
     }
 
+    @Test("A stale cross-vault source result keeps the prior document and session")
+    func staleCrossVaultSourcePreservesDocument() async throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = repositoryRoot.appendingPathComponent(
+            ".build/native-hydration-cross-vault-\(UUID().uuidString)", isDirectory: true
+        )
+        let analyses = root.appendingPathComponent("Analyses", isDirectory: true)
+        let topics = root.appendingPathComponent("Topics", isDirectory: true)
+        let works = root.appendingPathComponent("Works", isDirectory: true)
+        for directory in [analyses, topics, works] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+        let priorSource = "\u{FEFF}# Original\r\n\r\nExact body.\r\n"
+        try Data(priorSource.utf8).write(to: analyses.appendingPathComponent("A.md"))
+        let targetFile = topics.appendingPathComponent("B.md")
+        try Data("# Target\n".utf8).write(to: targetFile)
+
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("Support"))
+        let capabilities = try await store.configureTriptychCapabilities(
+            paperAnalysisURL: analyses, topicKnowledgeURL: topics,
+            outputURL: works, portableContainerURL: root,
+            triptychName: "Hydration failure fixture"
+        )
+        var window: WindowModel? = WindowModel(
+            workspaceStore: store, requestedTriptychID: capabilities.id
+        )
+        defer { window = nil }
+        await window!.refreshWorkspaceAssignment(preferredTriptychID: capabilities.id)
+        try await window!.openWorkspaceVault(.paperAnalysis)
+        try await window!.openNote("A.md")
+        let previous = try #require(window!.currentDocumentDescriptor)
+        let previousSnapshot = try #require(window!.documentController.activeSnapshot)
+        let previousSession = window!.documentController.session(for: previous)
+        let tabCount = window!.documentTabController.tabs.count
+        let targetVault = try #require(capabilities.assignment.vault(for: .topicKnowledge))
+        let targetSummary = try #require(
+            window!.workspaceProjectionController.cachedNote(
+                vaultID: targetVault.id,
+                relativePath: "B.md"
+            )
+        )
+        let target = VaultNoteReference(
+            vaultID: targetVault.id, vaultName: targetVault.name,
+            vaultRole: targetVault.role, relativePath: targetSummary.id.relativePath,
+            stableNoteID: targetSummary.stableIdentity.resolvedID?.uuidString
+        )
+        do {
+            try await window!.activateWorkspaceReference(
+                target, tabActivation: .place(.replaceSelected),
+                committedSnapshot: previousSnapshot
+            )
+            Issue.record("The stale target unexpectedly opened")
+        } catch {
+            #expect(error is WorkspaceHydrationError)
+        }
+        #expect(window!.currentDocumentDescriptor?.sessionKey == previous.sessionKey)
+        #expect(window!.documentController.session(for: previous) === previousSession)
+        #expect(window!.documentController.activeSnapshot?.document.rawContent == priorSource)
+        #expect(window!.currentDocumentVaultID == previous.reference.vaultID)
+        #expect(window!.documentTabController.tabs.count == tabCount)
+    }
+
     // Needs a window server that brings two live windows to order.
     @Test("Two live windows converge safely while retaining independent sessions", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
     func twoLiveWindowsConvergeSafely() async throws {
@@ -1066,8 +1130,8 @@ struct AppCompositionRootTests {
         let revealGenerationBeforeOpen =
             firstWindow!.discoveryController
             .libraryRevealRequest?.generation ?? 0
-        firstWindow!.openNote("Shared.md")
-        secondWindow.openNote("Shared.md")
+        try await firstWindow!.openNote("Shared.md")
+        try await secondWindow.openNote("Shared.md")
         firstWindow!.documentController.installOpenedDocument(
             original,
             vaultName: analysesVault.name,
@@ -1102,7 +1166,7 @@ struct AppCompositionRootTests {
         try await waitUntil("the first window entered the retained Topics workspace") {
             firstWindow?.currentRegisteredVault?.id == topicsVault.id
                 && firstWindow?.notes.contains(where: {
-                    $0.relativePath == "Shared.md" && $0.rawContent == duplicateTopicSource
+                    $0.relativePath == "Shared.md" && $0.workspaceSnapshot?.fingerprint == DocumentFingerprint(content: duplicateTopicSource)
                 }) == true
         }
         #expect(firstWindow!.shellState.selectedWorkspace == .topicKnowledge)
@@ -1116,14 +1180,12 @@ struct AppCompositionRootTests {
         #expect(firstSession.scrollFraction == 0.42)
 
         let retainedSelection = try #require(firstWindow!.documentController.selectedDocument)
-        firstWindow!.documentController.selectDocument(
-            .unavailable(vaultID: analysesVault.id, relativePath: "Shared.md")
-        )
-        #expect(firstWindow!.currentNote?.rawContent == originalSource)
+        firstWindow!.documentController.selectUnavailableDocument(original)
+        #expect(firstWindow!.currentNote?.hydratedSnapshot?.document.rawContent == originalSource)
         #expect(firstWindow!.currentDocumentVaultRole == analysesVault.role)
         firstWindow!.documentController.selectDocument(retainedSelection)
 
-        firstWindow!.openNote("Shared.md", tabActivation: .place(.newTab))
+        try await firstWindow!.openNote("Shared.md", tabActivation: .place(.newTab))
         try await waitUntil("the Topic document opened in the shared tab collection") {
             firstWindow?.currentDocumentVaultID == topicsVault.id
         }

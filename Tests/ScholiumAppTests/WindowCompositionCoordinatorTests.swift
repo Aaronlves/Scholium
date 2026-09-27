@@ -186,6 +186,55 @@ struct WindowCompositionCoordinatorTests {
         #expect(events == ["old commit", "new presentation"])
     }
 
+    @Test("Queued deletion cleanup runs without superseding a newer navigation")
+    func cleanupBeforeStartPreservesNewNavigation() async throws {
+        let coordinator = DocumentTransitionCoordinator()
+        var resumeRunning: CheckedContinuation<Void, Never>?
+        var events: [String] = []
+        coordinator.enqueue(
+            prepare: {},
+            operation: {
+                events.append("running")
+                await withCheckedContinuation { resumeRunning = $0 }
+            },
+            didFail: { error in Issue.record("Unexpected transition failure: \(error)") }
+        )
+        for _ in 0..<100 where resumeRunning == nil { await Task.yield() }
+        let continuation = try #require(resumeRunning)
+
+        coordinator.enqueueCleanup { mayActivateNeighbor in
+            events.append(mayActivateNeighbor() ? "neighbor" : "discard deleted tab")
+        }
+        coordinator.enqueue(
+            prepare: {}, operation: { events.append("new navigation") },
+            didFail: { error in Issue.record("Unexpected navigation failure: \(error)") }
+        )
+        continuation.resume()
+        await coordinator.waitForIdle()
+        #expect(events == ["running", "discard deleted tab", "new navigation"])
+    }
+
+    @Test("A newer navigation suppresses neighbor activation during cleanup hydration")
+    func cleanupReadCannotSelectNeighborAfterNewRequest() async throws {
+        let coordinator = DocumentTransitionCoordinator()
+        var releaseRead: CheckedContinuation<Void, Never>?
+        var events: [String] = []
+        coordinator.enqueueCleanup { mayActivateNeighbor in
+            events.append("hydrate neighbor")
+            await withCheckedContinuation { releaseRead = $0 }
+            events.append(mayActivateNeighbor() ? "neighbor" : "discard deleted tab")
+        }
+        for _ in 0..<100 where releaseRead == nil { await Task.yield() }
+        let continuation = try #require(releaseRead)
+        coordinator.enqueue(
+            prepare: {}, operation: { events.append("new navigation") },
+            didFail: { error in Issue.record("Unexpected navigation failure: \(error)") }
+        )
+        continuation.resume()
+        await coordinator.waitForIdle()
+        #expect(events == ["hydrate neighbor", "discard deleted tab", "new navigation"])
+    }
+
     @Test("A superseding presentation save cancels the older completion")
     func presentationSaveReplacement() async {
         let store = WindowSessionPersistenceStoreProbe()

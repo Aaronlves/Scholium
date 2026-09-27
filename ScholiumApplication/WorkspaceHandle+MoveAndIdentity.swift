@@ -12,7 +12,7 @@ func sourceAuthorizedFolderNoteMoves(
     vaultID: UUID,
     sourceFolder: VaultRelativeFolderPath,
     destinationFolder: VaultRelativeFolderPath,
-    snapshotDocuments: [WorkspaceNoteSnapshot],
+    snapshotDocuments: [WorkspaceNoteSummary],
     sourceAheadIdentityRecords: [VaultQualifiedNoteID: NoteIdentityRecord]
 ) throws -> [FolderNoteMovePlan] {
     let sourcePrefix = sourceFolder.rawValue + "/"
@@ -346,146 +346,126 @@ extension WorkspaceHandle {
         )
     }
 
+    struct ScopedMoveProjectionContext {
+        let projections: [VaultQualifiedNoteID: WorkspaceSourceProjection]
+        let versions: [VaultQualifiedNoteID: SourceVersion]
+        let catalog: [LinkCatalogNote]
+        let authoredLinks: [VaultQualifiedNoteID: [LinkOccurrence]]
+        let graph: GraphSnapshot
+        let manifest: [SearchSourceManifestEntry]
+    }
+
+    /// A fresh compact cohort proves resolution without retaining every Note
+    /// source. Only moved Notes and graph-identified link owners are loaded.
+    func freshScopedMoveProjectionContext() async throws -> ScopedMoveProjectionContext {
+        var projections: [VaultQualifiedNoteID: WorkspaceSourceProjection] = [:]
+        var versions: [VaultQualifiedNoteID: SourceVersion] = [:]
+        for vault in orderedVaults() {
+            guard let sourceCatalog = services.sourceCatalogs[vault.id] else {
+                throw ScholiumApplicationError.vaultNotInWorkspace(vault.id)
+            }
+            try await sourceCatalog.reconcile()
+            let source = try await sourceCatalog.snapshot(refreshFolders: false)
+            for projection in source.projections {
+                let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: projection.relativePath)
+                guard let version = source.sourceVersions[projection.relativePath] else {
+                    throw WorkspaceHydrationError.staleSnapshot
+                }
+                projections[id] = projection
+                versions[id] = version
+            }
+        }
+        let all = projections.values.sorted { $0.linkCatalog.id < $1.linkCatalog.id }
+        let manifest = all.map {
+            SearchSourceManifestEntry(
+                vaultID: $0.linkCatalog.id.vaultID,
+                relativePath: $0.relativePath, fingerprint: $0.fingerprint)
+        }
+        let authoredLinks = Dictionary(
+            uniqueKeysWithValues: all.map {
+                ($0.linkCatalog.id, $0.authoredLinks)
+            })
+        let graph = LinkGraphBuilder.build(
+            generation: (currentSnapshot.discovery.catalog.graph?.generation ?? 0) + 1,
+            catalog: all.map(\.linkCatalog),
+            authoredLinks: authoredLinks,
+            resolutionScope: .workspace,
+            sourceManifestHash: SearchSourceManifest.hash(manifest)
+        )
+        return ScopedMoveProjectionContext(
+            projections: projections, versions: versions,
+            catalog: all.map(\.linkCatalog), authoredLinks: authoredLinks,
+            graph: graph, manifest: manifest
+        )
+    }
+
+    func loadScopedMoveDocuments(
+        _ ids: Set<VaultQualifiedNoteID>, context: ScopedMoveProjectionContext
+    ) async throws -> [VaultQualifiedNoteID: NoteDocument] {
+        var documents: [VaultQualifiedNoteID: NoteDocument] = [:]
+        for id in ids.sorted() {
+            try Task.checkCancellation()
+            guard let projection = context.projections[id],
+                let version = context.versions[id]
+            else { throw WorkspaceHydrationError.staleSnapshot }
+            let repository = try repository(vaultID: id.vaultID)
+            let loaded = try await repository.loadCatalogSource(relativePath: id.relativePath)
+            guard loaded.version == version,
+                loaded.document.fingerprint == projection.fingerprint
+            else { throw WorkspaceHydrationError.staleSnapshot }
+            documents[id] = loaded.document
+        }
+        return documents
+    }
+
+    func validateScopedMoveCohort(_ context: ScopedMoveProjectionContext) async throws {
+        for vault in orderedVaults() {
+            let repository = try repository(vaultID: vault.id)
+            let observed = try await repository.markdownRelativePaths()
+            let expected = context.projections.keys.filter { $0.vaultID == vault.id }
+                .map(\.relativePath)
+            guard Set(observed.map { Data($0.utf8) }) == Set(expected.map { Data($0.utf8) })
+            else { throw WorkspaceHydrationError.staleSnapshot }
+        }
+        for id in context.versions.keys.sorted() {
+            try Task.checkCancellation()
+            let repository = try repository(vaultID: id.vaultID)
+            guard let version = context.versions[id],
+                try await repository.sourceVersionIsCurrent(
+                    relativePath: id.relativePath, version: version)
+            else { throw WorkspaceHydrationError.staleSnapshot }
+        }
+    }
+
     private func workspaceFolderMovePlan(
         vaultID: UUID,
         sourceFolder: VaultRelativeFolderPath,
         destinationFolder: VaultRelativeFolderPath,
         noteMoves: [FolderNoteMovePlan]
     ) async throws -> FolderIncomingLinkRewritePlan {
-        let snapshotCanAuthorizeFastPlan =
-            !derivedStateRequiresRefresh
-            && pendingSourceCommitRefreshes.isEmpty
-            && sourceCommitRefreshTask == nil
-            && pendingLiveEvents.isEmpty
-            && liveIndexRefreshTask == nil
-            && sourceAheadIdentityRecords.isEmpty
-        if snapshotCanAuthorizeFastPlan,
-            let graph = currentSnapshot.discovery.catalog.graph
-        {
-            let activeSnapshots = currentSnapshot.vaults.flatMap(\.documents)
-            let documents = Dictionary(
-                uniqueKeysWithValues: activeSnapshots.map {
-                    ($0.id, $0.document)
-                })
-            var catalogNotesByID: [VaultQualifiedNoteID: WorkspaceCatalogNote] = [:]
-            for note in currentSnapshot.discovery.catalog.notes {
-                let id = VaultQualifiedNoteID(
-                    vaultID: note.reference.vaultID,
-                    relativePath: note.reference.relativePath
-                )
-                catalogNotesByID[id] = note
+        let context = try await freshScopedMoveProjectionContext()
+        let movingIDs = Set(noteMoves.map(\.source))
+        let candidateIDs = Set(
+            context.graph.outgoing.values.flatMap { $0 }.compactMap {
+                edge -> VaultQualifiedNoteID? in
+                guard case .resolved(let target) = edge.occurrence.resolution,
+                    movingIDs.contains(target)
+                else { return nil }
+                return edge.source
             }
-            var catalog: [LinkCatalogNote] = []
-            var snapshotIsCoherent = noteMoves.allSatisfy { move in
-                documents[move.source]?.fingerprint == move.expectedRevision
-            }
-            for note in activeSnapshots {
-                guard let cached = catalogNotesByID[note.id],
-                    cached.fingerprint == note.fingerprint
-                else {
-                    snapshotIsCoherent = false
-                    break
-                }
-                catalog.append(
-                    LinkCatalogNote(
-                        id: note.id,
-                        title: cached.title,
-                        aliases: cached.aliases,
-                        headings: note.headings
-                    ))
-            }
-            let sourceManifestHash = SearchSourceManifest.hash(
-                documents.map {
-                    id, document in
-                    SearchSourceManifestEntry(
-                        vaultID: id.vaultID,
-                        relativePath: id.relativePath,
-                        fingerprint: document.fingerprint
-                    )
-                })
-            if snapshotIsCoherent,
-                catalog.count == documents.count,
-                graph.sourceManifestHash == sourceManifestHash,
-                let plan = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
-                    documents: documents,
-                    catalog: catalog,
-                    graph: graph,
-                    vaultID: vaultID,
-                    sourceFolder: sourceFolder,
-                    destinationFolder: destinationFolder,
-                    noteMoves: noteMoves
-                )
-            {
-                return plan
-            }
-        }
-
-        // A pending, source-ahead, or structurally stale generation cannot
-        // authorize link edits. Preserve the complete filesystem fallback and
-        // its exact preflight rather than weakening source coordination.
-        var documents: [VaultQualifiedNoteID: NoteDocument] = [:]
-        for registeredVault in orderedVaults() {
-            let repository = try repository(vaultID: registeredVault.id)
-            for path in try await repository.markdownRelativePaths() {
-                let document = try await repository.load(relativePath: path)
-                documents[
-                    VaultQualifiedNoteID(
-                        vaultID: registeredVault.id,
-                        relativePath: path
-                    )] = document
-            }
-        }
-        for move in noteMoves {
-            guard let current = documents[move.source],
-                current.fingerprint == move.expectedRevision
-            else {
-                throw VaultRepositoryError.conflict(
-                    expected: move.expectedRevision,
-                    current: documents[move.source]?.fingerprint ?? move.expectedRevision
-                )
-            }
-        }
-        let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
-        let vaultRoles = Dictionary(
-            uniqueKeysWithValues: orderedVaults().map {
-                ($0.id, $0.role)
-            })
-        let catalog = try await exactLinkCatalog(
-            documents: documents,
-            semantics: semantics,
-            vaultRoles: vaultRoles
-        )
-        let sourceManifestHash = SearchSourceManifest.hash(
-            documents.map {
-                id, document in
-                SearchSourceManifestEntry(
-                    vaultID: id.vaultID,
-                    relativePath: id.relativePath,
-                    fingerprint: document.fingerprint
-                )
-            })
-        let graph = LinkGraphBuilder.build(
-            generation: (currentSnapshot.discovery.catalog.graph?.generation ?? 0) + 1,
-            catalog: catalog,
-            documents: semantics,
-            resolutionScope: .workspace,
-            sourceManifestHash: sourceManifestHash
-        )
+        ).union(movingIDs)
+        let documents = try await loadScopedMoveDocuments(candidateIDs, context: context)
         guard
             let plan = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
-                documents: documents,
-                catalog: catalog,
-                graph: graph,
-                vaultID: vaultID,
-                sourceFolder: sourceFolder,
-                destinationFolder: destinationFolder,
-                noteMoves: noteMoves
-            )
+                documents: documents, catalog: context.catalog, graph: context.graph,
+                sourceManifest: context.manifest, vaultID: vaultID,
+                sourceFolder: sourceFolder, destinationFolder: destinationFolder,
+                noteMoves: noteMoves)
         else {
             throw VaultRepositoryError.writeFailed(
-                "The exact Metadata-aware Link catalog could not be proven for this folder move."
-            )
+                "The exact Metadata-aware Link catalog could not be proven for this folder move.")
         }
+        try await validateScopedMoveCohort(context)
         return plan
     }
 
@@ -493,77 +473,26 @@ extension WorkspaceHandle {
         moving source: VaultQualifiedNoteID,
         to destination: VaultQualifiedNoteID
     ) async throws -> IncomingLinkRewritePlan {
-        let snapshotCanAuthorizeFastPlan =
-            !derivedStateRequiresRefresh
-            && pendingSourceCommitRefreshes.isEmpty
-            && sourceCommitRefreshTask == nil
-            && pendingLiveEvents.isEmpty
-            && liveIndexRefreshTask == nil
-            && sourceAheadIdentityRecords.isEmpty
-        if snapshotCanAuthorizeFastPlan,
-            let graph = currentSnapshot.discovery.catalog.graph
-        {
-            let activeSnapshots = currentSnapshot.vaults.flatMap(\.documents)
-            let documents = Dictionary(
-                uniqueKeysWithValues: activeSnapshots.map {
-                    ($0.id, $0.document)
-                })
-            var catalogNotesByID: [VaultQualifiedNoteID: WorkspaceCatalogNote] = [:]
-            for note in currentSnapshot.discovery.catalog.notes {
-                let id = VaultQualifiedNoteID(
-                    vaultID: note.reference.vaultID,
-                    relativePath: note.reference.relativePath
-                )
-                catalogNotesByID[id] = note
+        let context = try await freshScopedMoveProjectionContext()
+        let candidateIDs = Set(
+            context.graph.outgoing.values.flatMap { $0 }.compactMap {
+                edge -> VaultQualifiedNoteID? in
+                guard case .resolved(let target) = edge.occurrence.resolution,
+                    target == source
+                else { return nil }
+                return edge.source
             }
-            var catalog: [LinkCatalogNote] = []
-            var snapshotIsCoherent = documents[source] != nil
-            for note in activeSnapshots {
-                guard let cached = catalogNotesByID[note.id],
-                    cached.fingerprint == note.fingerprint
-                else {
-                    snapshotIsCoherent = false
-                    break
-                }
-                catalog.append(
-                    LinkCatalogNote(
-                        id: note.id,
-                        title: cached.title,
-                        aliases: cached.aliases,
-                        headings: note.headings
-                    ))
-            }
-            if snapshotIsCoherent,
-                let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
-                    documents: documents,
-                    catalog: catalog,
-                    graph: graph,
-                    moving: source,
-                    to: destination
-                )
-            {
-                return plan
-            }
-        }
-
-        // A source-ahead, known-stale, pending-refresh, or otherwise
-        // mixed-generation snapshot cannot authorize link edits. Fall back to
-        // the complete filesystem read and graph re-derivation rather than
-        // weakening exact-source validation.
-        let context = try await freshMovePlanningContext()
+        ).union([source])
+        let documents = try await loadScopedMoveDocuments(candidateIDs, context: context)
         guard
             let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
-                documents: context.documents,
-                catalog: context.catalog,
-                graph: context.graph,
-                moving: source,
-                to: destination
-            )
+                documents: documents, catalog: context.catalog, graph: context.graph,
+                sourceManifest: context.manifest, moving: source, to: destination)
         else {
             throw VaultRepositoryError.writeFailed(
-                "The exact Metadata-aware Link catalog could not be proven for this Note move."
-            )
+                "The exact Metadata-aware Link catalog could not be proven for this Note move.")
         }
+        try await validateScopedMoveCohort(context)
         return plan
     }
 

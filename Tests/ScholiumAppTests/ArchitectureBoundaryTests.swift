@@ -385,7 +385,7 @@ struct ArchitectureBoundaryTests {
         #expect(mutableNote.firstMatch(in: source, range: range) == nil)
         #expect(duplicateYAML.firstMatch(in: source, range: range) == nil)
         #expect(!source.contains("WorkspaceVaultProjectionService"))
-        #expect(source.contains("case workspace(WorkspaceNoteSnapshot)"))
+        #expect(source.contains("case workspace(WorkspaceNoteSummary)"))
         #expect(!source.localizedCaseInsensitiveContains("unclassified"))
     }
 

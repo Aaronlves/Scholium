@@ -104,7 +104,7 @@ extension WindowModel {
         }
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
-            self.openNote(path)
+            try await self.openNote(path)
         }
     }
 
@@ -175,7 +175,7 @@ extension WindowModel {
         }
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
-            self.openNote(path)
+            try await self.openNote(path)
             guard self.selectedDocumentPath == path else { return }
             self.documentController.requestSourceLocation(line: max(1, sourceLine))
             self.requestPresentationMode = mode
@@ -260,7 +260,7 @@ extension WindowModel {
     /// a superseded tab cannot become This Note Search authority.
     func currentSearchSourceSnapshot() async throws -> SearchSourceSnapshot? {
         guard let descriptor = currentDocumentDescriptor,
-            let note = currentNote
+            let note = currentNote?.hydratedSnapshot
         else { return nil }
         let session = documentController.session(for: descriptor)
         let sessionID = session.editorSession.sessionID
@@ -270,7 +270,7 @@ extension WindowModel {
                 for: session.editorSession.bridgeDocumentID
             )
         } else {
-            source = note.rawContent
+            source = note.document.rawContent
         }
         guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
             documentController.session(for: descriptor) === session,
@@ -281,9 +281,9 @@ extension WindowModel {
         return SearchSourceSnapshot(
             noteID: VaultQualifiedNoteID(
                 vaultID: descriptor.reference.vaultID,
-                relativePath: note.relativePath
+                relativePath: note.id.relativePath
             ),
-            stableNoteID: note.workspaceSnapshot?.stableIdentity.resolvedID,
+            stableNoteID: note.stableIdentity.resolvedID,
             editorSessionID: sessionID,
             source: source,
             editorRevision: UInt64(max(0, session.editorSession.generation)),

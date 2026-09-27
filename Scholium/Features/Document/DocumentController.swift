@@ -158,6 +158,7 @@ struct DocumentSessionTransfer {
 final class DocumentController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
     typealias DocumentCommitHandler = @MainActor (SaveResult) async -> Void
+    typealias HydrationLoader = @MainActor (WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot
 
     @Published private(set) var selectedDocument: WindowSelectedDocument? {
         didSet {
@@ -167,6 +168,7 @@ final class DocumentController: ObservableObject {
     @Published private(set) var chromeProjection = DocumentChromeProjection.empty
     @Published private(set) var currentPresentationMode: NotePresentationMode = .livePreview
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
+    @Published private(set) var unavailableSnapshot: WorkspaceNoteSnapshot?
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
     @Published var sourceMutationGeneration: UInt64 = 0
@@ -180,6 +182,7 @@ final class DocumentController: ObservableObject {
     @Published var identityResolutionError: String?
 
     private let sessions = DocumentSessionStore()
+    private let hydrationLoader: HydrationLoader?
     private let readProjectionCache = DocumentReadProjectionCache()
     private let linkCompletionIndex = EditorLinkCompletionIndex()
     private let writingSuggestions = EditorWritingSuggestions()
@@ -188,6 +191,14 @@ final class DocumentController: ObservableObject {
     /// While one session is saving, retain only its latest complete snapshot
     /// and reconcile it immediately after the save releases ownership.
     private var deferredWorkspaceSnapshotsDuringSave: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
+    private struct PendingHydration {
+        let token: UUID
+        let expected: WorkspaceNoteSummary
+        let task: Task<Void, Never>
+    }
+    private var pendingHydrations: [DocumentEditingTarget: PendingHydration] = [:]
+    private var publishedSummaries: [DocumentEditingTarget: WorkspaceNoteSummary] = [:]
+    private var hydrationEpoch: UInt64 = 0
     private var restoredPresentationsByVault: [UUID: [String: WindowDocumentPresentationSnapshot]] = [:]
     private var restoredUnqualifiedPresentations: [String: WindowDocumentPresentationSnapshot] = [:]
     private var activeWorkspace: WorkspaceVaultSlot = .paperAnalysis
@@ -206,15 +217,28 @@ final class DocumentController: ObservableObject {
     private var documentDidCommit: DocumentCommitHandler = { _ in }
 
     var retainedSessionCount: Int { sessions.retainedSessions.count }
+    var retainedFullSnapshotCount: Int { snapshots.count + (unavailableSnapshot == nil ? 0 : 1) }
+    var pendingHydrationCount: Int { pendingHydrations.count }
     var closedPresentationCount: Int { closedPresentations.count }
 
-    init(intentHandler: @escaping IntentHandler = { _ in }) {
+    func waitForPendingHydrations() async {
+        while !pendingHydrations.isEmpty {
+            let tasks = pendingHydrations.values.map(\.task)
+            for task in tasks { await task.value }
+        }
+    }
+
+    init(
+        intentHandler: @escaping IntentHandler = { _ in },
+        hydrationLoader: HydrationLoader? = nil
+    ) {
         var initialPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
             initialPresentationModes[workspace] = .livePreview
         }
         presentationModesByWorkspace = initialPresentationModes
         self.intentHandler = intentHandler
+        self.hydrationLoader = hydrationLoader
     }
 
     var activeDocument: WindowDocumentDescriptor? {
@@ -238,12 +262,14 @@ final class DocumentController: ObservableObject {
         snapshot: WorkspaceSnapshot? = nil,
         documentDidCommit: @escaping DocumentCommitHandler = { _ in }
     ) {
+        cancelPendingHydrations()
         self.operations = operations
         self.documentDidCommit = documentDidCommit
         if let snapshot { _ = receive(snapshot) }
     }
 
     func unbind() {
+        cancelPendingHydrations()
         operations = nil
         writingSuggestions.clear()
         documentDidCommit = { _ in }
@@ -258,9 +284,12 @@ final class DocumentController: ObservableObject {
     }
 
     func noteSnapshot(_ id: VaultQualifiedNoteID) async throws -> WorkspaceNoteSnapshot? {
-        try await workspaceSnapshot(vaultID: id.vaultID)?.documents.first(where: {
-            $0.id.relativePath == id.relativePath
-        })
+        guard
+            let summary = try await workspaceSnapshot(vaultID: id.vaultID)?.documents.first(where: {
+                $0.id.relativePath == id.relativePath
+            })
+        else { return nil }
+        return try await requireOperations().hydrate(summary)
     }
 
     func documentPreviewCatalog(
@@ -548,6 +577,7 @@ final class DocumentController: ObservableObject {
         }
         switch document {
         case .workspace(let descriptor):
+            unavailableSnapshot = nil
             retainedReferences[descriptor.sessionKey] = descriptor.reference
             let selectedSession = session(for: descriptor.sessionKey)
             if selectionChanged {
@@ -574,6 +604,14 @@ final class DocumentController: ObservableObject {
     /// Tab activation reuses a leased presentation instead of reopening it.
     /// In particular, it must not reset scroll or replace a retained Source mode.
     func selectRetainedDocument(_ document: WindowSelectedDocument) -> Bool {
+        switch document {
+        case .workspace(let descriptor):
+            guard snapshots[descriptor.sessionKey] != nil else { return false }
+        case .unavailable(let vaultID, let path):
+            guard unavailableSnapshot?.id.vaultID == vaultID,
+                unavailableSnapshot?.id.relativePath == path
+            else { return false }
+        }
         guard let session = sessions.retainedSession(for: document.editingTarget) else { return false }
         selectedDocument = document
         currentPresentationMode = session.pendingEditorMode?.presentationMode ?? session.presentationMode
@@ -602,7 +640,17 @@ final class DocumentController: ObservableObject {
     }
 
     func selectUnavailableDocument(vaultID: UUID, relativePath: String) {
+        unavailableSnapshot = nil
         selectDocument(.unavailable(vaultID: vaultID, relativePath: relativePath))
+    }
+
+    func selectUnavailableDocument(_ snapshot: WorkspaceNoteSnapshot) {
+        selectDocument(
+            .unavailable(
+                vaultID: snapshot.id.vaultID,
+                relativePath: snapshot.id.relativePath
+            ))
+        unavailableSnapshot = snapshot
     }
 
     /// Clears a selection only when its authoritative document was removed.
@@ -620,6 +668,7 @@ final class DocumentController: ObservableObject {
     /// later reopen can preserve the existing exact-source safety boundary.
     func clearSelectionAfterClosingLastTab() {
         selectedDocument = nil
+        unavailableSnapshot = nil
         refreshChromeProjection()
     }
 
@@ -701,9 +750,13 @@ final class DocumentController: ObservableObject {
         session.cancelAutosave()
         let transfer = DocumentSessionTransfer(
             document: document, session: session,
-            snapshot: document.sessionKey.flatMap { snapshots[$0] }, mode: session.presentationMode
+            snapshot: document.sessionKey.flatMap { snapshots[$0] }
+                ?? (document.editingTarget == selectedDocument?.editingTarget
+                    ? unavailableSnapshot : nil),
+            mode: session.presentationMode
         )
         if selectedDocument?.editingTarget == document.editingTarget { selectedDocument = nil }
+        if case .unavailable = document { unavailableSnapshot = nil }
         pruneReapedSessionBookkeeping()
         refreshChromeProjection()
         return transfer
@@ -720,6 +773,8 @@ final class DocumentController: ObservableObject {
         if let descriptor = document.workspaceDescriptor {
             retainedReferences[descriptor.sessionKey] = descriptor.reference
             snapshots[descriptor.sessionKey] = transfer.snapshot
+        } else {
+            unavailableSnapshot = transfer.snapshot
         }
         observe(transfer.session)
         if selecting {
@@ -882,6 +937,10 @@ final class DocumentController: ObservableObject {
     ) {
         guard let stableID = snapshot.stableIdentity.resolvedID else { return }
         let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: stableID)
+        let target = DocumentEditingTarget.workspace(key)
+        pendingHydrations[target]?.task.cancel()
+        pendingHydrations[target] = nil
+        publishedSummaries[target] = snapshot.summary
         snapshots[key] = snapshot
         let reference = VaultNoteReference(
             vaultID: snapshot.id.vaultID,
@@ -901,6 +960,26 @@ final class DocumentController: ObservableObject {
         if let session = retainedSession(for: key) {
             reconcile(session: session, with: snapshot)
         }
+    }
+
+    /// Folder moves carry exact committed bytes. Materialize them only for a
+    /// session this window actually retains; Library owns just the summary.
+    func recordCommittedSourceIfRetained(
+        _ summary: WorkspaceNoteSummary,
+        rawContent: String,
+        vaultName: String,
+        vaultRole: VaultRole
+    ) {
+        guard let noteID = summary.stableIdentity.resolvedID else { return }
+        let key = DocumentSessionKey(vaultID: summary.id.vaultID, noteID: noteID)
+        guard sessions.retainedSession(for: .workspace(key)) != nil else { return }
+        let document = NoteDocument(relativePath: summary.id.relativePath, rawContent: rawContent)
+        guard document.fingerprint == summary.fingerprint else { return }
+        recordCommittedSnapshot(
+            WorkspaceNoteSnapshot(summary: summary, document: document),
+            vaultName: vaultName,
+            vaultRole: vaultRole
+        )
     }
 
     /// Updates mutable path and title projections without replacing the
@@ -1144,6 +1223,7 @@ final class DocumentController: ObservableObject {
     }
 
     func removeAll(retainingSessions: Bool = false) {
+        cancelPendingHydrations()
         if !retainingSessions {
             sessions.removeAll()
             retainedReferences.removeAll()
@@ -1164,6 +1244,7 @@ final class DocumentController: ObservableObject {
         selectedDocument = nil
         chromeProjection = .empty
         snapshots = [:]
+        unavailableSnapshot = nil
         editingDocumentPath = nil
         lastSaveError = nil
     }
@@ -1181,6 +1262,15 @@ final class DocumentController: ObservableObject {
         snapshots = snapshots.filter {
             sessions.retainedSession(for: .workspace($0.key)) != nil
                 || selectedDocument?.sessionKey == $0.key
+        }
+        for (target, pending) in pendingHydrations {
+            guard case .workspace(let key) = target,
+                sessions.retainedSession(for: target) == nil,
+                selectedDocument?.sessionKey != key
+            else { continue }
+            pending.task.cancel()
+            pendingHydrations[target] = nil
+            publishedSummaries[target] = nil
         }
     }
 
@@ -1926,8 +2016,14 @@ final class DocumentController: ObservableObject {
                 // The source path still exists, but the generation cannot
                 // prove the tab's stable identity. Identity recovery owns this
                 // state; it is not evidence that the document was deleted.
+                pendingHydrations[document.editingTarget]?.task.cancel()
+                pendingHydrations[document.editingTarget] = nil
+                publishedSummaries[document.editingTarget] = nil
                 continue
             case .missing:
+                pendingHydrations[document.editingTarget]?.task.cancel()
+                pendingHydrations[document.editingTarget] = nil
+                publishedSummaries[document.editingTarget] = nil
                 guard
                     let session = sessions.retainedSession(
                         for: document.editingTarget
@@ -1960,7 +2056,7 @@ final class DocumentController: ObservableObject {
     }
 
     private enum PublishedDocumentLocation {
-        case located(WorkspaceVaultSnapshot, WorkspaceNoteSnapshot)
+        case located(WorkspaceVaultSnapshot, WorkspaceNoteSummary)
         case identityUnavailable
         case missing
     }
@@ -2017,11 +2113,26 @@ final class DocumentController: ObservableObject {
     private func recordPublishedLocation(
         document: WindowSelectedDocument,
         vault: WorkspaceVaultSnapshot,
-        note: WorkspaceNoteSnapshot
+        note: WorkspaceNoteSummary
     ) {
-        guard case .workspace(let descriptor) = document else { return }
+        publishedSummaries[document.editingTarget] = note
+        guard case .workspace(let descriptor) = document else {
+            if let unavailableSnapshot,
+                unavailableSnapshot.fingerprint != note.fingerprint
+            {
+                scheduleHydration(note, for: document.editingTarget)
+            } else if let unavailableSnapshot,
+                unavailableSnapshot.id == note.id,
+                unavailableSnapshot.fingerprint == note.fingerprint
+            {
+                self.unavailableSnapshot = WorkspaceNoteSnapshot(
+                    summary: note, document: unavailableSnapshot.document,
+                    cachedSemanticDocument: unavailableSnapshot.cachedSemanticDocument
+                )
+            }
+            return
+        }
         let key = descriptor.sessionKey
-        snapshots[key] = note
         let updated = WindowDocumentDescriptor(
             sessionKey: key,
             reference: VaultNoteReference(
@@ -2038,9 +2149,107 @@ final class DocumentController: ObservableObject {
         } else {
             retainedReferences[key] = updated.reference
         }
-        guard let retainedSession = retainedSession(for: key) else { return }
-        reconcile(session: retainedSession, with: note)
-        if isSelected, retainedSession.editError == nil { setSaveError(nil) }
+        guard let retainedSession = retainedSession(for: key),
+            let current = snapshots[key]
+        else { return }
+        if current.fingerprint == note.fingerprint {
+            pendingHydrations[document.editingTarget]?.task.cancel()
+            pendingHydrations[document.editingTarget] = nil
+            let document =
+                current.id.relativePath.utf8.elementsEqual(note.id.relativePath.utf8)
+                ? current.document
+                : NoteDocument(
+                    relativePath: note.id.relativePath,
+                    rawContent: current.document.rawContent
+                )
+            snapshots[key] = WorkspaceNoteSnapshot(
+                summary: note, document: document,
+                cachedSemanticDocument: current.cachedSemanticDocument
+            )
+            if isSelected, retainedSession.editError == nil { setSaveError(nil) }
+        } else {
+            scheduleHydration(note, for: document.editingTarget)
+        }
+    }
+
+    private func scheduleHydration(
+        _ summary: WorkspaceNoteSummary,
+        for target: DocumentEditingTarget
+    ) {
+        if let pending = pendingHydrations[target],
+            pending.expected.hasSameSourceBinding(as: summary)
+        {
+            return
+        }
+        pendingHydrations[target]?.task.cancel()
+        guard hydrationLoader != nil || operations != nil else { return }
+        let hydrationLoader = self.hydrationLoader
+        let operations = self.operations
+        let token = UUID()
+        let epoch = hydrationEpoch
+        let retainedSession = sessions.retainedSession(for: target)
+        let task = Task { @MainActor [weak self] in
+            let result: Result<WorkspaceNoteSnapshot, Error>
+            do {
+                if let hydrationLoader {
+                    result = .success(try await hydrationLoader(summary))
+                } else if let operations {
+                    result = .success(try await operations.hydrate(summary))
+                } else {
+                    return
+                }
+            } catch { result = .failure(error) }
+            guard let self,
+                self.hydrationEpoch == epoch,
+                self.pendingHydrations[target]?.token == token
+            else { return }
+            self.pendingHydrations[target] = nil
+            guard let published = self.publishedSummaries[target],
+                published.hasSameSourceBinding(as: summary),
+                !Task.isCancelled
+            else { return }
+            switch result {
+            case .success(let snapshot):
+                guard snapshot.summary.hasSameSourceBinding(as: published) else { return }
+                let current = WorkspaceNoteSnapshot(
+                    summary: published, document: snapshot.document,
+                    cachedSemanticDocument: snapshot.cachedSemanticDocument
+                )
+                switch target {
+                case .workspace(let key):
+                    guard let session = self.sessions.retainedSession(for: target),
+                        session === retainedSession,
+                        self.snapshots[key] != nil
+                    else { return }
+                    self.snapshots[key] = current
+                    self.reconcile(session: session, with: current)
+                    if self.selectedDocument?.editingTarget == target,
+                        session.editError == nil
+                    {
+                        self.setSaveError(nil)
+                    }
+                case .unavailable(let vaultID, let path):
+                    guard self.selectedDocument?.editingTarget == target,
+                        current.id.vaultID == vaultID,
+                        current.id.relativePath.utf8.elementsEqual(path.utf8)
+                    else { return }
+                    self.unavailableSnapshot = current
+                }
+            case .failure(let error):
+                guard !(error is CancellationError) else { return }
+                if self.selectedDocument?.editingTarget == target {
+                    self.setSaveError(error.localizedDescription)
+                }
+            }
+        }
+        pendingHydrations[target] = PendingHydration(token: token, expected: summary, task: task)
+    }
+
+    private func cancelPendingHydrations() {
+        hydrationEpoch &+= 1
+        for pending in pendingHydrations.values { pending.task.cancel() }
+        pendingHydrations.removeAll()
+        publishedSummaries.removeAll()
     }
 
     private func retainDeletedDocumentForRecovery(
@@ -2068,6 +2277,9 @@ final class DocumentController: ObservableObject {
         let targets = Set(documents.map(\.editingTarget))
         for document in documents {
             if let key = document.sessionKey {
+                pendingHydrations[document.editingTarget]?.task.cancel()
+                pendingHydrations[document.editingTarget] = nil
+                publishedSummaries[document.editingTarget] = nil
                 snapshots[key] = nil
                 retainedReferences[key] = nil
                 deferredWorkspaceSnapshotsDuringSave[key] = nil

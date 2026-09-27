@@ -65,39 +65,30 @@ public enum WorkspaceNoteIdentityState: Hashable, Sendable {
     }
 }
 
-package struct WorkspaceNoteTitleProjection: Hashable, Sendable {
-    package let sourceFingerprint: DocumentFingerprint
-    package let title: String
-
-    package init(document: NoteDocument) {
-        sourceFingerprint = document.fingerprint
-        title = ResearchNoteTitleResolver.resolve(document: document)
-    }
-}
-
-/// A source-fidelity-preserving note projection. `document` retains the exact
-/// bytes loaded by `VaultRepository`. Application-owned Workspace generations
-/// carry `current` derived state. An exact window may transiently overlay a
-/// committed source with `sourceAhead`; consumers must not treat its graph
-/// counts or other Workspace-wide projections as current until replacement by
-/// the matching complete generation.
-public struct WorkspaceNoteSnapshot: Hashable, Sendable {
+/// Revision-bound, source-free library state. Text values are owned scalar
+/// projections of YAML, never slices of the authoritative Markdown source.
+public struct WorkspaceNoteSummary: Hashable, Sendable {
     public let id: VaultQualifiedNoteID
     public let vaultRole: VaultRole
     public let stableIdentity: WorkspaceNoteIdentityState
-    public let document: NoteDocument
+    public let fingerprint: DocumentFingerprint
     public let fileMetadata: WorkspaceFileMetadata
     public let graphCounts: WorkspaceGraphCounts
     public let derivedProjectionState: WorkspaceNoteDerivedProjectionState
+    public let linkCatalog: LinkCatalogNote
+    public let title: String
+    public let validationWarnings: [String]
+    public let propertyTextValues: [String: [String]]
+    public let canonicalAliases: [String]
+    public let canonicalKeywords: [String]
 
-    public let headings: [HeadingNode]
-    /// Exact-fingerprint derived semantics prepared by the workspace opening
-    /// generation. Package consumers may reuse it but never write from it.
-    package let cachedSemanticDocument: MarkdownSemanticDocument?
-    package let cachedTitleProjection: WorkspaceNoteTitleProjection?
-
-    public var fingerprint: DocumentFingerprint { document.fingerprint }
-    public var validationWarnings: [String] { document.validationWarnings }
+    public var aliases: [String] { canonicalAliases }
+    public var keywords: [String] { canonicalKeywords }
+    public var headings: [HeadingNode] { linkCatalog.headings }
+    public var authors: [String] {
+        (propertyTextValues["authors"] ?? []) + (propertyTextValues["author"] ?? [])
+    }
+    public var publicationDate: String? { propertyTextValues["publication_date"]?.first }
     public var capabilities: DocumentCapabilities {
         let identity: DocumentIdentityResolution =
             switch stableIdentity {
@@ -119,54 +110,64 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         id: VaultQualifiedNoteID,
         vaultRole: VaultRole = .other,
         stableIdentity: WorkspaceNoteIdentityState,
-        document: NoteDocument,
+        fingerprint: DocumentFingerprint,
         fileMetadata: WorkspaceFileMetadata,
         graphCounts: WorkspaceGraphCounts,
-        headings: [HeadingNode] = [],
+        linkCatalog: LinkCatalogNote,
+        title: String,
+        validationWarnings: [String],
+        propertyTextValues: [String: [String]] = [:],
+        canonicalAliases: [String] = [],
+        canonicalKeywords: [String] = [],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current
-    ) {
-        self.init(
-            id: id,
-            vaultRole: vaultRole,
-            stableIdentity: stableIdentity,
-            document: document,
-            fileMetadata: fileMetadata,
-            graphCounts: graphCounts,
-            headings: headings,
-            derivedProjectionState: derivedProjectionState,
-            cachedSemanticDocument: nil,
-            cachedTitleProjection: nil
-        )
-    }
-
-    package init(
-        id: VaultQualifiedNoteID,
-        vaultRole: VaultRole = .other,
-        stableIdentity: WorkspaceNoteIdentityState,
-        document: NoteDocument,
-        fileMetadata: WorkspaceFileMetadata,
-        graphCounts: WorkspaceGraphCounts,
-        headings: [HeadingNode],
-        derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current,
-        cachedSemanticDocument: MarkdownSemanticDocument? = nil,
-        cachedTitleProjection: WorkspaceNoteTitleProjection?
     ) {
         self.id = id
         self.vaultRole = vaultRole
         self.stableIdentity = stableIdentity
-        self.document = document
+        self.fingerprint = fingerprint
         self.fileMetadata = fileMetadata
         self.graphCounts = graphCounts
-        self.headings = headings
+        self.linkCatalog = linkCatalog
+        self.title = title
+        self.validationWarnings = validationWarnings
+        self.propertyTextValues = propertyTextValues
+        self.canonicalAliases = canonicalAliases
+        self.canonicalKeywords = canonicalKeywords
         self.derivedProjectionState = derivedProjectionState
-        self.cachedSemanticDocument =
-            cachedSemanticDocument?.fingerprint == document.fingerprint
-            ? cachedSemanticDocument
-            : nil
-        self.cachedTitleProjection =
-            cachedTitleProjection?.sourceFingerprint == document.fingerprint
-            ? cachedTitleProjection
-            : nil
+    }
+
+    /// Scoped exact-source projection for a newly committed revision. This
+    /// initializer does not retain the document or its parsed YAML tree.
+    public init(
+        id: VaultQualifiedNoteID,
+        vaultRole: VaultRole = .other,
+        stableIdentity: WorkspaceNoteIdentityState,
+        document: NoteDocument,
+        semantic: MarkdownSemanticDocument? = nil,
+        fileMetadata: WorkspaceFileMetadata,
+        graphCounts: WorkspaceGraphCounts,
+        derivedProjectionState: WorkspaceNoteDerivedProjectionState = .sourceAhead
+    ) {
+        let properties = SearchPropertyProjection(document: document)
+        let semantic =
+            semantic?.fingerprint == document.fingerprint
+            ? semantic! : MarkdownSemanticDocument(parsing: document)
+        let links = LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: semantic)
+        self.init(
+            id: id, vaultRole: vaultRole, stableIdentity: stableIdentity,
+            fingerprint: document.fingerprint, fileMetadata: fileMetadata,
+            graphCounts: graphCounts,
+            linkCatalog: links,
+            title: ResearchNoteTitleResolver.resolve(document: document),
+            validationWarnings: document.validationWarnings,
+            propertyTextValues: Dictionary(
+                uniqueKeysWithValues: properties.entries.map {
+                    ($0.key, $0.stringMembers.map { String(decoding: $0.value.utf8, as: UTF8.self) })
+                }),
+            canonicalAliases: document.parsedFrontmatter["aliases"]?.canonicalStringList ?? [],
+            canonicalKeywords: document.parsedFrontmatter["keywords"]?.canonicalStringList ?? [],
+            derivedProjectionState: derivedProjectionState
+        )
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
@@ -177,6 +178,12 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             && lhs.fileMetadata == rhs.fileMetadata
             && lhs.graphCounts == rhs.graphCounts
             && lhs.derivedProjectionState == rhs.derivedProjectionState
+            && lhs.title == rhs.title
+            && lhs.linkCatalog == rhs.linkCatalog
+            && lhs.validationWarnings == rhs.validationWarnings
+            && lhs.propertyTextValues == rhs.propertyTextValues
+            && lhs.canonicalAliases == rhs.canonicalAliases
+            && lhs.canonicalKeywords == rhs.canonicalKeywords
     }
 
     public func hash(into hasher: inout Hasher) {
@@ -187,12 +194,93 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         hasher.combine(fileMetadata)
         hasher.combine(graphCounts)
         hasher.combine(derivedProjectionState)
+        hasher.combine(title)
+        hasher.combine(linkCatalog)
+        hasher.combine(validationWarnings)
+        hasher.combine(propertyTextValues)
+        hasher.combine(canonicalAliases)
+        hasher.combine(canonicalKeywords)
+    }
+}
+
+/// Exact source held only by a hydrated document/session or bounded operation.
+public struct WorkspaceNoteSnapshot: Hashable, Sendable {
+    public let summary: WorkspaceNoteSummary
+    public let document: NoteDocument
+    package let cachedSemanticDocument: MarkdownSemanticDocument?
+
+    public var id: VaultQualifiedNoteID { summary.id }
+    public var vaultRole: VaultRole { summary.vaultRole }
+    public var stableIdentity: WorkspaceNoteIdentityState { summary.stableIdentity }
+    public var fingerprint: DocumentFingerprint { summary.fingerprint }
+    public var fileMetadata: WorkspaceFileMetadata { summary.fileMetadata }
+    public var graphCounts: WorkspaceGraphCounts { summary.graphCounts }
+    public var derivedProjectionState: WorkspaceNoteDerivedProjectionState { summary.derivedProjectionState }
+    public var headings: [HeadingNode] { summary.headings }
+    public var validationWarnings: [String] { summary.validationWarnings }
+    public var capabilities: DocumentCapabilities { summary.capabilities }
+    public var schemaProfile: SchemaProfileID { summary.schemaProfile }
+
+    public init(summary: WorkspaceNoteSummary, document: NoteDocument) {
+        self.init(summary: summary, document: document, cachedSemanticDocument: nil)
+    }
+
+    package init(
+        summary: WorkspaceNoteSummary,
+        document: NoteDocument,
+        cachedSemanticDocument: MarkdownSemanticDocument?
+    ) {
+        precondition(summary.id.relativePath.utf8.elementsEqual(document.relativePath.utf8))
+        precondition(summary.fingerprint == document.fingerprint)
+        self.summary = summary
+        self.document = document
+        self.cachedSemanticDocument =
+            cachedSemanticDocument?.fingerprint == document.fingerprint
+            ? cachedSemanticDocument : nil
+    }
+
+    public init(
+        id: VaultQualifiedNoteID,
+        vaultRole: VaultRole = .other,
+        stableIdentity: WorkspaceNoteIdentityState,
+        document: NoteDocument,
+        fileMetadata: WorkspaceFileMetadata,
+        graphCounts: WorkspaceGraphCounts,
+        derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current
+    ) {
+        self.init(
+            summary: WorkspaceNoteSummary(
+                id: id, vaultRole: vaultRole, stableIdentity: stableIdentity,
+                document: document, fileMetadata: fileMetadata,
+                graphCounts: graphCounts,
+                derivedProjectionState: derivedProjectionState),
+            document: document
+        )
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.summary == rhs.summary
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(summary)
     }
 
     /// Immediate window projection after a checked portable Metadata read or commit.
     /// Source bytes remain unchanged; workspace-wide Search and catalog state
     /// catch up in the owning refresh generation.
 
+}
+
+public enum WorkspaceHydrationError: LocalizedError, Sendable {
+    case staleSnapshot
+
+    public var errorDescription: String? {
+        switch self {
+        case .staleSnapshot:
+            "The Note changed before its source finished loading. Refresh and try again."
+        }
+    }
 }
 
 /// The exact result of direct untitled-note creation before disposable
@@ -236,9 +324,12 @@ public struct WorkspaceManagedNoteCommit: Sendable {
                 broken: 0,
                 ambiguous: 0
             ),
-            headings: [],
             derivedProjectionState: .sourceAhead
         )
+    }
+
+    public var sourceAheadSummary: WorkspaceNoteSummary {
+        sourceAheadSnapshot.summary
     }
 }
 
@@ -263,7 +354,7 @@ public struct WorkspaceVaultSnapshot: Sendable {
     public let slot: WorkspaceVaultSlot
     public let vault: RegisteredVault
     public let pathComparisonPolicy: VaultPathComparisonPolicy
-    public let documents: [WorkspaceNoteSnapshot]
+    public let documents: [WorkspaceNoteSummary]
     public let folders: [VaultRelativeFolderPath]
     public let identityRecovery: NoteIdentityRecoveryState
 
@@ -271,7 +362,7 @@ public struct WorkspaceVaultSnapshot: Sendable {
         slot: WorkspaceVaultSlot,
         vault: RegisteredVault,
         pathComparisonPolicy: VaultPathComparisonPolicy,
-        documents: [WorkspaceNoteSnapshot],
+        documents: [WorkspaceNoteSummary],
         folders: [VaultRelativeFolderPath] = [],
         identityRecovery: NoteIdentityRecoveryState
     ) {
@@ -397,7 +488,7 @@ public struct WorkspaceSnapshot: Sendable {
         vaults.first { $0.vault.id == id }
     }
 
-    public func document(id: VaultQualifiedNoteID) -> WorkspaceNoteSnapshot? {
+    public func document(id: VaultQualifiedNoteID) -> WorkspaceNoteSummary? {
         vault(id: id.vaultID)?.documents.first { $0.id == id }
     }
 }
@@ -419,13 +510,13 @@ public enum WorkspaceSourceCommitKind: Equatable, Sendable {
 
 public struct WorkspaceSourceCommittedEvent: Sendable {
     public let generation: UInt64
-    public let note: WorkspaceNoteSnapshot
+    public let note: WorkspaceNoteSummary
     public let kind: WorkspaceSourceCommitKind
     public let snapshot: WorkspaceSnapshot
 
     public init(
         generation: UInt64,
-        note: WorkspaceNoteSnapshot,
+        note: WorkspaceNoteSummary,
         kind: WorkspaceSourceCommitKind,
         snapshot: WorkspaceSnapshot
     ) {

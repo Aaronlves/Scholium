@@ -539,6 +539,7 @@ final class WindowModel: ObservableObject {
     }
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     let documentTransitionCoordinator = DocumentTransitionCoordinator()
+    var activeDocumentTransitionCurrency: DocumentTransitionCoordinator.Currency?
     var documentTransitionIssueID: UUID?
     let editorFlushCoordinator: WindowEditorFlushCoordinator
     let windowSessionPersistenceCoordinator: WindowSessionPersistenceCoordinator
@@ -827,29 +828,19 @@ final class WindowModel: ObservableObject {
     var currentDocumentRevisions: [String: DocumentFingerprint] {
         Dictionary(
             uniqueKeysWithValues: currentDocumentNotes.map {
-                ($0.relativePath, $0.document.fingerprint)
+                ($0.relativePath, $0.summary.fingerprint)
             })
     }
 
     var currentNote: WindowDocumentLocation? {
         if let active = documentController.activeSnapshot {
-            return .workspace(active)
+            return .hydrated(active)
         }
-        if let descriptor = currentDocumentDescriptor,
-            let snapshot = workspaceProjectionController.cachedNote(
-                vaultID: descriptor.reference.vaultID,
-                stableNoteID: descriptor.sessionKey.noteID,
-                relativePath: descriptor.reference.relativePath
-            )
+        if let unavailable = documentController.unavailableSnapshot,
+            documentController.selectedDocument?.vaultID == unavailable.id.vaultID,
+            documentController.selectedDocument?.relativePath == unavailable.id.relativePath
         {
-            return .workspace(snapshot)
-        }
-        guard let selected = documentController.selectedDocument else { return nil }
-        if let vaultID = selected.vaultID {
-            return workspaceProjectionController.cachedNote(
-                vaultID: vaultID, stableNoteID: selected.sessionKey?.noteID,
-                relativePath: selected.relativePath
-            ).map(WindowDocumentLocation.workspace)
+            return .hydrated(unavailable)
         }
         return nil
     }

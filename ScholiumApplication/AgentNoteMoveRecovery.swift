@@ -13,11 +13,23 @@ extension WorkspaceHandle {
             let identity = try await resolvedIdentity(for: effect.destination, expectedRevision: effect.afterFingerprint)
             guard identity.id == effect.noteID else { throw AgentChangeError.mismatchedBinding(evidence.change.id) }
         }
-        let context = try await freshMovePlanningContext()
+        let context = try await freshScopedMoveProjectionContext()
+        let candidateIDs = Set(
+            context.graph.outgoing.values.flatMap { $0 }.compactMap {
+                edge -> VaultQualifiedNoteID? in
+                guard case .resolved(let target) = edge.occurrence.resolution,
+                    target == primary.destination
+                else { return nil }
+                return edge.source
+            }
+        ).union(move.effects.map(\.destination))
+        let documents = try await loadScopedMoveDocuments(candidateIDs, context: context)
         guard
             let ordinary = IncomingLinkRewriter.planUsingValidatedSnapshot(
-                documents: context.documents,
-                catalog: context.catalog, graph: context.graph, moving: primary.destination, to: primary.source)
+                documents: documents,
+                catalog: context.catalog, graph: context.graph,
+                sourceManifest: context.manifest,
+                moving: primary.destination, to: primary.source)
         else {
             throw AgentCollaborationError.invalidRequest("The current link scope cannot authorize this move inverse.")
         }
@@ -27,7 +39,7 @@ extension WorkspaceHandle {
         else {
             throw AgentCollaborationError.invalidRequest("The link scope changed after the move. Review the current links before restoring it.")
         }
-        var restored = context.documents
+        var restored = documents
         guard let primarySource = NoteDocument.decodeUTF8PreservingBOM(beforeData) else { throw AgentChangeError.invalid(evidence.change.id) }
         restored[primary.destination] = nil
         restored[primary.source] = NoteDocument(relativePath: primary.source.relativePath, rawContent: primarySource)
@@ -35,11 +47,14 @@ extension WorkspaceHandle {
             guard let source = NoteDocument.decodeUTF8PreservingBOM(linked.beforeData) else { throw AgentChangeError.invalid(evidence.change.id) }
             restored[linked.effect.source] = NoteDocument(relativePath: linked.effect.source.relativePath, rawContent: source)
         }
-        let semantics = restored.mapValues(MarkdownSemanticDocument.init(parsing:))
-        let futureCatalog = context.catalog.compactMap { item -> LinkCatalogNote? in
+        var futureLinks = context.authoredLinks
+        let futureCatalog = context.catalog.map { item -> LinkCatalogNote in
             let id = item.id == primary.destination ? primary.source : item.id
-            guard let document = restored[id] else { return nil }
-            let derived = LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: semantics[id])
+            guard let document = restored[id] else { return item }
+            let semantic = MarkdownSemanticDocument(parsing: document)
+            futureLinks[item.id] = nil
+            futureLinks[id] = semantic.links
+            let derived = LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: semantic)
             return LinkCatalogNote(
                 id: id, title: derived.title, aliases: item.aliases,
                 headings: derived.headings, blockAnchors: derived.blockAnchors,
@@ -48,7 +63,7 @@ extension WorkspaceHandle {
         }
         let futureGraph = LinkGraphBuilder.build(
             generation: context.graph.generation, catalog: futureCatalog,
-            documents: semantics, resolutionScope: .workspace)
+            authoredLinks: futureLinks, resolutionScope: .workspace)
         for effect in move.effects where effect.rewrittenOccurrences > 0 {
             let currentLinks = (context.graph.outgoing[effect.destination] ?? []).sorted {
                 $0.occurrence.linkSpan.utf16LowerBound < $1.occurrence.linkSpan.utf16LowerBound
@@ -84,6 +99,7 @@ extension WorkspaceHandle {
                     source: primary.destination, expectedRevision: primary.afterFingerprint, updatedSource: primarySource,
                     rewrittenOccurrences: primary.rewrittenOccurrences))
         }
+        try await validateScopedMoveCohort(context)
         return .init(
             movedNote: primary.destination, destination: primary.source, graphGeneration: ordinary.graphGeneration,
             rewrites: rewrites.sorted { $0.source < $1.source })

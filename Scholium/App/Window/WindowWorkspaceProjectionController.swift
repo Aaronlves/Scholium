@@ -55,12 +55,12 @@ struct WindowWorkspaceProjectionCommit {
 @MainActor
 final class WindowWorkspaceProjectionController: ObservableObject {
     struct CommittedMoveProjection {
-        let note: WorkspaceNoteSnapshot
+        let note: WorkspaceNoteSummary
         let vault: RegisteredVault
     }
 
     struct CommittedFolderMoveProjection {
-        let notes: [WorkspaceNoteSnapshot]
+        let notes: [WorkspaceNoteSummary]
         let vault: RegisteredVault
     }
 
@@ -123,22 +123,13 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state.derivedRefreshStatus
     }
     var propertyFilterOptions: WindowPropertyFilterOptions { state.propertyFilterOptions }
-    private var propertyCompletionCache: [VaultQualifiedNoteID: (DocumentFingerprint, [String: [String]])] = [:]
-
     func propertyCompletionOptions(scope: SearchPresentationScope) -> WindowPropertyFilterOptions {
         guard scope == .triptych else {
             return scope == .currentVault ? state.propertyFilterOptions : WindowPropertyFilterOptions(properties: [])
         }
-        let notes = state.vaultSnapshotsByID.values.flatMap(\.documents)
-        let ids = Set(notes.map(\.id))
-        propertyCompletionCache = propertyCompletionCache.filter { ids.contains($0.key) }
-        let properties = notes.map { note -> [String: [String]] in
-            if let cached = propertyCompletionCache[note.id], cached.0 == note.fingerprint { return cached.1 }
-            let values = WindowDocumentLocation.workspace(note).filterableProperties()
-            propertyCompletionCache[note.id] = (note.fingerprint, values)
-            return values
-        }
-        return WindowPropertyFilterOptions(properties: properties)
+        return WindowPropertyFilterOptions(
+            properties: state.vaultSnapshotsByID.values.flatMap(\.documents).map(\.propertyTextValues)
+        )
     }
 
     var isRefreshingCatalog: Bool { state.isRefreshingCatalog }
@@ -224,7 +215,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         vaultID: UUID,
         stableNoteID: UUID? = nil,
         relativePath: String
-    ) -> WorkspaceNoteSnapshot? {
+    ) -> WorkspaceNoteSummary? {
         guard let documents = state.vaultSnapshotsByID[vaultID]?.documents else {
             return nil
         }
@@ -269,7 +260,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     }
 
     func refreshVisibleNoteSnapshots(
-        _ snapshotsByPath: [String: WorkspaceNoteSnapshot]
+        _ snapshotsByPath: [String: WorkspaceNoteSummary]
     ) {
         var next = state
         let refreshed = next.notes.map { location in
@@ -283,7 +274,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     /// Updates the cached vault and visible Library as one projection commit.
     /// Returns the vault metadata needed by the Document controller projection.
     func recordCommittedNote(
-        _ note: WorkspaceNoteSnapshot,
+        _ note: WorkspaceNoteSummary,
         visibleVaultID: UUID?,
         visibleSourceScope: LibrarySourceScope?
     ) -> RegisteredVault? {
@@ -384,7 +375,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         }
 
         var documents = vaultSnapshot.documents
-        var projectedNotes: [WorkspaceNoteSnapshot] = []
+        var projectedNotes: [WorkspaceNoteSummary] = []
         for move in commit.noteMoves {
             if let current = documents.first(where: {
                 $0.id == move.destination
@@ -407,7 +398,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                 rawContent: move.committedRawContent
             )
             guard document.fingerprint == move.committedRevision else { return nil }
-            let destination = WorkspaceNoteSnapshot(
+            let destination = WorkspaceNoteSummary(
                 id: move.destination,
                 vaultRole: source.vaultRole,
                 stableIdentity: .resolved(move.stableNoteID),
@@ -418,10 +409,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                     modificationDate: source.fileMetadata.modificationDate
                 ),
                 graphCounts: source.graphCounts,
-                headings: source.headings,
-                derivedProjectionState: .sourceAhead,
-                cachedSemanticDocument: source.cachedSemanticDocument,
-                cachedTitleProjection: source.cachedTitleProjection
+                derivedProjectionState: .sourceAhead
             )
             documents[sourceIndex] = destination
             projectedNotes.append(destination)
@@ -503,25 +491,34 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         else { return nil }
         let source = vaultSnapshot.documents[sourceIndex]
         guard source.fingerprint == commit.previousRevision else { return nil }
+        // The move receipt does not contain changed source bytes. A rewrite
+        // must come from the refreshed authoritative summary instead.
+        guard commit.committedRevision == source.fingerprint else { return nil }
 
-        let relocatedDocument = NoteDocument(
-            relativePath: commit.destination.relativePath,
-            rawContent: source.document.rawContent
-        )
-        guard relocatedDocument.fingerprint == commit.committedRevision else {
-            return nil
-        }
-        let destination = WorkspaceNoteSnapshot(
+        // A move result exposes the new exact revision but not its bytes. The
+        // global overlay only carries source-free metadata; retained sessions
+        // converge through the demand hydration path after publication.
+        let destination = WorkspaceNoteSummary(
             id: commit.destination,
             vaultRole: source.vaultRole,
             stableIdentity: stableIdentity,
-            document: relocatedDocument,
+            fingerprint: commit.committedRevision,
             fileMetadata: source.fileMetadata,
             graphCounts: source.graphCounts,
-            headings: source.headings,
-            derivedProjectionState: .sourceAhead,
-            cachedSemanticDocument: source.cachedSemanticDocument,
-            cachedTitleProjection: source.cachedTitleProjection
+            linkCatalog: LinkCatalogNote(
+                id: commit.destination,
+                title: source.linkCatalog.title,
+                aliases: source.linkCatalog.aliases,
+                headings: source.linkCatalog.headings,
+                blockAnchors: source.linkCatalog.blockAnchors,
+                ambiguousBlockAnchors: source.linkCatalog.ambiguousBlockAnchors
+            ),
+            title: source.title,
+            validationWarnings: source.validationWarnings,
+            propertyTextValues: source.propertyTextValues,
+            canonicalAliases: source.canonicalAliases,
+            canonicalKeywords: source.canonicalKeywords,
+            derivedProjectionState: .sourceAhead
         )
 
         var next = state
@@ -688,7 +685,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state.authors = Set(notes.flatMap(\.authors)).sorted()
         state.documentRevisions = Dictionary(
             uniqueKeysWithValues: notes.map {
-                ($0.relativePath, $0.document.fingerprint)
+                ($0.relativePath, $0.summary.fingerprint)
             })
         state.propertyFilterOptions = WindowPropertyFilterOptions(
             notes: notes

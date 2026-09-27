@@ -238,26 +238,40 @@ public enum IncomingLinkRewriter {
         documents: [VaultQualifiedNoteID: NoteDocument],
         catalog: [LinkCatalogNote],
         graph: GraphSnapshot,
+        sourceManifest: [SearchSourceManifestEntry]? = nil,
         vaultID: UUID,
         sourceFolder: VaultRelativeFolderPath,
         destinationFolder: VaultRelativeFolderPath,
         noteMoves: [FolderNoteMovePlan]
     ) -> FolderIncomingLinkRewritePlan? {
-        let sourceManifestHash = SearchSourceManifest.hash(
-            documents.map {
+        let manifest =
+            sourceManifest
+            ?? documents.map {
                 id, document in
                 SearchSourceManifestEntry(
                     vaultID: id.vaultID,
                     relativePath: id.relativePath,
                     fingerprint: document.fingerprint
                 )
-            })
+            }
+        let sourceManifestHash = SearchSourceManifest.hash(manifest)
         let sourcePrefix = sourceFolder.rawValue + "/"
         let destinationPrefix = destinationFolder.rawValue + "/"
         guard graph.contractVersion == GraphSnapshot.currentContractVersion,
             graph.sourceManifestHash == sourceManifestHash,
-            catalog.count == documents.count,
-            Set(catalog.map(\.id)) == Set(documents.keys),
+            catalog.count == manifest.count,
+            Set(catalog.map(\.id))
+                == Set(
+                    manifest.map {
+                        VaultQualifiedNoteID(vaultID: $0.vaultID, relativePath: $0.relativePath)
+                    }),
+            documents.allSatisfy({ id, document in
+                manifest.contains {
+                    $0.vaultID == id.vaultID
+                        && $0.relativePath == id.relativePath
+                        && $0.fingerprint == document.fingerprint
+                }
+            }),
             noteMoves.allSatisfy({ move in
                 move.source.vaultID == vaultID
                     && move.destination.vaultID == vaultID
@@ -589,23 +603,37 @@ public enum IncomingLinkRewriter {
         documents: [VaultQualifiedNoteID: NoteDocument],
         catalog: [LinkCatalogNote],
         graph: GraphSnapshot,
+        sourceManifest: [SearchSourceManifestEntry]? = nil,
         moving source: VaultQualifiedNoteID,
         to destination: VaultQualifiedNoteID
     ) -> IncomingLinkRewritePlan? {
-        let sourceManifestHash = SearchSourceManifest.hash(
-            documents.map { id, document in
+        let manifest =
+            sourceManifest
+            ?? documents.map { id, document in
                 SearchSourceManifestEntry(
                     vaultID: id.vaultID,
                     relativePath: id.relativePath,
                     fingerprint: document.fingerprint
                 )
-            })
+            }
+        let sourceManifestHash = SearchSourceManifest.hash(manifest)
         guard source.vaultID == destination.vaultID,
             graph.contractVersion == GraphSnapshot.currentContractVersion,
             graph.sourceManifestHash == sourceManifestHash,
             documents[source] != nil,
-            catalog.count == documents.count,
-            Set(catalog.map(\.id)) == Set(documents.keys)
+            catalog.count == manifest.count,
+            Set(catalog.map(\.id))
+                == Set(
+                    manifest.map {
+                        VaultQualifiedNoteID(vaultID: $0.vaultID, relativePath: $0.relativePath)
+                    }),
+            documents.allSatisfy({ id, document in
+                manifest.contains {
+                    $0.vaultID == id.vaultID
+                        && $0.relativePath == id.relativePath
+                        && $0.fingerprint == document.fingerprint
+                }
+            })
         else { return nil }
 
         let suppliedKeys = Set(

@@ -190,7 +190,7 @@ extension WindowModel {
         vault: RegisteredVault,
         sourceScope: LibrarySourceScope,
         refreshGeneration: UInt64,
-        visibleSnapshots: [WorkspaceNoteSnapshot]?
+        visibleSnapshots: [WorkspaceNoteSummary]?
     ) {
         guard refreshGeneration == identityRefreshGeneration,
             currentRegisteredVault?.id == vault.id,

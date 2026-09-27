@@ -190,8 +190,8 @@ extension WindowModel {
 
     @MainActor
     private func currentSelectionAttachment() async throws -> AgentChatAttachment {
-        guard let note = currentNote, let descriptor = currentDocumentDescriptor,
-            let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID
+        guard let note = currentNote?.hydratedSnapshot, let descriptor = currentDocumentDescriptor,
+            let noteID = note.stableIdentity.resolvedID
         else { throw AgentChatNoteMaterialError.selectionUnavailable }
         let session = documentController.session(for: descriptor)
         let mode = presentedDocumentMode
@@ -200,7 +200,7 @@ extension WindowModel {
             guard !session.hasUnsavedChanges,
                 session.renderedReadFingerprint == note.document.fingerprint.sha256,
                 let selection = session.readSelection,
-                let captured = MarkdownReviewSourceSelection.review(selection, source: note.rawContent)
+                let captured = MarkdownReviewSourceSelection.review(selection, source: note.document.rawContent)
             else { throw AgentChatNoteMaterialError.selectionUnavailable }
             snapshot = captured
         } else {
@@ -211,7 +211,7 @@ extension WindowModel {
         }
         return .init(
             noteID: noteID, vaultID: descriptor.reference.vaultID,
-            relativePath: note.relativePath, text: snapshot.excerpt, fingerprint: DocumentFingerprint(content: snapshot.source),
+            relativePath: note.id.relativePath, text: snapshot.excerpt, fingerprint: DocumentFingerprint(content: snapshot.source),
             sourceLine: snapshot.line, sourceRange: snapshot.sourceRange,
             source: mode == .read ? .savedSource : .editorSnapshot, vaultRole: descriptor.reference.vaultRole)
     }

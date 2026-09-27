@@ -5,7 +5,7 @@ extension WindowModel {
     func requestCurrentNoteExport() {
         guard canPerformNoteAction(.export),
             let descriptor = currentDocumentDescriptor,
-            let note = currentNote
+            let note = currentNote?.hydratedSnapshot
         else { return }
 
         noteExportPreparationInProgress = true
@@ -31,7 +31,7 @@ extension WindowModel {
                 guard self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey else {
                     throw NoteExportActionError.changedDuringPreparation
                 }
-                let document = NoteDocument(relativePath: note.relativePath, rawContent: source)
+                let document = NoteDocument(relativePath: note.id.relativePath, rawContent: source)
                 guard let capabilities = self.windowWorkspaceController.activeCapabilities else {
                     throw NoteExportActionError.changedDuringPreparation
                 }
@@ -56,7 +56,7 @@ extension WindowModel {
                     )
                 }
                 let controller = ScholiumNoteExportWindowController(
-                    document: document, title: note.displayName,
+                    document: document, title: note.summary.title,
                     embeddedImages: embeddedImages,
                     excludedRoots: excludedRoots,
                     appearance: workspaceStore.cssSnippetStore.selectedAppearanceProfile?.settings

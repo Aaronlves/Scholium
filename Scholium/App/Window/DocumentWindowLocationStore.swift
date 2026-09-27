@@ -259,7 +259,7 @@ final class DocumentWindowLocationStore {
         }
         let originalIndex = source.documentTabController.tabs.firstIndex { $0.id == tab.id } ?? 0
         let wasSelected = source.documentTabController.selectedTabID == tab.id
-        let transfer = try source.takeDocumentForTransfer(tabID: tab.id)
+        let transfer = try await source.takeDocumentForTransfer(tabID: tab.id)
         do {
             let deadline = ContinuousClock.now.advanced(by: .seconds(3))
             while transfer.session.editorSession.hasAttachedWebView, ContinuousClock.now < deadline {
