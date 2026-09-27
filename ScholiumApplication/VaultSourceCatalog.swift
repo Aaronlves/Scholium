@@ -92,6 +92,28 @@ actor VaultSourceCatalog {
         refreshFolders: Bool = true,
         consumePendingMeasurement: Bool = false
     ) async throws -> VaultSourceCatalogSnapshot {
+        try await prepareSnapshot(refreshFolders: refreshFolders)
+        let measurement =
+            consumePendingMeasurement
+            ? pendingMeasurement
+            : lastMeasurement
+        if consumePendingMeasurement {
+            pendingMeasurement = Self.emptyMeasurement
+        }
+        return makeSnapshot(measurement: measurement)
+    }
+
+    /// The live-source checks only need path and exact revision. Keep their
+    /// projection inside the catalog so they do not construct a full snapshot
+    /// (ordered documents, source versions, file metadata, and semantics).
+    func sourceInventory(
+        refreshFolders: Bool = true
+    ) async throws -> [String: DocumentFingerprint] {
+        try await prepareSnapshot(refreshFolders: refreshFolders)
+        return records.mapValues { $0.document.fingerprint }
+    }
+
+    private func prepareSnapshot(refreshFolders: Bool) async throws {
         if !isInitialized || needsFullReconcile {
             try await reconcile()
         } else {
@@ -103,14 +125,6 @@ actor VaultSourceCatalog {
                 }
             }
         }
-        let measurement =
-            consumePendingMeasurement
-            ? pendingMeasurement
-            : lastMeasurement
-        if consumePendingMeasurement {
-            pendingMeasurement = Self.emptyMeasurement
-        }
-        return makeSnapshot(measurement: measurement)
     }
 
     func reconcile() async throws {

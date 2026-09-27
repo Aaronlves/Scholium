@@ -116,7 +116,7 @@ struct WorkspaceSourceInventoryInput: Sendable {
 struct WorkspaceSourceInventorySnapshot: Sendable {
     let order: Int
     let vaultID: UUID
-    let snapshot: VaultSourceCatalogSnapshot
+    let fingerprints: [String: DocumentFingerprint]
 }
 
 struct WorkspaceRefreshPayload: Sendable {
@@ -910,20 +910,21 @@ extension WorkspaceHandle {
                 guard let catalog = services.sourceCatalogs[vaultID] else {
                     throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
                 }
-                let source = try await catalog.snapshot(refreshFolders: false)
-                let publishedForVault = published.filter {
-                    $0.key.vaultID == vaultID
+                let observed = try await catalog.sourceInventory(
+                    refreshFolders: false
+                )
+                let publishedCount = published.keys.reduce(into: 0) { count, id in
+                    if id.vaultID == vaultID { count += 1 }
                 }
-                guard source.documents.count == publishedForVault.count else {
+                guard observed.count == publishedCount else {
                     changed.insert(vaultID)
                     continue
                 }
-                for document in source.documents {
+                for (path, fingerprint) in observed {
                     let id = VaultQualifiedNoteID(
-                        vaultID: vaultID,
-                        relativePath: document.relativePath
+                        vaultID: vaultID, relativePath: path
                     )
-                    if publishedForVault[id] != document.fingerprint {
+                    if published[id] != fingerprint {
                         changed.insert(vaultID)
                         break
                     }
@@ -964,7 +965,7 @@ extension WorkspaceHandle {
                     return WorkspaceSourceInventorySnapshot(
                         order: input.order,
                         vaultID: input.vaultID,
-                        snapshot: try await input.catalog.snapshot()
+                        fingerprints: try await input.catalog.sourceInventory()
                     )
                 }
             }
@@ -976,14 +977,14 @@ extension WorkspaceHandle {
         }
         var observed: [VaultQualifiedNoteID: DocumentFingerprint] = [:]
         for source in sources {
-            for document in source.snapshot.documents {
+            for (path, fingerprint) in source.fingerprints {
                 try Task.checkCancellation()
                 observed[
                     VaultQualifiedNoteID(
                         vaultID: source.vaultID,
-                        relativePath: document.relativePath
+                        relativePath: path
                     )] =
-                    document.fingerprint
+                    fingerprint
             }
         }
         return observed

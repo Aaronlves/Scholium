@@ -234,7 +234,7 @@ struct MarkdownEditorReuseTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Direct SwiftUI document replacement eventually reuses a prepared runtime")
+    @Test("Direct SwiftUI A to B to A replacement reuses one safely prepared runtime")
     func directReplacementUsesPreparedRuntime() async throws {
         let pool = MarkdownEditorWebViewPool()
         let harness = SwitchingHarness()
@@ -242,36 +242,319 @@ struct MarkdownEditorReuseTests {
             harness.close()
             pool.removeAll()
         }
-        let sessions = (0..<4).map { _ in makeSession(pool: pool) }
+        let sessions = (0..<2).map { _ in makeSession(pool: pool) }
+        let sources = [
+            "\u{FEFF}# A\r\n\r\n中文 😀 e\u{301}。\r\n",
+            "# B\r\n\r\n独立 🦉。\r\n",
+        ]
+        let editedA = sources[0] + "新增 😀。\r\n"
+        let editedB = sources[1] + "只属于 B。\r\n"
         var pageSentinels: Set<String> = []
         var observedViews: [WeakWebView] = []
-        for index in sessions.indices {
-            let source = "# Synthetic \(index)\r\n\r\n独立正文 😀 \(index)。\r\n"
-            if index == 0 {
-                try await harness.show(sessions[index], source: source, title: "\(index)", mode: .livePreview)
+        for (step, index) in [0, 1, 0].enumerated() {
+            let session = sessions[index]
+            if step == 0 {
+                try await harness.show(session, source: sources[index], title: "A", mode: .livePreview)
             } else {
                 // One SwiftUI update replaces identity. There is no empty
                 // intermediate state or wait for pool admission in this path.
-                try await harness.replace(sessions[index], source: source, title: "\(index)", mode: .livePreview)
-                #expect(!sessions[index - 1].hasAttachedWebView)
+                try await harness.replace(session, source: sources[index], title: index == 0 ? "A" : "B", mode: .livePreview)
+                #expect(!sessions[1 - index].hasAttachedWebView)
             }
-            let webView = try #require(sessions[index].webView)
+            let webView = try #require(session.webView)
             if !observedViews.contains(where: { $0.value === webView }) {
                 observedViews.append(WeakWebView(webView))
             }
             let sentinel = try #require(
                 try await webView.callAsyncJavaScript(
                     "window.reuseTestNavigationSentinel ??= candidate; return window.reuseTestNavigationSentinel;",
-                    arguments: ["candidate": "page-\(index)"], in: nil, contentWorld: .page) as? String)
+                    arguments: ["candidate": "page-\(step)"], in: nil, contentWorld: .page) as? String)
             pageSentinels.insert(sentinel)
-            #expect(Data(try await sessions[index].currentText().utf8) == Data(source.utf8))
-            #expect(sessions[index].context?.undoLabel == nil)
+            if step == 0 {
+                _ = try await session.send(
+                    .replacePassage(
+                        expectedText: sources[0], fromUTF16: 0,
+                        toUTF16: sources[0].utf16.count,
+                        replacement: editedA, preserveSelection: false
+                    ), in: webView)
+                #expect(Data(try await session.currentText().utf8) == Data(editedA.utf8))
+            } else if step == 1 {
+                #expect(Data(try await session.currentText().utf8) == Data(sources[1].utf8))
+                #expect(session.context?.undoLabel == nil)
+                _ = try await session.send(
+                    .replacePassage(
+                        expectedText: sources[1], fromUTF16: 0,
+                        toUTF16: sources[1].utf16.count,
+                        replacement: editedB, preserveSelection: false
+                    ), in: webView)
+                #expect(Data(try await session.currentText().utf8) == Data(editedB.utf8))
+            } else {
+                #expect(Data(try await session.currentText().utf8) == Data(editedA.utf8))
+                #expect(session.context?.undoLabel != nil)
+                try await harness.undo()
+                #expect(Data(try await session.currentText().utf8) == Data(sources[0].utf8))
+                #expect(Data(sessions[1].checkedSource.utf8) == Data(editedB.utf8))
+            }
         }
-        // A replacement may allocate before the outgoing page is cleared;
-        // subsequent replacements must consume an already prepared page.
-        #expect(observedViews.count < sessions.count)
-        #expect(pageSentinels.count < sessions.count)
+        #expect(observedViews.count == 1)
+        #expect(pageSentinels.count == 1)
         await harness.closeAndDrain()
+    }
+
+    @Test("A page retires after its bounded safe reuses without losing document history")
+    func boundedReuseRetiresDetachedPage() async throws {
+        let pool = MarkdownEditorWebViewPool(maximumSafeReuses: 2)
+        let harness = SwitchingHarness()
+        defer {
+            harness.close()
+            pool.removeAll()
+        }
+        let sourceA = "\u{FEFF}# A\r\n\r\n中文 😀 e\u{301}。\r\n"
+        let sourceB = "# B\r\n\r\n独立 🦉。\r\n"
+        let sourceC = "# C\n"
+        let editedA = sourceA + "A 的修改。\r\n"
+        let editedB = sourceB + "B 的修改。\r\n"
+        let a = makeSession(pool: pool)
+        let b = makeSession(pool: pool)
+        let c = makeSession(pool: pool)
+
+        try await harness.show(a, source: sourceA, title: "A")
+        var firstPage: WindowAttachedWebView? = try #require(a.webView as? WindowAttachedWebView)
+        let retiredPage = WeakWebView(try #require(firstPage))
+        _ = try await a.send(
+            .replacePassage(
+                expectedText: sourceA, fromUTF16: 0, toUTF16: sourceA.utf16.count,
+                replacement: editedA, preserveSelection: false
+            ), in: try #require(firstPage))
+
+        try await harness.replace(b, source: sourceB, title: "B")
+        #expect(b.webView === firstPage)
+        #expect(firstPage?.editorReuseCount == 1)
+        _ = try await b.send(
+            .replacePassage(
+                expectedText: sourceB, fromUTF16: 0, toUTF16: sourceB.utf16.count,
+                replacement: editedB, preserveSelection: false
+            ), in: try #require(firstPage))
+
+        try await harness.replace(a, source: sourceA, title: "A")
+        #expect(a.webView === firstPage)
+        #expect(firstPage?.editorReuseCount == 2)
+        #expect(Data(try await a.currentText().utf8) == Data(editedA.utf8))
+
+        try await harness.replace(c, source: sourceC, title: "C")
+        #expect(c.webView !== firstPage)
+        #expect((c.webView as? WindowAttachedWebView)?.editorReuseCount == 0)
+        #expect(Data(try await c.currentText().utf8) == Data(sourceC.utf8))
+        // A delayed duplicate recycle cannot resurrect the retired page.
+        pool.recycle(try #require(firstPage))
+        #expect(pool.take() == nil)
+        firstPage = nil
+        let releaseDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while retiredPage.value != nil && ContinuousClock.now < releaseDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(retiredPage.value == nil)
+
+        try await harness.replace(b, source: sourceB, title: "B")
+        #expect(Data(try await b.currentText().utf8) == Data(editedB.utf8))
+        try await harness.undo()
+        #expect(Data(try await b.currentText().utf8) == Data(sourceB.utf8))
+        #expect(Data(a.checkedSource.utf8) == Data(editedA.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("A cancelled acquisition cannot take the outgoing page from its successor")
+    func cancelledAcquisitionCannotStealPreparedPage() async throws {
+        let gate = PreparationGate()
+        let pool = MarkdownEditorWebViewPool(preparationGate: { await gate.pauseOnce() })
+        let harness = SwitchingHarness()
+        defer {
+            gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        let first = makeSession(pool: pool)
+        try await harness.show(first, source: "# First\r\n\r\n中文 😀。\r\n", title: "First")
+        let webView = try #require(first.webView)
+        let cancelledPage = AcquiredPage()
+        let cancelled = Task { @MainActor in
+            cancelledPage.value = await pool.takeWhenPrepared()
+        }
+        try await waitForAcquisitions(pool, count: 1)
+        cancelled.cancel()
+        await cancelled.value
+        #expect(cancelledPage.value == nil)
+        let successorPage = AcquiredPage()
+        let successor = Task { @MainActor in
+            successorPage.value = await pool.takeWhenPrepared()
+        }
+        try await waitForAcquisitions(pool, count: 1)
+        try await harness.hideWithoutWaitingForPool()
+        try await gate.waitUntilPaused()
+        #expect(!first.hasAttachedWebView)
+        #expect(pool.waitingAcquisitionCount == 1)
+        gate.resume()
+        await successor.value
+        let handedOff = try #require(successorPage.value)
+        #expect(handedOff === webView)
+        #expect(pool.waitingAcquisitionCount == 0)
+        pool.recycle(handedOff)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A pending SwiftUI mount cannot attach after B is replaced by C")
+    func replacedPendingMountCannotAttach() async throws {
+        let gate = PreparationGate()
+        let pool = MarkdownEditorWebViewPool(preparationGate: { await gate.pauseOnce() })
+        let harness = SwitchingHarness()
+        defer {
+            gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        let first = makeSession(pool: pool)
+        let discarded = makeSession(pool: pool)
+        let successor = makeSession(pool: pool)
+        try await harness.show(first, source: "# A\r\n\r\n中文 😀。\r\n", title: "A")
+        let originalPage = try #require(first.webView)
+        _ = try await originalPage.callAsyncJavaScript(
+            "window.reuseTestNavigationSentinel = 'original-page';",
+            arguments: [:], in: nil, contentWorld: .page)
+        try await harness.beginReplacement(
+            discarded, source: "# B\n", title: "B")
+        try await gate.waitUntilPaused()
+        try await waitForAcquisitions(pool, count: 1)
+        #expect(!discarded.hasAttachedWebView)
+        let serial = pool.acquisitionSerial
+        harness.replacePending(successor, source: "# C\r\n\r\n独立 🦉。\r\n", title: "C")
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while pool.acquisitionSerial == serial {
+            guard ContinuousClock.now < deadline else {
+                Issue.record("C did not register a pending page acquisition.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        gate.resume()
+        try await harness.waitForPrepared(successor)
+        #expect(!discarded.hasAttachedWebView)
+        #expect(successor.webView === originalPage)
+        #expect(try await harness.javascript("return window.reuseTestNavigationSentinel;") as? String == "original-page")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Window invalidation resumes a waiting mount without publishing a late page")
+    func invalidationWhilePreparingResumesWaiter() async throws {
+        let gate = PreparationGate()
+        let pool = MarkdownEditorWebViewPool(preparationGate: { await gate.pauseOnce() })
+        let harness = SwitchingHarness()
+        defer {
+            gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        let first = makeSession(pool: pool)
+        try await harness.show(first, source: "# First\n", title: "First")
+        let pendingPage = AcquiredPage()
+        let pending = Task { @MainActor in
+            pendingPage.value = await pool.takeWhenPrepared()
+        }
+        try await waitForAcquisitions(pool, count: 1)
+        try await harness.hideWithoutWaitingForPool()
+        try await gate.waitUntilPaused()
+        pool.invalidate()
+        await pending.value
+        #expect(pendingPage.value == nil)
+        gate.resume()
+        await Task.yield()
+        #expect(!pool.hasPreparedView)
+        #expect(pool.waitingAcquisitionCount == 0)
+        await harness.closeAndDrain()
+    }
+
+    @Test("An unanswered outgoing reset expires and cannot reclaim the new page")
+    func expiredAcquisitionFallsBackToFreshPage() async throws {
+        let gate = PreparationGate()
+        let pool = MarkdownEditorWebViewPool(
+            acquisitionDeadline: .milliseconds(400),
+            preparationGate: { await gate.pauseOnce() })
+        let harness = SwitchingHarness()
+        defer {
+            gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        let first = makeSession(pool: pool)
+        let second = makeSession(pool: pool)
+        let sourceB = "\u{FEFF}# B\r\n\r\n新页 😀 e\u{301}。\r\n"
+        try await harness.show(first, source: "# A\n", title: "A")
+        let oldPage = try #require(first.webView)
+        try await harness.beginReplacement(second, source: sourceB, title: "B")
+        try await gate.waitUntilPaused()
+        #expect(!second.hasAttachedWebView)
+        try await harness.waitForPrepared(second)
+        let newPage = try #require(second.webView)
+        #expect(newPage !== oldPage)
+        #expect(Data(try await second.currentText().utf8) == Data(sourceB.utf8))
+        #expect(pool.waitingAcquisitionCount == 0)
+        gate.resume()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while pool.preparationSettledSerial == 0 {
+            guard ContinuousClock.now < deadline else {
+                Issue.record("The abandoned reset did not settle after its gate was released.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!pool.hasPreparedView)
+        #expect(pool.take() == nil)
+        #expect(second.webView === newPage)
+        #expect(Data(try await second.currentText().utf8) == Data(sourceB.utf8))
+        await harness.closeAndDrain()
+    }
+
+    private func waitForAcquisitions(_ pool: MarkdownEditorWebViewPool, count: Int) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while pool.waitingAcquisitionCount != count {
+            guard ContinuousClock.now < deadline else {
+                Issue.record("The expected page acquisition was not registered.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    @MainActor
+    private final class AcquiredPage {
+        var value: WindowAttachedWebView?
+    }
+
+    @MainActor
+    private final class PreparationGate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var intercepted = false
+
+        func pauseOnce() async {
+            guard !intercepted else { return }
+            intercepted = true
+            await withCheckedContinuation { continuation = $0 }
+        }
+
+        func waitUntilPaused() async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while continuation == nil {
+                guard ContinuousClock.now < deadline else {
+                    Issue.record("The outgoing page did not reach its preparation gate.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func resume() {
+            continuation?.resume()
+            continuation = nil
+        }
     }
 
     @Test(
@@ -453,9 +736,29 @@ struct MarkdownEditorReuseTests {
             _ session: MarkdownEditorSession, source: String, title: String,
             mode: MarkdownEditorMode = .source
         ) async throws {
+            try await beginReplacement(session, source: source, title: title, mode: mode)
+            try await waitUntilPrepared(session)
+        }
+
+        func beginReplacement(
+            _ session: MarkdownEditorSession, source: String, title: String,
+            mode: MarkdownEditorMode = .source
+        ) async throws {
             let previous = try #require(attachment.current?.session)
             try await previous.captureStateForViewReconstruction()
             attachment.current = Document(session: session, source: source, title: title, mode: mode)
+            try await wait("Previous editor did not detach") { !previous.hasAttachedWebView }
+        }
+
+        func replacePending(
+            _ session: MarkdownEditorSession, source: String, title: String,
+            mode: MarkdownEditorMode = .source
+        ) {
+            attachment.current = Document(session: session, source: source, title: title, mode: mode)
+            hostingController?.view.layoutSubtreeIfNeeded()
+        }
+
+        func waitForPrepared(_ session: MarkdownEditorSession) async throws {
             try await waitUntilPrepared(session)
         }
 
@@ -483,16 +786,18 @@ struct MarkdownEditorReuseTests {
         }
 
         func hideCapturingState() async throws {
+            let pool = attachment.current?.session.webViewPool
+            try await hideWithoutWaitingForPool()
+            if let pool {
+                try await wait("The detached runtime was not prepared for reuse") { pool.hasPreparedView }
+            }
+        }
+
+        func hideWithoutWaitingForPool() async throws {
             let session = try #require(attachment.current?.session)
             try await session.captureStateForViewReconstruction()
             attachment.current = nil
             try await wait("SwiftUI did not detach the preceding editor") { !session.hasAttachedWebView }
-            if let pool = session.webViewPool {
-                // Await production admission, which erases the preceding
-                // document before publishing a reusable shell. Measurement
-                // includes this wait in the transition's elapsed time.
-                try await wait("The detached runtime was not prepared for reuse") { pool.hasPreparedView }
-            }
         }
 
         func javascript(_ body: String, arguments: [String: Any] = [:]) async throws -> Any? {

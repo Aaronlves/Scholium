@@ -15,6 +15,8 @@ enum EditorPastedImageSource: Sendable {
 /// private descendant views for a premature menu, or opens a second nested
 /// menu loop.
 final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProviding {
+    /// The page owns its reuse age; only its window pool advances this value.
+    var editorReuseCount = 0
     var onFirstWindowAttachment: (() -> Void)?
     var onPasteImage: ((EditorPastedImageSource) -> Bool)?
     weak var editorSession: MarkdownEditorSession?

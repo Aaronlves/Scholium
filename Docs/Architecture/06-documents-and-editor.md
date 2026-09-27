@@ -249,7 +249,7 @@ Status owns dated results. Focused checks cannot pass the complete gate.
 | Document workflow | `DocumentController` / `DocumentSessionStore`: identity, modes, save/conflict; no DOM. |
 | Editing authority | CodeMirror / `exact-source-history.ts`: source, selection, composition, Undo; no filesystem. |
 | Checked transport | `MarkdownEditorSession`: mirror, request admission, recovery. `MarkdownEditorWebView.Coordinator`: page lifecycle/routing; no second buffer. |
-| Native viewport | `DocumentEditorHost`: active surface. `DocumentWebViewContainer`: geometry/input/accessibility beneath the native toolbar. |
+| Native viewport | `DocumentEditorHost`: active surface. `MarkdownEditorMountView`: cancellable page acquisition. `DocumentWebViewContainer`: geometry/input/accessibility. |
 | Native environment | `DocumentWebEnvironment`: attached-page system-color/inset projection; no source, scroll or hit-testing. |
 | Web presentation | Semantic projections, `scroll-coordinator.ts`, `live-presentation-layout.ts`: rendering/restoration; no save authority. |
 | Independent controls | `document-title.ts`: filename drafts/rename receipts, shared composition gate; no Markdown edits. `EditorWritingContinuationController`: cancellable requests/publications, bridge-owned admission. |

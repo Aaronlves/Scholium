@@ -3,6 +3,25 @@ import ScholiumContracts
 import SwiftUI
 import WebKit
 
+/// The representable can exist while its preceding document page is being
+/// cleared. Only the fully initialized container joins the native hierarchy.
+@MainActor
+final class MarkdownEditorMountView: NSView {
+    private(set) var container: DocumentWebViewContainer?
+    var pendingRepresentation: MarkdownEditorWebView?
+    var acquisition: Task<Void, Never>?
+    var isDismantled = false
+
+    func install(_ container: DocumentWebViewContainer) {
+        guard !isDismantled, self.container == nil else { return }
+        self.container = container
+        pendingRepresentation = nil
+        container.frame = bounds
+        container.autoresizingMask = [.width, .height]
+        addSubview(container)
+    }
+}
+
 struct MarkdownEditorWebView: NSViewRepresentable {
     @Environment(\.scholiumDocumentSurfaceVisibility)
     private var surfaceVisibility
@@ -66,14 +85,45 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         )
     }
 
-    func makeNSView(context: Context) -> DocumentWebViewContainer {
+    func makeNSView(context: Context) -> MarkdownEditorMountView {
+        let mount = MarkdownEditorMountView()
+        mount.pendingRepresentation = self
+        let pool = session.webViewPool
+        if let reusedWebView = pool?.take() {
+            attach(to: mount, coordinator: context.coordinator, reusedWebView: reusedWebView)
+        } else if let pool, pool.hasOutgoingView {
+            mount.acquisition = Task { @MainActor [weak mount, coordinator = context.coordinator] in
+                let prepared = await pool.takeWhenPrepared()
+                guard let mount, !mount.isDismantled, !Task.isCancelled else {
+                    if let prepared { pool.recycle(prepared) }
+                    return
+                }
+                mount.acquisition = nil
+                guard let representation = mount.pendingRepresentation else {
+                    if let prepared { pool.recycle(prepared) }
+                    return
+                }
+                representation.attach(
+                    to: mount, coordinator: coordinator, reusedWebView: prepared)
+            }
+        } else {
+            attach(to: mount, coordinator: context.coordinator, reusedWebView: nil)
+        }
+        return mount
+    }
+
+    private func attach(
+        to mount: MarkdownEditorMountView,
+        coordinator: Coordinator,
+        reusedWebView: WindowAttachedWebView?
+    ) {
+        guard !mount.isDismantled, mount.container == nil else { return }
         let attachmentSource = session.sourceForViewAttachment(
             proposedSource: source,
             documentID: documentID
         )
-        let reusedWebView = session.webViewPool?.take()
         let contentController = reusedWebView?.configuration.userContentController ?? WKUserContentController()
-        contentController.add(context.coordinator, name: "scholium")
+        contentController.add(coordinator, name: "scholium")
         let interfaceLocalization = WebKitInterfaceLocalization.current()
         let webView: WindowAttachedWebView
         if let reusedWebView {
@@ -150,37 +200,46 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
             webView = WindowAttachedWebView(frame: .zero, configuration: configuration)
         }
-        context.coordinator.activeWebView = webView
+        coordinator.activeWebView = webView
         webView.editorSession = session
         webView.onPasteImage = onPasteImage
         webView.onPassageAction = onPassageAction
-        webView.navigationDelegate = context.coordinator
+        webView.navigationDelegate = coordinator
         webView.setValue(false, forKey: "drawsBackground")
-        context.coordinator.documentID = documentID
-        context.coordinator.documentTitle = documentTitle
-        context.coordinator.source = attachmentSource
-        context.coordinator.startingFingerprint = DocumentFingerprint(content: attachmentSource).sha256
-        context.coordinator.lastModeInput = mode
-        context.coordinator.presentationCSS = presentationCSS
-        context.coordinator.userCSS = userCSS
-        context.coordinator.linkPreviews = linkPreviews
-        context.coordinator.writingContinuationEnabled = writingContinuationEnabled
-        context.coordinator.writingContinuationContextKey = writingContinuationContextKey
-        context.coordinator.writingIndexContextKey = writingIndexContextKey
-        context.coordinator.writingContinuationQuery = writingContinuationQuery
-        context.coordinator.initialScrollFraction = initialScrollFraction
-        context.coordinator.initialScrollAnchor = initialScrollAnchor
+        coordinator.documentID = documentID
+        coordinator.documentTitle = documentTitle
+        coordinator.source = attachmentSource
+        coordinator.startingFingerprint = DocumentFingerprint(content: attachmentSource).sha256
+        coordinator.lastModeInput = mode
+        coordinator.presentationCSS = presentationCSS
+        coordinator.userCSS = userCSS
+        coordinator.linkPreviews = linkPreviews
+        coordinator.writingContinuationEnabled = writingContinuationEnabled
+        coordinator.writingContinuationContextKey = writingContinuationContextKey
+        coordinator.writingIndexContextKey = writingIndexContextKey
+        coordinator.writingContinuationQuery = writingContinuationQuery
+        coordinator.initialScrollFraction = initialScrollFraction
+        coordinator.initialScrollAnchor = initialScrollAnchor
         if requiresMathRuntime {
-            context.coordinator.requestMathRuntimeIfNeeded(in: webView)
+            coordinator.requestMathRuntimeIfNeeded(in: webView)
         }
-        context.coordinator.onAskAgent = onAskAgent
-        context.coordinator.performanceDocumentID = performanceDocumentID
+        coordinator.onAskAgent = onAskAgent
+        coordinator.performanceDocumentID = performanceDocumentID
+        coordinator.onDocumentActivity = onDocumentActivity
+        coordinator.onRequestSave = onRequestSave
+        coordinator.onRequestFind = onRequestFind
+        coordinator.onRequestDocumentTitleRename = onRequestDocumentTitleRename
+        coordinator.linkCompletionQuery = linkCompletionQuery
+        coordinator.onLinkActivation = onLinkActivation
+        coordinator.onScrollFractionChange = onScrollFractionChange
+        coordinator.onScrollAnchorChange = onScrollAnchorChange
         session.setPresentationCSS(presentationCSS)
         session.setDocumentTitle(documentTitle)
         session.setWritingContinuation(enabled: writingContinuationEnabled, contextKey: writingContinuationContextKey)
         session.setWritingIndexContext(writingIndexContextKey)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
+        session.webViewPool?.registerAttached(webView)
         session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
 
         guard let editorHTML = Self.editorHTML(localization: interfaceLocalization),
@@ -194,15 +253,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 }
             )
             container.toolbarUnderlapEnabled = toolbarUnderlap
-            return container
+            mount.install(container)
+            return
         }
         if reusedWebView != nil {
-            webView.onFirstWindowAttachment = { [weak webView, weak coordinator = context.coordinator] in
+            webView.onFirstWindowAttachment = { [weak webView, weak coordinator] in
                 guard let webView else { return }
                 coordinator?.resumePreparedPage(in: webView, editorHTML: editorHTML)
             }
         } else {
-            context.coordinator.awaitingEditorLoad = true
+            coordinator.awaitingEditorLoad = true
             webView.onFirstWindowAttachment = { [weak webView] in
                 webView?.loadHTMLString(editorHTML, baseURL: nil)
             }
@@ -215,11 +275,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         )
         container.setSurfaceVisibility(surfaceVisibility)
         container.toolbarUnderlapEnabled = toolbarUnderlap
-        context.coordinator.surfaceVisibility = surfaceVisibility
-        return container
+        coordinator.surfaceVisibility = surfaceVisibility
+        mount.install(container)
     }
 
-    func updateNSView(_ container: DocumentWebViewContainer, context: Context) {
+    func updateNSView(_ mount: MarkdownEditorMountView, context: Context) {
+        guard let container = mount.container else {
+            mount.pendingRepresentation = self
+            return
+        }
+        mount.pendingRepresentation = nil
         container.toolbarUnderlapEnabled = toolbarUnderlap
         let webView = container.webView
         container.setSurfaceVisibility(surfaceVisibility)
@@ -293,8 +358,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
     }
 
-    static func dismantleNSView(_ container: DocumentWebViewContainer, coordinator: Coordinator) {
-        let webView = container.webView
+    static func dismantleNSView(_ mount: MarkdownEditorMountView, coordinator: Coordinator) {
+        mount.isDismantled = true
+        mount.acquisition?.cancel()
+        mount.acquisition = nil
+        mount.pendingRepresentation = nil
+        let webView = mount.container?.webView
         let canRecycle = coordinator.session.canRecycleWebView
         if let webView = webView as? WindowAttachedWebView {
             webView.onFirstWindowAttachment = nil
@@ -302,8 +371,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             webView.onPasteImage = nil
             webView.onPassageAction = nil
         }
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
-        webView.navigationDelegate = nil
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
+        webView?.navigationDelegate = nil
         coordinator.activeWebView = nil
         coordinator.session.removeCommittedTextSynchronizer()
         coordinator.session.removeSourceChangeHandler()
@@ -312,9 +381,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.cancelLinkCompletionQuery()
         coordinator.writingContinuation.cancel()
         coordinator.cancelDocumentTitleRename()
+        guard let webView else { return }
         coordinator.session.detach(webView)
         if canRecycle {
             coordinator.session.webViewPool?.recycle(webView)
+        } else {
+            coordinator.session.webViewPool?.abandonOutgoing(webView)
         }
     }
 

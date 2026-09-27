@@ -1443,6 +1443,64 @@ struct WorkspaceRuntimeTests {
         await runtime.shutdown()
     }
 
+    @Test("Fingerprint inventory follows exact source revisions without consuming snapshot measurements")
+    func sourceCatalogFingerprintInventory() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let services = await handle.services
+        let repository = try #require(
+            services.repositories[fixture.analysisNoteID.vaultID]
+        )
+        let catalog = VaultSourceCatalog(repository: repository)
+
+        let initial = try await catalog.sourceInventory(refreshFolders: false)
+        let firstSnapshot = try await catalog.snapshot(
+            refreshFolders: false, consumePendingMeasurement: true
+        )
+        #expect(
+            initial
+                == Dictionary(
+                    uniqueKeysWithValues:
+                        firstSnapshot.documents.map { ($0.relativePath, $0.fingerprint) }))
+        #expect(firstSnapshot.measurement.readFiles == initial.count)
+
+        let noteURL = fixture.analysesURL.appendingPathComponent("Exact.md")
+        let bytes =
+            Data([0xEF, 0xBB, 0xBF])
+            + Data("---\r\ntitle: Exact\r\nunknown: \"é\"\r\n---\r\n# Exact\r\nNo final newline".utf8)
+        try bytes.write(to: noteURL)
+        try await catalog.reconcile()
+        let added = try await catalog.sourceInventory(refreshFolders: false)
+        #expect(added.count == initial.count + 1)
+        #expect(added["Exact.md"] == DocumentFingerprint(data: bytes))
+        let addedSnapshot = try await catalog.snapshot(refreshFolders: false)
+        #expect(addedSnapshot.documents.first { $0.relativePath == "Exact.md" }?.sourceBytes == bytes)
+
+        let replacement = Data("# Changed\n".utf8)
+        try replacement.write(to: noteURL)
+        try await catalog.reconcile()
+        let changed = try await catalog.sourceInventory(refreshFolders: false)
+        #expect(changed["Exact.md"] == DocumentFingerprint(data: replacement))
+        #expect(changed["Exact.md"] != added["Exact.md"])
+
+        let renamedURL = fixture.analysesURL.appendingPathComponent("Renamed.md")
+        try FileManager.default.moveItem(at: noteURL, to: renamedURL)
+        try await catalog.reconcile()
+        let renamed = try await catalog.sourceInventory(refreshFolders: false)
+        #expect(renamed["Exact.md"] == nil)
+        #expect(renamed["Renamed.md"] == DocumentFingerprint(data: replacement))
+
+        try FileManager.default.removeItem(at: renamedURL)
+        try await catalog.reconcile()
+        #expect(try await catalog.sourceInventory(refreshFolders: false) == initial)
+        await runtime.shutdown()
+    }
+
     @Test("Source catalog deltas equal a clean rebuild and one save parses only one file")
     func sourceCatalogIncrementalEquivalence() async throws {
         let fixture = try await ApplicationFixture.make()
