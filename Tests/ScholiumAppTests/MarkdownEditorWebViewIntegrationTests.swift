@@ -3117,7 +3117,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         let plainSource = "Other paragraph.\n\nInline "
         #expect(
             !MarkdownEditorWebView.requiresMathRuntime(
-                source: plainSource,
                 linkPreviews: []
             ))
         let end = plainSource.utf16.count
@@ -3128,10 +3127,17 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
 
         try await harness.waitUntilReady()
+        #expect((try await harness.session.testingAccessibilitySnapshot()).mathRuntimeVersion == 0)
         try await harness.session.perform(.pastePlain, argument: "$x$.\n")
         harness.synchronizeLifecycleSourceFromSession()
         harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
         try await harness.waitUntilSelection(head: 0)
+        let firstPresentation = try await harness.waitUntilPresentation(
+            stage: "first newly typed expression"
+        ) {
+            $0.renderedMathCount == 1 && $0.mathRuntimeVersion == 1
+        }
+        #expect(firstPresentation.mathErrorCount == 0)
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
         harness.session.setMode(.livePreview)
@@ -3146,6 +3152,35 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await harness.session.currentText(for: harness.documentID)
                 == "Other paragraph.\n\nInline $x$.\n"
         )
+    }
+
+    @Test("Money, shell code, and escaped dollars do not load mathematics")
+    func literalDollarsDoNotLoadMathRuntime() async throws {
+        let source = "Price: $5. This is not a formula.\n\n```sh\necho $HOME\n```\n\n\\$literal\n"
+        #expect(!MarkdownEditorWebView.requiresMathRuntime(linkPreviews: []))
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let snapshot = try await harness.session.testingAccessibilitySnapshot()
+        #expect(snapshot.mathRuntimeVersion == 0)
+        #expect(snapshot.renderedMathCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        try await harness.session.perform(.pastePlain, argument: "\nAnother price: $9.\n")
+        #expect((try await harness.session.testingAccessibilitySnapshot()).mathRuntimeVersion == 0)
+    }
+
+    @Test("Initial inline and display mathematics load from actual projections")
+    func initialMathematicsLoadsOnDemand() async throws {
+        let source = "# Math\n\nInline $x^2$.\n\n$$\ny^2\n$$\n"
+        #expect(!MarkdownEditorWebView.requiresMathRuntime(linkPreviews: []))
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let snapshot = try await harness.waitUntilPresentation(stage: "initial mathematics") {
+            $0.mathRuntimeVersion == 1 && $0.renderedMathCount == 2 && $0.mathErrorCount == 0
+        }
+        #expect(snapshot.renderedMathCount == 2)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
     }
 
     @Test("Exact UTF-16 reveal selects source without changing bytes, generation, or undo")
@@ -6709,6 +6744,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             syntax: .embed,
             fragment: nil,
             htmlBody: "<h1>Embedded note</h1>"
+                + #"<p><span class="scholium-math scholium-math-inline" data-math-source="eA==" data-math-kind="inline"><code class="scholium-math-source">$x$</code></span></p>"#
                 + String(
                     repeating: "<p>Complete projected paragraph.</p>",
                     count: 90
@@ -6748,6 +6784,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                       duplicateTitleCount: [...body.querySelectorAll('h1')]
                         .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
                       hasTail: (body.textContent || '').includes('Complete editor embedded tail'),
+                      renderedMathCount: body.querySelectorAll('.scholium-math-rendered .katex').length,
                       scrolls: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
                       openBadgeCount: open.querySelectorAll('.scholium-system-symbol').length,
                       viewportTabIndex: viewport.tabIndex,
@@ -6766,6 +6803,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["bodyOwnsDocumentStyle"] as? Bool == true)
         #expect(snapshot["duplicateTitleCount"] as? Int == 0)
         #expect(snapshot["hasTail"] as? Bool == true)
+        #expect(snapshot["renderedMathCount"] as? Int == 1)
         #expect(snapshot["scrolls"] as? Bool == true)
         #expect(snapshot["openBadgeCount"] as? Int == 0)
         #expect(snapshot["viewportTabIndex"] as? Int == 0)
@@ -7935,7 +7973,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
                     Issue.record(
-                        "The editor did not apply \(stage); label=\(snapshot.label), liveMode=\(snapshot.liveModeClassCount), sourceMode=\(snapshot.sourceModeClassCount), liveProjectionDOM=\(snapshot.liveProjectionDOMCount), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutBlockCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary)."
+                        "The editor did not apply \(stage); label=\(snapshot.label), liveMode=\(snapshot.liveModeClassCount), sourceMode=\(snapshot.sourceModeClassCount), liveProjectionDOM=\(snapshot.liveProjectionDOMCount), mathRuntime=\(snapshot.mathRuntimeVersion), mathRendered=\(snapshot.renderedMathCount), mathErrors=\(snapshot.mathErrorCount), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutBlockCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary)."
                     )
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
@@ -8435,7 +8473,6 @@ struct MarkdownEditorWebViewIntegrationTests {
                 presentationCSS: sourceBox.presentationCSS,
                 userCSS: sourceBox.userCSS,
                 requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
-                    source: sourceBox.source,
                     linkPreviews: linkPreviews
                 ),
                 linkCompletionQuery: { _, _ in [] },

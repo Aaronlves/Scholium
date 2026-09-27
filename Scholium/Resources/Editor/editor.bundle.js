@@ -32513,9 +32513,41 @@ ${fence}
       node.tabIndex = -1;
     });
   }
+  function renderPreviewMathNodes(root) {
+    const ownerDocument = root.nodeType === 9 ? root : root.ownerDocument;
+    const runtime = ownerDocument.defaultView?.scholiumMath;
+    if (runtime?.version !== 1) return;
+    root.querySelectorAll(
+      ".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)"
+    ).forEach((element) => {
+      try {
+        const encodedSource = element.dataset.mathSource;
+        const kind = element.dataset.mathKind;
+        if (!encodedSource || kind !== "inline" && kind !== "display") return;
+        const source = new TextDecoder().decode(
+          Uint8Array.from(atob(encodedSource), (character) => character.charCodeAt(0))
+        );
+        const result = runtime.render({ source, kind });
+        if (!result.ok) {
+          element.classList.add("scholium-math-error");
+          element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
+          return;
+        }
+        const fallback = element.querySelector(".scholium-math-source");
+        const rendered = ownerDocument.createElement("span");
+        rendered.className = "scholium-math-output";
+        rendered.innerHTML = result.html;
+        fallback?.before(rendered);
+        element.classList.add("scholium-math-rendered");
+      } catch (_) {
+        element.classList.add("scholium-math-error");
+      }
+    });
+  }
   function populatePreviewDocument(body, preview) {
     body.innerHTML = preview.htmlBody;
     sanitizePreviewDocument(body);
+    renderPreviewMathNodes(body);
     const firstHeading = body.querySelector(":scope > h1:first-child");
     if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
       firstHeading.remove();
@@ -37082,6 +37114,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
           return build(transaction.state);
         }
+        if (options.shouldRefreshRuntime(transaction)) {
+          return {
+            ...previous,
+            decorations: decorations2(transaction.state, previous.presentations)
+          };
+        }
         if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
         if (activeProjectionSignature(
           options.selection.selection(transaction.startState).ranges,
@@ -37608,8 +37646,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         this.expression = expression;
       }
       expression;
+      runtimeReady = window.scholiumMath?.version === 1;
       eq(other) {
-        return other.expression.kind === this.expression.kind && other.expression.content === this.expression.content && other.expression.delimiterLength === this.expression.delimiterLength;
+        return other.runtimeReady === this.runtimeReady && other.expression.kind === this.expression.kind && other.expression.content === this.expression.content && other.expression.delimiterLength === this.expression.delimiterLength;
       }
       toDOM(view) {
         const element = document.createElement("span");
@@ -38964,7 +39003,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var liveDisplayMathProjection = createLiveDisplayMathProjection({
     selection: liveSelection,
     projections: liveProjectionIndex,
-    widget: (expression) => liveInlineWidgets.math(expression)
+    widget: (expression) => liveInlineWidgets.math(expression),
+    shouldRefreshRuntime: (transaction) => transaction.effects.some(
+      (effect) => effect.is(refreshLivePreviewEffect)
+    )
   });
   var liveFootnoteProjection = createLiveFootnoteProjection({
     selection: liveSelection,
@@ -41004,6 +41046,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     resolveDocumentTitleRename: documentTitle.resolveRename,
     refreshMathRuntime() {
       editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
+      renderPreviewMathNodes(document);
       return true;
     }
   };

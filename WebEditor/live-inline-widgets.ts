@@ -248,10 +248,13 @@ export function createLiveInlineWidgets(options: {
   }
 
   class MathWidget extends WidgetType {
+    readonly runtimeReady = window.scholiumMath?.version === 1;
+
     constructor(readonly expression: MathProjection) { super(); }
 
     eq(other: MathWidget) {
-      return other.expression.kind === this.expression.kind
+      return other.runtimeReady === this.runtimeReady
+        && other.expression.kind === this.expression.kind
         && other.expression.content === this.expression.content
         && other.expression.delimiterLength === this.expression.delimiterLength;
     }

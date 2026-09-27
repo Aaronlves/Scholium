@@ -40,10 +40,44 @@ function sanitizePreviewDocument(body: HTMLElement) {
   });
 }
 
+/** Renders only the reader's inert, source-backed mathematics nodes in Editor previews. */
+export function renderPreviewMathNodes(root: Document | HTMLElement) {
+  const ownerDocument = root.nodeType === 9 ? root as Document : (root as HTMLElement).ownerDocument;
+  const runtime = ownerDocument.defaultView?.scholiumMath;
+  if (runtime?.version !== 1) return;
+  root.querySelectorAll<HTMLElement>(
+    ".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)",
+  ).forEach((element) => {
+    try {
+      const encodedSource = element.dataset.mathSource;
+      const kind = element.dataset.mathKind;
+      if (!encodedSource || (kind !== "inline" && kind !== "display")) return;
+      const source = new TextDecoder().decode(
+        Uint8Array.from(atob(encodedSource), character => character.charCodeAt(0)),
+      );
+      const result = runtime.render({source, kind});
+      if (!result.ok) {
+        element.classList.add("scholium-math-error");
+        element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
+        return;
+      }
+      const fallback = element.querySelector(".scholium-math-source");
+      const rendered = ownerDocument.createElement("span");
+      rendered.className = "scholium-math-output";
+      rendered.innerHTML = result.html;
+      fallback?.before(rendered);
+      element.classList.add("scholium-math-rendered");
+    } catch (_) {
+      element.classList.add("scholium-math-error");
+    }
+  });
+}
+
 /** Installs inert rendered content while retaining the shared Document CSS owner. */
 export function populatePreviewDocument(body: HTMLElement, preview: LinkPreview) {
   body.innerHTML = preview.htmlBody;
   sanitizePreviewDocument(body);
+  renderPreviewMathNodes(body);
   const firstHeading = body.querySelector<HTMLElement>(":scope > h1:first-child");
   if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
     firstHeading.remove();

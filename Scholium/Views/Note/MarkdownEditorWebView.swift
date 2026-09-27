@@ -44,15 +44,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     var writingIndexContextKey = ""
     var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
 
-    static func requiresMathRuntime(
-        source: String,
-        linkPreviews: [DocumentLinkPreview]
-    ) -> Bool {
-        source.contains("$")
-            || linkPreviews.contains {
-                $0.htmlBody.contains("data-math-source=\"")
-                    && $0.htmlBody.contains("data-math-kind=\"")
-            }
+    static func requiresMathRuntime(linkPreviews: [DocumentLinkPreview]) -> Bool {
+        linkPreviews.contains {
+            $0.htmlBody.contains("data-math-source=\"")
+                && $0.htmlBody.contains("data-math-kind=\"")
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -275,6 +271,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if context.coordinator.linkPreviews != linkPreviews {
             context.coordinator.linkPreviews = linkPreviews
             session.setLinkPreviews(linkPreviews, in: source)
+            if requiresMathRuntime {
+                context.coordinator.requestMathRuntimeIfNeeded(in: webView)
+            }
         }
         if context.coordinator.documentID != documentID {
             context.coordinator.writingContinuation.cancel()
@@ -1026,11 +1025,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     )
                 }
                 return
-            }
-            if change.changes.contains(where: { $0.insert.contains("$") }),
-                let webView
-            {
-                requestMathRuntime(in: webView)
             }
         }
     }

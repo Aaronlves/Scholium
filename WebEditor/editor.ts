@@ -137,7 +137,7 @@ import {
   sampleEditorMemory,
   scheduleAfterNextPaint,
 } from "./performance";
-import {createPreviewPopoverController} from "./preview-popover";
+import {createPreviewPopoverController, renderPreviewMathNodes} from "./preview-popover";
 import {appendMarkdownBlocks} from "./markdown-fragment";
 import {createEditorScrollCoordinator, documentToolbarScrollMargin} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
@@ -544,6 +544,8 @@ const liveDisplayMathProjection = createLiveDisplayMathProjection({
   selection: liveSelection,
   projections: liveProjectionIndex,
   widget: (expression) => liveInlineWidgets.math(expression),
+  shouldRefreshRuntime: (transaction) => transaction.effects.some(
+    (effect) => effect.is(refreshLivePreviewEffect)),
 });
 const liveFootnoteProjection = createLiveFootnoteProjection({
   selection: liveSelection,
@@ -2856,6 +2858,7 @@ webkitWindow.scholiumEditor = {
   resolveDocumentTitleRename: documentTitle.resolveRename,
   refreshMathRuntime() {
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+    renderPreviewMathNodes(document);
     return true;
   },
 };

@@ -32,6 +32,32 @@ describe("live inline widget presentation", () => {
     );
   });
 
+  it("rebuilds a formula widget when its requested runtime arrives", () => {
+    const {document, window} = parseHTML("<html><body></body></html>");
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", window);
+    const expression = {
+      kind: "inline" as const,
+      content: "x",
+      delimiterLength: 1,
+      from: 0,
+      to: 3,
+      contentFrom: 1,
+      contentTo: 2,
+    };
+    const awaitingRuntime = widgets.math(expression);
+    expect(awaitingRuntime.toDOM({} as import("@codemirror/view").EditorView)
+      .classList.contains("scholium-math-error")).toBe(true);
+    window.scholiumMath = {
+      version: 1,
+      render: () => ({ok: true as const, html: "<span class='katex'>x</span>"}),
+    };
+    const ready = widgets.math(expression);
+    expect(awaitingRuntime.eq(ready)).toBe(false);
+    expect(ready.toDOM({} as import("@codemirror/view").EditorView)
+      .classList.contains("scholium-math-rendered")).toBe(true);
+  });
+
   it("returns a rendered formula to its exact source boundary on pointer input", () => {
     const {document, window} = parseHTML("<html><body></body></html>");
     vi.stubGlobal("document", document);

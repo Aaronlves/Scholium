@@ -5,16 +5,23 @@ import WebKit
 /// avoids reloading bundled JavaScript; initialization installs a fresh state.
 @MainActor
 final class MarkdownEditorWebViewPool {
+    private let idleLifetime: Duration
     private var idleWebView: WindowAttachedWebView?
     private var preparation: Task<Void, Never>?
+    private var expiry: Task<Void, Never>?
     private var generation = 0
     private var isInvalidated = false
+
+    init(idleLifetime: Duration = .seconds(30)) {
+        self.idleLifetime = idleLifetime
+    }
 
     var hasPreparedView: Bool { idleWebView != nil }
 
     func take() -> WindowAttachedWebView? {
-        defer { idleWebView = nil }
-        return idleWebView
+        guard let webView = idleWebView else { return nil }
+        removeAll()
+        return webView
     }
 
     func recycle(_ webView: WKWebView) {
@@ -37,6 +44,14 @@ final class MarkdownEditorWebViewPool {
             else { return }
             self.idleWebView = webView
             self.preparation = nil
+            self.expiry = Task { @MainActor [weak self, idleLifetime = self.idleLifetime] in
+                try? await Task.sleep(for: idleLifetime)
+                guard !Task.isCancelled, let self,
+                    self.generation == expectedGeneration,
+                    self.idleWebView != nil
+                else { return }
+                self.removeAll()
+            }
         }
     }
 
@@ -44,6 +59,8 @@ final class MarkdownEditorWebViewPool {
         generation &+= 1
         preparation?.cancel()
         preparation = nil
+        expiry?.cancel()
+        expiry = nil
         idleWebView = nil
     }
 

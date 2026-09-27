@@ -721,7 +721,6 @@ struct NoteContentView<ShellNotices: View>: View {
                 presentationCSS: documentPresentationCSS,
                 userCSS: state.livePreviewCSS,
                 requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
-                    source: editingSource,
                     linkPreviews: documentSession.previewCatalog?.links ?? []
                 ),
                 linkCompletionQuery: queryEditorLinkCompletions,

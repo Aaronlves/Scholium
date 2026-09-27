@@ -337,7 +337,7 @@ struct ExternalMarkdownWindowView: View {
                         mode: model.mode.editorMode ?? .livePreview,
                         presentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
                         userCSS: "",
-                        requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(source: snapshot.source, linkPreviews: []),
+                        requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(linkPreviews: []),
                         linkCompletionQuery: { _, _ in [] }, linkPreviews: [],
                         initialScrollFraction: 0, initialScrollAnchor: nil,
                         onDocumentActivity: { model.sourceChanged() },

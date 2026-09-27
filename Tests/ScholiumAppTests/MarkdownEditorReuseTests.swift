@@ -155,6 +155,85 @@ struct MarkdownEditorReuseTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A cleared idle page expires without discarding its document session")
+    func idlePageExpires() async throws {
+        let pool = MarkdownEditorWebViewPool(idleLifetime: .milliseconds(120))
+        let harness = SwitchingHarness()
+        defer {
+            harness.close()
+            pool.removeAll()
+        }
+        let source = "\u{FEFF}# Exact source\r\n\r\n中文 😀 e\u{301}。\r\n"
+        let edited = source + "Added 🦉。\r\n"
+        let session = makeSession(pool: pool)
+        try await harness.show(session, source: source, title: "Exact")
+        let previousWebView = WeakWebView(try #require(session.webView))
+        do {
+            let webView = try #require(session.webView)
+            _ = try await session.send(
+                .replacePassage(
+                    expectedText: source, fromUTF16: 0, toUTF16: source.utf16.count,
+                    replacement: edited, preserveSelection: false
+                ), in: webView)
+        }
+        let selection = try #require(session.context?.selections)
+        #expect(session.context?.undoLabel != nil)
+        try await harness.hideCapturingState()
+        #expect(pool.hasPreparedView)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while pool.hasPreparedView && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!pool.hasPreparedView)
+        let releaseDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while previousWebView.value != nil && ContinuousClock.now < releaseDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(previousWebView.value == nil)
+        let reopenStartedAt = ContinuousClock.now
+        try await harness.show(session, source: source, title: "Exact")
+        let reopenElapsed = reopenStartedAt.duration(to: ContinuousClock.now).components
+        let reopenMilliseconds =
+            Double(reopenElapsed.seconds) * 1_000
+            + Double(reopenElapsed.attoseconds) / 1e15
+        print("EDITOR_EXPIRED_REOPEN_PREPARATION_MS=\(String(format: "%.3f", reopenMilliseconds))")
+        #expect(session.webView !== previousWebView.value)
+        #expect(Data(try await session.currentText().utf8) == Data(edited.utf8))
+        #expect(session.context?.selections == selection)
+        #expect(session.context?.undoLabel != nil)
+        try await harness.undo()
+        #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Taking and replacing an idle page cancels its old expiry")
+    func oldExpiryCannotEvictReplacement() async throws {
+        let pool = MarkdownEditorWebViewPool(idleLifetime: .milliseconds(500))
+        let harness = SwitchingHarness()
+        defer {
+            harness.close()
+            pool.removeAll()
+        }
+        let session = makeSession(pool: pool)
+        try await harness.show(session, source: "# Timer\n", title: "Timer")
+        try await harness.hideCapturingState()
+        try await Task.sleep(for: .milliseconds(300))
+        let webView = try #require(pool.take())
+        #expect(!pool.hasPreparedView)
+        pool.recycle(webView)
+        let admissionDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !pool.hasPreparedView && ContinuousClock.now < admissionDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(pool.hasPreparedView)
+        try await Task.sleep(for: .milliseconds(250))
+        #expect(pool.hasPreparedView)
+        pool.invalidate()
+        #expect(!pool.hasPreparedView)
+        #expect(pool.take() == nil)
+        await harness.closeAndDrain()
+    }
+
     @Test("Direct SwiftUI document replacement eventually reuses a prepared runtime")
     func directReplacementUsesPreparedRuntime() async throws {
         let pool = MarkdownEditorWebViewPool()

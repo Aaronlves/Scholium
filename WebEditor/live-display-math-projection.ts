@@ -1,4 +1,4 @@
-import {Range, StateField, type EditorState, type Extension} from "@codemirror/state";
+import {Range, StateField, type EditorState, type Extension, type Transaction} from "@codemirror/state";
 import {Decoration, DecorationSet, EditorView, WidgetType} from "@codemirror/view";
 import type {MathProjection} from "./math";
 import {
@@ -19,6 +19,7 @@ export function createLiveDisplayMathProjection(options: {
   selection: LiveSelectionController;
   projections: LiveProjectionIndexController;
   widget(expression: MathProjection): WidgetType;
+  shouldRefreshRuntime(transaction: Transaction): boolean;
 }): {extension: Extension} {
   function decorations(
     state: EditorState,
@@ -53,6 +54,12 @@ export function createLiveDisplayMathProjection(options: {
     update(previous, transaction) {
       if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
         return build(transaction.state);
+      }
+      if (options.shouldRefreshRuntime(transaction)) {
+        return {
+          ...previous,
+          decorations: decorations(transaction.state, previous.presentations),
+        };
       }
       if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
       if (activeProjectionSignature(
