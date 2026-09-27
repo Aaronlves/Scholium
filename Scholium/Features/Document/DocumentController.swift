@@ -221,6 +221,47 @@ final class DocumentController: ObservableObject {
     var pendingHydrationCount: Int { pendingHydrations.count }
     var closedPresentationCount: Int { closedPresentations.count }
 
+    #if DEBUG
+        struct QAMemoryOwnerStats: Sendable {
+            let retainedSessions: Int
+            let leasedSessions: Int
+            let pinnedSessions: Int
+            let attachedWebViewSessions: Int
+            let fullSnapshots: Int
+            let pendingHydrations: Int
+            let closedPresentations: Int
+            let readProjectionEntries: Int
+            let readProjectionHTMLUTF8Bytes: Int
+            let editorPoolIdle: Int
+            let editorPoolAttached: Int
+            let editorPoolPreparing: Int
+            let editorPoolAbandonedLive: Int
+            let editorPoolWaiting: Int
+        }
+
+        func qaMemoryOwnerStats() async -> QAMemoryOwnerStats {
+            let read = await readProjectionCache.qaDiagnosticStats()
+            let session = sessions.qaDiagnosticCounts
+            let pool = sessions.editorWebViewPool.qaDiagnosticCounts
+            return QAMemoryOwnerStats(
+                retainedSessions: session.retained,
+                leasedSessions: session.leased,
+                pinnedSessions: session.pinned,
+                attachedWebViewSessions: session.attachedWebView,
+                fullSnapshots: retainedFullSnapshotCount,
+                pendingHydrations: pendingHydrationCount,
+                closedPresentations: closedPresentationCount,
+                readProjectionEntries: read.entryCount,
+                readProjectionHTMLUTF8Bytes: read.htmlUTF8ByteCount,
+                editorPoolIdle: pool.idle,
+                editorPoolAttached: pool.attached,
+                editorPoolPreparing: pool.preparing,
+                editorPoolAbandonedLive: pool.abandonedLive,
+                editorPoolWaiting: pool.waiting
+            )
+        }
+    #endif
+
     func waitForPendingHydrations() async {
         while !pendingHydrations.isEmpty {
             let tasks = pendingHydrations.values.map(\.task)

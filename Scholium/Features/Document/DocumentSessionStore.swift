@@ -461,6 +461,15 @@ final class DocumentSessionModel: ObservableObject {
 /// or saves.
 @MainActor
 final class DocumentSessionStore {
+    #if DEBUG
+        struct QADiagnosticCounts: Sendable {
+            let retained: Int
+            let leased: Int
+            let pinned: Int
+            let attachedWebView: Int
+        }
+    #endif
+
     enum PinReason: Hashable, Sendable {
         case dirty
         case composition
@@ -487,6 +496,25 @@ final class DocumentSessionStore {
     var retainedSessions: [DocumentEditingTarget: DocumentSessionModel] {
         entries.mapValues(\.session)
     }
+
+    #if DEBUG
+        var qaDiagnosticCounts: QADiagnosticCounts {
+            var leased = 0
+            var pinned = 0
+            var attachedWebView = 0
+            for entry in entries.values {
+                if entry.leaseCount > 0 { leased += 1 }
+                if !pinReasons(for: entry.session).isEmpty { pinned += 1 }
+                if entry.session.editorSession.hasAttachedWebView { attachedWebView += 1 }
+            }
+            return QADiagnosticCounts(
+                retained: entries.count,
+                leased: leased,
+                pinned: pinned,
+                attachedWebView: attachedWebView
+            )
+        }
+    #endif
 
     func session(for target: DocumentEditingTarget) -> DocumentSessionModel {
         if let existing = entries[target]?.session { return existing }

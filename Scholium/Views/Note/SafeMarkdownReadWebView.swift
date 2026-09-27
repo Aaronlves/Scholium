@@ -208,7 +208,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
         }
         webView.configuration.userContentController.removeScriptMessageHandler(
-            forName: Coordinator.messageHandlerName
+            forName: Coordinator.messageHandlerName,
+            contentWorld: Self.bridgeContentWorld
         )
         webView.navigationDelegate = nil
         coordinator.activeWebView = nil

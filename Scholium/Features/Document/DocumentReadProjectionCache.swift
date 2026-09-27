@@ -27,6 +27,13 @@ struct DocumentReadProjectionKey: Hashable, Sendable {
 
 /// Bounded derived HTML. Exact Markdown remains the only writable authority.
 actor DocumentReadProjectionCache {
+    #if DEBUG
+        struct QADiagnosticStats: Sendable {
+            let entryCount: Int
+            let htmlUTF8ByteCount: Int
+        }
+    #endif
+
     private struct Entry: Sendable {
         let html: String
         let byteCount: Int
@@ -100,6 +107,15 @@ actor DocumentReadProjectionCache {
     func retainedHTMLByteCount(workspaceID: UUID?) -> Int {
         entries.reduce(0) { $0 + ($1.key.workspaceID == workspaceID ? $1.value.byteCount : 0) }
     }
+
+    #if DEBUG
+        func qaDiagnosticStats() -> QADiagnosticStats {
+            QADiagnosticStats(
+                entryCount: entries.count,
+                htmlUTF8ByteCount: entries.values.reduce(0) { $0 + $1.byteCount }
+            )
+        }
+    #endif
 
     private func evictIfNeeded(workspaceID: UUID?) {
         while true {

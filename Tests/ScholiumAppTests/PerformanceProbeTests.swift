@@ -7,6 +7,101 @@ import Testing
 @Suite("Performance probe")
 @MainActor
 struct PerformanceProbeTests {
+    #if DEBUG
+        @Test("QA memory-owner snapshots require an explicit isolated home and contain counts only")
+        func qaMemoryOwnerSnapshotIsolation() async throws {
+            let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent(".build/qa-memory-owner-probe-\(UUID())")
+            let home = root.appendingPathComponent("home", isDirectory: true)
+            let fixture = root.appendingPathComponent("fixtures", isDirectory: true)
+            let bundle = root.appendingPathComponent("Scholium-QA.app", isDirectory: true)
+            try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+
+            let environment = [
+                "SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS": "1",
+                "SCHOLIUM_HOME": home.path,
+                "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixture.path,
+            ]
+            let probe = PerformanceProbe(
+                environment: environment,
+                bundleID: ScholiumRuntimeIsolation.qaBundleIdentifier,
+                bundleURL: bundle,
+                now: { 42 }
+            )
+            #expect(!probe.isEnabled)
+            #expect(probe.measuresQAMemoryOwners)
+            let controller = DocumentController()
+            let empty = await controller.qaMemoryOwnerStats()
+            #expect(empty.retainedSessions == 0)
+            #expect(empty.fullSnapshots == 0)
+            #expect(empty.readProjectionEntries == 0)
+            probe.recordQAMemoryOwners(empty)
+
+            _ = controller.session(for: DocumentSessionKey(vaultID: UUID(), noteID: UUID()))
+            let retained = await controller.qaMemoryOwnerStats()
+            #expect(retained.retainedSessions == 1)
+            #expect(retained.leasedSessions == 0)
+            probe.recordQAMemoryOwners(retained)
+
+            let result = home.appendingPathComponent("qa-memory-owner-diagnostics.jsonl")
+            let lines = try String(contentsOf: result, encoding: .utf8).split(separator: "\n")
+            #expect(lines.count == 2)
+            let objects = try lines.map { line in
+                try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+            }
+            #expect(objects[0]["sample"] as? Int == 0)
+            #expect(objects[1]["sample"] as? Int == 1)
+            #expect(objects[0]["retained_sessions"] as? Int == 0)
+            #expect(objects[1]["retained_sessions"] as? Int == 1)
+            #expect(
+                Set(objects[0].keys)
+                    == Set([
+                        "schema", "sample", "completed_uptime_ns", "retained_sessions",
+                        "leased_sessions", "pinned_sessions", "attached_webview_sessions",
+                        "full_snapshots", "pending_hydrations", "closed_presentations",
+                        "read_projection_entries", "read_projection_html_utf8_bytes",
+                        "editor_pool_idle", "editor_pool_attached", "editor_pool_preparing",
+                        "editor_pool_abandoned_live", "editor_pool_waiting",
+                    ]))
+
+            var disabledEnvironment = environment
+            disabledEnvironment["SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS"] = nil
+            #expect(
+                !PerformanceProbe(
+                    environment: disabledEnvironment,
+                    bundleID: ScholiumRuntimeIsolation.qaBundleIdentifier,
+                    bundleURL: bundle
+                ).measuresQAMemoryOwners)
+            #expect(
+                !PerformanceProbe(
+                    environment: environment,
+                    bundleID: ScholiumRuntimeIsolation.productionBundleIdentifier,
+                    bundleURL: bundle
+                ).measuresQAMemoryOwners)
+            var vaultHomeEnvironment = environment
+            vaultHomeEnvironment["SCHOLIUM_HOME"] = fixture.path
+            #expect(
+                !PerformanceProbe(
+                    environment: vaultHomeEnvironment,
+                    bundleID: ScholiumRuntimeIsolation.qaBundleIdentifier,
+                    bundleURL: bundle
+                ).measuresQAMemoryOwners)
+
+            // Reject a dangling link before file creation can follow it out
+            // of the isolated home.
+            try FileManager.default.removeItem(at: result)
+            let outside = root.appendingPathComponent("outside-home.jsonl")
+            try FileManager.default.createSymbolicLink(
+                at: result,
+                withDestinationURL: outside
+            )
+            probe.recordQAMemoryOwners(retained)
+            #expect(!FileManager.default.fileExists(atPath: outside.path))
+        }
+    #endif
+
     @Test("Search phases preserve the committed-input and visible-result boundary")
     func searchRecordsDispatchPhase() throws {
         let runID = "search_phase_\(UUID().uuidString)"

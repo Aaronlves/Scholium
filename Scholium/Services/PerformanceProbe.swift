@@ -23,6 +23,12 @@ final class PerformanceProbe {
 
     static let shared = PerformanceProbe()
 
+    #if DEBUG
+        static let qaMemoryOwnerNotification =
+            "com.scholium.qa.performance-memory-owner-snapshot"
+        private static let qaMemoryOwnerFilename = "qa-memory-owner-diagnostics.jsonl"
+    #endif
+
     private struct Configuration {
         let resultURL: URL
         let runID: String
@@ -37,6 +43,10 @@ final class PerformanceProbe {
 
     private let configuration: Configuration?
     private let now: () -> UInt64
+    #if DEBUG
+        private let qaMemoryOwnerResultURL: URL?
+        private var qaMemoryOwnerSampleCount = 0
+    #endif
     private var searchStartNanoseconds: UInt64?
     private var searchDispatchNanoseconds: UInt64?
     private var readStartNanoseconds: UInt64?
@@ -72,9 +82,18 @@ final class PerformanceProbe {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = CommandLine.arguments,
         bundleID: String? = Bundle.main.bundleIdentifier,
+        bundleURL: URL = Bundle.main.bundleURL,
         now: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
     ) {
         self.now = now
+        #if DEBUG
+            qaMemoryOwnerResultURL = Self.safeQAMemoryOwnerResultURL(
+                environment: environment,
+                arguments: arguments,
+                bundleID: bundleID,
+                bundleURL: bundleURL
+            )
+        #endif
         let requestedSampleCount =
             environment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"]
             .flatMap(Int.init) ?? 1
@@ -119,6 +138,43 @@ final class PerformanceProbe {
     }
 
     var isEnabled: Bool { configuration != nil }
+    #if DEBUG
+        var measuresQAMemoryOwners: Bool { qaMemoryOwnerResultURL != nil }
+
+        func recordQAMemoryOwners(_ stats: DocumentController.QAMemoryOwnerStats) {
+            guard let resultURL = qaMemoryOwnerResultURL,
+                qaMemoryOwnerSampleCount < 128
+            else { return }
+            let object: [String: Any] = [
+                "schema": "scholium-qa-memory-owners-v1",
+                "sample": qaMemoryOwnerSampleCount,
+                "completed_uptime_ns": now(),
+                "retained_sessions": stats.retainedSessions,
+                "leased_sessions": stats.leasedSessions,
+                "pinned_sessions": stats.pinnedSessions,
+                "attached_webview_sessions": stats.attachedWebViewSessions,
+                "full_snapshots": stats.fullSnapshots,
+                "pending_hydrations": stats.pendingHydrations,
+                "closed_presentations": stats.closedPresentations,
+                "read_projection_entries": stats.readProjectionEntries,
+                "read_projection_html_utf8_bytes": stats.readProjectionHTMLUTF8Bytes,
+                "editor_pool_idle": stats.editorPoolIdle,
+                "editor_pool_attached": stats.editorPoolAttached,
+                "editor_pool_preparing": stats.editorPoolPreparing,
+                "editor_pool_abandoned_live": stats.editorPoolAbandonedLive,
+                "editor_pool_waiting": stats.editorPoolWaiting,
+            ]
+            // `createFile` can follow a dangling symlink before the shared
+            // append helper checks it. Keep this QA artifact inside its home.
+            guard
+                (try? FileManager.default.destinationOfSymbolicLink(
+                    atPath: resultURL.path
+                )) == nil,
+                append(object, to: resultURL)
+            else { return }
+            qaMemoryOwnerSampleCount += 1
+        }
+    #endif
     var measuresWarmLibraryLaunch: Bool {
         configuration?.metric == .warmLibraryLaunch
     }
@@ -776,6 +832,52 @@ final class PerformanceProbe {
         else { return nil }
         return parent.appendingPathComponent(candidate.lastPathComponent, isDirectory: false)
     }
+
+    #if DEBUG
+        private static func safeQAMemoryOwnerResultURL(
+            environment: [String: String],
+            arguments: [String],
+            bundleID: String?,
+            bundleURL: URL
+        ) -> URL? {
+            guard bundleID == ScholiumRuntimeIsolation.qaBundleIdentifier,
+                environment["SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS"] == "1",
+                let home = ScholiumRuntimeIsolation.homeURL(
+                    environment: environment,
+                    arguments: arguments,
+                    bundleIdentifier: bundleID
+                ),
+                let fixture = ScholiumRuntimeIsolation.fixtureRootURL(
+                    environment: environment,
+                    arguments: arguments,
+                    bundleIdentifier: bundleID,
+                    isDebugBuild: true
+                )
+            else { return nil }
+
+            // Accept only a QA bundle, home and fixture under the same checkout's
+            // ignored build root. In particular, never export into a vault or the
+            // researcher's ordinary application home.
+            let bundlePath = bundleURL.standardizedFileURL.resolvingSymlinksInPath().path
+            guard let buildRange = bundlePath.range(of: "/.build/") else { return nil }
+            let buildRoot = String(bundlePath[..<buildRange.upperBound])
+            let homeURL = home.standardizedFileURL.resolvingSymlinksInPath()
+            let fixtureURL = fixture.standardizedFileURL.resolvingSymlinksInPath()
+            guard homeURL.path.hasPrefix(buildRoot),
+                fixtureURL.path.hasPrefix(buildRoot),
+                homeURL != fixtureURL,
+                !homeURL.path.hasPrefix(fixtureURL.path + "/"),
+                !fixtureURL.path.hasPrefix(homeURL.path + "/")
+            else { return nil }
+            var isDirectory: ObjCBool = false
+            guard
+                FileManager.default.fileExists(
+                    atPath: homeURL.path, isDirectory: &isDirectory
+                ), isDirectory.boolValue
+            else { return nil }
+            return homeURL.appendingPathComponent(qaMemoryOwnerFilename)
+        }
+    #endif
 
     private static func allowsConfiguration(
         environment: [String: String],

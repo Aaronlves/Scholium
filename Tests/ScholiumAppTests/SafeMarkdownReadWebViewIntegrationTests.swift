@@ -7,6 +7,92 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Dismantling Review releases its named-world handler and captured callbacks")
+    func reviewNamedWorldHandlerReleasesCoordinator() async throws {
+        final class CallbackSentinel {
+            func observeLink() {}
+        }
+        final class WeakBox<Object: AnyObject> {
+            weak var value: Object?
+        }
+
+        _ = NSApplication.shared
+        let coordinator = WeakBox<SafeMarkdownReadWebView.Coordinator>()
+        let callback = WeakBox<CallbackSentinel>()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 320),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer {
+            window.orderOut(nil)
+            window.contentViewController = nil
+            window.close()
+        }
+
+        func mountedWebView(in view: NSView) -> WKWebView? {
+            if let webView = view as? WKWebView { return webView }
+            for child in view.subviews {
+                if let webView = mountedWebView(in: child) { return webView }
+            }
+            return nil
+        }
+
+        var retainedWebView: WKWebView?
+        do {
+            let sentinel = CallbackSentinel()
+            callback.value = sentinel
+            let source = "# Review teardown\n"
+            let document = NoteDocument(relativePath: "Teardown.md", rawContent: source)
+            let surface = SafeMarkdownReadWebView(
+                documentID: document.relativePath,
+                fingerprint: document.fingerprint.sha256,
+                source: source,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+                presentationCSS: "",
+                userCSS: "",
+                onLinkClick: { [sentinel] _ in sentinel.observeLink() },
+                onOpenExternalURL: { _ in },
+                onRenderingFailure: nil
+            )
+            var host: NSHostingController<AnyView>? = NSHostingController(
+                rootView: AnyView(surface)
+            )
+            window.contentViewController = host
+            window.orderFrontRegardless()
+
+            let mountDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while retainedWebView == nil, ContinuousClock.now < mountDeadline {
+                if let contentView = window.contentView {
+                    retainedWebView = mountedWebView(in: contentView)
+                }
+                if retainedWebView == nil {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+            }
+            let webView = try #require(retainedWebView)
+            coordinator.value = webView.navigationDelegate as? SafeMarkdownReadWebView.Coordinator
+            _ = try #require(coordinator.value)
+            #expect(callback.value != nil)
+
+            host?.rootView = AnyView(EmptyView())
+            window.contentViewController = nil
+            host = nil
+        }
+
+        let releaseDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while coordinator.value != nil || callback.value != nil,
+            ContinuousClock.now < releaseDeadline
+        {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(retainedWebView != nil)
+        #expect(coordinator.value == nil)
+        #expect(callback.value == nil)
+    }
+
     @Test("Review publishes source positions while scrolling continues")
     func reviewContinuousScrollReports() async throws {
         let source = (1...24).map { section in

@@ -532,11 +532,47 @@ private final class ScholiumBootstrapModel: ObservableObject {
     }
 }
 
-private struct ScholiumWindowRoot: View {
+@MainActor
+private final class ScholiumWindowOwners: ObservableObject {
+    let appState: WindowModel
+    let windowCoordinator: WorkspaceWindowCoordinator
+
+    init(
+        workspaceStore: WorkspaceStore,
+        route: TriptychWindowRoute,
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    ) {
+        let model = WindowModel(
+            workspaceStore: workspaceStore,
+            nativeWindowID: route.windowID,
+            requestedTriptychID: route.triptychID,
+            requestedInitialDocument: route.initialDocument
+        )
+        appState = model
+        windowCoordinator = WorkspaceWindowCoordinator(
+            windowID: route.windowID,
+            appState: model,
+            lifecycleRegistry: lifecycleRegistry
+        )
+        #if DEBUG
+            ScholiumWindowRoot.qaSceneEvent?(.constructed(model))
+        #endif
+    }
+}
+
+struct ScholiumWindowRoot: View {
+    #if DEBUG
+        enum QASceneEvent {
+            case constructed(WindowModel)
+            case observed(WindowModel, WorkspaceWindowCoordinator)
+        }
+
+        @MainActor static var qaSceneEvent: ((QASceneEvent) -> Void)?
+    #endif
+
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
-    @StateObject private var appState: WindowModel
-    @StateObject private var windowCoordinator: WorkspaceWindowCoordinator
+    @StateObject private var owners: ScholiumWindowOwners
 
     init(
         workspaceStore: WorkspaceStore,
@@ -545,42 +581,33 @@ private struct ScholiumWindowRoot: View {
     ) {
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
-        let model = WindowModel(
-            workspaceStore: workspaceStore,
-            nativeWindowID: route.windowID,
-            requestedTriptychID: route.triptychID,
-            requestedInitialDocument: route.initialDocument
-        )
-        _appState = StateObject(wrappedValue: model)
-        _windowCoordinator = StateObject(
-            wrappedValue: WorkspaceWindowCoordinator(
-                windowID: route.windowID,
-                appState: model,
+        _owners = StateObject(
+            wrappedValue: ScholiumWindowOwners(
+                workspaceStore: workspaceStore,
+                route: route,
                 lifecycleRegistry: lifecycleRegistry
             ))
     }
 
     var body: some View {
         ScholiumWindowObservedRoot(
-            appState: appState,
-            windowCoordinator: windowCoordinator,
+            appState: owners.appState,
+            windowCoordinator: owners.windowCoordinator,
             route: route,
             lifecycleRegistry: lifecycleRegistry
         )
     }
 }
 
-/// Receives the retained scene owners before deriving child observations.
-/// Keeping this boundary below `ScholiumWindowRoot` prevents a SwiftUI root
-/// reinitialization from pairing its retained `@StateObject` with children from
-/// a newly constructed, discarded `WindowModel`.
+/// Receives the retained scene pair and observes model publications before
+/// deriving child state. A root reevaluation must keep these owners paired.
 struct ScholiumWindowObservedRoot: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
-    let appState: WindowModel
+    @ObservedObject private var appState: WindowModel
     @ObservedObject private var windowCoordinator: WorkspaceWindowCoordinator
     @ObservedObject private var shellState: WindowShellState
     @ObservedObject private var presentationRouter: WindowPresentationRouter
@@ -598,7 +625,7 @@ struct ScholiumWindowObservedRoot: View {
         route: TriptychWindowRoute,
         lifecycleRegistry: ScholiumWindowLifecycleRegistry
     ) {
-        self.appState = appState
+        _appState = ObservedObject(wrappedValue: appState)
         _windowCoordinator = ObservedObject(wrappedValue: windowCoordinator)
         _shellState = ObservedObject(wrappedValue: appState.shellState)
         _presentationRouter = ObservedObject(wrappedValue: appState.presentationRouter)
@@ -614,6 +641,9 @@ struct ScholiumWindowObservedRoot: View {
     }
 
     var body: some View {
+        #if DEBUG
+            let _ = ScholiumWindowRoot.qaSceneEvent?(.observed(appState, windowCoordinator))
+        #endif
         let openWindowAction = openWindow
         let hasReadyWorkspace =
             shellState.hasCompletedInitialRestore && appState.vaultConfig != nil

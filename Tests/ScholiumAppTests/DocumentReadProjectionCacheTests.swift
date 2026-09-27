@@ -6,6 +6,29 @@ import Testing
 
 @Suite("Document read projection cache")
 struct DocumentReadProjectionCacheTests {
+    #if DEBUG
+        @Test("QA cache stats count only retained HTML across workspaces")
+        func qaDiagnosticStats() async {
+            let cache = DocumentReadProjectionCache()
+            let source = "# Exact\n"
+            let first = await cache.html(
+                for: key(workspaceID: UUID(), target: "first", path: "First.md", source: source),
+                source: source
+            )
+            let second = await cache.html(
+                for: key(workspaceID: UUID(), target: "second", path: "Second.md", source: source),
+                source: source
+            )
+            let retained = await cache.qaDiagnosticStats()
+            #expect(retained.entryCount == 2)
+            #expect(retained.htmlUTF8ByteCount == first.utf8.count + second.utf8.count)
+            await cache.removeAll()
+            let cleared = await cache.qaDiagnosticStats()
+            #expect(cleared.entryCount == 0)
+            #expect(cleared.htmlUTF8ByteCount == 0)
+        }
+    #endif
+
     @Test("Read projections are revision-bound and reused")
     func revisionBoundReuse() async {
         let cache = DocumentReadProjectionCache()

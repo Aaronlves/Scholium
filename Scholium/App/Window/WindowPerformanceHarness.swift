@@ -4,6 +4,14 @@ import notify
 /// The measurement harness's editor commands. QA builds drive presentation
 /// changes through notifications so a run can be timed from outside the app.
 extension WindowModel {
+    #if DEBUG
+        func handleQAMemoryOwnerSnapshot() async {
+            guard PerformanceProbe.shared.measuresQAMemoryOwners else { return }
+            let stats = await documentController.qaMemoryOwnerStats()
+            PerformanceProbe.shared.recordQAMemoryOwners(stats)
+        }
+    #endif
+
     /// Positions a frozen RDF-1 row through the same native Library reveal
     /// path used by ordinary in-app navigation. Setup does not select a new
     /// document; the later visible row click starts the Read measurement.

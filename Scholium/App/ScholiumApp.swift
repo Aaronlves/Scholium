@@ -698,6 +698,23 @@ final class WindowModel: ObservableObject {
                 }
             }
         }
+        #if DEBUG
+            if PerformanceProbe.shared.measuresQAMemoryOwners {
+                var token: Int32 = 0
+                let status = notify_register_dispatch(
+                    PerformanceProbe.qaMemoryOwnerNotification,
+                    &token,
+                    .main
+                ) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        await self?.handleQAMemoryOwnerSnapshot()
+                    }
+                }
+                if status == NOTIFY_STATUS_OK {
+                    performanceNotificationTokens.append(token)
+                }
+            }
+        #endif
         searchController.loadSavedSearches()
         startWorkspaceObservers()
     }

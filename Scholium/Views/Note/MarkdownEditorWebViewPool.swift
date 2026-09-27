@@ -5,6 +5,16 @@ import WebKit
 /// avoids reloading bundled JavaScript; initialization installs a fresh state.
 @MainActor
 final class MarkdownEditorWebViewPool {
+    #if DEBUG
+        struct QADiagnosticCounts: Sendable {
+            let idle: Int
+            let attached: Int
+            let preparing: Int
+            let abandonedLive: Int
+            let waiting: Int
+        }
+    #endif
+
     private let idleLifetime: Duration
     private let acquisitionDeadline: Duration
     private let maximumSafeReuses: Int
@@ -44,6 +54,18 @@ final class MarkdownEditorWebViewPool {
         (attachedWebView.map { !abandonedWebViews.contains($0) } ?? false) || preparation != nil
     }
     var waitingAcquisitionCount: Int { waiting.count }
+
+    #if DEBUG
+        var qaDiagnosticCounts: QADiagnosticCounts {
+            QADiagnosticCounts(
+                idle: idleWebView == nil ? 0 : 1,
+                attached: attachedWebView == nil ? 0 : 1,
+                preparing: preparingWebView == nil ? 0 : 1,
+                abandonedLive: abandonedWebViews.allObjects.count,
+                waiting: waiting.count
+            )
+        }
+    #endif
 
     func take() -> WindowAttachedWebView? {
         guard let webView = idleWebView else { return nil }
