@@ -4,37 +4,30 @@
 
 ## Release artifacts and gate provenance
 
-**2026-09-21 — `v0.2.8-beta` packaged artifact:** Exact clean tag at
-`d103a0c8d895005ede79a5ba306f38bea0df6731` produced
-`Scholium-v0.2.8-beta-macos-arm64.dmg`: marketing version `0.2.8`, build `9`,
-minimum macOS `26.0`, SDK `27.0`, arm64 ad-hoc-signed App and version-matched
-helper. Repository gate passed WebEditor (370), Core (510), Core performance
-(3), Contracts (97), Application (194), architecture measurement (1), and App
-(1,052 across 131 suites), plus public-symbol guards, Release compilation and
-helper isolation. Resource, license, private-path, provenance, nested-signature,
-entitlements, architecture, read-only DMG layout and SHA-256 checks passed;
-checksum:
-`940acbe3c8705e5d8be583dc328082ac71ffaac84b3b0ed7eb33dd30dec8f34a`.
-Packaged clean-account Bootstrap smoke ran twice; XCTest first failed with
-`Timed out while enabling automation mode`, then the second passed with
-production state unchanged. The first is environment evidence, not a product
-failure. This covers Bootstrap only; the §21.5 packaged Triptych/edit/readback/
-relaunch journey remains open. Evidence: `.build/verification/`,
-`.build/verification-release/`, tag provenance embedded in the App, and the
-retained first-attempt diagnostics under `.build/packaged-first-launch.8IsyPk/`.
+**2026-09-27 — `v0.3.1-beta` packaged baseline:** Exact source commit
+`7d77c68ce01231b86619b75487172d13f2053e94` produced
+`Scholium-v0.3.1-beta-macos-arm64.dmg` (version `0.3.1`, build `12`, macOS
+`26.0`, SDK `27.0`, arm64, ad-hoc). Its SHA-256 is
+`a6296c8309b99bd7aea1b1b73f6eb9b8fa8a4207d1ce498225d4dc7fa3fb67ca`. The
+[public release record](https://github.com/Aaronlves/Scholium/releases/tag/v0.3.1-beta)
+reports the complete performance gate, 13/13 affected UI journeys, and mounted/
+copied clean-account save/readback smoke; VoiceOver, input, adaptation, icon,
+and Finder-restoration human acceptance remain open.
 
-**2026-09-17 — Earlier clean-account baseline, `v0.2.2-beta`:** Exact clean tag
-at `ea4918ec1958293879786a889108d0b186d33744` produced
-`Scholium-v0.2.2-beta-macos-arm64.dmg`: marketing version `0.2.2`, build `3`,
-minimum macOS `26.0`, arm64 App and matched helper/Core Protocol resources.
-Exact-tag `verify.sh` passed 355 Web, 410 Core, three Core performance, 92
-Contracts, 165 Application, one architecture measurement and 1,002 App tests,
-resource reproduction, public-symbol guards, Release compilation and helper
-isolation. Signatures, entitlements, architecture, provenance, package contents,
-read-only mount/copy and checksum checks passed. Packaged first-launch Bootstrap
-passed with production machine state unchanged. This earlier pass is retained
-as a baseline, not substituted for `v0.2.4-beta` G9. Both artifacts are ad-hoc
-Beta packages, not Developer ID/notarized releases or human acceptance.
+**2026-09-28 — `v0.3.2-beta` packaged candidate:** Exact clean tag at
+`e225a72e5320f195adf154815f9c468e43e6d93a` produced
+`Scholium-v0.3.2-beta-macos-arm64.dmg` (version `0.3.2`, build `13`, minimum
+macOS `26.0`, SDK `27.0`, arm64, ad-hoc). `verify.sh` passed WebEditor (491),
+Core (581), Core performance (3), Contracts (105), Application (236),
+architecture measurement (1), and App (1,197); Release build and helper
+isolation passed. Package checks passed for provenance, resources, licenses,
+icon, private paths, entitlements, signatures, architecture, read-only DMG
+mount/copy and SHA-256 `590023c506635c6dc2f539281a744d40d4fded11857307b2bb12ba3be28b48d8`.
+Per researcher direction, XCUITest journeys and the mounted/copied clean-account
+smoke were not run; affected UI journeys, human icon inspection, and G6/G9
+evidence remain incomplete.
+Logs: `.build/verification/` and `.build/verification-release/`; local candidate:
+`~/Applications/Scholium Builds/v0.3.2-beta/`.
 
 ## Current source and native development proof
 
