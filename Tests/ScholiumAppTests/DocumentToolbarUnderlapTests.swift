@@ -93,6 +93,7 @@ struct DocumentToolbarUnderlapTests {
         #expect(viewport.subviews.first === web)
         let overlap = viewport.toolbarOverlap
         #expect(overlap.height > 0)
+        #expect(abs(viewport.floatingContentTopInset - overlap.maxY) < 1)
         let toolbarPoint = viewport.convert(
             NSPoint(x: overlap.midX, y: overlap.midY), to: root
         )

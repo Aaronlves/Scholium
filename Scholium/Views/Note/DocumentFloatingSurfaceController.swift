@@ -368,8 +368,9 @@ final class DocumentFloatingSurfaceController: NSObject {
         glass?.removeFromSuperview()
         glass = nil
         let bounds = owner.bounds
-        let top = min(max(0, surface.top), bounds.height)
-        let bottom = min(max(top, surface.bottom), bounds.height)
+        let visibleTop = (owner.superview as? DocumentWebViewContainer)?.floatingContentTopInset ?? 0
+        let top = min(max(visibleTop, surface.top), bounds.height - 1)
+        let bottom = min(max(top, surface.bottom), bounds.height - 1)
         let anchor = NSRect(
             x: min(max(0, surface.left), bounds.width - 1),
             y: owner.isFlipped ? top : bounds.height - bottom,
@@ -409,28 +410,39 @@ final class DocumentFloatingSurfaceController: NSObject {
     }
 
     private func layout(height: CGFloat) {
-        guard let owner, let surface, let glass else { return }
+        guard let owner, let surface, let glass,
+            let viewport = owner.superview as? DocumentWebViewContainer
+        else { return }
         let bounds = owner.bounds
         let width = min(preferredWidth, surface.kind == .selection ? bounds.width - 24 : 368, bounds.width - 24)
-        var height = min(height, 352, bounds.height - 24)
+        let minimumTop = max(12, viewport.floatingContentTopInset + 12)
+        let maximumBottom = bounds.height - 12
+        guard maximumBottom > minimumTop else {
+            dismiss()
+            return
+        }
+        var height = min(height, 352, maximumBottom - minimumTop)
         let anchorX = surface.kind == .selection ? surface.left - width / 2 : surface.left
         let x = min(max(12, anchorX), bounds.width - width - 12)
         let below = surface.bottom + 8
         let top: CGFloat
         if surface.kind == .suggestions {
-            let belowSpace = max(0, bounds.height - 12 - below)
-            let aboveSpace = max(0, surface.top - 20)
+            let belowSpace = max(0, maximumBottom - max(minimumTop, below))
+            let aboveSpace = max(0, surface.top - minimumTop - 8)
             if suggestionsBelow == nil {
                 let fullListHeight =
                     CGFloat(ScholiumMetrics.Completion.maximumVisibleRows)
-                    * ScholiumMetrics.Completion.detailedRowHeight + 12
-                suggestionsBelow = belowSpace >= min(fullListHeight, bounds.height - 24) || belowSpace >= aboveSpace
+                    * ScholiumMetrics.Completion.detailedRowHeight + (suggestions?.nativeVerticalPadding ?? 0)
+                suggestionsBelow = belowSpace >= min(fullListHeight, maximumBottom - minimumTop) || belowSpace >= aboveSpace
             }
             let opensBelow = suggestionsBelow == true
             height = min(height, opensBelow ? belowSpace : aboveSpace)
-            top = opensBelow ? below : surface.top - height - 8
+            top = opensBelow ? max(minimumTop, below) : max(minimumTop, surface.top - height - 8)
         } else {
-            top = below + height <= bounds.height - 12 ? below : max(12, surface.top - height - 8)
+            top =
+                max(minimumTop, below) + height <= maximumBottom
+                ? max(minimumTop, below)
+                : max(minimumTop, surface.top - height - 8)
         }
         let rect = NSRect(
             x: x, y: owner.isFlipped ? top : bounds.height - top - height,

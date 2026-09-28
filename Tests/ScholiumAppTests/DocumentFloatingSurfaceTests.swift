@@ -46,6 +46,12 @@ struct DocumentFloatingSurfaceTests {
         value["surface"] = surface
     }
 
+    private func setPreviewCSS(_ value: inout [String: Any], _ css: String) {
+        var surface = value["surface"] as! [String: Any]
+        surface["css"] = css
+        value["surface"] = surface
+    }
+
     private func setID(_ value: inout [String: Any], _ id: Int) {
         var surface = value["surface"] as! [String: Any]
         surface["id"] = id
@@ -345,6 +351,10 @@ struct DocumentFloatingSurfaceTests {
         }
         let short = try show([.init(label: "Date", detail: "")])
         #expect(short > 44 && short < 100)
+        let shortGlass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+        let shortList = try #require(shortGlass.contentView as? NativeFloatingChoiceList)
+        let shortRow = shortList.table.rect(ofRow: 0)
+        #expect(abs(shortRow.minY - (shortList.contentView.bounds.height - shortRow.maxY)) < 0.5)
         let items: [DocumentSuggestionSurface.Item] = [
             .init(label: "Date", detail: ""), .init(label: "研究笔记", detail: "Insert a linked research note"),
         ]
@@ -356,21 +366,34 @@ struct DocumentFloatingSurfaceTests {
         #expect(try show(items, selected: 1) == detailed)
         #expect(glass.contentView === content)
         #expect(glass.frame == frame)
-        #expect(abs(frame.height - 80) < 0.5)
+        let lastVisibleRow = content.table.rect(ofRow: 1)
+        #expect(abs(content.table.rect(ofRow: 0).minY - (content.contentView.bounds.height - lastVisibleRow.maxY)) < 0.5)
         for index in 0..<12 {
             _ = try show(items, selected: index % 2)
             #expect(glass.contentView === content && glass.frame == frame)
         }
         // Filtering never shrinks the retained native list's horizontal footprint.
         #expect(try show([items[0]]) == detailed)
+        let filteredRow = content.table.rect(ofRow: 0)
+        #expect(abs(filteredRow.minY - (content.contentView.bounds.height - filteredRow.maxY)) < 0.5)
+        #expect(glass.frame.height < frame.height)
         controller.dismiss()
         _ = try show([items[0]], top: 240)
         let above = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
         let anchoredBottom = above.frame.maxY
-        _ = try show(Array(repeating: items[1], count: 12), top: 240)
+        let overflowing = Array(repeating: items[1], count: 12)
+        _ = try show(overflowing, selected: 11, top: 240)
+        let overflowList = try #require(above.contentView as? NativeFloatingChoiceList)
+        #expect(overflowList.table.visibleRect.intersects(overflowList.table.rect(ofRow: 11)))
+        let overflowHeight = above.frame.height
         #expect(above.frame.maxY == anchoredBottom)
         #expect(above.frame.minY >= 12)
         #expect(above.frame.maxY < 240)
+        _ = try show([items[0]], top: 240)
+        let filteredOverflowRow = overflowList.table.rect(ofRow: 0)
+        #expect(above.frame.height < overflowHeight)
+        #expect(above.frame.maxY == anchoredBottom)
+        #expect(abs(filteredOverflowRow.minY - (overflowList.contentView.bounds.height - filteredOverflowRow.maxY)) < 0.5)
         let long = [DocumentSuggestionSurface.Item(label: String(repeating: "研究笔记", count: 40), detail: "")]
         let capped = try show(long)
         #expect(capped > detailed && capped < webView.bounds.width)
@@ -490,7 +513,14 @@ struct DocumentFloatingSurfaceTests {
         setPreviewHTML(
             &latest,
             "<h2 class='scholium-preview-title'>Latest target</h2><div class='scholium-preview-body scholium-document'>"
+                + "<h2>Authored heading</h2><p><code>sample</code> <strong><span lang='zh-Hans'>中文</span></strong></p>"
                 + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>")
+        setPreviewCSS(
+            &latest,
+            ":root { --scholium-color-accent: #ff0000 !important; --scholium-color-separator: #00ff00 !important; "
+                + "--scholium-document-accent: #ff0000 !important; --scholium-document-source-font-size: 80px !important; } "
+                + ".scholium-document h2 { font-size: 300%; text-align: right; padding-block: 80px; } "
+                + ".scholium-document strong :lang(zh-Hans) { font-family: Georgia; }")
         controller.present(try #require(DocumentFloatingEvent.decode(latest)), in: webView) { _, _, _ in true }
         let current = try #require(controller.previewWebView)
         #expect(current === obsolete)
@@ -501,6 +531,46 @@ struct DocumentFloatingSurfaceTests {
         }
         #expect(controller.isPreviewShown)
         #expect(try await current.evaluateJavaScript("document.querySelector('h2').textContent") as? String == "Latest target")
+        let previewStyle = try #require(
+            try await current.evaluateJavaScript(
+                """
+                (() => {
+                  const root = getComputedStyle(document.documentElement);
+                  const heading = getComputedStyle(document.querySelector('.scholium-preview-body h2'));
+                  const code = getComputedStyle(document.querySelector('.scholium-preview-body code'));
+                  const cjk = getComputedStyle(document.querySelector('.scholium-preview-body :lang(zh-Hans)'));
+                  return [root.getPropertyValue('--scholium-color-accent').trim(),
+                    root.getPropertyValue('--scholium-color-separator').trim(),
+                    root.getPropertyValue('--scholium-document-accent').trim(),
+                    heading.textAlign, heading.fontSize, heading.paddingTop,
+                    code.fontSize, cjk.fontFamily];
+                })()
+                """) as? [String])
+        try #require(previewStyle.count == 8)
+        #expect(!previewStyle[0].contains("#ff0000"))
+        #expect(!previewStyle[1].contains("#00ff00"))
+        #expect(!previewStyle[2].contains("#ff0000"))
+        var nativeAccent: NSColor?
+        current.effectiveAppearance.performAsCurrentDrawingAppearance {
+            nativeAccent = NSColor.controlAccentColor.usingColorSpace(.sRGB)
+        }
+        let accent = try #require(nativeAccent)
+        let rgb = previewStyle[0]
+            .replacingOccurrences(of: "rgba(", with: "")
+            .replacingOccurrences(of: ")", with: "")
+            .split(separator: ",")
+            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        #expect(rgb.count == 4)
+        if rgb.count == 4 {
+            #expect(abs(rgb[0] - accent.redComponent * 255) < 1)
+            #expect(abs(rgb[1] - accent.greenComponent * 255) < 1)
+            #expect(abs(rgb[2] - accent.blueComponent * 255) < 1)
+        }
+        #expect(previewStyle[3] == "start")
+        #expect((Double(previewStyle[4].replacingOccurrences(of: "px", with: "")) ?? 100) < 30)
+        #expect((Double(previewStyle[5].replacingOccurrences(of: "px", with: "")) ?? 100) < 20)
+        #expect((Double(previewStyle[6].replacingOccurrences(of: "px", with: "")) ?? 100) < 30)
+        #expect(previewStyle[7].contains("system-ui"))
         #expect(try await current.evaluateJavaScript("document.body.scrollHeight > window.innerHeight") as? Bool == true)
         #expect(try await current.evaluateJavaScript("getComputedStyle(document.body).fontFamily.includes('system-ui')") as? Bool == true)
         _ = try await current.evaluateJavaScript("window.scrollTo(0, 160)")

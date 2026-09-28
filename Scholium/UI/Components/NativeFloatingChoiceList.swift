@@ -78,6 +78,13 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
         table.sizeLastColumnToFit()
     }
 
+    var nativeVerticalPadding: CGFloat {
+        guard !items.isEmpty else { return 0 }
+        let firstRow = table.rect(ofRow: 0)
+        let finalRow = table.rect(ofRow: items.count - 1)
+        return firstRow.minY + max(0, table.fittingSize.height - finalRow.maxY)
+    }
+
     var preferredSize: NSSize {
         let width =
             items.map { item in
@@ -85,10 +92,18 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
                 let detail = (item.detail as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]).width
                 return max(label, detail) + item.indentation + 32
             }.max() ?? 0
-        return NSSize(
-            width: min(368, ceil(width)),
-            height: items.prefix(ScholiumMetrics.Completion.maximumVisibleRows)
-                .reduce(CGFloat(12)) { $0 + rowHeight($1) })
+        let visibleRows = min(items.count, ScholiumMetrics.Completion.maximumVisibleRows)
+        let height: CGFloat
+        if visibleRows > 0 {
+            // Inset tables add native space before the first row and after the
+            // last row. Use AppKit's laid-out row geometry so a short list does
+            // not clip its bottom selection plate inside the scroll view.
+            let bottomInset = nativeVerticalPadding - table.rect(ofRow: 0).minY
+            height = ceil(table.rect(ofRow: visibleRows - 1).maxY + bottomInset)
+        } else {
+            height = 0
+        }
+        return NSSize(width: min(368, ceil(width)), height: height)
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }

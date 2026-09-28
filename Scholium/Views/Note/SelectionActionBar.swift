@@ -36,7 +36,6 @@ final class SelectionActionBar: NSStackView {
             control.bezelStyle = .accessoryBarAction
             control.isBordered = true
             control.borderShape = .capsule
-            control.showsBorderOnlyWhileMouseInside = true
             control.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
             addArrangedSubview(control)
         }

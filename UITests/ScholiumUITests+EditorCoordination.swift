@@ -117,7 +117,7 @@ extension ScholiumUITests {
         XCTAssertGreaterThan(suggestions.frame.width, 44)
         XCTAssertEqual(viewport.frame, frame)
         XCTAssertTrue((editor.value as? String ?? "").contains("/date"))
-        XCTAssertEqual(suggestions.frame.height, 40, accuracy: 1)
+        XCTAssertEqual(suggestions.frame.height, 48, accuracy: 1)
         let savedNote = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         XCTAssertTrue(
             waitUntil(timeout: 12) {

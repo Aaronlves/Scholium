@@ -134,10 +134,13 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
             popover.contentSize = size
             popover.delegate = self
             self.popover = popover
+            let visibleTop = (owner.superview as? DocumentWebViewContainer)?.floatingContentTopInset ?? 0
+            let top = min(max(visibleTop, surface.top), owner.bounds.height - 1)
+            let bottom = min(max(top, surface.bottom), owner.bounds.height - 1)
             let anchor = NSRect(
                 x: min(max(0, surface.left), owner.bounds.width - 1),
-                y: owner.isFlipped ? surface.top : owner.bounds.height - surface.bottom,
-                width: 1, height: max(1, surface.bottom - surface.top))
+                y: owner.isFlipped ? top : owner.bounds.height - bottom,
+                width: 1, height: max(1, bottom - top))
             popover.show(relativeTo: anchor, of: owner, preferredEdge: owner.isFlipped ? .maxY : .minY)
             (webView as? PreviewWebView)?.allowsFocus = true
             if popover.isShown { self.onShown?() }

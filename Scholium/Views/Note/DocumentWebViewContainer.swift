@@ -93,6 +93,20 @@ final class DocumentWebViewContainer: NSView {
         return overlap.isEmpty ? .zero : overlap
     }
 
+    /// Top edge of the document region that can receive native controls.
+    /// The Web page may scroll under toolbar chrome, while floating siblings
+    /// must stay below the area whose input belongs to the window.
+    var floatingContentTopInset: CGFloat {
+        guard toolbarUnderlapEnabled else { return 0 }
+        let covered = webView.convert(toolbarOverlap, from: self).intersection(webView.bounds)
+        guard !covered.isEmpty else { return 0 }
+        let inset =
+            webView.isFlipped
+            ? covered.maxY - webView.bounds.minY
+            : webView.bounds.maxY - covered.minY
+        return min(max(0, inset), webView.bounds.height)
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         webEnvironment.refreshAppearance()
