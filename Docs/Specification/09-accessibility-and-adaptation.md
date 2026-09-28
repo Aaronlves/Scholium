@@ -86,7 +86,7 @@ Library/Search/Notifications interaction. Their accessibility obligations are:
 - Back/Forward, Search, Notifications, filters, Add, file actions and Inspector
   remain discoverable without hover. The bell's nonzero state has a distinct
   shape and an exact accessible count in Help, without an unread implication.
-- Notifications expose Agent Change or Settlement category, Note identity or
+- Notifications expose Changes or Settlement category, Note identity or
   locator, revision freshness where applicable, and valid actions in reading
   order. Library Integrity filters expose structural Attention's exact reason
   and Note/path locator as derived read-only state. Background delivery follows
@@ -229,17 +229,20 @@ integrations. Verify:
   color. Supplied material previews retain their existing named controls and return
   path, and remain distinct from cited sources.
 
-### Agent Changes
+### Changes and Agent Change receipts
 
-§8.4 owns evidence and Undo; §18.5 owns comparison presentation. Each comparison
-exposes Note, operation, Before/After position and applicable
-Earlier Revision, Created by External Agent or system-Trash state. Before/After
-and inserted/removed/changed structure remain perceivable without color.
-Previous/Next and complete Note identity have keyboard, pointer, focus and
-accessibility equivalents. Viewed means a confirmed detail was displayed; it
-requires no confirmation and implies no acceptance or Settlement.
-Undo states its current-fingerprint prerequisite and outcome. Source deletion
-and Agent Change recovery retain different consequences and return context.
+§5.7 owns the review baseline, §8.4 owns exact Agent evidence and Undo, and
+§18.5 owns presentation. The Changes sheet exposes Pending and History, complete
+Note identity, source revisions, Before/After positions and difference count.
+Removed strikethrough and inserted underline supplement semantic color; text
+labels and accessible difference ranges preserve meaning without color.
+Previous/Next Difference, Mark as Reviewed, per-batch deletion, and return to
+the originating context have keyboard, pointer, focus and accessibility routes.
+Mark as Reviewed names its exact displayed ending revision and announces success
+once; a newer saved revision remains pending. Receipt inspection distinguishes
+operation identity and earlier/unavailable states from the cumulative diff.
+Eligible Undo states its exact receipt and current-fingerprint prerequisite.
+Source deletion and Agent Change recovery retain distinct consequences.
 
 ### Evidence and representative human acceptance
 

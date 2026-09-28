@@ -54,42 +54,39 @@ acceptance.
 
 ## Note mutation authority and evidence
 
-Mutations flush matching editors and enter the workspace source-operation gate.
-Create proves a vacant path and commits exact source plus stable identity. Update
-uses one saved-revision validation/transformation owner for complete-source,
-body-preserving-envelope and exact multi-range changes. UTF-8 ranges, old bytes,
-scalar boundaries, overlap, YAML and capacity are validated before mutation.
-Preview and execution share transformation; execution repeats revision/transaction
-checks. Read-only Ask preview does not flush editors or prepare a receipt.
+Mutations flush matching editors and enter the workspace source gate. Create
+proves vacancy and commits exact source/identity. One saved-revision
+transformation owner handles complete-source, body-preserving-envelope and
+multi-range updates, validating UTF-8 ranges, old bytes, scalar boundaries,
+overlap, YAML and capacity. Preview shares transformation; execution repeats
+revision/transaction checks. Read-only Ask preview neither flushes nor prepares
+a receipt.
 
-Ask-mode source operations await native client permission for that exact request.
-Runtime approvals remain separate when they concern a different operation.
-Presentation owns no write authority. A preview or move plan grants no execution
-authority and is not durably stored: execution recomputes its fingerprint inside
-the source lease.
+Ask-mode source operations await native permission for the exact request;
+unrelated runtime approvals remain separate. Presentation cannot write.
+Preview/move plans confer neither execution authority nor stored state; execution
+recomputes the fingerprint within the source lease.
 
-Move shares the ordinary coordinator, binding exact identity/path/source/link
-effects. One Agent Change retains primary effects and exact linked-source
-preimages after full readback. Inverse recovery verifies current identities and
-revisions, vacant original destinations and future link resolution, then feeds
-exact preimages to the same coordinator; it cannot substitute normalized reverse
-links. Receipt state changes only after complete inverse proof. Partial failures
-retain per-file transaction recovery.
+Move uses the ordinary coordinator and one Agent Change containing exact
+identity/path/source/link effects and linked-source preimages after readback.
+Inverse checks identities, revisions, vacant destinations and future link
+resolution before feeding preimages to that coordinator; it never normalizes
+reverse links. Receipt state changes only after inverse proof; partial failure
+retains per-file recovery.
 
-Change queries page the existing evidence store. Update Undo requires the current
-ending fingerprint and retained exact preimage. It updates the original receipt,
-not a new edit record; create/trash do not invent text comparisons. Post-write
-evidence failure is uncertain, never permission to retry the write. Repositories
-retain all containment, atomicity, readback and recovery authority described in
-[Source Storage](05-source-storage-and-read-models.md#vault-write-and-prewrite-recovery-boundary).
+Receipt queries page the evidence store. Update Undo requires current ending
+fingerprint and exact preimage, then updates the original receipt. Create/trash
+invent no text preimage; post-write evidence failure stays uncertain and never
+licenses retry. Repositories retain [Source Storage](05-source-storage-and-read-models.md#vault-write-and-prewrite-recovery-boundary)
+containment, atomicity, readback and recovery.
 
 ## App presentation and setup
 
-Window routing, system notification delivery and Settings composition belong to
+Window routing, notification delivery and Settings composition belong to
 [Runtime and Ownership](01-runtime-and-ownership.md#presentation). External-host
-setup presents verified helper commands/resources but does not execute or install
-host configuration. Agent Changes presentation borrows exact recorded evidence;
-viewed markers and Settlement cannot alter source or receipt recovery eligibility.
+setup displays helper commands without changing host configuration. Agent Change
+inspection reads exact receipts; Changes review and Settlement do not alter
+receipt recovery eligibility.
 
 ## Native Chat client
 

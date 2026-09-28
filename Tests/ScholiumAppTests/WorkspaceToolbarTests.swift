@@ -11,28 +11,28 @@ struct WorkspaceToolbarTests {
     func notificationCountSummary() {
         let partial = WorkspaceNotificationCountSummary(
             settlementCount: 2,
-            agentChangeCount: nil
+            changeCount: nil
         )
         #expect(partial.exactTotal == nil)
         #expect(partial.hasConfirmedNotifications)
 
         let complete = WorkspaceNotificationCountSummary(
             settlementCount: 2,
-            agentChangeCount: 3
+            changeCount: 3
         )
         #expect(complete.exactTotal == 5)
         #expect(complete.hasConfirmedNotifications)
 
         let partialZero = WorkspaceNotificationCountSummary(
             settlementCount: 0,
-            agentChangeCount: nil
+            changeCount: nil
         )
         #expect(partialZero.exactTotal == nil)
         #expect(!partialZero.hasConfirmedNotifications)
 
         let empty = WorkspaceNotificationCountSummary(
             settlementCount: 0,
-            agentChangeCount: 0
+            changeCount: 0
         )
         #expect(empty.exactTotal == 0)
         #expect(!empty.hasConfirmedNotifications)
@@ -133,6 +133,8 @@ struct WorkspaceToolbarTests {
         #expect(notifications.image?.accessibilityDescription != notifications.label)
         let modeIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.documentMode))
         #expect(toolbar.itemIdentifiers[modeIndex + 1] == ScholiumWorkspaceToolbarController.Item.noteActions)
+        let settleIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.settlement))
+        #expect(toolbar.itemIdentifiers[settleIndex - 1] == ScholiumWorkspaceToolbarController.Item.viewChanges)
         let noteActions = try #require(item(ScholiumWorkspaceToolbarController.Item.noteActions, in: toolbar) as? DocumentNoteActionsToolbarItem)
         #expect(!noteActions.showsIndicator)
         #expect(!noteActions.isEnabled)
@@ -145,6 +147,7 @@ struct WorkspaceToolbarTests {
         for identifier in [
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
+            ScholiumWorkspaceToolbarController.Item.viewChanges,
             ScholiumWorkspaceToolbarController.Item.settlement,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.inspector,
@@ -262,6 +265,7 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.forward,
             ScholiumWorkspaceToolbarController.Item.inspector,
             ScholiumWorkspaceToolbarController.Item.documentMode,
+            ScholiumWorkspaceToolbarController.Item.viewChanges,
             ScholiumWorkspaceToolbarController.Item.settlement,
         ] {
             let command = try #require(item(identifier, in: toolbar))

@@ -465,6 +465,9 @@ public struct WorkspaceSnapshot: Sendable {
     public let vaults: [WorkspaceVaultSnapshot]
     public let discovery: WorkspaceDiscoverySnapshot
     public let research: WorkspaceResearchSnapshot
+    /// Monotonic machine-local Changes metadata revision. It rides every
+    /// workspace event so a coalesced stream still invalidates stale UI state.
+    public let documentChangesGeneration: UInt64
 
     public init(
         triptych: ScholiumTriptych,
@@ -473,7 +476,8 @@ public struct WorkspaceSnapshot: Sendable {
         generatedAt: Date,
         vaults: [WorkspaceVaultSnapshot],
         discovery: WorkspaceDiscoverySnapshot,
-        research: WorkspaceResearchSnapshot
+        research: WorkspaceResearchSnapshot,
+        documentChangesGeneration: UInt64 = 0
     ) {
         self.triptych = triptych
         self.mode = mode
@@ -482,6 +486,16 @@ public struct WorkspaceSnapshot: Sendable {
         self.vaults = vaults
         self.discovery = discovery
         self.research = research
+        self.documentChangesGeneration = documentChangesGeneration
+    }
+
+    public func withDocumentChangesGeneration(_ generation: UInt64) -> Self {
+        Self(
+            triptych: triptych, mode: mode, phase: phase,
+            generatedAt: generatedAt, vaults: vaults,
+            discovery: discovery, research: research,
+            documentChangesGeneration: generation
+        )
     }
 
     public func vault(id: UUID) -> WorkspaceVaultSnapshot? {
@@ -656,6 +670,17 @@ public struct WorkspaceResearchStateChangedEvent: Sendable {
     }
 }
 
+/// Machine-local Changes metadata changed without a vault source mutation.
+public struct WorkspaceDocumentChangesChangedEvent: Sendable {
+    public let generation: UInt64
+    public let snapshot: WorkspaceSnapshot
+
+    public init(generation: UInt64, snapshot: WorkspaceSnapshot) {
+        self.generation = generation
+        self.snapshot = snapshot
+    }
+}
+
 /// Invalidates projections that resolve mutable Research Guidance state.
 /// The event deliberately does not claim that an attempted configuration
 /// mutation committed: consumers reread the exact current Method, Skill,
@@ -723,6 +748,7 @@ public enum WorkspaceEvent: Sendable {
     case inventoryChanged(WorkspaceInventoryChangedEvent)
     case derivedStateChanged(WorkspaceDerivedStateChangedEvent)
     case researchStateChanged(WorkspaceResearchStateChangedEvent)
+    case documentChangesChanged(WorkspaceDocumentChangesChangedEvent)
     case researchConfigurationInvalidated(
         WorkspaceResearchConfigurationInvalidatedEvent
     )
@@ -736,6 +762,7 @@ public enum WorkspaceEvent: Sendable {
         case .inventoryChanged(let event): event.generation
         case .derivedStateChanged(let event): event.generation
         case .researchStateChanged(let event): event.generation
+        case .documentChangesChanged(let event): event.generation
         case .researchConfigurationInvalidated(let event): event.generation
         case .vaultAccessInvalidated(let event): event.generation
         case .runtimeReloaded(let event): event.generation
@@ -749,6 +776,7 @@ public enum WorkspaceEvent: Sendable {
         case .inventoryChanged(let event): event.snapshot
         case .derivedStateChanged(let event): event.snapshot
         case .researchStateChanged(let event): event.snapshot
+        case .documentChangesChanged(let event): event.snapshot
         case .researchConfigurationInvalidated(let event): event.snapshot
         case .vaultAccessInvalidated(let event): event.snapshot
         case .runtimeReloaded(let event): event.snapshot
@@ -773,6 +801,7 @@ public enum WorkspaceEvent: Sendable {
             .sourceCommitted,
             .inventoryChanged,
             .researchStateChanged,
+            .documentChangesChanged,
             .researchConfigurationInvalidated,
             .runtimeReloaded:
             snapshot.phase.isComplete

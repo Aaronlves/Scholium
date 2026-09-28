@@ -15,8 +15,12 @@
   Agent runtime. In-app Chat may inspect and manage runtime-owned Skills under
   §8.7; Skills never grant authority or become application-managed methods.
 - An **Agent Change** is one machine-local, exact MCP mutation record used for
-  comparison and eligible recovery. It is not a research task, result,
+  operation evidence and eligible recovery. It is not a research task, result,
   acceptance or review state.
+- **Changes** compares a Note's saved source with its machine-local comparison
+  baseline, regardless of whether the intervening writes came from the
+  researcher, an Agent, or another filesystem participant. **Mark as Reviewed**
+  advances that baseline; it is not a research judgment.
 - **Settle** is the researcher's replaceable judgment that one saved fingerprint
   is sufficiently stable for current research. It stores no source version.
 - **Connect** presents authored link occurrences and their annotations.
@@ -57,8 +61,8 @@ Scholium provides:
   writes;
 - autosave, external-change detection, conflicts, and interrupted-write
   recovery; and
-- current source/index reconciliation plus exact Agent Change evidence, diff,
-  and eligible direct Undo.
+- current source/index reconciliation, Note Changes comparison, and exact Agent
+  Change evidence with eligible direct Undo.
 
 Raw external filesystem edits remain unattributed external changes.
 Fingerprints identify revisions, not permission. Scholium MCP owns tool shape
@@ -71,7 +75,8 @@ becomes epistemic authority or researcher adoption.
 Each Triptych has one researcher authority. Agents are attributed participants,
 not additional researchers. Keep distinct: source and modified Notes; vault
 role and location; Settlement state; Agent attribution; external conversation;
-research history authored in Notes; and Agent Changes. Later editing, incorporation, or Settle
+research history authored in Notes; Changes review history; and Agent Change
+operation evidence. Later editing, incorporation, or Settle
 never erases provenance.
 
 Use sparse visible labels. Vault placement communicates Note role; the Document

@@ -100,7 +100,7 @@ window-session restoration retains the pre-focus pane visibility.
 One native **Note Actions** menu sits immediately after Review/Edit in both
 window types; the separate window reuses its existing More button. It groups
 Note-link copying and Add to Chat; Move, Duplicate and Merge; Find and
-current-Note Agent Changes; Finder and window actions; then system Trash.
+current-Note Changes; Finder and window actions; then system Trash.
 The filename title is changed in place by editing the inline title control in
 the document. Settle and Document Mode retain their direct controls. Menu
 execution remains bound to its captured Note even when Library selection or the
@@ -158,7 +158,7 @@ Menu group order:
 - **Format**: styles; headings/lists; quotations/code; tables.
 - **Insert**: links; footnotes; images; tables/breaks; comments/Callouts.
 - **View**: history/search; panes; Document mode; text size/appearance.
-- **Research**: related material; selection to Chat; Settle; Agent Changes.
+- **Research**: related material; selection to Chat; Settle; Changes.
 - **Window**: native windows; tabs/transfer; Notifications.
 - **App**: native commands and Settings (§18.2.1).
 
@@ -283,7 +283,7 @@ source commit, the UI offers Retry Edit/Source without duplicate creation.
 Triptych Notifications has one stable native bell in the toolbar. It aligns
 with the Sidebar's upper trailing edge when expanded; native toolbar layout
 reflows it beside the sidebar selector when collapsed. It opens the complete
-Agent Change/Settlement queue without changing the selected workspace or
+Changes/Settlement queue without changing the selected workspace or
 Document. Zero is quiet; nonzero uses the native badged bell
 with a small dot, without a visible number, unread model, animation, or
 auto-open. Bell shape, dot shape, accessible state, and the popover's exact
@@ -294,15 +294,15 @@ external Agent Note mutation and the live Chat events defined in §8.7.6. The fi
 system authorization directly; there is no in-app permission pre-prompt or
 separate enable switch. Denial is respected without repeated requests.
 Foreground events update the bell and local Note state without banners or
-focus changes. Consecutive writes to one Note coalesce to the latest exact
-change; individual machine-local receipts remain inspectable.
+focus changes. The bell groups pending Changes by Note; individual machine-local
+Agent receipts remain inspectable at their exact operation routes.
 
 System notification text is generic and excludes Note titles, paths, and source.
 Only opaque Triptych, change, Note, operation, fingerprint, conversation identity
 and Chat event category support click routing. Opening a change revalidates its
-exact receipt; opening Chat reveals its exact conversation and leaves the Note
-unchanged. Missing or stale targets
-never silently select another change or authorize a source operation. Delivery
+exact receipt and opens the affected Note's current Changes when available;
+opening Chat reveals its exact conversation and leaves the Note unchanged.
+Missing or stale targets never silently select another Note or authorize a source operation. Delivery
 failure, denied permission, and Focus never suppress necessary in-app state.
 
 Changed Since Settle stays in the bell and its local context. Structural
@@ -317,10 +317,10 @@ overlay, priority stack, expiry timer, or duplicate delivery of the same event.
 
 The complete Notifications queue is a window-owned native popover. The toolbar
 opens Triptych scope; Inspector may open a current-Note subset. Popover closure
-does not dismiss an Agent Change or alter Settlement. The queue
-presents Agent Changes, then Settlement reminders, with only valid actions.
-Rows separate Note identity from the event description; Agent Changes
-also show time and the current/earlier/unavailable revision state.
+does not mark Changes reviewed or alter Settlement. The queue
+presents pending Note Changes, then Settlement reminders, with only valid actions.
+Rows separate Note identity from the event description; source attribution is
+shown only for an exact Agent receipt, never the cumulative comparison.
 Search/filter changes only this presentation. Notification-type filters live in
 the native search-field magnifying-glass menu rather than a separate filter
 button.

@@ -111,6 +111,16 @@ public actor WorkspaceEventSource {
                 )), snapshot: snapshot)
     }
 
+    func publishDocumentChangesChanged(snapshot: WorkspaceSnapshot) {
+        publish(
+            .documentChangesChanged(
+                WorkspaceDocumentChangesChangedEvent(
+                    generation: nextGeneration(), snapshot: snapshot
+                )
+            ), snapshot: snapshot
+        )
+    }
+
     func publishVaultAccessInvalidated(
         snapshot: WorkspaceSnapshot,
         unavailableVaultPaths: [UUID: String]

@@ -18,6 +18,7 @@ struct WorkspaceServices: Sendable {
     let zotero: ZoteroOperations
     let settlementStore: SettlementStore
     let agentChangeStore: AgentChangeStore
+    let documentReviewStore: DocumentReviewStore?
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
 }
@@ -57,6 +58,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public nonisolated let discovery: DiscoveryOperations
     public nonisolated let research: ResearchOperations
     public nonisolated let agentCollaboration: AgentCollaborationOperations
+    public nonisolated let changes: DocumentChangeOperations
 
     let services: WorkspaceServices
     private let leases: [SecurityScopeLease]
@@ -93,6 +95,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     var progressiveActivationReconciliationBarrierForTesting: (@Sendable () async -> Void)?
     var hydrationPostReadBarrierForTesting: (@Sendable () async -> Void)?
     var didCompleteActivationReconciliation = false
+    var documentReviewIssue: String?
+    var openingReviewCandidates: [UUID: WorkspaceNoteSummary] = [:]
 
     func setManagedCreationPreLeaseBarrierForTesting(
         _ barrier: (@Sendable () async -> Void)?
@@ -130,7 +134,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
         research: ResearchOperations,
-        agentCollaboration: AgentCollaborationOperations
+        agentCollaboration: AgentCollaborationOperations,
+        changes: DocumentChangeOperations
     ) {
         id = assignment.id
         runtimeIdentity = TriptychRuntimeIdentity(
@@ -147,6 +152,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.discovery = discovery
         self.research = research
         self.agentCollaboration = agentCollaboration
+        self.changes = changes
         events = WorkspaceEventSource(initialSnapshot: initialSnapshot)
         refreshCoordinator = WorkspaceRefreshCoordinator(
             startingAfter: initialWorkspaceGeneration
@@ -319,6 +325,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 zotero: zotero,
                 settlementStore: settlementStore,
                 agentChangeStore: agentChangeStore,
+                documentReviewStore: try? DocumentReviewStore(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                ),
                 transactionRecoveryStore: transactionRecoveryStore,
                 identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator(
                     control: controlStore,
@@ -378,6 +388,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let agentCollaborationOperations = AgentCollaborationOperations(
                 reference: reference
             )
+            let documentChangeOperations = DocumentChangeOperations(reference: reference)
             let handle = WorkspaceHandle(
                 assignment: assignment,
                 mode: mode,
@@ -390,9 +401,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 documents: documentOperations,
                 discovery: discoveryOperations,
                 research: researchOperations,
-                agentCollaboration: agentCollaborationOperations
+                agentCollaboration: agentCollaborationOperations,
+                changes: documentChangeOperations
             )
             await reference.bind(handle)
+            await handle.initializeDocumentReviewsFromOpeningSnapshot(initialSnapshot)
             if case .live = access {
                 let activationInventory: [VaultQualifiedNoteID: DocumentFingerprint]
                 if let preOpenInventory {

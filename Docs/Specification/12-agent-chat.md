@@ -563,9 +563,9 @@ amendments are not implied by these actions. Decisions remain pending until the
 runtime resolves the exact request; a response write alone is not confirmation,
 and an uncertain response is never automatically repeated.
 
-Confirmed Note changes reuse Agent Changes comparison and eligible Undo under
-§8.4. Full Access preserves its existing no-additional-approval policy. Runtime
-filesystem reports never masquerade as confirmed Scholium change receipts.
+Confirmed MCP mutations retain §8.4 receipts and Undo; affected Notes enter
+§5.7 Changes. Full Access preserves its existing no-additional-approval policy.
+Runtime filesystem reports are not Scholium receipts.
 
 ### 8.7.6 Concurrent, delegated and background work
 

@@ -259,7 +259,7 @@ extension WorkspaceHandle {
         let gateWaitDuration = cycleStart.duration(to: clock.now)
         defer { endRefreshCycle(refreshLease) }
         let payload = try WorkspaceRefreshPayload.merged(payloads)
-        let snapshot: WorkspaceSnapshot
+        var snapshot: WorkspaceSnapshot
         let measurement: WorkspaceRefreshMeasurement
         let sourcePreparationDuration: Duration
         let buildDuration: Duration
@@ -328,6 +328,18 @@ extension WorkspaceHandle {
         }
         try requireActive()
         let previous = currentSnapshot
+        if !previous.phase.isComplete && snapshot.phase.isComplete {
+            // The opening vault was already observable. A Note first seen
+            // there after that snapshot is new, while newly available vaults
+            // establish their first honest observed source baseline now.
+            await initializeNewDocumentReviews(from: previous, to: snapshot)
+            await initializeDocumentReviewsFromOpeningSnapshot(snapshot)
+        } else if previous.phase.isComplete {
+            await initializeNewDocumentReviews(from: previous, to: snapshot)
+        }
+        snapshot = snapshot.withDocumentChangesGeneration(
+            currentSnapshot.documentChangesGeneration
+        )
         currentSnapshot = snapshot
         sourceAheadIdentityRecords.removeAll(keepingCapacity: true)
         let confirmsEarlierFailure = derivedStateRequiresRefresh

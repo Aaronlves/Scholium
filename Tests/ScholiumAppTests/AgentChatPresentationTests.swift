@@ -176,27 +176,4 @@ struct AgentChatPresentationTests {
         #expect(failure.status == .failed && failure.files.first?.effect == nil)
     }
 
-    @Test("Conversation change history retains earlier receipts without importing unrelated changes")
-    func conversationChangeScope() {
-        let triptych = UUID()
-        let note = UUID()
-        func change(_ time: Double) -> AgentChange {
-            AgentChange(
-                id: UUID(), triptychID: triptych, operation: .update, noteID: note,
-                role: .topicKnowledge, originalRelativePath: "note.md", finalRelativePath: "note.md",
-                beforeFingerprint: nil, afterFingerprint: nil, state: .confirmed,
-                createdAt: Date(timeIntervalSince1970: time), confirmedAt: Date(timeIntervalSince1970: time), undoneAt: nil)
-        }
-        let earlier = change(1)
-        let latest = change(2)
-        let unrelated = change(3)
-        let all = [earlier, latest, unrelated]
-        #expect(
-            AgentChangePresentation.inScope(all, scope: .conversation([earlier.id, latest.id, latest.id])).map(\.id)
-                == [earlier.id, latest.id])
-        #expect(AgentChangePresentation.inScope(all, scope: .exact(earlier.id)).map(\.id) == [earlier.id])
-        #expect(AgentChangePresentation.inScope(all, scope: .current).map(\.id) == [unrelated.id])
-        #expect(AgentChangePresentation.inScope(all, scope: .conversation([])).isEmpty)
-    }
-
 }

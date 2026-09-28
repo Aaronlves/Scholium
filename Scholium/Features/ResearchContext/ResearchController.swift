@@ -40,6 +40,7 @@ struct ResearchControllerCapabilities: Sendable {
     let documents: any DocumentUseCases
     let research: any ResearchUseCases
     let agentCollaboration: any AgentCollaborationUseCases
+    let changes: any DocumentChangeUseCases
     let recoveryRecordsURL: URL
 }
 
@@ -58,6 +59,9 @@ final class ResearchController: ObservableObject {
     @Published private(set) var researchSnapshot: WorkspaceResearchSnapshot?
     @Published private(set) var agentChanges: [AgentChange]?
     @Published private(set) var agentChangesError: String?
+    @Published private(set) var pendingChanges: [DocumentChangeSummary]?
+    @Published private(set) var pendingChangesError: String?
+    @Published private(set) var documentChangesRevision: UInt64 = 0
     @Published private(set) var errorMessage: String?
     @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
     @Published var transactionRecoveryError: String?
@@ -69,6 +73,9 @@ final class ResearchController: ObservableObject {
     private var capabilities: ResearchControllerCapabilities?
     private var agentChangesRefreshTask: Task<Void, Never>?
     private var agentChangesRefreshGeneration: UInt64 = 0
+    private var pendingChangesRefreshTask: Task<Void, Never>?
+    private var pendingChangesRefreshGeneration: UInt64 = 0
+    private var observedDocumentChangesGeneration: UInt64?
     private var documentSelectionObservation: AnyCancellable?
 
     init(
@@ -98,8 +105,11 @@ final class ResearchController: ObservableObject {
         snapshot: WorkspaceSnapshot? = nil
     ) {
         agentChangesRefreshTask?.cancel()
+        pendingChangesRefreshTask?.cancel()
         relatedMaterials.cancel()
         agentChangesRefreshGeneration &+= 1
+        pendingChangesRefreshGeneration &+= 1
+        observedDocumentChangesGeneration = snapshot?.documentChangesGeneration
         if self.capabilities?.triptychID != capabilities.triptychID {
             linksInspector.reset()
             relatedMaterials.reset()
@@ -107,20 +117,29 @@ final class ResearchController: ObservableObject {
         self.capabilities = capabilities
         agentChanges = nil
         agentChangesError = nil
+        pendingChanges = nil
+        pendingChangesError = nil
         errorMessage = nil
         if let snapshot { receive(snapshot) }
         scheduleAgentChangesRefresh()
+        scheduleDocumentChangesRefresh()
     }
 
     func unbind() {
         relatedMaterials.reset()
         agentChangesRefreshTask?.cancel()
+        pendingChangesRefreshTask?.cancel()
         agentChangesRefreshTask = nil
+        pendingChangesRefreshTask = nil
         agentChangesRefreshGeneration &+= 1
+        pendingChangesRefreshGeneration &+= 1
+        observedDocumentChangesGeneration = nil
         capabilities = nil
         researchSnapshot = nil
         agentChanges = nil
         agentChangesError = nil
+        pendingChanges = nil
+        pendingChangesError = nil
         errorMessage = nil
         transactionRecoveryRecords = []
         transactionRecoveryError = nil
@@ -142,6 +161,46 @@ final class ResearchController: ObservableObject {
         agentChangesRefreshTask = Task { [weak self] in
             guard let self else { return }
             _ = try? await self.loadAgentChanges()
+        }
+    }
+
+    func scheduleDocumentChangesRefresh() {
+        pendingChangesRefreshTask?.cancel()
+        pendingChangesRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            _ = try? await self.loadDocumentChanges()
+        }
+    }
+
+    func noteDocumentChangesInvalidated() {
+        documentChangesRevision &+= 1
+        scheduleDocumentChangesRefresh()
+    }
+
+    func observeDocumentChangesGeneration(_ generation: UInt64) {
+        guard observedDocumentChangesGeneration != generation else { return }
+        observedDocumentChangesGeneration = generation
+        noteDocumentChangesInvalidated()
+    }
+
+    @discardableResult
+    func loadDocumentChanges() async throws -> [DocumentChangeSummary] {
+        pendingChangesRefreshGeneration &+= 1
+        let generation = pendingChangesRefreshGeneration
+        guard let operations = capabilities?.changes else {
+            throw ScholiumApplicationError.noWorkspaceConfigured
+        }
+        do {
+            let changes = try await operations.pendingChanges()
+            try Task.checkCancellation()
+            guard generation == pendingChangesRefreshGeneration else { throw CancellationError() }
+            pendingChanges = changes
+            pendingChangesError = nil
+            return changes
+        } catch {
+            guard generation == pendingChangesRefreshGeneration else { throw error }
+            if !(error is CancellationError) { pendingChangesError = error.localizedDescription }
+            throw error
         }
     }
 
@@ -168,11 +227,6 @@ final class ResearchController: ObservableObject {
             }
             throw error
         }
-    }
-
-    /// An explicit history read does not compete with background projection generations.
-    func agentChangeHistory() async throws -> [AgentChange] {
-        try await requireAgentCollaboration().agentChanges()
     }
 
     @discardableResult

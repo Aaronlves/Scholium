@@ -307,15 +307,19 @@ owners.
 Every successful MCP Note mutation creates one
 machine-local **Agent Change** with a stable `change_id`, operation, Note identity and location, exact
 before/after evidence where applicable, and recovery state. It exists only to
-support accurate comparison, Earlier Revision presentation, and eligible
-direct Undo; it is not a research task, review state, completion
-marker, philosophical summary, or researcher acceptance. Created Notes have
-no fabricated empty preimage. A separate machine-local viewed marker records only
-an explicit Mark as Viewed action for that receipt. Opening or closing a comparison
-never marks it. Mark as Unviewed restores the pending entry; new receipts are
-unviewed. This marker grants no permission, confirms no philosophical judgment,
-and changes neither evidence, recovery state nor Settlement. Prepared and uncertain
-outcomes cannot be hidden by it; undone receipts remain in history.
+support exact operation inspection, Earlier Revision presentation, and eligible
+direct Undo; it is not a Changes baseline, review batch, completion marker,
+philosophical summary, or researcher acceptance. Created Notes have no
+fabricated empty preimage. Prepared and uncertain outcomes remain visible in
+their recovery state; undone receipts remain until eligible expiration. §5.7 owns
+the independent all-source Note comparison and explicit review baseline.
+Unreviewed, prepared, uncertain, active and unresolved-recovery receipts remain.
+Completed operation evidence may expire only after every affected Note has an
+explicit covering review and the chosen duration has elapsed since the last
+covering review. Deleting a reviewed batch alone does not accelerate this.
+Expiry may end exact Undo and receipt routes, which then report unavailable;
+possible future Undo eligibility cannot preserve a hidden archive indefinitely.
+Missing coverage proof retains the receipt.
 
 Change listing defaults to 20 receipts (at most 100), optionally filtered by
 stable Note identity, including linked Notes affected by a move; continuation

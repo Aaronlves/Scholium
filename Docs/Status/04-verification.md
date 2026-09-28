@@ -44,6 +44,19 @@ are recorded for the 2026-09-16 editor/Settings development runs. QA used
 disposable standard 500-Note Triptych copies and isolated state; recorded QA
 processes, bundles and temporary state were removed.
 
+**2026-09-28 — Changes:** Original `verify.sh` passed all modules (1,195 App
+tests/155 suites), localization, lint, RDF determinism, symbol, Release and
+bundled-helper checks. Disposable standard 500-Note Triptych English/light Debug QA
+covered cumulative English/Chinese source edits, difference navigation, close
+without review, explicit review/history, newer pending after history delete/clear,
+and This Mac Settings scope, 90-day default, counts and confirmation. Clearing
+history left the Note hash unchanged; the test App, fixture copies and isolated
+state were removed. Supplementary dark/narrow QA covered comparison, Settings
+and keyboard routes. Human VoiceOver, physical input, full adaptation, packaging
+and release acceptance remain open. Evidence:
+`.build/changes-complete-gate-green-candidate.log`,
+`.build/changes-qa-before-clear.sha256`, `.build/changes-qa-after-clear.sha256`.
+
 **2026-09-17 — Inline writing assistance:** Owning mocked-runtime checks cover
 independent model/low effort, isolated ephemeral execution, cancellation, cleanup
 and bounded literal output. Editor typechecking and 364 tests cover AI-first
@@ -51,10 +64,7 @@ preview, unavailable/empty/timeout fallback, late-result rejection, IME suppress
 and exact Undo. Eight native/context checks cover unfocused suppression,
 source-neutral configuration and revision-bound background. A disposable 500-Note
 QA journey verifies Settings search, default off/Luna, retained offline choice and
-disable. Gate components completed: 481 Core plus three performance, 96 Contracts,
-183 Application plus one architecture measurement, 1,022 App tests, public-symbol
-guards, Release compilation and helper isolation. An unrelated Zotero fixture
-timeout passed isolated recheck and full Core rerun before gate continuation.
+disable.
 No provider generation or private vault was used. SwiftPM's inactive
 WebKit host cannot establish native AI acceptance/Undo; real-runtime quality,
 quota, IME, VoiceOver and full adaptations remain open.
@@ -121,11 +131,6 @@ category navigation and default-value field repair. Exact backups, unknown-field
 retention and unchanged Note bytes are checked. Independent review added a
 rollback-writer preservation regression. Evidence:
 `.build/settings-recovery-evidence/RESULTS.md`.
-The complete source gate passed 364 Web, 494 Core plus three performance,
-96 Contracts, 191 Application plus one architecture measurement and 1,038 App
-tests, public-symbol guards, Release compilation and helper isolation.
-These are scoped development results, not the complete UI suite or human
-VoiceOver/Full Keyboard Access/installed-IME/system-adaptation acceptance.
 
 **2026-09-22 — Chat response/reading:** Tests cover history batching, stream
 publication, WebKit selection, draft measurement and floating-composer geometry.
@@ -204,9 +209,7 @@ reduces foreground median 1.361→0.873 s, with 0.807–0.821 s background work;
 paired and 21 prior source/locator results remain identical.
 Evidence: `.build/two-layer-retrieval/`, `.build/retrieval-architecture/`,
 `.build/retrieval-optimization/`, `.build/recommendation-graph-evaluation/`,
-`.build/writing-references-performance/`. Integration gate stops at pre-existing
-toolbar/chat formatting. The 2026-09-17 Release baseline remains
-`.build/graph-retrieval/repository-gate.log`.
+`.build/writing-references-performance/`.
 Measurements below exclude editor capture/debounce, link-action preparation and
 native publication; they are not G7 or click-to-paint acceptance.
 

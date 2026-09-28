@@ -1827,8 +1827,10 @@ struct ApplicationFixture: Sendable {
     let assignment: TriptychAssignment
     let analysisNoteID: VaultQualifiedNoteID
 
-    static func make(registerLiveAccess: Bool = false) async throws -> Self {
-        let rootURL = FileManager.default.temporaryDirectory
+    static func make(registerLiveAccess: Bool = false, rootURL requestedRootURL: URL? = nil) async throws -> Self {
+        let rootURL =
+            requestedRootURL
+            ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("ScholiumApplicationTests-\(UUID().uuidString)", isDirectory: true)
         let applicationSupportURL = rootURL.appendingPathComponent("Application Support", isDirectory: true)
         let analysesURL = rootURL.appendingPathComponent("Analyses", isDirectory: true)

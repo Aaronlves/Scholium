@@ -218,8 +218,6 @@ extension WorkspaceHandle {
         // holding the interaction open. The exact window installs the
         // committed source-ahead relocation before this operation returns.
         scheduleCommittedMutationRefresh(refreshPayload)
-        endSourceMutation(mutationLease)
-        ownsMutation = false
         if let agentMove {
             guard identityFailure == nil else {
                 _ = try? await services.agentChangeStore.markOutcomeUncertain(id: agentMove.changeID)
@@ -231,6 +229,8 @@ extension WorkspaceHandle {
             guard identityFailure == nil else { throw AgentCollaborationError.changeConfirmationUncertain(undoAgentMoveID) }
             try await confirmAgentMoveUndo(id: undoAgentMoveID, commit: commit)
         }
+        endSourceMutation(mutationLease)
+        ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
             identityRecoveryWarning: identityFailure?.localizedDescription

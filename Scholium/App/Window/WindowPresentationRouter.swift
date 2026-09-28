@@ -1,17 +1,6 @@
 import ScholiumContracts
 import SwiftUI
 
-enum AgentChangesScope {
-    case current
-    case exact(UUID)
-    case conversation([UUID])
-
-    var exactID: UUID? {
-        if case .exact(let id) = self { return id }
-        return nil
-    }
-}
-
 enum WindowSheetRoute: Identifiable {
     case noteFileOperation(NoteFileRequest)
     case libraryNoteBatch(LibraryNoteBatchRequest)
@@ -21,7 +10,8 @@ enum WindowSheetRoute: Identifiable {
     case systemTrash(SystemTrashDeletionPreview)
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
-    case agentChanges(scope: AgentChangesScope)
+    case agentChangeReceipt(UUID)
+    case documentChanges(scope: DocumentChangesScope)
 
     var id: String {
         switch self {
@@ -34,7 +24,8 @@ enum WindowSheetRoute: Identifiable {
             "system-trash:\(preview.id.uuidString.lowercased())"
         case .transactionRecovery: "transaction-recovery"
         case .identityResolution(let ambiguity): "identity-resolution:\(ambiguity.id)"
-        case .agentChanges: "agent-changes"
+        case .agentChangeReceipt(let id): "agent-change-receipt:\(id.uuidString.lowercased())"
+        case .documentChanges(let scope): "document-changes:\(scope.identity)"
         }
     }
 }

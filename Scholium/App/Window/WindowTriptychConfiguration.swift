@@ -144,6 +144,7 @@ extension WindowModel {
                 documents: capabilities.documents,
                 research: capabilities.research.research,
                 agentCollaboration: capabilities.agentCollaboration,
+                changes: capabilities.changes,
                 recoveryRecordsURL: capabilities.research.recoveryRecordsURL
             ),
             snapshot: snapshot

@@ -7,7 +7,7 @@
 Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
 one exact Markdown buffer; autosave; create, duplicate, import, move,
 export, Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
-source properties, Agent Changes, conflicts, and recovery.
+source properties, Changes, conflicts, and recovery.
 
 ### 5.1 Document modes and YAML
 
@@ -254,6 +254,33 @@ images and exact line spacing are omitted. A copy never becomes a second
 Markdown authority, an evidence claim, or a linked project archive. §18.4 owns
 the format, style, size, and destination interface.
 
+### 5.7 Changes comparison and review
+
+**Changes** compares the exact saved source of a Note with its last explicitly
+reviewed ending snapshot. Before the first review, a trustworthy initial observed
+snapshot may anchor comparison without being called reviewed. Unknown prior
+source and newly created Notes show their actual initial state, never an invented
+empty preimage. Subsequent researcher, Agent, and external saves contribute to
+one net comparison without inferred authorship or a forced operation history.
+If saved bytes return to the baseline, no change is pending.
+
+**Mark as Reviewed** explicitly records only the ending snapshot displayed in
+that comparison as the Note's next machine-local baseline and a review-history
+batch. It verifies the Note identity and that no other review has superseded the
+displayed starting baseline. A newer saved revision remains pending relative to
+the displayed ending snapshot; it is never silently marked reviewed. Opening,
+closing, or navigating Changes never marks anything reviewed. Review does not
+alter Markdown, Agent Change evidence, recovery, or Settlement and makes no
+claim about philosophical acceptance. The exact snapshots needed to reopen a
+reviewed batch remain with its history record.
+
+Reviewed history may expire after 30, 90 (default), or 365 days from its
+reviewed time, or be retained forever. A researcher may delete one reviewed
+batch or clear reviewed history for the selected Triptych with confirmation.
+Expiration and deletion remove the reviewed batches' stored snapshots while
+preserving the active comparison baseline, pending changes, and unresolved recovery.
+Neither action edits source or changes its review or Settlement state.
+
 ## 6. System Trash deletion and recovery
 
 Scholium has no application Trash, erase command, or source restore command.
@@ -303,13 +330,13 @@ When current source differs from the fingerprint at which Settle was last
 affirmed, Scholium derives **Changed Since Settle** without changing the
 Settlement judgment. A dismissible reminder may invite the researcher to
 review the current Note and choose Settle Again, Mark Unsettled, or no status
-change. When exact Agent Changes are available, **Review Changes** opens their
-temporary comparisons; a non-Agent save never fabricates one. Opening,
+change. **View Changes** opens the current Note's saved-source comparison when
+changes are pending, regardless of the source of the edit. Opening,
 closing, or dismissing any presentation has no Settlement effect.
 
-Each Note has one portable Settlement judgment and no separate reviewed
-marker. It is not a Record, verdict, source version, restore point, retention
-policy, or Agent requirement.
+Each Note has one portable Settlement judgment. The machine-local Changes
+baseline is separate and is not a verdict, source restore point, or Agent
+requirement.
 
 Authoritative written annotation remains Markdown, including semantic
 Callouts and the occurrence-owned link annotations defined by §12. Selection

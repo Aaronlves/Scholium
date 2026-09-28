@@ -63,10 +63,8 @@ struct AgentChangesSheetLifecycleTests {
 
         state.reviewContinuation?.resume()
         state.reviewContinuation = nil
-        try await wait {
-            AgentChangeViewedLedger(data: defaults.data(forKey: AgentChangeViewedLedger.key) ?? Data())
-                .ids.contains(change.id)
-        }
+        try await wait { state.detailReturned }
+        sheet.contentView?.layoutSubtreeIfNeeded()
         #expect(parent.attachedSheet === sheet, "Loading the detail must retain the presented sheet")
         #expect(parent.frame == initialFrame, "Displaying the detail moved the document window")
 
@@ -89,6 +87,7 @@ struct AgentChangesSheetLifecycleTests {
 private final class SheetLifecycleState {
     var isPresented = false
     var didDismiss = false
+    var detailReturned = false
     @ObservationIgnored var reviewContinuation: CheckedContinuation<Void, Never>?
 }
 
@@ -102,10 +101,11 @@ private struct SheetLifecycleHost: View {
         Text("Disposable document window")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .sheet(isPresented: $state.isPresented, onDismiss: { state.didDismiss = true }) {
-                AgentChangesView(
-                    scope: .exact(change.id), load: { [change] },
+                AgentChangeReceiptView(
+                    changeID: change.id,
                     loadReview: { _ in
                         await withCheckedContinuation { state.reviewContinuation = $0 }
+                        state.detailReturned = true
                         return AgentChangeReview(
                             change: change, comparison: nil, currentCreatedSource: "Synthetic current content.",
                             endingRevisionState: .current)

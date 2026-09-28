@@ -141,11 +141,15 @@ entry without dropping the draft or stored trace. Reply Note links open Notes;
 Chat adds no duplicate file cards above or below those links. Reading and no-op
 records follow the same hierarchy: an exact Scholium Note may be opened from the
 first-level target, while returned paths and additional Note identities remain in
-Details. The floating Changes entry counts confirmed, not-yet-viewed mutations
-in this conversation, never reads or runtime-only claims. Its native popover
-separates Open Note from View Changes. Both the entry and All Changes history remain
-when the pending list is empty; only the pending badge disappears. Input attachments
-remain separate draft materials.
+Details. The floating Changes entry leads to Notes affected by confirmed
+Scholium MCP mutations in this conversation. Its pending count is distinct
+affected Notes whose saved source still differs from their Changes baseline,
+not a count of unviewed receipts, reads, or runtime-only claims. The native
+popover separates Open Note from View Changes; cumulative comparison does not
+attribute every intervening edit to this conversation. The entry and Changes
+History remain when the pending list is empty; only the pending badge disappears.
+Retained operation receipts stay reachable from their activity records. Input
+attachments remain separate draft materials.
 A compact Agent-count capsule sits beside Changes when retained child work exists,
 and remains available when no Changes await review. Its native popover lists
 the distinct Agents, including ended work, grouped by observed Active, Not Running

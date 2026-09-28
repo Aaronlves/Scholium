@@ -18,7 +18,7 @@ enum DocumentNoteAction: String, CaseIterable {
         case .duplicate: "Duplicate Note…"
         case .merge: "Merge into Another Note…"
         case .find: "Find…"
-        case .agentChanges: "Agent Changes…"
+        case .agentChanges: "View Changes"
         case .export: "Export Note…"
         case .revealInFinder: "Reveal in Finder"
         case .moveWindow: detached ? "Move to Main Window" : "Move to Separate Window"
@@ -166,7 +166,9 @@ extension WindowModel {
         case .duplicate: return currentDocumentCapabilities.allows(.duplicate)
         case .merge: return canMergeCurrentNote
         case .trash: return currentDocumentCapabilities.allows(.moveToSystemTrash)
-        case .agentChanges: return currentDocumentDescriptor != nil && windowWorkspaceController.activeCapabilities != nil
+        case .agentChanges:
+            guard let noteID = currentDocumentDescriptor?.sessionKey.noteID else { return false }
+            return researchController.pendingChanges?.contains { $0.noteID == noteID } == true
         case .export:
             return currentDocumentDescriptor != nil && presentationRouter.sheet == nil
                 && !noteExportPreparationInProgress && noteExportWindowController == nil
@@ -215,7 +217,10 @@ extension WindowModel {
             }
         case .merge: requestMergeCurrentNote()
         case .find: presentCurrentDocumentFind()
-        case .agentChanges: presentationRouter.present(.agentChanges(scope: .current))
+        case .agentChanges:
+            if let noteID = currentDocumentDescriptor?.sessionKey.noteID {
+                presentationRouter.present(.documentChanges(scope: .note(noteID)))
+            }
         case .export: requestCurrentNoteExport()
         case .revealInFinder:
             if let url = currentNoteFileURL { workspaceStore.revealInFinder(url) }

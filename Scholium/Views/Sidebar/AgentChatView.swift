@@ -33,6 +33,7 @@ struct AgentChatView: View {
     let showChanges: (UUID) -> Void
     let showConversationChanges: ([UUID]) -> Void
     var changes: [AgentChange]? = nil
+    var pendingDocuments: [DocumentChangeSummary]? = nil
     var changesError: String? = nil
     @State private var showsConversationList = true
     @State private var listState = AgentChatConversationListState()
@@ -149,7 +150,8 @@ struct AgentChatView: View {
             openReference: openReference, openAttachment: openAttachment,
             showInLibrary: showInLibrary, showChanges: showChanges,
             showConversationChanges: showConversationChanges,
-            changes: changes, changesError: changesError,
+            changes: changes, pendingDocuments: pendingDocuments,
+            changesError: changesError,
             presentation: detailPresentation,
             readingSession: readingStore.session(for: controller.selectedID),
             focusRequest: focusRequest,

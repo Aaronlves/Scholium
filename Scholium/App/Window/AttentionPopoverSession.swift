@@ -38,16 +38,16 @@ enum AttentionPresentationRequest: Equatable, Sendable {
 final class AttentionPopoverSession: ObservableObject {
     struct Dependencies {
         let settlementRequirementChanges: AnyPublisher<[WorkspaceSettlementRequirement], Never>
-        let agentChangeChanges: AnyPublisher<[AgentChange]?, Never>
-        let agentChangeErrorChanges: AnyPublisher<String?, Never>
+        let documentChangeChanges: AnyPublisher<[DocumentChangeSummary]?, Never>
+        let documentChangeErrorChanges: AnyPublisher<String?, Never>
         let refresh: @MainActor () async -> Void
-        let showAgentChange: @MainActor (UUID) -> Void
+        let showDocumentChange: @MainActor (UUID) -> Void
     }
 
     @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
     @Published private(set) var settlementRequirements: [WorkspaceSettlementRequirement] = []
-    @Published private(set) var agentChanges: [AgentChange]?
-    @Published private(set) var agentChangesError: String?
+    @Published private(set) var documentChanges: [DocumentChangeSummary]?
+    @Published private(set) var documentChangesError: String?
     @Published private var refreshInProgress = false
 
     let presentation: AttentionPresentationState
@@ -86,16 +86,16 @@ final class AttentionPopoverSession: ObservableObject {
                 self?.settlementRequirements = requirements
             }
             .store(in: &observations)
-        dependencies.agentChangeChanges
+        dependencies.documentChangeChanges
             .removeDuplicates()
             .sink { [weak self] changes in
-                self?.agentChanges = changes
+                self?.documentChanges = changes
             }
             .store(in: &observations)
-        dependencies.agentChangeErrorChanges
+        dependencies.documentChangeErrorChanges
             .removeDuplicates()
             .sink { [weak self] error in
-                self?.agentChangesError = error
+                self?.documentChangesError = error
             }
             .store(in: &observations)
     }
@@ -106,7 +106,7 @@ final class AttentionPopoverSession: ObservableObject {
 
     var isLoadingInitialContent: Bool {
         (!catalogIsAvailable && catalogError == nil)
-            || (agentChanges == nil && agentChangesError == nil)
+            || (documentChanges == nil && documentChangesError == nil)
     }
 
     var catalogIsAvailable: Bool {
@@ -199,14 +199,14 @@ final class AttentionPopoverSession: ObservableObject {
         }
     }
 
-    func visibleAgentChanges(
+    func visibleDocumentChanges(
         for presentation: AttentionPresentationState,
         locale: Locale = .current
-    ) -> [AgentChange] {
-        guard presentation.notificationFilter.showsAgentChanges else { return [] }
+    ) -> [DocumentChangeSummary] {
+        guard presentation.notificationFilter.showsChanges else { return [] }
         let noteID = presentation.noteScope.flatMap(stableNoteID)
         let query = normalized(presentation.filter.query, locale: locale)
-        return (agentChanges ?? []).filter { change in
+        return (documentChanges ?? []).filter { change in
             if let workspaceSlot = presentation.workspaceSlot,
                 change.role != workspaceSlot.vaultRole
             {
@@ -217,44 +217,23 @@ final class AttentionPopoverSession: ObservableObject {
             }
             guard !query.isEmpty else { return true }
             let searchable = [
-                ScholiumL10n.localized(
-                    AgentChangePresentation.operationTitle(for: change.operation),
-                    locale: locale
-                ),
-                ScholiumL10n.localized(
-                    AgentChangePresentation.stateTitle(
-                        for: change,
-                        endingRevisionState: endingRevisionState(for: change)
-                    ),
-                    locale: locale
-                ),
-                noteTitle(for: change),
-                AgentChangePresentation.path(for: change),
+                noteTitle(for: change), change.relativePath,
                 ScholiumL10n.dynamicString(change.role.displayName),
+                ScholiumL10n.string("Pending Changes", locale: locale),
             ].joined(separator: " ")
             return normalized(searchable, locale: locale).contains(query)
         }
-        .sorted(by: AgentChangePresentation.newestFirst)
+        .sorted { ($0.savedAt ?? .distantPast) > ($1.savedAt ?? .distantPast) }
     }
 
-    func noteTitle(for change: AgentChange) -> String {
+    func noteTitle(for change: DocumentChangeSummary) -> String {
         if let title = catalogNotes(for: change.noteID).first?.title,
             !title.isEmpty
         {
             return title
         }
-        return AgentChangePresentation.displayName(for: change)
-    }
-
-    func endingRevisionState(
-        for change: AgentChange
-    ) -> AgentChangeEndingRevisionState? {
-        guard let endingFingerprint = change.afterFingerprint else { return nil }
-        let matches = catalogNotes(for: change.noteID)
-        guard matches.count == 1 else { return .unavailable }
-        return matches[0].fingerprint == endingFingerprint
-            ? .current
-            : .earlierRevision
+        return change.relativePath.split(separator: "/").last.map(String.init)
+            ?? change.relativePath
     }
 
     func refresh() async {
@@ -283,11 +262,9 @@ final class AttentionPopoverSession: ObservableObject {
         )
     }
 
-    func inspect(_ change: AgentChange) {
+    func inspect(_ change: DocumentChangeSummary) {
         dismiss()
-        // Agent Changes are evidence presented in the review sheet, not Note
-        // navigation. This callback must preserve the current document mode.
-        dependencies.showAgentChange(change.id)
+        dependencies.showDocumentChange(change.noteID)
     }
 
     private func stableNoteID(_ note: VaultQualifiedNoteID) -> UUID? {

@@ -390,45 +390,43 @@ YAML is optional; presets format pages without rewriting citations.
 **Export** opens a native Save panel. Content stays opaque under §§19–20.
 DOCX preview is indicative; failure stays actionable and cancellation is quiet.
 
-## 18.5 Contextual research and Agent Changes
+## 18.5 Contextual research and Changes
 
 Apparatus contains one trailing Inspector with **Links** and **Related Material**.
 Research questions and continuing discussion are ordinary Works Notes (§4 and
 §8.6), read and edited in the main Document. They have no dedicated Inspector,
 window, search category, or management commands.
 
-**Agent Changes** opens on explicit request and lists the most recent operation
-per Note, independent of Notifications dismissal. Older receipts remain retained
-and individually addressable. Chat's Conversation Changes opens this interface
-scoped to all retained receipt IDs from that conversation, including earlier
-changes to the same Note. Runtime-only reports never fabricate exact receipts. The collection uses a native striped single-selection table. Columns share the
-visible width using native autoresizing: identity absorbs spare space and
-secondary columns stay compact. Header dragging is disabled; long histories
-scroll vertically. Shared insets align title, rows and actions.
-Note identity leads, followed by operation, time and viewed state; one explicit
-action opens comparison. A single system-owned resizable sheet retains its geometry across list,
-comparison and dismissal. The Note-first comparison has a stable navigation/Undo
-footer. Empty and unavailable states use the same shell. It is
-not a fourth Document mode, durable review state, or
-research history. An Agent Change notification opens one exact
-`(change_id, Note ID)` result. An updated Note shows only the exact preimage and
-confirmed readback revision. A created Note shows **Created by External Agent**
-and current content without a fabricated empty baseline. A system-Trash change
-shows the original Note identity and location plus the Finder-owned recovery
-boundary; it is not rendered as an editable deletion diff.
+**Changes** opens an independent native sheet outside Document modes and the
+live editor. It lists **Pending** Notes and **History** batches by Note and
+review time. A current-Note **View Changes** toolbar action sits immediately
+left of Settle only while the Note has pending saved-source changes. Research
+menu, Note Actions, Chat and
+Notifications share this route without marking review. No all-reviewed action exists.
 
-Several Agent Changes never become one cumulative diff. The current collection uses
-exact position and **Previous**/**Next** routes. A direct receipt link opens only that
-change, without unrelated history navigation. The compact header names Note, operation,
-time, and current-revision state. Hide receipt IDs, hashes and encoding details; Help exposes full Note paths. Ordinary Review continues to show the current complete Note. If
-current saved source differs from the ending fingerprint, comparison is **Earlier
-Revision** and is never overlaid on current prose.
+The comparison shows §5.7's exact snapshots without invented attribution and preserves
+surrounding context and precise intraline differences. Removed text uses semantic
+red and strikethrough; inserted text uses semantic color and underline. Textual
+Before/After labels, line positions and difference boundaries preserve meaning
+without color. **Previous Difference** and **Next Difference** navigate the
+comparison; long source remains readable with bounded scrolling. The sheet
+does not alter the live editor, source selection, or Undo history.
 
-Displayed confirmed changes become Viewed automatically.
-Selection/loading/failure never marks Viewed; no confirmation button remains.
-Closing returns to the originating context without changing Settlement. Direct Undo remains per eligible update and uses
-§8.4's revision requirement; creation and system Trash have no fabricated
-source preimage or Undo.
+Only a pending Note comparison offers **Mark as Reviewed**; a newer save stays
+pending. History opens the retained exact pair without changing pending state.
+A reviewed batch has a record menu with **Delete from History**. Empty,
+unknown-baseline, loading and failed states remain distinct. The sheet returns
+to its origin. A Changes
+refresh failure after a confirmed save reports the Changes error, not a failed save.
+
+Retained Agent Change receipts remain separately inspectable from their operation
+and notification routes under §8.4. They show operation identity, applicable
+Before/After source and current/earlier/unavailable revision state, including
+linked effects of a move. Creation and system Trash retain their distinct
+source and recovery boundaries.
+Eligible direct Undo is offered only for that exact receipt and its current
+revision requirement, never for a cumulative Changes comparison or reviewed
+batch.
 
 An icon-only native single-choice Inspector toolbar group selects Links or Related
 Material, with Help and accessible names. Panes share content-edge insets, top
@@ -667,7 +665,7 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Vault | 研究库 |
 | Library | 研究文档 |
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
-| Agents & Chat / Agent Changes | 智能体与聊天 / Agent 修改 |
+| Agents & Chat / Changes / Mark as Reviewed | 智能体与聊天 / 修改 / 标为已查看 |
 | Research / Judgment | 研究 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |

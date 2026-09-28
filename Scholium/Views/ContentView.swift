@@ -177,15 +177,26 @@ struct ContentView: View {
                                 }
                             }
                         },
-                        showChanges: { appState.presentationRouter.present(.agentChanges(scope: .exact($0))) },
-                        showConversationChanges: {
-                            appState.presentationRouter.present(.agentChanges(scope: .conversation($0)))
+                        showChanges: {
+                            appState.presentationRouter.present(.documentChanges(scope: .note($0)))
+                        },
+                        showConversationChanges: { receiptIDs in
+                            let noteIDs = DocumentChangesScope.noteIDs(
+                                forReceiptIDs: receiptIDs,
+                                in: researchController.agentChanges ?? []
+                            )
+                            appState.presentationRouter.present(.documentChanges(scope: .notes(noteIDs)))
                         }, changes: researchController.agentChanges,
-                        changesError: researchController.agentChangesError
+                        pendingDocuments: researchController.pendingChanges,
+                        changesError: researchController.pendingChangesError
                     )
-                    .task { researchController.scheduleAgentChangesRefresh() }
+                    .task {
+                        researchController.scheduleAgentChangesRefresh()
+                        researchController.scheduleDocumentChangesRefresh()
+                    }
                     .onChange(of: chat.selected?.messages.compactMap(\.changeID)) { _, _ in
                         researchController.scheduleAgentChangesRefresh()
+                        researchController.scheduleDocumentChangesRefresh()
                     }
                 }
             }
@@ -692,12 +703,9 @@ struct ContentView: View {
                 appState.identityResolutionError = nil
             }
 
-        case .agentChanges(let scope):
-            AgentChangesView(
-                scope: scope,
-                load: {
-                    try await researchController.agentChangeHistory()
-                },
+        case .agentChangeReceipt(let changeID):
+            AgentChangeReceiptView(
+                changeID: changeID,
                 loadReview: { changeID in
                     guard
                         let operations = appState.windowWorkspaceController
@@ -723,6 +731,66 @@ struct ContentView: View {
                     _ = try await researchController.loadAgentChanges()
                 }
             )
+        case .documentChanges(let scope):
+            if let capabilities = appState.windowWorkspaceController.activeCapabilities {
+                let binding = DocumentChangesRouteBinding(
+                    runtimeIdentity: capabilities.runtimeIdentity,
+                    operations: capabilities.changes
+                )
+                DocumentChangesView(
+                    scope: scope,
+                    invalidationRevision: researchController.documentChangesRevision,
+                    loadPending: {
+                        let changes = try binding.requireCurrent(
+                            appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                        )
+                        return try await changes.pendingChanges()
+                    },
+                    loadReview: { noteID in
+                        let changes = try binding.requireCurrent(
+                            appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                        )
+                        return try await changes.changeReview(noteID: noteID)
+                    },
+                    loadHistory: {
+                        let changes = try binding.requireCurrent(
+                            appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                        )
+                        return try await changes.reviewedHistory()
+                    },
+                    loadHistoryDetail: { id in
+                        let changes = try binding.requireCurrent(
+                            appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                        )
+                        return try await changes.reviewedChange(id: id)
+                    },
+                    markReviewed: { capture in
+                        let changes = try binding.requireCurrent(
+                            appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                        )
+                        return try await changes.markReviewed(capture: capture)
+                    },
+                    deleteHistory: { id in
+                        let changes = try binding.requireCurrent(
+                            appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                        )
+                        try await changes.deleteReviewedHistory(ids: [id])
+                    },
+                    didChange: {
+                        if appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                            == binding.runtimeIdentity
+                        {
+                            researchController.scheduleDocumentChangesRefresh()
+                        }
+                    }
+                )
+            } else {
+                ScholiumContentStateView(
+                    "Changes Unavailable",
+                    detail: Text("Open a Triptych to review saved Note changes."),
+                    indicator: .symbol("doc.text.magnifyingglass")
+                )
+            }
         }
     }
 

@@ -87,6 +87,30 @@ enum ExactSourceComparisonPresentationRow: Hashable, Identifiable {
 enum ExactSourceComparisonPresentation {
     static let contextLineCount = 3
 
+    static func hasOnlySourceFormatChange(_ comparison: ExactSourceComparison) -> Bool {
+        guard comparison.startingRevision != comparison.endingRevision else { return false }
+        let removed = comparison.lines
+            .filter { $0.kind == .startingOnly }
+            .map { Array($0.text.utf8) }
+        let inserted = comparison.lines
+            .filter { $0.kind == .endingOnly }
+            .map { Array($0.text.utf8) }
+        return removed == inserted
+    }
+
+    static func differenceStartLineIDs(
+        lines: [ExactSourceComparisonLine]
+    ) -> [Int] {
+        var starts: [Int] = []
+        var previousWasChanged = false
+        for line in displayOrderedLines(lines) {
+            let changed = line.kind != .unchanged
+            if changed && !previousWasChanged { starts.append(line.id) }
+            previousWasChanged = changed
+        }
+        return starts
+    }
+
     static func rows(
         lines: [ExactSourceComparisonLine]
     ) -> [ExactSourceComparisonPresentationRow] {
@@ -95,6 +119,7 @@ enum ExactSourceComparisonPresentation {
         }
         var result: [ExactSourceComparisonPresentationRow] = []
         var index = 0
+        let lines = displayOrderedLines(lines)
         while index < lines.count {
             guard lines[index].kind == .unchanged else {
                 result.append(.line(lines[index]))
@@ -137,6 +162,171 @@ enum ExactSourceComparisonPresentation {
         }
         return result
     }
+
+    /// CollectionDifference may report insertions before removals in one
+    /// contiguous hunk. Present the prior source first, then the saved source.
+    private static func displayOrderedLines(
+        _ lines: [ExactSourceComparisonLine]
+    ) -> [ExactSourceComparisonLine] {
+        var ordered: [ExactSourceComparisonLine] = []
+        var index = 0
+        while index < lines.count {
+            guard lines[index].kind != .unchanged else {
+                ordered.append(lines[index])
+                index += 1
+                continue
+            }
+            let start = index
+            while index < lines.count, lines[index].kind != .unchanged {
+                index += 1
+            }
+            let hunk = lines[start..<index]
+            ordered.append(contentsOf: hunk.filter { $0.kind == .startingOnly })
+            ordered.append(contentsOf: hunk.filter { $0.kind == .endingOnly })
+        }
+        return ordered
+    }
+}
+
+struct ExactSourceInlineSegment: Equatable {
+    let text: String
+    let changed: Bool
+}
+
+/// Presentation-only character comparison. `Character` boundaries keep a CJK
+/// character or composed grapheme intact; the source comparison remains the
+/// authority for exact lines, line endings, and revision identity.
+enum ExactSourceInlinePresentation {
+    static func segmentsByLineID(
+        _ lines: [ExactSourceComparisonLine]
+    ) -> [Int: [ExactSourceInlineSegment]] {
+        var result: [Int: [ExactSourceInlineSegment]] = [:]
+        var index = 0
+        while index < lines.count {
+            guard lines[index].kind != .unchanged else {
+                index += 1
+                continue
+            }
+            let start = index
+            while index < lines.count, lines[index].kind != .unchanged {
+                index += 1
+            }
+            let hunk = lines[start..<index]
+            let removed = hunk.filter { $0.kind == .startingOnly }
+            let inserted = hunk.filter { $0.kind == .endingOnly }
+            for pairIndex in 0..<min(removed.count, inserted.count) {
+                let (old, new) = pairedSegments(
+                    removed[pairIndex].text,
+                    inserted[pairIndex].text
+                )
+                result[removed[pairIndex].id] = old
+                result[inserted[pairIndex].id] = new
+            }
+        }
+        return result
+    }
+
+    static func pairedSegments(
+        _ oldText: String,
+        _ newText: String
+    ) -> ([ExactSourceInlineSegment], [ExactSourceInlineSegment]) {
+        let old = Array(oldText)
+        let new = Array(newText)
+        // Long source lines can contain pasted documents. Keep rendering bounded.
+        guard old.count <= 2_048, new.count <= 2_048 else {
+            return prefixSuffixSegments(old, new)
+        }
+        // Swift String/Character equality canonically normalizes. Compare each
+        // complete grapheme's bytes so a normalization-only edit remains visible.
+        let difference = new.map { Array(String($0).utf8) }
+            .difference(from: old.map { Array(String($0).utf8) })
+        let removed = Set(
+            difference.compactMap { change -> Int? in
+                guard case .remove(let offset, _, _) = change else { return nil }
+                return offset
+            })
+        let inserted = Set(
+            difference.compactMap { change -> Int? in
+                guard case .insert(let offset, _, _) = change else { return nil }
+                return offset
+            })
+        let oldMarks = expandedWordMarks(old, changed: removed)
+        let newMarks = expandedWordMarks(new, changed: inserted)
+        return (
+            coalesced(old, changed: oldMarks.contains),
+            coalesced(new, changed: newMarks.contains)
+        )
+    }
+
+    private static func expandedWordMarks(
+        _ characters: [Character],
+        changed: Set<Int>
+    ) -> Set<Int> {
+        var result = changed
+        var index = 0
+        while index < characters.count {
+            guard isLatinWordCharacter(characters[index]) else {
+                index += 1
+                continue
+            }
+            let start = index
+            while index < characters.count, isLatinWordCharacter(characters[index]) {
+                index += 1
+            }
+            if (start..<index).contains(where: changed.contains) {
+                result.formUnion(start..<index)
+            }
+        }
+        return result
+    }
+
+    private static func isLatinWordCharacter(_ character: Character) -> Bool {
+        let scalars = String(character).unicodeScalars
+        guard scalars.count == 1, let value = scalars.first?.value else { return false }
+        return (65...90).contains(value) || (97...122).contains(value)
+            || (48...57).contains(value)
+    }
+
+    private static func prefixSuffixSegments(
+        _ old: [Character],
+        _ new: [Character]
+    ) -> ([ExactSourceInlineSegment], [ExactSourceInlineSegment]) {
+        var prefix = 0
+        while prefix < min(old.count, new.count),
+            Array(String(old[prefix]).utf8) == Array(String(new[prefix]).utf8)
+        {
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < min(old.count, new.count) - prefix,
+            Array(String(old[old.count - suffix - 1]).utf8)
+                == Array(String(new[new.count - suffix - 1]).utf8)
+        {
+            suffix += 1
+        }
+        return (
+            coalesced(old) { (prefix..<(old.count - suffix)).contains($0) },
+            coalesced(new) { (prefix..<(new.count - suffix)).contains($0) }
+        )
+    }
+
+    private static func coalesced(
+        _ characters: [Character],
+        changed: (Int) -> Bool
+    ) -> [ExactSourceInlineSegment] {
+        var result: [ExactSourceInlineSegment] = []
+        for (index, character) in characters.enumerated() {
+            let isChanged = changed(index)
+            if let last = result.last, last.changed == isChanged {
+                result[result.count - 1] = .init(
+                    text: last.text + String(character), changed: isChanged
+                )
+            } else {
+                result.append(.init(text: String(character), changed: isChanged))
+            }
+        }
+        return result
+    }
 }
 
 /// Pure unified-diff presentation shared by current editor conflicts and
@@ -155,6 +345,7 @@ struct ExactSourceComparisonView: View {
     @State private var expandedFoldIDs: Set<Int> = []
 
     var body: some View {
+        let inlineSegments = ExactSourceInlinePresentation.segmentsByLineID(comparison.lines)
         VStack(alignment: .leading, spacing: 0) {
             revisionHeader
             ScholiumStructuralRule()
@@ -163,10 +354,10 @@ struct ExactSourceComparisonView: View {
                     row in
                     switch row {
                     case .line(let line):
-                        diffLine(line)
+                        diffLine(line, segments: inlineSegments[line.id])
                     case .folded(let id, let lines):
                         if expandedFoldIDs.contains(id) {
-                            ForEach(lines) { line in diffLine(line) }
+                            ForEach(lines) { line in diffLine(line, segments: nil) }
                         } else {
                             foldedLinesButton(id: id, count: lines.count)
                         }
@@ -174,6 +365,7 @@ struct ExactSourceComparisonView: View {
                 }
             }
             .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+            .accessibilityElement(children: .contain)
         }
         .background(ScholiumNativeColorRole.textBackground.color)
         .clipShape(
@@ -204,6 +396,13 @@ struct ExactSourceComparisonView: View {
                 Text(endingLabel)
             }
             .font(ScholiumTypography.interface(.sectionTitle))
+
+            if ExactSourceComparisonPresentation.hasOnlySourceFormatChange(comparison) {
+                Text("Source format changed", bundle: .module)
+                    .font(ScholiumTypography.interface(.compact))
+                    .scholiumForeground(.secondaryText)
+                    .help(Text("Line endings or the UTF-8 marker changed. Revision Details shows the exact formats.", bundle: .module))
+            }
 
             if showsRevisionDetails {
                 DisclosureGroup {
@@ -283,7 +482,10 @@ struct ExactSourceComparisonView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func diffLine(_ line: ExactSourceComparisonLine) -> some View {
+    private func diffLine(
+        _ line: ExactSourceComparisonLine,
+        segments: [ExactSourceInlineSegment]?
+    ) -> some View {
         HStack(
             alignment: .top,
             spacing: ScholiumMetrics.DocumentWorkflow.exactDiffColumnSpacing
@@ -310,11 +512,8 @@ struct ExactSourceComparisonView: View {
                         .accessibilityLabel("Blank line")
                         .accessibilityHint(lineEndingLabel(line.lineEnding))
                 } else {
-                    Text(line.text)
+                    decoratedText(for: line, segments: segments)
                         .font(ScholiumTypography.exact(.body))
-                        .scholiumForeground(
-                            line.kind == .unchanged ? .secondaryText : .primaryText
-                        )
                         .lineLimit(nil)
                         .textSelection(.enabled)
                         .accessibilityHint(lineEndingLabel(line.lineEnding))
@@ -327,11 +526,46 @@ struct ExactSourceComparisonView: View {
         .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
         .padding(.vertical, ScholiumMetrics.DocumentWorkflow.conflictDiffRowVerticalInset)
         .background(backgroundColor(for: line.kind))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(for: line.kind))
         .accessibilityValue(accessibilityValue(for: line))
         .accessibilityHint(lineEndingLabel(line.lineEnding))
         .accessibilityIdentifier("\(identifierPrefix).row.\(line.id)")
+        .id(line.id)
+    }
+
+    private func decoratedText(
+        for line: ExactSourceComparisonLine,
+        segments: [ExactSourceInlineSegment]?
+    ) -> Text {
+        guard line.kind != .unchanged else {
+            return Text(verbatim: line.text)
+                .foregroundColor(ScholiumColorRole.secondaryText.color)
+        }
+        let parts = segments ?? [.init(text: line.text, changed: true)]
+        return parts.reduce(Text(verbatim: "")) { result, part in
+            let text = Text(verbatim: part.text)
+            let styled: Text
+            if part.changed {
+                switch line.kind {
+                case .startingOnly:
+                    styled =
+                        text
+                        .foregroundColor(ScholiumColorRole.comparisonRemoval.color)
+                        .strikethrough()
+                case .endingOnly:
+                    styled =
+                        text
+                        .foregroundColor(ScholiumColorRole.comparisonInsertion.color)
+                        .underline()
+                case .unchanged:
+                    styled = text
+                }
+            } else {
+                styled = text.foregroundColor(ScholiumColorRole.primaryText.color)
+            }
+            return result + styled
+        }
     }
 
     private func foldedLinesButton(id: Int, count: Int) -> some View {

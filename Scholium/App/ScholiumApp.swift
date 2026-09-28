@@ -277,18 +277,19 @@ final class WindowModel: ObservableObject {
             settlementRequirementChanges: researchController.$researchSnapshot
                 .map { $0?.settlementRequirements ?? [] }
                 .eraseToAnyPublisher(),
-            agentChangeChanges: researchController.$agentChanges
+            documentChangeChanges: researchController.$pendingChanges
                 .eraseToAnyPublisher(),
-            agentChangeErrorChanges: researchController.$agentChangesError
+            documentChangeErrorChanges: researchController.$pendingChangesError
                 .eraseToAnyPublisher(),
             refresh: { [weak self] in
                 guard let self else { return }
                 await self.refreshWorkspaceCatalog()
                 _ = try? await self.researchController.loadAgentChanges()
+                _ = try? await self.researchController.loadDocumentChanges()
             },
-            showAgentChange: { [weak self] changeID in
+            showDocumentChange: { [weak self] noteID in
                 self?.presentationRouter.present(
-                    .agentChanges(scope: .exact(changeID))
+                    .documentChanges(scope: .note(noteID))
                 )
             }
         )

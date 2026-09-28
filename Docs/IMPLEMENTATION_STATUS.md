@@ -13,13 +13,13 @@ Live construction, tests and scripts establish precise current behavior.
 
 The native App reaches a registered three-vault Triptych, Library and document
 tabs, Review/Edit/Source, source-derived Search and Links, Writing References,
-Settlement, guarded Note/file operations, note reorganization and Recovery.
+Settlement, Changes, guarded Note/file operations, note reorganization and Recovery.
 Exact Markdown remains authoritative; YAML properties are authored in source,
 not a separate managed metadata editor. File links and paragraph anchors refer
 to current source, not snapshot citations or inferred philosophical evidence.
 
 External Agents connect through the bundled App-mediated MCP helper. Note
-operations, attachment reads, display, move previews and Agent Change review/Undo
+operations, attachment reads, display, move previews and Agent Change inspection/Undo
 retain the Application's source, revision and recovery owners. The helper requires
 the running App; it is not a standalone/headless workspace product.
 

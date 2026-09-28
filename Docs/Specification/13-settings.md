@@ -35,7 +35,8 @@ Inactive pages have no keyboard, pointer or accessibility interaction.
 The navigation column presents six task categories: Workspace, Document
 Appearance, Writing Assistance, Agents & Chat, Keyboard Shortcuts and Zotero.
 Workspace owns Triptych registration,
-folder access and portable-data location. Document Appearance presents the
+folder access, portable-data location and machine-local Changes history.
+Document Appearance presents the
 complete content profile and CSS snippets in one scrolling page. Writing
 Assistance groups opt-in continuation and the shared continuation/Explain/Polish model with
 Selection Actions. Keyboard Shortcuts is directly reachable.
@@ -164,6 +165,15 @@ configuration. A preview, where provided, represents the affected presentation
 and clearly distinguishes unapplied changes. Presentation preferences do not
 rewrite research source; any data-changing action names its target and effect
 under its owning workflow contract.
+
+Workspace has one **Changes History** group labelled **This Mac** and showing
+the exact selected Triptych. Its retention choice is 30 days, 90 days (default),
+365 days, or Forever, measured from each review batch's reviewed time under
+§5.7. The group offers **Clear Reviewed History…** with confirmation naming
+that Triptych and the reviewed batches removed. It does not imply deletion of
+the active comparison baseline, pending changes, or necessary Agent/recovery
+evidence. Reviewed-history storage and protected comparison/recovery usage are
+shown separately. Per-batch deletion stays in the Changes History record menu.
 
 ### Configuration failure and recovery
 

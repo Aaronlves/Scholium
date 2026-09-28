@@ -6,7 +6,7 @@ import WebKit
 
 @testable import ScholiumApp
 
-@Suite("Chat content and viewed changes", .serialized)
+@Suite("Chat content and scoped changes", .serialized)
 @MainActor
 struct AgentChatContentTests {
     @Test func objectGeometryRejectsInvalidOrAmbiguousIdentity() throws {
@@ -171,7 +171,7 @@ struct AgentChatContentTests {
         #expect(snapshot.html.contains("data-scholium-object=\"" + diagram.id + "\""))
     }
 
-    @Test func viewedIsPerReceiptAndNotAnOutcome() {
+    @Test func conversationReceiptsScopeCurrentChangesByAffectedNote() {
         let triptych = UUID()
         let note = UUID()
         func change(_ state: AgentChangeRecoveryState) -> AgentChange {
@@ -185,12 +185,14 @@ struct AgentChatContentTests {
         let undone = change(.undone)
         let uncertain = change(.outcomeUncertain)
         let all = [first, next, undone, uncertain]
-        var ledger = AgentChangeViewedLedger()
-        ledger.markViewed(id: first.id)
-        let restored = AgentChangeViewedLedger(data: ledger.data)
-        #expect(restored.pending(all, receiptIDs: Set(all.map(\.id))).map(\.id) == [next.id])
-        ledger.markViewed(id: first.id)
-        #expect(ledger.pending(all, receiptIDs: [first.id]).isEmpty)
+        #expect(
+            DocumentChangesScope.noteIDs(
+                forReceiptIDs: [first.id, next.id], in: all
+            ) == [note])
+        #expect(
+            DocumentChangesScope.noteIDs(
+                forReceiptIDs: [UUID()], in: all
+            ).isEmpty)
         #expect(first.state == .confirmed && uncertain.state == .outcomeUncertain)
     }
 }

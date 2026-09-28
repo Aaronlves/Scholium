@@ -584,8 +584,8 @@ private struct ScholiumResearchCommandContent: View {
         }
         .disabled(workspaceWindowActions?.settlementMenuTitle() == nil)
         Divider()
-        Button("Agent Changes…") {
-            appState?.presentationRouter.present(.agentChanges(scope: .current))
+        Button("Changes…") {
+            appState?.presentationRouter.present(.documentChanges(scope: .all))
         }
         .disabled(appState?.windowWorkspaceController.activeCapabilities == nil)
     }

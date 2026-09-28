@@ -73,7 +73,9 @@ struct VaultRepositoryTests {
             repositoryRoot
             .appendingPathComponent(".build/vt", isDirectory: true)
             .appendingPathComponent(fixtureID, isDirectory: true)
-        let root = base.appendingPathComponent("vault", isDirectory: true)
+        // Keep the socket fixture below macOS's short sockaddr_un path limit
+        // even when this checkout is inside a managed worktree.
+        let root = base.appendingPathComponent("v", isDirectory: true)
         let support = base.appendingPathComponent("support", isDirectory: true)
         let note = root.appendingPathComponent("topics/note.md")
         try FileManager.default.createDirectory(at: note.deletingLastPathComponent(), withIntermediateDirectories: true)

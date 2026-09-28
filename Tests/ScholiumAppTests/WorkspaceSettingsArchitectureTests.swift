@@ -784,10 +784,11 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(boundary.contains("let workspace: WorkspaceSettingsWorkspaceCapabilities"))
         #expect(boundary.contains("let machine: WorkspaceSettingsMachineCapabilities"))
         #expect(boundary.contains("let zotero: WorkspaceSettingsZoteroCapabilities"))
+        #expect(boundary.contains("let changesHistory: WorkspaceChangesHistoryCapabilities"))
         #expect(
             boundary.components(separatedBy: "\n").filter {
                 $0.trimmingCharacters(in: .whitespaces).hasPrefix("let ")
-            }.count == 3)
+            }.count == 4)
     }
 
     @Test("Concurrent Settings restoration does not drop the visible Triptychs refresh")

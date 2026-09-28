@@ -364,7 +364,7 @@ struct SecureRecordDirectory: Sendable {
         }
     }
 
-    func recoverAbandonedDeletionFiles(in directory: String) throws {
+    func recoverAbandonedDeletionFiles(in directory: String?) throws {
         let parent = try openTargetDirectory(directory, createIfMissing: false)
         defer { Darwin.close(parent) }
         let prefix = ".scholium-deleting-"

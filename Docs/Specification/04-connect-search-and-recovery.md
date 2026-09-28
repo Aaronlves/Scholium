@@ -297,7 +297,10 @@ Scholium MCP reuses this owner under
 [§8.3](03-agent-collaboration-and-workflows.md#83-tool-contract) and adds no
 second parser, resolver, index, or confidence score.
 
-**Notifications** combines Agent Changes and derived Settlement reminders.
+**Notifications** combines pending Note Changes and derived Settlement reminders.
+An Agent mutation retains its exact operation receipt and recovery route under
+§8.4; the affected Note's pending comparison follows §5.7 and does not
+attribute the whole diff to that Agent.
 Triptych-wide structural Attention remains an immutable Workspace Catalog
 projection consumed by the Library's Integrity filters, including **Needs
 Attention** and **Malformed Metadata**. It is not a notification category and
@@ -321,11 +324,13 @@ opened; a later source change may produce a new reminder under §7.
 
 ## 14. Save, Agent changes, and recovery
 
-Autosave creates no visible version history, Checkpoint product, whole-Triptych
-rollback, or settled-version store.
+Autosave creates no per-save version history, Checkpoint product, whole-Triptych
+rollback, or settled-version store. Explicit Changes review retains the exact
+history batches defined by §5.7.
 
-§8.4 owns Agent Change retention and eligible direct Undo; §6 owns system-Trash
-receipts and Finder recovery. Neither is an autosave version history.
+§5.7 owns Changes review history; §8.4 owns Agent Change evidence and eligible
+direct Undo; §6 owns system-Trash receipts and Finder recovery. These are
+distinct from autosave versions.
 
 Interrupted-save recovery remains machine-local and source-specific. When
 startup proves a distinct retained candidate, **Recovery** shows its Note,

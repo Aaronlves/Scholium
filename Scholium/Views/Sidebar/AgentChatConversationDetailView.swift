@@ -20,9 +20,9 @@ struct AgentChatConversationDetailView: View {
     let showChanges: (UUID) -> Void
     let showConversationChanges: ([UUID]) -> Void
     var changes: [AgentChange]? = nil
+    var pendingDocuments: [DocumentChangeSummary]? = nil
     var changesError: String? = nil
     @AppStorage(AgentChatInputBehavior.key) private var inputBehavior = AgentChatInputBehavior.steer
-    @AppStorage(AgentChangeViewedLedger.key) private var viewedChangeData = Data()
     private var isAwayFromLatest: Bool { readingSession.isAwayFromLatest }
     private var expandedActivityIDs: Set<String> {
         get { readingSession.expandedActivities }
@@ -802,9 +802,16 @@ struct AgentChatConversationDetailView: View {
         Set(controller.selected?.messages.compactMap(\.changeID) ?? [])
     }
 
-    private var pendingChanges: [AgentChange] {
-        AgentChangeViewedLedger(data: viewedChangeData).pending(
-            changes ?? [], receiptIDs: conversationChangeIDs)
+    private var conversationNoteIDs: Set<UUID> {
+        Set(
+            DocumentChangesScope.noteIDs(
+                forReceiptIDs: Array(conversationChangeIDs), in: changes ?? []
+            ))
+    }
+
+    private var pendingChanges: [DocumentChangeSummary] {
+        (pendingDocuments ?? []).filter { conversationNoteIDs.contains($0.noteID) }
+            .sorted { ($0.savedAt ?? .distantPast) > ($1.savedAt ?? .distantPast) }
     }
 
     private var conversationActivityButtons: some View {
@@ -880,7 +887,7 @@ struct AgentChatConversationDetailView: View {
                 presentChanges()
             } label: {
                 Label(
-                    changes == nil || pendingChanges.isEmpty ? String(localized: "Changes") : String(localized: "Changes: \(pendingChanges.count)"),
+                    pendingDocuments == nil || pendingChanges.isEmpty ? String(localized: "Changes") : String(localized: "Changes: \(pendingChanges.count)"),
                     systemImage: "pencil.line"
                 )
             }
@@ -889,14 +896,14 @@ struct AgentChatConversationDetailView: View {
             .popover(isPresented: $presentation.showsFiles, arrowEdge: .leading) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("Changes to Review").font(.headline)
+                        Text("Pending Changes").font(.headline)
                         Spacer()
                         Button("Close") { presentation.showsFiles = false }.keyboardShortcut(.cancelAction)
                     }
                     if let changesError {
                         Text(verbatim: changesError).textSelection(.enabled)
-                    } else if changes == nil {
-                        ProgressView("Loading Agent Changes…")
+                    } else if pendingDocuments == nil || changes == nil {
+                        ProgressView("Loading Changes…")
                     } else if pendingChanges.isEmpty {
                         Text("No changes awaiting review.").foregroundStyle(.secondary)
                     } else {
@@ -905,21 +912,17 @@ struct AgentChatConversationDetailView: View {
                                 ForEach(pendingChanges) { change in
                                     HStack {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            if change.operation != .trash {
-                                                Button(AgentChangePresentation.displayName(for: change)) {
-                                                    _ = openReference(AgentChatReference.url(noteID: change.noteID))
-                                                }.buttonStyle(.link).help("Open Note")
-                                                    .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: change.noteID)) }
-                                            } else {
-                                                Text(AgentChangePresentation.displayName(for: change))
-                                            }
-                                            Text(AgentChangePresentation.operationTitle(for: change.operation))
+                                            Button(change.relativePath.split(separator: "/").last.map(String.init) ?? change.relativePath) {
+                                                _ = openReference(AgentChatReference.url(noteID: change.noteID))
+                                            }.buttonStyle(.link).help("Open Note")
+                                                .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: change.noteID)) }
+                                            Text(change.relativePath)
                                                 .font(.caption).foregroundStyle(.secondary)
                                         }
                                         Spacer()
                                         Button("View Changes") {
                                             presentation.showsFiles = false
-                                            showChanges(change.id)
+                                            showChanges(change.noteID)
                                         }
                                     }
                                 }

@@ -527,7 +527,7 @@ extension WindowModel {
             }
             // This is an evidence destination, not a document route. Preserve
             // the current Note and mode; never request Source or a locator here.
-            presentationRouter.present(.agentChanges(scope: .exact(route.changeID)))
+            presentationRouter.present(.agentChangeReceipt(route.changeID))
         } catch {
             reportOperationIssue(error.localizedDescription, kind: .error)
         }

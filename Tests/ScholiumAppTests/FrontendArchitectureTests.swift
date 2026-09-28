@@ -706,11 +706,13 @@ struct FrontendArchitectureTests {
         router.present(.transactionRecovery)
         #expect(router.sheet?.id == "transaction-recovery")
 
-        router.present(.agentChanges(scope: .current))
-        #expect(router.sheet?.id == "agent-changes")
+        let receiptID = UUID()
+        router.present(.agentChangeReceipt(receiptID))
+        let receiptRouteID = "agent-change-receipt:\(receiptID.uuidString.lowercased())"
+        #expect(router.sheet?.id == receiptRouteID)
         router.dismissSheet(if: "transaction-recovery")
-        #expect(router.sheet?.id == "agent-changes")
-        router.dismissSheet(if: "agent-changes")
+        #expect(router.sheet?.id == receiptRouteID)
+        router.dismissSheet(if: receiptRouteID)
         #expect(router.sheet == nil)
 
         router.fileImport = .markdown
@@ -962,6 +964,7 @@ struct FrontendArchitectureTests {
                 ScholiumWorkspaceToolbarController.Item.back,
                 ScholiumWorkspaceToolbarController.Item.forward,
                 .flexibleSpace,
+                ScholiumWorkspaceToolbarController.Item.viewChanges,
                 ScholiumWorkspaceToolbarController.Item.settlement,
                 .space,
                 ScholiumWorkspaceToolbarController.Item.documentMode,

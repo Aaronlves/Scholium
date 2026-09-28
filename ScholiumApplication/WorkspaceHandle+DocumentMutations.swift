@@ -20,13 +20,15 @@ extension WorkspaceHandle {
     func saveDocument(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
-        expectedRevision: DocumentFingerprint
+        expectedRevision: DocumentFingerprint,
+        undoAgentChangeID: UUID? = nil
     ) async throws -> WorkspaceMutationOutcome<SaveResult> {
         switch try await performDocumentSave(
             id,
             changeSet: changeSet,
             expectedRevision: expectedRevision,
-            completion: .sourceAndDerived
+            completion: .sourceAndDerived,
+            undoAgentChangeID: undoAgentChangeID
         ) {
         case .committed(let outcome):
             return outcome
@@ -63,7 +65,8 @@ extension WorkspaceHandle {
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint,
-        completion: DocumentSaveCompletion
+        completion: DocumentSaveCompletion,
+        undoAgentChangeID: UUID? = nil
     ) async throws -> DocumentSaveOperationOutcome {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
@@ -72,6 +75,17 @@ extension WorkspaceHandle {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
+        let undoEvidence: AgentChange?
+        if let undoAgentChangeID {
+            let change = try await services.agentChangeStore.change(id: undoAgentChangeID)
+            guard change.operation == .update,
+                change.state == .confirmed,
+                change.afterFingerprint == expectedRevision
+            else { throw AgentChangeError.undoUnavailable(undoAgentChangeID) }
+            undoEvidence = change
+        } else {
+            undoEvidence = nil
+        }
         let save = try await repository.saveOutcome(
             relativePath: id.relativePath,
             changeSet: changeSet,
@@ -94,6 +108,19 @@ extension WorkspaceHandle {
             )
             return .recoveryRequired(record)
         case .committed(let result):
+            if let undoEvidence {
+                guard result.document.fingerprint == undoEvidence.beforeFingerprint else {
+                    throw AgentCollaborationError.changeConfirmationUncertain(undoEvidence.id)
+                }
+                do {
+                    _ = try await services.agentChangeStore.markUndone(
+                        id: undoEvidence.id,
+                        restoredFingerprint: result.document.fingerprint
+                    )
+                } catch {
+                    throw AgentCollaborationError.changeConfirmationUncertain(undoEvidence.id)
+                }
+            }
             if completion == .sourceOnly {
                 // Queue before releasing the mutation lease so the matching
                 // watcher event cannot start a competing refresh first.

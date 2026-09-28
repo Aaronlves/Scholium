@@ -500,10 +500,13 @@ extension WorkspaceHandle {
         guard let beforeSource = NoteDocument.decodeUTF8PreservingBOM(beforeData) else { throw AgentChangeError.invalid(id) }
         try Task.checkCancellation()
         do {
-            let outcome = try await saveDocument(target.id, changeSet: .exactContent(beforeSource), expectedRevision: expectedAfterFingerprint)
+            let outcome = try await saveDocument(
+                target.id, changeSet: .exactContent(beforeSource),
+                expectedRevision: expectedAfterFingerprint,
+                undoAgentChangeID: id
+            )
             let restored = outcome.committedValue.document.fingerprint
             guard restored == change.beforeFingerprint else { throw AgentCollaborationError.changeConfirmationUncertain(id) }
-            _ = try await services.agentChangeStore.markUndone(id: id, restoredFingerprint: restored)
             return AgentChangeUndoResult(changeID: id, noteID: change.noteID, restoredFingerprint: restored)
         } catch {
             if Self.isUncertainAgentMutationError(error) { throw AgentCollaborationError.changeConfirmationUncertain(id) }

@@ -35,13 +35,13 @@ struct AttentionPresentationStateTests {
 
     @Test("Notification filters expose one complete or one type-specific queue")
     func notificationFilterOwnership() {
-        #expect(AttentionNotificationFilter.all.showsAgentChanges)
+        #expect(AttentionNotificationFilter.all.showsChanges)
         #expect(AttentionNotificationFilter.all.showsSettlements)
 
-        #expect(AttentionNotificationFilter.agentChanges.showsAgentChanges)
-        #expect(!AttentionNotificationFilter.agentChanges.showsSettlements)
+        #expect(AttentionNotificationFilter.changes.showsChanges)
+        #expect(!AttentionNotificationFilter.changes.showsSettlements)
 
-        #expect(!AttentionNotificationFilter.settlements.showsAgentChanges)
+        #expect(!AttentionNotificationFilter.settlements.showsChanges)
         #expect(AttentionNotificationFilter.settlements.showsSettlements)
     }
 
@@ -62,7 +62,7 @@ struct AttentionPresentationStateTests {
         let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Topic.md")
         state.present(workspaceSlot: .topicKnowledge, noteScope: note)
         state.filter.query = "orphan"
-        state.notificationFilter = .agentChanges
+        state.notificationFilter = .changes
         state.select("task-1")
 
         state.resetForWorkspaceSwitch()

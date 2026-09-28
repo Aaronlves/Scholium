@@ -19,9 +19,9 @@ struct WindowControllerArchitectureTests {
         let projectionController = WindowWorkspaceProjectionController {
             throw DiscoverySearchExecutionError.workspaceUnavailable
         }
-        let agentChanges = PassthroughSubject<[AgentChange]?, Never>()
-        let agentChangeErrors = PassthroughSubject<String?, Never>()
-        var openedAgentChangeID: UUID?
+        let documentChanges = PassthroughSubject<[DocumentChangeSummary]?, Never>()
+        let documentChangeErrors = PassthroughSubject<String?, Never>()
+        var openedNoteID: UUID?
         let session = AttentionPopoverSession(
             presentation: AttentionPresentationState(),
             discoveryController: discoveryController,
@@ -31,10 +31,10 @@ struct WindowControllerArchitectureTests {
                 settlementRequirementChanges:
                     Just<[WorkspaceSettlementRequirement]>([])
                     .eraseToAnyPublisher(),
-                agentChangeChanges: agentChanges.eraseToAnyPublisher(),
-                agentChangeErrorChanges: agentChangeErrors.eraseToAnyPublisher(),
+                documentChangeChanges: documentChanges.eraseToAnyPublisher(),
+                documentChangeErrorChanges: documentChangeErrors.eraseToAnyPublisher(),
                 refresh: {},
-                showAgentChange: { openedAgentChangeID = $0 }
+                showDocumentChange: { openedNoteID = $0 }
             )
         )
         var invalidations = 0
@@ -53,35 +53,30 @@ struct WindowControllerArchitectureTests {
         projectionController.reportCatalogError("Fixture catalog failure")
         #expect(invalidations == 1)
 
-        agentChanges.send([])
-        #expect(session.agentChanges == [])
+        documentChanges.send([])
+        #expect(session.documentChanges == [])
         #expect(invalidations == 2)
-        agentChangeErrors.send("Fixture Agent Change failure")
-        #expect(session.agentChangesError == "Fixture Agent Change failure")
+        documentChangeErrors.send("Fixture Changes failure")
+        #expect(session.documentChangesError == "Fixture Changes failure")
         #expect(invalidations == 3)
 
-        let change = AgentChange(
-            id: UUID(),
-            triptychID: UUID(),
-            operation: .update,
+        let change = DocumentChangeSummary(
             noteID: UUID(),
+            vaultID: UUID(),
             role: .topicKnowledge,
-            originalRelativePath: "Drafts/Reasons.md",
-            finalRelativePath: "Drafts/Reasons.md",
-            beforeFingerprint: nil,
-            afterFingerprint: nil,
-            state: .confirmed,
-            createdAt: Date(timeIntervalSince1970: 100),
-            confirmedAt: Date(timeIntervalSince1970: 200),
-            undoneAt: nil
+            relativePath: "Drafts/Reasons.md",
+            startingRevision: DocumentFingerprint(content: "Before"),
+            endingRevision: DocumentFingerprint(content: "After"),
+            savedAt: Date(timeIntervalSince1970: 200),
+            baselineState: .known
         )
-        agentChanges.send([change])
-        #expect(session.visibleAgentChanges(for: session.presentation) == [change])
+        documentChanges.send([change])
+        #expect(session.visibleDocumentChanges(for: session.presentation) == [change])
         session.presentation.notificationFilter = .settlements
-        #expect(session.visibleAgentChanges(for: session.presentation).isEmpty)
-        session.presentation.notificationFilter = .agentChanges
+        #expect(session.visibleDocumentChanges(for: session.presentation).isEmpty)
+        session.presentation.notificationFilter = .changes
         session.presentation.filter.query = "Reasons"
-        #expect(session.visibleAgentChanges(for: session.presentation) == [change])
+        #expect(session.visibleDocumentChanges(for: session.presentation) == [change])
         #expect(session.presentation.filter.query == "Reasons")
         let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Drafts/Reasons.md")
         session.presentQueue(anchor: .inspector, workspaceSlot: nil, noteScope: note)
@@ -89,7 +84,7 @@ struct WindowControllerArchitectureTests {
         #expect(session.presentation.notificationFilter == .all)
         #expect(session.presentation.noteScope == note)
         session.inspect(change)
-        #expect(openedAgentChangeID == change.id)
+        #expect(openedNoteID == change.noteID)
         observation.cancel()
 
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -1516,7 +1511,7 @@ struct WindowControllerArchitectureTests {
         let notificationSource = documentOpeningSource[
             notificationStart.lowerBound..<notificationEnd.lowerBound
         ]
-        #expect(notificationSource.contains("presentationRouter.present(.agentChanges"))
+        #expect(notificationSource.contains("presentationRouter.present(.agentChangeReceipt"))
         #expect(!notificationSource.contains("requestPresentationMode"))
         #expect(!notificationSource.contains("openWorkspaceReference"))
         #expect(!notificationSource.contains("requestSourceLocation"))

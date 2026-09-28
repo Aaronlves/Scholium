@@ -14,17 +14,6 @@ enum AgentChangePresentation {
         return path.split(separator: "/").last.map(String.init) ?? path
     }
 
-    static func operationTitle(
-        for operation: AgentChangeOperation
-    ) -> LocalizedStringResource {
-        switch operation {
-        case .create: "Created by External Agent"
-        case .update: "Updated by External Agent"
-        case .trash: "Moved to System Trash"
-        case .move: "Moved by External Agent"
-        }
-    }
-
     static func shortOperationTitle(for operation: AgentChangeOperation) -> LocalizedStringResource {
         switch operation {
         case .create: "Created"
@@ -42,109 +31,37 @@ enum AgentChangePresentation {
         case .move: "folder"
         }
     }
-
-    static func stateTitle(
-        for change: AgentChange,
-        endingRevisionState: AgentChangeEndingRevisionState?
-    ) -> LocalizedStringResource {
-        switch change.state {
-        case .prepared:
-            "Prepared"
-        case .outcomeUncertain:
-            "Outcome uncertain — inspect current source before retrying."
-        case .undone:
-            "This update was undone."
-        case .confirmed:
-            switch endingRevisionState {
-            case .current: "Current Revision"
-            case .earlierRevision: "Earlier Revision"
-            case .unavailable, nil: "Current Source Unavailable"
-            }
-        }
-    }
-
-    /// Presentation only: older exact evidence remains available by its receipt ID.
-    static func latestPerNote(_ changes: [AgentChange]) -> [AgentChange] {
-        var seen = Set<UUID>()
-        return changes.sorted(by: newestFirst).filter { seen.insert($0.noteID).inserted }
-    }
-
-    static func inScope(_ changes: [AgentChange], scope: AgentChangesScope) -> [AgentChange] {
-        switch scope {
-        case .exact(let id): return changes.filter { $0.id == id }
-        case .conversation(let ids):
-            let selected = Set(ids)
-            return changes.filter { selected.contains($0.id) }
-        case .current: return latestPerNote(changes)
-        }
-    }
-
-    static func newestFirst(_ lhs: AgentChange, _ rhs: AgentChange) -> Bool {
-        let lhsDate = lhs.confirmedAt ?? lhs.createdAt
-        let rhsDate = rhs.confirmedAt ?? rhs.createdAt
-        if lhsDate != rhsDate { return lhsDate > rhsDate }
-        return lhs.id.uuidString < rhs.id.uuidString
-    }
 }
 
-/// Machine-local evidence for mutations made through Scholium's MCP surface.
-/// This view does not represent conversation, review, acceptance, or Settlement.
-struct AgentChangesView: View {
-    typealias Loader = @MainActor () async throws -> [AgentChange]
+/// Exact evidence for one MCP operation. This route never acknowledges the
+/// cumulative saved-Note comparison or substitutes for Changes History.
+struct AgentChangeReceiptView: View {
     typealias ReviewLoader = @MainActor (UUID) async throws -> AgentChangeReview
     typealias Undo = @MainActor (AgentChange) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(AgentChangeViewedLedger.key) private var viewedChangeData = Data()
-    let scope: AgentChangesScope
-    private var initialChangeID: UUID? { scope.exactID }
-    let load: Loader
+    let changeID: UUID
     let loadReview: ReviewLoader
     let undo: Undo
 
-    @State private var changes: [AgentChange] = []
-    @State private var showsCollection = true
-    @State private var selectedIndex: Int?
     @State private var review: AgentChangeReview?
     @State private var isLoading = true
-    @State private var isLoadingReview = false
-    @State private var undoingID: UUID?
-    @State private var pendingUndo: AgentChange?
+    @State private var isUndoing = false
     @State private var errorMessage: String?
-    @State private var reviewErrorMessage: String?
-
-    private var presentsCollection: Bool {
-        showsCollection || (undoingID == nil && (errorMessage != nil || changes.isEmpty))
-    }
-
-    private var title: LocalizedStringResource {
-        if case .conversation = scope { return "Conversation Changes" }
-        return "Agent Changes"
-    }
-
-    private var collectionSelection: Binding<String?> {
-        Binding(
-            get: { selectedIndex.flatMap { changes.indices.contains($0) ? changes[$0].id.uuidString : nil } },
-            set: { id in selectedIndex = changes.firstIndex { $0.id.uuidString == id } })
-    }
+    @State private var actionErrorMessage: String?
+    @State private var pendingUndo: AgentChange?
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.headline).accessibilityHeading(.h1)
-                Spacer()
-                if !presentsCollection, initialChangeID == nil {
-                    Button("All Changes") { showsCollection = true }
-                        .disabled(undoingID != nil)
-                        .accessibilityIdentifier("scholium.agentChanges.all")
-                }
-            }
-            .padding(ScholiumMetrics.ResearchSheet.contentInset)
-            Divider()
-            content.frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
-            footer
+            Text("Agent Change Receipt")
+                .font(ScholiumTypography.interface(.primaryTitle))
+                .accessibilityHeading(.h1)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(ScholiumMetrics.ResearchSheet.contentInset)
+            ScholiumStructuralRule()
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            ScholiumStructuralRule()
+            footer.padding(ScholiumMetrics.ResearchSheet.contentInset)
         }
         .frame(
             minWidth: ScholiumMetrics.ResearchSheet.AgentChanges.minimumWidth,
@@ -155,14 +72,11 @@ struct AgentChangesView: View {
         .presentationSizing(.fitted)
         .background(ScholiumNativeColorRole.windowBackground.color)
         .tint(ScholiumNativeColorRole.controlAccent.color)
-        .interactiveDismissDisabled(undoingID != nil)
+        .interactiveDismissDisabled(isUndoing)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
-        .accessibilityIdentifier("scholium.agentChanges")
-        .task {
-            showsCollection = initialChangeID == nil
-            await reload(preserving: initialChangeID)
-        }
+        .accessibilityIdentifier("scholium.agentChangeReceipt")
+        .task(id: changeID) { await reload() }
         .confirmationDialog(
             "Undo Agent Change?",
             isPresented: Binding(
@@ -171,248 +85,113 @@ struct AgentChangesView: View {
             ),
             presenting: pendingUndo
         ) { change in
-            Button("Restore Before Version", role: .destructive) {
-                pendingUndo = nil
-                Task { await undoChange(change) }
+            if change.operation == .move {
+                Button("Restore Original Location and Sources", role: .destructive) {
+                    pendingUndo = nil
+                    Task { await undoChange(change) }
+                }
+            } else {
+                Button("Restore Before Version", role: .destructive) {
+                    pendingUndo = nil
+                    Task { await undoChange(change) }
+                }
             }
             Button("Cancel", role: .cancel) { pendingUndo = nil }
-        } message: { _ in
-            Text("Undo restores the exact Before version only if the Note still matches this change's After version.")
+        } message: { change in
+            if change.operation == .move {
+                Text(
+                    "Undo restores the original Note path and exact Before sources, including linked Note edits, only if the affected saved versions still match this receipt."
+                )
+            } else {
+                Text("Undo restores the exact Before version only if the Note still matches this change's After version.")
+            }
         }
-    }
-
-    private var collection: some View {
-        NativeResearchTable(
-            columns: [
-                .init(id: "note", title: ScholiumL10n.string("Note")),
-                .init(
-                    id: "change", title: ScholiumL10n.string("Change"),
-                    width: ScholiumMetrics.ResearchSheet.AgentChanges.changeColumnWidth),
-                .init(
-                    id: "date", title: ScholiumL10n.string("Date"),
-                    width: ScholiumMetrics.ResearchSheet.AgentChanges.dateColumnWidth, secondary: true),
-            ],
-            rows: changes.sorted(by: AgentChangePresentation.newestFirst).map { change in
-                .init(
-                    id: change.id.uuidString,
-                    cells: [
-                        AgentChangePresentation.displayName(for: change),
-                        collectionState(for: change),
-                        (change.confirmedAt ?? change.createdAt).formatted(.dateTime.month().day().hour().minute()),
-                    ], help: AgentChangePresentation.path(for: change))
-            },
-            selection: collectionSelection, accessibilityLabel: String(localized: title),
-            identifier: "scholium.agentChanges.collection", primaryAction: { openChange($0) })
-    }
-
-    private func collectionState(for change: AgentChange) -> String {
-        var values = [String(localized: AgentChangePresentation.shortOperationTitle(for: change.operation))]
-        if change.state == .undone {
-            values.append(ScholiumL10n.string("Undone"))
-        } else if change.state == .outcomeUncertain {
-            values.append(ScholiumL10n.string("Outcome Uncertain"))
-        } else if change.state == .prepared {
-            values.append(ScholiumL10n.string("Prepared"))
-        }
-        if AgentChangeViewedLedger(data: viewedChangeData).ids.contains(change.id) { values.append(ScholiumL10n.string("Viewed")) }
-        return values.joined(separator: " · ")
-    }
-
-    private func openChange(_ id: String?) {
-        guard undoingID == nil, let id, let index = changes.firstIndex(where: { $0.id.uuidString == id }) else { return }
-        showsCollection = false
-        select(index)
     }
 
     @ViewBuilder
     private var content: some View {
         if isLoading {
-            ProgressView("Loading Agent Changes…")
+            ProgressView("Loading Agent Change Receipt…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let errorMessage {
             VStack(spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing) {
                 ScholiumContentStateView(
-                    "Agent Changes Unavailable", detail: Text(errorMessage),
-                    indicator: .symbol("exclamationmark.triangle", role: .attention))
-                Button("Retry") { Task { await reload(preserving: initialChangeID) } }
-            }.padding(ScholiumMetrics.ResearchSheet.contentInset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if changes.isEmpty {
-            ScholiumContentStateView(
-                "No Agent Changes",
-                detail: Text("Notes changed by an Agent will appear here."),
-                indicator: .symbol("sparkles")
-            )
+                    "Agent Change Receipt Unavailable", detail: Text(verbatim: errorMessage),
+                    indicator: .symbol("exclamationmark.triangle", role: .attention)
+                )
+                Button("Retry") { Task { await reload() } }
+            }
+            .padding(ScholiumMetrics.ResearchSheet.contentInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if showsCollection {
-            collection
-        } else if isLoadingReview {
-            ProgressView("Loading Exact Change…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let reviewErrorMessage {
-            VStack(spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing) {
-                ScholiumContentStateView(
-                    "Change Unavailable", detail: Text(reviewErrorMessage),
-                    indicator: .symbol("exclamationmark.triangle", role: .attention))
-                Button("Retry") { Task { await reloadReview() } }.disabled(undoingID != nil)
-            }.padding(ScholiumMetrics.ResearchSheet.contentInset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let review {
             AgentChangeReviewContent(review: review)
-                .onChange(of: review.change.id, initial: true) {
-                    guard review.change.state == .confirmed else { return }
-                    var ledger = AgentChangeViewedLedger(data: viewedChangeData)
-                    guard !ledger.ids.contains(review.change.id) else { return }
-                    ledger.markViewed(id: review.change.id)
-                    viewedChangeData = ledger.data
-                }
         }
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.headerDetailSpacing) {
-            if !presentsCollection, let review, review.change.operation == .update,
-                review.change.state == .confirmed, !review.isDirectUndoAvailable
-            {
-                Text("Undo is unavailable because the current Note no longer matches this change's After version.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            if let actionErrorMessage {
+                Label(actionErrorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.caption).textSelection(.enabled)
             }
             HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
-                if !presentsCollection, initialChangeID == nil, let selectedIndex {
-                    ControlGroup {
-                        Button {
-                            select(selectedIndex - 1)
-                        } label: {
-                            Label("Previous", systemImage: "chevron.left")
-                        }
-                        .disabled(selectedIndex == 0 || isLoadingReview || undoingID != nil)
-                        .keyboardShortcut(.leftArrow, modifiers: [.command])
-                        .help("Previous Change")
-                        .accessibilityIdentifier("scholium.agentChanges.previous")
-                        Button {
-                            select(selectedIndex + 1)
-                        } label: {
-                            Label("Next", systemImage: "chevron.right")
-                        }
-                        .disabled(selectedIndex == changes.count - 1 || isLoadingReview || undoingID != nil)
-                        .keyboardShortcut(.rightArrow, modifiers: [.command])
-                        .help("Next Change")
-                        .accessibilityIdentifier("scholium.agentChanges.next")
-                    }.labelStyle(.iconOnly).fixedSize()
-                    Text("Change \(selectedIndex + 1) of \(changes.count)")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .accessibilityIdentifier("scholium.agentChanges.position")
+                if isUndoing {
+                    ProgressView().controlSize(.small).accessibilityLabel("Undoing Agent Change")
                 }
-                if undoingID != nil { ProgressView().controlSize(.small).accessibilityLabel("Undoing Agent Change") }
                 Spacer(minLength: 0)
-                if !presentsCollection, let review, review.change.state == .confirmed {
-                    if review.change.operation == .update {
-                        Button(undoingID == review.change.id ? "Undoing…" : "Undo…") { pendingUndo = review.change }
-                            .disabled(!review.isDirectUndoAvailable || undoingID != nil)
-                            .accessibilityHint(
-                                review.isDirectUndoAvailable
-                                    ? "Restores the exact Before version"
-                                    : "Unavailable because the Note no longer matches this change's After version"
-                            )
-                            .accessibilityIdentifier("scholium.agentChanges.undo.\(review.change.id.uuidString.lowercased())")
+                if let review, !isLoading, errorMessage == nil,
+                    review.change.state == .confirmed,
+                    review.change.operation == .update || review.change.operation == .move
+                {
+                    Button(isUndoing ? "Undoing…" : "Undo…") {
+                        pendingUndo = review.change
                     }
+                    .disabled(!review.isDirectUndoAvailable || isUndoing)
+                    .accessibilityHint(
+                        review.change.operation == .move
+                            ? Text("Restores the original location and exact linked sources when still current")
+                            : Text("Restores the exact Before version when still current")
+                    )
+                    .accessibilityIdentifier("scholium.agentChanges.undo.\(review.change.id.uuidString.lowercased())")
                 }
                 Button("Close", action: dismiss.callAsFunction)
-                    .keyboardShortcut(.cancelAction).disabled(undoingID != nil)
-                if presentsCollection, !isLoading, errorMessage == nil, !changes.isEmpty {
-                    Button("View Change") { openChange(collectionSelection.wrappedValue) }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(collectionSelection.wrappedValue == nil)
-                        .accessibilityIdentifier("scholium.agentChanges.view")
-                }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isUndoing)
             }
         }
     }
 
-    private func reload(preserving selectedID: UUID? = nil) async {
+    private func reload() async {
+        let requestedID = changeID
         isLoading = true
         errorMessage = nil
-        reviewErrorMessage = nil
         do {
-            let loaded = try await load()
-            changes = AgentChangePresentation.inScope(loaded, scope: scope)
-                .sorted(by: Self.precedesInConfirmationOrder)
-            if changes.isEmpty {
-                selectedIndex = nil
-                review = nil
-            } else {
-                if let selectedID {
-                    selectedIndex = changes.firstIndex(where: { $0.id == selectedID })
-                    if selectedIndex == nil {
-                        review = nil
-                        errorMessage = String(localized: "This Agent Change is no longer available.")
-                    }
-                } else {
-                    selectedIndex = changes.indices.last
-                }
-                if !showsCollection { await reloadReview() }
+            let loaded = try await loadReview(requestedID)
+            guard requestedID == changeID else { return }
+            guard loaded.change.id == requestedID else {
+                throw AgentChangeError.mismatchedBinding(requestedID)
             }
-        } catch {
-            errorMessage = error.localizedDescription
-            selectedIndex = nil
-            review = nil
-        }
-        isLoading = false
-    }
-
-    private func select(_ index: Int) {
-        guard changes.indices.contains(index) else { return }
-        selectedIndex = index
-        review = nil
-        reviewErrorMessage = nil
-        Task { await reloadReview() }
-    }
-
-    private func reloadReview() async {
-        guard let selectedIndex, changes.indices.contains(selectedIndex) else { return }
-        let selected = changes[selectedIndex]
-        isLoadingReview = true
-        reviewErrorMessage = nil
-        do {
-            let loaded = try await loadReview(selected.id)
-            guard loaded.change.id == selected.id,
-                loaded.change.noteID == selected.noteID
-            else {
-                throw AgentChangeError.mismatchedBinding(selected.id)
-            }
-            guard self.selectedIndex == selectedIndex else { return }
             review = loaded
         } catch is CancellationError {
             return
         } catch {
-            guard self.selectedIndex == selectedIndex else { return }
+            guard requestedID == changeID else { return }
             review = nil
-            reviewErrorMessage = error.localizedDescription
+            errorMessage = error.localizedDescription
         }
-        if self.selectedIndex == selectedIndex { isLoadingReview = false }
+        isLoading = false
     }
 
     private func undoChange(_ change: AgentChange) async {
-        undoingID = change.id
-        reviewErrorMessage = nil
+        isUndoing = true
+        actionErrorMessage = nil
         do {
             try await undo(change)
-            await reload(preserving: change.id)
+            await reload()
         } catch {
-            reviewErrorMessage = error.localizedDescription
+            actionErrorMessage = error.localizedDescription
         }
-        undoingID = nil
-    }
-
-    private static func precedesInConfirmationOrder(
-        _ lhs: AgentChange,
-        _ rhs: AgentChange
-    ) -> Bool {
-        let lhsDate = lhs.confirmedAt ?? lhs.createdAt
-        let rhsDate = rhs.confirmedAt ?? rhs.createdAt
-        if lhsDate != rhsDate { return lhsDate < rhsDate }
-        return lhs.id.uuidString < rhs.id.uuidString
+        isUndoing = false
     }
 }
 
@@ -453,7 +232,7 @@ private struct AgentChangeReviewContent: View {
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.attention)
             } else if review.change.state == .undone {
-                Text("This update was undone.")
+                Text("This Agent change was undone.")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
             }

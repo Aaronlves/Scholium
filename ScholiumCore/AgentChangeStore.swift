@@ -152,6 +152,7 @@ public actor AgentChangeStore {
                 fileName: "agent-changes-v1.lock"
             )
             try lock.withExclusiveLock {
+                try storage.recoverAbandonedDeletionFiles(in: nil)
                 try storage.removeAbandonedStagingFiles(in: [nil])
             }
         } catch {
@@ -304,6 +305,36 @@ public actor AgentChangeStore {
                     if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
                     return $0.id.uuidString < $1.id.uuidString
                 }
+        }
+    }
+
+    /// Exact on-disk operational evidence retained for receipt, Undo and
+    /// uncertain-outcome recovery; reported separately from reviewed batches.
+    public func retainedByteCount() throws -> Int {
+        try locked {
+            try storage.fileNames(in: nil)
+                .filter { $0.hasSuffix(".json") }
+                .reduce(0) { total, name in
+                    total + (try storage.read(directory: nil, fileName: name)).count
+                }
+        }
+    }
+
+    /// Reclaims a receipt only after Application has proved all affected
+    /// Notes have aged explicit-review coverage and no uncertain transaction
+    /// depends on it. The App source-operation gate excludes in-flight Undo;
+    /// this store rechecks the exact receipt under its own lock.
+    public func removeReclaimable(id: UUID, expected: AgentChange) throws {
+        try locked {
+            let data = try storage.read(directory: nil, fileName: fileName(id))
+            let payload = try decodeAndValidate(data, expectedID: id)
+            guard payload.change == expected,
+                payload.state == .confirmed || payload.state == .undone,
+                payload.confirmedAt != nil
+            else { throw AgentChangeError.mismatchedBinding(id) }
+            try storage.remove(
+                directory: nil, fileName: fileName(id), expected: data
+            )
         }
     }
 

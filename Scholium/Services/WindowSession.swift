@@ -56,6 +56,7 @@ struct WindowWorkspaceCapabilities: Sendable {
     let discovery: any DiscoveryUseCases
     let research: WindowResearchCapabilities
     let agentCollaboration: any AgentCollaborationUseCases
+    let changes: any DocumentChangeUseCases
     let openingPresentationDidComplete: @Sendable () async -> Void
 }
 
@@ -124,6 +125,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     /// the narrow delivery adapter for event-specific projections such as a
     /// stable-identity move; WorkspaceStore remains the only stream consumer.
     @Published private(set) var workspaceEvents: [UUID: WorkspaceEvent] = [:]
+    @Published private(set) var lastDocumentChangesInvalidation: (triptychID: UUID, generation: UInt64)?
     @Published private(set) var workspaceActivations: [UUID: WorkspaceActivation] = [:]
     @Published private(set) var latestWorkspaceActivation: WorkspaceActivation?
 
@@ -710,6 +712,36 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 refreshZoteroLibraryInfo: { [self] in
                     try await zoteroBridge.refreshLibraryInfo()
                 }
+            ),
+            changesHistory: WorkspaceChangesHistoryCapabilities(
+                updates:
+                    $lastDocumentChangesInvalidation
+                    .compactMap { $0?.triptychID }
+                    .eraseToAnyPublisher(),
+                load: { [self] id in
+                    let archive = try await applicationRuntime.documentChangeArchive(triptychID: id)
+                    async let retention = archive.retention()
+                    async let usage = archive.historyUsage()
+                    return try await WorkspaceChangesHistorySnapshot(
+                        retention: retention, usage: usage
+                    )
+                },
+                setRetention: { [self] id, retention in
+                    let archive = try await applicationRuntime.documentChangeArchive(triptychID: id)
+                    try await archive.setRetention(retention)
+                    return WorkspaceChangesHistorySnapshot(
+                        retention: try await archive.retention(),
+                        usage: try await archive.historyUsage()
+                    )
+                },
+                clear: { [self] id in
+                    let archive = try await applicationRuntime.documentChangeArchive(triptychID: id)
+                    try await archive.clearReviewedHistory()
+                    return WorkspaceChangesHistorySnapshot(
+                        retention: try await archive.retention(),
+                        usage: try await archive.historyUsage()
+                    )
+                }
             )
         )
     }
@@ -902,6 +934,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 recoveryRecordsURL: research.recoveryRecordsURL
             ),
             agentCollaboration: handle.agentCollaboration,
+            changes: handle.changes,
             openingPresentationDidComplete: {
                 await handle.openingPresentationDidComplete()
             }
@@ -945,6 +978,19 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         let publicationStart = ContinuousClock().now
         eventGates[triptychID] = gate
         workspaceEvents[triptychID] = event
+        let sourceMayChangeUsage: Bool
+        switch event {
+        case .sourceCommitted, .inventoryChanged: sourceMayChangeUsage = true
+        default: sourceMayChangeUsage = false
+        }
+        if sourceMayChangeUsage
+            || workspaceSnapshots[triptychID]?.documentChangesGeneration
+                != event.snapshot.documentChangesGeneration
+        {
+            lastDocumentChangesInvalidation = (
+                triptychID, event.snapshot.documentChangesGeneration
+            )
+        }
         // Research configuration changes invalidate Action resolution but do not
         // rebuild or supersede the current workspace snapshot. Publishing the
         // typed event must therefore not clear an existing stale/failed

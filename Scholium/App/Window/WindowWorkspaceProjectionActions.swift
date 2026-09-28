@@ -130,9 +130,15 @@ extension WindowModel {
             openDocuments: documentTabController.tabs.map(\.document)
         )
         researchController.receive(event.snapshot)
+        researchController.observeDocumentChangesGeneration(
+            event.snapshot.documentChangesGeneration
+        )
         switch event {
         case .sourceCommitted, .inventoryChanged:
             researchController.scheduleAgentChangesRefresh()
+            researchController.noteDocumentChangesInvalidated()
+        case .documentChangesChanged:
+            break
         case .snapshot, .derivedStateChanged, .researchStateChanged,
             .researchConfigurationInvalidated, .vaultAccessInvalidated,
             .runtimeReloaded:

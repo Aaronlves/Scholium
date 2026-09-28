@@ -4,11 +4,11 @@ import ScholiumContracts
 
 enum AttentionNotificationFilter: Hashable, Sendable {
     case all
-    case agentChanges
+    case changes
     case settlements
 
-    var showsAgentChanges: Bool {
-        self == .all || self == .agentChanges
+    var showsChanges: Bool {
+        self == .all || self == .changes
     }
 
     var showsSettlements: Bool {

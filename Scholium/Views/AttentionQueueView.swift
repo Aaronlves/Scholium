@@ -12,19 +12,19 @@ import ScholiumContracts
 final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuItemValidation {
     private enum FilterTag: Int {
         case all
-        case agentChanges
+        case changes
         case settlements
     }
 
     private enum Row {
         case category(String)
-        case agentChange(AgentChange)
+        case change(DocumentChangeSummary)
         case settlement(WorkspaceSettlementRequirement)
 
         var id: String {
             switch self {
             case .category(let title): "category:\(title)"
-            case .agentChange(let change): "agent-change:\(change.id.uuidString.lowercased())"
+            case .change(let change): "change:\(change.id.uuidString.lowercased())"
             case .settlement(let requirement): "settlement:\(requirement.noteID.uuidString.lowercased())"
             }
         }
@@ -32,7 +32,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         var isSelectable: Bool {
             switch self {
             case .category: false
-            case .agentChange, .settlement: true
+            case .change, .settlement: true
             }
         }
     }
@@ -330,13 +330,13 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     }
 
     private func makeRows() -> [Row] {
-        let changes = session.visibleAgentChanges(for: presentation, locale: .current)
+        let changes = session.visibleDocumentChanges(for: presentation, locale: .current)
         let settlements = session.visibleSettlementRequirements(for: presentation, locale: .current)
 
         var result: [Row] = []
         if !changes.isEmpty {
-            result.append(.category(ScholiumL10n.string("Agent Changes")))
-            result.append(contentsOf: changes.map(Row.agentChange))
+            result.append(.category(ScholiumL10n.string("Changes")))
+            result.append(contentsOf: changes.map(Row.change))
         }
         if !settlements.isEmpty {
             result.append(.category(ScholiumL10n.string("Settlement Reminders")))
@@ -429,7 +429,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     }
 
     private var completeErrorMessage: String? {
-        let messages = [session.agentChangesError, session.catalogError].compactMap { $0 }
+        let messages = [session.documentChangesError, session.catalogError].compactMap { $0 }
         return messages.isEmpty ? nil : messages.joined(separator: "\n")
     }
 
@@ -472,10 +472,10 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
                 offersRetry: true
             )
         case .current, nil:
-            if let error = session.agentChangesError {
+            if let error = session.documentChangesError {
                 return RefreshStatus(
                     symbol: "exclamationmark.triangle",
-                    message: ScholiumL10n.string("Agent Changes Unavailable") + ". " + error,
+                    message: ScholiumL10n.string("Changes Unavailable") + ". " + error,
                     color: ScholiumColorRole.destructive.nsColor,
                     offersRetry: true
                 )
@@ -496,7 +496,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         let menu = NSMenu(title: ScholiumL10n.string("Search"))
         let choices: [(String, FilterTag)] = [
             ("All Notifications", .all),
-            ("Agent Changes", .agentChanges),
+            ("Changes", .changes),
             ("Settlement Reminders", .settlements),
         ]
         for (title, tag) in choices {
@@ -516,7 +516,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         guard let tag = FilterTag(rawValue: sender.tag) else { return }
         switch tag {
         case .all: presentation.notificationFilter = .all
-        case .agentChanges: presentation.notificationFilter = .agentChanges
+        case .changes: presentation.notificationFilter = .changes
         case .settlements: presentation.notificationFilter = .settlements
         }
         reloadFromModel()
@@ -527,7 +527,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         let selected: Bool
         switch tag {
         case .all: selected = presentation.notificationFilter == .all
-        case .agentChanges: selected = presentation.notificationFilter == .agentChanges
+        case .changes: selected = presentation.notificationFilter == .changes
         case .settlements: selected = presentation.notificationFilter == .settlements
         }
         menuItem.state = selected ? .on : .off
@@ -559,7 +559,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         switch row {
         case .category:
             return
-        case .agentChange(let change):
+        case .change(let change):
             session.inspect(change)
         case .settlement(let requirement):
             session.inspect(requirement)
@@ -596,28 +596,20 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
                 ?? AttentionCategoryCell(identifier: identifier)
             cell.configure(title: title)
             return cell
-        case .agentChange(let change):
+        case .change(let change):
             let cell = makeItemCell(tableView: tableView)
-            let state = ScholiumL10n.localized(
-                AgentChangePresentation.stateTitle(
-                    for: change,
-                    endingRevisionState: session.endingRevisionState(for: change)
-                )
-            )
             cell.configure(
-                symbol: AgentChangePresentation.operationSymbol(for: change.operation),
-                color: ScholiumColorRole.agentAuthorship.nsColor,
+                symbol: "doc.text.magnifyingglass",
+                color: ScholiumColorRole.information.nsColor,
                 title: session.noteTitle(for: change),
-                detail: ScholiumL10n.localized(
-                    AgentChangePresentation.operationTitle(for: change.operation)
-                ) + " · " + state,
-                date: (change.confirmedAt ?? change.createdAt).formatted(
+                detail: ScholiumL10n.string("Pending Changes"),
+                date: change.savedAt?.formatted(
                     Date.FormatStyle(date: .abbreviated, time: .shortened)
                 ),
-                accessibilityLabel: agentChangeAccessibilitySummary(change)
+                accessibilityLabel: changeAccessibilitySummary(change)
             )
             cell.setAccessibilityIdentifier(
-                "scholium.notification.agentChange.\(change.id.uuidString.lowercased())"
+                "scholium.notification.change.\(change.id.uuidString.lowercased())"
             )
             return cell
         case .settlement(let requirement):
@@ -646,18 +638,12 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
             ?? AttentionItemCell(identifier: identifier)
     }
 
-    private func agentChangeAccessibilitySummary(_ change: AgentChange) -> String {
+    private func changeAccessibilitySummary(_ change: DocumentChangeSummary) -> String {
         [
-            ScholiumL10n.localized(AgentChangePresentation.operationTitle(for: change.operation)),
+            ScholiumL10n.string("Pending Changes"),
             session.noteTitle(for: change),
-            AgentChangePresentation.path(for: change),
-            ScholiumL10n.localized(
-                AgentChangePresentation.stateTitle(
-                    for: change,
-                    endingRevisionState: session.endingRevisionState(for: change)
-                )
-            ),
-            (change.confirmedAt ?? change.createdAt).formatted(.dateTime),
+            change.relativePath,
+            change.savedAt?.formatted(.dateTime) ?? "",
         ].joined(separator: ", ")
     }
 }

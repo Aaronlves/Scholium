@@ -4,10 +4,10 @@
 
 ## Native design, accessibility and human acceptance
 
-- Complete the retained Core human baseline: genuine VoiceOver, physical Full
+- Complete the Core human baseline: genuine VoiceOver, physical Full
   Keyboard Access, installed Simplified Chinese IME exact-source editing, and
-  visual adaptations at supported window sizes. Include the distinct §20
-  boundaries: Agents & Chat command copying, Agent Changes comparison/Undo,
+  visual adaptations at supported window sizes. Include §20
+  boundaries: Agents & Chat command copying, Changes review/history and receipt Undo,
   Library navigation, Inspector Links/Related Material, Document mode transitions,
   system Trash, conflict and Recovery. Computer Use AX snapshots are not VoiceOver
   or physical-input acceptance.

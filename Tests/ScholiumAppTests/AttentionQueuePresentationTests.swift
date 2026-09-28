@@ -20,8 +20,8 @@ struct AttentionQueuePresentationTests {
         let projectionController = WindowWorkspaceProjectionController {
             throw DiscoverySearchExecutionError.workspaceUnavailable
         }
-        let agentChanges = PassthroughSubject<[AgentChange]?, Never>()
-        let agentChangeErrors = PassthroughSubject<String?, Never>()
+        let documentChanges = PassthroughSubject<[DocumentChangeSummary]?, Never>()
+        let documentChangeErrors = PassthroughSubject<String?, Never>()
         let vault = RegisteredVault(
             name: "Topics",
             role: .topicKnowledge,
@@ -53,14 +53,14 @@ struct AttentionQueuePresentationTests {
             projectionController: projectionController,
             dependencies: .init(
                 settlementRequirementChanges: Just([]).eraseToAnyPublisher(),
-                agentChangeChanges: agentChanges.eraseToAnyPublisher(),
-                agentChangeErrorChanges: agentChangeErrors.eraseToAnyPublisher(),
+                documentChangeChanges: documentChanges.eraseToAnyPublisher(),
+                documentChangeErrorChanges: documentChangeErrors.eraseToAnyPublisher(),
                 refresh: {},
-                showAgentChange: { _ in }
+                showDocumentChange: { _ in }
             )
         )
-        agentChanges.send([])
-        agentChangeErrors.send(nil)
+        documentChanges.send([])
+        documentChangeErrors.send(nil)
         session.presentQueue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
 
         let controller = AttentionQueueViewController(

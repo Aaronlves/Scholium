@@ -45,18 +45,16 @@ the expected revision. Window/Research owners borrow recovery projections, not
 filesystem transaction ownership. Unsupported records remain unchanged and
 nonauthorizing.
 
-Agent Changes use a separate machine-local evidence store, binding operation,
-stable identity, exact before/after fingerprints and retained source/recovery.
-Prepared entries confirm only after source readback; uncertain evidence requires
-exact reconciliation. Update Undo requires a confirmed current ending fingerprint;
-move recovery retains all linked-source preimages and checks the whole inverse
-through [Agent Collaboration](02-agent-collaboration.md#note-mutation-authority-and-evidence).
-Create/trash evidence does not fabricate text preimages or comparisons.
+Core `DocumentReviewStore` keeps source baselines, captures, batches and
+receipt-version coverage outside vaults. Application `DocumentChangeOperations`
+compares identity-checked saved source and increments snapshot generation;
+`DocumentChangeArchiveOperations` accesses Triptych metadata for Settings
+without vault activation. MCP receipts and Undo remain with
+[Agent Collaboration](02-agent-collaboration.md#note-mutation-authority-and-evidence).
 
-Bounded JSON stores share the Core-only secure-record primitive for descriptor
-containment, byte limits, atomic replacement/readback and staging/deletion recovery.
-An advisory lock serializes cooperating processes. Each store owns its own schema,
-path, transaction and error semantics; the primitive interprets no research object.
+Bounded JSON stores share Core's contained, size-limited, atomic secure-record
+primitive and advisory locking. Each store retains schema and transaction
+semantics; the primitive interprets no research object.
 Portable settings and machine-local style manifests share exact-byte coordinated
 replacement, exclusive recovery copies and checked absence creation. Application
 owns independent appearance/snippet load failures; Settings retains target-bound

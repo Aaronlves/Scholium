@@ -6,15 +6,15 @@ import SwiftUI
 
 struct WorkspaceNotificationCountSummary: Equatable {
     let settlementCount: Int?
-    let agentChangeCount: Int?
+    let changeCount: Int?
 
     var exactTotal: Int? {
-        guard let settlementCount, let agentChangeCount else { return nil }
-        return settlementCount + agentChangeCount
+        guard let settlementCount, let changeCount else { return nil }
+        return settlementCount + changeCount
     }
 
     var hasConfirmedNotifications: Bool {
-        (settlementCount ?? 0) > 0 || (agentChangeCount ?? 0) > 0
+        (settlementCount ?? 0) > 0 || (changeCount ?? 0) > 0
     }
 }
 
@@ -42,6 +42,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             "scholium.toolbar.documentMode"
         )
         static let noteActions = NSToolbarItem.Identifier("scholium.toolbar.noteActions")
+        static let viewChanges = NSToolbarItem.Identifier("scholium.toolbar.viewChanges")
         static let settlement = NSToolbarItem.Identifier(
             "scholium.toolbar.settlement"
         )
@@ -177,6 +178,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.back,
             Item.forward,
             .flexibleSpace,
+            Item.viewChanges,
             Item.settlement,
             .space,
             Item.documentMode,
@@ -237,6 +239,13 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             return ScholiumDocumentModeToolbarItem(identifier: itemIdentifier, model: appState)
         case Item.noteActions:
             return DocumentNoteActionsToolbarItem(identifier: itemIdentifier, model: appState)
+        case Item.viewChanges:
+            return actionItem(
+                identifier: itemIdentifier,
+                label: ScholiumL10n.string("View Changes"),
+                systemImage: "doc.text.magnifyingglass",
+                action: #selector(viewCurrentChanges(_:))
+            )
         case Item.settlement:
             let item = actionItem(
                 identifier: itemIdentifier,
@@ -342,7 +351,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         WorkspaceNotificationCountSummary(
             settlementCount: appState.researchController.researchSnapshot?
                 .settlementRequirements.count,
-            agentChangeCount: appState.researchController.agentChanges?.count
+            changeCount: appState.researchController.pendingChanges?.count
         )
     }
 
@@ -350,8 +359,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         if appState.workspaceCatalog == nil, let error = appState.workspaceCatalogError {
             return error
         }
-        if appState.researchController.agentChanges == nil,
-            let error = appState.researchController.agentChangesError
+        if appState.researchController.pendingChanges == nil,
+            let error = appState.researchController.pendingChangesError
         {
             return error
         }
@@ -478,6 +487,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 .receive(on: DispatchQueue.main)
                 .map { _ in () }
                 .eraseToAnyPublisher(),
+            appState.researchController.$pendingChanges
+                .receive(on: DispatchQueue.main)
+                .map { _ in () }
+                .eraseToAnyPublisher(),
             appState.shellState.$inspector
                 .dropFirst()
                 .receive(on: DispatchQueue.main)
@@ -536,6 +549,16 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
 
         (toolbarItem(Item.documentMode) as? ScholiumDocumentModeToolbarItem)?.refreshPresentation()
         (toolbarItem(Item.noteActions) as? DocumentNoteActionsToolbarItem)?.refreshPresentation()
+
+        if let item = toolbarItem(Item.viewChanges) {
+            item.isHidden = !hasCurrentPendingChanges
+            update(
+                item,
+                label: ScholiumL10n.dynamicString("View Changes"),
+                systemImage: "doc.text.magnifyingglass",
+                isEnabled: isCommandEnabled(Item.viewChanges)
+            )
+        }
 
         if let item = toolbarItem(Item.settlement) {
             let hasDocument = appState.currentNote != nil
@@ -614,12 +637,29 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         case Item.back: appState.documentNavigationHistoryController.canGoBack
         case Item.forward: appState.documentNavigationHistoryController.canGoForward
         case Item.settlement: currentSettlementTarget != nil
+        case Item.viewChanges: hasCurrentPendingChanges
         case Item.inspector: appState.canToggleResearchInspector
         case Item.inspectorModes: appState.currentNote != nil && appState.shellState.inspector.isVisible
         case Item.documentMode: ScholiumDocumentModeToolbarItem.isAvailable(in: appState)
         case Item.noteActions: appState.currentNote != nil && !appState.transferInProgress
         default: true
         }
+    }
+
+    private var hasCurrentPendingChanges: Bool {
+        guard let noteID = appState.currentDocumentDescriptor?.sessionKey.noteID else {
+            return false
+        }
+        return appState.researchController.pendingChanges?.contains {
+            $0.noteID == noteID
+        } == true
+    }
+
+    @objc private func viewCurrentChanges(_ sender: Any?) {
+        guard hasCurrentPendingChanges,
+            let noteID = appState.currentDocumentDescriptor?.sessionKey.noteID
+        else { return }
+        appState.presentationRouter.present(.documentChanges(scope: .note(noteID)))
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {

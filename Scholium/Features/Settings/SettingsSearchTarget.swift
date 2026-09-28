@@ -57,6 +57,10 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 ["restore defaults", "recovery", "damaged settings", "恢复默认", "修复设置", "设置损坏"],
                 aliases: ["Restore Portable Settings Defaults…"]),
             Self(
+                "workspace.changesHistory", .workspace, "Changes History",
+                ["reviewed history", "retention", "clear reviewed history", "修改历史", "保留期限", "清除已查看历史"],
+                aliases: ["Keep Reviewed History", "Clear Reviewed History…"]),
+            Self(
                 "appearance.profile", .document, "Profile", ["appearance", "configuration", "repair profile", "文稿外观", "外观配置", "修复外观"],
                 aliases: ["Rename Appearance…", "Restore Default Appearance…", "Save Appearance", "Recover Default Appearance…", "Repair Saved Profile"]),
             Self(

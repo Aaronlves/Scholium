@@ -802,6 +802,45 @@ public actor WorkspaceRuntime {
         return try await openWorkspace(id: match.id)
     }
 
+    /// Machine-local Changes settings for a registered Triptych, without
+    /// opening its vaults or changing the selected runtime.
+    public func documentChangeArchive(triptychID: UUID) async throws -> DocumentChangeArchiveOperations {
+        try requireActive()
+        _ = try await assignment(id: triptychID)
+        let supportURL: URL
+        switch membership {
+        case .live(_, let url): supportURL = url
+        case .snapshot(_, _, let url): supportURL = url
+        }
+        return DocumentChangeArchiveOperations(
+            store: try DocumentReviewStore(
+                applicationSupportURL: supportURL, triptychID: triptychID
+            ),
+            receipts: try AgentChangeStore(
+                applicationSupportURL: supportURL, triptychID: triptychID
+            ),
+            runtime: self, triptychID: triptychID
+        )
+    }
+
+    func finishDocumentChangesCleanup(triptychID: UUID) async throws {
+        if let handle = handles[triptychID] {
+            do {
+                try await handle.reclaimReviewedOperationReceipts()
+            } catch {
+                await handle.publishDocumentChangesChanged()
+                throw DocumentChangeError.historyChangedCleanupPending(error.localizedDescription)
+            }
+            await handle.publishDocumentChangesChanged()
+        }
+    }
+
+    func publishDocumentChangesChanged(triptychID: UUID) async {
+        if let handle = handles[triptychID] {
+            await handle.publishDocumentChangesChanged()
+        }
+    }
+
     /// Cancels in-flight opens, shuts down every cached handle, and prevents
     /// later reuse. Calling shutdown repeatedly is harmless.
     public func shutdown() async {

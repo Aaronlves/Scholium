@@ -163,6 +163,19 @@ struct WorkspaceSettingsZoteroCapabilities {
     let refreshZoteroLibraryInfo: () async throws -> ZoteroLibraryInfo
 }
 
+struct WorkspaceChangesHistorySnapshot: Equatable, Sendable {
+    let retention: DocumentChangeRetention
+    let usage: DocumentChangeHistoryUsage
+}
+
+@MainActor
+struct WorkspaceChangesHistoryCapabilities {
+    let updates: AnyPublisher<UUID, Never>
+    let load: (UUID) async throws -> WorkspaceChangesHistorySnapshot
+    let setRetention: (UUID, DocumentChangeRetention) async throws -> WorkspaceChangesHistorySnapshot
+    let clear: (UUID) async throws -> WorkspaceChangesHistorySnapshot
+}
+
 /// Delivery-neutral operations assembled by the macOS composition root.
 /// Settings owns feature state but never receives an Application handle.
 @MainActor
@@ -170,6 +183,7 @@ struct WorkspaceSettingsCapabilities {
     let workspace: WorkspaceSettingsWorkspaceCapabilities
     let machine: WorkspaceSettingsMachineCapabilities
     let zotero: WorkspaceSettingsZoteroCapabilities
+    let changesHistory: WorkspaceChangesHistoryCapabilities
 }
 
 /// Application-lifetime Settings boundary. It receives delivery-neutral
@@ -591,6 +605,28 @@ final class WorkspaceSettingsModel: ObservableObject {
 
     func clearZoteroConnectionHistory() async throws {
         try await capabilities?.zotero.clearZoteroConnectionHistory()
+    }
+
+    func changesHistory(triptychID: UUID) async throws -> WorkspaceChangesHistorySnapshot {
+        guard let capabilities else { throw WorkspaceRegistryError.incompleteWorkspace }
+        return try await capabilities.changesHistory.load(triptychID)
+    }
+
+    var changesHistoryUpdates: AnyPublisher<UUID, Never> {
+        capabilities?.changesHistory.updates ?? Empty().eraseToAnyPublisher()
+    }
+
+    func setChangesHistoryRetention(
+        _ retention: DocumentChangeRetention,
+        triptychID: UUID
+    ) async throws -> WorkspaceChangesHistorySnapshot {
+        guard let capabilities else { throw WorkspaceRegistryError.incompleteWorkspace }
+        return try await capabilities.changesHistory.setRetention(triptychID, retention)
+    }
+
+    func clearChangesHistory(triptychID: UUID) async throws -> WorkspaceChangesHistorySnapshot {
+        guard let capabilities else { throw WorkspaceRegistryError.incompleteWorkspace }
+        return try await capabilities.changesHistory.clear(triptychID)
     }
 
     func refreshZoteroLibraryInfo() async throws -> ZoteroLibraryInfo {
