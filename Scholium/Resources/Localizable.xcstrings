@@ -10687,6 +10687,16 @@
         }
       }
     },
+    "Could not copy the reply. Choose Copy to try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法复制回复。请再次选择“复制”以重试。"
+          }
+        }
+      }
+    },
     "Could not create folder: %@" : {
       "localizations" : {
         "en" : {

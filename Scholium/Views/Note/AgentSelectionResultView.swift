@@ -5,7 +5,8 @@ struct AgentSelectionResultView: View {
     @ObservedObject var result: AgentSelectionResult
     let close: () -> Void
     var width: CGFloat = 380
-    @State private var copied = false
+    var pasteboardWriter: any PasteboardWriting = ScholiumPasteboardWriter.general
+    @State private var copyFailed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -22,6 +23,7 @@ struct AgentSelectionResultView: View {
                 .accessibilityIdentifier("scholium.selectionResult.continue")
                 Button("Close", systemImage: "xmark", action: close)
                     .labelStyle(.iconOnly)
+                    .help("Close")
                     .keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("scholium.selectionResult.close")
             }
@@ -50,17 +52,29 @@ struct AgentSelectionResultView: View {
                 HStack {
                     Button("Previous Version", systemImage: "chevron.left") { result.previousVersion() }
                         .labelStyle(.iconOnly)
+                        .help("Previous Version")
                         .disabled(result.selectedVersionIndex == 0 || result.isAdopting || result.isAdopted)
                     Text(ScholiumL10n.string("Version \(result.selectedVersionIndex + 1) of \(result.versions.count)"))
                         .monospacedDigit()
                     Button("Next Version", systemImage: "chevron.right") { result.nextVersion() }
                         .labelStyle(.iconOnly)
+                        .help("Next Version")
                         .disabled(result.selectedVersionIndex == result.versions.count - 1 || result.isAdopting || result.isAdopted)
                     Spacer()
                 }
                 .accessibilityIdentifier("scholium.selectionResult.versions")
             }
             operationStatus
+            if copyFailed {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Label("Could not copy the reply. Choose Copy to try again.", systemImage: "exclamationmark.triangle")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button("Dismiss") { copyFailed = false }
+                }
+                .font(.caption)
+                .accessibilityIdentifier("scholium.selectionResult.copyError")
+            }
             ViewThatFits(in: .horizontal) {
                 HStack {
                     secondaryActions
@@ -88,7 +102,7 @@ struct AgentSelectionResultView: View {
                 return ["https", "http"].contains(url.scheme?.lowercased() ?? "") ? .systemAction : .discarded
             }
         )
-        .onChange(of: result.selectedVersionIndex) { _, _ in copied = false }
+        .onChange(of: result.selectedVersionIndex) { _, _ in copyFailed = false }
         .padding(16)
         .frame(width: width, height: 340)
         .accessibilityElement(children: .contain)
@@ -123,15 +137,20 @@ struct AgentSelectionResultView: View {
 
     @ViewBuilder
     private var secondaryActions: some View {
-        Button("Copy", systemImage: "doc.on.doc") {
-            guard let reply = result.finalReply else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(reply, forType: .string)
-            copied = true
+        ScholiumCopyButton(contentIdentity: "\(result.selectedVersionIndex):\(result.finalReply ?? "")") {
+            let copied = copyReply()
+            copyFailed = !copied
+            if !copied {
+                NSAccessibility.post(
+                    element: NSApp as Any, notification: .announcementRequested,
+                    userInfo: [
+                        .announcement: ScholiumL10n.string("Could not copy the reply. Choose Copy to try again."),
+                        .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+                    ])
+            }
+            return copied
         }
-        .labelStyle(.iconOnly)
-        .help(copied ? "Copied" : "Copy")
-        .accessibilityValue(copied ? ScholiumL10n.string("Copied") : "")
+        .buttonStyle(.borderless)
         .disabled(result.finalReply == nil)
         .accessibilityIdentifier("scholium.selectionResult.copy")
         Button {
@@ -161,5 +180,10 @@ struct AgentSelectionResultView: View {
             .disabled(!result.canAdopt)
             .accessibilityIdentifier("scholium.selectionResult.adopt")
         }
+    }
+
+    func copyReply() -> Bool {
+        guard let reply = result.finalReply else { return false }
+        return pasteboardWriter.writeText(reply)
     }
 }

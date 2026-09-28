@@ -130,12 +130,50 @@ struct AgentSelectionResultTests {
         #expect(handoffs == ["Completed explanation"])
     }
 
+    @Test("Result Copy sends the exact inspected version and reports failed writes")
+    func copySelectedVersion() async {
+        let writer = RecordingPasteboardWriter()
+        var replies = ["First **proposal**\r\n", "Second proposal"]
+        let result = AgentSelectionResult(
+            title: "Polish", original: "Original", adopt: nil, openReference: { _ in false },
+            generate: { replies.removeFirst() }, continueInChat: { _ in })
+        let view = AgentSelectionResultView(result: result, close: {}, pasteboardWriter: writer)
+
+        #expect(!view.copyReply())
+        #expect(writer.writes.isEmpty)
+
+        result.regenerate()
+        await finish(result)
+        result.regenerate()
+        await finish(result)
+        #expect(result.finalReply == "Second proposal")
+        result.previousVersion()
+        #expect(result.finalReply == "First **proposal**\r\n")
+        writer.succeeds = false
+        #expect(!view.copyReply())
+        #expect(writer.writes == ["First **proposal**\r\n"])
+
+        writer.succeeds = true
+        #expect(view.copyReply())
+        #expect(writer.writes == ["First **proposal**\r\n", "First **proposal**\r\n"])
+    }
+
     private func finish(_ result: AgentSelectionResult) async {
         for await generating in result.$isGenerating.values where !generating { return }
     }
 
     private func finishAdoption(_ result: AgentSelectionResult) async {
         for await adopting in result.$isAdopting.values where !adopting { return }
+    }
+}
+
+@MainActor private final class RecordingPasteboardWriter: PasteboardWriting {
+    var succeeds = true
+    private(set) var writes: [String] = []
+
+    func writeText(_ text: String) -> Bool {
+        writes.append(text)
+        return succeeds
     }
 }
 

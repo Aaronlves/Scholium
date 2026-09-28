@@ -14,14 +14,24 @@ final class SelectionActionBar: NSStackView {
         super.init(frame: .zero)
         orientation = .horizontal
         alignment = .centerY
-        spacing = 0
-        edgeInsets = NSEdgeInsets(top: 2, left: 2, bottom: 2, right: 2)
+        spacing = ScholiumGrid.Spacing.inlineControlGap
+        edgeInsets = NSEdgeInsets(
+            top: ScholiumGrid.Spacing.labelAccessoryGap,
+            left: ScholiumGrid.Spacing.inlineControlGap,
+            bottom: ScholiumGrid.Spacing.labelAccessoryGap,
+            right: ScholiumGrid.Spacing.inlineControlGap)
         let explain = button(.explain, symbol: "questionmark.bubble", action: #selector(explainPassage))
         let polish = button(.polish, symbol: "sparkles", action: #selector(polishPassage))
         let more = NSPopUpButton(frame: .zero, pullsDown: true)
-        more.addItem(withTitle: ScholiumL10n.string("More Actions"))
-        more.setAccessibilityLabel(ScholiumL10n.string("More Actions"))
+        let moreLabel = ScholiumL10n.string("More Actions")
+        more.addItem(withTitle: moreLabel)
+        more.item(at: 0)?.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: nil)
+        more.imagePosition = .imageOnly
+        (more.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        more.setAccessibilityLabel(moreLabel)
         more.setAccessibilityIdentifier("scholium.selectionActions.more")
+        more.toolTip = moreLabel
+        more.widthAnchor.constraint(greaterThanOrEqualToConstant: ScholiumGrid.Dimension.preferredCustomTarget).isActive = true
         let ask = NSMenuItem(title: ScholiumL10n.string("Ask Agent"), action: #selector(askAgent), keyEquivalent: "")
         ask.target = self
         more.menu?.addItem(ask)
@@ -33,10 +43,9 @@ final class SelectionActionBar: NSStackView {
             more.menu?.addItem(item)
         }
         [explain, polish, more].forEach { control in
-            control.bezelStyle = .accessoryBarAction
-            control.isBordered = true
-            control.borderShape = .capsule
-            control.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
+            control.isBordered = false
+            control.contentTintColor = .labelColor
+            control.heightAnchor.constraint(greaterThanOrEqualToConstant: ScholiumGrid.Dimension.preferredCustomTarget).isActive = true
             addArrangedSubview(control)
         }
         setAccessibilityElement(true)
@@ -64,10 +73,9 @@ final class SelectionActionBar: NSStackView {
             arrangedSubviews.indices.contains(index),
             let button = arrangedSubviews[index] as? NSButton, button.isEnabled
         else { return }
-        // AppKit draws the bezel, contrast, pressed state and focus ring.
-        // Only the hovered action receives the system accent; no selected state is invented.
-        button.bezelColor = .controlAccentColor
-        button.tintProminence = .primary
+        // Native borderless controls retain their press and focus behavior.
+        // Only the hovered action receives the system accent.
+        button.contentTintColor = .controlAccentColor
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -75,8 +83,7 @@ final class SelectionActionBar: NSStackView {
             arrangedSubviews.indices.contains(index),
             let button = arrangedSubviews[index] as? NSButton
         else { return }
-        button.bezelColor = nil
-        button.tintProminence = .automatic
+        button.contentTintColor = .labelColor
     }
 
     private func button(_ inquiry: AgentChatSelectionInquiry, symbol: String, action: Selector) -> NSButton {

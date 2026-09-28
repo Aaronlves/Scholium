@@ -14,6 +14,29 @@ extension ScholiumUITests {
         editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
         let polish = app.buttons["Polish"].firstMatch
         XCTAssertTrue(polish.waitForExistence(timeout: 8))
+        let resting = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        resting.name = "Selection actions — resting native bar"
+        resting.lifetime = .keepAlways
+        add(resting)
+        let actionBar = app.groups["Selection Actions"].firstMatch
+        XCTAssertTrue(actionBar.exists)
+        let restingDetail = XCTAttachment(screenshot: actionBar.screenshot())
+        restingDetail.name = "Selection actions — resting control detail"
+        restingDetail.lifetime = .keepAlways
+        add(restingDetail)
+        let more = app.descendants(matching: .menuButton)["scholium.selectionActions.more"].firstMatch
+        XCTAssertTrue(more.exists && more.isHittable)
+        XCTAssertEqual(more.label, "More Actions")
+        XCTAssertGreaterThanOrEqual(more.frame.width, 28)
+        XCTAssertGreaterThanOrEqual(more.frame.height, 28)
+        XCTAssertLessThan(more.frame.width, polish.frame.width)
+        XCTAssertLessThan(app.buttons["Explain"].firstMatch.frame.maxX, polish.frame.minX)
+        XCTAssertLessThan(polish.frame.maxX, more.frame.minX)
+        more.click()
+        XCTAssertTrue(app.menuItems["Ask Agent"].firstMatch.waitForExistence(timeout: 3))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(polish.exists)
+        XCTAssertEqual(editor.value as? String, before)
         polish.hover()
         let hover = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         hover.name = "Selection actions — system accent hover"

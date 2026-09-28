@@ -24,10 +24,11 @@ content remains unobscured. System background, selection, focus, Undo,
 composition and restoration remain unchanged.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.
-A nonempty body selection offers Explain, Polish and More Actions in
-Review, Edit and Source. More Actions contains Ask Agent and enabled custom
-operations; instructions stay in Chat. Native controls own feedback and layout;
-peer labels use primary text and hover uses system Accent. Explain and Polish
+A nonempty body selection offers Explain, Polish and an ellipsis button for
+More Actions in Review, Edit and Source. Its native menu contains Ask Agent
+and enabled custom operations; instructions stay in Chat. Explain and Polish
+use primary text labels; More Actions retains its full accessible name and Help.
+Native controls own feedback and layout; hover uses system Accent. Explain and Polish
 use one bounded passage-anchored popover for progress, Stop, results and errors.
 Replace Selection stays trailing; Regenerate becomes Stop. Copy, Chat handoff,
 version navigation and scrolling remain.

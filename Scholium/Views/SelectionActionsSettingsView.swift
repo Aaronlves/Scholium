@@ -324,7 +324,6 @@ private struct SelectionActionBarPreview: NSViewRepresentable {
 
     func makeNSView(context: Context) -> SelectionActionBar {
         let bar = SelectionActionBar(actions: actions)
-        bar.onInquiry = { _ in }
         bar.setAccessibilityIdentifier("scholium.selectionActions.preview")
         return bar
     }

@@ -162,7 +162,6 @@ final class DocumentFloatingSurfaceController: NSObject {
     var isPreviewShown: Bool { preview?.isShown == true }
     var onPreviewShown: (() -> Void)?
     private var event: ((Int, DocumentFloatingAction, Int) async -> Bool)?
-    private var selectionBar: SelectionActionBar?
     var selectionResultPopover: NSPopover? { resultPopover }
     private var resultPopover: NSPopover?
     private var inquiryTask: Task<Void, Never>?
@@ -283,7 +282,6 @@ final class DocumentFloatingSurfaceController: NSObject {
         case .selection:
             suggestions = nil
             let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions)
-            selectionBar = bar
             bar.onDismiss = { [weak self] in
                 self?.send(.dismiss)
                 self?.dismiss()
@@ -363,7 +361,6 @@ final class DocumentFloatingSurfaceController: NSObject {
         popover.delegate = self
         // Source capture has finished. Remove only the toolbar presentation: a
         // full dismissal here would cancel capture and invalidate its selection.
-        selectionBar = nil
         glass?.onPointerPresence = nil
         glass?.removeFromSuperview()
         glass = nil
@@ -385,7 +382,6 @@ final class DocumentFloatingSurfaceController: NSObject {
         inquiryID = nil
         resultPopover?.close()
         resultPopover = nil
-        selectionBar = nil
         preview?.dismiss()
         suggestions = nil
         glass?.removeFromSuperview()
