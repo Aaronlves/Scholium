@@ -171,9 +171,10 @@ struct AttentionQueuePresentationTests {
         shortItem.layoutSubtreeIfNeeded()
         let itemTitle = try #require(findAll(NSTextField.self, in: item).first { $0.stringValue == title })
         let shortItemTitle = try #require(findAll(NSTextField.self, in: shortItem).first { $0.stringValue == shortTitle })
-        let itemDetail = try #require(findAll(NSTextField.self, in: item).first {
-            $0.stringValue.contains("Pending Changes")
-        })
+        let itemDetail = try #require(
+            findAll(NSTextField.self, in: item).first {
+                $0.stringValue.contains("Pending Changes")
+            })
         let categoryLabel = try #require(find(NSTextField.self, in: category))
         let icon = try #require(find(NSImageView.self, in: item))
         let search = try #require(find(NSSearchField.self, in: controller.view))
@@ -218,9 +219,10 @@ struct AttentionQueuePresentationTests {
         controller.view.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
         let detail = try #require(findAll(NSTextField.self, in: controller.view).first { $0.stringValue == error })
-        let action = try #require(findAll(NSButton.self, in: controller.view).first {
-            $0.accessibilityIdentifier() == "scholium.attentionStateAction"
-        })
+        let action = try #require(
+            findAll(NSButton.self, in: controller.view).first {
+                $0.accessibilityIdentifier() == "scholium.attentionStateAction"
+            })
         let detailRect = detail.convert(detail.bounds, to: controller.view)
         let actionRect = action.convert(action.bounds, to: controller.view)
         #expect(detailRect.width <= ScholiumGrid.ContentState.readableWidth + ScholiumGrid.Spacing.labelAccessoryGap)
