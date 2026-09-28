@@ -1011,13 +1011,19 @@ struct AgentChatTests {
         #expect(controller.queue())
         try Data().write(to: controller.runtimeHome.appendingPathComponent("release-queued-turn"))
         controller.refreshQuota()
+        let lastTurnURL = controller.runtimeHome.appendingPathComponent("last-turn.json")
         try await eventually {
-            controller.selected?.queuedMessages.isEmpty == true
+            guard let data = try? Data(contentsOf: lastTurnURL),
+                let request = try? JSONDecoder().decode(MCPJSONValue.self, from: data)
+            else { return false }
+            return controller.selected?.queuedMessages.isEmpty == true
                 && controller.selected?.messages.contains { $0.text == "Queued fixture reply" } == true
+                && request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue
+                    == "queued after completion"
         }
         let request = try JSONDecoder().decode(
             MCPJSONValue.self,
-            from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json")))
+            from: Data(contentsOf: lastTurnURL))
         #expect(request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue == "queued after completion")
         await controller.disconnect()
     }
