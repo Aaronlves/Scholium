@@ -936,14 +936,29 @@ struct TriptychSearchIndexTests {
                 source: "---\ntitle: Initial \(number)\n---\nfirst-build-term"
             )
         }
-        let build = Task { try await index.synchronize(documents) }
-        // The loop leaves the moment progress appears, so a longer deadline
-        // costs a fast machine nothing and stops a contended one from failing
-        // for want of a scheduling slot rather than for want of progress.
+        let sources = Dictionary(
+            documents.map { ($0.relativePath, $0) },
+            uniquingKeysWith: { first, _ in first })
+        let progressGate = InitialSearchBuildProgressGate()
+        let workspaceGeneration = try await index.workspaceGeneration() + 1
+        let build = Task {
+            try await index.synchronizeManifest(
+                documents.map(SearchIndexManifestEntry.init(document:)),
+                workspaceGeneration: workspaceGeneration,
+                loadChanged: { entry in
+                    guard let source = sources[entry.relativePath] else {
+                        throw SearchIndexError.invalidDocuments("missing fixture source")
+                    }
+                    await progressGate.pauseAfterFirstProgressBatch()
+                    return source
+                },
+                validateManifest: {})
+        }
         let deadline = ContinuousClock.now.advanced(by: .seconds(30))
         var observedProgress = false
         while ContinuousClock.now < deadline {
-            if case .building(let progress) = await index.availability(),
+            if await progressGate.hasPausedAfterFirstProgressBatch(),
+                case .building(let progress) = await index.availability(),
                 progress.completed > 0,
                 progress.total == documents.count
             {
@@ -954,6 +969,7 @@ struct TriptychSearchIndexTests {
         }
         #expect(observedProgress)
         build.cancel()
+        await progressGate.release()
         await #expect(throws: CancellationError.self) {
             _ = try await build.value
         }
@@ -1217,5 +1233,33 @@ struct TriptychSearchIndexTests {
         func remove() {
             try? FileManager.default.removeItem(at: root)
         }
+    }
+}
+
+private actor InitialSearchBuildProgressGate {
+    private var loadedDocuments = 0
+    private var paused = false
+    private let releaseStream: AsyncStream<Void>
+    private let releaseContinuation: AsyncStream<Void>.Continuation
+
+    init() {
+        (releaseStream, releaseContinuation) = AsyncStream.makeStream(of: Void.self)
+    }
+
+    func pauseAfterFirstProgressBatch() async {
+        loadedDocuments += 1
+        guard loadedDocuments == 33 else { return }
+        paused = true
+        for await _ in releaseStream { break }
+        paused = false
+    }
+
+    func hasPausedAfterFirstProgressBatch() -> Bool {
+        paused
+    }
+
+    func release() {
+        releaseContinuation.yield(())
+        releaseContinuation.finish()
     }
 }
