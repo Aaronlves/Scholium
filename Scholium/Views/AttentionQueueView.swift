@@ -49,10 +49,11 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     private let retryButton = NSButton(title: "", target: nil, action: nil)
     private let listScrollView = NSScrollView()
     private let tableView = AttentionQueueTableView()
+    private let stateContainer = NSView()
     private let stateStack = NSStackView()
     private let stateImage = NSImageView()
     private let stateProgress = NSProgressIndicator()
-    private let stateTitle = NSTextField(labelWithString: "")
+    private let stateTitle = NSTextField(wrappingLabelWithString: "")
     private let stateDetail = NSTextField(wrappingLabelWithString: "")
     private let stateAction = NSButton(title: "", target: nil, action: nil)
 
@@ -118,6 +119,8 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
 
         scopeLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         scopeLabel.textColor = .secondaryLabelColor
+        scopeLabel.lineBreakMode = .byTruncatingMiddle
+        scopeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         scopeLabel.setAccessibilityRole(.staticText)
 
         searchField.placeholderString = ScholiumL10n.string("Search")
@@ -194,12 +197,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         stateStack.orientation = .vertical
         stateStack.alignment = .centerX
         stateStack.spacing = ScholiumGrid.Spacing.inlineControlGap
-        stateStack.edgeInsets = NSEdgeInsets(
-            top: ScholiumGrid.Spacing.regionContentInset,
-            left: ScholiumGrid.Spacing.regionContentInset,
-            bottom: ScholiumGrid.Spacing.regionContentInset,
-            right: ScholiumGrid.Spacing.regionContentInset
-        )
+        stateStack.translatesAutoresizingMaskIntoConstraints = false
 
         stateImage.imageScaling = .scaleProportionallyDown
         stateImage.setAccessibilityElement(false)
@@ -208,9 +206,12 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         stateProgress.setAccessibilityElement(false)
         stateTitle.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
         stateTitle.alignment = .center
+        stateTitle.maximumNumberOfLines = 2
+        stateTitle.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         stateDetail.alignment = .center
         stateDetail.textColor = .secondaryLabelColor
         stateDetail.maximumNumberOfLines = 0
+        stateDetail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         stateAction.bezelStyle = .rounded
         stateAction.controlSize = .small
         stateAction.target = self
@@ -235,8 +236,16 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         divider.boxType = .separator
         rootStack.addArrangedSubview(divider)
         rootStack.addArrangedSubview(listScrollView)
-        rootStack.addArrangedSubview(stateStack)
+        rootStack.addArrangedSubview(stateContainer)
+        stateContainer.addSubview(stateStack)
+        stateContainer.setContentHuggingPriority(.defaultLow, for: .vertical)
         root.addSubview(rootStack)
+
+        let preferredStateWidth = stateStack.widthAnchor.constraint(
+            equalTo: stateContainer.widthAnchor,
+            constant: -2 * ScholiumGrid.Spacing.regionContentInset
+        )
+        preferredStateWidth.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
             rootStack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
@@ -245,8 +254,18 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
             rootStack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             listScrollView.leadingAnchor.constraint(equalTo: rootStack.leadingAnchor),
             listScrollView.trailingAnchor.constraint(equalTo: rootStack.trailingAnchor),
-            stateStack.leadingAnchor.constraint(equalTo: rootStack.leadingAnchor),
-            stateStack.trailingAnchor.constraint(equalTo: rootStack.trailingAnchor),
+            stateContainer.leadingAnchor.constraint(equalTo: rootStack.leadingAnchor),
+            stateContainer.trailingAnchor.constraint(equalTo: rootStack.trailingAnchor),
+            stateStack.centerXAnchor.constraint(equalTo: stateContainer.centerXAnchor),
+            stateStack.centerYAnchor.constraint(equalTo: stateContainer.centerYAnchor),
+            stateStack.leadingAnchor.constraint(greaterThanOrEqualTo: stateContainer.leadingAnchor, constant: ScholiumGrid.Spacing.regionContentInset),
+            stateStack.trailingAnchor.constraint(lessThanOrEqualTo: stateContainer.trailingAnchor, constant: -ScholiumGrid.Spacing.regionContentInset),
+            stateStack.topAnchor.constraint(greaterThanOrEqualTo: stateContainer.topAnchor, constant: ScholiumGrid.Spacing.regionContentInset),
+            stateStack.bottomAnchor.constraint(lessThanOrEqualTo: stateContainer.bottomAnchor, constant: -ScholiumGrid.Spacing.regionContentInset),
+            stateStack.widthAnchor.constraint(lessThanOrEqualToConstant: ScholiumGrid.ContentState.readableWidth),
+            preferredStateWidth,
+            stateTitle.widthAnchor.constraint(equalTo: stateStack.widthAnchor),
+            stateDetail.widthAnchor.constraint(equalTo: stateStack.widthAnchor),
         ])
     }
 
@@ -276,11 +295,6 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         header.addArrangedSubview(titleRow)
         header.addArrangedSubview(searchField)
         header.addArrangedSubview(refreshStatusStack)
-        NSLayoutConstraint.activate([
-            titleRow.widthAnchor.constraint(equalTo: header.widthAnchor),
-            searchField.widthAnchor.constraint(equalTo: header.widthAnchor),
-            refreshStatusStack.widthAnchor.constraint(equalTo: header.widthAnchor),
-        ])
         return header
     }
 
@@ -363,6 +377,10 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     }
 
     private func updateRefreshStatus() {
+        if !rows.contains(where: { $0.isSelectable }), completeErrorMessage != nil {
+            refreshStatusStack.isHidden = true
+            return
+        }
         guard let status = refreshStatus else {
             refreshStatusStack.isHidden = true
             return
@@ -383,7 +401,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     private func updateState() {
         let hasItems = rows.contains(where: { $0.isSelectable })
         listScrollView.isHidden = !hasItems
-        stateStack.isHidden = hasItems
+        stateContainer.isHidden = hasItems
 
         guard !hasItems else {
             stateProgress.stopAnimation(nil)
@@ -680,8 +698,8 @@ private final class AttentionCategoryCell: NSTableCellView {
         label.setAccessibilityElement(false)
         addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: ScholiumGrid.Spacing.sectionSeparation),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -ScholiumGrid.Spacing.sectionSeparation),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: ScholiumGrid.Dimension.iconTrackWidth + ScholiumGrid.Spacing.inlineControlGap),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor),
             label.topAnchor.constraint(equalTo: topAnchor, constant: ScholiumGrid.Spacing.labelAccessoryGap),
             label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -ScholiumGrid.Spacing.opticalAlignmentAdjustment),
         ])
@@ -700,10 +718,8 @@ private final class AttentionCategoryCell: NSTableCellView {
 @MainActor
 private final class AttentionItemCell: NSTableCellView {
     private let icon = NSImageView()
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let detailLabel = NSTextField(labelWithString: "")
-    private let dateLabel = NSTextField(labelWithString: "")
-    private let textStack = NSStackView()
+    private let titleLabel = NSTextField(wrappingLabelWithString: "")
+    private let detailLabel = NSTextField(wrappingLabelWithString: "")
 
     init(identifier: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -718,41 +734,34 @@ private final class AttentionItemCell: NSTableCellView {
         addSubview(icon)
 
         titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
-        titleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.maximumNumberOfLines = 2
+        titleLabel.cell?.truncatesLastVisibleLine = true
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.setAccessibilityElement(false)
         detailLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         detailLabel.textColor = .secondaryLabelColor
-        detailLabel.lineBreakMode = .byTruncatingTail
+        detailLabel.lineBreakMode = .byWordWrapping
         detailLabel.maximumNumberOfLines = 2
+        detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         detailLabel.setAccessibilityElement(false)
-        textStack.orientation = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = ScholiumGrid.Spacing.labelAccessoryGap
-        textStack.addArrangedSubview(titleLabel)
-        textStack.addArrangedSubview(detailLabel)
-        textStack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(textStack)
-
-        dateLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        dateLabel.textColor = .secondaryLabelColor
-        dateLabel.setContentHuggingPriority(.required, for: .horizontal)
-        dateLabel.setAccessibilityElement(false)
-        dateLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(dateLabel)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+        addSubview(detailLabel)
 
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: ScholiumGrid.Spacing.labelAccessoryGap),
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: ScholiumGrid.Dimension.iconTrackWidth),
             icon.heightAnchor.constraint(equalToConstant: ScholiumGrid.Dimension.iconTrackWidth),
-            textStack.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: ScholiumGrid.Spacing.inlineControlGap),
-            textStack.topAnchor.constraint(equalTo: topAnchor, constant: ScholiumGrid.Spacing.inlineControlGap),
-            textStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -ScholiumGrid.Spacing.inlineControlGap),
-            dateLabel.leadingAnchor.constraint(greaterThanOrEqualTo: textStack.trailingAnchor, constant: ScholiumGrid.Spacing.labelAccessoryGap),
-            dateLabel.topAnchor.constraint(equalTo: textStack.topAnchor),
-            dateLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -ScholiumGrid.Spacing.labelAccessoryGap),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: dateLabel.leadingAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: ScholiumGrid.Spacing.inlineControlGap),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: ScholiumGrid.Spacing.inlineControlGap),
+            detailLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            detailLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            detailLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: ScholiumGrid.Spacing.labelAccessoryGap),
+            detailLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -ScholiumGrid.Spacing.inlineControlGap),
         ])
     }
 
@@ -769,9 +778,7 @@ private final class AttentionItemCell: NSTableCellView {
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         icon.contentTintColor = color
         titleLabel.stringValue = title
-        detailLabel.stringValue = detail
-        dateLabel.stringValue = date ?? ""
-        dateLabel.isHidden = date == nil
+        detailLabel.stringValue = date.map { "\(detail) · \($0)" } ?? detail
         setAccessibilityLabel(accessibilityLabel)
         toolTip = accessibilityLabel
     }
