@@ -6,6 +6,7 @@ USER_TEMP_ROOT="$(getconf DARWIN_USER_TEMP_DIR)"
 USER_TEMP_ROOT="${USER_TEMP_ROOT%/}"
 DERIVED_DATA_ROOT="${HOME}/Library/Developer/Xcode/DerivedData"
 LOCAL_BUILD_ROOT="${ROOT}/.build"
+EDITOR_DEPENDENCIES="${ROOT}/WebEditor/node_modules"
 LEGACY_EXTERNAL_BUILD_ROOT="${HOME}/Library/Developer/Scholium/Build"
 if [[ -x "${ROOT}/Tools/Scripts/resolve-external-build-path.sh" ]] \
   && rg -q 'resolve-external-build-path' "${ROOT}/Tools/Scripts/verify.sh"; then
@@ -62,6 +63,77 @@ typeset -a RETIRED_PREFERENCE_NAMES=(
   com.scholium.research-record-prototype.qa-unified-light.plist
   org.scholium.bootstrap-concept.plist
 )
+typeset -a TEST_PREFERENCE_PREFIXES=(
+  # Current and retired disposable test suites; the full UUID is checked below.
+  ResearchResultNotificationCoordinatorTests.
+  Scholium-AgentChanges-
+  Scholium-SheetLifecycle-
+  ScholiumCommandRouterTests.
+  ScholiumCommandRouterUnclaimedTests.
+  ScholiumShortcutTests.
+  ScholiumShortcutPunctuationTests.
+  inquiry-
+  quote-
+  scholium-chat-offline-
+  scholium-chat-recovery-
+  scholium-chat-test-
+  scholium.agent-capability-readback.
+  scholium.agent-capability-skill-ack.
+  scholium.agent-capability-stop.
+  scholium.association-fixture.
+  scholium.cancel-renewal-roots.
+  scholium.method-render.
+  scholium.renewal-roots.
+  scholium.selection-draft.
+  selection-actions-
+  writing-continuation-
+)
+typeset -a TEMP_TEST_PREFIXES=(
+  # Test-created directories only; arbitrary Scholium-named files stay untouched.
+  Scholium-AgentChanges-
+  Scholium-AppComposition-
+  Scholium-CloseSession-
+  Scholium-Exact-Configuration-
+  Scholium-FocusSession-
+  Scholium-Identity-Recovery-
+  Scholium-LiveMultiwindow-
+  Scholium-PathResolver-
+  Scholium-PresentationDeadline-
+  Scholium-RebindComposition-
+  Scholium-Recovery-Budget-
+  Scholium-Recovery-Corrupt-
+  Scholium-Recovery-Delete-Crash-
+  Scholium-Recovery-Delete-
+  Scholium-Recovery-Exact-
+  Scholium-Recovery-Init-Lock-
+  Scholium-Recovery-Invalid-Name-
+  Scholium-Recovery-Store-
+  Scholium-Recovery-Uncertain-
+  Scholium-RootRecovery-
+  Scholium-RuntimeLifetime-
+  Scholium-ScrollSession-
+  Scholium-Transfer-
+  Scholium-Triptych-Control-
+  ScholiumAppearanceFile-
+  ScholiumAppearanceLineWidth-
+  ScholiumAppearanceLineWidthContract-
+  ScholiumAppearanceOperations-
+  ScholiumAppearanceOverlay-
+  ScholiumAppearanceRecovery-
+  ScholiumApplicationLifecycleTests-
+  ScholiumApplicationTests-
+  ScholiumInvalidAppearance-
+  ScholiumLegacyAppearance-
+  ScholiumObsidianAppearance-
+  ScholiumRuntimeMembershipTests-
+  ScholiumSnippetRecovery-
+  ScholiumStyleOperations-
+  ScholiumStyleSnippetNames-
+  ScholiumTamperedSnippetManifest-
+  ScholiumUnavailableRegistration-
+  scholium-image-paste-
+  scholium-session-
+)
 
 typeset -a CANDIDATES
 typeset -A SEEN_CANDIDATES
@@ -75,11 +147,14 @@ Usage:
   manage-development-storage.sh open configured-build|local-build|temporary|derived-data|packages
   manage-development-storage.sh clean-stale [--delete]
   manage-development-storage.sh clean-all [--delete]
+  manage-development-storage.sh clean-editor [--delete]
 
 Cleaning without --delete is a dry run. clean-stale preserves both configured
 and repository-local build roots, but includes exact disposable Scholium QA
-containers, Bridge probe state, and retired pre-State-v1 development state.
-clean-all removes both; the next build will regenerate them.
+containers, test preference domains, Bridge probe state, and retired
+pre-State-v1 development state.
+clean-all removes both build roots; the next build will regenerate them.
+clean-editor removes repository-local editor dependencies separately.
 EOF
 }
 
@@ -133,6 +208,50 @@ collect_retired_product_candidates() {
     -name 'Scholium-*' -print0 2>/dev/null)
 }
 
+uuid_is_valid() {
+  [[ "$1" =~ '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$' ]]
+}
+
+test_preference_name_is_safe() {
+  local name="$1" stem prefix suffix
+  [[ "${name}" == 'scholium.agent-capabilities.(UUID()).plist' ]] && return 0
+  [[ "${name}" == *.plist ]] || return 1
+  stem="${name%.plist}"
+  for prefix in "${TEST_PREFERENCE_PREFIXES[@]}"; do
+    [[ "${stem}" == "${prefix}"* ]] || continue
+    suffix="${stem#${prefix}}"
+    uuid_is_valid "${suffix}" && return 0
+  done
+  return 1
+}
+
+temp_test_name_is_safe() {
+  local name="$1" prefix suffix
+  for prefix in "${TEMP_TEST_PREFIXES[@]}"; do
+    [[ "${name}" == "${prefix}"* ]] || continue
+    suffix="${name#${prefix}}"
+    uuid_is_valid "${suffix}" && return 0
+  done
+  return 1
+}
+
+collect_temp_test_candidates() {
+  local root candidate
+  for root in /private/tmp "${USER_TEMP_ROOT}"; do
+    while IFS= read -r -d '' candidate; do
+      temp_test_name_is_safe "${candidate:t}" && add_candidate "${candidate}"
+    done < <(find "${root}" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+  done
+}
+
+collect_test_preference_candidates() {
+  local candidate
+  while IFS= read -r -d '' candidate; do
+    test_preference_name_is_safe "${candidate:t}" && add_candidate "${candidate}"
+  done < <(find "${PREFERENCE_ROOT}" -mindepth 1 -maxdepth 1 -type f \
+    -name '*.plist' -print0 2>/dev/null)
+}
+
 collect_retired_derived_candidates() {
   local candidate
   while IFS= read -r -d '' candidate; do
@@ -152,17 +271,7 @@ collect_stale_candidates() {
   fi
 
   local candidate
-  while IFS= read -r -d '' candidate; do
-    add_candidate "${candidate}"
-  done < <(find /private/tmp -mindepth 1 -maxdepth 1 \
-    \( -iname '*scholium*' -o -iname '*kbmanager*' -o -iname '*kb-manager*' \) \
-    -print0 2>/dev/null)
-
-  while IFS= read -r -d '' candidate; do
-    add_candidate "${candidate}"
-  done < <(find "${USER_TEMP_ROOT}" -mindepth 1 -maxdepth 1 \
-    \( -iname '*scholium*' -o -iname '*kbmanager*' -o -iname '*kb-manager*' \) \
-    -print0 2>/dev/null)
+  collect_temp_test_candidates
 
   if [[ -d "${DERIVED_DATA_ROOT}" ]]; then
     while IFS= read -r -d '' candidate; do
@@ -180,16 +289,29 @@ collect_stale_candidates() {
   collect_test_container_candidates
   collect_legacy_application_support_candidates
   collect_retired_product_candidates
+  collect_test_preference_candidates
   collect_retired_derived_candidates
+}
+
+collect_all_candidates() {
+  collect_stale_candidates
+  add_candidate "${CONFIGURED_BUILD_ROOT}"
+  add_candidate "${LOCAL_BUILD_ROOT}"
+}
+
+collect_editor_candidates() {
+  CANDIDATES=()
+  SEEN_CANDIDATES=()
+  add_candidate "${EDITOR_DEPENDENCIES}"
 }
 
 candidate_is_safe() {
   local candidate="$1"
   local base="${candidate:t}"
-  local lower="${(L)base}"
 
   case "${candidate}" in
     "${LOCAL_BUILD_ROOT}"|\
+    "${EDITOR_DEPENDENCIES}"|\
     "${LEGACY_EXTERNAL_BUILD_ROOT}"|\
     "${HOME}/Applications/Scholium-Codex-QA-Do-Not-Use.app")
       return 0
@@ -223,6 +345,10 @@ candidate_is_safe() {
       return 0
       ;;
     "${PREFERENCE_ROOT}/"*)
+      if test_preference_name_is_safe "${base}"; then
+        [[ -f "${candidate}" && ! -L "${candidate}" ]]
+        return
+      fi
       [[ "${base}" =~ '^(ScholiumApp|com\.electron\.scholium-naive|com\.scholium\.qa|com\.scholium\.research-record-prototype(\.qa-[a-z0-9-]+)?|org\.scholium\.bootstrap-concept)\.plist$' ]]
       return
       ;;
@@ -259,7 +385,8 @@ candidate_is_safe() {
       return
       ;;
     /private/tmp/*|"${USER_TEMP_ROOT}/"*)
-      [[ "${lower}" == *scholium* || "${lower}" == *kbmanager* || "${lower}" == *kb-manager* ]]
+      [[ -d "${candidate}" && ! -L "${candidate}" ]] \
+        && temp_test_name_is_safe "${base}"
       return
       ;;
   esac
@@ -273,22 +400,20 @@ item_size_kb() {
 }
 
 candidates_size_kb() {
-  local total=0
-  local candidate size
-  for candidate in "${CANDIDATES[@]}"; do
-    size="$(item_size_kb "${candidate}")"
-    total=$(( total + ${size:-0} ))
-  done
-  print -r -- "${total}"
+  (( ${#CANDIDATES[@]} > 0 )) || { print 0; return; }
+  /usr/bin/du -sk -- "${CANDIDATES[@]}" 2>/dev/null \
+    | awk '{total += $1} END {print total + 0}'
 }
 
 human_size() {
   local kilobytes="${1:-0}"
-  awk -v kb="${kilobytes}" 'BEGIN {
-    if (kb >= 1048576) printf "%.2f GB", kb / 1048576;
-    else if (kb >= 1024) printf "%.1f MB", kb / 1024;
-    else printf "%d KB", kb;
-  }'
+  if (( kilobytes >= 1048576 )); then
+    printf '%.2f GB' "$(( kilobytes / 1048576.0 ))"
+  elif (( kilobytes >= 1024 )); then
+    printf '%.1f MB' "$(( kilobytes / 1024.0 ))"
+  else
+    printf '%d KB' "${kilobytes}"
+  fi
 }
 
 size_or_zero() {
@@ -302,20 +427,23 @@ size_or_zero() {
 
 report_text() {
   collect_stale_candidates
-  local configured_kb local_kb package_kb stale_kb
+  local configured_kb local_kb editor_kb package_kb stale_kb
   configured_kb="$(size_or_zero "${CONFIGURED_BUILD_ROOT}")"
   local_kb="$(size_or_zero "${LOCAL_BUILD_ROOT}")"
+  editor_kb="$(size_or_zero "${EDITOR_DEPENDENCIES}")"
   package_kb="$(size_or_zero "${PACKAGE_OUTPUT}")"
   stale_kb="$(candidates_size_kb)"
 
   cat <<EOF
 Configured build root: $(human_size "${configured_kb}")
 Repository-local .build: $(human_size "${local_kb}")
+Editor dependencies (separate cleanup): $(human_size "${editor_kb}")
 Stale development artifacts: $(human_size "${stale_kb}") (${#CANDIDATES[@]} items)
 Packaged builds: $(human_size "${package_kb}")
 
 Configured build root: ${CONFIGURED_BUILD_ROOT}
 Local build root: ${LOCAL_BUILD_ROOT}
+Editor dependencies: ${EDITOR_DEPENDENCIES}
 Temporary files: /private/tmp and ${USER_TEMP_ROOT}
 Xcode DerivedData: ${DERIVED_DATA_ROOT}
 Packaged builds: ${PACKAGE_OUTPUT}
@@ -323,17 +451,17 @@ EOF
 }
 
 print_candidates() {
-  local candidate size
+  local candidate size total=0
   if (( ${#CANDIDATES[@]} == 0 )); then
     print "No matching development artifacts were found."
     return
   fi
 
-  for candidate in "${CANDIDATES[@]}"; do
-    size="$(item_size_kb "${candidate}")"
+  while IFS=$'\t' read -r size candidate; do
     printf '%10s  %s\n' "$(human_size "${size:-0}")" "${candidate}"
-  done
-  print "Total: $(human_size "$(candidates_size_kb)") in ${#CANDIDATES[@]} items"
+    total=$(( total + ${size:-0} ))
+  done < <(/usr/bin/du -sk -- "${CANDIDATES[@]}" 2>/dev/null)
+  print "Total: $(human_size "${total}") in ${#CANDIDATES[@]} items"
 }
 
 build_processes_are_running() {
@@ -376,12 +504,13 @@ remove_candidate() {
 }
 
 perform_cleanup() {
-  local include_build="$1"
-  collect_stale_candidates
-  if [[ "${include_build}" == true ]]; then
-    add_candidate "${CONFIGURED_BUILD_ROOT}"
-    add_candidate "${LOCAL_BUILD_ROOT}"
-  fi
+  local mode="$1"
+  case "${mode}" in
+    stale) collect_stale_candidates ;;
+    all) collect_all_candidates ;;
+    editor) collect_editor_candidates ;;
+    *) print -u2 "Unknown cleanup mode: ${mode}"; return 64 ;;
+  esac
 
   if build_processes_are_running; then
     print -u2 "A Swift, Xcode, or Scholium process is running. Stop it before cleaning development storage."
@@ -474,7 +603,7 @@ APPLESCRIPT
 
 choose_interactive_action() {
   osascript <<'APPLESCRIPT'
-set actions to {"Show storage report", "Open configured build root", "Open local .build", "Open temporary files", "Open Xcode DerivedData", "Open packaged builds", "Delete stale artifacts", "Delete all rebuildable artifacts"}
+set actions to {"Show storage report", "Open configured build root", "Open local .build", "Open temporary files", "Open Xcode DerivedData", "Open packaged builds", "Delete stale artifacts", "Delete stale and build artifacts", "Delete editor dependencies"}
 set picked to choose from list actions with title "Scholium Development Storage" with prompt "Choose an action. Application state and Triptych files are always protected." default items {"Show storage report"}
 if picked is false then return "Quit"
 return item 1 of picked
@@ -497,20 +626,29 @@ interactive() {
         collect_stale_candidates
         preview="Delete $(human_size "$(candidates_size_kb)") in ${#CANDIDATES[@]} stale items?\n\nBoth build roots, application state, packaged builds, and Triptych files will remain."
         if confirm_cleanup "${preview}"; then
-          result="$(perform_cleanup false 2>&1)" || {
+          result="$(perform_cleanup stale 2>&1)" || {
             show_dialog "Cleanup Failed" "${result:-A protected or active file could not be removed.}"
             continue
           }
           show_dialog "Cleanup Complete" "${result}"
         fi
         ;;
-      'Delete all rebuildable artifacts')
-        collect_stale_candidates
-        add_candidate "${CONFIGURED_BUILD_ROOT}"
-        add_candidate "${LOCAL_BUILD_ROOT}"
-        preview="Delete $(human_size "$(candidates_size_kb)") in ${#CANDIDATES[@]} rebuildable items?\n\nThis includes configured and local build roots. The next build will be slower. Application state, packaged builds, and Triptych files will remain."
+      'Delete stale and build artifacts')
+        collect_all_candidates
+        preview="Delete $(human_size "$(candidates_size_kb)") in ${#CANDIDATES[@]} rebuildable items?\n\nThis includes configured and local build roots. Editor dependencies, application state, packaged builds, and Triptych files will remain."
         if confirm_cleanup "${preview}"; then
-          result="$(perform_cleanup true 2>&1)" || {
+          result="$(perform_cleanup all 2>&1)" || {
+            show_dialog "Cleanup Failed" "${result:-A protected or active file could not be removed.}"
+            continue
+          }
+          show_dialog "Cleanup Complete" "${result}"
+        fi
+        ;;
+      'Delete editor dependencies')
+        collect_editor_candidates
+        preview="Delete $(human_size "$(candidates_size_kb)") of editor dependencies?\n\nRun npm ci in WebEditor to restore local tooling. Build roots, application state, packaged builds, and Triptych files will remain."
+        if confirm_cleanup "${preview}"; then
+          result="$(perform_cleanup editor 2>&1)" || {
             show_dialog "Cleanup Failed" "${result:-A protected or active file could not be removed.}"
             continue
           }
@@ -533,21 +671,20 @@ case "${command}" in
     (( $# == 2 )) || { usage; exit 64; }
     open_location "$2"
     ;;
-  clean-stale|clean-all)
-    include_build=false
-    [[ "${command}" == clean-all ]] && include_build=true
-    collect_stale_candidates
-    if [[ "${include_build}" == true ]]; then
-      add_candidate "${CONFIGURED_BUILD_ROOT}"
-      add_candidate "${LOCAL_BUILD_ROOT}"
-    fi
+  clean-stale|clean-all|clean-editor)
+    mode="${command#clean-}"
+    case "${mode}" in
+      stale) collect_stale_candidates ;;
+      all) collect_all_candidates ;;
+      editor) collect_editor_candidates ;;
+    esac
     print_candidates
     if [[ "${2:-}" != --delete ]]; then
       print
       print "Dry run only. Add --delete to remove these rebuildable files."
       exit 0
     fi
-    perform_cleanup "${include_build}"
+    perform_cleanup "${mode}"
     ;;
   -h|--help|help)
     usage

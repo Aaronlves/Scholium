@@ -149,11 +149,13 @@ clean rebuildable state from the command line:
 ./Tools/Scripts/manage-development-storage.sh report
 ./Tools/Scripts/manage-development-storage.sh clean-stale
 ./Tools/Scripts/manage-development-storage.sh clean-all
+./Tools/Scripts/manage-development-storage.sh clean-editor
 ```
 
 Clean commands are dry runs unless `--delete` is supplied after reviewing the
 exact allowlisted targets. They never remove source, app state, packaged builds,
-Triptych files, or portable `.scholium/` data.
+Triptych files, or portable `.scholium/` data. Editor dependencies are removed
+only by the separate `clean-editor` command.
 
 Packaged performance uses a strict G7 baseline gate. Specification §21.3
 defines when a complete campaign is required; a performance-affecting Beta runs
