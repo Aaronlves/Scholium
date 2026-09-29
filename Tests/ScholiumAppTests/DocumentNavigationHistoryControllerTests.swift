@@ -61,6 +61,57 @@ struct DocumentNavigationHistoryControllerTests {
         #expect(!controller.canGoForward)
     }
 
+    @Test("Each visit retains its own revision-bound departure viewport")
+    func visitPositionsRemainDistinct() {
+        let controller = DocumentNavigationHistoryController()
+        let first = fixtureDocument(path: "Topics/Agency.md")
+        let second = fixtureDocument(path: "Topics/Reasons.md")
+        let firstPosition = DocumentNavigationVisitPosition(
+            sourceFingerprint: "agency-revision",
+            scrollPosition: ObservedScrollPosition(fraction: 0.72)
+        )
+        let secondPosition = DocumentNavigationVisitPosition(
+            sourceFingerprint: "reasons-revision",
+            scrollPosition: ObservedScrollPosition(fraction: 0.31)
+        )
+
+        controller.record(first)
+        controller.captureCurrent(document: first, position: firstPosition)
+        controller.record(second)
+        controller.captureCurrent(document: second, position: secondPosition)
+        #expect(controller.position(for: .back) == firstPosition)
+        #expect(controller.commit(.back, to: first))
+        #expect(controller.position(for: .forward) == secondPosition)
+        #expect(controller.commit(.forward, to: second))
+        #expect(controller.position(for: .back) == firstPosition)
+    }
+
+    @Test("A renamed stable note keeps one current visit and its viewport")
+    func renameDoesNotCreateVisit() throws {
+        let controller = DocumentNavigationHistoryController()
+        let original = fixtureDocument(path: "Topics/Before.md")
+        let descriptor = try #require(original.workspaceDescriptor)
+        let renamed = WindowSelectedDocument.workspace(.init(
+            sessionKey: descriptor.sessionKey,
+            reference: .init(
+                vaultID: descriptor.reference.vaultID,
+                vaultName: descriptor.reference.vaultName,
+                vaultRole: descriptor.reference.vaultRole,
+                relativePath: "Topics/After.md",
+                stableNoteID: descriptor.reference.stableNoteID
+            )
+        ))
+        let position = DocumentNavigationVisitPosition(
+            sourceFingerprint: "same-revision",
+            scrollPosition: ObservedScrollPosition(fraction: 0.6)
+        )
+        controller.record(original)
+        controller.captureCurrent(document: renamed, position: position)
+        controller.record(renamed)
+        #expect(controller.count == 1)
+        #expect(controller.currentDocument == renamed)
+    }
+
     private func fixtureDocument(path: String) -> WindowSelectedDocument {
         let vaultID = UUID()
         let noteID = UUID()

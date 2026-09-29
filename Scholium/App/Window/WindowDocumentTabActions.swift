@@ -43,6 +43,12 @@ extension WindowModel {
             let plan = documentTabController.closePlan(forTabWithID: tabID)
         else { throw DocumentControllerError.documentUnavailable }
         let previous = documentController.selectedDocument
+        if previous == tab.document {
+            documentNavigationHistoryController.captureCurrent(
+                document: tab.document,
+                position: documentController.navigationPosition(for: tab.document)
+            )
+        }
         if let next = plan.documentToActivate {
             try await activateResolvedDocument(next, tabActivation: .preserveTabMembership)
         }
@@ -77,8 +83,21 @@ extension WindowModel {
         selectDocumentTab(withID: tabs[(index + offset + tabs.count) % tabs.count].id)
     }
 
-    func selectDocumentTab(withID id: UUID) {
-        guard documentTabController.selectedTabID != id else { return }
+    func selectDocumentTab(
+        withID id: UUID,
+        historyPosition: DocumentNavigationVisitPosition? = nil,
+        onSelection: (@MainActor (Bool) -> Void)? = nil
+    ) {
+        if documentTabController.selectedTabID == id {
+            if let historyPosition,
+                let document = documentTabController.selectedTab?.document
+            {
+                documentController.restoreNavigationPosition(historyPosition, for: document)
+            }
+            onSelection?(true)
+            return
+        }
+        var activated = false
         enqueueDocumentTransition(preparation: .preserveSelectedDocument) { [weak self] in
             guard let self,
                 self.documentTabController.selectedTabID != id,
@@ -88,15 +107,40 @@ extension WindowModel {
                 tab.document, tabActivation: .preserveTabMembership
             )
             self.documentTabController.selectTab(withID: id)
+            if let historyPosition {
+                self.documentController.restoreNavigationPosition(historyPosition, for: tab.document)
+            }
             self.reconcileDocumentSessionLeases()
+            activated = true
+        } didFinish: {
+            onSelection?(activated)
         }
     }
 
     func navigateDocumentHistory(_ direction: DocumentNavigationDirection) {
+        if let displayed = documentController.selectedDocument {
+            documentNavigationHistoryController.captureCurrent(
+                document: displayed,
+                position: documentController.navigationPosition(for: displayed)
+            )
+        }
+        let historyRevision = documentNavigationHistoryController.revision
         if let target = documentNavigationHistoryController.target(for: direction),
-            workspaceStore.documentLocations.revealExisting(target, excluding: self)
+            workspaceStore.documentLocations.revealExisting(
+                target,
+                excluding: self,
+                onSelection: { [weak self] owner, selected in
+                    guard let self, selected,
+                        self.documentNavigationHistoryController.revision == historyRevision,
+                        self.documentNavigationHistoryController.target(for: direction) == target
+                    else { return }
+                    let position = self.documentNavigationHistoryController.position(for: direction)
+                    if self.documentNavigationHistoryController.commit(direction, to: target) {
+                        owner.documentController.restoreNavigationPosition(position, for: target)
+                    }
+                }
+            )
         {
-            documentNavigationHistoryController.commit(direction, to: target)
             return
         }
         enqueueDocumentTransition { [weak self] in
@@ -105,12 +149,15 @@ extension WindowModel {
                     for: direction
                 )
             else { return }
+            let position = self.documentNavigationHistoryController.position(for: direction)
             try await self.activateDocument(
                 target,
                 tabActivation: .place(.replaceSelected),
                 recordsNavigationHistory: false
             )
-            self.documentNavigationHistoryController.commit(direction, to: target)
+            if self.documentNavigationHistoryController.commit(direction, to: target) {
+                self.documentController.restoreNavigationPosition(position, for: target)
+            }
         }
     }
 
@@ -122,6 +169,10 @@ extension WindowModel {
                 })?.document
             else { return }
             try await self.documentController.flushBeforeClosing(closingDocument)
+            self.documentNavigationHistoryController.captureCurrent(
+                document: closingDocument,
+                position: self.documentController.navigationPosition(for: closingDocument)
+            )
             guard let plan = self.documentTabController.closePlan(forTabWithID: id) else {
                 return
             }
@@ -133,6 +184,7 @@ extension WindowModel {
                 self.documentController.clearSelectionAfterClosingLastTab()
             }
             self.documentTabController.apply(plan)
+            self.documentController.endClosedPresentation(of: closingDocument)
             self.reconcileDocumentSessionLeases()
             Task { @MainActor [weak self] in
                 await Task.yield()

@@ -9,8 +9,9 @@ Document owns vault/Note-keyed sessions. Transfer moves the same owner; document
 identity survives attachment while transport identity rotates. Dirty, composing,
 conflicted, saving and recovery states pin sessions. Destination leases precede
 release; close flushes before membership removal. Clean unleased sessions discard
-source, Undo, rendered content and previews, retaining only bounded volatile
-position state. Equal paths across vaults remain distinct.
+source, Undo, rendered content and previews without a closed-Note presentation
+cache. Window navigation visits own revision-bound return positions separately
+from open document sessions. Equal paths across vaults remain distinct.
 
 Each document session owns a persistent editor/flush identity, checked exact
 mirror and committed revision, presentation phase, pending intent,

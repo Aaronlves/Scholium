@@ -112,7 +112,15 @@ Search is directly editable at the top of the Sidebar. Triptych Notifications
 has one stable toolbar bell, available with either sidebar presentation or with
 the sidebar collapsed. Triptych opening and
 creation remain in the native File menu; open-window switching remains in the
-Window menu. Back/Forward traverse successful document visits only. The toolbar
+Window menu. Back/Forward traverse successful document visits and return to each
+visit's departure position when its source revision still matches. Visits belong
+to the current window, confer no editing state, and do not seed ordinary fresh
+openings; stale positions fall back to the document start. Back may reopen a
+closed Note with its visit position but no former editing state. A target already
+open in another window is revealed there without duplicating or transferring its
+session. Successful reveal advances the initiating history cursor, leaving its
+Document unchanged; only the displayed Note can update a visit's departure state.
+Failed navigation preserves the current visit. The toolbar
 remains structurally stable during loading and uses live safe areas. Pane
 visibility is expressed by the actual pane, not duplicate custom selection
 styling.

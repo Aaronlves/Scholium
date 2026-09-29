@@ -233,6 +233,78 @@ struct DocumentSessionLifecycleTests {
             ])
     }
 
+    @Test("Successful close rejects late presentation receipts and clears Find")
+    func closedPresentationRejectsLateReceipts() {
+        let session = DocumentSessionModel(key: nil)
+        let source = "# Heading\n\nArgument."
+        session.prepareForDocumentActivation()
+        session.editorSession.loadDocument(
+            source,
+            documentID: session.editorSession.bridgeDocumentID,
+            mode: .livePreview
+        )
+        session.editorSession.updateInteraction(
+            selections: [.init(anchor: 12, head: 16)],
+            line: 3,
+            column: 2,
+            lineCount: 3,
+            documentVersion: 0,
+            focusTarget: .editor,
+            context: nil
+        )
+        session.observeScrollFraction(0.7, on: .editor)
+        session.findPresentation.present()
+        session.findPresentation.setQuery("Argument")
+        #expect(session.editorSession.hasNonemptySelection)
+
+        session.endClosedPresentation()
+        session.observeScrollFraction(0.9, on: .editor)
+        session.editorSession.updateInteraction(
+            selections: [.init(anchor: 12, head: 16)],
+            line: 3,
+            column: 2,
+            lineCount: 3,
+            documentVersion: 0,
+            focusTarget: .editor,
+            context: nil
+        )
+
+        #expect(session.editorScrollFraction == 0)
+        #expect(!session.editorSession.hasNonemptySelection)
+        #expect(session.findPresentation.query.isEmpty)
+        #expect(!session.findPresentation.isPresented)
+        session.prepareForDocumentActivation()
+        #expect(session.editorScrollFraction == 0)
+        #expect(session.windowPresentationSnapshot.selections.isEmpty)
+    }
+
+    @Test("Presentation teardown cannot discard a composing recovery pin")
+    func closedPresentationRetainsCompositionPin() {
+        let session = DocumentSessionModel(key: nil)
+        let source = "Composing"
+        session.editorSession.loadDocument(
+            source,
+            documentID: session.editorSession.bridgeDocumentID,
+            mode: .livePreview
+        )
+        let selection = MarkdownEditorSelectionRange(anchor: 3, head: 3)
+        session.editorSession.updateInteraction(
+            selections: [selection], line: 1, column: 4, lineCount: 1,
+            documentVersion: 0, focusTarget: .editor,
+            context: MarkdownEditorContext(
+                selections: [selection], activeInlineConstructs: [],
+                activeBlockConstructs: [], tablePosition: nil,
+                composing: true, availableCommands: [],
+                undoLabel: nil, redoLabel: nil
+            )
+        )
+        let store = DocumentSessionStore()
+        #expect(session.editorSession.isComposing)
+        session.endClosedPresentation()
+        #expect(session.editorSession.isComposing)
+        #expect(store.pinReasons(for: session).contains(.composition))
+    }
+
     @Test("Managed creation keeps explicit body focus")
     func managedCreationFocusPolicy() {
         let session = DocumentSessionModel(key: nil)
@@ -269,6 +341,33 @@ struct DocumentSessionLifecycleTests {
         #expect(stale.windowPresentationSnapshot.selections.isEmpty)
     }
 
+    @Test("Clean external revision keeps only a provable editor selection")
+    func cleanExternalSelectionPreparation() {
+        let editor = MarkdownEditorSession()
+        let old = "Start\nKeep this paragraph.\n"
+        let updated = "New lead\nStart\nKeep this paragraph.\n"
+        let selected = MarkdownEditorSelectionRange(anchor: 11, head: 15)
+        editor.loadDocument(old, documentID: editor.bridgeDocumentID, mode: .source)
+        editor.updateInteraction(
+            selections: [selected], line: 2, column: 6, lineCount: 2,
+            documentVersion: 0, focusTarget: .editor, context: nil
+        )
+        editor.prepareSelectionForCleanExternalRevision(
+            from: old, to: updated, scrollFraction: 0.4
+        )
+        editor.loadDocument(updated, documentID: editor.bridgeDocumentID, mode: .source)
+        let retained = editor.windowPresentationSnapshot(scrollFraction: 0.4)
+        #expect(retained.sourceFingerprint == DocumentFingerprint(content: updated).sha256)
+        #expect(retained.selections == [.init(anchor: 20, head: 24)])
+
+        let changed = "New lead\nStart\nReplaced.\n"
+        editor.prepareSelectionForCleanExternalRevision(
+            from: updated, to: changed, scrollFraction: 0.4
+        )
+        editor.loadDocument(changed, documentID: editor.bridgeDocumentID, mode: .source)
+        #expect(editor.windowPresentationSnapshot(scrollFraction: 0.4).selections.isEmpty)
+    }
+
     @Test("Lease reconciliation acquires the destination before reaping the source")
     func acquireBeforeRelease() {
         let store = DocumentSessionStore()
@@ -277,8 +376,8 @@ struct DocumentSessionLifecycleTests {
         let firstSession = store.session(for: first)
         firstSession.preparePresentationMode(.source)
 
-        _ = store.reconcileLeases(openTargets: [first], foregroundTarget: first)
-        _ = store.reconcileLeases(openTargets: [second], foregroundTarget: second)
+        store.reconcileLeases(openTargets: [first], foregroundTarget: first)
+        store.reconcileLeases(openTargets: [second], foregroundTarget: second)
 
         #expect(store.retainedSession(for: first) == nil)
         #expect(store.retainedSession(for: second) != nil)
@@ -364,7 +463,7 @@ struct DocumentSessionLifecycleTests {
             Issue.record("Recovery-buffer pin is exercised by WebKit recovery integration tests")
         }
 
-        _ = store.reconcileLeases(openTargets: [], foregroundTarget: nil)
+        store.reconcileLeases(openTargets: [], foregroundTarget: nil)
         #expect(store.retainedSession(for: target) === session)
         #expect(store.pinReasons(for: session).contains(reason))
     }
@@ -432,17 +531,16 @@ struct DocumentSessionLifecycleTests {
             links: []
         )
 
-        let reaped = store.reconcileLeases(openTargets: [], foregroundTarget: nil)
+        store.reconcileLeases(openTargets: [], foregroundTarget: nil)
 
-        #expect(reaped.map(\.target) == [target])
         #expect(store.retainedSession(for: target) == nil)
         #expect(session.editingSource.isEmpty)
         #expect(session.renderedReadHTML.isEmpty)
         #expect(session.previewCatalog == nil)
     }
 
-    @Test("Closed-document presentation is bounded and responds to memory pressure")
-    func boundedPresentationCache() {
+    @Test("Reaped documents retain no browsing presentation")
+    func reapedPresentationDoesNotPersist() {
         let controller = DocumentController()
         let vaultID = UUID()
         for index in 0..<80 {
@@ -469,14 +567,13 @@ struct DocumentSessionLifecycleTests {
         }
 
         #expect(controller.retainedSessionCount == 0)
-        #expect(controller.closedPresentationCount == 64)
+        #expect(controller.presentationSnapshot(vaultID: vaultID).documents.isEmpty)
         controller.handleMemoryPressure(.warning)
-        #expect(controller.closedPresentationCount == 16)
         controller.handleMemoryPressure(.critical)
-        #expect(controller.closedPresentationCount == 0)
+        #expect(controller.presentationSnapshot(vaultID: vaultID).documents.isEmpty)
     }
 
-    @Test("A renamed stable document restores scroll and reapplies the Workspace mode")
+    @Test("A renamed stable document reopens at top and reapplies the Workspace mode")
     func renamePresentationRestore() {
         let controller = DocumentController()
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
@@ -515,7 +612,7 @@ struct DocumentSessionLifecycleTests {
         #expect(reopened !== first)
         #expect(reopened.presentationMode == .read)
         #expect(reopened.pendingEditorMode == .livePreview)
-        #expect(reopened.scrollFraction == 0.6)
+        #expect(reopened.scrollFraction == 0)
         #expect(reopened.editingSource.isEmpty)
     }
 }

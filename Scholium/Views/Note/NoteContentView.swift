@@ -245,8 +245,9 @@ struct NoteContentView<ShellNotices: View>: View {
     let actions: DocumentFeatureActions
     let hasShellNotices: Bool
     let shellNotices: ShellNotices
+    private let openingPresentationID: UUID
     @StateObject private var quickLook = DocumentAttachmentQuickLookSession()
-    @StateObject private var documentFind = DocumentFindPresentationModel()
+    @ObservedObject private var documentFind: DocumentFindPresentationModel
     @State private var isInsertingImage = false
     @State private var announcedUnavailableIndexedImages: Set<String> = []
     @State private var indexedImageAvailabilityGeneration = 0
@@ -268,12 +269,14 @@ struct NoteContentView<ShellNotices: View>: View {
     ) {
         self.controller = controller
         _documentSession = ObservedObject(wrappedValue: documentSession)
+        _documentFind = ObservedObject(wrappedValue: documentSession.findPresentation)
         self.target = target
         self.note = note
         self.state = state
         self.actions = actions
         self.hasShellNotices = hasShellNotices
         self.shellNotices = shellNotices
+        openingPresentationID = documentSession.editorSession.openingPresentationID
         _outlineScrollFraction = State(initialValue: documentSession.scrollFraction)
         _outlineScrollAnchor = State(initialValue: documentSession.scrollAnchor)
     }
@@ -497,7 +500,16 @@ struct NoteContentView<ShellNotices: View>: View {
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
+            documentFind.refresh()
             focusEditorIfPresented()
+        }
+        .onChange(of: noteFingerprint.sha256) { _, _ in
+            documentFind.refresh()
+        }
+        .onChange(of: documentSession.renderedReadReadyFingerprint) { _, ready in
+            if !isEditing, ready == noteFingerprint.sha256 {
+                documentFind.refresh()
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -570,7 +582,12 @@ struct NoteContentView<ShellNotices: View>: View {
             await checkIndexedImageAvailability()
         }
         .quickLookPreview(Binding(get: { quickLook.url }, set: { if $0 == nil { quickLook.dismiss() } }))
-        .onDisappear { quickLook.dismiss() }
+        .onDisappear {
+            quickLook.dismiss()
+            if editorSession.openingPresentationID == openingPresentationID {
+                documentFind.dismiss()
+            }
+        }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
@@ -751,13 +768,17 @@ struct NoteContentView<ShellNotices: View>: View {
                 onPasteImage: handlePastedImage,
                 onLinkActivation: openAuthoredLink,
                 onScrollFractionChange: {
-                    guard isEditing else { return }
+                    guard isEditing,
+                        editorSession.openingPresentationID == openingPresentationID
+                    else { return }
                     rememberOutlineScrollFraction($0)
                     documentSession.observeScrollFraction($0, on: .editor)
                     actions.rememberScrollPosition($0)
                 },
                 onScrollAnchorChange: {
-                    guard isEditing else { return }
+                    guard isEditing,
+                        editorSession.openingPresentationID == openingPresentationID
+                    else { return }
                     rememberOutlineScrollAnchor($0)
                     documentSession.observeScrollAnchor($0, on: .editor)
                 },
@@ -1068,13 +1089,17 @@ struct NoteContentView<ShellNotices: View>: View {
                 )
             },
             onScrollFractionChange: {
-                guard !isEditing else { return }
+                guard !isEditing,
+                    editorSession.openingPresentationID == openingPresentationID
+                else { return }
                 rememberOutlineScrollFraction($0)
                 documentSession.observeScrollFraction($0, on: .read)
                 actions.rememberScrollPosition($0)
             },
             onScrollAnchorChange: {
-                guard !isEditing else { return }
+                guard !isEditing,
+                    editorSession.openingPresentationID == openingPresentationID
+                else { return }
                 rememberOutlineScrollAnchor($0)
                 documentSession.observeScrollAnchor($0, on: .read)
             },

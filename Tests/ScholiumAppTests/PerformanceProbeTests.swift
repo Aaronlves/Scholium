@@ -60,7 +60,7 @@ struct PerformanceProbeTests {
                     == Set([
                         "schema", "sample", "completed_uptime_ns", "retained_sessions",
                         "leased_sessions", "pinned_sessions", "attached_webview_sessions",
-                        "full_snapshots", "pending_hydrations", "closed_presentations",
+                        "full_snapshots", "pending_hydrations",
                         "read_projection_entries", "read_projection_html_utf8_bytes",
                         "editor_pool_idle", "editor_pool_attached", "editor_pool_preparing",
                         "editor_pool_abandoned_live", "editor_pool_waiting",

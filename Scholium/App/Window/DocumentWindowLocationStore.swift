@@ -32,9 +32,18 @@ final class DocumentWindowLocationStore {
         return revealExisting(key: DocumentSessionKey(vaultID: reference.vaultID, noteID: id), excluding: source)
     }
 
-    func revealExisting(_ document: WindowSelectedDocument, excluding source: WindowModel) -> Bool {
+    func revealExisting(
+        _ document: WindowSelectedDocument,
+        excluding source: WindowModel,
+        historyPosition: DocumentNavigationVisitPosition? = nil,
+        onSelection: (@MainActor (WindowModel, Bool) -> Void)? = nil
+    ) -> Bool {
         guard let key = document.sessionKey else { return false }
-        return revealExisting(key: key, excluding: source)
+        return revealExisting(
+            key: key, excluding: source,
+            historyPosition: historyPosition,
+            onSelection: onSelection
+        )
     }
 
     func existingOwner(of reference: VaultNoteReference, excluding source: WindowModel) -> WindowModel? {
@@ -64,11 +73,22 @@ final class DocumentWindowLocationStore {
         }
     }
 
-    private func revealExisting(key: DocumentSessionKey, excluding source: WindowModel) -> Bool {
+    private func revealExisting(
+        key: DocumentSessionKey,
+        excluding source: WindowModel,
+        historyPosition: DocumentNavigationVisitPosition? = nil,
+        onSelection: (@MainActor (WindowModel, Bool) -> Void)? = nil
+    ) -> Bool {
         guard let model = existingOwner(key: key, excluding: source) else { return false }
         model.nativeWindowCoordinator?.makeKeyAndOrderFront()
         if let tab = model.documentTabController.tabs.first(where: { $0.document.sessionKey == key }) {
-            model.selectDocumentTab(withID: tab.id)
+            model.selectDocumentTab(
+                withID: tab.id,
+                historyPosition: historyPosition,
+                onSelection: { selected in
+                    onSelection?(model, selected)
+                }
+            )
         }
         return true
     }

@@ -91,6 +91,7 @@ final class DocumentSessionModel: ObservableObject {
     @Published var previewCatalog: DocumentPreviewCatalog?
     @Published var isAttachingDocument = false
     let findRequested = PassthroughSubject<Void, Never>()
+    let findPresentation = DocumentFindPresentationModel()
     var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
     /// The exact conflict revision shown in the open comparison sheet. A
@@ -104,6 +105,7 @@ final class DocumentSessionModel: ObservableObject {
     /// so another navigation can never consume the creation focus intent.
     @Published private(set) var managedCreationBodyStartUTF16: Int? = nil
     private var hasBeenActivated = false
+    private var presentationIsClosed = false
 
     var autosaveTask: Task<Void, Never>?
     var autosaveToken: UUID?
@@ -180,6 +182,7 @@ final class DocumentSessionModel: ObservableObject {
     /// session reuses its last title/body focus target and exact valid editor
     /// selection; managed creation keeps its explicit body-start contract.
     func prepareForDocumentActivation() {
+        presentationIsClosed = false
         resetScrollPosition()
         editorSession.prepareOpeningPresentation()
         let target: WindowDocumentFocusTarget
@@ -384,6 +387,7 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func observeScrollFraction(_ fraction: Double, on surface: DocumentScrollSurface) {
+        guard !presentationIsClosed else { return }
         switch surface {
         case .read: readScrollPosition.updateFraction(fraction)
         case .editor: editorScrollPosition.updateFraction(fraction)
@@ -391,6 +395,7 @@ final class DocumentSessionModel: ObservableObject {
     }
 
     func observeScrollAnchor(_ anchor: EditorScrollAnchor?, on surface: DocumentScrollSurface) {
+        guard !presentationIsClosed else { return }
         switch surface {
         case .read: readScrollPosition.anchor = anchor
         case .editor: editorScrollPosition.anchor = anchor
@@ -448,6 +453,41 @@ final class DocumentSessionModel: ObservableObject {
         scrollRestoreRequest = nil
     }
 
+    func restoreNavigationPosition(
+        _ position: ObservedScrollPosition,
+        fingerprint: String
+    ) {
+        let admitted = ObservedScrollPosition(
+            fraction: position.fraction,
+            anchor: position.anchor?.sourceFingerprint == fingerprint ? position.anchor : nil
+        )
+        readScrollPosition = admitted
+        editorScrollPosition = admitted
+        requestReadScrollRestore(
+            fingerprint: fingerprint,
+            reason: .explicitNavigation,
+            position: admitted
+        )
+        editorSession.setScrollPosition(
+            anchor: admitted.anchor,
+            fallbackFraction: admitted.fraction
+        )
+    }
+
+    /// A successful tab close ends only browsing presentation. Exact source,
+    /// save/conflict state and recovery buffers remain owned by this session.
+    func endClosedPresentation() {
+        presentationIsClosed = true
+        resetScrollPosition()
+        readSelection = nil
+        findPresentation.resetAfterClose()
+        let retainsSourceWork = hasUnsavedChanges || isSavingEdit
+            || activeSaveTask != nil || pendingEditorCommit != nil
+            || conflict != nil || canRetrySave || editorSession.isComposing
+        editorSession.endClosedPresentation(preservingSourceWork: retainsSourceWork)
+        hasBeenActivated = false
+    }
+
     func acknowledgeScrollRestoreRequest(id: UInt64, fingerprint: String) {
         guard scrollRestoreRequest?.id == id,
             scrollRestoreRequest?.fingerprint == fingerprint
@@ -483,11 +523,6 @@ final class DocumentSessionStore {
         let session: DocumentSessionModel
         var leaseCount = 0
         var isForeground = false
-    }
-
-    struct ReapedPresentation: Sendable {
-        let target: DocumentEditingTarget
-        let scrollPosition: ObservedScrollPosition
     }
 
     private var entries: [DocumentEditingTarget: Entry] = [:]
@@ -550,7 +585,7 @@ final class DocumentSessionStore {
     func reconcileLeases(
         openTargets: [DocumentEditingTarget],
         foregroundTarget: DocumentEditingTarget?
-    ) -> [ReapedPresentation] {
+    ) {
         let counts = Dictionary(grouping: openTargets, by: { $0 }).mapValues(\.count)
         for target in counts.keys where entries[target] == nil {
             _ = session(for: target)
@@ -559,7 +594,7 @@ final class DocumentSessionStore {
             entries[target]?.leaseCount = counts[target, default: 0]
             entries[target]?.isForeground = target == foregroundTarget
         }
-        return reapEligibleSessions()
+        reapEligibleSessions()
     }
 
     func pinReasons(for session: DocumentSessionModel) -> Set<PinReason> {
@@ -584,23 +619,18 @@ final class DocumentSessionStore {
         }
     }
 
-    @discardableResult
-    func reapEligibleSessions() -> [ReapedPresentation] {
-        let eligible = entries.compactMap { target, entry -> ReapedPresentation? in
+    func reapEligibleSessions() {
+        let eligible = entries.compactMap { target, entry -> DocumentEditingTarget? in
             guard entry.leaseCount == 0,
                 pinReasons(for: entry.session).isEmpty,
                 !entry.session.editorSession.hasAttachedWebView
             else { return nil }
-            return ReapedPresentation(
-                target: target,
-                scrollPosition: entry.session.activeScrollPosition
-            )
+            return target
         }
-        for presentation in eligible {
-            entries[presentation.target]?.session.shutdown()
-            entries[presentation.target] = nil
+        for target in eligible {
+            entries[target]?.session.shutdown()
+            entries[target] = nil
         }
-        return eligible
     }
 
     func removeAll() {

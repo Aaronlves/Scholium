@@ -155,7 +155,6 @@ final class PerformanceProbe {
                 "attached_webview_sessions": stats.attachedWebViewSessions,
                 "full_snapshots": stats.fullSnapshots,
                 "pending_hydrations": stats.pendingHydrations,
-                "closed_presentations": stats.closedPresentations,
                 "read_projection_entries": stats.readProjectionEntries,
                 "read_projection_html_utf8_bytes": stats.readProjectionHTMLUTF8Bytes,
                 "editor_pool_idle": stats.editorPoolIdle,

@@ -8,6 +8,42 @@ import Testing
 @Suite("Document controller convergence")
 @MainActor
 struct DocumentControllerConvergenceTests {
+    @Test("Unavailable visit capture cannot borrow the next document's revision")
+    func unavailableVisitUsesOnlyItsOwnSnapshot() throws {
+        let vaultID = UUID()
+        let first = note(
+            vaultID: vaultID, noteID: UUID(),
+            path: "Topics/First.md", source: "First revision\n"
+        )
+        let second = note(
+            vaultID: vaultID, noteID: UUID(),
+            path: "Topics/Second.md", source: "Second revision\n"
+        )
+        let controller = DocumentController()
+        controller.selectUnavailableDocument(first)
+        let departing = try #require(controller.selectedDocument)
+        let session = controller.session(for: departing.editingTarget)
+        session.observeScrollFraction(0.74, on: .read)
+        #expect(controller.navigationPosition(for: departing)?.scrollPosition.fraction == 0.74)
+        #expect(
+            controller.navigationPosition(for: departing)?.sourceFingerprint
+                == first.fingerprint.sha256
+        )
+
+        controller.selectUnavailableDocument(second)
+        #expect(controller.navigationPosition(for: departing) == nil)
+
+        let descriptor = WindowDocumentDescriptor(
+            sessionKey: .init(vaultID: vaultID, noteID: UUID()),
+            reference: .init(
+                vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                relativePath: "Topics/Workspace.md", stableNoteID: nil
+            )
+        )
+        controller.selectDocument(.workspace(descriptor))
+        #expect(controller.navigationPosition(for: departing) == nil)
+    }
+
     @MainActor
     private final class HydrationGate {
         private var started = false
@@ -795,7 +831,6 @@ struct DocumentControllerConvergenceTests {
             leasedDocuments: [],
             selectedDocument: nil
         )
-        #expect(cleanRead.closedPresentationCount == 0)
 
         let cleanEditor = DocumentController()
         cleanEditor.installOpenedDocument(

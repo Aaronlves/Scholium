@@ -228,7 +228,7 @@ struct AppCompositionRootTests {
         let observation = window.objectWillChange.sink {
             invalidationCount += 1
         }
-        window.rememberScrollPosition(0.42, for: path)
+        window.rememberScrollPosition(0.42, for: document)
         try await waitUntil("the stopped scroll position was persisted") {
             try await store.windowSession(id: sessionID)?
                 .workspaceSession(for: .paperAnalysis)?
@@ -238,6 +238,17 @@ struct AppCompositionRootTests {
 
         #expect(invalidationCount == 0)
         observation.cancel()
+
+        let other = WindowSelectedDocument.unavailable(
+            vaultID: UUID(), relativePath: path
+        )
+        window.documentController.selectDocument(other)
+        window.rememberScrollPosition(0.93, for: document)
+        #expect(window.scrollPosition(for: path) == 0)
+        #expect(
+            window.documentController.scrollPosition(for: path, vaultID: fixtureVaultID)
+                == 0.42
+        )
     }
 
     @Test("Window close awaits its final session snapshot")

@@ -381,6 +381,7 @@ struct ContentView: View {
     private var documentFeatureActions: DocumentFeatureActions {
         let documentKey = appState.currentDocumentDescriptor?.sessionKey
         let documentPath = appState.currentNote?.relativePath
+        let documentIdentity = appState.documentController.selectedDocument
         return DocumentFeatureActions(
             passageAction: { action, snapshot in
                 guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return }
@@ -412,8 +413,11 @@ struct ContentView: View {
                 )
             },
             rememberScrollPosition: {
-                guard let path = documentPath else { return }
-                appState.rememberScrollPosition($0, for: path)
+                guard let documentIdentity,
+                    appState.documentController.selectedDocument?.editingTarget
+                        == documentIdentity.editingTarget
+                else { return }
+                appState.rememberScrollPosition($0, for: documentIdentity)
             },
             openInternalLink: {
                 guard let path = documentPath else { return }

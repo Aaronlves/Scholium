@@ -152,6 +152,12 @@ extension WindowModel {
                 case .operationOnly:
                     break
                 }
+                if let displayed = self.documentController.selectedDocument {
+                    self.documentNavigationHistoryController.captureCurrent(
+                        document: displayed,
+                        position: self.documentController.navigationPosition(for: displayed)
+                    )
+                }
             },
             operation: { [weak self] isCurrent in
                 guard let self, isCurrent() else { throw CancellationError() }
@@ -238,6 +244,12 @@ extension WindowModel {
                 try await self.flushRegisteredEditorIfNeeded(
                     capturingEditorState: preservingCurrentEditorState
                 )
+                if let displayed = self.documentController.selectedDocument {
+                    self.documentNavigationHistoryController.captureCurrent(
+                        document: displayed,
+                        position: self.documentController.navigationPosition(for: displayed)
+                    )
+                }
             },
             operation: operation,
             didFail: { [weak self] error in

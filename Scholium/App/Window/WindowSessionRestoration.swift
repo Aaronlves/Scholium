@@ -26,11 +26,17 @@ extension WindowModel {
         documentController.scrollPosition(for: path, vaultID: currentDocumentVaultID)
     }
 
-    func rememberScrollPosition(_ fraction: Double, for path: String) {
+    func rememberScrollPosition(
+        _ fraction: Double,
+        for document: WindowSelectedDocument
+    ) {
+        guard documentController.selectedDocument?.editingTarget == document.editingTarget else {
+            return
+        }
         documentController.rememberScrollPosition(
             fraction,
-            for: path,
-            vaultID: currentDocumentVaultID
+            for: document.relativePath,
+            vaultID: document.vaultID
         )
         documentPresentationDidChange.send()
     }
@@ -129,9 +135,17 @@ extension WindowModel {
                 workspaceSlot: workspace,
                 sourceScope: .library
             )
-            if let vaultID = session.vaultID {
+            // Ordinary launch has no restored Document tabs. Only a fixture
+            // window's explicitly reopened selected tab may consume its saved
+            // presentation; all other saved paths are inert layout history.
+            if ScholiumRuntimeIsolation.fixtureRootURL() != nil,
+                let selected = restoredPresentation.selectedDocument,
+                selected.vaultID == session.vaultID,
+                let vaultID = session.vaultID,
+                let presentation = session.documentPresentations[selected.relativePath]
+            {
                 documentController.restorePresentationState(
-                    documentPresentations: session.documentPresentations,
+                    documentPresentations: [selected.relativePath: presentation],
                     vaultID: vaultID
                 )
             }

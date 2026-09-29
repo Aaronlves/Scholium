@@ -10,6 +10,7 @@ extension WindowModel {
     ) {
         guard let document = documentController.selectedDocument else { return }
         let presentation = documentTabPresentation(for: document)
+        let previousTabs = documentTabController.tabs
         switch activation {
         case .place(let placement):
             documentTabController.activate(
@@ -29,7 +30,19 @@ extension WindowModel {
             )
         }
         if recordsNavigationHistory {
+            if let departing = documentNavigationHistoryController.currentDocument,
+                departing != document
+            {
+                documentNavigationHistoryController.captureCurrent(
+                    document: departing,
+                    position: documentController.navigationPosition(for: departing)
+                )
+            }
             documentNavigationHistoryController.record(document)
+        }
+        let openTargets = Set(documentTabController.tabs.map { $0.document.editingTarget })
+        for tab in previousTabs where !openTargets.contains(tab.document.editingTarget) {
+            documentController.endClosedPresentation(of: tab.document)
         }
         reconcileDocumentSessionLeases()
         PerformanceProbe.shared.markFirstReadDocumentSelected(
@@ -162,10 +175,16 @@ extension WindowModel {
         // Remove inactive pages first so the selected page's close plan can
         // never choose another document that was deleted in the same commit.
         let selectedID = documentTabController.selectedTabID
-        documentTabController.removeTabs(withIDs: matchingIDs.subtracting(Set([selectedID].compactMap { $0 })))
+        let inactiveIDs = matchingIDs.subtracting(Set([selectedID].compactMap { $0 }))
+        let removedInactive = documentTabController.tabs.filter { inactiveIDs.contains($0.id) }
+        documentTabController.removeTabs(withIDs: inactiveIDs)
+        for tab in removedInactive {
+            documentController.endClosedPresentation(of: tab.document)
+        }
         if let selectedID, matchingIDs.contains(selectedID),
             let plan = documentTabController.closePlan(forTabWithID: selectedID)
         {
+            let closingDocument = documentTabController.tabs.first(where: { $0.id == selectedID })?.document
             if let documentToActivate = plan.documentToActivate {
                 try await activateResolvedDocument(
                     documentToActivate, tabActivation: .preserveTabMembership
@@ -174,6 +193,9 @@ extension WindowModel {
                 documentController.clearSelectionAfterClosingLastTab()
             }
             documentTabController.apply(plan)
+            if let closingDocument {
+                documentController.endClosedPresentation(of: closingDocument)
+            }
         }
         reconcileDocumentSessionLeases()
     }
@@ -219,7 +241,11 @@ extension WindowModel {
         withIDs ids: Set<UUID>,
         targets: Set<DocumentEditingTarget>
     ) {
+        let closingDocuments = documentTabController.tabs.filter { ids.contains($0.id) }.map(\.document)
         documentTabController.removeTabs(withIDs: ids)
+        for document in closingDocuments {
+            documentController.endClosedPresentation(of: document)
+        }
         if documentController.selectedDocument.map({
             targets.contains($0.editingTarget)
         }) == true {

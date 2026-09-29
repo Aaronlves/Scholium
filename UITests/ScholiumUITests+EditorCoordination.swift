@@ -701,6 +701,143 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testBrowsingVisitRestoresViewportWhileFreshOpeningStartsAtTop() throws {
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let openingHeading = "Lifecycle opening marker"
+        let locatorHeading = "lifecyclelocatorfixture target"
+        let middle = (1...60).map {
+            "Synthetic reading paragraph \($0). This text only makes the disposable QA document scrollable."
+        }.joined(separator: "\n\n")
+        let source = """
+            ---
+            summary: Synthetic browsing lifecycle fixture.
+            ---
+
+            # \(openingHeading)
+
+            Synthetic opening passage.
+
+            \(middle)
+
+            ## \(locatorHeading)
+
+            Synthetic Search destination near the end of the document.
+            """ + "\n"
+
+        // Install the long source before the explicit QA document route opens.
+        // The initial fixture was already opened by setUp, so replace only the
+        // disposable copy while that QA process is closed.
+        app.terminate()
+        try write(source, to: noteURL)
+        app = configuredApplication(sessionID: sessionID, openNote: "QA Autosave A.md")
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        selectDocumentMode("Review")
+        let rendered = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.renderedDocument.")
+        ).firstMatch
+        XCTAssertTrue(rendered.waitForExistence(timeout: 10))
+
+        func headingIsInViewport(_ title: String) -> Bool {
+            let heading = rendered.descendants(matching: .staticText).matching(
+                NSPredicate(
+                    format: "title == %@ OR value == %@ OR label == %@",
+                    title, title, title
+                )
+            ).firstMatch
+            guard heading.exists else { return false }
+            let frame = heading.frame
+            guard frame.minX.isFinite, frame.minY.isFinite,
+                frame.width.isFinite, frame.height.isFinite
+            else { return false }
+            let visible = frame.intersection(rendered.frame)
+            return !visible.isNull && visible.width >= 8 && visible.height >= 8
+        }
+
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(openingHeading) },
+            "The explicit initial opening must show the document start."
+        )
+        XCTAssertFalse(headingIsInViewport(locatorHeading))
+        for _ in 0..<12 where !headingIsInViewport(locatorHeading) {
+            rendered.swipeUp(velocity: .fast)
+        }
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(locatorHeading) },
+            "The synthetic lower passage must be reachable by ordinary reading scroll."
+        )
+
+        _ = clickLibraryRow("QA Autosave B.md", rightMouseButton: true)
+        let noteMenu = app.menus["scholium.noteRow.QA Autosave B.md"]
+        XCTAssertTrue(noteMenu.waitForExistence(timeout: 3))
+        noteMenu.menuItems["Open in New Tab"].click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
+
+        let back = app.toolbars.buttons["Back"].firstMatch
+        let forward = app.toolbars.buttons["Forward"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) { back.exists && back.isEnabled })
+        back.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 8))
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(locatorHeading) },
+            "Back must return to the departure passage while its source revision matches."
+        )
+        XCTAssertTrue(waitUntil(timeout: 5) { forward.exists && forward.isEnabled })
+        forward.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
+
+        let tabs = app.descendants(matching: .any)["scholium.documentTabs"]
+        XCTAssertTrue(tabs.waitForExistence(timeout: 5))
+        let firstTab = tabs.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "QA Autosave A")
+        ).firstMatch
+        XCTAssertTrue(firstTab.waitForExistence(timeout: 5))
+        firstTab.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 8))
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(locatorHeading) },
+            "The still-open tab must keep its reading context."
+        )
+
+        app.menuBars.menuBarItems["File"].click()
+        let closeTab = app.menuItems["Close Tab"].firstMatch
+        XCTAssertTrue(closeTab.waitForExistence(timeout: 3))
+        closeTab.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
+        _ = clickLibraryRow("QA Autosave B.md")
+        _ = clickLibraryRow("QA Autosave A.md")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 8))
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(openingHeading) },
+            "Ordinary reopening after successful close must show the document start."
+        )
+        XCTAssertFalse(
+            headingIsInViewport(locatorHeading),
+            "A closed tab must not donate its former viewport to a fresh opening."
+        )
+
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        let advanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        selectResearchSearchScope("This Vault", in: app)
+        let query = advanced.searchFields["scholium.searchField"]
+        XCTAssertTrue(query.waitForExistence(timeout: 5))
+        typeCommittedText("lifecyclelocatorfixture", into: query, in: app)
+        let result = searchResult(named: "QA Autosave A", in: advanced)
+        XCTAssertTrue(result.waitForExistence(timeout: 20))
+        result.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 8))
+        // Result activation raises the Document above Search; observe the
+        // destination there without clicking the now-background Search window.
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(locatorHeading) },
+            "An explicit Search location must override the fresh-opening viewport."
+        )
+        XCTAssertEqual(try self.source(at: noteURL), source)
+    }
+
+    @MainActor
     func testOpenInNewTabUsesNativeContentTabsAndSharedLibrary() throws {
         waitForCurrentDocumentSurface()
         let secondPath = "QA Autosave B.md"

@@ -1955,6 +1955,40 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A clean external revision restores a mapped selection in WebKit and keeps Find usable")
+    func externalRevisionMappedSelectionAndFind() async throws {
+        let original = "Start\nKeep this paragraph.\n"
+        let revised = "New lead\nStart\nKeep this paragraph.\n"
+        let harness = EditorHarness(
+            source: original,
+            usesSessionDocumentIdentity: true,
+            initialMode: .source
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 11, toUTF16: 15)
+        try await harness.waitUntilSelection(head: 15)
+
+        harness.session.prepareSelectionForCleanExternalRevision(
+            from: original, to: revised, scrollFraction: 0
+        )
+        harness.session.loadDocument(
+            revised, documentID: harness.documentID, mode: .source
+        )
+        harness.synchronizeLifecycleSourceFromSession()
+        try await harness.waitUntilLoaded(documentID: harness.documentID)
+        try await harness.waitUntilSelection(head: 24, stage: "mapped external selection")
+        #expect(harness.session.context?.selections.first == .init(anchor: 20, head: 24))
+        #expect(harness.session.context?.undoLabel == nil)
+        let find = try await harness.session.performDocumentFind(.init(
+            query: "Keep", replacement: "", caseSensitive: false,
+            wholeWord: true, action: .present
+        ))
+        #expect(find.total == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == revised)
+        await harness.closeAndDrain()
+    }
+
     @Test("Empty ATX headings retain semantic presentation with or without a separator")
     func bareATXMarkerImmediatelyUsesHeadingPresentation() async throws {
         let source = ""

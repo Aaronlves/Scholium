@@ -203,13 +203,6 @@ final class DocumentController: ObservableObject {
     private var restoredUnqualifiedPresentations: [String: WindowDocumentPresentationSnapshot] = [:]
     private var activeWorkspace: WorkspaceVaultSlot = .paperAnalysis
     private var presentationModesByWorkspace: [WorkspaceVaultSlot: NotePresentationMode]
-    private struct ClosedPresentationEntry {
-        let relativePath: String
-        let scrollPosition: ObservedScrollPosition
-        var access: UInt64
-    }
-    private var closedPresentations: [DocumentEditingTarget: ClosedPresentationEntry] = [:]
-    private var nextClosedPresentationAccess: UInt64 = 0
     private let intentHandler: IntentHandler
     private var operations: (any DocumentUseCases)?
     private var sessionCancellables: [ObjectIdentifier: AnyCancellable] = [:]
@@ -219,7 +212,6 @@ final class DocumentController: ObservableObject {
     var retainedSessionCount: Int { sessions.retainedSessions.count }
     var retainedFullSnapshotCount: Int { snapshots.count + (unavailableSnapshot == nil ? 0 : 1) }
     var pendingHydrationCount: Int { pendingHydrations.count }
-    var closedPresentationCount: Int { closedPresentations.count }
 
     #if DEBUG
         struct QAMemoryOwnerStats: Sendable {
@@ -229,7 +221,6 @@ final class DocumentController: ObservableObject {
             let attachedWebViewSessions: Int
             let fullSnapshots: Int
             let pendingHydrations: Int
-            let closedPresentations: Int
             let readProjectionEntries: Int
             let readProjectionHTMLUTF8Bytes: Int
             let editorPoolIdle: Int
@@ -250,7 +241,6 @@ final class DocumentController: ObservableObject {
                 attachedWebViewSessions: session.attachedWebView,
                 fullSnapshots: retainedFullSnapshotCount,
                 pendingHydrations: pendingHydrationCount,
-                closedPresentations: closedPresentationCount,
                 readProjectionEntries: read.entryCount,
                 readProjectionHTMLUTF8Bytes: read.htmlUTF8ByteCount,
                 editorPoolIdle: pool.idle,
@@ -615,6 +605,9 @@ final class DocumentController: ObservableObject {
         let selectionChanged = selectedDocument != document
         if selectionChanged {
             selectedDocument = document
+            if sourceLocationRequest?.target != document.editingTarget {
+                sourceLocationRequest = nil
+            }
         }
         switch document {
         case .workspace(let descriptor):
@@ -711,6 +704,68 @@ final class DocumentController: ObservableObject {
         selectedDocument = nil
         unavailableSnapshot = nil
         refreshChromeProjection()
+    }
+
+    func endClosedPresentation(of document: WindowSelectedDocument) {
+        let target = document.editingTarget
+        sessions.retainedSession(for: target)?.endClosedPresentation()
+        restoredPresentationsByVault[target.vaultID]?[document.relativePath] = nil
+        restoredUnqualifiedPresentations[document.relativePath] = nil
+        if sourceLocationRequest?.target == target { sourceLocationRequest = nil }
+    }
+
+    func navigationPosition(for document: WindowSelectedDocument) -> DocumentNavigationVisitPosition? {
+        guard let session = sessions.retainedSession(for: document.editingTarget) else { return nil }
+        let fingerprint: String?
+        if session.isEditing {
+            fingerprint = DocumentFingerprint(content: session.retainedExactSource).sha256
+        } else {
+            switch document {
+            case .workspace(let descriptor):
+                fingerprint = snapshots[descriptor.sessionKey]?.fingerprint.sha256
+            case .unavailable:
+                fingerprint = unavailableSnapshot.flatMap { snapshot in
+                    snapshot.id.vaultID == document.vaultID
+                        && snapshot.id.relativePath == document.relativePath
+                        ? snapshot.fingerprint.sha256 : nil
+                }
+            }
+        }
+        guard let fingerprint else { return nil }
+        return DocumentNavigationVisitPosition(
+            sourceFingerprint: fingerprint,
+            scrollPosition: session.activeScrollPosition
+        )
+    }
+
+    func restoreNavigationPosition(
+        _ visit: DocumentNavigationVisitPosition?,
+        for document: WindowSelectedDocument
+    ) {
+        guard selectedDocument?.editingTarget == document.editingTarget,
+            sourceLocationRequest?.target != document.editingTarget
+        else { return }
+        let currentFingerprint: String?
+        switch document {
+        case .workspace(let descriptor):
+            currentFingerprint = snapshots[descriptor.sessionKey]?.fingerprint.sha256
+        case .unavailable:
+            currentFingerprint = unavailableSnapshot.flatMap { snapshot in
+                snapshot.id.vaultID == document.vaultID
+                    && snapshot.id.relativePath == document.relativePath
+                    ? snapshot.fingerprint.sha256 : nil
+            }
+        }
+        guard let currentFingerprint else { return }
+        let position: ObservedScrollPosition
+        if let visit, visit.sourceFingerprint == currentFingerprint {
+            position = visit.scrollPosition
+        } else {
+            position = ObservedScrollPosition()
+        }
+        sessions.retainedSession(for: document.editingTarget)?.restoreNavigationPosition(
+            position, fingerprint: currentFingerprint
+        )
     }
 
     func canReceiveSessionTransfer(_ document: WindowSelectedDocument) -> Bool {
@@ -834,11 +889,10 @@ final class DocumentController: ObservableObject {
         leasedDocuments: [WindowSelectedDocument],
         selectedDocument: WindowSelectedDocument?
     ) {
-        let reaped = sessions.reconcileLeases(
+        sessions.reconcileLeases(
             openTargets: leasedDocuments.map(\.editingTarget),
             foregroundTarget: selectedDocument?.editingTarget
         )
-        cacheReapedPresentations(reaped)
         pruneReapedSessionBookkeeping()
     }
 
@@ -909,7 +963,7 @@ final class DocumentController: ObservableObject {
     }
 
     func reapDetachedSessions() {
-        cacheReapedPresentations(sessions.reapEligibleSessions())
+        sessions.reapEligibleSessions()
         pruneReapedSessionBookkeeping()
     }
 
@@ -1130,6 +1184,9 @@ final class DocumentController: ObservableObject {
 
     func rememberScrollPosition(_ fraction: Double, for path: String, vaultID: UUID?) {
         guard fraction.isFinite else { return }
+        guard selectedDocument?.relativePath == path,
+            selectedDocument?.vaultID == vaultID
+        else { return }
         let normalized = min(1, max(0, fraction))
         if let session = presentationSession(for: path, vaultID: vaultID) {
             guard abs(session.scrollFraction - normalized) > 0.002 else { return }
@@ -1188,11 +1245,6 @@ final class DocumentController: ObservableObject {
             let path = relativePath(for: target)
             documents[path] = session.windowPresentationSnapshot
         }
-        for (target, entry) in closedPresentations where target.vaultID == vaultID {
-            documents[entry.relativePath] = WindowDocumentPresentationSnapshot(
-                scrollFraction: entry.scrollPosition.fraction
-            )
-        }
         return DocumentPresentationSnapshot(documents: documents)
     }
 
@@ -1227,15 +1279,6 @@ final class DocumentController: ObservableObject {
                 stableNoteID: reference.stableNoteID
             )
         }
-        for (target, var entry) in closedPresentations
-        where target.vaultID == vaultID && entry.relativePath == sourcePath {
-            entry = ClosedPresentationEntry(
-                relativePath: destinationPath,
-                scrollPosition: entry.scrollPosition,
-                access: entry.access
-            )
-            closedPresentations[target] = entry
-        }
     }
 
     func resetPresentationState() {
@@ -1252,7 +1295,6 @@ final class DocumentController: ObservableObject {
             session.resetPresentation()
             session.resetScrollPosition()
         }
-        closedPresentations.removeAll(keepingCapacity: false)
     }
 
     func requestOpen(_ route: WindowDocumentRoute) {
@@ -1271,7 +1313,6 @@ final class DocumentController: ObservableObject {
             deferredWorkspaceSnapshotsDuringSave.removeAll()
             restoredPresentationsByVault = [:]
             restoredUnqualifiedPresentations = [:]
-            closedPresentations.removeAll(keepingCapacity: false)
             sessionCancellables.removeAll()
             pendingChromeRefreshes.removeAll()
         }
@@ -1319,7 +1360,10 @@ final class DocumentController: ObservableObject {
         for path: String,
         vaultID: UUID?
     ) -> DocumentSessionModel? {
-        if let selectedDocument, selectedDocument.relativePath == path {
+        if let selectedDocument,
+            selectedDocument.vaultID == vaultID,
+            selectedDocument.relativePath == path
+        {
             return session(for: selectedDocument.editingTarget)
         }
         if let key = retainedReferences.first(where: {
@@ -1329,7 +1373,7 @@ final class DocumentController: ObservableObject {
         }
         if let target = sessions.retainedSessions.keys.first(where: {
             guard $0.isFallback else { return false }
-            return relativePath(for: $0) == path
+            return $0.vaultID == vaultID && relativePath(for: $0) == path
         }) {
             return sessions.retainedSession(for: target)
         }
@@ -1382,10 +1426,6 @@ final class DocumentController: ObservableObject {
         target: DocumentEditingTarget,
         path: String
     ) {
-        if let retained = closedPresentations.removeValue(forKey: target) {
-            session.scrollFraction = retained.scrollPosition.fraction
-            session.scrollAnchor = retained.scrollPosition.anchor
-        }
         let restoredPresentation =
             restoredPresentationsByVault[target.vaultID]?
             .removeValue(forKey: path)
@@ -1454,44 +1494,10 @@ final class DocumentController: ObservableObject {
         }
     }
 
-    private func cacheReapedPresentations(
-        _ presentations: [DocumentSessionStore.ReapedPresentation]
-    ) {
-        for presentation in presentations {
-            let relativePath = relativePath(for: presentation.target)
-            // A clean externally deleted document deliberately removes its
-            // retained path before the zero-lease session is reaped. Do not
-            // persist an empty or stale presentation route for source that no
-            // longer exists.
-            guard !relativePath.isEmpty else { continue }
-            nextClosedPresentationAccess &+= 1
-            closedPresentations[presentation.target] = ClosedPresentationEntry(
-                relativePath: relativePath,
-                scrollPosition: presentation.scrollPosition,
-                access: nextClosedPresentationAccess
-            )
-        }
-        trimClosedPresentations(to: 64)
-    }
-
-    private func trimClosedPresentations(to limit: Int) {
-        while closedPresentations.count > limit,
-            let oldest = closedPresentations.min(by: { $0.value.access < $1.value.access })
-        {
-            closedPresentations[oldest.key] = nil
-        }
-    }
-
-    func handleMemoryPressure(_ level: DocumentMemoryPressureLevel) {
+    func handleMemoryPressure(_: DocumentMemoryPressureLevel) {
         sessions.editorWebViewPool.removeAll()
         Task { await readProjectionCache.removeAll() }
         Task { await linkCompletionIndex.removeAll() }
-        switch level {
-        case .warning:
-            trimClosedPresentations(to: 16)
-        case .critical:
-            closedPresentations.removeAll(keepingCapacity: false)
-        }
     }
 
     func relativePath(for target: DocumentEditingTarget) -> String {
@@ -2390,6 +2396,20 @@ final class DocumentController: ObservableObject {
             return
         }
 
+        let managedBodyStart =
+            session.isEnteringManagedCreation
+            ? snapshot.document.bodyUTF16Offset
+            : nil
+        if managedBodyStart == nil,
+            session.isEditing || !session.editorSession.documentID.isEmpty
+        {
+            session.editorSession.prepareSelectionForCleanExternalRevision(
+                from: session.originalEditingSource,
+                to: diskSource,
+                scrollFraction: session.activeScrollPosition.fraction
+            )
+        }
+
         session.suppressAutosave = true
         session.editingSource = diskSource
         session.originalEditingSource = diskSource
@@ -2398,10 +2418,6 @@ final class DocumentController: ObservableObject {
         session.pendingEditorCommit = nil
         session.editError = nil
         session.canRetrySave = false
-        let managedBodyStart =
-            session.isEnteringManagedCreation
-            ? snapshot.document.bodyUTF16Offset
-            : nil
         if let managedBodyStart {
             session.beginManagedCreationEntry(bodyStartUTF16: managedBodyStart)
         }

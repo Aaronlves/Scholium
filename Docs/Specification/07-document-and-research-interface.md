@@ -205,8 +205,9 @@ YAML is never replaced by a field editor or
 reordered in the source, and no disclosure or timed collapse exists. Outside
 an active YAML selection, its fence lines are visually suppressed; entering or
 selecting YAML restores the exact delimiters at their source locations.
-Opening and switching use the ordinary document scroll position or an explicit
-retained/locator target; saving does not reset the viewport. Document switching
+Fresh opening shows the top; Edit's initial body caret does not override that
+viewport. Switching open tabs or modes preserves context; explicit passage or
+Search locators take precedence. Saving preserves the viewport. Document switching
 presents only the requested mode after readiness, without showing a temporary
 layout from another mode.
 A View-menu action may navigate to Frontmatter without creating an empty
@@ -274,13 +275,17 @@ or activation. File-menu insertion uses the editor selection; system Quick Look
 owns file opening/dismissal. No attachment sidebar, global manager or persistent
 reader is added.
 
-Ordinary Edit entry restores retained, fingerprint-valid title/body focus and
-selection when available. Otherwise it uses an exactly mapped Review selection,
-or places a collapsed insertion point at the first authored body position after
-YAML. Direct title activation remains an explicit title-focus route.
-An explicit source locator and Managed New Note's body-start insertion take
-precedence. Window restoration retains this state only for still-open tabs;
-closing a tab ends it, without permanent vault-wide cursor history.
+Edit entry restores fingerprint-valid title/body focus and selection; otherwise
+it maps an exact Review selection or places the caret at the first body position
+after YAML. Explicit title activation, source locators and Managed New Note
+retain their specified targets. After clean external revision, preserve only
+selections provably mapped to unchanged source; otherwise use body start.
+Old Undo never replaces the external revision.
+
+Position, selection, focus and Find drafts belong to the open session. Successful
+close ends their retention; failed close preserves context. Restoration requires
+an explicitly restored document; empty cold launch seeds no fresh opening.
+Source, conflict and recovery retention remain independent.
 
 Quick Look and external opening preserve the initiating Note, mode, source selection,
 and document context. Preparation failure reports an actionable document error;

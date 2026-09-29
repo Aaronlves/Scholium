@@ -195,6 +195,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var documentLoadTask: Task<Void, Never>?
     private var focusHandoffTask: Task<Void, Never>?
     private var automaticFocusIsAuthorized = false
+    private var presentationIsClosed = false
     private var focusRequestRevision: UInt64 = 0
     private var automaticFocusTarget: WindowDocumentFocusTarget = .editor
     private var sourceMutationBarrier: Task<Void, Never>?
@@ -307,6 +308,37 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         )
     }
 
+    /// An external clean revision may keep only source coordinates proven to
+    /// lie in exact unchanged text. A new EditorState still starts fresh Undo.
+    func prepareSelectionForCleanExternalRevision(
+        from oldSource: String,
+        to newSource: String,
+        scrollFraction: Double
+    ) {
+        let old = windowPresentationSnapshot(scrollFraction: scrollFraction)
+        let oldFingerprint = DocumentFingerprint(content: oldSource).sha256
+        guard old.sourceFingerprint == oldFingerprint,
+            !old.selections.isEmpty,
+            let mapped = EditorExternalSelectionMapper.map(
+                old.selections.map { .init(anchor: $0.anchor, head: $0.head) },
+                from: oldSource,
+                to: newSource
+            )
+        else {
+            pendingWindowPresentation = nil
+            preferredDocumentFocusTarget = nil
+            lastKnownSelectionSnapshot = nil
+            return
+        }
+        let retained = WindowDocumentPresentationSnapshot(
+            scrollFraction: scrollFraction,
+            sourceFingerprint: DocumentFingerprint(content: newSource).sha256,
+            selections: mapped.map { .init(anchor: $0.anchor, head: $0.head) },
+            focusTarget: old.focusTarget
+        )
+        _ = restoreWindowPresentation(retained, source: newSource)
+    }
+
     /// A SwiftUI/AppKit reconstruction of the same retained document must use
     /// the session's exact mirror, not the parent view's lifecycle snapshot.
     /// A different document still initializes from its proposed source.
@@ -353,6 +385,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func attach(_ webView: WKWebView) {
+        presentationIsClosed = false
         floatingSurfaces.reset()
         invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
@@ -452,6 +485,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         focusTarget: WindowDocumentFocusTarget? = nil,
         context semanticContext: MarkdownEditorContext?
     ) {
+        guard !presentationIsClosed else { return }
         let previousSelection = lastKnownSelectionSnapshot?.ranges
         let wasComposing = context?.composing == true
         guard documentVersion == generation,
@@ -507,6 +541,44 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// imposing a title- or frontmatter-specific viewport.
     func prepareOpeningPresentation() {
         openingPresentationID = UUID()
+    }
+
+    /// Drops clean editor presentation after its tab closes. A recovery buffer
+    /// remains available until its separate safety owner releases it.
+    func endClosedPresentation(preservingSourceWork: Bool = false) {
+        let retainsComposition = isComposing
+        presentationIsClosed = true
+        openingPresentationID = UUID()
+        pendingWindowPresentation = nil
+        preferredDocumentFocusTarget = nil
+        if !retainsComposition {
+            lastKnownSelectionSnapshot = nil
+            pendingSourceRange = nil
+            pendingLine = nil
+        }
+        pendingScrollFraction = nil
+        pendingScrollAnchor = nil
+        reconstructionScrollAnchor = nil
+        automaticFocusIsAuthorized = false
+        focusRequestRevision &+= 1
+        focusHandoffTask?.cancel()
+        focusHandoffTask = nil
+        floatingSurfaces.reset()
+        if !retainsComposition {
+            context = nil
+            updatePublished(\.interactionAvailability, to: nil)
+        }
+        if !preservingSourceWork && !hasRecoverableBuffer {
+            sessionID = UUID()
+            invalidateRequestQueue(clearingRecoveryReport: false)
+            startupTask?.cancel()
+            startupTask = nil
+            documentLoadTask?.cancel()
+            documentLoadTask = nil
+            cancelModeTransition()
+            recoverySnapshot = nil
+            viewReconstructionID = UUID()
+        }
     }
 
     func loadDocument(

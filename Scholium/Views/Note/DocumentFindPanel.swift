@@ -73,6 +73,18 @@ final class DocumentFindPresentationModel: ObservableObject {
         issue(.clear)
     }
 
+    func resetAfterClose() {
+        isPresented = false
+        replacementIsPresented = false
+        query = ""
+        replacement = ""
+        caseSensitive = false
+        wholeWord = false
+        result = DocumentFindResult(current: 0, total: 0)
+        errorMessage = nil
+        issue(.clear)
+    }
+
     func setQuery(_ value: String) {
         guard value != query else { return }
         query = String(value.prefix(16_384))
