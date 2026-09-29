@@ -325,6 +325,51 @@ struct WindowLifecycleTests {
         #expect(Set(flushed) == Set([firstID, secondID]))
     }
 
+    @Test("A termination attempt blocks transfer after one window has finished flushing")
+    func terminationAttemptRetainsTransferGateThroughReply() async {
+        let workspaceStore = makeTestWorkspaceStore()
+        let registry = ScholiumWindowLifecycleRegistry()
+        let first = WindowModel(workspaceStore: workspaceStore)
+        let second = WindowModel(workspaceStore: workspaceStore)
+        let firstCoordinator = WorkspaceWindowCoordinator(
+            windowID: first.nativeWindowID, appState: first, lifecycleRegistry: registry
+        )
+        let secondCoordinator = WorkspaceWindowCoordinator(
+            windowID: second.nativeWindowID, appState: second, lifecycleRegistry: registry
+        )
+        #expect(first.nativeWindowCoordinator === firstCoordinator)
+        #expect(second.nativeWindowCoordinator === secondCoordinator)
+        let secondFlush = ManualLifecycleSuspension()
+        var firstFinished = false
+        registry.register(id: first.nativeWindowID) { firstFinished = true }
+        registry.register(id: second.nativeWindowID) { await secondFlush.suspendIgnoringCancellation() }
+        let locations = workspaceStore.documentLocations
+        #expect(locations.canTransferFrom(first))
+        #expect(locations.canTransferFrom(second))
+
+        registry.beginTerminationAttempt()
+        let flush = Task { @MainActor in try await registry.flushAll() }
+        await secondFlush.waitUntilArmed()
+        for _ in 0..<1_000 where !firstFinished { await Task.yield() }
+        #expect(firstFinished)
+        #expect(!locations.canTransferFrom(first))
+        #expect(!locations.canTransferFrom(second))
+
+        secondFlush.resume()
+        do {
+            try await flush.value
+        } catch {
+            Issue.record("Registered termination flush unexpectedly failed: \(error)")
+        }
+        #expect(registry.isTerminationAttemptInProgress)
+        #expect(!locations.canTransferFrom(first))
+        #expect(!locations.canTransferFrom(second))
+        registry.endTerminationAttempt()
+        #expect(locations.canTransferFrom(first))
+        #expect(locations.canTransferFrom(second))
+        withExtendedLifetime((firstCoordinator, secondCoordinator)) {}
+    }
+
     @Test("A failed application flush still visits the other windows")
     func flushAllContinuesAfterFailure() async {
         let registry = ScholiumWindowLifecycleRegistry()
@@ -890,6 +935,30 @@ struct WindowLifecycleTests {
                 #expect(!strip.isHidden)
             }
         }
+    }
+
+    @Test("A transfer rejects native close until the transfer lock is released")
+    func transferBlocksNativeClosePreparation() async {
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let coordinator = WorkspaceWindowCoordinator(
+            windowID: model.nativeWindowID, appState: model,
+            lifecycleRegistry: ScholiumWindowLifecycleRegistry()
+        )
+        let window = testWindow()
+        coordinator.attach(to: window)
+        defer { coordinator.closeTransferredContainer() }
+
+        model.transferInProgress = true
+        #expect(coordinator.windowShouldClose(window) == false)
+        #expect(!coordinator.isNativeCloseInProgress)
+
+        model.transferInProgress = false
+        #expect(coordinator.windowShouldClose(window) == false)
+        #expect(coordinator.isNativeCloseInProgress)
+        // Container cleanup uses NSWindow.close and cannot be refused by the
+        // interactive performClose delegate path while preparation settles.
+        coordinator.closeTransferredContainer()
+        await Task.yield()
     }
 
     @Test("Document tab updates preserve page hosts and native item identities")

@@ -29,6 +29,9 @@ final class WindowCloseCoordinator {
             task: Task<WindowClosePreparationOutcome, Error>
         )?
     private(set) var isFinalized = false
+    var isPreparingOrFinalized: Bool {
+        activePreparation != nil || isFinalized
+    }
 
     init(
         lifecyclePolicy: ScholiumLifecyclePolicy,

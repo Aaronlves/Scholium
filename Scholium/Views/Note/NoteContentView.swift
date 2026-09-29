@@ -138,6 +138,12 @@ struct DocumentFeatureActions {
             String
         ) async throws -> String
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
+    var registerEditorActions:
+        @MainActor (
+            ScholiumEditorCommandPort, DocumentEditingTarget, DocumentSessionModel,
+            ScholiumFocusedEditorActions, ScholiumEditorCommandRegistrationChange
+        ) -> Void = { _, _, _, _, _ in }
+    var unregisterEditorActions: @MainActor (UUID) -> Void = { _ in }
 }
 
 // MARK: - Note Content Container
@@ -246,6 +252,7 @@ struct NoteContentView<ShellNotices: View>: View {
     let hasShellNotices: Bool
     let shellNotices: ShellNotices
     private let openingPresentationID: UUID
+    @StateObject private var editorCommandPort = ScholiumEditorCommandPort()
     @StateObject private var quickLook = DocumentAttachmentQuickLookSession()
     @ObservedObject private var documentFind: DocumentFindPresentationModel
     @State private var isInsertingImage = false
@@ -352,6 +359,78 @@ struct NoteContentView<ShellNotices: View>: View {
         )
     }
 
+    private struct EditorCommandFacts: Equatable {
+        let availability: EditorInteractionAvailability?
+        let mode: NotePresentationMode
+        let isLoaded: Bool
+        let isAttaching: Bool
+        let documentID: String
+        let notePath: String
+        let canEdit: Bool
+    }
+
+    private var editorCommandFacts: EditorCommandFacts {
+        EditorCommandFacts(
+            availability: editorSession.interactionAvailability,
+            mode: documentSession.presentationMode,
+            isLoaded: editorSession.isLoaded,
+            isAttaching: documentSession.isAttachingDocument,
+            documentID: editorSession.documentID,
+            notePath: note.id.relativePath,
+            canEdit: state.canEdit
+        )
+    }
+
+    private func publishEditorActionsIfSelected(
+        change: ScholiumEditorCommandRegistrationChange
+    ) {
+        guard controller.selectedDocument?.editingTarget == target,
+            controller.retainsSession(documentSession, for: target)
+        else { return }
+        actions.registerEditorActions(
+            editorCommandPort, target, documentSession,
+            ScholiumFocusedEditorActions(
+                documentID: isEditing ? editorSession.documentID : note.id.relativePath,
+                isComposing: isEditing && editorSession.context?.composing == true,
+                isAvailable: { command in
+                    isEditing && editorSession.context?.availableCommands.contains(command) == true
+                },
+                perform: { command in
+                    Task { @MainActor in
+                        do {
+                            try await editorSession.perform(command)
+                        } catch {
+                            actions.notify(error.localizedDescription, .error)
+                        }
+                    }
+                },
+                performWithArgument: { command, argument in
+                    Task { @MainActor in
+                        do {
+                            try await editorSession.perform(command, argument: argument)
+                        } catch {
+                            actions.notify(error.localizedDescription, .error)
+                        }
+                    }
+                },
+                importImage: requestImageImport,
+                indexImage: requestImageIndex,
+                canAttachDocument: isEditing && editorSession.isLoaded && documentAttachmentTarget != nil
+                    && !documentSession.isAttachingDocument,
+                attachDocumentCopy: { requestDocumentAttachment(.copyIntoTriptych) },
+                referenceOriginalDocument: { requestDocumentAttachment(.referenceOriginal) },
+                canEditFrontmatter: editingIsAvailable,
+                goToFrontmatter: goToFrontmatter
+            ),
+            change
+        )
+    }
+
+    private func unpublishEditorActions() {
+        actions.unregisterEditorActions(editorCommandPort.token)
+        editorCommandPort.actions = nil
+    }
+
     var body: some View {
         AnyView(
             documentBodySurface
@@ -382,53 +461,12 @@ struct NoteContentView<ShellNotices: View>: View {
                     }
                 }
                 .scholiumSurface(.document)
-                .focusedSceneValue(
-                    \.scholiumEditorActions,
-                    ScholiumFocusedEditorActions(
-                        documentID: isEditing ? editorSession.documentID : note.id.relativePath,
-                        isComposing: isEditing && editorSession.context?.composing == true,
-                        allowsReplace: isEditing,
-                        isAvailable: { command in
-                            isEditing && editorSession.context?.availableCommands.contains(command) == true
-                        },
-                        perform: { command in
-                            Task { @MainActor in
-                                do {
-                                    try await editorSession.perform(command)
-                                } catch {
-                                    actions.notify(error.localizedDescription, .error)
-                                }
-                            }
-                        },
-                        performWithArgument: { command, argument in
-                            Task { @MainActor in
-                                do {
-                                    try await editorSession.perform(command, argument: argument)
-                                } catch {
-                                    actions.notify(error.localizedDescription, .error)
-                                }
-                            }
-                        },
-                        presentFind: documentFind.present,
-                        presentReplace: documentFind.presentReplacement,
-                        findNext: documentFind.next,
-                        findPrevious: documentFind.previous,
-                        useSelectionForFind: useSelectionForDocumentFind,
-                        importImage: requestImageImport,
-                        indexImage: requestImageIndex,
-                        canAttachDocument: isEditing && editorSession.isLoaded && documentAttachmentTarget != nil
-                            && !documentSession.isAttachingDocument,
-                        attachDocumentCopy: {
-                            requestDocumentAttachment(.copyIntoTriptych)
-                        },
-                        referenceOriginalDocument: {
-                            requestDocumentAttachment(.referenceOriginal)
-                        },
-                        canEditFrontmatter: editingIsAvailable,
-                        goToFrontmatter: goToFrontmatter
-                    )
-                )
         )
+        .onAppear { publishEditorActionsIfSelected(change: .activation) }
+        .onChange(of: editorCommandFacts) { _, _ in publishEditorActionsIfSelected(change: .refresh) }
+        .onChange(of: controller.selectedDocument?.editingTarget) { _, selected in
+            if selected == target { publishEditorActionsIfSelected(change: .activation) } else { unpublishEditorActions() }
+        }
         .sheet(
             isPresented: Binding(
                 get: { showConflictComparison },
@@ -584,14 +622,15 @@ struct NoteContentView<ShellNotices: View>: View {
         .quickLookPreview(Binding(get: { quickLook.url }, set: { if $0 == nil { quickLook.dismiss() } }))
         .onDisappear {
             quickLook.dismiss()
-            if editorSession.openingPresentationID == openingPresentationID {
-                documentFind.dismiss()
-            }
+            unpublishEditorActions()
+            controller.dismissFindForDisappearingPresentation(
+                target: target, session: documentSession,
+                openingPresentationID: openingPresentationID
+            )
         }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
-        .onReceive(documentSession.findRequested) { documentFind.present() }
         .task(id: documentFind.request) {
             guard let request = documentFind.request else { return }
             if case .clear = request.operation {
@@ -1316,30 +1355,9 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private func handleDocumentFindShortcut(_ shortcut: DocumentFindShortcut) {
-        switch shortcut {
-        case .present:
-            documentFind.present()
-        case .next:
-            documentFind.next()
-        case .previous:
-            documentFind.previous()
-        case .useSelection:
-            useSelectionForDocumentFind()
-        }
-    }
-
-    private func useSelectionForDocumentFind() {
-        if isEditing {
-            Task { @MainActor in
-                let selection = try? await editorSession.currentSelection(
-                    for: editorSession.documentID,
-                    in: editingSource
-                )
-                documentFind.useSelection(selection?.excerpt)
-            }
-        } else {
-            documentFind.useSelection(documentSession.readSelection?.excerpt)
-        }
+        controller.performSelectedDocumentFind(
+            shortcut, expectedTarget: target, expectedSession: documentSession
+        )
     }
 
     private func requestImageImport() {

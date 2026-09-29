@@ -180,13 +180,15 @@ Evidence: `.build/note-safety-fix/`, `.build/source-cutover/`,
 `.build/library-file-operation-final-tests.log`,
 `.build/file-operation-final-layout-tests.log`, `.build/file-operation-review/`.
 
-**2026-09-15 — Shell/Search:** Focus Layout/Search owning checks and native QA
-cover ordinary/full-screen entry/exit, pane restoration, retained Document state
-and the existing advanced Search window. Hover, physical input, IME, human AX,
-conflict/recovery and full adaptation are not established.
-Evidence: `.build/fullscreen-focus-final-tests.log`,
-`.build/advanced-search-shortcut-tests.log`,
-`.build/sidebar-search-simplification-tests.log`.
+**2026-09-29 — Window/Document lifecycle:** 67 scoped tests pass. Two native
+journeys pass three consecutive runs each: retained tabs, separate-window
+transfer/return, Find, formatting/Undo, owned Advanced Search, exact-source save,
+tab close, Focus entry/exit, peripheral-to-document focus and full-screen layout
+restoration. Hover, physical input, installed IME, human AX, conflict/recovery and
+full adaptation are not established by these journeys.
+Evidence: `.build/tab-editor-port-final-tests.log`,
+`.build/tab-window-command-port-native.log`,
+`.build/tab-window-command-port-final.xcresult`.
 
 ## Retrieval quality and useful measurement comparisons
 

@@ -23,15 +23,9 @@ struct ScholiumWorkspaceWindowActionsFocusedKey: FocusedValueKey {
 struct ScholiumFocusedEditorActions {
     let documentID: String
     let isComposing: Bool
-    let allowsReplace: Bool
     let isAvailable: (MarkdownEditorCommand) -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
-    let presentFind: () -> Void
-    let presentReplace: () -> Void
-    let findNext: () -> Void
-    let findPrevious: () -> Void
-    let useSelectionForFind: () -> Void
     let importImage: () -> Void
     let indexImage: () -> Void
     let canAttachDocument: Bool
@@ -41,8 +35,19 @@ struct ScholiumFocusedEditorActions {
     var goToFrontmatter: () -> Void = {}
 }
 
-struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
-    typealias Value = ScholiumFocusedEditorActions
+enum ScholiumEditorCommandRegistrationChange: Equatable {
+    case activation
+    case refresh
+}
+
+/// A Note view owns its callbacks. The Window keeps only a weak reference to
+/// this port, so a retained editor cannot keep an obsolete hosting view alive.
+@MainActor
+final class ScholiumEditorCommandPort: ObservableObject {
+    let token = UUID()
+    weak var session: DocumentSessionModel?
+    var target: DocumentEditingTarget?
+    var actions: ScholiumFocusedEditorActions?
 }
 
 extension FocusedValues {
@@ -61,8 +66,4 @@ extension FocusedValues {
         set { self[ScholiumWorkspaceWindowActionsFocusedKey.self] = newValue }
     }
 
-    var scholiumEditorActions: ScholiumFocusedEditorActions? {
-        get { self[ScholiumFocusedEditorActionsKey.self] }
-        set { self[ScholiumFocusedEditorActionsKey.self] = newValue }
-    }
 }

@@ -267,6 +267,86 @@ final class WindowModel: ObservableObject {
         documentNavigationHistoryController: documentNavigationHistoryController,
         workspaceProjectionController: workspaceProjectionController
     )
+    private weak var editorCommandPort: ScholiumEditorCommandPort?
+
+    var currentEditorActions: ScholiumFocusedEditorActions? {
+        guard let port = editorCommandPort,
+            let actions = resolvedEditorActions(for: port.token)
+        else { return nil }
+        let token = port.token
+        return ScholiumFocusedEditorActions(
+            documentID: actions.documentID,
+            isComposing: actions.isComposing,
+            isAvailable: { [weak self] command in
+                self?.resolvedEditorActions(for: token)?.isAvailable(command) == true
+            },
+            perform: { [weak self] command in
+                self?.resolvedEditorActions(for: token)?.perform(command)
+            },
+            performWithArgument: { [weak self] command, argument in
+                self?.resolvedEditorActions(for: token)?.performWithArgument(command, argument)
+            },
+            importImage: { [weak self] in self?.resolvedEditorActions(for: token)?.importImage() },
+            indexImage: { [weak self] in self?.resolvedEditorActions(for: token)?.indexImage() },
+            canAttachDocument: actions.canAttachDocument,
+            attachDocumentCopy: { [weak self] in
+                self?.resolvedEditorActions(for: token)?.attachDocumentCopy()
+            },
+            referenceOriginalDocument: { [weak self] in
+                self?.resolvedEditorActions(for: token)?.referenceOriginalDocument()
+            },
+            canEditFrontmatter: actions.canEditFrontmatter,
+            goToFrontmatter: { [weak self] in
+                self?.resolvedEditorActions(for: token)?.goToFrontmatter()
+            }
+        )
+    }
+
+    func registerEditorActions(
+        port: ScholiumEditorCommandPort,
+        target: DocumentEditingTarget,
+        session: DocumentSessionModel,
+        actions: ScholiumFocusedEditorActions,
+        change: ScholiumEditorCommandRegistrationChange
+    ) {
+        if change == .refresh, editorCommandPort?.token != port.token { return }
+        guard documentController.selectedDocument?.editingTarget == target,
+            documentController.retainsSession(session, for: target)
+        else { return }
+        port.target = target
+        port.session = session
+        port.actions = actions
+        editorCommandPort = port
+        commandObservation.editorActionsDidChange()
+    }
+
+    func unregisterEditorActions(token: UUID) {
+        guard editorCommandPort?.token == token else { return }
+        clearEditorActions()
+    }
+
+    func releaseEditorActionsIfInvalid() {
+        guard let port = editorCommandPort else { return }
+        if resolvedEditorActions(for: port.token) == nil { clearEditorActions() }
+    }
+
+    func clearEditorActions() {
+        guard let port = editorCommandPort else { return }
+        port.actions = nil
+        editorCommandPort = nil
+        commandObservation.editorActionsDidChange()
+    }
+
+    private func resolvedEditorActions(for token: UUID) -> ScholiumFocusedEditorActions? {
+        guard let port = editorCommandPort,
+            port.token == token,
+            let target = port.target,
+            let session = port.session,
+            documentController.selectedDocument?.editingTarget == target,
+            documentController.retainsSession(session, for: target)
+        else { return nil }
+        return port.actions
+    }
     let attentionPresentationState = AttentionPresentationState()
     lazy var attentionPopoverSession = AttentionPopoverSession(
         presentation: attentionPresentationState,

@@ -349,6 +349,103 @@ struct AppCompositionRootTests {
         #expect(window.documentTabController.selectedTab?.document == first)
     }
 
+    @Test("Aborted tab close restores a retained unavailable Note and its vault")
+    func unavailableTabRollback() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-TabRollback-\(UUID().uuidString)")
+        let fixture = root.appendingPathComponent("triptych")
+        let analyses = fixture.appendingPathComponent("analyses")
+        let topics = fixture.appendingPathComponent("topics")
+        let works = fixture.appendingPathComponent("works")
+        for directory in [analyses, topics, works] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "# A\n".write(to: analyses.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
+        try "# B\n".write(to: topics.appendingPathComponent("B.md"), atomically: true, encoding: .utf8)
+        let store = makeTestWorkspaceStore()
+        let configured = try await store.configureTriptychCapabilities(
+            paperAnalysisURL: analyses, topicKnowledgeURL: topics, outputURL: works,
+            portableContainerURL: fixture, triptychName: "Tab rollback")
+        let window = WindowModel(workspaceStore: store, requestedTriptychID: configured.id)
+        await window.restoreWindowSession(id: UUID())
+        let analysisVault = try #require(configured.assignment.vault(for: .paperAnalysis))
+        let topicVault = try #require(configured.assignment.vault(for: .topicKnowledge))
+        try await waitUntil("both rollback notes are indexed") {
+            window.workspaceProjectionController.cachedNote(
+                vaultID: analysisVault.id, stableNoteID: nil, relativePath: "A.md") != nil
+                && window.workspaceProjectionController.cachedNote(
+                    vaultID: topicVault.id, stableNoteID: nil, relativePath: "B.md") != nil
+        }
+        let a = WindowSelectedDocument.unavailable(vaultID: analysisVault.id, relativePath: "A.md")
+        let b = WindowSelectedDocument.unavailable(vaultID: topicVault.id, relativePath: "B.md")
+        let aSnapshot = try #require(
+            try await window.documentController.noteSnapshot(
+                VaultQualifiedNoteID(vaultID: analysisVault.id, relativePath: "A.md")))
+        let bSnapshot = try #require(
+            try await window.documentController.noteSnapshot(
+                VaultQualifiedNoteID(vaultID: topicVault.id, relativePath: "B.md")))
+        window.documentController.selectUnavailableDocument(aSnapshot)
+        let originalSession = window.documentController.session(for: a.editingTarget)
+        window.documentTabController.activate(document: a, title: "A", toolTip: "A.md", placement: .newTab)
+        let aTabID = try #require(window.documentTabController.selectedTabID)
+        window.documentController.selectUnavailableDocument(bSnapshot)
+        window.documentTabController.activate(document: b, title: "B", toolTip: "B.md", placement: .newTab)
+        let bTabID = try #require(window.documentTabController.selectedTabID)
+        window.documentController.selectUnavailableDocument(aSnapshot)
+        window.documentTabController.selectTab(withID: aTabID)
+        originalSession.scrollFraction = 0.63
+        originalSession.findPresentation.setQuery("retain this draft")
+        var changedSelectionDuringNeighborActivation = false
+        let selectionObservation = window.documentController.$selectedDocument.dropFirst().sink { document in
+            guard document == b, !changedSelectionDuringNeighborActivation else { return }
+            changedSelectionDuringNeighborActivation = true
+            window.documentTabController.selectTab(withID: bTabID)
+        }
+        window.closeDocumentTab(withID: aTabID)
+        await window.waitForDocumentTransitions()
+        selectionObservation.cancel()
+        #expect(changedSelectionDuringNeighborActivation)
+        #expect(window.documentTabController.tabs.map(\.id).contains(aTabID))
+        #expect(window.documentController.session(for: a.editingTarget) === originalSession)
+        #expect(originalSession.scrollFraction == 0.63)
+        #expect(originalSession.findPresentation.query == "retain this draft")
+        #expect(window.documentTabController.selectedTabID == bTabID)
+        #expect(window.documentController.selectedDocument == b)
+
+        window.documentTabController.selectTab(withID: aTabID)
+        window.documentController.selectWorkspace(.paperAnalysis)
+        window.documentController.rememberPresentationMode(.read)
+        window.documentController.selectWorkspace(.topicKnowledge)
+        window.documentController.rememberPresentationMode(.source)
+        window.shellState.selectDocumentWorkspace(.topicKnowledge)
+        window.shellState.selectInspectorMode(.related)
+
+        #expect(window.restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: aSnapshot))
+        #expect(window.documentController.selectedDocument == a)
+        #expect(window.documentController.unavailableSnapshot?.fingerprint == aSnapshot.fingerprint)
+        #expect(window.documentController.session(for: a.editingTarget) === originalSession)
+        #expect(window.documentController.currentPresentationMode == .read)
+        #expect(window.shellState.inspector.mode == .links)
+
+        try "# A changed externally\n".write(
+            to: analyses.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
+        await window.refreshWindowProjection()
+        try await waitUntil("the changed rollback source is indexed") {
+            window.workspaceProjectionController.cachedNote(
+                vaultID: analysisVault.id, stableNoteID: nil, relativePath: "A.md"
+            )?.fingerprint != aSnapshot.fingerprint
+        }
+        window.documentController.selectUnavailableDocument(bSnapshot)
+        #expect(!window.restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: aSnapshot))
+        #expect(window.documentController.selectedDocument == nil)
+        window.selectDocumentTab(withID: aTabID)
+        try await waitUntil("the selected tab can be retried against current source") {
+            window.documentController.selectedDocument == a
+                && window.documentController.unavailableSnapshot?.fingerprint != aSnapshot.fingerprint
+        }
+    }
+
     @Test("Opening an existing auxiliary document reuses its location without touching the main tabs")
     func separateOpeningReusesLocation() async throws {
         let store = makeTestWorkspaceStore()

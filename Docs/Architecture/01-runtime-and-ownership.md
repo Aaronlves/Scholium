@@ -203,10 +203,16 @@ visible; attachment storage exclusion is shared with MCP without changing files.
 ### Document tabs and native shell
 
 Each window has one ordered tab collection and guarded selection across vaults.
-Native content tabs render committed state; Document owns retained sessions.
+Native tabs render committed state; Document owns retained sessions and Find.
+WindowModel resolves view-registered editor commands by selected target, exact
+session and registration identity; stale view teardown cannot revoke a replacement.
 Transfer moves the same session, autosave and observation owner after source
-capture and old-WebView detachment. Failed transfer restores membership. Separate
-document windows retain the same close/quit source guards without inheriting
+capture and old-WebView detachment. Close commits revalidate tab/document identity;
+failed transfer restores membership. View teardown checks session ownership before
+clearing transferred Find presentation. The shared window lifecycle registry holds
+termination admission through all window flushes and the native reply; close and
+termination preparation exclude new transfers. Separate document windows share
+close/quit source guards without inheriting
 sidebars or native whole-window tab grouping. Final persistence stores only open
 tab identities and fingerprint-bound lightweight position/focus, never source,
 Undo or closed-tab state.
@@ -218,6 +224,8 @@ accessibility and responder participation. Window state mirrors native visibilit
 for commands but does not continuously reassert geometry. Focus Layout captures
 and restores peripheral/toolbar state once; native fullscreen locks that
 transaction and restores preceding windowed focus on exit or failed entry.
+Collapsing a focused peripheral hands input to the current document's focus owner
+when available; an empty document region retains window/menu focus.
 
 Toolbar, overflow and menu availability share one exact-window derivation and
 dispatch guard. Target changes close revision-bound popovers. Invalidation detaches

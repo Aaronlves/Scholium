@@ -114,6 +114,38 @@ struct ContentView: View {
                 )
             }
         }
+        .focusedSceneValue(
+            \.scholiumSearchActions,
+            ScholiumSearchActions(
+                advanced: { searchController.beginAdvanced() }
+            )
+        )
+        .onChange(of: searchController.focusRequestID) { _, _ in
+            switch searchController.presentation {
+            case .sidebar:
+                guard !appState.isDetachedDocumentWindow else { return }
+                if shellState.isFocusLayoutLockedByFullScreen { return }
+                _ = shellState.activateSidebar(.library)
+                windowCoordinator.actions.setLibraryVisible(true)
+                windowCoordinator.closeAdvancedSearch()
+            case .advanced:
+                windowCoordinator.presentAdvancedSearch {
+                    ResearchSearchSurface(
+                        controller: discoveryController, searchController: searchController,
+                        shellState: shellState, workspaceProjectionController: workspaceProjectionController,
+                        presentation: .advanced,
+                        revealDocument: { windowCoordinator.makeKeyAndOrderFront() }
+                    ) {
+                        EmptyView()
+                    }
+                }
+            case .inactive:
+                break
+            }
+        }
+        .onChange(of: searchController.presentation) { _, presentation in
+            if presentation == .inactive { windowCoordinator.closeAdvancedSearch() }
+        }
     }
 
     private var workspaceShell: some View {
@@ -246,37 +278,6 @@ struct ContentView: View {
             if appState.isLoading {
                 LoadingOverlay()
             }
-        }
-        .focusedSceneValue(
-            \.scholiumSearchActions,
-            ScholiumSearchActions(
-                advanced: { searchController.beginAdvanced() }
-            )
-        )
-        .onChange(of: searchController.focusRequestID) { _, _ in
-            switch searchController.presentation {
-            case .sidebar:
-                if shellState.isFocusLayoutLockedByFullScreen { return }
-                _ = shellState.activateSidebar(.library)
-                windowCoordinator.actions.setLibraryVisible(true)
-                windowCoordinator.closeAdvancedSearch()
-            case .advanced:
-                windowCoordinator.presentAdvancedSearch {
-                    ResearchSearchSurface(
-                        controller: discoveryController, searchController: searchController,
-                        shellState: shellState, workspaceProjectionController: workspaceProjectionController,
-                        presentation: .advanced,
-                        revealDocument: { windowCoordinator.makeKeyAndOrderFront() }
-                    ) {
-                        EmptyView()
-                    }
-                }
-            case .inactive:
-                break
-            }
-        }
-        .onChange(of: searchController.presentation) { _, presentation in
-            if presentation == .inactive { windowCoordinator.closeAdvancedSearch() }
         }
     }
 
@@ -475,6 +476,14 @@ struct ContentView: View {
                 case .error:
                     appState.reportOperationIssue(message, kind: .error)
                 }
+            },
+            registerEditorActions: { port, target, session, actions, change in
+                appState.registerEditorActions(
+                    port: port, target: target, session: session, actions: actions, change: change
+                )
+            },
+            unregisterEditorActions: { token in
+                appState.unregisterEditorActions(token: token)
             }
         )
     }

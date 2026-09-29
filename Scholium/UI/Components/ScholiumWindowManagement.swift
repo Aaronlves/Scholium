@@ -165,6 +165,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
     private var activeWorkspaceWindowID: UUID?
     private let policy: ScholiumLifecyclePolicy
     @Published private(set) var workspaceContextRevision: UInt64 = 0
+    private(set) var isTerminationAttemptInProgress = false
 
     init(policy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()) {
         self.policy = policy
@@ -309,6 +310,14 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
             : workspaceContextRevision + 1
     }
 
+    func beginTerminationAttempt() {
+        isTerminationAttemptInProgress = true
+    }
+
+    func endTerminationAttempt() {
+        isTerminationAttemptInProgress = false
+    }
+
     func flushAll() async throws {
         let flushers = entries.values.compactMap { entry in
             entry.isRegistered ? entry.flusher : nil
@@ -450,6 +459,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
     private var attentionPresenter: @MainActor (AttentionPresentationRequest) -> Void = { _ in }
+    var isNativeCloseInProgress: Bool {
+        flushInFlight || closeIsAuthorized || didFinalizeWindowAttachments
+    }
     #if DEBUG
         private var qaFocusNotificationToken: Int32?
     #endif
@@ -685,6 +697,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     ) -> Bool {
         guard !didFinalizeWindowAttachments else { return false }
         didFinalizeWindowAttachments = true
+        appState.clearEditorActions()
         let shouldTerminateApplication = terminatesApplicationAfterClose
         terminatesApplicationAfterClose = false
         let forwardedDelegate = previousDelegate
@@ -748,7 +761,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private func beginFullScreenFocus() {
         guard let window, splitController != nil || appState.isDetachedDocumentWindow else { return }
-        focusLayout.beginFullScreen(in: window, split: splitController)
+        focusLayout.beginFullScreen(in: window, split: splitController) { [weak self, weak window] in
+            guard let self, let window else { return }
+            self.focusCurrentDocument(in: window)
+        }
         publishFocusLayout()
     }
 
@@ -872,7 +888,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if focusLayout.isActive {
             exitFocusLayout()
         } else {
-            focusLayout.enter(in: window, split: splitController)
+            focusLayout.enter(in: window, split: splitController) { [weak self, weak window] in
+                guard let self, let window else { return }
+                self.focusCurrentDocument(in: window)
+            }
             appState.shellState.recordFocusLayout(focusLayout.isActive)
         }
         NSAccessibility.post(
@@ -890,6 +909,46 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         guard !focusLayout.isFullScreenEnforced, focusLayout.isActive, let window else { return }
         focusLayout.exit(in: window, split: splitController)
         appState.shellState.recordFocusLayout(false)
+    }
+
+    /// The document session owns Edit/Source focus, including its retained
+    /// title/body choice. Review uses the selected visible native WebKit host.
+    /// A presentation without a visible document host leaves window/menu
+    /// focus available rather than traversing to an unrelated hidden control.
+    private func focusCurrentDocument(in window: NSWindow) {
+        if appState.presentedDocumentMode != .read,
+            let descriptor = appState.currentDocumentDescriptor
+        {
+            let editor = appState.documentController.session(for: descriptor).editorSession
+            if editor.isLoaded, !editor.isComposing {
+                editor.focusPreferred()
+                return
+            }
+        }
+        let documentRoot =
+            splitController?.nativeSplitViewController.splitViewItems
+            .dropFirst().first?.viewController.view ?? window.contentView
+        if let documentRoot,
+            let webView = visibleDocumentWebView(in: documentRoot, window: window)
+        {
+            _ = window.makeFirstResponder(webView)
+        }
+    }
+
+    private func visibleDocumentWebView(in view: NSView, window: NSWindow) -> NSView? {
+        if let container = view as? DocumentWebViewContainer,
+            container.surfaceVisibility.isActive,
+            !container.isHiddenOrHasHiddenAncestor,
+            container.webView.window === window
+        {
+            return container.webView
+        }
+        for child in view.subviews {
+            if let webView = visibleDocumentWebView(in: child, window: window) {
+                return webView
+            }
+        }
+        return nil
     }
 
     private func markReadyIfPossible() {
@@ -989,6 +1048,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard !appState.transferInProgress else { return false }
         if closeIsAuthorized {
             closeIsAuthorized = false
             return previousDelegate?.windowShouldClose?(sender) ?? true

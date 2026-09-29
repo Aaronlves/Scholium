@@ -90,7 +90,7 @@ private struct ScholiumCloseTabCommandContent: View {
 private struct ScholiumFileDocumentCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
-    @FocusedValue(\.scholiumEditorActions) private var editorActions
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
 
     var body: some View {
         Button("Import Markdown…") { appState?.showMarkdownImporter = true }
@@ -145,7 +145,7 @@ private struct ScholiumFileDocumentCommandContent: View {
 private struct ScholiumPasteboardCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
-    @FocusedValue(\.scholiumEditorActions) private var editorActions
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
 
     var body: some View {
         Button("Paste as Markdown") {
@@ -157,26 +157,30 @@ private struct ScholiumPasteboardCommandContent: View {
         .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
         Divider()
         Menu("Find") {
-            Button("Find…") { editorActions?.presentFind() }
+            Button("Find…") { appState?.presentCurrentDocumentFind() }
                 .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(.find)
-                .disabled(editorActions == nil)
-            Button("Find and Replace…") { editorActions?.presentReplace() }
-                .scholiumActivationPointer()
-                .disabled(editorActions?.allowsReplace != true)
+                .disabled(appState?.documentController.canFindSelectedDocument != true)
+            Button("Find and Replace…") {
+                appState?.documentController.presentReplacementFindForSelectedDocument()
+            }
+            .scholiumActivationPointer()
+            .disabled(appState?.documentController.canReplaceInSelectedDocument != true)
             Divider()
-            Button("Find Next") { editorActions?.findNext() }
+            Button("Find Next") { appState?.documentController.performSelectedDocumentFind(.next) }
                 .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(.findNext)
-                .disabled(editorActions == nil)
-            Button("Find Previous") { editorActions?.findPrevious() }
+                .disabled(appState?.documentController.canFindSelectedDocument != true)
+            Button("Find Previous") { appState?.documentController.performSelectedDocumentFind(.previous) }
                 .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(.findPrevious)
-                .disabled(editorActions == nil)
-            Button("Use Selection for Find") { editorActions?.useSelectionForFind() }
-                .scholiumActivationPointer()
-                .scholiumKeyboardShortcut(.useSelectionForFind)
-                .disabled(editorActions == nil)
+                .disabled(appState?.documentController.canFindSelectedDocument != true)
+            Button("Use Selection for Find") {
+                appState?.documentController.performSelectedDocumentFind(.useSelection)
+            }
+            .scholiumActivationPointer()
+            .scholiumKeyboardShortcut(.useSelectionForFind)
+            .disabled(appState?.documentController.canFindSelectedDocument != true)
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil)
@@ -200,7 +204,8 @@ private struct ScholiumPasteboardCommandContent: View {
 
 private struct ScholiumTextFormattingCommandContent: View {
     let commandRevision: UInt64
-    @FocusedValue(\.scholiumEditorActions) private var editorActions
+    @FocusedObject private var appState: WindowModel?
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
 
     var body: some View {
         Button("Bold") { editorActions?.perform(.bold) }
@@ -306,7 +311,7 @@ private struct ScholiumInsertCommandContent: View {
     @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
     let commandRevision: UInt64
-    @FocusedValue(\.scholiumEditorActions) private var editorActions
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
 
     var body: some View {
         Button("Link") { editorActions?.perform(.standardLink) }
@@ -387,7 +392,7 @@ private struct ScholiumViewCommandContent: View {
     @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
-    @FocusedValue(\.scholiumEditorActions) private var editorActions
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
 
     var body: some View {
         Button("Back") {
@@ -634,7 +639,7 @@ private struct ScholiumAttentionCommandContent: View {
 #if DEBUG
     private struct ScholiumQACommandContent: View {
         @FocusedObject private var appState: WindowModel?
-        @FocusedValue(\.scholiumEditorActions) private var editorActions
+        private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
 
         var body: some View {
             if qaEditorFaultsAreEnabled {

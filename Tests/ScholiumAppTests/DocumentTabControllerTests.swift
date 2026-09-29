@@ -126,9 +126,41 @@ struct DocumentTabControllerTests {
         let second = try add(fixtureDocument(path: "Second.md"), to: controller)
         let plan = try #require(controller.closePlan(forTabWithID: second))
         controller.selectTab(withID: first)
-        controller.apply(plan)
+        #expect(!controller.apply(plan))
         #expect(controller.tabs.count == 2)
         #expect(controller.selectedTabID == first)
+    }
+
+    @Test("A replaced tab cannot satisfy the old document's close plan")
+    func replacedClosingDocumentInvalidatesPlan() throws {
+        let controller = DocumentTabController()
+        let old = fixtureDocument(path: "Old.md")
+        let new = fixtureDocument(path: "New.md")
+        let id = try add(old, to: controller)
+        let plan = try #require(controller.closePlan(forTabWithID: id))
+
+        controller.activate(document: new, title: "New", toolTip: "New.md", placement: .replaceSelected)
+
+        #expect(controller.selectedTabID == id)
+        #expect(!controller.apply(plan))
+        #expect(controller.tabs.map(\.document) == [new])
+    }
+
+    @Test("A changed neighbor cannot commit an awaited selected-tab close")
+    func reorderedNeighborInvalidatesPlan() throws {
+        let controller = DocumentTabController()
+        let first = try add(fixtureDocument(path: "First.md"), to: controller)
+        let closing = try add(fixtureDocument(path: "Closing.md"), to: controller)
+        let neighbor = try add(fixtureDocument(path: "Neighbor.md"), to: controller)
+        controller.selectTab(withID: closing)
+        let plan = try #require(controller.closePlan(forTabWithID: closing))
+        #expect(plan.selectedTabIDAfterClose == neighbor)
+
+        controller.moveTab(withID: neighbor, to: 0)
+
+        #expect(!controller.apply(plan))
+        #expect(controller.tabs.map(\.id) == [neighbor, first, closing])
+        #expect(controller.selectedTabID == closing)
     }
 
     @Test("Closing a selected middle tab chooses its next neighbor")

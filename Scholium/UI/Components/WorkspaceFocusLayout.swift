@@ -24,9 +24,13 @@ final class WorkspaceFocusLayout {
     var restoredLibraryVisibility: Bool? { snapshot?.panes?.libraryVisible }
     var restoredInspectorVisibility: Bool? { snapshot?.panes?.inspectorVisible }
 
-    func beginFullScreen(in window: NSWindow, split: (any ScholiumWorkspaceSplitControlling)?) {
+    func beginFullScreen(
+        in window: NSWindow,
+        split: (any ScholiumWorkspaceSplitControlling)?,
+        focusDocument: (@MainActor () -> Void)? = nil
+    ) {
         if focusBeforeFullScreen == nil { focusBeforeFullScreen = isActive }
-        enter(in: window, split: split)
+        enter(in: window, split: split, focusDocument: focusDocument)
         // AppKit may recreate chrome during the transition. Do not recapture
         // its temporary state or replace the pre-full-screen layout snapshot.
         keepChromeHidden(in: window)
@@ -56,7 +60,11 @@ final class WorkspaceFocusLayout {
         exit(in: window, split: split)
     }
 
-    func enter(in window: NSWindow, split: (any ScholiumWorkspaceSplitControlling)?) {
+    func enter(
+        in window: NSWindow,
+        split: (any ScholiumWorkspaceSplitControlling)?,
+        focusDocument: (@MainActor () -> Void)? = nil
+    ) {
         guard snapshot == nil else { return }
         window.layoutIfNeeded()
         let panes = split.map {
@@ -75,15 +83,25 @@ final class WorkspaceFocusLayout {
         let responder =
             (window.firstResponder as? NSTextView)?.delegate as? NSView
             ?? window.firstResponder as? NSView
+        let responderIsInPeripheral =
+            responder.map { responder in
+                guard let items = split?.nativeSplitViewController.splitViewItems,
+                    items.count >= 3
+                else { return false }
+                return [items[0], items[items.count - 1]].contains { item in
+                    let pane = item.viewController.view
+                    return responder === pane || responder.isDescendant(of: pane)
+                }
+            } ?? false
         // One layout change, with no independent animation or document reload.
         split?.setLibraryVisible(false, animated: false)
         split?.setResearchInspectorVisible(false, animated: false)
         window.toolbar?.isVisible = false
         window.titlebarAppearsTransparent = true
         window.layoutIfNeeded()
-        if responder?.isHiddenOrHasHiddenAncestor == true {
+        if responderIsInPeripheral || responder?.isHiddenOrHasHiddenAncestor == true {
             window.makeFirstResponder(nil)
-            window.selectNextKeyView(nil)
+            focusDocument?()
         }
     }
 

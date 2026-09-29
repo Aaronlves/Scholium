@@ -18,6 +18,45 @@ extension WindowModel {
         await documentTransitionCoordinator.waitForIdle()
     }
 
+    /// A failed async close must leave the displayed document aligned with
+    /// the authoritative tab selection, including a tab replaced while waiting.
+    @discardableResult
+    func restoreAuthoritativeTabSelection(
+        unavailableSnapshotAtStart: WorkspaceNoteSnapshot? = nil
+    ) -> Bool {
+        guard let selected = documentTabController.selectedTab?.document else {
+            documentController.clearSelectionAfterClosingLastTab()
+            reconcileDocumentSessionLeases()
+            return true
+        }
+        if documentController.selectedDocument != selected {
+            let restored =
+                documentController.selectRetainedDocument(selected)
+                || unavailableSnapshotAtStart.map {
+                    workspaceProjectionController.cachedNote(
+                        vaultID: $0.id.vaultID,
+                        stableNoteID: nil,
+                        relativePath: $0.id.relativePath
+                    )?.fingerprint == $0.fingerprint
+                        && documentController.restoreRetainedUnavailableDocument(selected, snapshot: $0)
+                } == true
+            guard restored else {
+                documentController.clearSelectionAfterClosingLastTab()
+                reconcileDocumentSessionLeases()
+                return false
+            }
+        }
+        if let vaultID = selected.vaultID,
+            let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
+            let workspace = workspaceSlot(for: vault)
+        {
+            documentController.selectWorkspace(workspace)
+            shellState.selectDocumentWorkspace(workspace)
+        }
+        reconcileDocumentSessionLeases()
+        return true
+    }
+
     func requestMoveDocumentToWindow(tabID: UUID? = nil, at point: NSPoint? = nil) {
         guard let id = tabID ?? documentTabController.selectedTabID else { return }
         Task { @MainActor [weak self] in
@@ -43,20 +82,34 @@ extension WindowModel {
             let plan = documentTabController.closePlan(forTabWithID: tabID)
         else { throw DocumentControllerError.documentUnavailable }
         let previous = documentController.selectedDocument
+        let unavailableSnapshotAtStart = documentController.unavailableSnapshot
         if previous == tab.document {
             documentNavigationHistoryController.captureCurrent(
                 document: tab.document,
                 position: documentController.navigationPosition(for: tab.document)
             )
         }
-        if let next = plan.documentToActivate {
-            try await activateResolvedDocument(next, tabActivation: .preserveTabMembership)
+        do {
+            if let next = plan.documentToActivate {
+                try await activateResolvedDocument(next, tabActivation: .preserveTabMembership)
+            }
+        } catch {
+            restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
+            throw error
         }
-        guard let transfer = documentController.takeSessionForTransfer(tab.document) else {
-            if let previous { _ = documentController.selectRetainedDocument(previous) }
+        guard documentTabController.closePlan(forTabWithID: tabID) == plan else {
+            restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
             throw DocumentControllerError.documentUnavailable
         }
-        documentTabController.apply(plan)
+        guard let transfer = documentController.takeSessionForTransfer(tab.document) else {
+            restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
+            throw DocumentControllerError.documentUnavailable
+        }
+        guard documentTabController.apply(plan) else {
+            documentController.receiveSessionTransfer(transfer, selecting: false)
+            restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
+            throw DocumentControllerError.documentUnavailable
+        }
         reconcileDocumentSessionLeases()
         return transfer
     }
@@ -88,7 +141,9 @@ extension WindowModel {
         historyPosition: DocumentNavigationVisitPosition? = nil,
         onSelection: (@MainActor (Bool) -> Void)? = nil
     ) {
-        if documentTabController.selectedTabID == id {
+        if documentTabController.selectedTabID == id,
+            documentController.selectedDocument == documentTabController.selectedTab?.document
+        {
             if let historyPosition,
                 let document = documentTabController.selectedTab?.document
             {
@@ -100,7 +155,8 @@ extension WindowModel {
         var activated = false
         enqueueDocumentTransition(preparation: .preserveSelectedDocument) { [weak self] in
             guard let self,
-                self.documentTabController.selectedTabID != id,
+                self.documentTabController.selectedTabID != id
+                    || self.documentController.selectedDocument != self.documentTabController.selectedTab?.document,
                 let tab = self.documentTabController.tabs.first(where: { $0.id == id })
             else { return }
             try await self.activateDocument(
@@ -173,17 +229,27 @@ extension WindowModel {
                 document: closingDocument,
                 position: self.documentController.navigationPosition(for: closingDocument)
             )
-            guard let plan = self.documentTabController.closePlan(forTabWithID: id) else {
-                return
-            }
+            guard let plan = self.documentTabController.closePlan(forTabWithID: id),
+                plan.closingDocument == closingDocument
+            else { throw DocumentControllerError.documentUnavailable }
+            let unavailableSnapshotAtStart = self.documentController.unavailableSnapshot
             if let documentToActivate = plan.documentToActivate {
-                try await self.activateDocument(
-                    documentToActivate, tabActivation: .preserveTabMembership
-                )
-            } else if plan.selectedTabIDAfterClose == nil {
+                do {
+                    try await self.activateDocument(
+                        documentToActivate, tabActivation: .preserveTabMembership
+                    )
+                } catch {
+                    self.restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
+                    throw error
+                }
+            }
+            guard self.documentTabController.apply(plan) else {
+                self.restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
+                throw DocumentControllerError.documentUnavailable
+            }
+            if plan.selectedTabIDAfterClose == nil {
                 self.documentController.clearSelectionAfterClosingLastTab()
             }
-            self.documentTabController.apply(plan)
             self.documentController.endClosedPresentation(of: closingDocument)
             self.reconcileDocumentSessionLeases()
             Task { @MainActor [weak self] in

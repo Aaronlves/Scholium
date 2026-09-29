@@ -90,7 +90,6 @@ final class DocumentSessionModel: ObservableObject {
     @Published var failedReadFingerprint: String?
     @Published var previewCatalog: DocumentPreviewCatalog?
     @Published var isAttachingDocument = false
-    let findRequested = PassthroughSubject<Void, Never>()
     let findPresentation = DocumentFindPresentationModel()
     var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
@@ -481,7 +480,8 @@ final class DocumentSessionModel: ObservableObject {
         resetScrollPosition()
         readSelection = nil
         findPresentation.resetAfterClose()
-        let retainsSourceWork = hasUnsavedChanges || isSavingEdit
+        let retainsSourceWork =
+            hasUnsavedChanges || isSavingEdit
             || activeSaveTask != nil || pendingEditorCommit != nil
             || conflict != nil || canRetrySave || editorSession.isComposing
         editorSession.endClosedPresentation(preservingSourceWork: retainsSourceWork)

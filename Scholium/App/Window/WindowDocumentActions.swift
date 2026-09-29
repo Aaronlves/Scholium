@@ -19,8 +19,8 @@ extension WindowModel {
     }
 
     func presentCurrentDocumentFind() {
-        guard let descriptor = currentDocumentDescriptor else { return }
-        documentController.session(for: descriptor).findRequested.send()
+        guard currentNote != nil else { return }
+        documentController.performSelectedDocumentFind(.present)
     }
 
     func addCurrentNoteToVisibleChat() async {

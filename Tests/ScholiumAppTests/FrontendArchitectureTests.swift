@@ -391,6 +391,25 @@ struct FrontendArchitectureTests {
         #expect(container.accessibilityChildren()?.isEmpty == false)
     }
 
+    @Test("A recycled hidden WebKit page is visible in a new active document container")
+    func recycledHiddenWebViewBecomesActive() {
+        let webView = WKWebView(frame: .zero)
+        let previous = DocumentWebViewContainer(webView: webView)
+        previous.setSurfaceVisibility(.retained)
+        #expect(webView.isHidden)
+
+        let replacement = DocumentWebViewContainer(webView: webView)
+        replacement.setSurfaceVisibility(.active)
+
+        #expect(!replacement.isHidden)
+        #expect(!webView.isHidden)
+        let children = replacement.accessibilityChildren() ?? []
+        #expect(
+            children.contains {
+                ($0 as? WKWebView) === webView
+            })
+    }
+
     @Test("Read readiness preserves the native per-document accessibility identity")
     func readReadinessKeepsDocumentIdentityQueryable() throws {
         let repository = URL(fileURLWithPath: #filePath)

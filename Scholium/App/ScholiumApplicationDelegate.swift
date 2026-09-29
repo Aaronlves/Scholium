@@ -4,7 +4,6 @@ import SwiftUI
 @MainActor
 final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
-    private var terminationInFlight = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         SystemNotificationService.shared.start()
@@ -15,21 +14,21 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !windowLifecycleRegistry.isTerminationAttemptInProgress else { return .terminateLater }
         guard
             windowLifecycleRegistry.hasRegisteredWindows
                 || ExternalMarkdownWindowRegistry.shared.hasOpenWindows
         else {
             return .terminateNow
         }
-        guard !terminationInFlight else { return .terminateLater }
-        terminationInFlight = true
+        windowLifecycleRegistry.beginTerminationAttempt()
         Task { @MainActor in
             do {
                 try await windowLifecycleRegistry.flushAll()
                 try await ExternalMarkdownWindowRegistry.shared.flushAll()
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
-                terminationInFlight = false
+                windowLifecycleRegistry.endTerminationAttempt()
                 sender.reply(toApplicationShouldTerminate: false)
             }
         }

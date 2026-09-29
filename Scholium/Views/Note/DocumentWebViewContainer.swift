@@ -43,11 +43,15 @@ final class DocumentWebViewContainer: NSView {
     /// accessibility. SwiftUI hit-testing and z-order are not sufficient for
     /// NSView-backed WebKit content.
     func setSurfaceVisibility(_ visibility: DocumentSurfaceVisibility) {
-        guard surfaceVisibility != visibility else { return }
-        surfaceVisibility = visibility
         let isRetained = !visibility.isActive
-        isHidden = isRetained
-        webView.isHidden = isRetained
+        guard
+            surfaceVisibility != visibility
+                || isHidden != isRetained
+                || webView.isHidden != isRetained
+        else { return }
+        surfaceVisibility = visibility
+        if isHidden != isRetained { isHidden = isRetained }
+        if webView.isHidden != isRetained { webView.isHidden = isRetained }
         needsLayout = true
     }
 

@@ -140,33 +140,38 @@ extension WindowModel {
             leasedDocuments: documentTabController.tabs.map(\.document),
             selectedDocument: documentTabController.selectedTab?.document
         )
+        releaseEditorActionsIfInvalid()
     }
 
     func removeDocumentTabs(
         vaultID: UUID,
         removedPaths: Set<String>
     ) async throws {
-        let matchingIDs = Set(
-            documentTabController.tabs.compactMap { tab -> UUID? in
+        let matchingTabs = Dictionary(
+            uniqueKeysWithValues: documentTabController.tabs.compactMap { tab -> (UUID, DocumentEditingTarget)? in
                 guard let descriptor = tab.document.workspaceDescriptor,
                     descriptor.reference.vaultID == vaultID,
                     removedPaths.contains(descriptor.reference.relativePath)
                 else {
                     return nil
                 }
-                return tab.id
+                return (tab.id, tab.document.editingTarget)
             })
-        guard !matchingIDs.isEmpty else {
+        guard !matchingTabs.isEmpty else {
             if currentDocumentVaultID == vaultID {
                 documentController.clearSelection(forRemovedPaths: removedPaths)
             }
             reconcileDocumentSessionLeases()
             return
         }
-        try await removeDocumentTabs(withIDs: matchingIDs)
+        try await removeDocumentTabs(matching: matchingTabs)
     }
 
-    func removeDocumentTabs(withIDs matchingIDs: Set<UUID>) async throws {
+    func removeDocumentTabs(matching expectedTabs: [UUID: DocumentEditingTarget]) async throws {
+        let matchingIDs = Set(
+            documentTabController.tabs.compactMap { tab in
+                expectedTabs[tab.id] == tab.document.editingTarget ? tab.id : nil
+            })
         guard !matchingIDs.isEmpty else {
             reconcileDocumentSessionLeases()
             return
@@ -184,18 +189,26 @@ extension WindowModel {
         if let selectedID, matchingIDs.contains(selectedID),
             let plan = documentTabController.closePlan(forTabWithID: selectedID)
         {
-            let closingDocument = documentTabController.tabs.first(where: { $0.id == selectedID })?.document
+            let closingDocument = plan.closingDocument
+            let unavailableSnapshotAtStart = documentController.unavailableSnapshot
             if let documentToActivate = plan.documentToActivate {
-                try await activateResolvedDocument(
-                    documentToActivate, tabActivation: .preserveTabMembership
-                )
-            } else {
+                do {
+                    try await activateResolvedDocument(
+                        documentToActivate, tabActivation: .preserveTabMembership
+                    )
+                } catch {
+                    restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
+                    throw error
+                }
+            }
+            guard documentTabController.apply(plan) else {
+                restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
+                throw DocumentControllerError.documentUnavailable
+            }
+            if plan.selectedTabIDAfterClose == nil {
                 documentController.clearSelectionAfterClosingLastTab()
             }
-            documentTabController.apply(plan)
-            if let closingDocument {
-                documentController.endClosedPresentation(of: closingDocument)
-            }
+            documentController.endClosedPresentation(of: closingDocument)
         }
         reconcileDocumentSessionLeases()
     }
@@ -205,25 +218,25 @@ extension WindowModel {
     ) {
         guard !documents.isEmpty else { return }
         let targets = Set(documents.map(\.editingTarget))
-        let matchingIDs = Set(
-            documentTabController.tabs.compactMap { tab in
-                targets.contains(tab.document.editingTarget) ? tab.id : nil
+        let matchingTabs = Dictionary(
+            uniqueKeysWithValues: documentTabController.tabs.compactMap { tab -> (UUID, DocumentEditingTarget)? in
+                targets.contains(tab.document.editingTarget) ? (tab.id, tab.document.editingTarget) : nil
             })
-        guard !matchingIDs.isEmpty else { return }
+        guard !matchingTabs.isEmpty else { return }
         documentTransitionCoordinator.enqueueCleanup { [weak self] mayActivateNeighbor in
             guard let self else { return }
             guard mayActivateNeighbor() else {
-                discardExternallyDeletedTabs(withIDs: matchingIDs, targets: targets)
+                discardExternallyDeletedTabs(matching: matchingTabs)
                 return
             }
             activeDocumentTransitionCurrency = mayActivateNeighbor
             defer { activeDocumentTransitionCurrency = nil }
             do {
-                try await removeDocumentTabs(withIDs: matchingIDs)
+                try await removeDocumentTabs(matching: matchingTabs)
             } catch is CancellationError {
-                discardExternallyDeletedTabs(withIDs: matchingIDs, targets: targets)
+                discardExternallyDeletedTabs(matching: matchingTabs)
             } catch {
-                discardExternallyDeletedTabs(withIDs: matchingIDs, targets: targets)
+                discardExternallyDeletedTabs(matching: matchingTabs)
                 reportOperationIssue(
                     String(
                         localized:
@@ -237,21 +250,16 @@ extension WindowModel {
         }
     }
 
-    private func discardExternallyDeletedTabs(
-        withIDs ids: Set<UUID>,
-        targets: Set<DocumentEditingTarget>
-    ) {
-        let closingDocuments = documentTabController.tabs.filter { ids.contains($0.id) }.map(\.document)
+    private func discardExternallyDeletedTabs(matching expectedTabs: [UUID: DocumentEditingTarget]) {
+        let closingTabs = documentTabController.tabs.filter {
+            expectedTabs[$0.id] == $0.document.editingTarget
+        }
+        let ids = Set(closingTabs.map(\.id))
         documentTabController.removeTabs(withIDs: ids)
-        for document in closingDocuments {
-            documentController.endClosedPresentation(of: document)
+        for tab in closingTabs {
+            documentController.endClosedPresentation(of: tab.document)
         }
-        if documentController.selectedDocument.map({
-            targets.contains($0.editingTarget)
-        }) == true {
-            documentController.clearSelectionAfterClosingLastTab()
-        }
-        reconcileDocumentSessionLeases()
+        restoreAuthoritativeTabSelection()
     }
 
     func refreshDocumentTabProjections() {

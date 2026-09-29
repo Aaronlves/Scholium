@@ -26,6 +26,7 @@ struct DocumentTabItem: Identifiable, Equatable, Sendable {
 
 struct DocumentTabClosePlan: Equatable, Sendable {
     let closingTabID: UUID
+    let closingDocument: WindowSelectedDocument
     let selectedTabIDAfterClose: UUID?
     let documentToActivate: WindowSelectedDocument?
 }
@@ -102,7 +103,8 @@ final class DocumentTabController: ObservableObject {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
         guard selectedTabID == id else {
             return DocumentTabClosePlan(
-                closingTabID: id, selectedTabIDAfterClose: selectedTabID,
+                closingTabID: id, closingDocument: tabs[index].document,
+                selectedTabIDAfterClose: selectedTabID,
                 documentToActivate: nil
             )
         }
@@ -110,15 +112,18 @@ final class DocumentTabController: ObservableObject {
             tabs.indices.contains(index + 1)
             ? tabs[index + 1] : (index > 0 ? tabs[index - 1] : nil)
         return DocumentTabClosePlan(
-            closingTabID: id, selectedTabIDAfterClose: neighbor?.id,
+            closingTabID: id, closingDocument: tabs[index].document,
+            selectedTabIDAfterClose: neighbor?.id,
             documentToActivate: neighbor?.document
         )
     }
 
-    func apply(_ plan: DocumentTabClosePlan) {
-        guard closePlan(forTabWithID: plan.closingTabID) == plan else { return }
+    @discardableResult
+    func apply(_ plan: DocumentTabClosePlan) -> Bool {
+        guard closePlan(forTabWithID: plan.closingTabID) == plan else { return false }
         tabs.removeAll { $0.id == plan.closingTabID }
         selectedTabID = plan.selectedTabIDAfterClose
+        return true
     }
 
     /// Removes proven-missing documents without inventing a replacement selection.

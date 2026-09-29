@@ -113,6 +113,122 @@ struct DocumentSessionTransferTests {
         #expect(source.retainedSessionCount == 0)
     }
 
+    @Test("Late source-view cleanup cannot dismiss Find in the destination")
+    func transferredFindPresentationOwnership() throws {
+        let source = DocumentController()
+        let destination = DocumentController()
+        let note = document("Transferred.md")
+        source.selectDocument(note)
+        let session = source.session(for: note.editingTarget)
+        let openingID = session.editorSession.openingPresentationID
+        session.findPresentation.present()
+        let transfer = try #require(source.takeSessionForTransfer(note))
+        destination.receiveSessionTransfer(transfer)
+        #expect(destination.session(for: note.editingTarget) === session)
+
+        // The old host disappears after the same session has moved and Find
+        // has been shown in its new window.
+        source.dismissFindForDisappearingPresentation(
+            target: note.editingTarget, session: session, openingPresentationID: openingID)
+        #expect(session.findPresentation.isPresented)
+
+        // An ordinary retained-tab disappearance still closes its own panel.
+        destination.dismissFindForDisappearingPresentation(
+            target: note.editingTarget, session: session, openingPresentationID: openingID)
+        #expect(!session.findPresentation.isPresented)
+    }
+
+    @Test("Find commands follow the selected retained session across a window transfer")
+    func selectedFindOwnerTransfers() throws {
+        let source = DocumentController()
+        let destination = DocumentController()
+        let note = document("Find.md")
+        source.selectDocument(note)
+        let session = source.session(for: note.editingTarget)
+        #expect(source.canFindSelectedDocument)
+        #expect(!source.canReplaceInSelectedDocument)
+        source.performSelectedDocumentFind(.present)
+        #expect(session.findPresentation.isPresented)
+        source.performSelectedDocumentFind(.next)
+        #expect(session.findPresentation.request?.operation == .execute(.next))
+
+        let transfer = try #require(source.takeSessionForTransfer(note))
+        session.findPresentation.dismiss()
+        source.performSelectedDocumentFind(.present)
+        #expect(!source.canFindSelectedDocument)
+        #expect(!session.findPresentation.isPresented)
+        destination.receiveSessionTransfer(transfer)
+        #expect(destination.session(for: note.editingTarget) === session)
+        destination.performSelectedDocumentFind(.present)
+        #expect(session.findPresentation.isPresented)
+        session.beginEditing(in: .source)
+        #expect(destination.canReplaceInSelectedDocument)
+        destination.presentReplacementFindForSelectedDocument()
+        #expect(session.findPresentation.replacementIsPresented)
+    }
+
+    @Test("A stale selection result cannot change another tab or a newer source")
+    func staleFindSelectionIsRejected() {
+        let controller = DocumentController()
+        let first = document("First Find.md")
+        let second = document("Second Find.md")
+        controller.selectDocument(first)
+        let firstSession = controller.session(for: first.editingTarget)
+        let firstOpeningID = firstSession.editorSession.openingPresentationID
+        controller.selectDocument(second)
+        let secondSession = controller.session(for: second.editingTarget)
+
+        controller.acceptFindSelection(
+            "stale", target: first.editingTarget, session: firstSession,
+            openingPresentationID: firstOpeningID, expectedSource: nil
+        )
+        #expect(firstSession.findPresentation.query.isEmpty)
+        #expect(secondSession.findPresentation.query.isEmpty)
+        controller.performSelectedDocumentFind(
+            .present, expectedTarget: first.editingTarget, expectedSession: firstSession
+        )
+        #expect(!secondSession.findPresentation.isPresented)
+
+        secondSession.beginEditing(in: .source)
+        secondSession.editingSource = "Current source"
+        controller.acceptFindSelection(
+            "stale", target: second.editingTarget, session: secondSession,
+            openingPresentationID: secondSession.editorSession.openingPresentationID,
+            expectedSource: "Earlier source"
+        )
+        #expect(secondSession.findPresentation.query.isEmpty)
+        controller.acceptFindSelection(
+            "stale", target: second.editingTarget, session: secondSession,
+            openingPresentationID: UUID(), expectedSource: "Current source"
+        )
+        #expect(secondSession.findPresentation.query.isEmpty)
+        secondSession.finishEditing()
+        controller.acceptFindSelection(
+            "stale edit", target: second.editingTarget, session: secondSession,
+            openingPresentationID: secondSession.editorSession.openingPresentationID,
+            expectedSource: "Current source"
+        )
+        #expect(secondSession.findPresentation.query.isEmpty)
+        secondSession.beginEditing(in: .source)
+        controller.acceptFindSelection(
+            "current", target: second.editingTarget, session: secondSession,
+            openingPresentationID: secondSession.editorSession.openingPresentationID,
+            expectedSource: "Current source"
+        )
+        #expect(secondSession.findPresentation.query == "current")
+    }
+
+    @Test("Unavailable Review keeps Find in its selected session")
+    func unavailableReviewFind() {
+        let controller = DocumentController()
+        let note = WindowSelectedDocument.unavailable(vaultID: UUID(), relativePath: "Unavailable.md")
+        controller.selectDocument(note)
+        let session = controller.session(for: note.editingTarget)
+        #expect(controller.canFindSelectedDocument)
+        controller.performSelectedDocumentFind(.present)
+        #expect(session.findPresentation.isPresented)
+    }
+
     @Test("Restoring a background transfer leaves the active document selected")
     func backgroundRollback() throws {
         let controller = DocumentController()

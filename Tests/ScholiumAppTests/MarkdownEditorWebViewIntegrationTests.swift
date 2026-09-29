@@ -422,6 +422,62 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Reselecting a retained attached editor releases its departure suspension")
+    func retainedTabReselectionResumesAttachedEditor() async throws {
+        let controller = DocumentController()
+        let vaultID = UUID()
+        let firstID = UUID()
+        let secondID = UUID()
+        let firstSource = "# A\n\nRetained editor source.\n"
+        func snapshot(_ path: String, noteID: UUID, source: String) -> WorkspaceNoteSnapshot {
+            let document = NoteDocument(relativePath: path, rawContent: source)
+            return WorkspaceNoteSnapshot(
+                id: VaultQualifiedNoteID(vaultID: vaultID, relativePath: path),
+                vaultRole: .topicKnowledge,
+                stableIdentity: .resolved(noteID),
+                document: document,
+                fileMetadata: WorkspaceFileMetadata(
+                    byteCount: document.sourceBytes.count,
+                    creationDate: nil,
+                    modificationDate: nil),
+                graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0)
+            )
+        }
+        controller.installOpenedDocument(
+            snapshot("A.md", noteID: firstID, source: firstSource),
+            vaultName: "Fixture", vaultRole: .topicKnowledge)
+        let first = try #require(controller.selectedDocument)
+        let retained = controller.session(for: first.editingTarget)
+        retained.beginEditing(in: .livePreview)
+        let harness = EditorHarness(
+            documentID: "A.md", source: firstSource,
+            suppliedSession: retained.editorSession)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await retained.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+        let suspensionID = try #require(retained.editorSession.detachmentSuspensionID)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.cm-editor')?.hasAttribute('inert')") as? Bool == true)
+
+        controller.installOpenedDocument(
+            snapshot("B.md", noteID: secondID, source: "# B\n"),
+            vaultName: "Fixture", vaultRole: .topicKnowledge)
+        controller.resumeAutosave(afterTransferOf: first, suspensionID: suspensionID)
+        #expect(retained.editorSession.detachmentSuspensionID == suspensionID)
+        #expect(controller.selectRetainedDocument(first))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while retained.editorSession.detachmentSuspensionID != nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(retained.editorSession.detachmentSuspensionID == nil)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.cm-editor')?.hasAttribute('inert')") as? Bool == false)
+        #expect(try await retained.editorSession.currentText(for: harness.documentID) == firstSource)
+        await harness.closeAndDrain()
+    }
+
     @MainActor
     private final class InvalidSnapshotBridgeDispatcher: MarkdownEditorBridgeDispatching {
         enum Corruption: CaseIterable { case sameGeneration, selection, oversized }
@@ -1980,10 +2036,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: 24, stage: "mapped external selection")
         #expect(harness.session.context?.selections.first == .init(anchor: 20, head: 24))
         #expect(harness.session.context?.undoLabel == nil)
-        let find = try await harness.session.performDocumentFind(.init(
-            query: "Keep", replacement: "", caseSensitive: false,
-            wholeWord: true, action: .present
-        ))
+        let find = try await harness.session.performDocumentFind(
+            .init(
+                query: "Keep", replacement: "", caseSensitive: false,
+                wholeWord: true, action: .present
+            ))
         #expect(find.total == 1)
         #expect(try await harness.session.currentText(for: harness.documentID) == revised)
         await harness.closeAndDrain()

@@ -650,6 +650,37 @@ final class DocumentController: ObservableObject {
         selectedDocument = document
         currentPresentationMode = session.pendingEditorMode?.presentationMode ?? session.presentationMode
         refreshChromeProjection()
+        // A departing tab may keep its WebView attached while SwiftUI changes
+        // the selected page. The departure cannot resume it while another
+        // document is selected; foregrounding this retained session owns the
+        // matching suspension again. Detached views replay into a fresh page.
+        if session.editorSession.hasAttachedWebView,
+            session.detachmentResumeTask == nil,
+            let suspensionID = session.editorSession.detachmentSuspensionID
+        {
+            resumeAutosave(afterTransferOf: document, suspensionID: suspensionID)
+        }
+        return true
+    }
+
+    /// Reinstates an identity-unavailable tab after a neighbor activation was
+    /// abandoned. The snapshot is captured from this same window before that
+    /// activation; the exact source remains in the original retained session.
+    func restoreRetainedUnavailableDocument(
+        _ document: WindowSelectedDocument,
+        snapshot: WorkspaceNoteSnapshot
+    ) -> Bool {
+        guard case .unavailable(let vaultID, let path) = document,
+            snapshot.id.vaultID == vaultID,
+            snapshot.id.relativePath == path,
+            unavailableSnapshot?.id != snapshot.id
+                || unavailableSnapshot?.fingerprint == snapshot.fingerprint,
+            let session = sessions.retainedSession(for: document.editingTarget)
+        else { return false }
+        unavailableSnapshot = snapshot
+        selectedDocument = document
+        currentPresentationMode = session.pendingEditorMode?.presentationMode ?? session.presentationMode
+        refreshChromeProjection()
         return true
     }
 
@@ -712,6 +743,97 @@ final class DocumentController: ObservableObject {
         restoredPresentationsByVault[target.vaultID]?[document.relativePath] = nil
         restoredUnqualifiedPresentations[document.relativePath] = nil
         if sourceLocationRequest?.target == target { sourceLocationRequest = nil }
+    }
+
+    /// A transferred session can outlive the source view that presented it.
+    /// That old view may disappear after the destination has already opened
+    /// Find; only the current session owner may dismiss this presentation.
+    func dismissFindForDisappearingPresentation(
+        target: DocumentEditingTarget,
+        session: DocumentSessionModel,
+        openingPresentationID: UUID
+    ) {
+        guard sessions.retainedSession(for: target) === session,
+            session.editorSession.openingPresentationID == openingPresentationID
+        else { return }
+        session.findPresentation.dismiss()
+    }
+
+    func retainsSession(_ session: DocumentSessionModel, for target: DocumentEditingTarget) -> Bool {
+        sessions.retainedSession(for: target) === session
+    }
+
+    var canFindSelectedDocument: Bool {
+        selectedSessionWithoutCreation() != nil
+    }
+
+    var canReplaceInSelectedDocument: Bool {
+        selectedSessionWithoutCreation()?.isEditing == true
+    }
+
+    func presentReplacementFindForSelectedDocument() {
+        guard let session = selectedSessionWithoutCreation(), session.isEditing else { return }
+        session.findPresentation.presentReplacement()
+    }
+
+    func performSelectedDocumentFind(
+        _ shortcut: DocumentFindShortcut,
+        expectedTarget: DocumentEditingTarget? = nil,
+        expectedSession: DocumentSessionModel? = nil
+    ) {
+        guard let selectedDocument,
+            let session = selectedSessionWithoutCreation(),
+            expectedTarget.map({ $0 == selectedDocument.editingTarget }) ?? true,
+            expectedSession.map({ $0 === session }) ?? true
+        else { return }
+        let find = session.findPresentation
+        switch shortcut {
+        case .present:
+            find.present()
+        case .next:
+            find.next()
+        case .previous:
+            find.previous()
+        case .useSelection:
+            let target = selectedDocument.editingTarget
+            let openingID = session.editorSession.openingPresentationID
+            if session.isEditing {
+                let source = session.editingSource
+                let editor = session.editorSession
+                let documentID = editor.documentID
+                Task { @MainActor [weak self, weak session] in
+                    let selection = try? await editor.currentSelection(for: documentID, in: source)
+                    guard let self, let session else { return }
+                    self.acceptFindSelection(
+                        selection?.excerpt, target: target, session: session,
+                        openingPresentationID: openingID, expectedSource: source
+                    )
+                }
+            } else {
+                acceptFindSelection(
+                    session.readSelection?.excerpt, target: target, session: session,
+                    openingPresentationID: openingID, expectedSource: nil
+                )
+            }
+        }
+    }
+
+    /// A selection query may finish after a tab switch, source edit, or window
+    /// transfer. Its result only belongs to the exact presentation that asked.
+    func acceptFindSelection(
+        _ excerpt: String?,
+        target: DocumentEditingTarget,
+        session: DocumentSessionModel,
+        openingPresentationID: UUID,
+        expectedSource: String?
+    ) {
+        guard selectedDocument?.editingTarget == target,
+            selectedSessionWithoutCreation() === session,
+            session.editorSession.openingPresentationID == openingPresentationID,
+            expectedSource == nil || session.isEditing,
+            expectedSource.map({ session.editingSource.utf8.elementsEqual($0.utf8) }) ?? true
+        else { return }
+        session.findPresentation.useSelection(excerpt)
     }
 
     func navigationPosition(for document: WindowSelectedDocument) -> DocumentNavigationVisitPosition? {

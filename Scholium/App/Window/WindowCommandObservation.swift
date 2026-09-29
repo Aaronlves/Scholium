@@ -76,4 +76,8 @@ final class WindowCommandObservation: ObservableObject {
     private func advanceRevision() {
         revision = revision == .max ? 0 : revision + 1
     }
+
+    func editorActionsDidChange() {
+        advanceRevision()
+    }
 }

@@ -271,6 +271,81 @@ struct WorkspaceFocusLayoutTests {
         #expect(fixture.split.libraryIsVisible && !fixture.split.researchInspectorIsVisible)
         fixture.split.visibilityDidChange = nil
     }
+
+    @Test("Collapsing a focused peripheral hands focus to the document", arguments: [true, false])
+    func hiddenPeripheralResponderMovesToDocument(library: Bool) {
+        let fixture = FocusLayoutFixture()
+        defer { fixture.close() }
+        let peripheral = library ? fixture.split.libraryField : fixture.split.inspectorField
+        #expect(fixture.window.makeFirstResponder(peripheral))
+        let firstResponder = fixture.window.firstResponder
+        #expect(firstResponder === peripheral || (firstResponder as? NSTextView)?.delegate as? NSView === peripheral)
+        let owner = WorkspaceFocusLayout()
+        var handoffCount = 0
+
+        owner.enter(in: fixture.window, split: fixture.split) {
+            handoffCount += 1
+            _ = fixture.window.makeFirstResponder(fixture.split.document)
+        }
+
+        let item = fixture.split.splitViewItems[library ? 0 : 2]
+        #expect(item.isCollapsed)
+        #expect(handoffCount == 1)
+        #expect(fixture.window.firstResponder === fixture.split.document)
+        owner.exit(in: fixture.window, split: fixture.split)
+        #expect(fixture.window.firstResponder === fixture.split.document)
+    }
+
+    @Test("Document focus remains untouched when entering with a document responder")
+    func currentDocumentResponderRemainsFocused() {
+        let fixture = FocusLayoutFixture()
+        defer { fixture.close() }
+        #expect(fixture.window.makeFirstResponder(fixture.split.document))
+        let selection = NSRange(location: 7, length: 9)
+        fixture.split.document.setSelectedRange(selection)
+        let owner = WorkspaceFocusLayout()
+        var handoffCount = 0
+
+        owner.enter(in: fixture.window, split: fixture.split) { handoffCount += 1 }
+
+        #expect(handoffCount == 0)
+        #expect(fixture.window.firstResponder === fixture.split.document)
+        #expect(fixture.split.document.selectedRange() == selection)
+    }
+
+    @Test("Full screen transfers peripheral focus and returns the windowed panes")
+    func fullScreenFromPeripheralFocus() {
+        let fixture = FocusLayoutFixture()
+        defer { fixture.close() }
+        #expect(fixture.window.makeFirstResponder(fixture.split.libraryField))
+        let owner = WorkspaceFocusLayout()
+
+        owner.beginFullScreen(in: fixture.window, split: fixture.split) {
+            _ = fixture.window.makeFirstResponder(fixture.split.document)
+        }
+
+        #expect(owner.isFullScreenEnforced)
+        #expect(fixture.window.firstResponder === fixture.split.document)
+        #expect(!fixture.split.libraryIsVisible)
+        owner.endFullScreen(in: fixture.window, split: fixture.split)
+        #expect(!owner.isActive)
+        #expect(fixture.split.libraryIsVisible)
+        #expect(fixture.window.firstResponder === fixture.split.document)
+    }
+
+    @Test("Without a document focus target, a hidden peripheral releases key focus")
+    func noDocumentFocusTarget() {
+        let fixture = FocusLayoutFixture()
+        defer { fixture.close() }
+        #expect(fixture.window.makeFirstResponder(fixture.split.inspectorField))
+        let owner = WorkspaceFocusLayout()
+
+        owner.enter(in: fixture.window, split: fixture.split)
+
+        #expect(owner.isActive)
+        #expect(fixture.window.firstResponder === fixture.window)
+        #expect(!fixture.split.researchInspectorIsVisible)
+    }
 }
 
 @MainActor
@@ -326,6 +401,8 @@ private final class FocusLayoutFixture {
 @MainActor
 private final class FocusLayoutSplitController: NSSplitViewController, ScholiumWorkspaceSplitControlling {
     let document = NSTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 700))
+    let libraryField = NSTextField(frame: NSRect(x: 8, y: 8, width: 180, height: 24))
+    let inspectorField = NSTextField(frame: NSRect(x: 8, y: 8, width: 180, height: 24))
     var visibilityDidChange: ((Bool, Bool) -> Void)?
 
     override func viewDidLoad() {
@@ -335,10 +412,12 @@ private final class FocusLayoutSplitController: NSSplitViewController, ScholiumW
         document.string = "Source paragraph with a retained selection.\nSecond paragraph."
         let library = NSViewController()
         library.view = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 700))
+        library.view.addSubview(libraryField)
         let documentController = NSViewController()
         documentController.view = document
         let inspector = NSViewController()
         inspector.view = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 700))
+        inspector.view.addSubview(inspectorField)
         let libraryItem = NSSplitViewItem(sidebarWithViewController: library)
         let documentItem = NSSplitViewItem(viewController: documentController)
         let inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)

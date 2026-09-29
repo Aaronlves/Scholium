@@ -17,6 +17,26 @@ final class DocumentWindowLocationStore {
     var openMainWindow: ((TriptychWindowRoute) -> Void)?
     private var moving: [DocumentSessionKey: WindowModel] = [:]
 
+    private func canUseAsDestination(
+        _ model: WindowModel,
+        triptychID: UUID,
+        allowingCurrentTransfer: Bool = false
+    ) -> Bool {
+        model.workspaceAssignment?.id == triptychID
+            && model.didRestoreWindowSession
+            && !model.isRestoringWindowSession
+            && (!model.transferInProgress || allowingCurrentTransfer)
+            && !model.windowCloseCoordinator.isPreparingOrFinalized
+            && model.nativeWindowCoordinator?.isNativeCloseInProgress != true
+            && model.nativeWindowCoordinator?.registry.isTerminationAttemptInProgress != true
+    }
+
+    func canTransferFrom(_ model: WindowModel) -> Bool {
+        !model.windowCloseCoordinator.isPreparingOrFinalized
+            && model.nativeWindowCoordinator?.isNativeCloseInProgress != true
+            && model.nativeWindowCoordinator?.registry.isTerminationAttemptInProgress != true
+    }
+
     init(workspaceStore: WorkspaceStore) { self.workspaceStore = workspaceStore }
 
     func register(_ model: WindowModel) { windows[model.nativeWindowID] = Entry(model) }
@@ -99,6 +119,7 @@ final class DocumentWindowLocationStore {
         guard let key = resolvedKey(for: reference, in: source) else { throw DocumentControllerError.documentUnavailable }
         let owner = existingOwner(of: reference, excluding: source) ?? source
         if let tab = owner.documentTabController.tabs.first(where: { $0.document.sessionKey == key }) {
+            guard canTransferFrom(owner) else { throw DocumentControllerError.documentUnavailable }
             if owner.isDetachedDocumentWindow {
                 owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
                 return owner
@@ -106,6 +127,7 @@ final class DocumentWindowLocationStore {
             return try await moveTab(tab.id, from: owner)
         }
         guard !source.transferInProgress, moving[key] == nil,
+            canTransferFrom(source),
             let triptychID = source.workspaceAssignment?.id,
             let registry = source.nativeWindowCoordinator?.registry
         else { throw DocumentControllerError.documentUnavailable }
@@ -117,9 +139,15 @@ final class DocumentWindowLocationStore {
         }
         let destination = try await makeDocumentWindow(triptychID: triptychID, registry: registry)
         do {
+            guard canTransferFrom(source),
+                canUseAsDestination(destination.model, triptychID: triptychID)
+            else { throw DocumentControllerError.documentUnavailable }
             moving[key] = destination.model
             try await destination.model.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
-            guard destination.model.documentController.selectedDocument?.sessionKey == key else {
+            guard canTransferFrom(source),
+                canUseAsDestination(destination.model, triptychID: triptychID),
+                destination.model.documentController.selectedDocument?.sessionKey == key
+            else {
                 throw DocumentControllerError.documentUnavailable
             }
             origins[destination.model.nativeWindowID] =
@@ -137,6 +165,7 @@ final class DocumentWindowLocationStore {
     @discardableResult
     func moveTab(_ id: UUID, from source: WindowModel, at point: NSPoint? = nil) async throws -> WindowModel {
         guard !source.isDetachedDocumentWindow, !source.transferInProgress,
+            canTransferFrom(source),
             let tab = source.documentTabController.tabs.first(where: { $0.id == id }),
             let key = tab.document.sessionKey,
             moving[key] == nil,
@@ -180,7 +209,7 @@ final class DocumentWindowLocationStore {
         let original = origins[source.nativeWindowID].flatMap { windows[$0]?.model }
         if let existing = ([original] + windows.values.map(\.model)).compactMap({ $0 }).first(where: {
             !$0.isDetachedDocumentWindow && !$0.windowCloseCoordinator.isFinalized
-                && $0.workspaceAssignment?.id == triptychID && !$0.transferInProgress
+                && canUseAsDestination($0, triptychID: triptychID)
         }) {
             return existing
         }
@@ -188,12 +217,15 @@ final class DocumentWindowLocationStore {
         let route = TriptychWindowRoute(triptychID: triptychID)
         openMainWindow(route)
         try await coordinator.registry.waitUntilReady(id: route.windowID)
-        guard let ready = windows[route.windowID]?.model else { throw DocumentControllerError.documentUnavailable }
+        guard let ready = windows[route.windowID]?.model,
+            canUseAsDestination(ready, triptychID: triptychID)
+        else { throw DocumentControllerError.documentUnavailable }
         return ready
     }
 
     func moveBack(from source: WindowModel) async throws {
         guard source.isDetachedDocumentWindow, !source.transferInProgress,
+            canTransferFrom(source),
             let tab = source.documentTabController.selectedTab,
             let key = tab.document.sessionKey, moving[key] == nil,
             let triptychID = source.workspaceAssignment?.id,
@@ -211,7 +243,7 @@ final class DocumentWindowLocationStore {
         let original = origins[source.nativeWindowID].flatMap { windows[$0]?.model }
         let existing = ([original] + windows.values.map(\.model)).compactMap { $0 }.first {
             !$0.isDetachedDocumentWindow && !$0.windowCloseCoordinator.isFinalized
-                && $0.workspaceAssignment?.id == triptychID && !$0.transferInProgress
+                && canUseAsDestination($0, triptychID: triptychID)
         }
         let destination: WindowModel
         if let existing {
@@ -221,7 +253,9 @@ final class DocumentWindowLocationStore {
             let route = TriptychWindowRoute(triptychID: triptychID)
             openMainWindow(route)
             try await coordinator.registry.waitUntilReady(id: route.windowID)
-            guard let ready = windows[route.windowID]?.model else { throw DocumentControllerError.documentUnavailable }
+            guard let ready = windows[route.windowID]?.model,
+                canUseAsDestination(ready, triptychID: triptychID)
+            else { throw DocumentControllerError.documentUnavailable }
             destination = ready
         }
         do {
@@ -239,6 +273,9 @@ final class DocumentWindowLocationStore {
 
     private func transfer(_ tab: DocumentTabItem, from source: WindowModel, to destination: WindowModel) async throws {
         guard !destination.transferInProgress,
+            canTransferFrom(source),
+            let triptychID = source.workspaceAssignment?.id,
+            canUseAsDestination(destination, triptychID: triptychID),
             source.documentTabController.tabs.contains(tab),
             destination.documentController.canReceiveSessionTransfer(tab.document),
             !destination.documentTabController.tabs.contains(where: { $0.document.editingTarget == tab.document.editingTarget })
@@ -272,7 +309,9 @@ final class DocumentWindowLocationStore {
         sourceSuspensionID =
             source.documentController.session(for: tab.document.editingTarget)
             .editorSession.detachmentSuspensionID
-        guard source.documentTabController.tabs.contains(tab),
+        guard canTransferFrom(source),
+            canUseAsDestination(destination, triptychID: triptychID, allowingCurrentTransfer: true),
+            source.documentTabController.tabs.contains(tab),
             destination.documentController.canReceiveSessionTransfer(tab.document)
         else {
             throw DocumentControllerError.documentUnavailable
@@ -286,6 +325,9 @@ final class DocumentWindowLocationStore {
                 try await Task.sleep(for: .milliseconds(10))
             }
             guard !transfer.session.editorSession.hasAttachedWebView else { throw DocumentControllerError.editorUnavailable }
+            guard canTransferFrom(source),
+                canUseAsDestination(destination, triptychID: triptychID, allowingCurrentTransfer: true)
+            else { throw DocumentControllerError.documentUnavailable }
             destination.finishIncomingTransfer(transfer, tab: tab)
         } catch {
             source.documentController.receiveSessionTransfer(transfer, selecting: wasSelected)
