@@ -178,14 +178,18 @@ final class ScholiumUITests: XCTestCase {
     @MainActor
     override func tearDown() async throws {
         if testRun?.failureCount ?? 0 > 0, let app {
-            let attachment = XCTAttachment(screenshot: app.screenshot())
-            attachment.name = "Scholium UI failure"
-            attachment.lifetime = .keepAlways
-            add(attachment)
-            let hierarchy = XCTAttachment(string: app.debugDescription)
-            hierarchy.name = "Scholium accessibility hierarchy"
-            hierarchy.lifetime = .keepAlways
-            add(hierarchy)
+            for window in app.windows.allElementsBoundByIndex where window.exists
+                && window.identifier.hasPrefix("scholium")
+            {
+                let attachment = XCTAttachment(screenshot: window.screenshot())
+                attachment.name = "Scholium UI failure — \(window.identifier)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+                let hierarchy = XCTAttachment(string: window.debugDescription)
+                hierarchy.name = "Scholium window accessibility — \(window.identifier)"
+                hierarchy.lifetime = .keepAlways
+                add(hierarchy)
+            }
             if let homeDirectory,
                 let recoveryURL = FileManager.default.enumerator(
                     at: homeDirectory,

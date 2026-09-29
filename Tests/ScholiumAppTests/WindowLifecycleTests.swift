@@ -683,7 +683,6 @@ struct WindowLifecycleTests {
             documentTabs: [],
             selectedDocumentTabID: nil,
             selectDocumentTab: { _ in },
-            closeDocumentTab: { _ in },
             libraryVisibilityDidChange: { _ in },
             researchInspectorVisibilityDidChange: { _ in },
             splitControllerDidAttach: { _ in },
@@ -710,7 +709,6 @@ struct WindowLifecycleTests {
             documentTabs: [],
             selectedDocumentTabID: nil,
             selectDocumentTab: { _ in },
-            closeDocumentTab: { _ in },
             libraryVisibilityDidChange: { _ in },
             researchInspectorVisibilityDidChange: { _ in },
             splitControllerDidAttach: { _ in },
@@ -763,7 +761,6 @@ struct WindowLifecycleTests {
             documentTabs: [],
             selectedDocumentTabID: nil,
             selectDocumentTab: { _ in },
-            closeDocumentTab: { _ in },
             libraryVisibilityDidChange: { _ in },
             researchInspectorVisibilityDidChange: { _ in },
             splitControllerDidAttach: { _ in },
@@ -881,7 +878,7 @@ struct WindowLifecycleTests {
         window.close()
     }
 
-    @Test("Transfer input locking preserves the live tab bar safe area")
+    @Test("Transfer input locking preserves toolbar tabs and Document safe area")
     func transferInputLockPreservesTabGeometry() async throws {
         let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
         let coordinator = WorkspaceWindowCoordinator(
@@ -895,9 +892,8 @@ struct WindowLifecycleTests {
             )
         }
         let host = NSHostingController(
-            rootView: ContentView(
-                appState: model, windowCoordinator: coordinator
-            ))
+            rootView: ContentView(appState: model, windowCoordinator: coordinator)
+        )
         host.sceneBridgingOptions = []
         host.sizingOptions = []
         let window = testWindow()
@@ -909,30 +905,34 @@ struct WindowLifecycleTests {
             model.transferInProgress = false
             coordinator.closeTransferredContainer()
         }
-        try await Task.sleep(for: .milliseconds(300))
-        window.layoutIfNeeded()
-        func findStrip(in view: NSView) -> DocumentTabStrip? {
-            if let strip = view as? DocumentTabStrip { return strip }
-            return view.subviews.lazy.compactMap { findStrip(in: $0) }.first
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while window.toolbar?.items.contains(where: { $0 is DocumentToolbarTabItem }) != true
+            && clock.now < deadline
+        {
+            window.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(20))
         }
-        let strip = try #require(findStrip(in: host.view))
-        let originalFrame = strip.convert(strip.bounds, to: nil)
+        window.layoutIfNeeded()
+        let toolbar = try #require(window.toolbar)
+        let selectedID = try #require(model.documentTabController.selectedTabID)
+        let tabGroup = try #require(toolbar.items.compactMap { $0 as? DocumentToolbarTabItem }.first)
+        let selectedControl = try #require(tabGroup.control.control(for: selectedID))
+        let originalFrame = tabGroup.control.convert(tabGroup.control.bounds, to: nil)
         let contentHeight = window.contentLayoutRect.height
-        #expect(!strip.isHidden)
-        #expect(originalFrame.width > 400)
-        #expect(originalFrame.minY > 0)
-        #expect(originalFrame.maxY < contentHeight)
+        #expect(tabGroup.isVisible)
+        #expect(selectedControl.window === window)
+        #expect(originalFrame.minY >= contentHeight)
         for locked in [true, false] {
             model.transferInProgress = locked
             #expect(window.ignoresMouseEvents == locked)
-            // Observe every rendering turn, including the first update after
-            // the guard changes; a final-layout assertion misses the jump.
             for _ in 0..<20 {
                 try await Task.sleep(for: .milliseconds(10))
                 window.layoutIfNeeded()
-                #expect(strip.convert(strip.bounds, to: nil) == originalFrame)
+                #expect(tabGroup.control.convert(tabGroup.control.bounds, to: nil) == originalFrame)
                 #expect(window.contentLayoutRect.height == contentHeight)
-                #expect(!strip.isHidden)
+                #expect(tabGroup.isVisible)
+                #expect(selectedControl.window === window)
             }
         }
     }
@@ -961,31 +961,23 @@ struct WindowLifecycleTests {
         await Task.yield()
     }
 
-    @Test("Document tab updates preserve page hosts and native item identities")
+    @Test("Document page updates preserve native page-host identity without a content tab row")
     func documentTabAdapterUpdatesIncrementally() {
         let firstID = UUID()
         let secondID = UUID()
         let first = DocumentTabItem(
             id: firstID,
             document: .unavailable(vaultID: UUID(), relativePath: "First.md"),
-            title: "First",
-            toolTip: "First.md"
+            title: "First", toolTip: "First.md"
         )
         let second = DocumentTabItem(
             id: secondID,
             document: .unavailable(vaultID: UUID(), relativePath: "Second.md"),
-            title: "Second",
-            toolTip: "Second.md"
+            title: "Second", toolTip: "Second.md"
         )
-        var requestedSelection: UUID?
-        var movedTab: UUID?
         let controller = ScholiumDocumentTabsViewController(
-            document: Text("First projection"),
-            tabs: [first, second],
-            selectedTabID: firstID,
-            selectTab: { requestedSelection = $0 },
-            closeTab: { _ in },
-            detachTab: { id, _ in movedTab = id }
+            document: Text("First projection"), tabs: [first, second],
+            selectedTabID: firstID, selectTab: { _ in }
         )
         controller.loadViewIfNeeded()
         let firstHost = controller.testingPageHost(for: firstID)
@@ -993,59 +985,27 @@ struct WindowLifecycleTests {
         #expect(controller.testingNativeTabView.tabViewType == .noTabsNoBorder)
         controller.view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         controller.view.layoutSubtreeIfNeeded()
-        #expect(controller.testingTabStrip.frame.width >= 780)
-        let selector = controller.testingTabStrip
-        let secondPoint = NSPoint(x: selector.bounds.width * 0.75, y: selector.bounds.midY)
-        let event = NSEvent.mouseEvent(
-            with: .rightMouseDown, location: selector.convert(secondPoint, to: nil),
-            modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-            eventNumber: 0, clickCount: 1, pressure: 1
-        )!
-        let menu = selector.menu(for: event)!
-        #expect(menu.items.count == 2)
-        #expect(menu.items.allSatisfy { ($0.representedObject as? UUID) == secondID })
-        let moveItem = menu.items[0]
-        NSApp.sendAction(moveItem.action!, to: moveItem.target, from: moveItem)
-        #expect(movedTab == secondID)
-        #expect(selector.selectedID == firstID)
-
-        let cells = selector.subviews.compactMap { $0 as? DocumentTabCell }
-        #expect(cells.count == 2)
-        #expect(
-            cells.allSatisfy { cell in
-                cell.subviews.compactMap { $0 as? NSButton }.contains { $0.frame.width > 0 && $0.frame.height > 0 }
-            })
-        #expect(cells[0].frame.width == cells[1].frame.width)
-        _ = cells.first(where: { $0.tab.id == secondID })?.accessibilityPerformPress()
-        #expect(requestedSelection == secondID)
+        #expect(controller.view.subviews.first?.frame == controller.view.bounds)
+        #expect(controller.testingNativeTabView.frame.width > 700)
+        #expect(controller.testingNativeTabView.frame.height > 500)
+        #expect(firstItem?.view?.frame.width ?? 0 > 700)
+        #expect(firstItem?.view?.frame.height ?? 0 > 500)
         #expect(controller.testingNativeTabView.selectedTabViewItem === firstItem)
         var renamed = first
         renamed.title = "Renamed"
         renamed.toolTip = "Renamed.md"
-
         controller.update(
-            document: Text("Updated projection"),
-            tabs: [renamed, second],
-            selectedTabID: firstID,
-            selectTab: { _ in },
-            closeTab: { _ in }
+            document: Text("Updated projection"), tabs: [renamed, second],
+            selectedTabID: firstID, selectTab: { _ in }
         )
-
         #expect(controller.testingPageHost(for: firstID) === firstHost)
         #expect(controller.testingPageItem(for: firstID) === firstItem)
-        #expect(controller.testingNativeTabView.selectedTabViewItem === firstItem)
         #expect(controller.testingPageLabel(for: firstID) == "Renamed")
         controller.update(
-            document: Text("Singleton"), tabs: [renamed], selectedTabID: firstID,
-            selectTab: { _ in }, closeTab: { _ in })
-        controller.view.layoutSubtreeIfNeeded()
-        #expect(selector.isHidden)
-        let container = controller.view as! DocumentTabContainerView
-        #expect(container.document.frame.minY == 0)
-        #expect(container.document.frame.height == container.bounds.height)
+            document: Text("Singleton"), tabs: [renamed], selectedTabID: firstID, selectTab: { _ in }
+        )
         #expect(controller.testingPageHost(for: firstID) === firstHost)
         #expect(controller.testingPageItem(for: secondID) == nil)
-
     }
 
     private func makeWorkspaceSplit(
@@ -1058,7 +1018,6 @@ struct WindowLifecycleTests {
             documentTabs: [],
             selectedDocumentTabID: nil,
             selectDocumentTab: { _ in },
-            closeDocumentTab: { _ in },
             libraryVisibilityDidChange: libraryChanges,
             researchInspectorVisibilityDidChange: inspectorChanges,
             splitControllerDidAttach: { _ in },

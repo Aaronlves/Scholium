@@ -1028,7 +1028,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         }
         let isConfiguredToolbar =
             window.toolbar?.identifier
-            == ScholiumWorkspaceToolbarController.toolbarIdentifier
+            == ScholiumWorkspaceToolbarController.toolbarIdentifier(for: windowID)
         if window.toolbar === loadingToolbar || isConfiguredToolbar {
             window.toolbar = nil
         }

@@ -839,7 +839,7 @@ struct FrontendArchitectureTests {
         )
         let documentTabSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/UI/Components/DocumentTabStrip.swift"
+                "Scholium/UI/Components/DocumentToolbarTabs.swift"
             ),
             encoding: .utf8
         )
@@ -945,9 +945,10 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("contentUnderlapsTitlebar"))
         #expect(!splitSource.contains("placeholderHost.safeAreaRegions = []"))
         #expect(!splitSource.contains("host.safeAreaRegions = []"))
-        #expect(documentTabSource.contains("let titlebarSafeInset = showsTabs ? safeAreaInsets.top : 0"))
-        #expect(documentTabSource.contains("y: titlebarSafeInset + inset"))
-        #expect(documentTabSource.contains("y: headerHeight"))
+        #expect(documentTabSource.contains("final class DocumentToolbarTabItem: NSToolbarItem"))
+        #expect(documentTabSource.contains("final class DocumentToolbarTabStrip: NSVisualEffectView"))
+        #expect(!documentTabSource.contains("private let inactiveSurface = NSVisualEffectView()"))
+        #expect(!splitSource.contains("DocumentTabContainerView"))
         #expect(contentSource.contains(".ignoresSafeArea(.container, edges: .top)"))
         #expect(!splitSource.contains("workspaceWindowDidBecomeKey"))
         #expect(splitSource.contains("researchInspectorVisibilityDidChange"))
@@ -974,7 +975,7 @@ struct FrontendArchitectureTests {
         #expect(appSource.contains("Button(\"New Triptych…\")"))
         #expect(!toolbarSource.contains("private var desiredItemIdentifiers"))
         #expect(
-            ScholiumWorkspaceToolbarController.itemIdentifiers == [
+            ScholiumWorkspaceToolbarController.itemIdentifiers(tabIdentifiers: []) == [
                 ScholiumWorkspaceToolbarController.Item.sidebar,
                 .flexibleSpace,
                 .space,
@@ -1080,7 +1081,6 @@ struct FrontendArchitectureTests {
             documentTabs: [],
             selectedDocumentTabID: nil,
             selectDocumentTab: { _ in },
-            closeDocumentTab: { _ in },
             libraryVisibilityDidChange: { _ in },
             researchInspectorVisibilityDidChange: { _ in },
             splitControllerDidAttach: { _ in },
@@ -1140,7 +1140,7 @@ struct FrontendArchitectureTests {
     func stablePeripheralToolbarLayout() throws {
         typealias Item = ScholiumWorkspaceToolbarController.Item
 
-        let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers
+        let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers(tabIdentifiers: [])
         let documentFlexibleSpaceIndex = try #require(
             identifiers.indices.filter { identifiers[$0] == .flexibleSpace }.dropFirst().first
         )
@@ -1387,7 +1387,6 @@ struct FrontendArchitectureTests {
                 documentTabs: [],
                 selectedDocumentTabID: nil,
                 selectDocumentTab: { _ in },
-                closeDocumentTab: { _ in },
                 libraryVisibilityDidChange: { _ in },
                 researchInspectorVisibilityDidChange: { _ in },
                 splitControllerDidAttach: { _ in },
@@ -1420,7 +1419,6 @@ struct FrontendArchitectureTests {
             documentTabs: [],
             selectedDocumentTabID: nil,
             selectDocumentTab: { _ in },
-            closeDocumentTab: { _ in },
             libraryVisibilityDidChange: { _ in },
             researchInspectorVisibilityDidChange: { _ in },
             splitControllerDidAttach: { _ in },
@@ -2498,7 +2496,7 @@ struct FrontendArchitectureTests {
         #expect(controller.search.invocation == .general)
     }
 
-    @Test("Document tabs use one central AppKit container without taking toolbar ownership")
+    @Test("Document pages retain native containment while tabs belong to the toolbar")
     func documentTabContainerOwnership() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2514,7 +2512,7 @@ struct FrontendArchitectureTests {
 
         #expect(splitSource.contains("private let tabViewController = ScholiumNativeDocumentTabController()"))
         #expect(splitSource.contains("tabViewController.tabStyle = .unspecified"))
-        #expect(splitSource.contains("DocumentTabContainerView(strip: tabStrip, document: tabContent)"))
+        #expect(splitSource.contains("view = ScholiumDocumentPageContainerView(document: tabContent)"))
         #expect(!splitSource.contains("TabSelectorViews"))
         #expect(splitSource.contains("super.tabView(tabView, shouldSelect: tabViewItem)"))
         #expect(splitSource.contains("let documentTabsController:"))

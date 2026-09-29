@@ -180,15 +180,22 @@ Evidence: `.build/note-safety-fix/`, `.build/source-cutover/`,
 `.build/library-file-operation-final-tests.log`,
 `.build/file-operation-final-layout-tests.log`, `.build/file-operation-review/`.
 
-**2026-09-29 — Window/Document lifecycle:** 67 scoped tests pass. Two native
-journeys pass three consecutive runs each: retained tabs, separate-window
-transfer/return, Find, formatting/Undo, owned Advanced Search, exact-source save,
-tab close, Focus entry/exit, peripheral-to-document focus and full-screen layout
-restoration. Hover, physical input, installed IME, human AX, conflict/recovery and
-full adaptation are not established by these journeys.
+**2026-09-30 — Window/Document lifecycle and toolbar tabs:** Earlier 67 lifecycle
+tests and four native journeys establish retained pages/shared panes,
+background save/external refresh, transfer/return, Find, formatting/Undo, Advanced
+Search, exact-source save, close and Focus/full-screen restoration. Shared-base
+layout passed 119 toolbar/window/architecture tests. Current 11 toolbar checks
+cover continuous compression, unchanged-projection reuse, pointer-menu scope and
+listener teardown. One native journey passes on macOS 27.2: right/Control-click
+menus without switching selection, targeted background close, native Close,
+available-interval centering, English/Chinese titles, Light/Dark, narrow overflow,
+horizontal wheel input, core commands, reorder/drag-out, source-window tabs and
+Focus. Frame timing, installed IME, human AX, conflict/recovery, full adaptation
+and macOS 26 runtime remain unverified by this journey.
 Evidence: `.build/tab-editor-port-final-tests.log`,
-`.build/tab-window-command-port-native.log`,
-`.build/tab-window-command-port-final.xcresult`.
+`.build/toolbar-tabs-native-fixed.log`, `.build/toolbar-tabs-visual-final.log`,
+`.build/tab-available-space-tests.log`, `.build/tab-local-monitor-restored-tests.log`,
+`.build/tab-native-optimized-acceptance.log`, `.build/tab-native-optimized-preview/`.
 
 ## Retrieval quality and useful measurement comparisons
 

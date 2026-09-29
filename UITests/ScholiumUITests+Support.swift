@@ -269,9 +269,11 @@ extension ScholiumUITests {
         // leave an overlapping workspace as XCUITest's event target. A
         // title-bar click completes the user-visible focus transition before
         // the next keyboard or pointer event is synthesized.
+        // The toolbar now carries live Document tabs. Focus through the thin
+        // native titlebar edge above its controls, without selecting a tab.
         let titlebar = stableWindow.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.42, dy: 0.025)
-        )
+            withNormalizedOffset: CGVector(dx: 0.42, dy: 0)
+        ).withOffset(CGVector(dx: 0, dy: 3))
         titlebar.click()
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }

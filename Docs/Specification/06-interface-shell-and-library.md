@@ -28,7 +28,7 @@ Each configured window contains one native split view:
 Native split behavior governs resizing and collapse. Scholium requests the
 initial Inspector reveal but never continuously reasserts divider positions.
 The main/auxiliary color and material boundary follows §19.1. Native safe areas
-protect Sidebar, tabs, Apparatus, and the initial readable Document content
+protect Sidebar, Apparatus, and the initial readable Document content
 through window zoom, full screen and resize. Content backgrounds continue behind
 native toolbar controls without a separate app-owned background band. The same background
 policy applies in full screen, without custom chrome or repainting. The Document
@@ -70,7 +70,7 @@ and buffer.
 
 The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
-current-Document mode,
+Document tabs, current-Document mode,
 Settlement, Note Actions, Inspector
 projection, and Inspector visibility. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,
@@ -78,9 +78,9 @@ including embedded editors. Native overflow preserves access. Toolbar customizat
 
 **Focus Layout** is a temporary, current-window layout, entered and exited from
 the checked View-menu toggle and its configurable shortcut, independently of full
-screen. It hides the native toolbar and collapses
-Sidebar and Apparatus without changing Document mode, text appearance, tabs,
-source, selection, Undo, or reading context. It does not enter full screen,
+screen. It hides the native toolbar, including Document tabs, and collapses
+Sidebar and Apparatus without changing Document mode, text appearance, tab membership or active tab,
+source, text selection, Undo, or reading context. It does not enter full screen,
 dim paragraphs, or add typewriter scrolling. The titlebar background becomes
 transparent so the Document surface continues to the top; native window controls remain.
 Exit restores prior toolbar/pane visibility and pane widths within the current
@@ -129,7 +129,23 @@ The Inspector remains hideable whenever visible and showable only with a
 Target. If an already-visible Inspector loses its Document, it presents **No
 Document Selected** without stale content or automatic collapse.
 
-AppKit tabs use equal-width rounded labels and system typography/colors. Below two tabs, it hides.
+Document tabs share the native toolbar row, after Back/Forward and before
+document actions, with no separate row above the content. One continuous, subdued
+neutral system surface groups the tabs. Inactive tabs have no individual fill;
+fine separators distinguish adjacent inactive tabs. The active tab uses untinted
+native Liquid Glass within the shared base.
+System controls own material adaptation and interaction feedback, with selection
+projected only after the Document transition commits. The shared base matches the
+visible height and vertical alignment of adjacent toolbar controls. Tabs use and center within the available interval
+between navigation and document actions, rather than the window's absolute center.
+Available width is shared equally by default; only crowded collections allocate
+more width to the active tab by compressing inactive titles, without shrinking
+command hit targets. Secondary document actions enter overflow
+before the tab group; Back/Forward and Document Mode outlast it. Complete titles remain
+available through Help and accessibility. At minimum tab widths the group scrolls
+horizontally; selection brings its tab into view. The Window
+menu lists every tab; a collapsed toolbar group provides the same list in native
+overflow. Tab controls hide below two tabs.
 One collection spans roles; Library browsing preserves it and the shared panes. AppKit owns containment;
 Scholium guards selection and close. Library and Chat provide **Open in Separate Window**. Each Note has one location per Triptych; reopening activates it. Ordinary
 opening replaces selection; Open in New Tab appends. Switching preserves state without saving; background close saves only its target; selected close chooses right, otherwise left; last close shows No Document

@@ -787,10 +787,8 @@ extension ScholiumUITests {
         forward.click()
         XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
 
-        let tabs = app.descendants(matching: .any)["scholium.documentTabs"]
-        XCTAssertTrue(tabs.waitForExistence(timeout: 5))
-        let firstTab = tabs.descendants(matching: .any).matching(
-            NSPredicate(format: "label == %@", "QA Autosave A")
+        let firstTab = app.windows.firstMatch.toolbars.firstMatch.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "scholium.documentTab.", "QA Autosave A")
         ).firstMatch
         XCTAssertTrue(firstTab.waitForExistence(timeout: 5))
         firstTab.click()
@@ -838,7 +836,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testOpenInNewTabUsesNativeContentTabsAndSharedLibrary() throws {
+    func testOpenInNewTabUsesNativeToolbarTabsAndSharedLibrary() throws {
         waitForCurrentDocumentSurface()
         let secondPath = "QA Autosave B.md"
         let inspectorToggle = inspectorVisibilityControl()
@@ -901,15 +899,22 @@ extension ScholiumUITests {
                 sharedFolderLabel.value as? String == "Expanded"
             })
 
-        let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
-        XCTAssertTrue(documentTabs.waitForExistence(timeout: 8))
-        let firstTab = documentTabs.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "QA Autosave A")).firstMatch
-        let secondTab = documentTabs.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "QA Autosave B")).firstMatch
+        let toolbarTabs = app.windows.firstMatch.toolbars.firstMatch.descendants(matching: .any)
+        let firstTab = toolbarTabs.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND label == %@", "scholium.documentTab.", "QA Autosave A"
+            )
+        ).firstMatch
+        let secondTab = toolbarTabs.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND label == %@", "scholium.documentTab.", "QA Autosave B"
+            )
+        ).firstMatch
         XCTAssertTrue(firstTab.waitForExistence(timeout: 5))
         XCTAssertTrue(secondTab.waitForExistence(timeout: 5))
 
         let nativeTabsScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        nativeTabsScreenshot.name = "Native content tabs with shared Library and Inspector"
+        nativeTabsScreenshot.name = "Native toolbar tabs with shared Library and Inspector"
         nativeTabsScreenshot.lifetime = .keepAlways
         add(nativeTabsScreenshot)
 
@@ -994,7 +999,7 @@ extension ScholiumUITests {
         XCTAssertTrue(
             waitUntil(timeout: 8) {
                 self.app.windows.firstMatch.exists
-                    && !documentTabs.exists
+                    && !secondTab.exists
                     && self.documentTitle() == "QA Autosave A"
             },
             "Closing the selected page must choose its previous neighbor without closing the workspace window."

@@ -203,7 +203,7 @@ visible; attachment storage exclusion is shared with MCP without changing files.
 ### Document tabs and native shell
 
 Each window has one ordered tab collection and guarded selection across vaults.
-Native tabs render committed state; Document owns retained sessions and Find.
+A window-specific native toolbar renders committed tabs; Document owns retained sessions and Find.
 WindowModel resolves view-registered editor commands by selected target, exact
 session and registration identity; stale view teardown cannot revoke a replacement.
 Transfer moves the same session, autosave and observation owner after source

@@ -25,7 +25,9 @@ struct WorkspaceNotificationCountSummary: Equatable {
 /// collapsing either pane changes no item topology.
 @MainActor
 final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSPopoverDelegate, NSToolbarItemValidation, NSMenuItemValidation {
-    static let toolbarIdentifier = NSToolbar.Identifier("scholium.workspaceToolbar")
+    static func toolbarIdentifier(for windowID: UUID) -> NSToolbar.Identifier {
+        .init("scholium.workspaceToolbar.\(windowID.uuidString)")
+    }
 
     enum Item {
         static let notifications = NSToolbarItem.Identifier("scholium.toolbar.notifications")
@@ -62,6 +64,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     private let windowActions: WorkspaceWindowActions
     private let splitViewController: NSSplitViewController
     private let toolbar: NSToolbar
+    private let documentTabs = DocumentToolbarTabs()
     private let notificationsPopover = NSPopover()
     private weak var responderBeforeNotifications: NSResponder?
     private let settlementPopover: NSPopover
@@ -80,13 +83,22 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         self.appState = appState
         self.windowActions = windowActions
         self.splitViewController = splitViewController
-        toolbar = NSToolbar(identifier: Self.toolbarIdentifier)
+        toolbar = NSToolbar(identifier: Self.toolbarIdentifier(for: appState.nativeWindowID))
         settlementPopover = NSPopover()
         super.init()
         toolbar.delegate = self
         toolbar.allowsUserCustomization = false
+        toolbar.allowsDisplayModeCustomization = false
         toolbar.autosavesConfiguration = false
         toolbar.displayMode = .iconOnly
+        documentTabs.select = { [weak appState] id in appState?.selectDocumentTab(withID: id) }
+        documentTabs.close = { [weak appState] id in appState?.closeDocumentTab(withID: id) }
+        documentTabs.detach = { [weak appState] id, point in
+            appState?.requestMoveDocumentToWindow(tabID: id, at: point)
+        }
+        documentTabs.reorder = { [weak appState] id, index in
+            appState?.documentTabController.moveTab(withID: id, to: index)
+        }
         settlementPopover.behavior = .transient
         settlementPopover.delegate = self
         notificationsPopover.behavior = .transient
@@ -116,6 +128,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         chatObservation = nil
         observedChat = nil
         presentationCancellables.removeAll()
+        documentTabs.invalidate()
         responderBeforeSettlement = nil
         responderBeforeNotifications = nil
         settlementPopover.close()
@@ -145,7 +158,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        Self.itemIdentifiers
+        itemIdentifiers
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -165,10 +178,16 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.apparatusDivider,
             Item.inspectorModes,
             Item.inspector,
-        ]
+        ] + documentTabs.visibleIdentifiers
     }
 
-    static var itemIdentifiers: [NSToolbarItem.Identifier] {
+    var itemIdentifiers: [NSToolbarItem.Identifier] {
+        Self.itemIdentifiers(tabIdentifiers: documentTabs.visibleIdentifiers)
+    }
+
+    static func itemIdentifiers(
+        tabIdentifiers: [NSToolbarItem.Identifier]
+    ) -> [NSToolbarItem.Identifier] {
         [
             Item.sidebar,
             .flexibleSpace,
@@ -177,7 +196,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.libraryDivider,
             Item.back,
             Item.forward,
-            .flexibleSpace,
+        ] + tabIdentifiers + (tabIdentifiers.isEmpty ? [.flexibleSpace] : []) + [
             Item.viewChanges,
             Item.settlement,
             .space,
@@ -213,7 +232,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Back"),
                 systemImage: "arrow.left",
-                action: #selector(goBack(_:))
+                action: #selector(goBack(_:)),
+                visibilityPriority: .user
             )
             item.isNavigational = true
             return item
@@ -222,7 +242,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Forward"),
                 systemImage: "arrow.right",
-                action: #selector(goForward(_:))
+                action: #selector(goForward(_:)),
+                visibilityPriority: .user
             )
             item.isNavigational = true
             return item
@@ -236,22 +257,28 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             item.visibilityPriority = .user
             return item
         case Item.documentMode:
-            return ScholiumDocumentModeToolbarItem(identifier: itemIdentifier, model: appState)
+            let item = ScholiumDocumentModeToolbarItem(identifier: itemIdentifier, model: appState)
+            item.visibilityPriority = .user
+            return item
         case Item.noteActions:
-            return DocumentNoteActionsToolbarItem(identifier: itemIdentifier, model: appState)
+            let item = DocumentNoteActionsToolbarItem(identifier: itemIdentifier, model: appState)
+            item.visibilityPriority = .standard
+            return item
         case Item.viewChanges:
             return actionItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("View Changes"),
                 systemImage: "doc.text.magnifyingglass",
-                action: #selector(viewCurrentChanges(_:))
+                action: #selector(viewCurrentChanges(_:)),
+                visibilityPriority: .standard
             )
         case Item.settlement:
             let item = actionItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Settle"),
                 systemImage: "checkmark.circle",
-                action: #selector(toggleSettlement(_:))
+                action: #selector(toggleSettlement(_:)),
+                visibilityPriority: .standard
             )
             item.possibleLabels = [
                 ScholiumL10n.string("Settle"),
@@ -287,7 +314,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         case .flexibleSpace, .space:
             return NSToolbarItem(itemIdentifier: itemIdentifier)
         default:
-            return nil
+            return documentTabs.item(for: itemIdentifier)
         }
     }
 
@@ -373,8 +400,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     private func installToolbarItemsIfNeeded() {
-        if toolbar.itemIdentifiers != Self.itemIdentifiers {
-            toolbar.itemIdentifiers = Self.itemIdentifiers
+        documentTabs.update(
+            tabs: appState.documentTabController.tabs,
+            selectedID: appState.documentTabController.selectedTabID
+        )
+        if toolbar.itemIdentifiers != itemIdentifiers {
+            toolbar.itemIdentifiers = itemIdentifiers
         }
     }
 
@@ -483,6 +514,14 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 .receive(on: DispatchQueue.main)
                 .map { _ in () }
                 .eraseToAnyPublisher(),
+            appState.documentTabController.$tabs
+                .receive(on: DispatchQueue.main)
+                .map { _ in () }
+                .eraseToAnyPublisher(),
+            appState.documentTabController.$selectedTabID
+                .receive(on: DispatchQueue.main)
+                .map { _ in () }
+                .eraseToAnyPublisher(),
             appState.researchController.$researchSnapshot
                 .receive(on: DispatchQueue.main)
                 .map { _ in () }
@@ -504,6 +543,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
 
     private func refreshPresentation() {
         guard !isInvalidated else { return }
+        installToolbarItemsIfNeeded()
         let shellState = appState.shellState
         let chat = appState.chatController
         if observedChat !== chat {

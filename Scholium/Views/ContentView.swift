@@ -156,9 +156,6 @@ struct ContentView: View {
             documentTabs: appState.documentTabController.tabs,
             selectedDocumentTabID: appState.documentTabController.selectedTabID,
             selectDocumentTab: { appState.selectDocumentTab(withID: $0) },
-            closeDocumentTab: { appState.closeDocumentTab(withID: $0) },
-            detachDocumentTab: { appState.requestMoveDocumentToWindow(tabID: $0, at: $1) },
-            reorderDocumentTab: { appState.documentTabController.moveTab(withID: $0, to: $1) },
             libraryVisibilityDidChange: {
                 appState.recordLibraryVisibility($0)
             },
