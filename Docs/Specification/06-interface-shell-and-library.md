@@ -175,6 +175,32 @@ save/conflict buffer and provide Retry. Window-session persistence is
 best-effort only after source safety. Cold launch begins with no document
 selected unless the researcher explicitly opens one.
 
+**File → Open Markdown…** and Finder's **Open With → Scholium** open regular
+UTF-8 `.md` and `.markdown` files without requiring a configured Triptych.
+A registered Note opens through its owning
+Triptych's guarded route. Other files open in an independent document window,
+initially in Review, with the shared Review/Edit/Source editor. A native current-mode
+pop-up selects these modes. Find and an indicator-free More share one native toolbar
+group between Mode and Import. More contains Save, Find,
+Reveal Original in Finder, and Close Window. Reopening the same external file
+reveals its existing window and session. It has no Library, Chat, or Inspector.
+
+The external window's trailing, system-accent toolbar action **Import to Triptych…** also
+appears in File. Its sheet selects one registered Triptych and Analyses,
+Topics, or Works, names the copy consequence under §3.5, and retains Cancel.
+No registered Triptych presents a setup route without blocking external reading
+or editing. A failure before creation retains the source and selected destination
+with Retry. An uncertain creation opens its recorded recovery instead of repeating
+import; a committed copy offers Open Note if presentation fails.
+
+External files retain one exact buffer and guarded saves. Clean external changes
+reload the current source; dirty changes retain the buffer and expose conflict
+comparison and an explicit reload route. Unavailable or replaced source cannot
+be silently recreated or overwritten. Close and quit capture current editor input
+and guard release; explicit close may discard edits, and save failure retains the window with repair. Import does not
+close or discard the original session. Closing releases its file access and
+observation; reopening starts from current saved source.
+
 The Sidebar has no separate brand header or persistent Triptych title.
 When open Workspace windows belong to more than one distinct Triptych, the
 native window subtitle names the Triptych; it remains absent when that

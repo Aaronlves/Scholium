@@ -84,6 +84,21 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    /// Imports the captured editor source, including unsaved changes, without
+    /// reading or modifying the external document again.
+    public func importMarkdown(
+        preferredFilename: String,
+        sourceData: Data,
+        intoVault vaultID: UUID
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+        let handle = try await reference.requireHandle()
+        return try await handle.importMarkdown(
+            preferredFilename: preferredFilename,
+            sourceData: sourceData,
+            intoVault: vaultID
+        )
+    }
+
     public func importImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID

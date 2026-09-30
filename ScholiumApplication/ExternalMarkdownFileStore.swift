@@ -67,7 +67,7 @@ public struct ExternalMarkdownFileSnapshot: Sendable {
 
 /// One authorized original file, separate from Chat's immutable material copy.
 /// The caller owns the edited candidate after every failure. The session never
-/// stages it in Chat storage or treats a replaced path as the same document.
+/// stages it in Chat storage or silently treats a replaced path as the same document.
 public actor ExternalMarkdownFileSession {
     public static let maximumBytes = 1_024 * 1_024
 
@@ -111,14 +111,38 @@ public actor ExternalMarkdownFileSession {
             url: url, bytes: read.bytes, identity: read.identity, sessionID: sessionID)
     }
 
+    /// Reauthorize the current regular file at the opened path after the caller
+    /// has confirmed a clean buffer or an explicit discard. Atomic replacement
+    /// may change file identity; replacing the parent still requires reopening.
+    /// A failed read leaves the prior file identity and buffer authority intact.
+    public func reload() throws -> ExternalMarkdownFileSnapshot {
+        guard !isClosed else { throw ExternalMarkdownFileError.closed }
+        let read = try Self.coordinatedRead(at: url)
+        guard read.identity.parentDevice == currentIdentity.parentDevice,
+            read.identity.parentInode == currentIdentity.parentInode
+        else { throw ExternalMarkdownFileError.changed }
+        let snapshot = try ExternalMarkdownFileSnapshot(
+            url: url, bytes: read.bytes, identity: read.identity, sessionID: sessionID)
+        currentIdentity = snapshot.identity
+        return snapshot
+    }
+
+    /// Capture exact source bytes only while the opened file and displayed
+    /// revision are still current. Import can copy a separately captured editor
+    /// candidate after this check; it never changes the original or rebases it.
+    public func validatedBytes(expected: ExternalMarkdownFileSnapshot) throws -> Data {
+        try validate(expected)
+        let read = try Self.coordinatedRead(at: url)
+        guard read.identity == expected.identity,
+            DocumentFingerprint(data: read.bytes) == expected.fingerprint
+        else { throw ExternalMarkdownFileError.changed }
+        return read.bytes
+    }
+
     /// Manual save of the checked editor buffer. This never accepts a Chat
     /// snapshot as its revision authority, and never modifies the candidate.
     public func save(candidate: String, expected: ExternalMarkdownFileSnapshot) throws -> ExternalMarkdownFileSnapshot {
-        guard !isClosed else { throw ExternalMarkdownFileError.closed }
-        guard expected.sessionID == sessionID, expected.url == url,
-            expected.identity == currentIdentity,
-            DocumentFingerprint(content: expected.source) == expected.fingerprint
-        else { throw ExternalMarkdownFileError.changed }
+        try validate(expected)
         let candidateBytes = Data(candidate.utf8)
         guard candidateBytes.count <= Self.maximumBytes else { throw ExternalMarkdownFileError.tooLarge }
         let expectedBytes = Data(expected.source.utf8)
@@ -160,6 +184,14 @@ public actor ExternalMarkdownFileSession {
         guard !isClosed else { return }
         isClosed = true
         scope.close()
+    }
+
+    private func validate(_ expected: ExternalMarkdownFileSnapshot) throws {
+        guard !isClosed else { throw ExternalMarkdownFileError.closed }
+        guard expected.sessionID == sessionID, expected.url == url,
+            expected.identity == currentIdentity,
+            DocumentFingerprint(content: expected.source) == expected.fingerprint
+        else { throw ExternalMarkdownFileError.changed }
     }
 
     internal func installBeforeSwapTestHook(_ hook: @escaping @Sendable (URL) -> Void) {
@@ -326,11 +358,27 @@ public actor ExternalMarkdownFileSession {
             if displaced.bytes != expected || displaced.identity != identity {
                 // A non-cooperating writer replaced the name after our final
                 // check. Restore that writer's file instead of accepting ours.
+                // Another writer can arrive during readback: never roll that
+                // newer file into the staging name or replace it with a prior
+                // revision. Uncertain entries remain available for recovery.
+                beforeRollbackForTesting?(url)
+                let currentAtRollback = try readExact(at: url)
+                let displacedAtRollback = try readExact(at: parentURL.appendingPathComponent(stagingName))
+                guard currentAtRollback.identity == saved.identity,
+                    currentAtRollback.bytes == saved.bytes,
+                    displacedAtRollback.identity == displaced.identity,
+                    displacedAtRollback.bytes == displaced.bytes,
+                    entryMatches(stage, directory: directory, name: name)
+                else { throw ExternalMarkdownFileError.commitUncertain }
                 guard renameatx_np(directory, stagingName, directory, name, UInt32(RENAME_SWAP)) == 0 else {
                     throw ExternalMarkdownFileError.commitUncertain
                 }
                 let restored = try readExact(at: url)
-                guard restored.bytes == displaced.bytes, restored.identity == displaced.identity else {
+                let parkedCandidate = try readExact(at: parentURL.appendingPathComponent(stagingName))
+                guard restored.bytes == displaced.bytes, restored.identity == displaced.identity,
+                    parkedCandidate.bytes == saved.bytes, parkedCandidate.identity == saved.identity,
+                    entryMatches(stage, directory: directory, name: stagingName)
+                else {
                     throw ExternalMarkdownFileError.commitUncertain
                 }
                 swapped = false

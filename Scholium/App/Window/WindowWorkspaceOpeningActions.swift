@@ -246,7 +246,7 @@ extension WindowModel {
                 isConfigured: vaultConfig != nil
             )
         else { return }
-        if let root = ScholiumRuntimeIsolation.fixtureRootURL() {
+        if requestedTriptychID == nil, let root = ScholiumRuntimeIsolation.fixtureRootURL() {
             do {
                 let analysesURL = root.appendingPathComponent(
                     "01-analyses",

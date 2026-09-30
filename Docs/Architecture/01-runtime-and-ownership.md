@@ -203,19 +203,22 @@ visible; attachment storage exclusion is shared with MCP without changing files.
 ### Document tabs and native shell
 
 Each window has one ordered tab collection and guarded selection across vaults.
-A window-specific native toolbar renders committed tabs; Document owns retained sessions and Find.
-WindowModel resolves view-registered editor commands by selected target, exact
-session and registration identity; stale view teardown cannot revoke a replacement.
-Transfer moves the same session, autosave and observation owner after source
-capture and old-WebView detachment. Close commits revalidate tab/document identity;
-failed transfer restores membership. View teardown checks session ownership before
-clearing transferred Find presentation. The shared window lifecycle registry holds
-termination admission through all window flushes and the native reply; close and
-termination preparation exclude new transfers. Separate document windows share
-close/quit source guards without inheriting
-sidebars or native whole-window tab grouping. Final persistence stores only open
-tab identities and fingerprint-bound lightweight position/focus, never source,
-Undo or closed-tab state.
+Document owns sessions and Find; the native toolbar projects committed tabs.
+WindowModel validates selected target, session and registration for editor commands;
+stale teardown cannot revoke a replacement. Transfer moves session, autosave and
+observation after capture and WebView detachment. Close rechecks identity; transfer
+failure restores membership, and teardown preserves transferred Find. The lifecycle registry
+holds termination admission through flushes and native reply; close/quit excludes
+transfers. Separate windows share source guards without sidebars or native grouping.
+Persistence retains open identities and fingerprint-bound position/focus, never
+source, Undo or closed tabs.
+
+The App file-opening coordinator sequences Finder, File and Chat routes, resolves
+registered Note ownership before external opening, and queues launch requests until
+scene routing is ready. ExternalMarkdownWindowRegistry owns file-window deduplication
+and close/quit admission. Each external model owns its editor, observation,
+conflict and import presentation; ExternalMarkdownFileSession owns guarded file
+I/O. Import captures checked source, then uses workspace creation and Note opening.
 
 One native split and toolbar persist per workspace window. AppKit owns attachment,
 safe areas, resize, dividers, collapse, fullscreen and restoration. Pane changes

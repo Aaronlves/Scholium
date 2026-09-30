@@ -77,6 +77,12 @@ final class ResearchController: ObservableObject {
     private var pendingChangesRefreshGeneration: UInt64 = 0
     private var observedDocumentChangesGeneration: UInt64?
     private var documentSelectionObservation: AnyCancellable?
+    private struct RetainedRecovery {
+        let record: TriptychMutationRecoveryRecord
+        let persistenceFailure: String?
+    }
+    private var retainedRecoveries: [UUID: RetainedRecovery] = [:]
+    private var recoveryRefreshGeneration: UInt64 = 0
 
     init(
         shellState: WindowShellState = WindowShellState(),
@@ -110,9 +116,13 @@ final class ResearchController: ObservableObject {
         agentChangesRefreshGeneration &+= 1
         pendingChangesRefreshGeneration &+= 1
         observedDocumentChangesGeneration = snapshot?.documentChangesGeneration
+        recoveryRefreshGeneration &+= 1
         if self.capabilities?.triptychID != capabilities.triptychID {
             linksInspector.reset()
             relatedMaterials.reset()
+            retainedRecoveries = [:]
+            transactionRecoveryRecords = []
+            transactionRecoveryError = nil
         }
         self.capabilities = capabilities
         agentChanges = nil
@@ -143,6 +153,8 @@ final class ResearchController: ObservableObject {
         errorMessage = nil
         transactionRecoveryRecords = []
         transactionRecoveryError = nil
+        retainedRecoveries = [:]
+        recoveryRefreshGeneration &+= 1
         interruptedSaveRecoveries = []
         interruptedSaveRecoveryError = nil
     }
@@ -251,7 +263,64 @@ final class ResearchController: ObservableObject {
         try await requireResearch().recoveryRecords()
     }
 
+    func retainTransactionRecovery(
+        _ record: TriptychMutationRecoveryRecord,
+        persistenceFailure: String? = nil
+    ) throws {
+        guard capabilities?.triptychID == record.triptychID else {
+            throw TriptychTransactionError.invalidPlan("This recovery belongs to a different Triptych.")
+        }
+        retainedRecoveries[record.id] = RetainedRecovery(
+            record: record,
+            persistenceFailure: persistenceFailure ?? retainedRecoveries[record.id]?.persistenceFailure
+        )
+        transactionRecoveryRecords.removeAll { $0.id == record.id }
+        transactionRecoveryRecords.append(record)
+        transactionRecoveryError = retainedRecoveryFailures
+    }
+
+    func refreshTransactionRecoveryRecords() async {
+        recoveryRefreshGeneration &+= 1
+        let generation = recoveryRefreshGeneration
+        do {
+            let durable = try await requireResearch().recoveryRecords()
+            guard generation == recoveryRefreshGeneration else { return }
+            let durableIDs = Set(durable.map(\.id))
+            // Successful read proves persistence. Unpersisted records remain
+            // inspectable; an absent formerly durable record is already resolved.
+            retainedRecoveries = retainedRecoveries.filter {
+                $0.value.persistenceFailure != nil && !durableIDs.contains($0.key)
+            }
+            transactionRecoveryRecords = durable + retainedRecoveryRecords
+            transactionRecoveryError = retainedRecoveryFailures
+        } catch {
+            guard generation == recoveryRefreshGeneration else { return }
+            let retainedIDs = Set(retainedRecoveries.keys)
+            transactionRecoveryRecords =
+                transactionRecoveryRecords.filter { !retainedIDs.contains($0.id) }
+                + retainedRecoveryRecords
+            let readFailure = "Scholium could not read the durable recovery records. Their file remains unchanged. \(error.localizedDescription)"
+            transactionRecoveryError = [readFailure, retainedRecoveryFailures].compactMap { $0 }.joined(separator: "\n")
+        }
+    }
+
+    private var retainedRecoveryRecords: [TriptychMutationRecoveryRecord] {
+        retainedRecoveries.values.map(\.record).sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    private var retainedRecoveryFailures: String? {
+        let failures = retainedRecoveries.values.compactMap { retained -> String? in
+            guard let failure = retained.persistenceFailure else { return nil }
+            return TriptychTransactionError.recoveryPersistenceFailed(retained.record, failure).localizedDescription
+        }.sorted()
+        guard !failures.isEmpty else { return nil }
+        return failures.joined(separator: "\n")
+    }
+
     func resolveRecoveryRecord(_ id: UUID) async throws {
+        if let retained = retainedRecoveries[id], let failure = retained.persistenceFailure {
+            throw TriptychTransactionError.recoveryPersistenceFailed(retained.record, failure)
+        }
         try await requireResearch().resolveRecoveryRecord(id)
     }
 
@@ -319,6 +388,8 @@ final class ResearchController: ObservableObject {
 
     func reset() {
         relatedMaterials.reset()
+        recoveryRefreshGeneration &+= 1
+        retainedRecoveries = [:]
         transactionRecoveryRecords = []
         transactionRecoveryError = nil
         interruptedSaveRecoveries = []

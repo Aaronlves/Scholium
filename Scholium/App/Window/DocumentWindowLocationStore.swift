@@ -39,6 +39,59 @@ final class DocumentWindowLocationStore {
 
     init(workspaceStore: WorkspaceStore) { self.workspaceStore = workspaceStore }
 
+    /// Finder and imported copies share ordinary guarded Note navigation.
+    /// Return false only when a new main scene is needed.
+    func openInExistingWindow(_ reference: VaultNoteReference, triptychID: UUID) async throws -> Bool {
+        let candidates = windows.values.compactMap(\.model).filter {
+            canUseAsDestination($0, triptychID: triptychID)
+        }
+        if let owner = candidates.first(where: { model in
+            model.documentTabController.tabs.contains {
+                $0.document.vaultID == reference.vaultID && $0.document.relativePath == reference.relativePath
+            }
+        }) {
+            try await owner.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
+            owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
+            return true
+        }
+        guard let main = candidates.first(where: { !$0.isDetachedDocumentWindow }) else { return false }
+        if main.workspaceProjectionController.cachedNote(vaultID: reference.vaultID, stableNoteID: nil, relativePath: reference.relativePath) == nil {
+            _ = await main.refreshAfterResearchHandoff()
+        }
+        try await main.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
+        main.nativeWindowCoordinator?.makeKeyAndOrderFront()
+        return true
+    }
+
+    /// Recovery belongs to the Triptych's research surface, including when its
+    /// affected Note is missing or unreadable. Opening it never activates a Note.
+    func presentRecoveryInExistingMainWindow(
+        _ record: TriptychMutationRecoveryRecord,
+        persistenceFailure: String? = nil,
+        windowID: UUID? = nil
+    ) async throws -> Bool {
+        try Task.checkCancellation()
+        let candidates =
+            windowID.map { [windows[$0]?.model].compactMap { $0 } }
+            ?? windows.values.compactMap(\.model)
+        guard
+            let main = candidates.first(where: {
+                !$0.isDetachedDocumentWindow
+                    && canUseAsDestination($0, triptychID: record.triptychID)
+                    && ($0.presentationRouter.sheet == nil || $0.showTransactionRecovery)
+            })
+        else { return false }
+        try main.researchController.retainTransactionRecovery(record, persistenceFailure: persistenceFailure)
+        await main.refreshTransactionRecoveryRecords()
+        try Task.checkCancellation()
+        guard canUseAsDestination(main, triptychID: record.triptychID),
+            main.presentationRouter.sheet == nil || main.showTransactionRecovery
+        else { throw DocumentControllerError.documentUnavailable }
+        main.showTransactionRecovery = true
+        main.nativeWindowCoordinator?.makeKeyAndOrderFront()
+        return true
+    }
+
     func register(_ model: WindowModel) { windows[model.nativeWindowID] = Entry(model) }
 
     func unregister(_ model: WindowModel) {

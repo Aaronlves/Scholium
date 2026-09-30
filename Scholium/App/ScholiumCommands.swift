@@ -5,6 +5,7 @@ import SwiftUI
 private struct ScholiumFileCreationCommandContent: View {
     let commandRevision: UInt64
     let storageReady: Bool
+    let fileOpening: MarkdownFileOpeningController
     @Environment(\.openWindow) private var openWindow
     @FocusedObject private var appState: WindowModel?
 
@@ -30,6 +31,8 @@ private struct ScholiumFileCreationCommandContent: View {
         .scholiumKeyboardShortcut(.newWindow)
         .disabled(!storageReady)
         Divider()
+        Button("Open Markdown…") { fileOpening.chooseFiles() }
+            .scholiumKeyboardShortcut(.openMarkdown)
         Button("New Triptych…") {
             openWindow(
                 id: "scholium-bootstrap",
@@ -72,27 +75,50 @@ private struct ScholiumFileCreationCommandContent: View {
 private struct ScholiumCloseTabCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
+    @FocusedObject private var external: ExternalMarkdownWindowModel?
 
     var body: some View {
-        Button("Close Tab") {
-            if appState?.isDetachedDocumentWindow == true {
-                appState?.nativeWindowCoordinator?.requestNativeClose()
-                return
+        if let external {
+            Button("Close Window") { external.closeWindow() }
+                .scholiumKeyboardShortcut(.closeTab).disabled(!external.canRequestClose)
+        } else {
+            Button("Close Tab") {
+                if appState?.isDetachedDocumentWindow == true {
+                    appState?.nativeWindowCoordinator?.requestNativeClose()
+                    return
+                }
+                guard let id = appState?.documentTabController.selectedTabID else { return }
+                appState?.closeDocumentTab(withID: id)
             }
-            guard let id = appState?.documentTabController.selectedTabID else { return }
-            appState?.closeDocumentTab(withID: id)
+            .scholiumKeyboardShortcut(.closeTab)
+            .disabled(appState?.documentTabController.selectedTabID == nil)
         }
-        .scholiumKeyboardShortcut(.closeTab)
-        .disabled(appState?.documentTabController.selectedTabID == nil)
     }
 }
 
 private struct ScholiumFileDocumentCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
+    @FocusedObject private var external: ExternalMarkdownWindowModel?
     private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
 
     var body: some View {
+        if let external {
+            Button("Save") { Task { await external.save() } }
+                .scholiumKeyboardShortcut(.save).disabled(!external.canSave)
+            Button("Import to Triptych…") { external.showsImport = true }.disabled(!external.canPresentImport)
+            Button("Reveal Original in Finder") { NSWorkspace.shared.activateFileViewerSelecting([external.originalURL]) }
+            Divider()
+        } else {
+            Button("Save") {
+                guard let appState, let document = appState.documentController.selectedDocument else { return }
+                let session = appState.documentController.session(for: document.editingTarget)
+                Task { await appState.documentController.persistEditingSource(session: session, target: document.editingTarget) }
+            }
+            .scholiumKeyboardShortcut(.save)
+            .disabled(appState?.currentEditorActions?.isComposing != false)
+            Divider()
+        }
         Button("Import Markdown…") { appState?.showMarkdownImporter = true }
             .scholiumActivationPointer()
             .disabled(appState?.workspaceAssignment == nil || appState?.isDetachedDocumentWindow == true)
@@ -148,7 +174,8 @@ private struct ScholiumFileDocumentCommandContent: View {
 private struct ScholiumPasteboardCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
-    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
+    @FocusedObject private var external: ExternalMarkdownWindowModel?
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
 
     var body: some View {
         Button("Copy Note Link") { appState?.performNoteAction(.copyLink) }
@@ -163,33 +190,35 @@ private struct ScholiumPasteboardCommandContent: View {
         .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
         Divider()
         Menu("Find") {
-            Button("Find…") { appState?.presentCurrentDocumentFind() }
+            Button("Find…") { if let external { external.performFind(.present) } else { appState?.presentCurrentDocumentFind() } }
                 .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(.find)
-                .disabled(appState?.documentController.canFindSelectedDocument != true)
+                .disabled(appState?.documentController.canFindSelectedDocument != true && external?.snapshot == nil)
             Button("Find and Replace…") {
-                appState?.documentController.presentReplacementFindForSelectedDocument()
+                if let external { external.documentFind.presentReplacement() } else { appState?.documentController.presentReplacementFindForSelectedDocument() }
             }
             .scholiumActivationPointer()
-            .disabled(appState?.documentController.canReplaceInSelectedDocument != true)
+            .disabled(appState?.documentController.canReplaceInSelectedDocument != true && external?.mode.editorMode == nil)
             Divider()
-            Button("Find Next") { appState?.documentController.performSelectedDocumentFind(.next) }
+            Button("Find Next") { if let external { external.performFind(.next) } else { appState?.documentController.performSelectedDocumentFind(.next) } }
                 .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(.findNext)
-                .disabled(appState?.documentController.canFindSelectedDocument != true)
-            Button("Find Previous") { appState?.documentController.performSelectedDocumentFind(.previous) }
-                .scholiumActivationPointer()
-                .scholiumKeyboardShortcut(.findPrevious)
-                .disabled(appState?.documentController.canFindSelectedDocument != true)
+                .disabled(appState?.documentController.canFindSelectedDocument != true && external?.snapshot == nil)
+            Button("Find Previous") {
+                if let external { external.performFind(.previous) } else { appState?.documentController.performSelectedDocumentFind(.previous) }
+            }
+            .scholiumActivationPointer()
+            .scholiumKeyboardShortcut(.findPrevious)
+            .disabled(appState?.documentController.canFindSelectedDocument != true && external?.snapshot == nil)
             Button("Use Selection for Find") {
-                appState?.documentController.performSelectedDocumentFind(.useSelection)
+                if let external { external.performFind(.useSelection) } else { appState?.documentController.performSelectedDocumentFind(.useSelection) }
             }
             .scholiumActivationPointer()
             .scholiumKeyboardShortcut(.useSelectionForFind)
-            .disabled(appState?.documentController.canFindSelectedDocument != true)
+            .disabled(appState?.documentController.canFindSelectedDocument != true && external?.snapshot == nil)
         }
         .scholiumActivationPointer()
-        .disabled(appState?.currentNote == nil)
+        .disabled(appState?.currentNote == nil && external?.snapshot == nil)
     }
 
     private func markdownPasteboardPayload() -> String? {
@@ -211,7 +240,8 @@ private struct ScholiumPasteboardCommandContent: View {
 private struct ScholiumTextFormattingCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
-    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
+    @FocusedObject private var external: ExternalMarkdownWindowModel?
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
 
     var body: some View {
         Button("Bold") { editorActions?.perform(.bold) }
@@ -315,9 +345,10 @@ private struct ScholiumTextFormattingCommandContent: View {
 
 private struct ScholiumInsertCommandContent: View {
     @FocusedObject private var appState: WindowModel?
+    @FocusedObject private var external: ExternalMarkdownWindowModel?
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
     let commandRevision: UInt64
-    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
 
     var body: some View {
         Button("Link") { editorActions?.perform(.standardLink) }
@@ -396,9 +427,10 @@ private struct ScholiumInsertCommandContent: View {
 private struct ScholiumViewCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
+    @FocusedObject private var external: ExternalMarkdownWindowModel?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
-    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
 
     var body: some View {
         Button("Back") {
@@ -470,84 +502,100 @@ private struct ScholiumViewCommandContent: View {
         Divider()
         Button(
             ScholiumL10n.dynamicString(
-                appState?.presentedDocumentMode == .read ? "Edit" : "Review"
+                (appState?.presentedDocumentMode ?? external?.mode) == .read ? "Edit" : "Review"
             )
         ) {
             guard let destination = reviewEditDestination else { return }
-            appState?.requestDocumentMode(destination)
+            if let external { external.selectMode(destination) } else { appState?.requestDocumentMode(destination) }
         }
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.toggleReviewEdit)
         .disabled(reviewEditDestination == nil || editorActions?.isComposing == true)
         Menu("Document Mode") {
-            Button("Review") { appState?.requestDocumentMode(.read) }
+            Button("Review") { if let external { external.selectMode(.read) } else { appState?.requestDocumentMode(.read) } }
                 .scholiumActivationPointer()
-            Button("Edit") { appState?.requestDocumentMode(.livePreview) }
+                .disabled(external?.canSelectMode(.read) == false)
+            Button("Edit") { if let external { external.selectMode(.livePreview) } else { appState?.requestDocumentMode(.livePreview) } }
                 .scholiumActivationPointer()
-                .disabled(appState?.canEditCurrentNote != true)
+                .disabled(external.map { !$0.canSelectMode(.livePreview) } ?? (appState?.canEditCurrentNote != true))
             if appState?.isDetachedDocumentWindow != true {
-                Button("Source") { appState?.requestDocumentMode(.source) }
+                Button("Source") { if let external { external.selectMode(.source) } else { appState?.requestDocumentMode(.source) } }
                     .scholiumActivationPointer()
                     .scholiumKeyboardShortcut(.showSource)
-                    .disabled(appState?.canEditCurrentNote != true)
+                    .disabled(external.map { !$0.canSelectMode(.source) } ?? (appState?.canEditCurrentNote != true))
             }
         }
         .scholiumActivationPointer()
-        .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
+        .disabled((appState?.currentNote == nil && external?.snapshot == nil) || editorActions?.isComposing == true || external?.isBusy == true)
         Divider()
         Menu("Document Text Size") {
             Button("Increase Text Size") {
-                appState?.adjustDocumentTextScale(by: ScholiumMetrics.Document.textScaleStep)
+                setDocumentTextScale(documentTextScale + ScholiumMetrics.Document.textScaleStep)
             }
             .scholiumActivationPointer()
             .scholiumKeyboardShortcut(.increaseTextSize)
             .disabled(
-                appState?.currentNote == nil
-                    || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+                !hasDocument
+                    || documentTextScale == ScholiumMetrics.Document.maximumTextScale
             )
             Button("Decrease Text Size") {
-                appState?.adjustDocumentTextScale(by: -ScholiumMetrics.Document.textScaleStep)
+                setDocumentTextScale(documentTextScale - ScholiumMetrics.Document.textScaleStep)
             }
             .scholiumActivationPointer()
             .scholiumKeyboardShortcut(.decreaseTextSize)
             .disabled(
-                appState?.currentNote == nil
-                    || appState?.documentTextScale == ScholiumMetrics.Document.minimumTextScale
+                !hasDocument
+                    || documentTextScale == ScholiumMetrics.Document.minimumTextScale
             )
-            Button("Actual Size (100%)") { appState?.resetDocumentTextScale() }
+            Button("Actual Size (100%)") { setDocumentTextScale(ScholiumMetrics.Document.defaultTextScale) }
                 .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(.actualTextSize)
                 .disabled(
-                    appState?.currentNote == nil
-                        || appState?.documentTextScale == ScholiumMetrics.Document.defaultTextScale
+                    !hasDocument
+                        || documentTextScale == ScholiumMetrics.Document.defaultTextScale
                 )
             Divider()
-            Button("150%") { appState?.setDocumentTextScale(1.5) }
+            Button("150%") { setDocumentTextScale(1.5) }
                 .scholiumActivationPointer()
-                .disabled(appState?.currentNote == nil || appState?.documentTextScale == 1.5)
+                .disabled(!hasDocument || documentTextScale == 1.5)
             Button("200%") {
-                appState?.setDocumentTextScale(ScholiumMetrics.Document.maximumTextScale)
+                setDocumentTextScale(ScholiumMetrics.Document.maximumTextScale)
             }
             .scholiumActivationPointer()
             .disabled(
-                appState?.currentNote == nil
-                    || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+                !hasDocument
+                    || documentTextScale == ScholiumMetrics.Document.maximumTextScale
             )
         }
         .scholiumActivationPointer()
-        .disabled(appState?.currentNote == nil)
+        .disabled(!hasDocument)
         Menu("Appearance") {
-            Button("Use System Appearance") { appState?.colorScheme = .system }
+            Button("Use System Appearance") { setColorScheme(.system) }
                 .scholiumActivationPointer()
-            Button("Light") { appState?.colorScheme = .light }
+            Button("Light") { setColorScheme(.light) }
                 .scholiumActivationPointer()
-            Button("Dark") { appState?.colorScheme = .dark }
+            Button("Dark") { setColorScheme(.dark) }
                 .scholiumActivationPointer()
         }
         .scholiumActivationPointer()
     }
 
+    private var hasDocument: Bool { external?.snapshot != nil || appState?.currentNote != nil }
+    private var documentTextScale: Double { external?.documentTextScale ?? appState?.documentTextScale ?? ScholiumMetrics.Document.defaultTextScale }
+
+    private func setDocumentTextScale(_ scale: Double) {
+        if let external { external.setDocumentTextScale(scale) } else { appState?.setDocumentTextScale(scale) }
+    }
+
+    private func setColorScheme(_ scheme: WindowColorSchemeChoice) {
+        if let external { external.colorScheme = scheme } else { appState?.colorScheme = scheme }
+    }
+
     private var reviewEditDestination: NotePresentationMode? {
+        if let external, external.snapshot != nil, !external.isBusy {
+            let destination: NotePresentationMode = external.mode == .read ? .livePreview : .read
+            return external.canSelectMode(destination) ? destination : nil
+        }
         guard let appState, appState.currentNote != nil else { return nil }
         switch appState.presentedDocumentMode {
         case .read:
@@ -643,7 +691,8 @@ private struct ScholiumAttentionCommandContent: View {
 #if DEBUG
     private struct ScholiumQACommandContent: View {
         @FocusedObject private var appState: WindowModel?
-        private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
+        @FocusedObject private var external: ExternalMarkdownWindowModel?
+        private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
 
         var body: some View {
             if qaEditorFaultsAreEnabled {
@@ -693,6 +742,7 @@ private struct ScholiumAttentionCommandContent: View {
 #endif
 
 struct ScholiumCommands: Commands {
+    let fileOpening: MarkdownFileOpeningController
     @FocusedValue(\.scholiumApplicationBootstrapStatus)
     private var applicationBootstrapStatus
     @FocusedObject private var commandObservation: WindowCommandObservation?
@@ -702,7 +752,8 @@ struct ScholiumCommands: Commands {
         let storageReady = applicationBootstrapStatus?.isReady == true
         let fileCreationCommand = ScholiumFileCreationCommandContent(
             commandRevision: commandRevision,
-            storageReady: storageReady
+            storageReady: storageReady,
+            fileOpening: fileOpening
         )
         let fileDocumentCommand = ScholiumFileDocumentCommandContent(commandRevision: commandRevision)
         let pasteboardCommand = ScholiumPasteboardCommandContent(commandRevision: commandRevision)

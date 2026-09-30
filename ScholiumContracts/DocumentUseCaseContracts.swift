@@ -47,11 +47,20 @@ public enum DocumentCreationError: LocalizedError, Equatable, Sendable {
 
 public enum DocumentImportError: LocalizedError, Equatable, Sendable {
     case unsupportedSource(String)
+    /// A no-replace creation may have reached this exact destination. Callers
+    /// must reconcile it rather than repeat import with another collision name.
+    case commitUncertain(
+        relativePath: String,
+        intendedRevision: DocumentFingerprint,
+        reason: String
+    )
 
     public var errorDescription: String? {
         switch self {
         case .unsupportedSource(let path):
             "Only regular UTF-8 Markdown files can be imported: \(path)"
+        case .commitUncertain(let path, _, let reason):
+            "The imported copy at \(path) could not be verified. Do not import again until this destination has been reconciled. \(reason)"
         }
     }
 }

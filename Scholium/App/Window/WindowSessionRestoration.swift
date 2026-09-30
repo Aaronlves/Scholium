@@ -77,7 +77,7 @@ extension WindowModel {
             return
         }
 
-        if ScholiumRuntimeIsolation.fixtureRootURL() != nil {
+        if requestedTriptychID == nil, ScholiumRuntimeIsolation.fixtureRootURL() != nil {
             // A disposable QA fixture is reconstructed from its explicit root
             // on every process launch. Its saved window presentation is still
             // real, but it cannot authorize restoration before that isolated

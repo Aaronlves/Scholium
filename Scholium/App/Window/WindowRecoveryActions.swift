@@ -5,13 +5,7 @@ import ScholiumContracts
 /// researcher can inspect, resolve or restore from the window.
 extension WindowModel {
     func refreshTransactionRecoveryRecords() async {
-        do {
-            transactionRecoveryRecords = try await researchController.recoveryRecords()
-            transactionRecoveryError = nil
-        } catch {
-            transactionRecoveryRecords = []
-            transactionRecoveryError = "Scholium could not read the durable recovery records. Their file remains unchanged. \(error.localizedDescription)"
-        }
+        await researchController.refreshTransactionRecoveryRecords()
         do {
             interruptedSaveRecoveries =
                 try await researchController

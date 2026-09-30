@@ -27,12 +27,20 @@ struct FileOperationSheet<Content: View, Actions: View>: View {
             minWidth: ScholiumMetrics.ResearchSheet.FileOperation.minimumWidth,
             idealWidth: ScholiumMetrics.ResearchSheet.FileOperation.idealWidth
         )
-        .fixedSize(horizontal: false, vertical: true)
-        .presentationSizing(.fitted)
+        .presentationSizing(FileOperationSheetSizing())
         .background(ScholiumNativeColorRole.windowBackground.color)
         .tint(ScholiumNativeColorRole.controlAccent.color)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
+    }
+}
+
+/// Refit at the established width when loading or wrapping changes the body.
+/// The presentation remains the sole owner of the sheet's content size.
+private struct FileOperationSheetSizing: PresentationSizing {
+    func proposedSize(for root: PresentationSizingRoot, context: PresentationSizingContext) -> ProposedViewSize {
+        let width = root.sizeThatFits(.unspecified).width
+        return ProposedViewSize(root.sizeThatFits(ProposedViewSize(width: width, height: nil)))
     }
 }
 

@@ -81,6 +81,119 @@ struct ExternalMarkdownFileStoreTests {
         await session.close()
     }
 
+    @Test("Explicit reload accepts atomic file replacement and rejects the prior save authority")
+    func reloadReauthorizesReplacement() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        try Data("A\r\n".utf8).write(to: file)
+        let (session, original) = try ExternalMarkdownFileSession.open(file)
+        let replacement = Data("\u{FEFF}B\r\n".utf8)
+        try replacement.write(to: file, options: .atomic)
+
+        await #expect(throws: ExternalMarkdownFileError.changed) { try await session.load() }
+        let reloaded = try await session.reload()
+        #expect(reloaded.identity != original.identity)
+        #expect(Data(reloaded.source.utf8) == replacement)
+        #expect(reloaded.fingerprint == DocumentFingerprint(data: replacement))
+        await #expect(throws: ExternalMarkdownFileError.changed) {
+            try await session.save(candidate: "C\r\n", expected: original)
+        }
+        #expect(try Data(contentsOf: file) == replacement)
+        let saved = try await session.save(candidate: reloaded.source + "C\r\n", expected: reloaded)
+        #expect(try Data(contentsOf: file) == Data(saved.source.utf8))
+        await session.close()
+        await #expect(throws: ExternalMarkdownFileError.closed) { try await session.reload() }
+    }
+
+    @Test("Import validation retains exact bytes and rejects stale revisions, identities, and sessions")
+    func importSnapshotAdmission() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        let originalBytes = Data("\u{FEFF}---\r\ntitle: 'Original'\r\n---\r\n中文 😀".utf8)
+        try originalBytes.write(to: file)
+        let (session, original) = try ExternalMarkdownFileSession.open(file)
+        let (otherSession, otherSnapshot) = try ExternalMarkdownFileSession.open(file)
+
+        #expect(try await session.validatedBytes(expected: original) == originalBytes)
+        #expect(try Data(contentsOf: file) == originalBytes)
+        await #expect(throws: ExternalMarkdownFileError.changed) {
+            try await session.validatedBytes(expected: otherSnapshot)
+        }
+        let externalBytes = Data("External\r\n".utf8)
+        try externalBytes.write(to: file)
+        await #expect(throws: ExternalMarkdownFileError.changed) {
+            try await session.validatedBytes(expected: original)
+        }
+        let updated = try await session.load()
+        #expect(try await session.validatedBytes(expected: updated) == externalBytes)
+        try externalBytes.write(to: file, options: .atomic)
+        await #expect(throws: ExternalMarkdownFileError.changed) {
+            try await session.validatedBytes(expected: updated)
+        }
+        #expect(try Data(contentsOf: file) == externalBytes)
+        await otherSession.close()
+        await session.close()
+        await #expect(throws: ExternalMarkdownFileError.closed) {
+            try await session.validatedBytes(expected: updated)
+        }
+    }
+
+    @Test("A failed reload keeps the original authority and never follows a substituted symlink")
+    func failedReloadRetainsAuthority() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        let retained = root.appendingPathComponent("retained.md")
+        let peer = root.appendingPathComponent("peer.md")
+        let originalBytes = Data("Original\n".utf8)
+        let peerBytes = Data("Peer\n".utf8)
+        try originalBytes.write(to: file)
+        try peerBytes.write(to: peer)
+        let (session, original) = try ExternalMarkdownFileSession.open(file)
+        try FileManager.default.moveItem(at: file, to: retained)
+        await #expect(throws: ExternalMarkdownFileError.missing) { try await session.reload() }
+        try FileManager.default.createSymbolicLink(at: file, withDestinationURL: peer)
+        await #expect(throws: ExternalMarkdownFileError.notRegularFile) { try await session.reload() }
+        #expect(try Data(contentsOf: peer) == peerBytes)
+        try FileManager.default.removeItem(at: file)
+        try Data([0xFF]).write(to: file)
+        await #expect(throws: ExternalMarkdownFileError.invalidUTF8) { try await session.reload() }
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.moveItem(at: retained, to: file)
+
+        #expect(try await session.validatedBytes(expected: original) == originalBytes)
+        let saved = try await session.save(candidate: "Recovered edit\n", expected: original)
+        #expect(try Data(contentsOf: file) == Data(saved.source.utf8))
+        await session.close()
+    }
+
+    @Test("Reload cannot adopt a replacement parent directory")
+    func reloadRejectsReplacedParent() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let parent = root.appendingPathComponent("directory", isDirectory: true)
+        let movedParent = root.appendingPathComponent("moved-directory", isDirectory: true)
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: false)
+        let file = parent.appendingPathComponent("source.md")
+        let originalBytes = Data("Original\n".utf8)
+        try originalBytes.write(to: file)
+        let (session, original) = try ExternalMarkdownFileSession.open(file)
+        try FileManager.default.moveItem(at: parent, to: movedParent)
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: false)
+        let replacementBytes = Data("Replacement\n".utf8)
+        try replacementBytes.write(to: file)
+
+        await #expect(throws: ExternalMarkdownFileError.changed) { try await session.reload() }
+        await #expect(throws: ExternalMarkdownFileError.changed) {
+            try await session.save(candidate: "Candidate\n", expected: original)
+        }
+        #expect(try Data(contentsOf: file) == replacementBytes)
+        #expect(try Data(contentsOf: movedParent.appendingPathComponent("source.md")) == originalBytes)
+        await session.close()
+    }
+
     @Test("A replaced staging name cannot displace the original or delete the peer entry")
     func substitutedStageIsRestored() async throws {
         let root = try fixture()
@@ -141,6 +254,64 @@ struct ExternalMarkdownFileStoreTests {
         #expect(stagedEntries.count == 1)
         #expect(try Data(contentsOf: stagedEntries[0]) == original)
         await #expect(throws: ExternalMarkdownFileError.changed) { try await session.load() }
+        await session.close()
+    }
+
+    @Test("An external file arriving after the final save check is restored without losing its bytes")
+    func changedOriginalDuringSwapIsRestored() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        let replacement = root.appendingPathComponent("replacement.md")
+        try Data("Original\n".utf8).write(to: file)
+        let external = Data("External\n".utf8)
+        try external.write(to: replacement)
+        let (session, original) = try ExternalMarkdownFileSession.open(file)
+        await session.installBeforeSwapTestHook { _ in
+            _ = Darwin.rename(replacement.path, file.path)
+        }
+
+        await #expect(throws: ExternalMarkdownFileError.changed) {
+            try await session.save(candidate: "Candidate\n", expected: original)
+        }
+        #expect(try Data(contentsOf: file) == external)
+        let stagedEntries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(".source.md-scholium-") }
+        #expect(stagedEntries.isEmpty)
+        await session.close()
+    }
+
+    @Test("A newer external replacement during displaced-revision rollback remains canonical")
+    func newerRevisionBeforeDisplacedRollbackIsPreserved() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        let replacement = root.appendingPathComponent("replacement.md")
+        let newerReplacement = root.appendingPathComponent("newer.md")
+        try Data("Original\n".utf8).write(to: file)
+        let displaced = Data("External at swap\n".utf8)
+        let newer = Data("Newest external revision\n".utf8)
+        try displaced.write(to: replacement)
+        try newer.write(to: newerReplacement)
+        let (session, original) = try ExternalMarkdownFileSession.open(file)
+        await session.installBeforeSwapTestHook { _ in
+            _ = Darwin.rename(replacement.path, file.path)
+        }
+        await session.installBeforeRollbackTestHook { originalURL in
+            _ = Darwin.rename(newerReplacement.path, originalURL.path)
+        }
+
+        await #expect(throws: ExternalMarkdownFileError.commitUncertain) {
+            try await session.save(candidate: "Candidate\n", expected: original)
+        }
+        #expect(try Data(contentsOf: file) == newer)
+        let stagedEntries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(".source.md-scholium-") }
+        #expect(stagedEntries.count == 1)
+        #expect(try Data(contentsOf: stagedEntries[0]) == displaced)
+        await #expect(throws: ExternalMarkdownFileError.changed) {
+            try await session.validatedBytes(expected: original)
+        }
         await session.close()
     }
 

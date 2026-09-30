@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import ScholiumContracts
 import SwiftUI
 import Testing
@@ -8,6 +9,68 @@ import Testing
 @Suite("File operation presentation", .serialized)
 @MainActor
 struct FileOperationPresentationTests {
+    @Test("A presented file sheet retains its content and action insets")
+    func presentedSheetInsets() async throws {
+        _ = NSApplication.shared
+        let markers = SheetInsetMarkers()
+        let state = SheetFixtureState()
+        let host = NSHostingView(
+            rootView: Color.clear.sheet(isPresented: .constant(true)) {
+                FileOperationSheet(title: Text("Import to Triptych…"), message: Text("Import a copy of the current content. The original file stays in place."))
+                {
+                    Text("QA External Markdown.md").background(SheetInsetMarker(name: "filename", markers: markers))
+                    if state.isLoading {
+                        ProgressView("Loading Triptychs…")
+                    } else {
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
+                            Picker("Triptych", selection: .constant(0)) { Text("Test Triptych").tag(0) }.pickerStyle(.menu)
+                            Picker("Workspace", selection: .constant(0)) { Text("Topics").tag(0) }.pickerStyle(.menu)
+                            Text("/Synthetic/Research/Long paths in a selected Triptych/Library/研究笔记/一个较长的研究库路径/02-topics")
+                                .font(.caption).fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                } actions: {
+                    Button("Cancel") {}.background(SheetInsetMarker(name: "cancel", markers: markers))
+                    Spacer()
+                    Button("Import") {}.keyboardShortcut(.defaultAction).background(SheetInsetMarker(name: "import", markers: markers))
+                }
+            })
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFront(nil)
+        defer {
+            if let sheet = window.attachedSheet {
+                window.endSheet(sheet)
+                sheet.close()
+            }
+            window.contentView = nil
+            window.close()
+        }
+        for _ in 0..<50 where window.attachedSheet == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let sheet = try #require(window.attachedSheet)
+        let content = try #require(sheet.contentView)
+        state.isLoading = false
+        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(100))
+        content.layoutSubtreeIfNeeded()
+        #expect(markers.views.count == 3)
+        let inset = ScholiumMetrics.ResearchSheet.contentInset
+        for (name, view) in markers.views {
+            let frame = view.convert(view.bounds, to: content)
+            print("Sheet inset marker \(name): \(frame), content \(content.bounds)")
+            #expect(frame.minX >= inset - 1)
+            #expect(frame.maxX <= content.bounds.width - inset + 1)
+            #expect(frame.minY >= inset - 1)
+            #expect(frame.maxY <= content.bounds.height - inset + 1)
+        }
+    }
+
     @Test("File sheets fit short content, retain long paths, and bound large batches")
     func fittedNativeSheets() async throws {
         _ = NSApplication.shared
@@ -118,4 +181,28 @@ struct FileOperationPresentationTests {
     }
 
     private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+}
+
+@MainActor
+private final class SheetInsetMarkers {
+    var views: [String: NSView] = [:]
+}
+
+@Observable
+@MainActor
+private final class SheetFixtureState {
+    var isLoading = true
+}
+
+private struct SheetInsetMarker: NSViewRepresentable {
+    let name: String
+    let markers: SheetInsetMarkers
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        markers.views[name] = view
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

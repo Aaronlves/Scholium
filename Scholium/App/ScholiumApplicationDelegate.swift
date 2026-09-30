@@ -4,9 +4,19 @@ import SwiftUI
 @MainActor
 final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
+    let markdownFiles = MarkdownFileOpeningController()
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard !windowLifecycleRegistry.isTerminationAttemptInProgress else { return }
+        markdownFiles.requestOpen(urls)
+    }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         SystemNotificationService.shared.start()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        markdownFiles.finishLaunching()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -22,6 +32,7 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
             return .terminateNow
         }
         windowLifecycleRegistry.beginTerminationAttempt()
+        markdownFiles.prepareTermination()
         Task { @MainActor in
             do {
                 try await windowLifecycleRegistry.flushAll()
@@ -29,6 +40,7 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
                 windowLifecycleRegistry.endTerminationAttempt()
+                markdownFiles.cancelTermination()
                 sender.reply(toApplicationShouldTerminate: false)
             }
         }

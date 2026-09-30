@@ -149,10 +149,15 @@ its content. The Guide is not a second protocol or method registry.
 
 ### 3.5 Import
 
-Import copies one regular UTF-8 Markdown file to the selected vault root,
-preserving exact bytes, BOM, newlines, YAML, and final newline. The original is
-unchanged. A collision uses the next `Name N.md` path without replacement.
-The result is immediately an ordinary Note in that workspace.
+Import copies regular UTF-8 Markdown to the selected vault root, preserving
+exact bytes, BOM, newlines, YAML, and final newline. File selection copies the
+saved file; an open external Markdown window copies its current checked buffer,
+including unsaved edits, without saving or changing the original. That window's
+Import to Triptych route selects a registered Triptych and Analyses, Topics, or
+Works before committing. A collision uses the next `Name N.md` path without
+replacement; `.markdown` filenames become `.md`. Each copy is immediately an ordinary Note in that workspace.
+The external-window result opens there; a later presentation failure never
+invites duplicate import.
 
 ## 4. Works folders and organization
 

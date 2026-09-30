@@ -342,8 +342,8 @@ context menu and named accessibility action; the existing picker remains availab
 All routes prepare inspectable context in the destination draft, without sending
 a message or navigating away from the current document.
 Chat Note clicks replace the current tab; context actions add a tab or separate
-window. Outside Markdown opens its original in an independent shared-editor
-window with guarded saves. Neither uses a Chat Markdown popover. Supplied
+window. Outside Markdown opens its original through the shared external-file
+window and lifecycle under §18.2. Neither uses a Chat Markdown popover. Supplied
 snapshots stay unchanged; other files retain details and Quick Look.
 
 The Note picker searches the current Triptych's known Note identities by title

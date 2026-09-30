@@ -80,10 +80,7 @@ struct ContentView: View {
         .environment(
             \.openChatExternalMarkdown,
             { url in
-                openWindow(
-                    id: "scholium-external-markdown",
-                    value: ExternalMarkdownWindowRoute(fileURL: url)
-                )
+                appState.workspaceStore.markdownFileOpening?.requestOpen([url])
             }
         )
         .environment(

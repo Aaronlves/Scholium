@@ -99,7 +99,7 @@ struct ScholiumApp: App {
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
         .commands {
-            ScholiumCommands()
+            ScholiumCommands(fileOpening: applicationDelegate.markdownFiles)
         }
 
         WindowGroup(id: "scholium-external-markdown", for: ExternalMarkdownWindowRoute.self) { route in
@@ -110,6 +110,8 @@ struct ScholiumApp: App {
         .defaultSize(width: 880, height: 700)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+        .environmentObject(applicationBootstrap)
+        .environmentObject(applicationDelegate)
 
         Settings {
             ScholiumSettingsWindowContent()
@@ -148,6 +150,7 @@ private struct ScholiumBootstrapWindowContent: View {
     var body: some View {
         ScholiumBootstrapWindowEnvironmentContent(route: $route)
             .modifier(SystemNotificationRouting())
+            .modifier(MarkdownFileOpeningRouting())
     }
 }
 
@@ -192,6 +195,7 @@ private struct ScholiumMainWindowContent: View {
     var body: some View {
         ScholiumMainWindowEnvironmentContent(route: $route)
             .modifier(SystemNotificationRouting())
+            .modifier(MarkdownFileOpeningRouting())
     }
 }
 
@@ -260,6 +264,7 @@ private struct ScholiumSettingsWindowReadyContent: View {
 /// If a Triptych is available, this scene opens its configured workspace window
 /// and closes without presenting the setup form.
 private struct ScholiumBootstrapRoot: View {
+    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     private let route: BootstrapWindowRoute
@@ -302,12 +307,19 @@ private struct ScholiumBootstrapRoot: View {
             )
         )
         .task {
+            if suppressBootstrapForLaunchDocuments() { return }
+            guard !didRouteToWorkspace else { return }
             if openFixtureWorkspaceIfRequested() {
                 return
             }
             await model.refresh()
+            guard !suppressBootstrapForLaunchDocuments(), !didRouteToWorkspace else { return }
             shouldPresentSetup = !model.isReadyToOpenWorkspace && !didRouteToWorkspace
             openConfiguredWorkspaceIfAvailable()
+        }
+        .onReceive(applicationDelegate.markdownFiles.$handlesLaunchDocuments) { handlesDocuments in
+            guard handlesDocuments else { return }
+            Task { @MainActor in _ = suppressBootstrapForLaunchDocuments() }
         }
         .onReceive(SystemNotificationService.shared.$notificationWindowID) { id in
             guard route.purpose == .firstConfiguration, let id else { return }
@@ -332,6 +344,18 @@ private struct ScholiumBootstrapRoot: View {
             }
         }
         .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
+    }
+
+    private func suppressBootstrapForLaunchDocuments() -> Bool {
+        guard route.purpose == .firstConfiguration, !didRouteToWorkspace,
+            applicationDelegate.markdownFiles.consumeLaunchBootstrapSuppression()
+        else { return false }
+        // A refresh already suspended by this Bootstrap must not install a
+        // default workspace after its file-launch route has taken ownership.
+        didRouteToWorkspace = true
+        shouldPresentSetup = false
+        dismissWindow()
+        return true
     }
 
     private var workspaceSetupContext: WorkspaceSetupContext {
@@ -364,6 +388,7 @@ private struct ScholiumBootstrapRoot: View {
     }
 
     private func openConfiguredWorkspaceIfAvailable() {
+        guard !suppressBootstrapForLaunchDocuments() else { return }
         if route.purpose == .firstConfiguration,
             let notificationWindowID = SystemNotificationService.shared.notificationWindowID
         {
@@ -384,7 +409,8 @@ private struct ScholiumBootstrapRoot: View {
     /// Real launches never take this path and continue through setup or the
     /// registered-Triptych restore flow above.
     private func openFixtureWorkspaceIfRequested() -> Bool {
-        guard ScholiumRuntimeIsolation.fixtureRootURL() != nil,
+        guard route.purpose == .firstConfiguration,
+            ScholiumRuntimeIsolation.fixtureRootURL() != nil,
             let windowID = ScholiumRuntimeIsolation.initialWindowSessionID(),
             !didRouteToWorkspace
         else { return false }

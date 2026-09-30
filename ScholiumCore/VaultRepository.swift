@@ -14,6 +14,7 @@ public actor VaultRepository {
     private let mutationCoordinator: VaultMutationCoordinator
     private let recoveryLedger: PrewriteRecoveryLedger
     private let fileManager = FileManager.default
+    private var importReadbackHookForTesting: (@Sendable (URL) throws -> Void)?
 
     public init(
         vaultURL: URL,
@@ -575,6 +576,7 @@ public actor VaultRepository {
         let requested = URL(fileURLWithPath: filename)
         let base = requested.deletingPathExtension().lastPathComponent
         let ext = requested.pathExtension
+        let expected = DocumentFingerprint(data: sourceData)
         var ordinal = 1
         while true {
             let relativePath =
@@ -583,26 +585,48 @@ public actor VaultRepository {
                 : "\(base) \(ordinal).\(ext)"
             do {
                 _ = try newFileURL(relativePath: relativePath)
-                try mutationCoordinator.create(
-                    path: markdownRelativePath(relativePath),
-                    data: sourceData
-                )
-                let readback = try readSource(relativePath: relativePath)
-                let expected = DocumentFingerprint(data: sourceData)
-                let observed = DocumentFingerprint(data: readback)
-                guard observed == expected else {
-                    throw VaultRepositoryError.readbackMismatch(
-                        expected: expected,
-                        current: observed
+                let path = try markdownRelativePath(relativePath)
+                var sourceCreated = false
+                do {
+                    try mutationCoordinator.create(path: path, data: sourceData)
+                    sourceCreated = true
+                    try importReadbackHookForTesting?(vaultURL.appendingPathComponent(relativePath))
+                    let readback = try readSource(relativePath: relativePath)
+                    let observed = DocumentFingerprint(data: readback)
+                    guard observed == expected else {
+                        throw VaultRepositoryError.readbackMismatch(
+                            expected: expected,
+                            current: observed
+                        )
+                    }
+                    return NoteDocument(relativePath: relativePath, rawContent: content)
+                } catch {
+                    if !sourceCreated, let repositoryError = error as? VaultRepositoryError {
+                        switch repositoryError {
+                        case .fileAlreadyExists, .pathCollision, .atomicCommitUnsupported:
+                            throw error
+                        default:
+                            break
+                        }
+                    }
+                    throw DocumentImportError.commitUncertain(
+                        relativePath: relativePath,
+                        intendedRevision: expected,
+                        reason: error.localizedDescription
                     )
                 }
-                return NoteDocument(relativePath: relativePath, rawContent: content)
             } catch VaultRepositoryError.fileAlreadyExists {
                 ordinal += 1
             } catch VaultRepositoryError.pathCollision {
                 ordinal += 1
             }
         }
+    }
+
+    package func setImportReadbackHookForTesting(
+        _ hook: (@Sendable (URL) throws -> Void)?
+    ) {
+        importReadbackHookForTesting = hook
     }
 
     /// Duplicates exact source bytes into a new note path.

@@ -32,6 +32,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case newWindow
     case closeTab
     case newNote
+    case openMarkdown
+    case save
     case moveToTrash
     case pasteMarkdown
     case find
@@ -66,7 +68,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     var category: ScholiumHotkeyCategory {
         switch self {
         case .searchResearch, .toggleLibrary, .toggleResearchInspector, .toggleFocusLayout,
-            .showAttention, .newWindow, .newNote, .closeTab, .nextTab, .previousTab:
+            .showAttention, .newWindow, .newNote, .openMarkdown, .closeTab, .nextTab, .previousTab:
             .workspace
         default:
             .document
@@ -78,6 +80,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .newWindow: "New Window"
         case .closeTab: "Close Tab"
         case .newNote: "New Note"
+        case .openMarkdown: "Open Markdown…"
+        case .save: "Save"
         case .moveToTrash: "Move to Trash…"
         case .pasteMarkdown: "Paste as Markdown"
         case .find: "Find…"
@@ -112,6 +116,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .newWindow: "File → New Window"
         case .closeTab: "File → Close Tab"
         case .newNote: "File → New Note"
+        case .openMarkdown: "File → Open Markdown…"
+        case .save: "File → Save"
         case .moveToTrash: "File → Move to Trash…"
         case .pasteMarkdown: "Edit → Paste as Markdown"
         case .find: "Edit → Find → Find…"
@@ -149,6 +155,10 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "w", modifiers: [.shift, .command])
         case .newNote:
             ScholiumHotkeyBinding(key: "n", modifiers: [.shift, .command])
+        case .openMarkdown:
+            ScholiumHotkeyBinding(key: "o", modifiers: [.command])
+        case .save:
+            ScholiumHotkeyBinding(key: "s", modifiers: [.command])
         case .moveToTrash:
             ScholiumHotkeyBinding(key: "\u{7f}", modifiers: [.command])
         case .pasteMarkdown:

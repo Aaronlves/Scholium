@@ -58,14 +58,35 @@ extension WorkspaceHandle {
         )
         guard values.isRegularFile == true,
             values.isSymbolicLink != true,
-            resolved.pathExtension.caseInsensitiveCompare("md") == .orderedSame
+            ["md", "markdown"].contains(resolved.pathExtension.lowercased())
         else {
             throw DocumentImportError.unsupportedSource(sourceURL.path)
         }
         let sourceData = try Data(contentsOf: resolved, options: [.mappedIfSafe])
-        guard NoteDocument.decodeUTF8PreservingBOM(sourceData) != nil else {
-            throw DocumentImportError.unsupportedSource(sourceURL.path)
+        return try await importMarkdown(
+            preferredFilename: resolved.lastPathComponent,
+            sourceData: sourceData,
+            intoVault: vaultID
+        )
+    }
+
+    func importMarkdown(
+        preferredFilename: String,
+        sourceData: Data,
+        intoVault vaultID: UUID
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+        try requireActive()
+        let requested = URL(fileURLWithPath: preferredFilename)
+        guard requested.lastPathComponent == preferredFilename,
+            ["md", "markdown"].contains(requested.pathExtension.lowercased()),
+            NoteDocument.decodeUTF8PreservingBOM(sourceData) != nil
+        else {
+            throw DocumentImportError.unsupportedSource(preferredFilename)
         }
+        let destinationFilename =
+            requested.pathExtension.caseInsensitiveCompare("markdown") == .orderedSame
+            ? requested.deletingPathExtension().lastPathComponent + ".md"
+            : preferredFilename
 
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
@@ -73,10 +94,26 @@ extension WorkspaceHandle {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: vaultID)
-        let document = try await repository.importMarkdown(
-            preferredFilename: resolved.lastPathComponent,
-            sourceData: sourceData
-        )
+        let reservedIdentityID = UUID()
+        let document: NoteDocument
+        do {
+            document = try await repository.importMarkdown(
+                preferredFilename: destinationFilename,
+                sourceData: sourceData
+            )
+        } catch let error as DocumentImportError {
+            guard case .commitUncertain(let path, let revision, _) = error else { throw error }
+            let record = try await recordManagedCreationRecovery(
+                vaultID: vaultID,
+                relativePath: path,
+                reservedIdentityID: reservedIdentityID,
+                intendedRevision: revision,
+                repository: repository,
+                failure: error.localizedDescription
+            )
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
+        if let barrier = managedCreationPostSourceBarrierForTesting { await barrier() }
         let id = VaultQualifiedNoteID(
             vaultID: vaultID,
             relativePath: document.relativePath
@@ -88,23 +125,37 @@ extension WorkspaceHandle {
                 try await services.controlStore.identity(
                     forVaultID: vaultID,
                     relativePath: document.relativePath,
-                    fingerprint: document.fingerprint
+                    fingerprint: document.fingerprint,
+                    preferredID: reservedIdentityID
                 ) != nil
             else {
                 throw NoteIdentityRecoveryError.identityUnresolved(document.relativePath)
             }
         } catch let identityError {
-            guard
-                let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+            do {
+                guard
+                    let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+                        repository: repository,
+                        document: document,
+                        identityError: identityError
+                    )
+                else {
+                    throw identityError
+                }
+                committedDocument = retained.document
+                identityRecoveryWarning = retained.identityRecoveryWarning
+            } catch let rollbackError as CreatedDocumentIdentityRollbackError {
+                guard case .sourcePresenceUncertain = rollbackError else { throw rollbackError }
+                let record = try await recordManagedCreationRecovery(
+                    vaultID: vaultID,
+                    relativePath: document.relativePath,
+                    reservedIdentityID: reservedIdentityID,
+                    intendedRevision: document.fingerprint,
                     repository: repository,
-                    document: document,
-                    identityError: identityError
+                    failure: rollbackError.localizedDescription
                 )
-            else {
-                throw identityError
+                throw TriptychTransactionError.recoveryRequired(record)
             }
-            committedDocument = retained.document
-            identityRecoveryWarning = retained.identityRecoveryWarning
         }
         endSourceMutation(mutationLease)
         ownsMutation = false
@@ -615,8 +666,8 @@ extension WorkspaceHandle {
     /// establish portable identity. If identity setup fails, rollback is
     /// revision checked. A failed rollback is never ignored: this helper
     /// distinguishes a proven retained source from unreadable presence so the
-    /// managed researcher creator can persist one recovery duty, while older
-    /// import and duplication callers keep their existing warning boundary.
+    /// managed researcher creator and file importer can persist one recovery
+    /// duty, while source-level import and duplication retain their warning boundary.
     private func retainedCreatedDocumentAfterIdentityFailure(
         repository: VaultRepository,
         document: NoteDocument,

@@ -19,7 +19,8 @@
   confirmation/cancellation, notification pointer behavior, Find/preview focus
   and affected motion remain outside complete human acceptance.
 - Complete native sheets, file navigation, note reorganization, Links and Writing
-  References, and Chat composer/approval visual and assistive-technology acceptance.
+  References, external Markdown opening/import, and Chat composer/approval visual
+  and assistive-technology acceptance.
   Include minimum width, Light/Dark, Increase Contrast, Reduce Transparency and
   Reduce Motion; scoped/offscreen development evidence does not close this set.
 - Complete Writing References native usable-card latency and researcher-judged

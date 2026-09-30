@@ -76,6 +76,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         category: "WorkspacePublication"
     )
     lazy var documentLocations = DocumentWindowLocationStore(workspaceStore: self)
+    weak var markdownFileOpening: MarkdownFileOpeningController?
     let applicationSupportURL: URL
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore
@@ -305,6 +306,25 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
 
     func registeredTriptychs() async throws -> [TriptychAssignment] {
         try await applicationRuntime.availableWorkspaces()
+    }
+
+    func importExternalMarkdown(
+        _ data: Data, filename: String, assignment: TriptychAssignment, slot: WorkspaceVaultSlot
+    ) async throws -> (VaultNoteReference, WorkspaceMutationOutcome<NoteDocument>) {
+        let handle = try await workspaceHandle(id: assignment.id)
+        guard handle.assignment == assignment, let vault = handle.assignment.vault(for: slot) else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        let outcome = try await handle.documents.importMarkdown(
+            preferredFilename: filename, sourceData: data, intoVault: vault.id)
+        let reference = VaultNoteReference(
+            vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role, relativePath: outcome.committedValue.relativePath)
+        return (reference, outcome)
+    }
+
+    func externalMarkdownRecoveryIsPending(_ record: TriptychMutationRecoveryRecord) async throws -> Bool {
+        let handle = try await workspaceHandle(id: record.triptychID)
+        return try await handle.research.recoveryRecords().contains { $0.id == record.id }
     }
 
     func registeredVaults() async throws -> [RegisteredVault] {
