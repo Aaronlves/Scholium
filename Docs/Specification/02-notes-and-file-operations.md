@@ -150,8 +150,7 @@ not invite duplicate creation. A Note's filename is changed only through the
 inline title control in Edit; there is no separate Note Rename command or sheet.
 
 Paths are locations; Notes have stable app-owned identities. Duplicate creates
-a new identity and copies exact source, but not
-Settlement. An inline filename change and Move preserve identity and exact
+a new identity and copies exact source. An inline filename change and Move preserve identity and exact
 resolved incoming-link updates. Moving a source Note also preserves its resolved
 outgoing targets when the new location would otherwise retarget them.
 Ambiguous external rename keeps source readable but blocks identity-dependent
@@ -242,7 +241,7 @@ document may close through the existing deletion path.
 **Export Note…** writes a standalone HTML, paginated PDF, or editable DOCX copy
 of the current Note to a researcher-chosen location outside the Triptych. It
 captures one immutable source snapshot, including unsaved editor text only after
-composition ends; export never saves, changes, or settles the Note. Cancellation
+composition ends; export never saves or changes the Note. Cancellation
 creates no file. Failure leaves the source and editor state intact and reports
 the unsuccessful destination write.
 
@@ -270,7 +269,7 @@ batch. It verifies the Note identity and that no other review has superseded the
 displayed starting baseline. A newer saved revision remains pending relative to
 the displayed ending snapshot; it is never silently marked reviewed. Opening,
 closing, or navigating Changes never marks anything reviewed. Review does not
-alter Markdown, Agent Change evidence, recovery, or Settlement and makes no
+alter Markdown, Agent Change evidence or recovery and makes no
 claim about philosophical acceptance. The exact snapshots needed to reopen a
 reviewed batch remain with its history record.
 
@@ -279,7 +278,7 @@ reviewed time, or be retained forever. A researcher may delete one reviewed
 batch or clear reviewed history for the selected Triptych with confirmation.
 Expiration and deletion remove the reviewed batches' stored snapshots while
 preserving the active comparison baseline, pending changes, and unresolved recovery.
-Neither action edits source or changes its review or Settlement state.
+Neither action edits source or changes its review state.
 
 ## 6. System Trash deletion and recovery
 
@@ -294,8 +293,8 @@ in-flight or uncertain MCP mutation, unresolved write recovery, identity
 ambiguity, source or manifest drift, or unsafe filesystem entry blocks the
 move.
 
-Deleting a Note does not delete independent linked Notes. Stable Note identity,
-Settlement remains so Finder restoration can reconcile exact source.
+Deleting a Note does not delete independent linked Notes. Stable Note identity
+remains so Finder restoration can reconcile exact source.
 
 Before the first move Scholium installs a deletion gate and durable forward
 plan with one receipt per source item. It binds each native operation to the
@@ -317,26 +316,7 @@ Multiple windows converge through shared workspace coordination. A committed
 absence closes only affected pages and refreshes derived projections while
 preserving unrelated tabs and focus.
 
-## 7. Settlement
-
-Settle binds an optional rationale, date, and researcher identity to the exact
-saved fingerprint of any Analysis, Topic, or Work. Save failure, conflict,
-unknown identity, or revision mismatch blocks it. Repeating Settle replaces the
-current marker. **Mark Unsettled** is a separate explicit researcher action.
-Neither a researcher edit, external edit, MCP mutation, Agent Change, index
-refresh, nor elapsed time changes Settled/Unsettled automatically.
-
-When current source differs from the fingerprint at which Settle was last
-affirmed, Scholium derives **Changed Since Settle** without changing the
-Settlement judgment. A dismissible reminder may invite the researcher to
-review the current Note and choose Settle Again, Mark Unsettled, or no status
-change. **View Changes** opens the current Note's saved-source comparison when
-changes are pending, regardless of the source of the edit. Opening,
-closing, or dismissing any presentation has no Settlement effect.
-
-Each Note has one portable Settlement judgment. The machine-local Changes
-baseline is separate and is not a verdict, source restore point, or Agent
-requirement.
+## 7. Written annotation
 
 Authoritative written annotation remains Markdown, including semantic
 Callouts and the occurrence-owned link annotations defined by §12. Selection
@@ -360,7 +340,7 @@ never authorizes reconstructed source or guessed values.
 owns the Note title; app-owned stable identity remains separate. Authored `title`,
 `aliases`, `authors`/`author`, and `publication_date` may supply search/navigation
 text without becoming managed bibliographic truth. YAML cannot assign stable
-Note identity, Settlement, permissions, or research acceptance.
+Note identity, permissions, or research acceptance.
 
 Property Search uses the existing `property:` grammar. It discovers literal
 user keys, supports presence and normalized scalar/direct-list equality, and

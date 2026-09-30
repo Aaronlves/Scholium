@@ -148,7 +148,7 @@ critical_ui_tests=(
   "-only-testing:ScholiumUITests/ScholiumUITests/testStorageUnavailableRetriesWithoutConstructingWorkspace"
   "-only-testing:ScholiumUITests/ScholiumUITests/testPortableFolderPanelRejectsWrongExactFolderAndRecovers"
   "-only-testing:ScholiumUITests/ScholiumUITests/testRestoreAccessFolderSelectionUsesScenePresenter"
-  "-only-testing:ScholiumUITests/ScholiumUITests/testAgentChangesShowsExactUpdateAndRestoresSettledBytes"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testAgentChangesShowsExactUpdateAndRestoresOriginalBytes"
   "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyLivePreviewCommitsBeforeSwitchingNotes"
   "-only-testing:ScholiumUITests/ScholiumUITests/testDocumentModeAndLibrarySwitchHandoffsStayBoundedWithoutSourceExposure"
   "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyExternalEditPreservesTheBufferAndPresentsConflictRecovery"

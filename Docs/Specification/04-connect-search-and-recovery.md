@@ -297,7 +297,7 @@ Scholium MCP reuses this owner under
 [§8.3](03-agent-collaboration-and-workflows.md#83-tool-contract) and adds no
 second parser, resolver, index, or confidence score.
 
-**Notifications** combines pending Note Changes and derived Settlement reminders.
+**Notifications** presents pending Note Changes.
 An Agent mutation retains its exact operation receipt and recovery route under
 §8.4; the affected Note's pending comparison follows §5.7 and does not
 attribute the whole diff to that Agent.
@@ -318,14 +318,10 @@ philosophically deficient. The Library exposes the exact mechanical reason and
 Note/path locator while the underlying projection remains derived and
 read-only.
 
-Changed Since Settle reminders are not structural Attention. They remain
-Settlement reminders in Notifications and do not change Settlement state when
-opened; a later source change may produce a new reminder under §7.
-
 ## 14. Save, Agent changes, and recovery
 
 Autosave creates no per-save version history, Checkpoint product, whole-Triptych
-rollback, or settled-version store. Explicit Changes review retains the exact
+rollback or saved-version store. Explicit Changes review retains the exact
 history batches defined by §5.7.
 
 §5.7 owns Changes review history; §8.4 owns Agent Change evidence and eligible
@@ -367,5 +363,4 @@ After Saving, a writable Document has exactly three outcomes:
 Filesystem metadata, temporary replacement entries, directory synchronization,
 and app-owned housekeeping are not Document success predicates. Once exact
 readback and displaced-source reconciliation prove the source, they do not
-create a warning or invite another write. Settle stores only its portable fingerprint marker and is never recovery
-source.
+create a warning or invite another write.

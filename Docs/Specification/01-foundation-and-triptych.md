@@ -21,8 +21,6 @@
   baseline, regardless of whether the intervening writes came from the
   researcher, an Agent, or another filesystem participant. **Mark as Reviewed**
   advances that baseline; it is not a research judgment.
-- **Settle** is the researcher's replaceable judgment that one saved fingerprint
-  is sufficiently stable for current research. It stores no source version.
 - **Connect** presents authored link occurrences and their annotations.
   **Attention** presents recoverable
   derived warnings without philosophical judgment.
@@ -41,7 +39,7 @@ or silently replace it.
 
 The manual core—setup, open, create, read, edit, autosave, Search, Library, tabs,
 conflicts, and recovery—must work without Obsidian, Zotero, or Agents. Scholium supports
-source-grounded research, writing, annotation, deliberate Agent collaboration, Settle,
+source-grounded research, writing, annotation, deliberate Agent collaboration,
 Search, Connect, organization, provenance, and recovery. It is not project management,
 reference management, a general Agent harness or an Obsidian replacement.
 
@@ -74,10 +72,9 @@ becomes epistemic authority or researcher adoption.
 
 Each Triptych has one researcher authority. Agents are attributed participants,
 not additional researchers. Keep distinct: source and modified Notes; vault
-role and location; Settlement state; Agent attribution; external conversation;
+role and location; Agent attribution; external conversation;
 research history authored in Notes; Changes review history; and Agent Change
-operation evidence. Later editing, incorporation, or Settle
-never erases provenance.
+operation evidence. Later editing or incorporation never erases provenance.
 
 Use sparse visible labels. Vault placement communicates Note role; the Document
 carries authored detail, and reminders appear only when the current revision
@@ -124,8 +121,7 @@ same Triptych:
 - manifest and stable identity mappings;
 - the Triptych Guide and Triptych-local settings;
 - Chat instructions in `AGENTS.md` and local Skills in `skills/<name>/SKILL.md`;
-- attachment file identity/location catalogs, without Note relationships;
-- fingerprint-bound Settlement judgments.
+- attachment file identity/location catalogs, without Note relationships.
 
 Researcher-authored research content belongs in ordinary Markdown Notes.
 

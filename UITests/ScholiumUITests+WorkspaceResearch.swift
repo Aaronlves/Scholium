@@ -143,32 +143,18 @@ extension ScholiumUITests {
         // only this journey-owned directory, retaining normal failure artifacts.
     }
 
+    /// Changes is the cumulative saved-source UI. Exact receipt identity and
+    /// guarded Undo are verified through the real MCP route, not inferred from
+    /// the Notifications row or the cumulative comparison.
     @MainActor
-    func testAgentChangesShowsExactUpdateAndRestoresSettledBytes() throws {
+    func testAgentChangesShowsExactUpdateAndRestoresOriginalBytes() throws {
+        waitForCurrentDocumentSurface()
         let noteURL =
             triptychDirectory
             .appendingPathComponent("02-topics", isDirectory: true)
             .appendingPathComponent("Agent Review.md")
         let originalBytes = try Data(contentsOf: noteURL)
-
-        var settle = app.toolbars.buttons["Settle"].firstMatch
-        XCTAssertTrue(settle.waitForExistence(timeout: 10))
-        XCTAssertEqual(settle.label, "Settle")
-        settle.click()
-        let settlePopover = app.popovers.firstMatch
-        XCTAssertTrue(settlePopover.waitForExistence(timeout: 5))
-        let confirmSettle = settlePopover.buttons["Settle"].firstMatch
-        XCTAssertTrue(confirmSettle.waitForExistence(timeout: 5))
-        confirmSettle.click()
-        XCTAssertTrue(
-            waitUntil(timeout: 10) {
-                settle =
-                    self.app.toolbars.buttons.matching(
-                        NSPredicate(format: "label CONTAINS %@", "Settle Again")
-                    ).firstMatch
-                return settle.exists
-            })
-
+        let originalSource = String(decoding: originalBytes, as: UTF8.self)
         let status = try callQAMCP(tool: "scholium_workspace_status")
         let triptychID = try XCTUnwrap(status["triptych_id"] as? String)
         let search = try callQAMCP(
@@ -187,14 +173,15 @@ extension ScholiumUITests {
             }))
         let noteID = try XCTUnwrap(result["note_id"] as? String)
         let fingerprint = try XCTUnwrap(result["fingerprint"] as? [String: Any])
+        let insertedSentence = "An external Agent added this synthetic sentence for exact comparison."
         let updatedBody = """
             # Agent Review
 
             Reasons can guide action without settling every question about value.
 
-            An external Agent added this synthetic sentence for exact comparison.
+            \(insertedSentence)
             """
-        _ = try callQAMCP(
+        let update = try callQAMCP(
             tool: "scholium_update_note",
             arguments: [
                 "triptych_id": triptychID,
@@ -204,96 +191,117 @@ extension ScholiumUITests {
                 "content": updatedBody,
             ]
         )
-
-        XCTAssertTrue(
-            waitUntil(timeout: 10) {
-                settle.label.contains("Changed since settlement")
-            })
-        XCTAssertTrue(settle.label.contains("Settle Again"))
+        let changeID = try XCTUnwrap(update["change_id"] as? String)
+        let afterFingerprint = try XCTUnwrap(update["after_fingerprint"] as? [String: Any])
+        XCTAssertEqual(update["readback_verified"] as? Bool, true)
+        let updatedBytes = try Data(contentsOf: noteURL)
+        XCTAssertNotEqual(updatedBytes, originalBytes)
+        XCTAssertEqual(afterFingerprint["byte_count"] as? Int, updatedBytes.count)
+        XCTAssertEqual(
+            afterFingerprint["sha256"] as? String,
+            SHA256.hash(data: updatedBytes).map { String(format: "%02x", $0) }.joined()
+        )
 
         let documentMode = documentModeControl()
         XCTAssertTrue(documentMode.waitForExistence(timeout: 5))
-        let modeBeforeAgentChange = try XCTUnwrap(documentModeState(documentMode))
-
+        let modeBeforeChanges = try XCTUnwrap(documentModeState(documentMode))
         let notifications = app.toolbars.buttons["Open Triptych Notifications"].firstMatch
         XCTAssertTrue(notifications.waitForExistence(timeout: 5))
         notifications.click()
         let notificationPopover = app.popovers.firstMatch
         XCTAssertTrue(notificationPopover.waitForExistence(timeout: 5))
-        let agentChange = notificationPopover.descendants(matching: .any).matching(
+        let pendingChange = notificationPopover.descendants(matching: .any).matching(
             NSPredicate(
-                format: "identifier BEGINSWITH %@",
-                "scholium.notification.agentChange."
+                format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                "scholium.notification.change.", "Agent Review"
             )
         ).firstMatch
         XCTAssertTrue(
-            agentChange.waitForExistence(timeout: 10),
-            "The confirmed external update must appear in Triptych Notifications."
+            pendingChange.waitForExistence(timeout: 10),
+            "The saved external update must appear in the cumulative Changes queue."
         )
-        agentChange.click()
-        let comparison = app.descendants(matching: .any)["scholium.agentChanges"]
-            .firstMatch
+        pendingChange.click()
+        let comparison = app.descendants(matching: .any)["scholium.changes"].firstMatch
         XCTAssertTrue(comparison.waitForExistence(timeout: 10))
         XCTAssertTrue(
             waitUntil(timeout: 5) {
-                self.documentModeState(self.documentModeControl()) == modeBeforeAgentChange
+                self.documentModeState(self.documentModeControl()) == modeBeforeChanges
             },
-            "Opening Agent Change evidence must preserve the current Document mode."
+            "Opening saved-source Changes must preserve the current Document mode."
         )
-        for text in [
-            "Current Revision",
-            "Before",
-            "After",
-        ] {
+        for text in ["Before", "After"] {
             XCTAssertTrue(
                 comparison.staticTexts[text].firstMatch.waitForExistence(timeout: 5),
-                "Agent Changes did not expose \(text)."
+                "Changes did not expose \(text)."
             )
         }
-        let changeRows = comparison.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.agentChanges.row.")
-        )
+        let inserted = comparison.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND label == %@",
+                "scholium.changes.row.", "Inserted"
+            )
+        ).allElementsBoundByIndex
         XCTAssertTrue(
-            changeRows.matching(
-                NSPredicate(format: "label == %@", "Inserted")
-            ).firstMatch.exists)
+            inserted.contains { ($0.value as? String)?.contains(insertedSentence) == true },
+            "The comparison must expose the exact added sentence."
+        )
+        XCTAssertTrue(comparison.buttons["scholium.changes.markReviewed"].firstMatch.isEnabled)
+        XCTAssertFalse(
+            comparison.buttons.matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "scholium.agentChanges.undo.")
+            ).firstMatch.exists,
+            "Cumulative Changes must not offer an exact-receipt Undo."
+        )
         let beforeUndo = XCTAttachment(screenshot: app.screenshot())
-        beforeUndo.name = "Agent Changes exact Before and After"
+        beforeUndo.name = "Saved-source Changes exact Before and After"
         beforeUndo.lifetime = .keepAlways
         add(beforeUndo)
-
-        let undo = comparison.buttons.matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@",
-                "scholium.agentChanges.undo."
-            )
-        ).firstMatch
-        XCTAssertTrue(undo.waitForExistence(timeout: 5))
-        XCTAssertTrue(undo.isEnabled)
-        undo.click()
-        let confirmation = app.sheets.matching(
-            NSPredicate(format: "label == %@", "alert")
-        ).firstMatch
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        let restore = confirmation.buttons["Restore Before Version"].firstMatch
-        XCTAssertTrue(restore.waitForExistence(timeout: 5))
-        restore.click()
-        XCTAssertTrue(
-            comparison.staticTexts["Earlier Revision"].firstMatch
-                .waitForExistence(timeout: 10))
-        XCTAssertTrue(comparison.staticTexts["This update was undone."].firstMatch.exists)
-        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
-
         comparison.buttons["Close"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !comparison.exists })
+
+        let receiptArguments: [String: Any] = [
+            "triptych_id": triptychID, "change_id": changeID, "note_id": noteID,
+        ]
+        let receipt = try callQAMCP(tool: "scholium_read_change", arguments: receiptArguments)
+        let change = try XCTUnwrap(receipt["change"] as? [String: Any])
+        XCTAssertEqual(change["change_id"] as? String, changeID)
+        XCTAssertEqual(change["note_id"] as? String, noteID)
+        XCTAssertEqual(change["operation"] as? String, "update")
+        XCTAssertEqual(change["state"] as? String, "confirmed")
+        XCTAssertEqual(receipt["ending_revision_state"] as? String, "current")
+        XCTAssertEqual(receipt["can_undo"] as? Bool, true)
+        let exactComparison = try XCTUnwrap(receipt["comparison"] as? [String: Any])
+        XCTAssertEqual(exactComparison["before_fingerprint"] as? NSDictionary, fingerprint as NSDictionary)
+        XCTAssertEqual(exactComparison["after_fingerprint"] as? NSDictionary, afterFingerprint as NSDictionary)
+        let rows = try XCTUnwrap(exactComparison["rows"] as? [[String: Any]])
+        XCTAssertEqual(exactComparison["has_more"] as? Bool, false)
+        XCTAssertTrue(rows.contains { $0["kind"] as? String == "added" && $0["text"] as? String == insertedSentence })
+
+        let undo = try callQAMCP(
+            tool: "scholium_undo_change",
+            arguments: [
+                "triptych_id": triptychID, "note_id": noteID,
+                "change_id": changeID, "expected_fingerprint": afterFingerprint,
+            ]
+        )
+        XCTAssertEqual(undo["change_id"] as? String, changeID)
+        XCTAssertEqual(undo["undone"] as? Bool, true)
+        XCTAssertEqual(undo["readback_verified"] as? Bool, true)
+        XCTAssertEqual(undo["after_fingerprint"] as? NSDictionary, fingerprint as NSDictionary)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+        let undoneReceipt = try callQAMCP(tool: "scholium_read_change", arguments: receiptArguments)
+        let undoneChange = try XCTUnwrap(undoneReceipt["change"] as? [String: Any])
+        XCTAssertEqual(undoneChange["state"] as? String, "undone")
+        XCTAssertEqual(undoneReceipt["can_undo"] as? Bool, false)
+
+        selectDocumentMode("Source")
+        let editor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
         XCTAssertTrue(
-            waitUntil(timeout: 10) {
-                settle.label.contains("Settled — Settle Again")
-            })
-        XCTAssertTrue(settle.label.contains("Settle Again"))
-        let afterUndo = XCTAttachment(screenshot: app.screenshot())
-        afterUndo.name = "Settlement retained after exact Agent Undo"
-        afterUndo.lifetime = .keepAlways
-        add(afterUndo)
+            waitUntil(timeout: 10) { editor.value as? String == originalSource },
+            "The Document must converge to the exact restored source after guarded MCP Undo."
+        )
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
     }
 
     private func callQAMCP(

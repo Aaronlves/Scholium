@@ -140,7 +140,7 @@ Scholium does not become:
   vault, or All Notes mode;
 - a self-built Agent harness, private-reasoning monitor, independent execution
   scheduler, cloud orchestrator, or second proposal/approval lifecycle;
-- an automatic judge of philosophical support, truth, sufficiency, settlement,
+- an automatic judge of philosophical support, truth, sufficiency,
   prose authorization, quality, or researcher competence;
 - a Zotero replacement, embedded PDF reader, proprietary backup format, or
   arbitrary Obsidian-theme host; or

@@ -37,7 +37,6 @@ enum AttentionPresentationRequest: Equatable, Sendable {
 @MainActor
 final class AttentionPopoverSession: ObservableObject {
     struct Dependencies {
-        let settlementRequirementChanges: AnyPublisher<[WorkspaceSettlementRequirement], Never>
         let documentChangeChanges: AnyPublisher<[DocumentChangeSummary]?, Never>
         let documentChangeErrorChanges: AnyPublisher<String?, Never>
         let refresh: @MainActor () async -> Void
@@ -45,13 +44,11 @@ final class AttentionPopoverSession: ObservableObject {
     }
 
     @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
-    @Published private(set) var settlementRequirements: [WorkspaceSettlementRequirement] = []
     @Published private(set) var documentChanges: [DocumentChangeSummary]?
     @Published private(set) var documentChangesError: String?
     @Published private var refreshInProgress = false
 
     let presentation: AttentionPresentationState
-    private let discoveryController: DiscoveryController
     private let workspaceController: WindowWorkspaceController
     private let projectionController: WindowWorkspaceProjectionController
     private let dependencies: Dependencies
@@ -59,13 +56,11 @@ final class AttentionPopoverSession: ObservableObject {
 
     init(
         presentation: AttentionPresentationState,
-        discoveryController: DiscoveryController,
         workspaceController: WindowWorkspaceController,
         projectionController: WindowWorkspaceProjectionController,
         dependencies: Dependencies
     ) {
         self.presentation = presentation
-        self.discoveryController = discoveryController
         self.workspaceController = workspaceController
         self.projectionController = projectionController
         self.dependencies = dependencies
@@ -79,12 +74,6 @@ final class AttentionPopoverSession: ObservableObject {
         projectionController.$state
             .dropFirst()
             .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &observations)
-        dependencies.settlementRequirementChanges
-            .removeDuplicates()
-            .sink { [weak self] requirements in
-                self?.settlementRequirements = requirements
-            }
             .store(in: &observations)
         dependencies.documentChangeChanges
             .removeDuplicates()
@@ -135,7 +124,6 @@ final class AttentionPopoverSession: ObservableObject {
             }
         if anchor == .inspector {
             presentation.filter = AttentionQueueFilter()
-            presentation.notificationFilter = .all
         }
         presentation.present(
             workspaceSlot: resolvedWorkspaceSlot,
@@ -159,51 +147,10 @@ final class AttentionPopoverSession: ObservableObject {
         dismiss(resetFilter: true)
     }
 
-    func visibleSettlementRequirements(
-        for presentation: AttentionPresentationState,
-        locale: Locale = .current
-    ) -> [WorkspaceSettlementRequirement] {
-        guard presentation.notificationFilter.showsSettlements else { return [] }
-        let workspaceVaultID = presentation.workspaceSlot.flatMap {
-            workspaceController.state.assignment?.vault(for: $0)?.id
-        }
-        let query = presentation.filter.query
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: locale
-            )
-        return settlementRequirements.filter { requirement in
-            if let workspaceVaultID,
-                requirement.note.vaultID != workspaceVaultID
-            {
-                return false
-            }
-            if let noteScope = presentation.noteScope,
-                requirement.note != noteScope
-            {
-                return false
-            }
-            guard !query.isEmpty else { return true }
-            let searchable = [
-                ScholiumL10n.string("Current Revision Not Settled", locale: locale),
-                ScholiumL10n.string("Review Changes", locale: locale),
-                ScholiumL10n.string("Settle", locale: locale),
-                requirement.title,
-                requirement.note.relativePath,
-            ].joined(separator: " ")
-            return searchable.folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: locale
-            ).contains(query)
-        }
-    }
-
     func visibleDocumentChanges(
         for presentation: AttentionPresentationState,
         locale: Locale = .current
     ) -> [DocumentChangeSummary] {
-        guard presentation.notificationFilter.showsChanges else { return [] }
         let noteID = presentation.noteScope.flatMap(stableNoteID)
         let query = normalized(presentation.filter.query, locale: locale)
         return (documentChanges ?? []).filter { change in
@@ -241,25 +188,6 @@ final class AttentionPopoverSession: ObservableObject {
         refreshInProgress = true
         defer { refreshInProgress = false }
         await dependencies.refresh()
-    }
-
-    func inspect(_ requirement: WorkspaceSettlementRequirement) {
-        guard
-            let vault = workspaceController.state.assignment?.vaults.values.first(where: {
-                $0.id == requirement.note.vaultID
-            })
-        else { return }
-        dismiss()
-        discoveryController.requestOpen(
-            VaultNoteReference(
-                vaultID: requirement.note.vaultID,
-                vaultName: vault.name,
-                vaultRole: vault.role,
-                relativePath: requirement.note.relativePath,
-                stableNoteID: requirement.noteID.uuidString
-            ),
-            sourceLocator: nil
-        )
     }
 
     func inspect(_ change: DocumentChangeSummary) {

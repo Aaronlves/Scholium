@@ -45,7 +45,6 @@ struct DocumentChangeOperationsTests {
         #expect(try await handle.changes.pendingChanges().first?.startingRevision == DocumentFingerprint(data: b))
         #expect(try await handle.changes.pendingChanges().first?.endingRevision == DocumentFingerprint(data: c))
         #expect(try await handle.changes.reviewedHistory().count == 1)
-        #expect(try await handle.snapshot().research.settlements.isEmpty)
         await runtime.shutdown()
 
         let reopened = makeRuntime(fixture)
@@ -67,7 +66,6 @@ struct DocumentChangeOperationsTests {
         #expect(pendingAuthored.first?.startingRevision == DocumentFingerprint(data: c))
         #expect(pendingAuthored.first?.endingRevision == DocumentFingerprint(data: Data(authored.utf8)))
         #expect(try Data(contentsOf: sourceURL) == Data(authored.utf8))
-        #expect(try await reopenedHandle.snapshot().research.settlements.isEmpty)
         await reopened.shutdown()
     }
 

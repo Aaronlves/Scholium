@@ -81,10 +81,9 @@ retained without entering Trash. Interrupted bindings resume only under their
 exact plan; absent original and absent valid binding report unknown outcome.
 Returned Trash locations are machine-local recovery evidence.
 
-Portable Settlement and identity, and machine-local Agent Changes, have independent
-writers and are not deletion cleanup targets. Watchers, Finder/sync observations
-cannot execute a deletion plan. Settlement writes retain strict schema validation
-and shared control-store coordination, independently of source prose.
+Portable identity and machine-local Agent Changes have independent writers and
+are not deletion cleanup targets. Watchers and Finder/sync observations cannot
+execute a deletion plan.
 
 ## Shared read models and source properties
 

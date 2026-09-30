@@ -13,7 +13,7 @@
   or physical-input acceptance.
 - Complete editor syntax continuity for rapid reversal, full-line prefix borrowing,
   minimum width, system adaptations, IME and conflict/recovery. Accept ordinary
-  Edit entry and Settlement milestone feedback through applicable human checks.
+  Edit entry through applicable human checks.
 - Exercise the intermittent Sidebar symptom under mixed physical pointer/keyboard
   use and window reactivation; Library native-row emphasis and swipe feedback,
   confirmation/cancellation, notification pointer behavior, Find/preview focus

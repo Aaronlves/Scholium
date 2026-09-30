@@ -106,7 +106,7 @@ final class ScholiumUITests: XCTestCase {
         if name.contains("testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession") {
             return nil
         }
-        if name.contains("testAgentChangesShowsExactUpdateAndRestoresSettledBytes") {
+        if name.contains("testAgentChangesShowsExactUpdateAndRestoresOriginalBytes") {
             return "Agent Review.md"
         }
         return "QA Autosave A.md"
@@ -143,7 +143,7 @@ final class ScholiumUITests: XCTestCase {
             appearance: name.contains("testSettingsNavigationRetainsDraftsAndWindowGeometry") ? .dark : nil,
             openNote: initialOpenNoteForCurrentTest
         )
-        if name.contains("testAgentChangesShowsExactUpdateAndRestoresSettledBytes") {
+        if name.contains("testAgentChangesShowsExactUpdateAndRestoresOriginalBytes") {
             app.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "topic_knowledge"
         }
         // A runner killed by XCTest cannot execute tearDown, so its QA app can
@@ -178,7 +178,8 @@ final class ScholiumUITests: XCTestCase {
     @MainActor
     override func tearDown() async throws {
         if testRun?.failureCount ?? 0 > 0, let app {
-            for window in app.windows.allElementsBoundByIndex where window.exists
+            for window in app.windows.allElementsBoundByIndex
+            where window.exists
                 && window.identifier.hasPrefix("scholium")
             {
                 let attachment = XCTAttachment(screenshot: window.screenshot())

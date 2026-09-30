@@ -16,7 +16,6 @@ struct AttentionQueuePresentationTests {
             workspaceStore: store,
             requestedTriptychID: nil
         )
-        let discoveryController = DiscoveryController()
         let projectionController = WindowWorkspaceProjectionController {
             throw DiscoverySearchExecutionError.workspaceUnavailable
         }
@@ -48,11 +47,9 @@ struct AttentionQueuePresentationTests {
         )
         let session = AttentionPopoverSession(
             presentation: AttentionPresentationState(),
-            discoveryController: discoveryController,
             workspaceController: workspaceController,
             projectionController: projectionController,
             dependencies: .init(
-                settlementRequirementChanges: Just([]).eraseToAnyPublisher(),
                 documentChangeChanges: documentChanges.eraseToAnyPublisher(),
                 documentChangeErrorChanges: documentChangeErrors.eraseToAnyPublisher(),
                 refresh: {},
@@ -92,7 +89,7 @@ struct AttentionQueuePresentationTests {
         #expect(table.accessibilityIdentifier() == "scholium.attentionList")
         #expect(table.allowsMultipleSelection == false)
         #expect(search.accessibilityIdentifier() == "scholium.attentionSearch")
-        #expect(search.searchMenuTemplate?.items.count == 3)
+        #expect(search.searchMenuTemplate == nil)
     }
 
     @Test("Long notification identity and errors fit the native popover")
@@ -115,11 +112,9 @@ struct AttentionQueuePresentationTests {
         let errors = PassthroughSubject<String?, Never>()
         let session = AttentionPopoverSession(
             presentation: presentation,
-            discoveryController: DiscoveryController(),
             workspaceController: workspaceController,
             projectionController: projectionController,
             dependencies: .init(
-                settlementRequirementChanges: Just([]).eraseToAnyPublisher(),
                 documentChangeChanges: changes.eraseToAnyPublisher(),
                 documentChangeErrorChanges: errors.eraseToAnyPublisher(),
                 refresh: {}, showDocumentChange: { _ in }

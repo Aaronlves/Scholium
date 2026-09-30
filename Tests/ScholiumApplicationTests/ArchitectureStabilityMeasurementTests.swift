@@ -258,9 +258,6 @@ struct ArchitectureStabilityMeasurementTests {
                 measurement.identityProjectionDuration
             ),
             "graph_ms": milliseconds(measurement.graphDuration),
-            "research_state_ms": milliseconds(
-                measurement.researchStateDuration
-            ),
             "search_document_projection_ms": milliseconds(
                 measurement.searchDocumentProjectionDuration
             ),

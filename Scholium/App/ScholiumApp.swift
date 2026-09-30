@@ -350,13 +350,9 @@ final class WindowModel: ObservableObject {
     let attentionPresentationState = AttentionPresentationState()
     lazy var attentionPopoverSession = AttentionPopoverSession(
         presentation: attentionPresentationState,
-        discoveryController: discoveryController,
         workspaceController: windowWorkspaceController,
         projectionController: workspaceProjectionController,
         dependencies: .init(
-            settlementRequirementChanges: researchController.$researchSnapshot
-                .map { $0?.settlementRequirements ?? [] }
-                .eraseToAnyPublisher(),
             documentChangeChanges: researchController.$pendingChanges
                 .eraseToAnyPublisher(),
             documentChangeErrorChanges: researchController.$pendingChangesError

@@ -76,7 +76,7 @@ conflict, external change or uncertain outcome; never automatically repeat an
 uncertain mutation. Preserve confirmed outcomes when only later delivery fails.
 
 Agent Changes and eligible Undo record or recover application operations; they
-do not establish scholarly correctness, researcher acceptance or Settle.
+do not establish scholarly correctness or researcher acceptance.
 A continuing question can remain ordinary prose in a Works Note. Creating or
 revising it follows the same scope and source rules; no special recording
 lifecycle is required.

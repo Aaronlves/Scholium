@@ -28,45 +28,6 @@ struct DocumentSessionLifecycleTests {
         #expect(session.editorScrollFraction == 0.9)
     }
 
-    @Test("Document top presents persistent feedback, Actions, then permission education")
-    func documentTopSurfacePriority() {
-        #expect(
-            DocumentTopSurfacePresentation.resolve(
-                hasPersistentFeedback: true,
-                hasActionNotifications: true,
-                hasSettlementReminder: true,
-                hasNotificationPermissionNotice: true
-            ) == .persistentFeedback)
-        #expect(
-            DocumentTopSurfacePresentation.resolve(
-                hasPersistentFeedback: false,
-                hasActionNotifications: true,
-                hasSettlementReminder: false,
-                hasNotificationPermissionNotice: true
-            ) == .researchNotifications)
-        #expect(
-            DocumentTopSurfacePresentation.resolve(
-                hasPersistentFeedback: false,
-                hasActionNotifications: false,
-                hasSettlementReminder: true,
-                hasNotificationPermissionNotice: true
-            ) == .researchNotifications)
-        #expect(
-            DocumentTopSurfacePresentation.resolve(
-                hasPersistentFeedback: false,
-                hasActionNotifications: false,
-                hasSettlementReminder: false,
-                hasNotificationPermissionNotice: true
-            ) == .notificationPermissionNotice)
-        #expect(
-            DocumentTopSurfacePresentation.resolve(
-                hasPersistentFeedback: false,
-                hasActionNotifications: false,
-                hasSettlementReminder: false,
-                hasNotificationPermissionNotice: false
-            ) == .none)
-    }
-
     @Test("Repeated Review preparation preserves a finalized retained revision")
     func repeatedReadProjectionPreparationPreservesReadiness() {
         let session = DocumentSessionModel(key: nil)

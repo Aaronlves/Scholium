@@ -388,55 +388,15 @@ public struct WorkspaceDiscoverySnapshot: Sendable {
     }
 }
 
-public enum WorkspaceSettlementRequirementReason: String, Hashable, Sendable {
-    case changedSinceSettlement
-}
-
-/// A delivery-neutral reminder that the current saved Note revision is not
-/// covered by its latest Settlement. It is derived from current source and the
-/// one Settlement marker and is never independently writable.
-public struct WorkspaceSettlementRequirement: Hashable, Identifiable, Sendable {
-    public let noteID: UUID
-    public let note: VaultQualifiedNoteID
-    public let title: String
-    public let currentRevision: DocumentFingerprint
-    public let reason: WorkspaceSettlementRequirementReason
-    public let previousSettlement: SettlementRecord?
-
-    public var id: UUID { noteID }
-
-    public init(
-        noteID: UUID,
-        note: VaultQualifiedNoteID,
-        title: String,
-        currentRevision: DocumentFingerprint,
-        reason: WorkspaceSettlementRequirementReason,
-        previousSettlement: SettlementRecord? = nil
-    ) {
-        self.noteID = noteID
-        self.note = note
-        self.title = title
-        self.currentRevision = currentRevision
-        self.reason = reason
-        self.previousSettlement = previousSettlement
-    }
-}
-
 public struct WorkspaceResearchSnapshot: Sendable {
-    public let settlements: [SettlementRecord]
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
-    public let settlementRequirements: [WorkspaceSettlementRequirement]
     public let healthIssues: [String]
 
     public init(
-        settlements: [SettlementRecord] = [],
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
-        settlementRequirements: [WorkspaceSettlementRequirement] = [],
         healthIssues: [String]
     ) {
-        self.settlements = settlements
         self.recoveryRecords = recoveryRecords
-        self.settlementRequirements = settlementRequirements
         self.healthIssues = healthIssues
     }
 }
@@ -918,23 +878,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "No Scholium Triptych is configured."
         case .runtimeConfigurationUnavailable:
             "This fixed workspace snapshot cannot change Triptych registration or access."
-        }
-    }
-}
-
-/// Application-layer validation failures for research workflows. Core store,
-/// repository, change-evidence, and workflow errors pass through unchanged when
-/// they already describe the violated invariant precisely.
-public enum ResearchOperationError: LocalizedError, Sendable {
-    case noteUnavailable(VaultQualifiedNoteID)
-    case settlementUnavailable(VaultRole)
-
-    public var errorDescription: String? {
-        switch self {
-        case .noteUnavailable(let id):
-            "The note at \(id.relativePath) is not available in this workspace generation."
-        case .settlementUnavailable:
-            "Settlement requires a reliably identified Analysis, Topic, or Work."
         }
     }
 }

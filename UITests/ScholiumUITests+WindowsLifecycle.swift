@@ -77,12 +77,13 @@ extension ScholiumUITests {
             XCTAssertTrue(strip.exists && forward.exists)
             let trailingActions = toolbar.descendants(matching: .any).matching(
                 NSPredicate(
-                    format: "label CONTAINS[c] %@ OR label BEGINSWITH %@ OR label == %@ OR label CONTAINS[c] %@",
-                    "Settle", "Document Mode,", "Note Actions", "More"
+                    format: "label BEGINSWITH %@ OR label == %@ OR label CONTAINS[c] %@",
+                    "Document Mode,", "Note Actions", "More"
                 )
             ).allElementsBoundByIndex
-            guard let right = trailingActions.filter({ $0.exists && $0.frame.minX > strip.frame.maxX })
-                .map(\.frame.minX).min()
+            guard
+                let right = trailingActions.filter({ $0.exists && $0.frame.minX > strip.frame.maxX })
+                    .map(\.frame.minX).min()
             else {
                 XCTFail("A visible trailing Document command must bound the Tab interval.")
                 return
@@ -111,9 +112,10 @@ extension ScholiumUITests {
 
         let autosaveTab = toolbarDocumentTab("QA Autosave A", in: main)
         autosaveTab.rightClick()
-        XCTAssertTrue(waitUntil(timeout: 3) {
-            visibleMenuAction("Move to Separate Window") != nil && visibleMenuAction("Close Tab") != nil
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                visibleMenuAction("Move to Separate Window") != nil && visibleMenuAction("Close Tab") != nil
+            })
         XCTAssertFalse(app.menuItems["Icon and Text"].firstMatch.isHittable)
         XCTAssertTrue(waitForDocumentTitle(chinese, in: main, timeout: 3))
         XCTAssertEqual(String(describing: chineseTab.value ?? ""), "1")
@@ -129,9 +131,10 @@ extension ScholiumUITests {
         chineseTab.click()
         XCTAssertTrue(waitForDocumentTitle(chinese, in: main, timeout: 8))
         chineseTab.rightClick()
-        XCTAssertTrue(waitUntil(timeout: 3) {
-            visibleMenuAction("Move to Separate Window") != nil && visibleMenuAction("Close Tab") != nil
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                visibleMenuAction("Move to Separate Window") != nil && visibleMenuAction("Close Tab") != nil
+            })
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitForDocumentTitle(chinese, in: main, timeout: 3))
         XCTAssertEqual(String(describing: chineseTab.value ?? ""), "1")
@@ -139,10 +142,11 @@ extension ScholiumUITests {
         XCUIElement.perform(withKeyModifiers: [.control]) {
             englishTab.click()
         }
-        XCTAssertTrue(waitUntil(timeout: 3) {
-            visibleMenuAction("Move to Separate Window") != nil
-                && visibleMenuAction("Close Tab") != nil
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                visibleMenuAction("Move to Separate Window") != nil
+                    && visibleMenuAction("Close Tab") != nil
+            })
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitForDocumentTitle(chinese, in: main, timeout: 3))
         XCTAssertEqual(String(describing: chineseTab.value ?? ""), "1")
@@ -235,7 +239,8 @@ extension ScholiumUITests {
         let originalMain = app.windows[originalMainID]
         for title in ["QA Autosave A", english] {
             let tab = toolbarDocumentTab(title, in: originalMain)
-            XCTAssertTrue(tab.exists && tab.frame.width > 0,
+            XCTAssertTrue(
+                tab.exists && tab.frame.width > 0,
                 "The source window must keep its remaining Toolbar tabs after detachment.")
         }
 
@@ -278,6 +283,53 @@ extension ScholiumUITests {
         let main = app.windows[mainID]
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let originalSource = try self.source(at: noteURL)
+
+        // Menu routes remain usable when Focus Layout hides every toolbar
+        // item. Notifications stays transient and restores the editor's focus.
+        selectDocumentMode("Edit", in: main)
+        let mainEditor = main.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(mainEditor.waitForExistence(timeout: 8))
+        mainEditor.click()
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        XCTAssertTrue(waitUntil(timeout: 5) { keyboardFocus.evaluate(with: mainEditor) })
+        app.typeKey("l", modifierFlags: [.control, .command])
+        XCTAssertTrue(waitUntil(timeout: 5) { !self.documentModeControl(in: main).isHittable })
+        XCTAssertTrue(keyboardFocus.evaluate(with: mainEditor))
+        app.menuBars.menuBarItems["Window"].click()
+        let notificationsCommand = app.menuItems["Notifications"].firstMatch
+        XCTAssertTrue(notificationsCommand.waitForExistence(timeout: 3) && notificationsCommand.isEnabled)
+        notificationsCommand.click()
+        let notificationPopover = app.popovers.firstMatch
+        let queue = notificationPopover.descendants(matching: .any)["scholium.attentionQueue"].firstMatch
+        XCTAssertTrue(queue.waitForExistence(timeout: 8), "Notifications must open without a visible toolbar anchor.")
+        XCTAssertFalse(documentModeControl(in: main).isHittable)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { !queue.exists && keyboardFocus.evaluate(with: mainEditor) },
+            "Dismissing Notifications must restore the originating editor's focus."
+        )
+        XCTAssertFalse(documentModeControl(in: main).isHittable, "Notifications must preserve Focus Layout.")
+        XCTAssertEqual(mainEditor.value as? String, originalSource)
+        for (menu, title) in [("Edit", "Copy Note Link"), ("File", "Reveal Note in Finder")] {
+            app.menuBars.menuBarItems[menu].click()
+            let command = app.menuItems[title].firstMatch
+            XCTAssertTrue(command.waitForExistence(timeout: 3) && command.isEnabled, "\(title) must address the current Note in Focus Layout.")
+            app.typeKey(.escape, modifierFlags: [])
+        }
+        // Whole-Note material handoff opens Chat but sends no message. Finder
+        // availability is checked above without opening another application.
+        app.menuBars.menuBarItems["Research"].click()
+        let addNote = app.menuItems["Add Note to Chat"].firstMatch
+        XCTAssertTrue(addNote.waitForExistence(timeout: 3) && addNote.isEnabled)
+        addNote.click()
+        let noteMaterial = main.buttons["Open Note: QA Autosave A"].firstMatch
+        XCTAssertTrue(noteMaterial.waitForExistence(timeout: 10))
+        XCTAssertTrue((noteMaterial.value as? String)?.contains("Whole Note") == true)
+        XCTAssertTrue(documentModeControl(in: main).isHittable, "Explicitly opening Chat must exit windowed Focus Layout.")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", in: main, timeout: 5))
+        XCTAssertEqual(try self.source(at: noteURL), originalSource)
+        sidebarModeControl("Library", in: main).click()
+        XCTAssertTrue(main.descendants(matching: .any)["scholium.librarySurface"].firstMatch.waitForExistence(timeout: 5))
 
         _ = clickLibraryRow("QA Autosave B.md", in: main, rightMouseButton: true)
         let noteMenu = app.menus["scholium.noteRow.QA Autosave B.md"]
@@ -335,6 +387,47 @@ extension ScholiumUITests {
 
         focusWorkspaceWindow(detached)
         XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: detachedEditor))
+        // Commands whose presenter belongs to a main Workspace must not remain
+        // enabled in a separate Document window. Document commands still work.
+        app.menuBars.menuBarItems["View"].click()
+        let sidebarCommand = app.menuItems.matching(
+            NSPredicate(format: "label == %@ OR label == %@", "Show Sidebar", "Hide Sidebar")
+        ).firstMatch
+        XCTAssertTrue(sidebarCommand.waitForExistence(timeout: 3))
+        XCTAssertFalse(sidebarCommand.isEnabled)
+        for title in ["Library", "Chat"] {
+            let command = app.menuItems[title].firstMatch
+            XCTAssertTrue(command.waitForExistence(timeout: 3))
+            XCTAssertFalse(command.isEnabled, "\(title) must not silently target another window.")
+        }
+        let modeMenu = app.menuItems["Document Mode"].firstMatch
+        XCTAssertTrue(modeMenu.waitForExistence(timeout: 3) && modeMenu.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+        app.menuBars.menuBarItems["Window"].click()
+        let unavailableNotifications = app.menuItems["Notifications"].firstMatch
+        XCTAssertTrue(unavailableNotifications.waitForExistence(timeout: 3))
+        XCTAssertFalse(unavailableNotifications.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+        let detachedMode = documentModeControl(in: detached)
+        XCTAssertTrue(detachedMode.waitForExistence(timeout: 5) && detachedMode.isEnabled)
+        detachedMode.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { self.documentModeState(detachedMode) == "Review" })
+        detachedMode.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                self.documentModeState(detachedMode) == "Edit"
+                    && (detachedEditor.value as? String)?.contains(token) == true
+            }, "Separate-window mode controls must retain the live source."
+        )
+        let noteActions = detached.toolbars.firstMatch.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "Note Actions")
+        ).firstMatch
+        XCTAssertTrue(noteActions.waitForExistence(timeout: 5) && noteActions.isEnabled)
+        noteActions.click()
+        let copyNoteLink = app.menuItems["Copy Note Link"].firstMatch
+        XCTAssertTrue(copyNoteLink.waitForExistence(timeout: 3) && copyNoteLink.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+        detachedEditor.click()
         detachedEditor.typeKey("f", modifierFlags: [.command])
         let find = detached.descendants(matching: .any)["scholium.documentFind.query"]
         XCTAssertTrue(find.waitForExistence(timeout: 5))

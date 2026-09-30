@@ -28,7 +28,6 @@ state the accepted profile; an unaccepted optional profile is labelled
 - Bootstrap, registration/restoration, independent windows, and storage failure;
 - create/open/read/edit/autosave, Review/Edit/Source, Find/Replace, Search,
   YAML, Links, inline attachments, single-Note HTML/PDF/DOCX export, Changes,
-  Settle,
   Library, tabs, and cross-vault navigation;
 - formatting, Callouts, Wikilinks, multiline link annotations, Analysis references, image
   Import/Index, statistics, spelling, and exact YAML/source fidelity;
@@ -91,7 +90,7 @@ the current artifact.
 | **G2 Workflow independence** | Manual core works without Obsidian, Zotero, Agents, or manual filesystem repair. |
 | **G3 Source integrity** | Exact-source tests cover malformed/unknown YAML, BOM/newlines, targeted edits, atomic failure, and readback. |
 | **G4 Recovery and deletion** | Conflict, Agent Change Undo, save recovery, system-Trash receipts/cleanup, external deletion/restore/rename, and derived failure pass. |
-| **G5 Scholarly transparency** | Source, researcher/Agent content, all-source Changes, exact Agent Change receipts, Settle, provenance, and uncertainty remain distinct. |
+| **G5 Scholarly transparency** | Source, researcher/Agent content, all-source Changes, exact Agent Change receipts, provenance, and uncertainty remain distinct. |
 | **G6 Accessibility/localization** | §20's current guards, required UI baseline/affected journeys, bounded human threshold, and severity threshold are met for the named profile. |
 | **G7 Performance** | The packaged-app protocol in §21.4 passes. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |

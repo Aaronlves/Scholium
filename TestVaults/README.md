@@ -14,7 +14,6 @@
 - YAML：QA Topic 带自定义字段与数字；使用 property:qa_stage=draft 或 property:year=2026 检索并定位原文。属性直接在源文本编辑。
 - 附件：QA Topic 正文链接打开本地说明；从 attachment-samples/说明.txt 测试 Copy / Reference 在编辑器插入链接，移除链接不删文件。
 - Links：External 显示两条合成 Zotero 链接，保留库、页码和注释。它们不是实际文献，测试展示时不必启动 Zotero。
-- Settle：保存 QA Work 后执行 Settle，再编辑，检查当前修订状态。
 - 冲突：只在测试副本中制造编辑器未保存修改与外部修改，检查恢复路径。
 - Agent Changes：连接当前运行应用的 MCP 后实际创建；初始操作记录为空。
 

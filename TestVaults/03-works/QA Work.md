@@ -17,4 +17,4 @@ keywords: [测试, QA]
 
 ## 后续段落
 
-为 Settle、外部修改和 Agent Change 测试保留独立编辑区域。
+为外部修改和 Agent Change 测试保留独立编辑区域。

@@ -406,7 +406,7 @@ window, search category, or management commands.
 **Changes** opens an independent native sheet outside Document modes and the
 live editor. It lists **Pending** Notes and **History** batches by Note and
 review time. A current-Note **View Changes** toolbar action sits immediately
-left of Settle only while the Note has pending saved-source changes. Research
+before Document Mode only while the Note has pending saved-source changes. Research
 menu, Note Actions, Chat and
 Notifications share this route without marking review. No all-reviewed action exists.
 
@@ -575,33 +575,12 @@ resolved destination anchor. Each Note and direction retains its query, group
 disclosure, and reading position in window-local state. Returning restores that context
 without creating another graph or source owner.
 
-Document owns one **Settlement** command with a default native toolbar item and
-complete Research-menu route. It is presented as a research milestone, not task
-completion. Unsettled, Settled, and Changed Since Settle have distinct wording,
-symbol shape, Help, and state-bearing accessibility value. Toolbar rendering
-uses `checkmark.circle`, `checkmark.circle.fill`, and
-`checkmark.arrow.trianglehead.clockwise` respectively, with native color and control
-feedback. Changed Since Settle is static and does not imply failure or processing.
-
-Activating Settle or Settle Again opens one compact popover with optional
-rationale rather than changing the judgment directly. Successful exact-revision
-Settlement updates the control and Inspector facts. The existing confirmation
-popover briefly shows a filled checkmark with one native Bounce, a short
-“Current revision settled” confirmation, and one system haptic before closing.
-This feedback follows only a confirmed, explicitly requested commit, including
-Settle Again; navigation, refresh, failure, and a departed document never replay it.
-Reduce Motion uses the static confirmation. Dismissal remains immediate, restores
-focus, and cancels pending presentation. A derived refresh failure never presents
-the committed Settlement as a failed mutation. No parallel overlay, Agent launcher
-or Skill button is added. Agent setup and conversation behavior
-belong to §§8.2 and 8.7.
-
 External-host MCP retrieval creates no persistent activity UI. Confirmed
 mutations add their Agent Change to Notifications without activating the App
 or moving focus. External hosts add no App approval sheet; in-app Chat activity
 and permission follow §8.7. Dismissal hides the notification
 but does not delete exact recovery evidence or imply reading, acceptance,
-adoption, Undo, or Settlement. The Inspector, Document mode, projection
+adoption or Undo. The Inspector, Document mode, projection
 refresh, and pane visibility never replace the retained editor host or state.
 
 ## 18.6 Document-owned state and action meanings
@@ -611,7 +590,7 @@ This is not a universal runtime enum or second state store.
 
 | State | Shared presentation | Not equivalent to |
 | --- | --- | --- |
-| **Ready** | Trustworthy committed representation and valid next action. | Saved, Settled, or merely loaded |
+| **Ready** | Trustworthy committed representation and valid next action. | Saved or merely loaded |
 | **Loading** | No trustworthy projection yet or an explicit refresh wait. | Empty, unavailable, stale |
 | **Empty** | Valid scope contains no items; retain scope and first next step. | Missing or failed source |
 | **Unavailable** | Required source or capability cannot serve; name repair or alternative. | Disabled styling |
@@ -627,7 +606,7 @@ over content without resizing its viewport, bounded and centered with
 reflowing actions.
 
 Owners retain state and context; §20 owns accessibility and persistent
-repair. Settle and Dismiss retain their meanings. Fields, rows and notices keep
+repair. Fields, rows and notices keep
 purpose-specific presentations using this vocabulary.
 
 These Document states retain their source-specific meanings:
@@ -673,7 +652,6 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
 | Agents & Chat / Changes / Mark as Reviewed | 智能体与聊天 / 修改 / 标为已查看 |
 | Research / Judgment | 研究 / 判断 |
-| Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
 | Annotated Wikilink / Link Annotation | 带注释双链 / 链接注释 |

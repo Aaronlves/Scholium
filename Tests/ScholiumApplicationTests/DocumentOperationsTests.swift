@@ -951,38 +951,43 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Settle stores one portable marker for the latest settled revision")
-    func settleStoresLatestPortableMarker() async throws {
+    @Test("Retired settlement storage is preserved and inert during Note operations", arguments: [false, true])
+    func retiredSettlementStorageDoesNotAffectNotes(blocksDirectoryCreation: Bool) async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
+        let settlementRoot = fixture.rootURL.appendingPathComponent(".scholium/settlements")
+        #expect(!FileManager.default.fileExists(atPath: settlementRoot.path))
+        let retainedURL: URL
+        if blocksDirectoryCreation {
+            retainedURL = settlementRoot
+        } else {
+            let directory = settlementRoot.appendingPathComponent("v3", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            retainedURL = directory.appendingPathComponent("\(UUID().uuidString.lowercased()).json")
+        }
+        let retainedBytes = Data("{ unsupported and damaged pre-production state\r\n".utf8)
+        try retainedBytes.write(to: retainedURL)
+
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        var document = try await handle.documents.load(fixture.targetID)
-        let projected = try #require(try await handle.snapshot().document(id: fixture.targetID))
-        let stableID = try #require(projected.stableIdentity.resolvedID)
-
-        _ = try await handle.research.settle(
+        let original = try await handle.documents.load(fixture.targetID)
+        let revised = "\u{FEFF}---\r\ncustom: 'preserve'\r\n---\r\n# Target\r\n\r\nRevised source.\r\n"
+        _ = try await handle.documents.save(
             fixture.targetID,
-            expectedRevision: document.fingerprint,
-            rationale: "First marker"
+            changeSet: .exactContent(revised),
+            expectedRevision: original.fingerprint
         )
-        document = try await handle.documents.save(
-            fixture.targetID,
-            changeSet: .exactContent("# Target\n\nUpdated.\n"),
-            expectedRevision: document.fingerprint
-        ).committedValue.document
-        let latest = try await handle.research.settle(
-            fixture.targetID,
-            expectedRevision: document.fingerprint,
-            rationale: "Current marker"
-        )
-
-        let settlements = try await handle.snapshot().research.settlements
-        #expect(settlements.count == 1)
-        #expect(settlements.first?.noteID == stableID)
-        #expect(settlements.first?.fingerprint == latest.fingerprint)
-        #expect(settlements.first?.rationale == "Current marker")
+        let refreshed = try await handle.discovery.refresh()
+        #expect(refreshed.document(id: fixture.targetID)?.fingerprint == DocumentFingerprint(content: revised))
+        #expect(!refreshed.research.healthIssues.contains { $0.contains("Settlement") })
+        #expect(try Data(contentsOf: retainedURL) == retainedBytes)
         await runtime.shutdown()
+
+        let reopened = fixture.runtime()
+        let reopenedHandle = try await reopened.openWorkspace(id: fixture.assignment.id)
+        #expect(try await reopenedHandle.documents.load(fixture.targetID).rawContent == revised)
+        #expect(try Data(contentsOf: retainedURL) == retainedBytes)
+        await reopened.shutdown()
     }
 
     @Test("Interrupted save recovery stays vault-qualified and publishes its committed source", arguments: [false, true])

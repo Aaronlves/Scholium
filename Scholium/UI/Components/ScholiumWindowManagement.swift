@@ -390,14 +390,13 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
 struct WorkspaceWindowActions {
     let toggleFocusLayout: @MainActor () -> Void
     let canToggleFocusLayout: @MainActor () -> Bool
+    let canUseSidebar: @MainActor () -> Bool
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let activateSidebar: @MainActor (SidebarContent) -> Void
     let showAttention: @MainActor (AttentionPresentationRequest) -> Void
     let showPreferredAttention: @MainActor () -> Void
     let canShowAttention: @MainActor () -> Bool
-    let settlementMenuTitle: @MainActor () -> String?
-    let showSettlement: @MainActor () -> Void
 }
 
 /// The window owns appearance for native chrome and the embedded split. When
@@ -500,6 +499,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         WorkspaceWindowActions(
             toggleFocusLayout: { [weak self] in self?.toggleFocusLayout() },
             canToggleFocusLayout: { [weak self] in self?.canToggleFocusLayout == true },
+            canUseSidebar: { [weak self] in self?.canUseSidebar == true },
             setLibraryVisible: { [weak self] visible in
                 self?.setLibraryVisible(visible)
             },
@@ -507,7 +507,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 self?.setResearchInspectorVisible(visible)
             },
             activateSidebar: { [weak self] content in
-                guard self?.focusLayout.isFullScreenEnforced != true else { return }
+                guard self?.canUseSidebar == true else { return }
                 self?.toolbarController?.activateSidebar(content)
             },
             showAttention: { [weak self] request in
@@ -518,12 +518,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             },
             canShowAttention: { [weak self] in
                 self?.preferredAttentionRoute() != nil
-            },
-            settlementMenuTitle: { [weak self] in
-                self?.toolbarController?.settlementMenuTitle
-            },
-            showSettlement: { [weak self] in
-                self?.toolbarController?.showSettlement()
             }
         )
     }
@@ -818,7 +812,15 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func preferredAttentionRoute() -> AttentionPresentationRequest? {
-        .queue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
+        guard !appState.isDetachedDocumentWindow, !didFinalizeWindowAttachments,
+            window != nil, toolbarController != nil
+        else { return nil }
+        return .queue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
+    }
+
+    private var canUseSidebar: Bool {
+        !appState.isDetachedDocumentWindow && !didFinalizeWindowAttachments
+            && window != nil && toolbarController != nil && !focusLayout.isFullScreenEnforced
     }
 
     private func registerQAFocusRequest() {
@@ -842,6 +844,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func setLibraryVisible(_ visible: Bool) {
+        guard !appState.isDetachedDocumentWindow, !didFinalizeWindowAttachments else { return }
         guard !visible || !focusLayout.isFullScreenEnforced else { return }
         if visible { exitFocusLayout() }
         guard let splitController else {
@@ -1020,6 +1023,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func removeToolbar() {
+        let detachedNativeToolbar = detachedToolbar?.toolbar
+        detachedToolbar?.invalidate()
         detachedToolbar = nil
         guard let window else {
             toolbarController?.invalidate()
@@ -1029,7 +1034,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         let isConfiguredToolbar =
             window.toolbar?.identifier
             == ScholiumWorkspaceToolbarController.toolbarIdentifier(for: windowID)
-        if window.toolbar === loadingToolbar || isConfiguredToolbar {
+        if window.toolbar === loadingToolbar || isConfiguredToolbar || window.toolbar === detachedNativeToolbar {
             window.toolbar = nil
         }
         toolbarController?.invalidate()

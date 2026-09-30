@@ -177,7 +177,7 @@ Update has three mutually exclusive payload modes:
 
 One update call targets one Note. A request covering several named Notes uses
 separate calls and separate outcomes. No call automatically propagates to
-destination Notes, properties, links, or Settlement. Editing a link
+destination Notes, properties or links. Editing a link
 annotation is an ordinary source-Note update guarded by that Note's current
 fingerprint.
 
@@ -389,7 +389,7 @@ universal philosophical method. It requires an Agent to:
 6. default to read-only discussion, mutate Notes only within the exact target
    and scope named by an explicit researcher request;
 7. preserve unrelated source and avoid automatic maintenance of related Notes,
-   properties, links, or Settle;
+   properties or links;
 8. return to an accessible primary source when Topic and Analysis materially
    conflict about a paper's attribution or argument, and otherwise state the
    unresolved evidential limit;
@@ -446,6 +446,6 @@ operations do not determine the researcher's position or philosophical adequacy.
 Discussion and assessment use ordinary Chat and authorized Note operations.
 Reports have no reserved directory, special document type, result schema or
 completion lifecycle. Agent assessments remain attributed and cannot establish
-researcher acceptance or automatically change a Work or Settle. Continuing
+researcher acceptance or automatically change a Work. Continuing
 research features beyond ordinary Notes and retained Chat remain future work;
 no dedicated Chat-to-document insertion action is required alongside copy/paste.

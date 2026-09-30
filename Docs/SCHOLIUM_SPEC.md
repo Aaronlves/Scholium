@@ -23,7 +23,7 @@ must not create alternative product rules.
 | Chapter | Owns |
 | --- | --- |
 | [Foundation and Triptych](Specification/01-foundation-and-triptych.md) | §§1–4: terminology, authority, Triptych, and Works organization. |
-| [Notes and File Operations](Specification/02-notes-and-file-operations.md) | §§5–7 and Appendix A: Note behavior, file operations, deletion, Settle, annotation, and authored source properties. |
+| [Notes and File Operations](Specification/02-notes-and-file-operations.md) | §§5–7 and Appendix A: Note behavior, file operations, deletion, annotation, and authored source properties. |
 | [Agent Collaboration and Research Workflows](Specification/03-agent-collaboration-and-workflows.md) | §§8–8.6, 9–11: MCP/Core Protocol collaboration and the Analysis, Topic, and Work workflows. |
 | [In-app Agent Chat](Specification/12-agent-chat.md) | §8.7: conversations, runtime capabilities, materials, Skills, execution and recovery. |
 | [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | §§12–14: Connections, Search, Attention, save, and recovery. |

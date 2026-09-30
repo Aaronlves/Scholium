@@ -24,13 +24,9 @@ struct WindowControllerArchitectureTests {
         var openedNoteID: UUID?
         let session = AttentionPopoverSession(
             presentation: AttentionPresentationState(),
-            discoveryController: discoveryController,
             workspaceController: workspaceController,
             projectionController: projectionController,
             dependencies: .init(
-                settlementRequirementChanges:
-                    Just<[WorkspaceSettlementRequirement]>([])
-                    .eraseToAnyPublisher(),
                 documentChangeChanges: documentChanges.eraseToAnyPublisher(),
                 documentChangeErrorChanges: documentChangeErrors.eraseToAnyPublisher(),
                 refresh: {},
@@ -72,16 +68,12 @@ struct WindowControllerArchitectureTests {
         )
         documentChanges.send([change])
         #expect(session.visibleDocumentChanges(for: session.presentation) == [change])
-        session.presentation.notificationFilter = .settlements
-        #expect(session.visibleDocumentChanges(for: session.presentation).isEmpty)
-        session.presentation.notificationFilter = .changes
         session.presentation.filter.query = "Reasons"
         #expect(session.visibleDocumentChanges(for: session.presentation) == [change])
         #expect(session.presentation.filter.query == "Reasons")
         let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Drafts/Reasons.md")
         session.presentQueue(anchor: .inspector, workspaceSlot: nil, noteScope: note)
         #expect(session.presentation.filter.query.isEmpty)
-        #expect(session.presentation.notificationFilter == .all)
         #expect(session.presentation.noteScope == note)
         session.inspect(change)
         #expect(openedNoteID == change.noteID)

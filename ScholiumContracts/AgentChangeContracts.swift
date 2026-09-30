@@ -143,8 +143,7 @@ public enum AgentChangeEndingRevisionState: Hashable, Sendable {
 }
 
 /// One disposable App review projection. It remains bound to the exact
-/// `(change_id, Note ID)` evidence and carries no viewed, accepted, or
-/// Settlement state.
+/// `(change_id, Note ID)` evidence and carries no viewed or accepted state.
 public struct AgentChangeReview: Sendable {
     public let change: AgentChange
     public let comparison: ExactSourceComparison?

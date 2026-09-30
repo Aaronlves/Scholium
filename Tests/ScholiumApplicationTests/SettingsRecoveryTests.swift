@@ -43,22 +43,23 @@ struct SettingsRecoveryTests {
         let settingsURL = fixture.rootURL.appendingPathComponent(".scholium/settings.json")
         let originalSettings = try Data(contentsOf: settingsURL)
         let observed = try await handle.research.settingsRecoverySnapshot()
-        let services = await handle.services
-        let settlementURL = services.settlementStore.storageURL
-        let retainedSettlementURL = settlementURL.appendingPathExtension("retained")
-        try FileManager.default.moveItem(at: settlementURL, to: retainedSettlementURL)
-        try Data("Unavailable derived research state".utf8).write(to: settlementURL)
+        let graphGeneration = await handle.replaceGraphGenerationForSettingsRecoveryTest(
+            with: Int.max
+        )
 
         let outcome = try await handle.research.resetSettingsToDefaultsOutcome(
             expectedRevision: observed.revision
         )
-        #expect(outcome.derivedRefreshWarning?.isEmpty == false)
+        #expect(
+            outcome.derivedRefreshWarning?.contains(
+                "Workspace graph generation IDs were exhausted."
+            ) == true
+        )
         #expect(outcome.committedValue.snapshot.settings == TriptychSettings())
         let preservedURL = try #require(outcome.committedValue.preservedSettingsURL)
         #expect(try Data(contentsOf: preservedURL) == originalSettings)
         #expect(try await handle.research.settings() == outcome.committedValue.snapshot)
-        try FileManager.default.removeItem(at: settlementURL)
-        try FileManager.default.moveItem(at: retainedSettlementURL, to: settlementURL)
+        _ = await handle.replaceGraphGenerationForSettingsRecoveryTest(with: graphGeneration)
         _ = try await handle.discovery.refresh()
         await runtime.shutdown()
     }
@@ -88,5 +89,13 @@ struct SettingsRecoveryTests {
                     applicationSupportURL: fixture.applicationSupportURL,
                     assignments: [fixture.assignment]
                 )))
+    }
+}
+
+private extension WorkspaceHandle {
+    func replaceGraphGenerationForSettingsRecoveryTest(with value: Int) -> Int {
+        let previous = nextGraphGeneration
+        nextGraphGeneration = value
+        return previous
     }
 }

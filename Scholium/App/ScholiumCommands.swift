@@ -125,6 +125,9 @@ private struct ScholiumFileDocumentCommandContent: View {
         .scholiumActivationPointer()
         .disabled(editorActions?.canAttachDocument != true)
         Divider()
+        Button("Reveal Note in Finder") { appState?.performNoteAction(.revealInFinder) }
+            .scholiumActivationPointer()
+            .disabled(appState?.canPerformNoteAction(.revealInFinder) != true)
         Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
             .scholiumActivationPointer()
             .disabled(appState?.vaultConfig == nil)
@@ -148,6 +151,9 @@ private struct ScholiumPasteboardCommandContent: View {
     private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions }
 
     var body: some View {
+        Button("Copy Note Link") { appState?.performNoteAction(.copyLink) }
+            .scholiumActivationPointer()
+            .disabled(appState?.canPerformNoteAction(.copyLink) != true)
         Button("Paste as Markdown") {
             guard let payload = markdownPasteboardPayload() else { return }
             editorActions?.performWithArgument(.pasteMarkdown, payload)
@@ -436,13 +442,13 @@ private struct ScholiumViewCommandContent: View {
         }
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.toggleLibrary)
-        .disabled(workspaceWindowActions == nil || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
+        .disabled(workspaceWindowActions?.canUseSidebar() != true)
         Button("Library") {
             workspaceWindowActions?.activateSidebar(.library)
         }
-        .disabled(workspaceWindowActions == nil || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
+        .disabled(workspaceWindowActions?.canUseSidebar() != true)
         Button("Chat") { workspaceWindowActions?.activateSidebar(.chat) }
-            .disabled(appState?.workspaceAssignment == nil || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
+            .disabled(workspaceWindowActions?.canUseSidebar() != true || appState?.workspaceAssignment == nil)
         Button(
             ScholiumL10n.dynamicString(
                 appState?.researchInspectorVisible == true
@@ -562,6 +568,9 @@ private struct ScholiumResearchCommandContent: View {
             appState?.performPassageAction(.relatedMaterial)
         }
         .disabled(appState?.currentNote == nil)
+        Button("Add Note to Chat") { appState?.performNoteAction(.addToChat) }
+            .scholiumActivationPointer()
+            .disabled(appState?.canPerformNoteAction(.addToChat) != true)
         Button("Add Selection to Chat") {
             Task {
                 if await appState?.addCurrentSelectionToChat() == true,
@@ -583,11 +592,6 @@ private struct ScholiumResearchCommandContent: View {
         }
         Button("Merge into Another Note…") { appState?.requestMergeCurrentNote() }
             .disabled(appState?.canMergeCurrentNote != true)
-        Divider()
-        Button(workspaceWindowActions?.settlementMenuTitle() ?? ScholiumL10n.string("Settle")) {
-            workspaceWindowActions?.showSettlement()
-        }
-        .disabled(workspaceWindowActions?.settlementMenuTitle() == nil)
         Divider()
         Button("Changes…") {
             appState?.presentationRouter.present(.documentChanges(scope: .all))

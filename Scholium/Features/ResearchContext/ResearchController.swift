@@ -229,18 +229,6 @@ final class ResearchController: ObservableObject {
         }
     }
 
-    @discardableResult
-    func settle(
-        _ note: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        rationale: String?
-    ) async throws -> SettlementRecord {
-        try await requireResearch().settle(
-            note,
-            expectedRevision: expectedRevision,
-            rationale: rationale
-        )
-    }
     func settings() async throws -> TriptychSettingsSnapshot {
         try await requireResearch().settings()
     }

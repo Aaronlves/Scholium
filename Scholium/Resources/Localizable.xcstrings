@@ -1,6 +1,57 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "1 notification": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 notification"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 条通知"
+          }
+        }
+      }
+    },
+    "Reveal Note in Finder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reveal Note in Finder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Finder 中显示笔记"
+          }
+        }
+      }
+    },
+    "Add Note to Chat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Note to Chat"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将笔记添加到聊天"
+          }
+        }
+      }
+    },
     "Source format changed" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Source format changed"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "源码格式已变化"}}}},
     "Line endings or the UTF-8 marker changed. Revision Details shows the exact formats." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Line endings or the UTF-8 marker changed. Revision Details shows the exact formats."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "换行符或 UTF-8 标记发生变化。展开“修订详情”可查看精确格式。"}}}},
     "Loading Agent Change Receipt…" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Loading Agent Change Receipt…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在载入 Agent 修改记录…"}}}},
@@ -2720,38 +2771,6 @@
       "stringUnit": {
         "state": "translated",
         "value": "%@%@%@"
-      }
-    }
-  }
-},
-    "Settlement recorded; status refresh failed.": {
-  "localizations": {
-    "en": {
-      "stringUnit": {
-        "state": "translated",
-        "value": "Settlement recorded; status refresh failed."
-      }
-    },
-    "zh-Hans": {
-      "stringUnit": {
-        "state": "translated",
-        "value": "暂定已记录，但状态刷新失败。"
-      }
-    }
-  }
-},
-    "Current revision settled": {
-  "localizations": {
-    "en": {
-      "stringUnit": {
-        "state": "translated",
-        "value": "Current revision settled"
-      }
-    },
-    "zh-Hans": {
-      "stringUnit": {
-        "state": "translated",
-        "value": "当前版本已暂定"
       }
     }
   }
@@ -7664,32 +7683,6 @@
         }
       }
     },
-    "Changed since settlement" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定后已更改"
-          }
-        }
-      }
-    },
-    "Changed since settlement — Settle Again" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Changed since settlement — Settle Again"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定后已更改 — 再次暂定"
-          }
-        }
-      }
-    },
     "Changes" : {
       "localizations" : {
         "en" : {
@@ -11059,38 +11052,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前版本"
-          }
-        }
-      }
-    },
-    "Current Revision Not Settled" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Current Revision Not Settled"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前版本尚未暂定"
-          }
-        }
-      }
-    },
-    "Current Revision Not Settled, %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Current Revision Not Settled, %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前版本尚未暂定，%@"
           }
         }
       }
@@ -16174,16 +16135,6 @@
         }
       }
     },
-    "Last Settled" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "上次暂定时间"
-          }
-        }
-      }
-    },
     "Last name" : {
       "localizations" : {
         "en" : {
@@ -18461,26 +18412,6 @@
         }
       }
     },
-    "No Agent Change, Settlement reminder, or visible derived issue needs attention for this Note." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此笔记没有需要关注的 Agent 更改、暂定提醒或可见派生问题。"
-          }
-        }
-      }
-    },
-    "No Agent Change, Settlement reminder, or visible derived issue needs attention in this Scope." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前范围内没有需要关注的 Agent 更改、暂定提醒或可见派生问题。"
-          }
-        }
-      }
-    },
     "No Agent Changes" : {
       "localizations" : {
         "zh-Hans" : {
@@ -19437,16 +19368,6 @@
         }
       }
     },
-    "Not yet settled" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未暂定"
-          }
-        }
-      }
-    },
     "Note" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20351,22 +20272,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可选 CSS 代码片段是附加的兼容性覆盖；所选外观仍是主要配置。"
-          }
-        }
-      }
-    },
-    "Optional rationale" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Optional rationale"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可选理由"
           }
         }
       }
@@ -22306,22 +22211,6 @@
         }
       }
     },
-    "Record this saved revision as sufficiently stable for current research." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Record this saved revision as sufficiently stable for current research."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将当前已保存修订记录为对目前研究而言足够稳定。"
-          }
-        }
-      }
-    },
     "Recorded" : {
       "localizations" : {
         "en" : {
@@ -23692,16 +23581,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "报告的指纹：%@"
-          }
-        }
-      }
-    },
-    "Reports structural, metadata, identity, Connection, and settled-revision issues." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "报告结构、元数据、身份、关联及暂定后修订问题。"
           }
         }
       }
@@ -26420,136 +26299,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "设置已保存到先前处于活动状态的 Triptych。"
-          }
-        }
-      }
-    },
-    "Settle" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Settle"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定"
-          }
-        }
-      }
-    },
-    "Settle Again" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Settle Again"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再次暂定"
-          }
-        }
-      }
-    },
-    "Settle this note" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定此笔记"
-          }
-        }
-      }
-    },
-    "Settle this note again" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再次暂定此笔记"
-          }
-        }
-      }
-    },
-    "Settled" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Settled"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已暂定"
-          }
-        }
-      }
-    },
-    "Settled — Settle Again" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Settled — Settle Again"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已暂定 — 再次暂定"
-          }
-        }
-      }
-    },
-    "Settlement" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定"
-          }
-        }
-      }
-    },
-    "Settlement Reminders" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Settlement Reminders"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定提醒"
-          }
-        }
-      }
-    },
-    "Settlement Unavailable" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定状态不可用"
-          }
-        }
-      }
-    },
-    "Settlement is unavailable" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定状态不可用"
           }
         }
       }

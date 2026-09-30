@@ -125,7 +125,7 @@ connection failure or required authentication presents an actionable repair.
 Recovered transport and public history never resend user input, resume Agent
 work, repeat a mutation, answer an approval or silently settle uncertain delivery.
 
-Chat adds no automatic Settle, philosophical verdict, argument graph or proposal lifecycle. Research-context handoff is provider-neutral; adding
+Chat adds no philosophical verdict, argument graph or proposal lifecycle. Research-context handoff is provider-neutral; adding
 runtime adapters does not change its Note-snapshot contract.
 Opt-in writing continuation under §18.4 reuses the connection through isolated,
 bounded text-only requests. It neither changes Chat drafts/history/settings nor grants

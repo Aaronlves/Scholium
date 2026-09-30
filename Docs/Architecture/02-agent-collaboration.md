@@ -85,7 +85,7 @@ containment, atomicity, readback and recovery.
 Window routing, notification delivery and Settings composition belong to
 [Runtime and Ownership](01-runtime-and-ownership.md#presentation). External-host
 setup displays helper commands without changing host configuration. Agent Change
-inspection reads exact receipts; Changes review and Settlement do not alter
+inspection reads exact receipts; Changes review does not alter
 receipt recovery eligibility.
 
 ## Native Chat client

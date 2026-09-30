@@ -145,7 +145,7 @@ The window model composes bounded owners and typed cross-feature effects. Shell
 owns assignment presentation, pane visibility, disclosure, modes, appearance and
 persistent operation issues; workspace owns registration, access and capability
 generation; projection owns immutable catalog/snapshot consumption; Document
-owns document workflow; Research owns Settlement and borrowed recovery/receipt
+owns document workflow; Research owns borrowed recovery/receipt
 presentation. Controllers do not mutate or republish one another's state.
 Views observe the owners they read directly. Stable scene-owned roots are
 retained before child observation; command invalidation carries no product state.

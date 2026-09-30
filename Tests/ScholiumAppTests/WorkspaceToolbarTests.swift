@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ScholiumContracts
 import Testing
 
@@ -7,35 +8,80 @@ import Testing
 @Suite("Workspace toolbar")
 @MainActor
 struct WorkspaceToolbarTests {
-    @Test("The bell reports an exact total only when both notification sources are known")
-    func notificationCountSummary() {
-        let partial = WorkspaceNotificationCountSummary(
-            settlementCount: 2,
-            changeCount: nil
+    @Test("Notifications retain their native popover when Focus Layout hides the toolbar")
+    func notificationsWithHiddenToolbar() async throws {
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let split = testSplitViewController()
+        let window = testWindow()
+        window.contentViewController = split
+        window.layoutIfNeeded()
+        let controller = ScholiumWorkspaceToolbarController(
+            appState: model, windowActions: inertWindowActions, splitViewController: split
         )
-        #expect(partial.exactTotal == nil)
-        #expect(partial.hasConfirmedNotifications)
+        controller.install(in: window)
+        window.makeKeyAndOrderFront(nil)
+        let toolbar = try #require(window.toolbar)
+        toolbar.isVisible = false
+        var presentedPopover: NSPopover?
+        let observation = NotificationCenter.default.publisher(for: NSPopover.willShowNotification)
+            .sink { notification in
+                guard let popover = notification.object as? NSPopover,
+                    popover.contentViewController is AttentionQueueViewController
+                else { return }
+                popover.animates = false
+                presentedPopover = popover
+            }
+        defer {
+            observation.cancel()
+            presentedPopover?.close()
+            controller.invalidate()
+            window.toolbar = nil
+            window.close()
+        }
 
-        let complete = WorkspaceNotificationCountSummary(
-            settlementCount: 2,
-            changeCount: 3
-        )
-        #expect(complete.exactTotal == 5)
-        #expect(complete.hasConfirmedNotifications)
+        model.attentionPopoverSession.presentQueue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        let popover = try #require(presentedPopover)
+        #expect(popover.isShown)
+        #expect(popover.contentViewController?.view.window != nil)
+        #expect(!toolbar.isVisible)
+        #expect(model.attentionPopoverSession.isPresented(from: .toolbar))
+        popover.close()
+        #expect(!model.attentionPopoverSession.isPresented(from: .toolbar))
+        #expect(!toolbar.isVisible)
+    }
 
-        let partialZero = WorkspaceNotificationCountSummary(
-            settlementCount: 0,
-            changeCount: nil
-        )
-        #expect(partialZero.exactTotal == nil)
-        #expect(!partialZero.hasConfirmedNotifications)
-
-        let empty = WorkspaceNotificationCountSummary(
-            settlementCount: 0,
-            changeCount: 0
-        )
-        #expect(empty.exactTotal == 0)
-        #expect(!empty.hasConfirmedNotifications)
+    @Test("An invalidated separate toolbar cannot regain commands through native validation")
+    func separateToolbarInvalidation() throws {
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        model.isDetachedDocumentWindow = true
+        let controller = DetachedDocumentToolbar(model: model)
+        let mode = try #require(
+            controller.toolbar(
+                controller.toolbar, itemForItemIdentifier: .init("mode"), willBeInsertedIntoToolbar: true
+            ) as? ScholiumDocumentModeToolbarItem)
+        let more = try #require(
+            controller.toolbar(
+                controller.toolbar, itemForItemIdentifier: .init("more"), willBeInsertedIntoToolbar: true
+            ) as? DocumentNoteActionsToolbarItem)
+        let retainedMenuCommand = try #require(more.menu.items.first)
+        #expect(mode.action != nil && mode.target != nil)
+        #expect(!more.menu.items.isEmpty)
+        controller.invalidate()
+        controller.invalidate()
+        mode.validate()
+        more.validate()
+        #expect(controller.toolbar.delegate == nil)
+        #expect(mode.action == nil && mode.target == nil && !mode.isEnabled)
+        #expect(mode.menuFormRepresentation == nil)
+        #expect(more.menu.items.isEmpty && more.menu.delegate == nil && !more.isEnabled)
+        #expect(!more.validateMenuItem(retainedMenuCommand))
+        #expect(
+            controller.toolbar(
+                controller.toolbar, itemForItemIdentifier: .init("mode"), willBeInsertedIntoToolbar: true
+            ) == nil)
     }
 
     @Test("Sidebar modes switch in place and repeating the visible mode collapses it")
@@ -134,8 +180,6 @@ struct WorkspaceToolbarTests {
         #expect(notifications.image?.accessibilityDescription != notifications.label)
         let modeIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.documentMode))
         #expect(toolbar.itemIdentifiers[modeIndex + 1] == ScholiumWorkspaceToolbarController.Item.noteActions)
-        let settleIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.settlement))
-        #expect(toolbar.itemIdentifiers[settleIndex - 1] == ScholiumWorkspaceToolbarController.Item.viewChanges)
         let noteActions = try #require(item(ScholiumWorkspaceToolbarController.Item.noteActions, in: toolbar) as? DocumentNoteActionsToolbarItem)
         #expect(!noteActions.showsIndicator)
         #expect(!noteActions.isEnabled)
@@ -150,7 +194,6 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
             ScholiumWorkspaceToolbarController.Item.viewChanges,
-            ScholiumWorkspaceToolbarController.Item.settlement,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.inspector,
         ] {
@@ -182,23 +225,6 @@ struct WorkspaceToolbarTests {
             ))
         #expect(documentMode.label.hasPrefix("Document Mode,"))
         #expect(documentMode.possibleLabels.count == 3)
-
-        let settlement = try #require(
-            item(
-                ScholiumWorkspaceToolbarController.Item.settlement,
-                in: toolbar
-            ))
-        #expect(settlement.label == "Settlement Unavailable")
-        #expect(settlement.isBordered)
-        #expect(settlement.style == .plain)
-        #expect(settlement.view == nil)
-        #expect(
-            settlement.possibleLabels == [
-                "Settle", "Settled — Settle Again",
-                "Changed since settlement — Settle Again", "Settlement Unavailable",
-            ])
-        #expect(settlement.menuFormRepresentation?.target === controller)
-        #expect(settlement.menuFormRepresentation?.action != nil)
 
         let sidebar = try #require(
             item(
@@ -269,7 +295,6 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.inspector,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.viewChanges,
-            ScholiumWorkspaceToolbarController.Item.settlement,
         ] {
             let command = try #require(item(identifier, in: toolbar))
             #expect(!controller.validateToolbarItem(command))
@@ -746,14 +771,13 @@ struct WorkspaceToolbarTests {
         WorkspaceWindowActions(
             toggleFocusLayout: {},
             canToggleFocusLayout: { false },
+            canUseSidebar: { false },
             setLibraryVisible: { _ in },
             setResearchInspectorVisible: { _ in },
             activateSidebar: { _ in },
             showAttention: { _ in },
             showPreferredAttention: {},
-            canShowAttention: { false },
-            settlementMenuTitle: { nil },
-            showSettlement: {}
+            canShowAttention: { false }
         )
     }
 

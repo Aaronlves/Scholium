@@ -984,7 +984,7 @@ extension ScholiumUITests {
                 to: cluster.appendingPathComponent("analysis-007.md")
             )
         }
-        if name.contains("testAgentChangesShowsExactUpdateAndRestoresSettledBytes") {
+        if name.contains("testAgentChangesShowsExactUpdateAndRestoresOriginalBytes") {
             try write(
                 """
                 # Agent Review

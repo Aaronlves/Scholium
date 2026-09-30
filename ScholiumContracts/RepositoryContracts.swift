@@ -150,9 +150,6 @@ public struct InterruptedSaveRecoveryRestoreCommit: Sendable {
     }
 }
 
-/// One machine-local exact revision deliberately pinned by a researcher
-/// Settle action. The source bytes remain outside the Triptych; this value is
-/// metadata for recovery and never claims that the revision is true or final.
 /// Result of one source replacement proven by exact canonical readback.
 public struct SaveResult: Sendable {
     public let document: NoteDocument
@@ -162,8 +159,6 @@ public struct SaveResult: Sendable {
     }
 }
 
-/// Result of pinning a Settle revision. `wasCreated` lets the application
-/// retract only task-owned recovery state if the portable Settle commit fails.
 /// The repository owns the distinction between a proven commit and a write
 /// whose canonical result remains unknown. Application must not infer this
 /// distinction from an arbitrary error after the transaction has started.

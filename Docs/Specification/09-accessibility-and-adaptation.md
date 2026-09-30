@@ -86,7 +86,7 @@ Library/Search/Notifications interaction. Their accessibility obligations are:
 - Back/Forward, Search, Notifications, filters, Add, file actions and Inspector
   remain discoverable without hover. The bell's nonzero state has a distinct
   shape and an exact accessible count in Help, without an unread implication.
-- Notifications expose Changes or Settlement category, Note identity or
+- Notifications expose pending Changes, Note identity or
   locator, revision freshness where applicable, and valid actions in reading
   order. Library Integrity filters expose structural Attention's exact reason
   and Note/path locator as derived read-only state. Background delivery follows
@@ -175,12 +175,6 @@ integrations. Verify:
   Links does not expose annotation editing.
   Arrival does not replace text selection or rely on its highlight. Reduce Motion
   reveals the same target with a static brief marker and no animated scroll/fade.
-- Settlement exposes state and state-valid action through wording, symbol, Help,
-  accessible value and its menu route. It remains a milestone, with no inferred
-  task-completion state. Explicit success is announced once and remains visible
-  briefly in the existing confirmation popover; Reduce Motion retains its static
-  symbol and text. Haptics are supplementary and use system preferences.
-  Inspector visibility changes no research judgment.
 - Settings exposes search, selected category, scope and content in predictable
   order. Empty search retains the query. Appearance reload preserves invalid or
   conflicting drafts and names safe repair. Frontmatter's named route and direct

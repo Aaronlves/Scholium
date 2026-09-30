@@ -55,7 +55,7 @@ Inspector modes remain document-dependent. Toolbar
 validation and View menus derive availability from the same current window state. Native
 spacers express logical grouping; the system owns glass shapes, proximity effects, and
 transitions. This native state contract applies to every toolbar component, including
-history, document mode, Settlement, and Inspector modes. A disabled action cannot
+history, document mode, and Inspector modes. A disabled action cannot
 execute through another route. Document-specific popovers close when
 their document or required source revision changes; detaching a window ends its toolbar
 interactions and prevents stale state from updating it. Back/Forward begin the Document
@@ -71,10 +71,14 @@ and buffer.
 The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
 Document tabs, current-Document mode,
-Settlement, Note Actions, Inspector
+current-Note Changes, Note Actions, Inspector
 projection, and Inspector visibility. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,
 including embedded editors. Native overflow preserves access. Toolbar customization is not required.
+Copy Note Link, Add Note to Chat and Reveal Note in Finder retain current-Note
+commands in Edit, Research and File respectively, including Focus Layout.
+Separate document windows disable commands that show or hide Sidebar, select
+its Library/Chat presentation, or open Notifications.
 
 **Focus Layout** is a temporary, current-window layout, entered and exited from
 the checked View-menu toggle and its configurable shortcut, independently of full
@@ -102,7 +106,7 @@ window types; the separate window reuses its existing More button. It groups
 Note-link copying and Add to Chat; Move, Duplicate and Merge; Find and
 current-Note Changes; Finder and window actions; then system Trash.
 The filename title is changed in place by editing the inline title control in
-the document. Settle and Document Mode retain their direct controls. Menu
+the document. Document Mode retains its direct control. Menu
 execution remains bound to its captured Note even when Library selection or the
 active tab changes.
 Separate-window Add to Chat opens the same Triptych's main Chat without moving
@@ -182,7 +186,7 @@ Menu group order:
 - **Format**: styles; headings/lists; quotations/code; tables.
 - **Insert**: links; footnotes; images; tables/breaks; comments/Callouts.
 - **View**: history/search; panes; Document mode; text size/appearance.
-- **Research**: related material; selection to Chat; Settle; Changes.
+- **Research**: related material; Note or selection to Chat; Changes.
 - **Window**: native windows; tabs/transfer; Notifications.
 - **App**: native commands and Settings (§18.2.1).
 
@@ -307,7 +311,7 @@ source commit, the UI offers Retry Edit/Source without duplicate creation.
 Triptych Notifications has one stable native bell in the toolbar. It aligns
 with the Sidebar's upper trailing edge when expanded; native toolbar layout
 reflows it beside the sidebar selector when collapsed. It opens the complete
-Changes/Settlement queue without changing the selected workspace or
+pending Note Changes queue without changing the selected workspace or
 Document. Zero is quiet; nonzero uses the native badged bell
 with a small dot, without a visible number, unread model, animation, or
 auto-open. Bell shape, dot shape, accessible state, and the popover's exact
@@ -329,8 +333,7 @@ opening Chat reveals its exact conversation and leaves the Note unchanged.
 Missing or stale targets never silently select another Note or authorize a source operation. Delivery
 failure, denied permission, and Focus never suppress necessary in-app state.
 
-Changed Since Settle stays in the bell and its local context. Structural
-Attention stays in the Library's Integrity filters, where **Needs Attention**
+Structural Attention stays in the Library's Integrity filters, where **Needs Attention**
 and **Malformed Metadata** expose the derived reason and exact Note/path
 locator. Save, Conflict, and Recovery failures remain persistent beside their
 owners with valid repair actions. Other failed or partially committed operations
@@ -340,14 +343,14 @@ copy, creation, and refresh are silent. There is no global in-app notification
 overlay, priority stack, expiry timer, or duplicate delivery of the same event.
 
 The complete Notifications queue is a window-owned native popover. The toolbar
-opens Triptych scope; Inspector may open a current-Note subset. Popover closure
-does not mark Changes reviewed or alter Settlement. The queue
-presents pending Note Changes, then Settlement reminders, with only valid actions.
+opens Triptych scope; Inspector may open a current-Note subset. The Window-menu
+route remains available in Focus Layout and full screen, using a visible
+current-window content anchor while the toolbar is hidden. Popover closure
+does not mark Changes reviewed. The queue presents pending Note Changes
+with only valid actions.
 Rows separate Note identity from the event description; source attribution is
 shown only for an exact Agent receipt, never the cumulative comparison.
-Search/filter changes only this presentation. Notification-type filters live in
-the native search-field magnifying-glass menu rather than a separate filter
-button.
+Search changes only this presentation.
 Stale or failed refresh retains last trustworthy content and Retry; empty and
 unavailable remain distinct.
 

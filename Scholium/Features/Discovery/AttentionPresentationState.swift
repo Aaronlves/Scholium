@@ -2,20 +2,6 @@ import Combine
 import Foundation
 import ScholiumContracts
 
-enum AttentionNotificationFilter: Hashable, Sendable {
-    case all
-    case changes
-    case settlements
-
-    var showsChanges: Bool {
-        self == .all || self == .changes
-    }
-
-    var showsSettlements: Bool {
-        self == .all || self == .settlements
-    }
-}
-
 enum AttentionNotificationCopy {
     static func refreshing(locale: Locale = .current) -> String {
         ScholiumL10n.string(
@@ -55,7 +41,6 @@ enum AttentionNotificationCopy {
 @MainActor
 final class AttentionPresentationState: ObservableObject {
     @Published var filter = AttentionQueueFilter()
-    @Published var notificationFilter = AttentionNotificationFilter.all
     @Published var selectedItemID: String?
     @Published private(set) var workspaceSlot: WorkspaceVaultSlot?
     @Published private(set) var noteScope: VaultQualifiedNoteID?
@@ -86,11 +71,10 @@ final class AttentionPresentationState: ObservableObject {
     }
 
     /// A Workspace-window change starts a fresh Notifications visit. Transient
-    /// query, kind, Note scope, and row focus never leak from the previously
+    /// query, Note scope, and row focus never leak from the previously
     /// active window.
     func resetForWorkspaceSwitch() {
         filter = AttentionQueueFilter()
-        notificationFilter = .all
         selectedItemID = nil
         noteScope = nil
         previousVisibleItemIDs = []

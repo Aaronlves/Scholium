@@ -3,7 +3,7 @@ import ScholiumContracts
 import ScholiumCore
 
 /// One Triptych-wide review owner, shared by windows and Chat. It reads only
-/// saved, identity-checked source and never mutates a Note or Settlement.
+/// saved, identity-checked source and never mutates a Note.
 public actor DocumentChangeOperations: DocumentChangeUseCases {
     private let reference: WorkspaceHandleReference
 

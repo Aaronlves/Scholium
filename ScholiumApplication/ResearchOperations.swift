@@ -3,27 +3,6 @@ import ScholiumContracts
 import ScholiumCore
 
 extension WorkspaceHandle {
-    @discardableResult
-    func settle(
-        _ noteID: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        rationale: String?
-    ) async throws -> SettlementRecord {
-        let context = try await researcherJudgmentContext(
-            for: noteID,
-            expectedRevision: expectedRevision,
-            permits: { $0 != .other },
-            unavailable: { ResearchOperationError.settlementUnavailable($0) }
-        )
-        let settlement = try await services.settlementStore.settle(
-            noteID: context.identity.id,
-            fingerprint: expectedRevision,
-            rationale: rationale
-        )
-        _ = try await refresh(publication: .explicit)
-        return settlement
-    }
-
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
         try requireActive()
         return try await services.transactionRecoveryStore.pending()
@@ -171,43 +150,5 @@ extension WorkspaceHandle {
 
         }
         try await services.transactionRecoveryStore.resolve(record)
-    }
-
-    private struct ResearcherJudgmentContext {
-        let document: NoteDocument
-        let identity: NoteIdentityRecord
-    }
-
-    private func researcherJudgmentContext(
-        for noteID: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        permits: (VaultRole) -> Bool,
-        unavailable: (VaultRole) -> Error
-    ) async throws -> ResearcherJudgmentContext {
-        try requireActive()
-        let registeredVault = try vault(id: noteID.vaultID)
-        guard permits(registeredVault.role) else {
-            throw unavailable(registeredVault.role)
-        }
-        guard currentSnapshot.document(id: noteID) != nil else {
-            throw ResearchOperationError.noteUnavailable(noteID)
-        }
-        let identity = try await resolvedIdentity(
-            for: noteID,
-            expectedRevision: expectedRevision
-        )
-        let document = try await repository(vaultID: noteID.vaultID).load(
-            relativePath: noteID.relativePath
-        )
-        guard document.fingerprint == expectedRevision else {
-            throw VaultRepositoryError.conflict(
-                expected: expectedRevision,
-                current: document.fingerprint
-            )
-        }
-        return ResearcherJudgmentContext(
-            document: document,
-            identity: identity
-        )
     }
 }

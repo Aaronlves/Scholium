@@ -51,7 +51,7 @@ LEGACY_AGENT_ROOTS=(
   "${ROOT}/ScholiumCore"
 )
 if rg -n --glob '*.swift' \
-  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecord[A-Za-z0-9_]*|RecordSearch[A-Za-z0-9_]*|UnifiedSearch[A-Za-z0-9_]*|SearchProviderSelection|Critique[A-Za-z0-9_]*|ZoteroBibliographicContext|ZoteroMetadataMatcher|ZoteroSourceIdentity)\b' \
+  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecord[A-Za-z0-9_]*|Settlement[A-Za-z0-9_]*|WorkspaceSettlementRequirement[A-Za-z0-9_]*|DocumentSettlement[A-Za-z0-9_]*|ResearcherJudgmentContext|RecordSearch[A-Za-z0-9_]*|UnifiedSearch[A-Za-z0-9_]*|SearchProviderSelection|Critique[A-Za-z0-9_]*|ZoteroBibliographicContext|ZoteroMetadataMatcher|ZoteroSourceIdentity)\b' \
   "${LEGACY_AGENT_ROOTS[@]}"; then
   echo "Agent collaboration clean-cutover guard failed: a retired production owner returned." >&2
   exit 1

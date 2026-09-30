@@ -435,7 +435,7 @@ public actor DiscoveryOperations: DiscoveryUseCases {
     }
 }
 
-/// Researcher-owned judgments and recovery operations that remain inside the
+/// Researcher-owned settings and recovery operations that remain inside the
 /// App after external conversation and workflow ownership moved to the host.
 public actor ResearchOperations: ResearchUseCases {
     public nonisolated let recoveryRecordsURL: URL
@@ -449,16 +449,6 @@ public actor ResearchOperations: ResearchUseCases {
     public func snapshot() async throws -> WorkspaceResearchSnapshot {
         let handle = try await reference.requireHandle()
         return try await handle.researchSnapshot()
-    }
-
-    @discardableResult
-    public func settle(
-        _ note: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        rationale: String?
-    ) async throws -> SettlementRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.settle(note, expectedRevision: expectedRevision, rationale: rationale)
     }
 
     public func settings() async throws -> TriptychSettingsSnapshot {

@@ -9,30 +9,22 @@ import ScholiumContracts
 /// row reuse, and responder chain. This controller only projects those
 /// immutable inputs and translates native intents back to the session.
 @MainActor
-final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuItemValidation {
-    private enum FilterTag: Int {
-        case all
-        case changes
-        case settlements
-    }
-
+final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private enum Row {
         case category(String)
         case change(DocumentChangeSummary)
-        case settlement(WorkspaceSettlementRequirement)
 
         var id: String {
             switch self {
             case .category(let title): "category:\(title)"
             case .change(let change): "change:\(change.id.uuidString.lowercased())"
-            case .settlement(let requirement): "settlement:\(requirement.noteID.uuidString.lowercased())"
             }
         }
 
         var isSelectable: Bool {
             switch self {
             case .category: false
-            case .change, .settlement: true
+            case .change: true
             }
         }
     }
@@ -127,7 +119,6 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         searchField.sendsSearchStringImmediately = true
         searchField.maximumRecents = 0
         searchField.delegate = self
-        searchField.searchMenuTemplate = makeSearchMenu()
         searchField.setAccessibilityLabel(ScholiumL10n.string("Search Notifications"))
         searchField.setAccessibilityIdentifier("scholium.attentionSearch")
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -345,16 +336,11 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
 
     private func makeRows() -> [Row] {
         let changes = session.visibleDocumentChanges(for: presentation, locale: .current)
-        let settlements = session.visibleSettlementRequirements(for: presentation, locale: .current)
 
         var result: [Row] = []
         if !changes.isEmpty {
             result.append(.category(ScholiumL10n.string("Changes")))
             result.append(contentsOf: changes.map(Row.change))
-        }
-        if !settlements.isEmpty {
-            result.append(.category(ScholiumL10n.string("Settlement Reminders")))
-            result.append(contentsOf: settlements.map(Row.settlement))
         }
         return result
     }
@@ -439,7 +425,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         )
         let query = presentation.filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
         stateTitle.stringValue =
-            query.isEmpty && presentation.notificationFilter == .all
+            query.isEmpty
             ? ScholiumL10n.string("No Notifications")
             : ScholiumL10n.string("No Matching Notifications")
         stateDetail.stringValue = ""
@@ -510,48 +496,6 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         }
     }
 
-    private func makeSearchMenu() -> NSMenu {
-        let menu = NSMenu(title: ScholiumL10n.string("Search"))
-        let choices: [(String, FilterTag)] = [
-            ("All Notifications", .all),
-            ("Changes", .changes),
-            ("Settlement Reminders", .settlements),
-        ]
-        for (title, tag) in choices {
-            let item = NSMenuItem(
-                title: ScholiumL10n.dynamicString(title),
-                action: #selector(selectFilter(_:)),
-                keyEquivalent: ""
-            )
-            item.tag = tag.rawValue
-            item.target = self
-            menu.addItem(item)
-        }
-        return menu
-    }
-
-    @objc private func selectFilter(_ sender: NSMenuItem) {
-        guard let tag = FilterTag(rawValue: sender.tag) else { return }
-        switch tag {
-        case .all: presentation.notificationFilter = .all
-        case .changes: presentation.notificationFilter = .changes
-        case .settlements: presentation.notificationFilter = .settlements
-        }
-        reloadFromModel()
-    }
-
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        guard let tag = FilterTag(rawValue: menuItem.tag) else { return false }
-        let selected: Bool
-        switch tag {
-        case .all: selected = presentation.notificationFilter == .all
-        case .changes: selected = presentation.notificationFilter == .changes
-        case .settlements: selected = presentation.notificationFilter == .settlements
-        }
-        menuItem.state = selected ? .on : .off
-        return true
-    }
-
     func controlTextDidChange(_ notification: Notification) {
         guard let field = notification.object as? NSSearchField,
             (field.currentEditor() as? NSTextView)?.hasMarkedText() != true
@@ -579,8 +523,6 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
             return
         case .change(let change):
             session.inspect(change)
-        case .settlement(let requirement):
-            session.inspect(requirement)
         }
     }
 
@@ -628,23 +570,6 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
             )
             cell.setAccessibilityIdentifier(
                 "scholium.notification.change.\(change.id.uuidString.lowercased())"
-            )
-            return cell
-        case .settlement(let requirement):
-            let cell = makeItemCell(tableView: tableView)
-            cell.configure(
-                symbol: "exclamationmark.circle",
-                color: ScholiumColorRole.attention.nsColor,
-                title: requirement.title,
-                detail: ScholiumL10n.string("Current Revision Not Settled"),
-                date: nil,
-                accessibilityLabel: String.localizedStringWithFormat(
-                    ScholiumL10n.string("Current Revision Not Settled, %@"),
-                    requirement.title
-                ) + ", " + requirement.note.relativePath
-            )
-            cell.setAccessibilityIdentifier(
-                "scholium.notification.settlement.\(requirement.noteID.uuidString.lowercased())"
             )
             return cell
         }

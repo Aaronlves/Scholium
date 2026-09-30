@@ -206,16 +206,11 @@ public protocol DiscoveryUseCases: Sendable {
     func linkDiagnostics() async throws -> [LinkGraphDiagnostic]
 }
 
-/// App-owned researcher judgments and recovery operations. External Agent
+/// App-owned settings and recovery operations. External Agent
 /// conversation, task lifecycle, and philosophical result ownership are not
 /// represented by this capability.
 public protocol ResearchUseCases: Sendable {
     func snapshot() async throws -> WorkspaceResearchSnapshot
-    func settle(
-        _ note: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        rationale: String?
-    ) async throws -> SettlementRecord
     func settings() async throws -> TriptychSettingsSnapshot
     func settingsLoadState() async throws -> TriptychSettingsLoadState
     func settingsRecoverySnapshot() async throws -> TriptychSettingsRecoverySnapshot

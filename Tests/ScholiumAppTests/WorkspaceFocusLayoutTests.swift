@@ -6,6 +6,61 @@ import Testing
 @Suite("Workspace Focus Layout", .serialized)
 @MainActor
 struct WorkspaceFocusLayoutTests {
+    @Test("Current-window peripheral commands distinguish main, focused, separate, and detached windows")
+    func windowPeripheralCapabilities() throws {
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let fixture = FocusLayoutFixture()
+        let coordinator = WorkspaceWindowCoordinator(
+            windowID: model.nativeWindowID, appState: model,
+            lifecycleRegistry: ScholiumWindowLifecycleRegistry()
+        )
+        coordinator.update(reduceMotion: true)
+        coordinator.attach(to: fixture.window)
+        coordinator.attach(splitController: fixture.split)
+        defer {
+            coordinator.detach()
+            fixture.close()
+        }
+        #expect(coordinator.actions.canUseSidebar())
+        #expect(coordinator.actions.canShowAttention())
+        coordinator.actions.toggleFocusLayout()
+        #expect(model.shellState.isFocusLayoutActive)
+        #expect(fixture.window.toolbar?.isVisible == false)
+        #expect(coordinator.actions.canUseSidebar())
+        #expect(coordinator.actions.canShowAttention())
+        coordinator.detach()
+        #expect(!coordinator.actions.canUseSidebar())
+        #expect(!coordinator.actions.canShowAttention())
+
+        let separateModel = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        separateModel.isDetachedDocumentWindow = true
+        let separateWindow = makeFocusLayoutWindow()
+        let separateCoordinator = WorkspaceWindowCoordinator(
+            windowID: separateModel.nativeWindowID, appState: separateModel,
+            lifecycleRegistry: ScholiumWindowLifecycleRegistry()
+        )
+        var notificationRequests = 0
+        separateCoordinator.attach(to: separateWindow)
+        separateCoordinator.activate { _ in notificationRequests += 1 }
+        defer {
+            separateCoordinator.detach()
+            separateWindow.close()
+        }
+        let nativeToolbar = try #require(separateWindow.toolbar)
+        #expect(!separateCoordinator.actions.canUseSidebar())
+        #expect(!separateCoordinator.actions.canShowAttention())
+        separateCoordinator.actions.activateSidebar(.chat)
+        separateCoordinator.actions.setLibraryVisible(false)
+        separateCoordinator.actions.showPreferredAttention()
+        #expect(separateModel.shellState.sidebarContent == .library)
+        #expect(separateModel.shellState.libraryVisible)
+        #expect(notificationRequests == 0)
+        separateCoordinator.detach()
+        #expect(separateWindow.toolbar == nil)
+        #expect(nativeToolbar.delegate == nil)
+        #expect(nativeToolbar.items.allSatisfy { $0.action == nil && $0.target == nil && !$0.isEnabled })
+    }
+
     @Test(
         "Focus restores every initial pane combination and toolbar visibility",
         arguments: [true, false], [true, false])

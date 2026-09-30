@@ -985,7 +985,6 @@ struct FrontendArchitectureTests {
                 ScholiumWorkspaceToolbarController.Item.forward,
                 .flexibleSpace,
                 ScholiumWorkspaceToolbarController.Item.viewChanges,
-                ScholiumWorkspaceToolbarController.Item.settlement,
                 .space,
                 ScholiumWorkspaceToolbarController.Item.documentMode,
                 ScholiumWorkspaceToolbarController.Item.noteActions,
@@ -1164,15 +1163,15 @@ struct FrontendArchitectureTests {
         let apparatusDividerIndex = try #require(
             identifiers.firstIndex(of: Item.apparatusDivider)
         )
-        let settlementIndex = try #require(
-            identifiers.firstIndex(of: Item.settlement)
+        let changesIndex = try #require(
+            identifiers.firstIndex(of: Item.viewChanges)
         )
         #expect(sidebarIndex < backIndex)
         #expect(backIndex < forwardIndex)
         #expect(libraryDividerIndex < backIndex)
         #expect(forwardIndex < documentFlexibleSpaceIndex)
-        #expect(documentFlexibleSpaceIndex < settlementIndex)
-        #expect(settlementIndex < documentControlSpaceIndex)
+        #expect(documentFlexibleSpaceIndex < changesIndex)
+        #expect(changesIndex < documentControlSpaceIndex)
         #expect(documentControlSpaceIndex < modeIndex)
         #expect(modeIndex < apparatusDividerIndex)
         #expect(apparatusDividerIndex < inspectorModesIndex)
@@ -1959,7 +1958,6 @@ struct FrontendArchitectureTests {
         #expect(attentionSource.contains("override func mouseDown(with event: NSEvent)"))
         #expect(attentionSource.contains("window.makeFirstResponder(self.tableView)"))
         #expect(attentionSource.contains("scholium.attentionSearch"))
-        #expect(attentionSource.contains("searchMenuTemplate"))
         #expect(attentionSource.contains("tableView.activate"))
         #expect(!attentionSource.contains("import SwiftUI"))
         #expect(!attentionSource.contains("@FocusState"))

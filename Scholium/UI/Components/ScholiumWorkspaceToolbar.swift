@@ -2,21 +2,6 @@ import AppKit
 import Combine
 import Foundation
 import ScholiumContracts
-import SwiftUI
-
-struct WorkspaceNotificationCountSummary: Equatable {
-    let settlementCount: Int?
-    let changeCount: Int?
-
-    var exactTotal: Int? {
-        guard let settlementCount, let changeCount else { return nil }
-        return settlementCount + changeCount
-    }
-
-    var hasConfirmedNotifications: Bool {
-        (settlementCount ?? 0) > 0 || (changeCount ?? 0) > 0
-    }
-}
 
 /// The configured window has one native toolbar. Tracking separators establish
 /// Library, Document, and Apparatus sections. Sidebar and document-history
@@ -45,9 +30,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         )
         static let noteActions = NSToolbarItem.Identifier("scholium.toolbar.noteActions")
         static let viewChanges = NSToolbarItem.Identifier("scholium.toolbar.viewChanges")
-        static let settlement = NSToolbarItem.Identifier(
-            "scholium.toolbar.settlement"
-        )
         // Apparatus is an explicitly managed trailing split item rather than
         // AppKit's Inspector factory item. A private identifier keeps the
         // initializer's explicit dividerIndex authoritative instead of asking
@@ -59,7 +41,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     private var isInvalidated = false
-    private var presentedSettlementTarget: DocumentSettlementTarget?
     private let appState: WindowModel
     private let windowActions: WorkspaceWindowActions
     private let splitViewController: NSSplitViewController
@@ -67,10 +48,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     private let documentTabs = DocumentToolbarTabs()
     private let notificationsPopover = NSPopover()
     private weak var responderBeforeNotifications: NSResponder?
-    private let settlementPopover: NSPopover
     private weak var window: NSWindow?
-    private weak var responderBeforeSettlement: NSResponder?
-    private var settlementPopoverHostingController: DocumentSettlementPopoverHostingController?
     private weak var observedChat: AgentChatController?
     private var chatObservation: AnyCancellable?
     private var presentationCancellables: Set<AnyCancellable> = []
@@ -84,7 +62,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         self.windowActions = windowActions
         self.splitViewController = splitViewController
         toolbar = NSToolbar(identifier: Self.toolbarIdentifier(for: appState.nativeWindowID))
-        settlementPopover = NSPopover()
         super.init()
         toolbar.delegate = self
         toolbar.allowsUserCustomization = false
@@ -99,8 +76,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         documentTabs.reorder = { [weak appState] id, index in
             appState?.documentTabController.moveTab(withID: id, to: index)
         }
-        settlementPopover.behavior = .transient
-        settlementPopover.delegate = self
         notificationsPopover.behavior = .transient
         notificationsPopover.delegate = self
         observePresentation()
@@ -129,17 +104,14 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         observedChat = nil
         presentationCancellables.removeAll()
         documentTabs.invalidate()
-        responderBeforeSettlement = nil
         responderBeforeNotifications = nil
-        settlementPopover.close()
         notificationsPopover.close()
-        settlementPopover.contentViewController = nil
         notificationsPopover.contentViewController = nil
-        settlementPopoverHostingController = nil
-        presentedSettlementTarget = nil
         for item in toolbar.items {
             if let noteActions = item as? DocumentNoteActionsToolbarItem {
                 noteActions.invalidate()
+            } else if let mode = item as? ScholiumDocumentModeToolbarItem {
+                mode.invalidate()
             } else {
                 item.menuFormRepresentation = nil
             }
@@ -172,9 +144,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.back,
             Item.forward,
             .space,
+            Item.viewChanges,
             Item.documentMode,
             Item.noteActions,
-            Item.settlement,
             Item.apparatusDivider,
             Item.inspectorModes,
             Item.inspector,
@@ -198,7 +170,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.forward,
         ] + tabIdentifiers + (tabIdentifiers.isEmpty ? [.flexibleSpace] : []) + [
             Item.viewChanges,
-            Item.settlement,
             .space,
             Item.documentMode,
             Item.noteActions,
@@ -272,21 +243,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 action: #selector(viewCurrentChanges(_:)),
                 visibilityPriority: .standard
             )
-        case Item.settlement:
-            let item = actionItem(
-                identifier: itemIdentifier,
-                label: ScholiumL10n.string("Settle"),
-                systemImage: "checkmark.circle",
-                action: #selector(toggleSettlement(_:)),
-                visibilityPriority: .standard
-            )
-            item.possibleLabels = [
-                ScholiumL10n.string("Settle"),
-                ScholiumL10n.string("Settled — Settle Again"),
-                ScholiumL10n.string("Changed since settlement — Settle Again"),
-                ScholiumL10n.string("Settlement Unavailable"),
-            ]
-            return item
         case Item.apparatusDivider:
             let splitView = splitViewController.splitView
             let item = NSTrackingSeparatorToolbarItem(
@@ -330,14 +286,15 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
 
     private func refreshNotifications() {
         guard let item = toolbarItem(Item.notifications) else { return }
-        let summary = notificationSummary
-        let total = summary.exactTotal
+        let total = appState.researchController.pendingChanges?.count
         let value: String
         if let total {
             value =
-                total == 0
-                ? ScholiumL10n.string("No notifications")
-                : String.localizedStringWithFormat(ScholiumL10n.string("%lld notifications"), Int64(total))
+                switch total {
+                case 0: ScholiumL10n.string("No notifications")
+                case 1: ScholiumL10n.string("1 notification")
+                default: String.localizedStringWithFormat(ScholiumL10n.string("%lld notifications"), Int64(total))
+                }
         } else {
             value =
                 notificationError == nil
@@ -348,7 +305,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         update(
             item,
             label: label,
-            systemImage: summary.hasConfirmedNotifications ? "bell.badge" : "bell",
+            systemImage: (total ?? 0) > 0 ? "bell.badge" : "bell",
             isEnabled: true,
             toolTip: "\(label) · \(value)",
             accessibilityValue: value
@@ -366,7 +323,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 )
                 notificationsPopover.contentViewController = content
                 responderBeforeNotifications = window?.firstResponder
-                notificationsPopover.show(relativeTo: item)
+                showNotificationsPopover(relativeTo: item)
                 content.focusInitialContentIfNeeded()
             }
         } else if notificationsPopover.isShown {
@@ -374,12 +331,25 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
     }
 
-    private var notificationSummary: WorkspaceNotificationCountSummary {
-        WorkspaceNotificationCountSummary(
-            settlementCount: appState.researchController.researchSnapshot?
-                .settlementRequirements.count,
-            changeCount: appState.researchController.pendingChanges?.count
-        )
+    private func showNotificationsPopover(relativeTo item: NSToolbarItem) {
+        guard let window, let contentView = window.contentView else { return }
+        if toolbar.isVisible {
+            // AppKit supplies its native alternate anchor when the item is in overflow.
+            notificationsPopover.show(relativeTo: item)
+        } else {
+            // Focus Layout retains the command while removing toolbar chrome.
+            // Anchor in this window's visible content without revealing a pane or toolbar.
+            let safeArea = contentView.safeAreaRect
+            let trailingX =
+                contentView.userInterfaceLayoutDirection == .rightToLeft
+                ? safeArea.minX : max(safeArea.minX, safeArea.maxX - 1)
+            let topY = contentView.isFlipped ? safeArea.minY : max(safeArea.minY, safeArea.maxY - 1)
+            notificationsPopover.show(
+                relativeTo: NSRect(x: trailingX, y: topY, width: 1, height: 1),
+                of: contentView,
+                preferredEdge: contentView.isFlipped ? .maxY : .minY
+            )
+        }
     }
 
     private var notificationError: String? {
@@ -388,11 +358,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
         if appState.researchController.pendingChanges == nil,
             let error = appState.researchController.pendingChangesError
-        {
-            return error
-        }
-        if appState.researchController.researchSnapshot == nil,
-            let error = appState.researchController.errorMessage
         {
             return error
         }
@@ -522,10 +487,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 .receive(on: DispatchQueue.main)
                 .map { _ in () }
                 .eraseToAnyPublisher(),
-            appState.researchController.$researchSnapshot
-                .receive(on: DispatchQueue.main)
-                .map { _ in () }
-                .eraseToAnyPublisher(),
             appState.researchController.$pendingChanges
                 .receive(on: DispatchQueue.main)
                 .map { _ in () }
@@ -600,34 +561,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             )
         }
 
-        if let item = toolbarItem(Item.settlement) {
-            let hasDocument = appState.currentNote != nil
-            let target = currentSettlementTarget
-            let presentation =
-                target == nil
-                ? SettlementPresentation.unavailable
-                : currentSettlementPresentation
-            let action = DocumentSettlementAction.resolve(presentation.state)
-            let label = ScholiumL10n.localized(
-                DocumentSettlementToolbarPresentation.accessibilityLabel(for: presentation.state)
-            )
-            let help = ScholiumL10n.localized(action.help)
-            item.isHidden = !hasDocument
-            item.label = label
-            item.paletteLabel = label
-            item.toolTip = help
-            item.image = ScholiumNativeToolbarPresentation.symbol(
-                named: DocumentSettlementToolbarPresentation.symbol(for: presentation.state)
-            )
-            item.isEnabled = isCommandEnabled(Item.settlement)
-            item.menuFormRepresentation?.title = ScholiumL10n.localized(action.title)
-            item.menuFormRepresentation?.image = item.image
-            item.menuFormRepresentation?.isEnabled = item.isEnabled
-            if settlementPopover.isShown && target != presentedSettlementTarget {
-                settlementPopover.close()
-            }
-        }
-
         if let item = toolbarItem(Item.inspectorModes),
             let control = item.view as? ScholiumTooltippedSegmentedControl
         {
@@ -676,7 +609,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         return switch identifier {
         case Item.back: appState.documentNavigationHistoryController.canGoBack
         case Item.forward: appState.documentNavigationHistoryController.canGoForward
-        case Item.settlement: currentSettlementTarget != nil
         case Item.viewChanges: hasCurrentPendingChanges
         case Item.inspector: appState.canToggleResearchInspector
         case Item.inspectorModes: appState.currentNote != nil && appState.shellState.inspector.isVisible
@@ -841,123 +773,16 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     func popoverDidClose(_ notification: Notification) {
-        guard let closedPopover = notification.object as? NSPopover else { return }
-        let responder: NSResponder?
-        if closedPopover === settlementPopover {
-            presentedSettlementTarget = nil
-            settlementPopoverHostingController = nil
-            settlementPopover.contentViewController = nil
-            responder = responderBeforeSettlement
-            responderBeforeSettlement = nil
-        } else if closedPopover === notificationsPopover {
-            notificationsPopover.contentViewController = nil
-            responder = responderBeforeNotifications
-            responderBeforeNotifications = nil
-            if appState.attentionPopoverSession.isPresented(from: .toolbar) {
-                appState.attentionPopoverSession.dismiss()
-            }
-        } else {
-            return
+        guard (notification.object as? NSPopover) === notificationsPopover else { return }
+        notificationsPopover.contentViewController = nil
+        let responder = responderBeforeNotifications
+        responderBeforeNotifications = nil
+        if appState.attentionPopoverSession.isPresented(from: .toolbar) {
+            appState.attentionPopoverSession.dismiss()
         }
         guard !isInvalidated, let window, window.isKeyWindow, let responder else { return }
         if let view = responder as? NSView, view.window !== window { return }
         window.makeFirstResponder(responder)
-    }
-
-    var settlementMenuTitle: String? {
-        guard isCommandEnabled(Item.settlement) else { return nil }
-        return ScholiumL10n.localized(DocumentSettlementAction.resolve(currentSettlementPresentation.state).title)
-    }
-
-    func showSettlement() {
-        guard isCommandEnabled(Item.settlement), !settlementPopover.isShown else { return }
-        presentSettlement()
-    }
-
-    @objc private func toggleSettlement(_ sender: Any?) {
-        guard isCommandEnabled(Item.settlement) else { return }
-        if settlementPopover.isShown {
-            settlementPopover.performClose(sender)
-        } else {
-            presentSettlement()
-        }
-    }
-
-    private func presentSettlement() {
-        guard let target = currentSettlementTarget,
-            let item = toolbarItem(Item.settlement)
-        else { return }
-        let presentation = currentSettlementPresentation
-        presentedSettlementTarget = target
-        let rootView = DocumentSettlementPopoverView(
-            presentation: presentation,
-            settle: { [weak self] rationale in
-                guard let self else { return (false, nil) }
-                _ = try await self.appState.researchController.settle(
-                    target.note,
-                    expectedRevision: target.fingerprint,
-                    rationale: rationale
-                )
-                // The commit is authoritative even if its derived refresh fails.
-                var refreshError: String?
-                do {
-                    try await self.appState.researchController.refreshResearchProjection()
-                } catch {
-                    refreshError = error.localizedDescription
-                }
-                self.refreshPresentation()
-                return (
-                    !self.isInvalidated && self.currentSettlementTarget == target
-                        && self.presentedSettlementTarget == target && self.settlementPopover.isShown, refreshError
-                )
-            },
-            dismiss: { [weak self] in
-                self?.settlementPopover.performClose(nil)
-            }
-        )
-        let hostingController = DocumentSettlementPopoverHostingController(
-            rootView: rootView
-        )
-        hostingController.sizingOptions = [
-            .preferredContentSize,
-            .intrinsicContentSize,
-        ]
-        hostingController.dismiss = { [weak self] in
-            self?.settlementPopover.performClose(nil)
-        }
-        settlementPopoverHostingController = hostingController
-        settlementPopover.contentViewController = hostingController
-        responderBeforeSettlement = window?.firstResponder
-        settlementPopover.show(relativeTo: item)
-        hostingController.focusForKeyboardDismissal()
-    }
-
-    private var currentSettlementPresentation: SettlementPresentation {
-        let noteID = appState.currentNote?.workspaceSnapshot?.stableIdentity.resolvedID
-        let requirement = appState.researchController.researchSnapshot?
-            .settlementRequirements.first { $0.noteID == noteID }
-        return SettlementPresentation.resolve(
-            noteID: noteID,
-            currentRevision: appState.currentNote?.workspaceSnapshot?.fingerprint,
-            requirement: requirement,
-            settlements: appState.researchController.researchSnapshot?.settlements ?? []
-        )
-    }
-
-    private var currentSettlementTarget: DocumentSettlementTarget? {
-        guard let note = appState.currentNote,
-            let summary = note.workspaceSnapshot,
-            let vaultID = appState.currentDocumentVaultID,
-            summary.stableIdentity.resolvedID != nil,
-            appState.currentDocumentVaultRole != .other
-        else { return nil }
-        return DocumentSettlementTarget(
-            note: VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: note.relativePath
-            ),
-            fingerprint: summary.fingerprint
-        )
     }
 
     @objc private func toggleInspector(_ sender: Any?) {
@@ -987,216 +812,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         else { return }
         appState.researchController.selectInspectorMode(mode)
         refreshPresentation()
-    }
-}
-
-struct DocumentSettlementTarget: Hashable, Sendable {
-    let note: VaultQualifiedNoteID
-    let fingerprint: DocumentFingerprint
-}
-
-enum DocumentSettlementAction: Hashable {
-    case settle
-    case settleAgain
-    case unavailable
-
-    static func resolve(_ state: SettlementPresentationState) -> Self {
-        switch state {
-        case .notYetSettled:
-            .settle
-        case .settled, .changedSinceSettlement:
-            .settleAgain
-        case .unavailable:
-            .unavailable
-        }
-    }
-
-    var title: LocalizedStringResource {
-        switch self {
-        case .settle:
-            "Settle"
-        case .settleAgain:
-            "Settle Again"
-        case .unavailable:
-            "Settlement Unavailable"
-        }
-    }
-
-    var help: LocalizedStringResource {
-        switch self {
-        case .settle:
-            "Settle this note"
-        case .settleAgain:
-            "Settle this note again"
-        case .unavailable:
-            "Settlement is unavailable"
-        }
-    }
-}
-
-enum DocumentSettlementToolbarPresentation {
-    static func symbol(for state: SettlementPresentationState) -> String {
-        switch state {
-        case .settled:
-            "checkmark.circle.fill"
-        case .notYetSettled, .unavailable:
-            "checkmark.circle"
-        case .changedSinceSettlement:
-            "checkmark.arrow.trianglehead.clockwise"
-        }
-    }
-
-    static func accessibilityLabel(for state: SettlementPresentationState) -> LocalizedStringResource {
-        switch state {
-        case .settled:
-            "Settled — Settle Again"
-        case .changedSinceSettlement:
-            "Changed since settlement — Settle Again"
-        case .notYetSettled:
-            "Settle"
-        case .unavailable:
-            "Settlement Unavailable"
-        }
-    }
-}
-
-private struct DocumentSettlementPopoverView: View {
-    let presentation: SettlementPresentation
-    let settle: (String?) async throws -> (canPresent: Bool, refreshError: String?)
-    let dismiss: () -> Void
-
-    @State private var rationale = ""
-    @State private var errorMessage: String?
-    @State private var isSettling = false
-    @State private var completed = false
-    @State private var isVisible = false
-    @State private var successAnimation = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
-        ) {
-            if completed {
-                VStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                    Group {
-                        if reduceMotion {
-                            Image(systemName: "checkmark.circle.fill")
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .symbolEffect(.bounce, options: .nonRepeating, value: successAnimation)
-                        }
-                    }
-                    .font(.largeTitle)
-                    .accessibilityHidden(true)
-                    Text("Current revision settled")
-                        .font(ScholiumTypography.interface(.sectionTitle))
-                    if let errorMessage {
-                        Text("Settlement recorded; status refresh failed.")
-                        Text(errorMessage)
-                            .font(ScholiumTypography.interface(.small))
-                        Button("Done", action: dismiss)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
-                .accessibilityIdentifier("scholium.settlement.success")
-            } else {
-                Text(actionTitle)
-                    .font(ScholiumTypography.interface(.sectionTitle))
-                Text("Record this saved revision as sufficiently stable for current research.")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                TextField("Optional rationale", text: $rationale, axis: .vertical)
-                    .lineLimit(2...4)
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.attention)
-                }
-                HStack {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    Spacer()
-                    Button(actionTitle) {
-                        isSettling = true
-                        errorMessage = nil
-                        Task {
-                            do {
-                                let outcome = try await settle(rationale.nilIfBlank)
-                                isSettling = false
-                                guard outcome.canPresent, isVisible else { return }
-                                errorMessage = outcome.refreshError
-                                completed = true
-                            } catch {
-                                errorMessage = error.localizedDescription
-                                isSettling = false
-                            }
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isSettling)
-                }
-            }
-        }
-        .padding(ScholiumGrid.Spacing.sectionSeparation)
-        .frame(width: 300)
-        .buttonStyle(.automatic)
-        .onAppear { isVisible = true }
-        .onDisappear { isVisible = false }
-        .task(id: completed) {
-            guard completed else { return }
-            if !reduceMotion { successAnimation += 1 }
-            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-            if let window = NSApp.keyWindow {
-                NSAccessibility.post(
-                    element: window,
-                    notification: .announcementRequested,
-                    userInfo: [
-                        .announcement: ScholiumL10n.string("Current revision settled"),
-                        .priority: NSAccessibilityPriorityLevel.medium.rawValue,
-                    ])
-            }
-            guard errorMessage == nil else { return }
-            do {
-                try await Task.sleep(for: .seconds(1.8))
-                guard isVisible else { return }
-                dismiss()
-            } catch { /* Dismissal cancels only the presentation timer. */  }
-        }
-    }
-
-    private var actionTitle: LocalizedStringResource {
-        DocumentSettlementAction.resolve(presentation.state).title
-    }
-}
-
-@MainActor
-private final class DocumentSettlementPopoverHostingController:
-    NSHostingController<DocumentSettlementPopoverView>
-{
-    var dismiss: (() -> Void)?
-
-    override var acceptsFirstResponder: Bool { true }
-
-    func focusForKeyboardDismissal() {
-        guard let window = view.window else { return }
-        window.makeKey()
-        window.makeFirstResponder(self)
-    }
-
-    override func cancelOperation(_ sender: Any?) {
-        dismiss?()
-    }
-}
-
-extension String {
-    fileprivate var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

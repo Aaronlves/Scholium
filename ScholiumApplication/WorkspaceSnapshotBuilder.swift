@@ -18,7 +18,6 @@ struct WorkspaceRefreshMeasurement: Sendable {
     let identityProjectionDuration: Duration
     let linkCatalogProjectionDuration: Duration
     let graphDuration: Duration
-    let researchStateDuration: Duration
     let searchDocumentProjectionDuration: Duration
     let searchDuration: Duration
     let snapshotAssemblyDuration: Duration
@@ -48,7 +47,6 @@ struct WorkspaceSnapshotBuilderDependencies: Sendable {
     let sourceCatalogs: [UUID: VaultSourceCatalog]
     let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
-    let settlementStore: SettlementStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
 }
@@ -60,7 +58,6 @@ extension WorkspaceServices {
             sourceCatalogs: sourceCatalogs,
             searchIndex: searchIndex,
             controlStore: controlStore,
-            settlementStore: settlementStore,
             transactionRecoveryStore: transactionRecoveryStore,
             identityRecoveryCoordinator: identityRecoveryCoordinator
         )
@@ -268,7 +265,6 @@ enum WorkspaceSnapshotBuilder {
                 identityProjectionDuration: identityProjectionDuration,
                 linkCatalogProjectionDuration: .zero,
                 graphDuration: .zero,
-                researchStateDuration: .zero,
                 searchDocumentProjectionDuration: .zero,
                 searchDuration: .zero,
                 snapshotAssemblyDuration: assemblyDuration,
@@ -473,10 +469,6 @@ enum WorkspaceSnapshotBuilder {
                 diagnostic.code == .broken ? diagnostic.source : nil
             })
 
-        let researchStateStart = clock.now
-        let settlementListing = try await dependencies.settlementStore.listing()
-        let settlements = settlementListing.settlements
-        let researchStateDuration = researchStateStart.duration(to: clock.now)
         let searchDocumentProjectionStart = clock.now
         var searchManifest: [SearchIndexManifestEntry] = []
 
@@ -592,10 +584,6 @@ enum WorkspaceSnapshotBuilder {
         var healthIssues: [String] = []
         healthIssues.append(contentsOf: loadedVaults.flatMap(\.identityHealthIssues))
         if let graphBuildIssue { healthIssues.append(graphBuildIssue) }
-        healthIssues.append(
-            contentsOf: settlementListing.issues.map {
-                "Settlement \($0.fileName): \($0.reason)"
-            })
         let recoveryRecords: [TriptychMutationRecoveryRecord]
         do {
             recoveryRecords = try await dependencies.transactionRecoveryStore.pending()
@@ -659,14 +647,8 @@ enum WorkspaceSnapshotBuilder {
                 identityRecovery: loaded.identityRecovery
             )
         }
-        let settlementRequirements = settlementRequirements(
-            settlements: settlements,
-            catalog: catalog
-        )
         let research = WorkspaceResearchSnapshot(
-            settlements: settlements,
             recoveryRecords: recoveryRecords,
-            settlementRequirements: settlementRequirements,
             healthIssues: Array(Set(healthIssues)).sorted()
         )
         let snapshot = WorkspaceSnapshot(
@@ -709,7 +691,6 @@ enum WorkspaceSnapshotBuilder {
                 identityProjectionDuration: identityProjectionDuration,
                 linkCatalogProjectionDuration: linkCatalogProjectionDuration,
                 graphDuration: graphDuration,
-                researchStateDuration: researchStateDuration,
                 searchDocumentProjectionDuration:
                     searchDocumentProjectionDuration,
                 searchDuration: searchDuration,
@@ -721,39 +702,4 @@ enum WorkspaceSnapshotBuilder {
             )
         )
     }
-
-    private static func settlementRequirements(
-        settlements: [SettlementRecord],
-        catalog: WorkspaceCatalogSnapshot
-    ) -> [WorkspaceSettlementRequirement] {
-        let settlementByNoteID = Dictionary(
-            uniqueKeysWithValues: settlements.map { ($0.noteID, $0) }
-        )
-        return catalog.notes.compactMap { note -> WorkspaceSettlementRequirement? in
-            guard let stableNoteID = note.reference.stableNoteID,
-                let noteID = UUID(uuidString: stableNoteID)
-            else { return nil }
-            let settlement = settlementByNoteID[noteID]
-            let reason: WorkspaceSettlementRequirementReason
-            if let settlement,
-                settlement.fingerprint != note.fingerprint
-            {
-                reason = .changedSinceSettlement
-            } else {
-                return nil
-            }
-            return WorkspaceSettlementRequirement(
-                noteID: noteID,
-                note: VaultQualifiedNoteID(
-                    vaultID: note.reference.vaultID,
-                    relativePath: note.reference.relativePath
-                ),
-                title: note.title,
-                currentRevision: note.fingerprint,
-                reason: reason,
-                previousSettlement: settlement
-            )
-        }.sorted { $0.noteID.uuidString < $1.noteID.uuidString }
-    }
-
 }

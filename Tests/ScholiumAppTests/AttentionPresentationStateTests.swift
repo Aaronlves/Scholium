@@ -33,18 +33,6 @@ struct AttentionPresentationStateTests {
         #expect(state.selectedItemID == nil)
     }
 
-    @Test("Notification filters expose one complete or one type-specific queue")
-    func notificationFilterOwnership() {
-        #expect(AttentionNotificationFilter.all.showsChanges)
-        #expect(AttentionNotificationFilter.all.showsSettlements)
-
-        #expect(AttentionNotificationFilter.changes.showsChanges)
-        #expect(!AttentionNotificationFilter.changes.showsSettlements)
-
-        #expect(!AttentionNotificationFilter.settlements.showsChanges)
-        #expect(AttentionNotificationFilter.settlements.showsSettlements)
-    }
-
     @Test("Triptych Attention remains aggregate across workspace changes")
     func triptychScopeDoesNotRetarget() {
         let state = AttentionPresentationState()
@@ -62,13 +50,11 @@ struct AttentionPresentationStateTests {
         let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Topic.md")
         state.present(workspaceSlot: .topicKnowledge, noteScope: note)
         state.filter.query = "orphan"
-        state.notificationFilter = .changes
         state.select("task-1")
 
         state.resetForWorkspaceSwitch()
 
         #expect(state.filter.query.isEmpty)
-        #expect(state.notificationFilter == .all)
         #expect(state.selectedItemID == nil)
         #expect(state.noteScope == nil)
         #expect(state.workspaceSlot == .topicKnowledge)

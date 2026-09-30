@@ -33,6 +33,15 @@ final class ScholiumDocumentModeToolbarItem: NSToolbarItem {
 
     override func validate() { refreshPresentation() }
 
+    func invalidate() {
+        model = nil
+        target = nil
+        action = nil
+        menuFormRepresentation = nil
+        isEnabled = false
+        isHidden = true
+    }
+
     func refreshPresentation() {
         guard let model else {
             isEnabled = false
