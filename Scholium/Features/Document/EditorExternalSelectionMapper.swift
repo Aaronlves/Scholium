@@ -11,9 +11,11 @@ enum EditorExternalSelectionMapper {
     ) -> [MarkdownEditorSelectionRange]? {
         let oldMap = EditorSourceOffsetMap(source: oldSource)
         let newMap = EditorSourceOffsetMap(source: newSource)
-        guard markdownEditorSelectionRangesAreValid(
-            ranges, forEditorUTF16Length: oldMap.editorUTF16Length
-        ) else { return nil }
+        guard
+            markdownEditorSelectionRangesAreValid(
+                ranges, forEditorUTF16Length: oldMap.editorUTF16Length
+            )
+        else { return nil }
 
         let oldUnits = Array(oldSource.utf16)
         let newUnits = Array(newSource.utf16)

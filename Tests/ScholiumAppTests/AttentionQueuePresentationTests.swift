@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import QuartzCore
 import ScholiumContracts
 import Testing
 
@@ -8,8 +9,9 @@ import Testing
 @Suite("Notifications native presentation", .serialized)
 @MainActor
 struct AttentionQueuePresentationTests {
-    @Test("Native Notifications gives the list first responder and keeps the search field native")
-    func nativeFocus() async throws {
+    @Test(
+        "Notifications focuses a visible native control in populated, empty, loading, and failed states", arguments: ["populated", "empty", "loading", "error"])
+    func nativeFocus(initialState: String) async throws {
         _ = NSApplication.shared
         let store = makeTestWorkspaceStore()
         let workspaceController = WindowWorkspaceController(
@@ -56,8 +58,17 @@ struct AttentionQueuePresentationTests {
                 showDocumentChange: { _ in }
             )
         )
-        documentChanges.send([])
-        documentChangeErrors.send(nil)
+        let change = DocumentChangeSummary(
+            noteID: UUID(), vaultID: vault.id, role: .topicKnowledge,
+            relativePath: "Reasons.md",
+            startingRevision: DocumentFingerprint(content: "before"),
+            endingRevision: DocumentFingerprint(content: "after"),
+            savedAt: Date(), baselineState: .known
+        )
+        if initialState != "loading" {
+            documentChanges.send(initialState == "populated" ? [change] : [])
+        }
+        documentChangeErrors.send(initialState == "error" ? "Changes could not be loaded" : nil)
         session.presentQueue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
 
         let controller = AttentionQueueViewController(
@@ -80,16 +91,27 @@ struct AttentionQueuePresentationTests {
         window.makeKeyAndOrderFront(nil)
         controller.focusInitialContentIfNeeded()
 
-        try await wait {
-            find(NSTableView.self, in: controller.view)?.numberOfRows == 0
-                && window.firstResponder === find(NSTableView.self, in: controller.view)
-        }
         let table = try #require(find(NSTableView.self, in: controller.view))
         let search = try #require(find(NSSearchField.self, in: controller.view))
+        try await wait {
+            if initialState == "populated" {
+                return table.numberOfRows == 2 && window.firstResponder === table
+            }
+            return table.numberOfRows == 0 && search.currentEditor() != nil
+                && window.firstResponder === search.currentEditor()
+        }
         #expect(table.accessibilityIdentifier() == "scholium.attentionList")
         #expect(table.allowsMultipleSelection == false)
         #expect(search.accessibilityIdentifier() == "scholium.attentionSearch")
         #expect(search.searchMenuTemplate == nil)
+
+        if initialState == "populated" {
+            documentChanges.send([])
+            try await wait {
+                table.numberOfRows == 0 && search.currentEditor() != nil
+                    && window.firstResponder === search.currentEditor()
+            }
+        }
     }
 
     @Test("Long notification identity and errors fit the native popover")
@@ -196,7 +218,16 @@ struct AttentionQueuePresentationTests {
         try renderIfRequested(controller.view, name: "populated-dark")
         if ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_NOTIFICATIONS"] == "1" {
             window.appearance = NSAppearance(named: .aqua)
-            window.displayIfNeeded()
+            // Native floating group rows finish appearance invalidation on the
+            // next main-queue turn before their cached layer can be captured.
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.async {
+                    window.layoutIfNeeded()
+                    window.displayIfNeeded()
+                    CATransaction.flush()
+                    continuation.resume()
+                }
+            }
             try renderIfRequested(controller.view, name: "populated-light")
         }
 

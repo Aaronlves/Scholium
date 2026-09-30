@@ -50,10 +50,11 @@ final class DocumentNavigationHistoryController: ObservableObject {
 
     func position(for direction: DocumentNavigationDirection) -> DocumentNavigationVisitPosition? {
         guard let currentIndex else { return nil }
-        let targetIndex = switch direction {
-        case .back: currentIndex - 1
-        case .forward: currentIndex + 1
-        }
+        let targetIndex =
+            switch direction {
+            case .back: currentIndex - 1
+            case .forward: currentIndex + 1
+            }
         guard entries.indices.contains(targetIndex) else { return nil }
         return entries[targetIndex].position
     }

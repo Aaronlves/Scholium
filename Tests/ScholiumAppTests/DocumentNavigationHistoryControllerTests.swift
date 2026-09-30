@@ -91,16 +91,17 @@ struct DocumentNavigationHistoryControllerTests {
         let controller = DocumentNavigationHistoryController()
         let original = fixtureDocument(path: "Topics/Before.md")
         let descriptor = try #require(original.workspaceDescriptor)
-        let renamed = WindowSelectedDocument.workspace(.init(
-            sessionKey: descriptor.sessionKey,
-            reference: .init(
-                vaultID: descriptor.reference.vaultID,
-                vaultName: descriptor.reference.vaultName,
-                vaultRole: descriptor.reference.vaultRole,
-                relativePath: "Topics/After.md",
-                stableNoteID: descriptor.reference.stableNoteID
-            )
-        ))
+        let renamed = WindowSelectedDocument.workspace(
+            .init(
+                sessionKey: descriptor.sessionKey,
+                reference: .init(
+                    vaultID: descriptor.reference.vaultID,
+                    vaultName: descriptor.reference.vaultName,
+                    vaultRole: descriptor.reference.vaultRole,
+                    relativePath: "Topics/After.md",
+                    stableNoteID: descriptor.reference.stableNoteID
+                )
+            ))
         let position = DocumentNavigationVisitPosition(
             sourceFingerprint: "same-revision",
             scrollPosition: ObservedScrollPosition(fraction: 0.6)

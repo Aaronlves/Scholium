@@ -12,9 +12,10 @@ struct EditorExternalSelectionMapperTests {
         let prefix = try selection("head", in: old)
         let suffix = try selection("gamma", in: old, reversed: true)
 
-        let mapped = try #require(EditorExternalSelectionMapper.map(
-            [prefix, suffix], from: old, to: new
-        ))
+        let mapped = try #require(
+            EditorExternalSelectionMapper.map(
+                [prefix, suffix], from: old, to: new
+            ))
         let expected = [
             try selection("head", in: new),
             try selection("gamma", in: new, reversed: true),
@@ -44,9 +45,10 @@ struct EditorExternalSelectionMapperTests {
         let owl = try selection("🦉", in: old)
         let decomposed = try selection("cafe\u{301}", in: old, reversed: true)
 
-        let mapped = try #require(EditorExternalSelectionMapper.map(
-            [owl, decomposed], from: old, to: new
-        ))
+        let mapped = try #require(
+            EditorExternalSelectionMapper.map(
+                [owl, decomposed], from: old, to: new
+            ))
         let expected = [
             try selection("🦉", in: new),
             try selection("cafe\u{301}", in: new, reversed: true),
@@ -57,14 +59,16 @@ struct EditorExternalSelectionMapperTests {
     @Test("Invalid surrogate and changed normalization boundaries fall back")
     func rejectsInvalidUnicodeBoundaries() {
         let splitSurrogate = MarkdownEditorSelectionRange(anchor: 1, head: 1)
-        #expect(EditorExternalSelectionMapper.map(
-            [splitSurrogate], from: "🦉 next", to: "new 🦉 next"
-        ) == nil)
+        #expect(
+            EditorExternalSelectionMapper.map(
+                [splitSurrogate], from: "🦉 next", to: "new 🦉 next"
+            ) == nil)
 
         let accent = MarkdownEditorSelectionRange(anchor: 3, head: 4)
-        #expect(EditorExternalSelectionMapper.map(
-            [accent], from: "caf\u{00E9}", to: "cafe\u{301}"
-        ) == nil)
+        #expect(
+            EditorExternalSelectionMapper.map(
+                [accent], from: "caf\u{00E9}", to: "cafe\u{301}"
+            ) == nil)
     }
 
     @Test("Identical exact source retains an end caret")

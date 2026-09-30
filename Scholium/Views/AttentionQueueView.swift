@@ -97,9 +97,9 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     func focusInitialContentIfNeeded() {
         guard !hasAppliedInitialFocus else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, let window = self.view.window else { return }
-            self.hasAppliedInitialFocus = true
-            window.makeFirstResponder(self.tableView)
+            guard let self, !self.hasAppliedInitialFocus, let window = self.view.window else { return }
+            let target: NSView = self.listScrollView.isHidden ? self.searchField : self.tableView
+            self.hasAppliedInitialFocus = window.makeFirstResponder(target)
         }
     }
 
@@ -317,6 +317,10 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         updateRefreshStatus()
         updateState()
         tableView.reloadData()
+
+        if listScrollView.isHidden, let window = view.window, window.firstResponder === tableView {
+            window.makeFirstResponder(searchField)
+        }
 
         let selectedIndex = presentation.selectedItemID.flatMap { id in
             rows.firstIndex { $0.id == id && $0.isSelectable }

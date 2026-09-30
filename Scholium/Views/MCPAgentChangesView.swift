@@ -252,7 +252,7 @@ private struct AgentChangeReviewContent: View {
                 DisclosureGroup(linked.effect.destination.relativePath) {
                     ExactSourceComparisonView(
                         comparison: linked.comparison, startingLabel: "Before", endingLabel: "After",
-                        startingOnlyLabel: "Removed", endingOnlyLabel: "Inserted", identifierPrefix: "scholium.agentChanges.linked", showsRevisionDetails: false
+                        startingOnlyLabel: "Removed", endingOnlyLabel: "Inserted", identifierPrefix: "scholium.agentChanges.linked"
                     )
                 }
             }
@@ -267,7 +267,7 @@ private struct AgentChangeReviewContent: View {
                     endingOnlyLabel: review.change.state == .prepared
                         || review.change.state == .outcomeUncertain
                         ? "Intended insertion" : "Inserted",
-                    identifierPrefix: "scholium.agentChanges", showsRevisionDetails: false
+                    identifierPrefix: "scholium.agentChanges"
                 )
             } else {
                 comparisonUnavailable

@@ -192,10 +192,17 @@ extension ScholiumUITests {
             "A narrow toolbar must retain the selected Note through the native Window menu.")
         app.typeKey(.escape, modifierFlags: [])
 
-        resizeProofWindow(main, toWidth: 900)
+        resizeProofWindow(main, toWidth: 820)
         let tabScrollView = main.toolbars.firstMatch.scrollViews.firstMatch
         XCTAssertTrue(tabScrollView.waitForExistence(timeout: 3), "The medium-narrow toolbar must retain its Tab strip.")
         XCTAssertTrue(chineseTab.isHittable, "The selected Tab must be a visible wheel target inside the strip.")
+        XCTAssertTrue(
+            [englishTab, autosaveTab].contains {
+                $0.frame.minX < tabScrollView.frame.minX - 1
+                    || $0.frame.maxX > tabScrollView.frame.maxX + 1
+            },
+            "The wheel fixture must actually overflow its native Tab viewport."
+        )
         app.activate()
         let wheelTarget = chineseTab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         wheelTarget.hover()
@@ -292,6 +299,8 @@ extension ScholiumUITests {
         mainEditor.click()
         let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
         XCTAssertTrue(waitUntil(timeout: 5) { keyboardFocus.evaluate(with: mainEditor) })
+        let originalAccessibleEditor = try XCTUnwrap(mainEditor.value as? String)
+        let originalBytes = try Data(contentsOf: noteURL)
         app.typeKey("l", modifierFlags: [.control, .command])
         XCTAssertTrue(waitUntil(timeout: 5) { !self.documentModeControl(in: main).isHittable })
         XCTAssertTrue(keyboardFocus.evaluate(with: mainEditor))
@@ -299,17 +308,23 @@ extension ScholiumUITests {
         let notificationsCommand = app.menuItems["Notifications"].firstMatch
         XCTAssertTrue(notificationsCommand.waitForExistence(timeout: 3) && notificationsCommand.isEnabled)
         notificationsCommand.click()
-        let notificationPopover = app.popovers.firstMatch
-        let queue = notificationPopover.descendants(matching: .any)["scholium.attentionQueue"].firstMatch
-        XCTAssertTrue(queue.waitForExistence(timeout: 8), "Notifications must open without a visible toolbar anchor.")
+        let notificationPopover = main.popovers.firstMatch
+        // The AppKit root NSView is not an accessibility element. Observe its
+        // actual native search control, scoped to this window's popover.
+        let notificationSearch = notificationPopover.searchFields["scholium.attentionSearch"].firstMatch
+        XCTAssertTrue(notificationSearch.waitForExistence(timeout: 8), "Notifications must open without a visible toolbar anchor.")
         XCTAssertFalse(documentModeControl(in: main).isHittable)
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(
-            waitUntil(timeout: 5) { !queue.exists && keyboardFocus.evaluate(with: mainEditor) },
+            waitUntil(timeout: 5) {
+                !notificationPopover.exists && !notificationSearch.exists
+                    && keyboardFocus.evaluate(with: mainEditor)
+            },
             "Dismissing Notifications must restore the originating editor's focus."
         )
         XCTAssertFalse(documentModeControl(in: main).isHittable, "Notifications must preserve Focus Layout.")
-        XCTAssertEqual(mainEditor.value as? String, originalSource)
+        XCTAssertEqual(mainEditor.value as? String, originalAccessibleEditor)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
         for (menu, title) in [("Edit", "Copy Note Link"), ("File", "Reveal Note in Finder")] {
             app.menuBars.menuBarItems[menu].click()
             let command = app.menuItems[title].firstMatch
@@ -391,7 +406,10 @@ extension ScholiumUITests {
         // enabled in a separate Document window. Document commands still work.
         app.menuBars.menuBarItems["View"].click()
         let sidebarCommand = app.menuItems.matching(
-            NSPredicate(format: "label == %@ OR label == %@", "Show Sidebar", "Hide Sidebar")
+            NSPredicate(
+                format: "title IN %@ OR label IN %@",
+                ["Show Sidebar", "Hide Sidebar"], ["Show Sidebar", "Hide Sidebar"]
+            )
         ).firstMatch
         XCTAssertTrue(sidebarCommand.waitForExistence(timeout: 3))
         XCTAssertFalse(sidebarCommand.isEnabled)

@@ -340,7 +340,6 @@ struct ExactSourceComparisonView: View {
     let startingOnlyLabel: LocalizedStringResource
     let endingOnlyLabel: LocalizedStringResource
     let identifierPrefix: String
-    var showsRevisionDetails = true
 
     @State private var expandedFoldIDs: Set<Int> = []
 
@@ -404,51 +403,49 @@ struct ExactSourceComparisonView: View {
                     .help(Text("Line endings or the UTF-8 marker changed. Revision Details shows the exact formats.", bundle: .module))
             }
 
-            if showsRevisionDetails {
-                DisclosureGroup {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(
-                            alignment: .top,
-                            spacing: ScholiumGrid.Spacing.sectionSeparation
-                        ) {
-                            revisionLabel(
-                                title: startingLabel,
-                                fingerprint: comparison.startingRevision,
-                                hasBOM: comparison.startingHasUTF8BOM,
-                                lineEndings: revisionLineEndings(starting: true)
-                            )
-                            revisionLabel(
-                                title: endingLabel,
-                                fingerprint: comparison.endingRevision,
-                                hasBOM: comparison.endingHasUTF8BOM,
-                                lineEndings: revisionLineEndings(starting: false)
-                            )
-                        }
-                        VStack(
-                            alignment: .leading,
-                            spacing: ScholiumGrid.Spacing.nestedContentInset
-                        ) {
-                            revisionLabel(
-                                title: startingLabel,
-                                fingerprint: comparison.startingRevision,
-                                hasBOM: comparison.startingHasUTF8BOM,
-                                lineEndings: revisionLineEndings(starting: true)
-                            )
-                            revisionLabel(
-                                title: endingLabel,
-                                fingerprint: comparison.endingRevision,
-                                hasBOM: comparison.endingHasUTF8BOM,
-                                lineEndings: revisionLineEndings(starting: false)
-                            )
-                        }
+            DisclosureGroup {
+                ViewThatFits(in: .horizontal) {
+                    HStack(
+                        alignment: .top,
+                        spacing: ScholiumGrid.Spacing.sectionSeparation
+                    ) {
+                        revisionLabel(
+                            title: startingLabel,
+                            fingerprint: comparison.startingRevision,
+                            hasBOM: comparison.startingHasUTF8BOM,
+                            lineEndings: revisionLineEndings(starting: true)
+                        )
+                        revisionLabel(
+                            title: endingLabel,
+                            fingerprint: comparison.endingRevision,
+                            hasBOM: comparison.endingHasUTF8BOM,
+                            lineEndings: revisionLineEndings(starting: false)
+                        )
                     }
-                    .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-                } label: {
-                    Text("Revision Details", bundle: .module)
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumGrid.Spacing.nestedContentInset
+                    ) {
+                        revisionLabel(
+                            title: startingLabel,
+                            fingerprint: comparison.startingRevision,
+                            hasBOM: comparison.startingHasUTF8BOM,
+                            lineEndings: revisionLineEndings(starting: true)
+                        )
+                        revisionLabel(
+                            title: endingLabel,
+                            fingerprint: comparison.endingRevision,
+                            hasBOM: comparison.endingHasUTF8BOM,
+                            lineEndings: revisionLineEndings(starting: false)
+                        )
+                    }
                 }
-                .scholiumActivationPointer()
-                .font(ScholiumTypography.interface(.compact))
+                .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
+            } label: {
+                Text("Revision Details", bundle: .module)
             }
+            .scholiumActivationPointer()
+            .font(ScholiumTypography.interface(.compact))
         }
         .padding(ScholiumGrid.Spacing.nestedContentInset)
     }
@@ -527,8 +524,9 @@ struct ExactSourceComparisonView: View {
         .padding(.vertical, ScholiumMetrics.DocumentWorkflow.conflictDiffRowVerticalInset)
         .background(backgroundColor(for: line.kind))
         .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isStaticText)
         .accessibilityLabel(accessibilityLabel(for: line.kind))
-        .accessibilityValue(accessibilityValue(for: line))
+        .accessibilityValue(Text(verbatim: accessibilityValue(for: line)))
         .accessibilityHint(lineEndingLabel(line.lineEnding))
         .accessibilityIdentifier("\(identifierPrefix).row.\(line.id)")
         .id(line.id)
@@ -621,14 +619,19 @@ struct ExactSourceComparisonView: View {
     private func accessibilityValue(
         for line: ExactSourceComparisonLine
     ) -> String {
-        let lineNumbers = [line.startingLineNumber, line.endingLineNumber]
-            .compactMap { $0.map(String.init) }
-            .joined(separator: " ")
+        var starting = startingLabel
+        starting.locale = locale
+        var ending = endingLabel
+        ending.locale = locale
+        let positions = [
+            line.startingLineNumber.map { "\(String(localized: starting)) \($0)" },
+            line.endingLineNumber.map { "\(String(localized: ending)) \($0)" },
+        ].compactMap { $0 }.joined(separator: ", ")
         let content =
             line.text.isEmpty
             ? ScholiumL10n.string("Blank line", locale: locale)
             : line.text
-        return "\(lineNumbers) \(content)"
+        return "\(positions) \(content)"
     }
 
     private func colorRole(

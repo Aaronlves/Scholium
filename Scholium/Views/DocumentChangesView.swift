@@ -364,8 +364,7 @@ struct DocumentChangesView: View {
                             endingLabel: "After",
                             startingOnlyLabel: "Removed",
                             endingOnlyLabel: "Inserted",
-                            identifierPrefix: "scholium.changes",
-                            showsRevisionDetails: ExactSourceComparisonPresentation.hasOnlySourceFormatChange(comparison)
+                            identifierPrefix: "scholium.changes"
                         )
                     } else {
                         baselineMessage(baselineState)

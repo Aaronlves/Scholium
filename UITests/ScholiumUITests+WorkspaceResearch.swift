@@ -154,7 +154,15 @@ extension ScholiumUITests {
             .appendingPathComponent("02-topics", isDirectory: true)
             .appendingPathComponent("Agent Review.md")
         let originalBytes = try Data(contentsOf: noteURL)
-        let originalSource = String(decoding: originalBytes, as: UTF8.self)
+        // WebKit's accessible reading text includes DOM line boundaries. Keep
+        // its own exact baseline separate from the authoritative file bytes.
+        selectDocumentMode("Source")
+        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
+        XCTAssertTrue(sourceEditor.waitForExistence(timeout: 10))
+        let originalAccessibleSource = try XCTUnwrap(sourceEditor.value as? String)
+        XCTAssertFalse(originalAccessibleSource.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+        selectDocumentMode("Review")
         let status = try callQAMCP(tool: "scholium_workspace_status")
         let triptychID = try XCTUnwrap(status["triptych_id"] as? String)
         let search = try callQAMCP(
@@ -173,7 +181,7 @@ extension ScholiumUITests {
             }))
         let noteID = try XCTUnwrap(result["note_id"] as? String)
         let fingerprint = try XCTUnwrap(result["fingerprint"] as? [String: Any])
-        let insertedSentence = "An external Agent added this synthetic sentence for exact comparison."
+        let insertedSentence = "An external Agent added this synthetic sentence for exact comparison. 中文 e\u{301} 👩🏽‍🔬."
         let updatedBody = """
             # Agent Review
 
@@ -181,14 +189,15 @@ extension ScholiumUITests {
 
             \(insertedSentence)
             """
+        let updatedSource = "\u{FEFF}" + updatedBody.replacingOccurrences(of: "\n", with: "\r\n")
         let update = try callQAMCP(
             tool: "scholium_update_note",
             arguments: [
                 "triptych_id": triptychID,
                 "note_id": noteID,
                 "expected_fingerprint": fingerprint,
-                "mode": "body",
-                "content": updatedBody,
+                "mode": "source",
+                "content": updatedSource,
             ]
         )
         let changeID = try XCTUnwrap(update["change_id"] as? String)
@@ -196,6 +205,7 @@ extension ScholiumUITests {
         XCTAssertEqual(update["readback_verified"] as? Bool, true)
         let updatedBytes = try Data(contentsOf: noteURL)
         XCTAssertNotEqual(updatedBytes, originalBytes)
+        XCTAssertEqual(updatedBytes, Data(updatedSource.utf8))
         XCTAssertEqual(afterFingerprint["byte_count"] as? Int, updatedBytes.count)
         XCTAssertEqual(
             afterFingerprint["sha256"] as? String,
@@ -242,9 +252,30 @@ extension ScholiumUITests {
             )
         ).allElementsBoundByIndex
         XCTAssertTrue(
-            inserted.contains { ($0.value as? String)?.contains(insertedSentence) == true },
+            inserted.contains {
+                guard let value = $0.value as? String else { return false }
+                return value.utf8.suffix(insertedSentence.utf8.count).elementsEqual(insertedSentence.utf8)
+            },
             "The comparison must expose the exact added sentence."
         )
+        XCTAssertTrue(inserted.allSatisfy { $0.elementType == .staticText }, "Comparison lines must expose their text semantics.")
+        XCTAssertTrue(inserted.allSatisfy { ($0.value as? String)?.hasPrefix("After ") == true }, "Inserted line positions must name the saved revision.")
+        let revisionDetails = comparison.disclosureTriangles["Revision Details"].firstMatch
+        XCTAssertTrue(revisionDetails.waitForExistence(timeout: 5) && revisionDetails.isHittable)
+        XCTAssertEqual(String(describing: revisionDetails.value ?? ""), "0")
+        // Target the visible native arrow within AXFrame and verify expansion;
+        // XCTest's automatic center click can miss this sheet's disclosure.
+        let revisionHeading = comparison.staticTexts["Before"].firstMatch
+        let arrow = revisionDetails.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: revisionHeading.frame.minX - revisionDetails.frame.minX + 3, dy: 0))
+        arrow.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { String(describing: revisionDetails.value ?? "") == "1" })
+        for detail in ["No UTF-8 BOM", "UTF-8 BOM present", "Line ending: LF", "Line ending: CRLF"] {
+            let format = comparison.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", detail, detail)
+            ).firstMatch
+            XCTAssertTrue(format.waitForExistence(timeout: 5), "Revision Details must expose \(detail) alongside text changes.")
+        }
         XCTAssertTrue(comparison.buttons["scholium.changes.markReviewed"].firstMatch.isEnabled)
         XCTAssertFalse(
             comparison.buttons.matching(
@@ -298,7 +329,7 @@ extension ScholiumUITests {
         let editor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         XCTAssertTrue(
-            waitUntil(timeout: 10) { editor.value as? String == originalSource },
+            waitUntil(timeout: 10) { editor.value as? String == originalAccessibleSource },
             "The Document must converge to the exact restored source after guarded MCP Undo."
         )
         XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)

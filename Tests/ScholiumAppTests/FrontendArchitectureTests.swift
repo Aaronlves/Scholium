@@ -1956,7 +1956,6 @@ struct FrontendArchitectureTests {
         #expect(attentionSource.contains("NSTableViewDataSource"))
         #expect(attentionSource.contains("tableViewSelectionDidChange"))
         #expect(attentionSource.contains("override func mouseDown(with event: NSEvent)"))
-        #expect(attentionSource.contains("window.makeFirstResponder(self.tableView)"))
         #expect(attentionSource.contains("scholium.attentionSearch"))
         #expect(attentionSource.contains("tableView.activate"))
         #expect(!attentionSource.contains("import SwiftUI"))

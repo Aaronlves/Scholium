@@ -605,6 +605,15 @@ extension ScholiumUITests {
                 "scholium.conflict.row."
             )
         ).allElementsBoundByIndex
+        XCTAssertTrue(diffRows.allSatisfy { $0.elementType == .staticText })
+        XCTAssertTrue(
+            diffRows.contains {
+                guard let value = $0.value as? String else { return false }
+                return value.hasPrefix("Disk Version ")
+                    && value.utf8.suffix(diskToken.utf8.count).elementsEqual(diskToken.utf8)
+            },
+            "The conflict comparison must expose the exact external source and name its revision."
+        )
         let readableDiffLine = try XCTUnwrap(
             diffRows.min(by: { $0.frame.height < $1.frame.height }),
             "The comparison must expose an intact representative source row."
