@@ -19,6 +19,7 @@ final class DocumentToolbarTabItem: NSToolbarItem {
         paletteLabel = ScholiumL10n.string("Document Tabs")
         label = ScholiumL10n.string("Document Tabs")
         visibilityPriority = .high
+        control.owner = owner
     }
 
     func refresh(tabs: [DocumentTabItem], selectedID: UUID?) {
@@ -53,6 +54,12 @@ final class DocumentToolbarTabs: NSObject {
     private var cancelled = false
     private var cancellationMonitor: Any?
     private weak var gapControl: DocumentToolbarTabControl?
+    private struct DragPreview {
+        let tab: NSImage
+        let destination: NSImage
+        var showsDestination = false
+    }
+    private var dragPreview: DragPreview?
 
     var select: (UUID) -> Void = { _ in }
     var close: (UUID) -> Void = { _ in }
@@ -131,22 +138,7 @@ final class DocumentToolbarTabs: NSObject {
     }
 
     func beginDrag(from control: DocumentToolbarTabControl, gesture: NSPanGestureRecognizer, initialEvent: NSEvent?) {
-        guard draggedID == nil, tabs.contains(where: { $0.id == control.tab.id }),
-            let bitmap = control.bitmapImageRepForCachingDisplay(in: control.bounds)
-        else { return }
-        control.cacheDisplay(in: control.bounds, to: bitmap)
-        let image = NSImage(size: control.bounds.size)
-        image.addRepresentation(bitmap)
-        draggedID = control.tab.id
-        cancelled = false
-        let pasteboard = NSPasteboardItem()
-        pasteboard.setString(control.tab.id.uuidString, forType: DocumentToolbarTabItem.pasteboardType)
-        let item = NSDraggingItem(pasteboardWriter: pasteboard)
-        item.setDraggingFrame(control.bounds, contents: image)
-        cancellationMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 { self?.cancelled = true }
-            return event
-        }
+        guard let item = prepareDraggingItem(from: control) else { return }
         let session: NSDraggingSession?
         if #available(macOS 27.0, *) {
             session = control.beginDraggingSession(items: [item], gesture: gesture, source: control)
@@ -163,11 +155,36 @@ final class DocumentToolbarTabs: NSObject {
         control.isDragPlaceholder = true
     }
 
+    func prepareDraggingItem(from control: DocumentToolbarTabControl) -> NSDraggingItem? {
+        guard draggedID == nil, control.owner === self,
+            controls[control.tab.id] === control, tabStripScreenFrame() != nil,
+            let bitmap = control.bitmapImageRepForCachingDisplay(in: control.bounds)
+        else { return nil }
+        control.cacheDisplay(in: control.bounds, to: bitmap)
+        let image = NSImage(size: control.bounds.size)
+        image.addRepresentation(bitmap)
+        draggedID = control.tab.id
+        cancelled = false
+        dragPreview = DragPreview(tab: image, destination: detachmentLabel())
+        let pasteboard = NSPasteboardItem()
+        pasteboard.setString(control.tab.id.uuidString, forType: DocumentToolbarTabItem.pasteboardType)
+        let item = NSDraggingItem(pasteboardWriter: pasteboard)
+        item.setDraggingFrame(control.bounds, contents: image)
+        cancellationMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 { self?.cancelDrag() }
+            return event
+        }
+        return item
+    }
+
     func draggingUpdated(over control: DocumentToolbarTabControl, sender: any NSDraggingInfo) -> NSDragOperation {
-        guard sender.draggingSource is DocumentToolbarTabControl,
+        guard !cancelled, let source = sender.draggingSource as? DocumentToolbarTabControl,
+            source.owner === self, control.owner === self,
             let draggedID,
+            source.tab.id == draggedID, controls[draggedID] === source,
             sender.draggingPasteboard.string(forType: DocumentToolbarTabItem.pasteboardType) == draggedID.uuidString,
-            control.window != nil
+            let window = source.window, control.window === window,
+            sender.draggingDestinationWindow === window
         else { return [] }
         let point = control.convert(sender.draggingLocation, from: nil)
         if gapControl !== control { gapControl?.dropSide = nil }
@@ -184,7 +201,7 @@ final class DocumentToolbarTabs: NSObject {
     }
 
     func performDrop(on control: DocumentToolbarTabControl) -> Bool {
-        guard let draggedID,
+        guard !cancelled, control.owner === self, gapControl === control, let draggedID,
             let source = tabs.firstIndex(where: { $0.id == draggedID }),
             let target = tabs.firstIndex(where: { $0.id == control.tab.id }),
             let side = control.dropSide
@@ -199,14 +216,82 @@ final class DocumentToolbarTabs: NSObject {
 
     func finishDrag(at point: NSPoint, operation: NSDragOperation, window: NSWindow?) {
         let id = draggedID
-        let movesOutside = !cancelled && operation.isEmpty && window.map { !$0.frame.contains(point) } == true
+        let movesOutside = isDetachmentDrop(at: point, operation: operation, window: window)
         clearDrag()
         if movesOutside, let id, tabs.contains(where: { $0.id == id }) { detach(id, point) }
     }
 
     func shouldAnimateDragReturn(at point: NSPoint, operation: NSDragOperation, window: NSWindow?) -> Bool {
-        let movesOutside = !cancelled && operation.isEmpty && window.map { !$0.frame.contains(point) } == true
+        let movesOutside = isDetachmentDrop(at: point, operation: operation, window: window)
         return !movesOutside && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    func cancelDrag() {
+        cancelled = true
+        gapControl?.dropSide = nil
+        gapControl = nil
+    }
+
+    private func tabStripScreenFrame() -> NSRect? {
+        let strip = toolbarItem.control
+        guard let window = strip.window, !strip.isHiddenOrHasHiddenAncestor,
+            window.toolbar?.isVisible != false, !strip.visibleRect.isEmpty
+        else { return nil }
+        return window.convertToScreen(strip.convert(strip.visibleRect, to: nil))
+    }
+
+    private func isDetachmentDrop(at point: NSPoint, operation: NSDragOperation, window: NSWindow?) -> Bool {
+        guard !cancelled, operation.isEmpty, let draggedID,
+            controls[draggedID]?.window === window, window != nil,
+            point.x.isFinite, point.y.isFinite,
+            let frame = tabStripScreenFrame()
+        else { return false }
+        return !frame.contains(point)
+    }
+
+    func draggingPreviewComponents(at point: NSPoint, window: NSWindow?) -> [NSDraggingImageComponent]? {
+        guard let preview = dragPreview else { return nil }
+        let tab = NSDraggingImageComponent(key: .icon)
+        tab.contents = preview.tab
+        tab.frame = NSRect(origin: .zero, size: preview.tab.size)
+        guard isDetachmentDrop(at: point, operation: [], window: window) else { return [tab] }
+        let destination = NSDraggingImageComponent(key: .label)
+        destination.contents = preview.destination
+        destination.frame = NSRect(
+            x: (preview.tab.size.width - preview.destination.size.width) / 2,
+            y: -preview.destination.size.height - ScholiumGrid.Spacing.inlineControlGap,
+            width: preview.destination.size.width, height: preview.destination.size.height)
+        return [tab, destination]
+    }
+
+    func updateDraggingPreview(_ session: NSDraggingSession, at point: NSPoint, window: NSWindow?) {
+        let detaches = isDetachmentDrop(at: point, operation: [], window: window)
+        guard let preview = dragPreview, preview.showsDestination != detaches,
+            let components = draggingPreviewComponents(at: point, window: window)
+        else { return }
+        dragPreview?.showsDestination = detaches
+        // AppKit owns the image and its cursor anchor. Components may extend
+        // beyond the item bounds, so its original draggingFrame stays intact.
+        session.enumerateDraggingItems(options: [], for: nil, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+            item.imageComponentsProvider = { components }
+        }
+    }
+
+    private func detachmentLabel() -> NSImage {
+        let padding = ScholiumGrid.Spacing.inlineControlGap
+        let label = NSAttributedString(
+            string: ScholiumL10n.string("Move to Separate Window"),
+            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.labelColor])
+        let size = NSSize(width: ceil(label.size().width) + padding * 2, height: ceil(label.size().height) + padding * 2)
+        let appearance = toolbarItem.control.effectiveAppearance
+        return NSImage(size: size, flipped: false) { rect in
+            appearance.performAsCurrentDrawingAppearance {
+                NSColor.windowBackgroundColor.setFill()
+                rect.fill()
+                label.draw(at: NSPoint(x: padding, y: padding))
+            }
+            return true
+        }
     }
 
     private func clearDrag() {
@@ -216,6 +301,7 @@ final class DocumentToolbarTabs: NSObject {
         gapControl?.dropSide = nil
         gapControl = nil
         draggedID = nil
+        dragPreview = nil
     }
 }
 
@@ -223,6 +309,7 @@ final class DocumentToolbarTabs: NSObject {
 /// lets the toolbar compress this item without clipping the selected tab.
 @MainActor
 final class DocumentToolbarTabStrip: NSVisualEffectView {
+    weak var owner: DocumentToolbarTabs?
     private static let minimumWidth = DocumentToolbarTabControl.preferredInactiveWidth
     static let height: CGFloat = 36
     static let contentHeight = height - 2
@@ -281,6 +368,8 @@ final class DocumentToolbarTabStrip: NSVisualEffectView {
     func invalidateContextRouting() {
         contextRoutingInvalidated = true
         removeContextEventMonitor()
+        unregisterDraggedTypes()
+        owner = nil
     }
 
     func contextMenu(for event: NSEvent) -> NSMenu? {
@@ -317,6 +406,7 @@ final class DocumentToolbarTabStrip: NSVisualEffectView {
         blendingMode = .withinWindow
         state = .followsWindowActiveState
         wantsLayer = true
+        registerForDraggedTypes([DocumentToolbarTabItem.pasteboardType])
         layer?.cornerRadius = Self.height / 2
         layer?.masksToBounds = true
         setAccessibilityElement(false)
@@ -345,6 +435,25 @@ final class DocumentToolbarTabStrip: NSVisualEffectView {
     }
 
     required init?(coder: NSCoder) { fatalError("Code-only document toolbar tabs") }
+
+    func dropTarget(at windowPoint: NSPoint) -> DocumentToolbarTabControl? {
+        let point = row.convert(windowPoint, from: nil)
+        return controls.first { point.x < $0.frame.midX } ?? controls.last
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard let target = dropTarget(at: sender.draggingLocation) else { return [] }
+        return owner?.draggingUpdated(over: target, sender: sender) ?? []
+    }
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        for control in controls { owner?.draggingExited(control) }
+    }
+    override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool { draggingUpdated(sender) == .move }
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard draggingUpdated(sender) == .move, let target = dropTarget(at: sender.draggingLocation) else { return false }
+        return owner?.performDrop(on: target) ?? false
+    }
 
     func update(controls newControls: [DocumentToolbarTabControl], selectedID: UUID?) {
         if self.selectedID != selectedID {
@@ -652,10 +761,15 @@ final class DocumentToolbarTabControl: NSView, NSDraggingSource, NSGestureRecogn
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool { owner?.performDrop(on: self) ?? false }
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .move }
     func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
+    func draggingSession(_ session: NSDraggingSession, movedTo point: NSPoint) {
+        owner?.updateDraggingPreview(session, at: point, window: window)
+    }
     func draggingSession(_ session: NSDraggingSession, endedAt point: NSPoint, operation: NSDragOperation) {
+        owner?.updateDraggingPreview(session, at: point, window: window)
         session.animatesToStartingPositionsOnCancelOrFail =
             owner?.shouldAnimateDragReturn(
-                at: point, operation: operation, window: window) ?? true
+                at: point, operation: operation, window: window)
+            ?? !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         owner?.finishDrag(at: point, operation: operation, window: window)
     }
 }

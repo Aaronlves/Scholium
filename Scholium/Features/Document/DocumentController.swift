@@ -946,7 +946,7 @@ final class DocumentController: ObservableObject {
         session.cancelAutosave()
         do {
             if let save = session.activeSaveTask {
-                _ = await save.result
+                _ = try await save.value
                 let deadline = ContinuousClock.now.advanced(by: .seconds(2))
                 while session.isSavingEdit, ContinuousClock.now < deadline {
                     try await Task.sleep(for: .milliseconds(10))

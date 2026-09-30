@@ -77,8 +77,8 @@ extension ScholiumUITests {
             XCTAssertTrue(strip.exists && forward.exists)
             let trailingActions = toolbar.descendants(matching: .any).matching(
                 NSPredicate(
-                    format: "label BEGINSWITH %@ OR label == %@ OR label CONTAINS[c] %@",
-                    "Document Mode,", "Note Actions", "More"
+                    format: "label BEGINSWITH %@ OR label == %@ OR label == %@ OR label CONTAINS[c] %@",
+                    "Document Mode,", "View Changes", "Note Actions", "More"
                 )
             ).allElementsBoundByIndex
             guard
@@ -235,21 +235,104 @@ extension ScholiumUITests {
         assertThreeTabLayout(in: main)
         capture("Light, medium toolbar with core commands and three tabs")
         XCTAssertTrue(chineseTab.isHittable)
-        let originalMainID = main.identifier
-        let outside = main.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
-            .withOffset(CGVector(dx: 60, dy: 0))
-        chineseTab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .click(forDuration: 0.8, thenDragTo: outside)
+        let chineseURL = triptychDirectory.appendingPathComponent("01-analyses/\(chinese).md")
+        let originalChineseBytes = try Data(contentsOf: chineseURL)
+        let editor = main.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        let originalAccessibleSource = try XCTUnwrap(editor.value as? String)
+        let dragToken = " TOOLBAR-DRAG-\(UUID().uuidString)"
+        try enterLivePreviewAndAppend(dragToken, in: main)
+        let editedAccessibleSource = try XCTUnwrap(editor.value as? String)
+        let editedChineseBytes = originalChineseBytes + Data(dragToken.utf8)
+        editor.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: chineseURL)) == editedChineseBytes })
+
+        let orderedTabs = [chineseTab, englishTab, autosaveTab]
+        let orderBeforeReturn = orderedTabs.sorted { $0.frame.minX < $1.frame.minX }.map(\.identifier)
+        chineseTab.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+            .click(
+                forDuration: 0.8,
+                thenDragTo: chineseTab.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
+            )
         XCTAssertTrue(
-            waitUntil(timeout: 10) { self.app.windows.count == 2 },
-            "Dragging a toolbar tab outside the window must transfer its session.")
+            waitUntil(timeout: 5) {
+                self.app.windows.count == 1
+                    && orderedTabs.allSatisfy { $0.exists && $0.isHittable }
+                    && orderedTabs.sorted { $0.frame.minX < $1.frame.minX }.map(\.identifier) == orderBeforeReturn
+            }, "Returning a real Tab drag to its own slot must retain the collection and window."
+        )
+        XCTAssertTrue(waitForDocumentTitle(chinese, in: main, timeout: 3))
+        XCTAssertEqual(String(describing: chineseTab.value ?? ""), "1")
+        XCTAssertEqual(Array(try XCTUnwrap(editor.value as? String).utf8), Array(editedAccessibleSource.utf8))
+        XCTAssertEqual(try Data(contentsOf: chineseURL), editedChineseBytes)
+
+        let originalMainID = main.identifier
         let originalMain = app.windows[originalMainID]
+        let documentPage = main.descendants(matching: .any)["scholium.documentPage"].firstMatch
+        XCTAssertTrue(documentPage.waitForExistence(timeout: 5))
+        let bodyPoint = CGPoint(x: documentPage.frame.midX, y: documentPage.frame.midY)
+        XCTAssertTrue(main.frame.contains(bodyPoint), "The detach target must remain inside the original window.")
+        XCTAssertGreaterThan(bodyPoint.y, main.toolbars.firstMatch.scrollViews.firstMatch.frame.maxY)
+        let documentBody = documentPage.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        chineseTab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .click(forDuration: 0.8, thenDragTo: documentBody)
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                self.app.windows.count == 2 && !self.toolbarDocumentTab(chinese, in: originalMain).exists
+            },
+            "Dropping below the Tab strip inside the same window must transfer its session.")
+        XCTAssertEqual(
+            originalMain.toolbars.firstMatch.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "scholium.documentTab.")
+            ).count, 2
+        )
         for title in ["QA Autosave A", english] {
             let tab = toolbarDocumentTab(title, in: originalMain)
             XCTAssertTrue(
                 tab.exists && tab.frame.width > 0,
                 "The source window must keep its remaining Toolbar tabs after detachment.")
         }
+        XCTAssertFalse(toolbarDocumentTab(chinese, in: originalMain).exists)
+        let detachedWindows = app.windows.allElementsBoundByIndex.filter {
+            $0.identifier != originalMainID && $0.title == chinese
+        }
+        XCTAssertEqual(detachedWindows.count, 1, "The dragged Note must have one separate window and no source Tab duplicate.")
+        let detachedID = try XCTUnwrap(detachedWindows.first?.identifier)
+        let detached = app.windows[detachedID]
+        XCTAssertFalse(
+            detached.toolbars.firstMatch.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "scholium.documentTab.")
+            ).firstMatch.exists
+        )
+        XCTAssertEqual(documentModeState(documentModeControl(in: detached)), "Edit")
+        let detachedEditor = detached.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(detachedEditor.waitForExistence(timeout: 8))
+        XCTAssertEqual(Array(try XCTUnwrap(detachedEditor.value as? String).utf8), Array(editedAccessibleSource.utf8))
+        XCTAssertEqual(try Data(contentsOf: chineseURL), editedChineseBytes)
+
+        // Compare the editor's own AX projection before/after transfer, and
+        // check physical bytes separately. Undo proves the live session moved.
+        detachedEditor.click()
+        detachedEditor.typeKey("z", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                (detachedEditor.value as? String).map { Array($0.utf8) } == Array(originalAccessibleSource.utf8)
+            }, "The detached session must retain Undo from the source window."
+        )
+        detachedEditor.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: chineseURL)) == originalChineseBytes })
+        detachedEditor.typeKey("z", modifierFlags: [.command, .shift])
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                (detachedEditor.value as? String).map { Array($0.utf8) } == Array(editedAccessibleSource.utf8)
+            }, "The detached session must retain Redo and the exact edited source."
+        )
+        detachedEditor.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: chineseURL)) == editedChineseBytes })
+        let detachedShot = XCTAttachment(screenshot: detached.screenshot())
+        detachedShot.name = "Light, Tab dropped into original Document body — separate session"
+        detachedShot.lifetime = .keepAlways
+        add(detachedShot)
 
         openThreeTabs(appearance: .dark)
         assertThreeTabLayout(in: app.windows.firstMatch)

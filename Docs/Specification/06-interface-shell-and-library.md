@@ -155,8 +155,11 @@ Scholium guards selection and close. Library and Chat provide **Open in Separate
 opening replaces selection; Open in New Tab appends. Switching preserves state without saving; background close saves only its target; selected close chooses right, otherwise left; last close shows No Document
 Selected. Failure retains the tab with Retry. Menus provide Close/Next/Previous Tab and Document Tabs for overflow.
 
-Tabs drag with an insertion gap; dropping back reorders, Escape cancels. Dropping
-outside, or **Move to Separate Window**, moves the same session into one document window: Review/Edit, Find, and
+Tabs drag with an insertion gap across the complete tab strip, including gaps
+and end space. Dragging outside the source tab strip previews **Move to Separate
+Window** in the native drag image; returning restores the reorder preview.
+Releasing outside that strip, including within the original window's Document,
+or choosing **Move to Separate Window**, moves the same session into one document window. No window is created before release; Escape cancels. It retains Review/Edit, Find, and
 save/conflict/recovery actions; no Library, Chat, Inspector, tabs, or floating
 priority. **More** reuses the shared Note Actions menu, with **Move to Main Window** and
 **Close Window** as its window-specific actions. Hover/focus reveals ×; right-click targets its tab. Removal is immediate. Preparation

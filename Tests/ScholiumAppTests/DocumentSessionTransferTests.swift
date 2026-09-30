@@ -113,6 +113,84 @@ struct DocumentSessionTransferTests {
         #expect(source.retainedSessionCount == 0)
     }
 
+    @Test(
+        "An in-flight save failure keeps the source session while a successful save permits transfer",
+        arguments: [true, false])
+    func inFlightSaveControlsTransfer(fails: Bool) async throws {
+        let source = DocumentController()
+        let destination = DocumentController()
+        let note = document("Saving.md")
+        source.selectDocument(note)
+        let original = source.session(for: note.editingTarget)
+        original.beginEditing(in: .source)
+        original.originalEditingSource = "\u{FEFF}# Saving\r\n"
+        let exactSource = "\u{FEFF}# Saving\r\n\r\n论点 🦉 e\u{301}"
+        original.editingSource = exactSource
+        original.editorSession.loadDocument(exactSource, documentID: "Saving.md", mode: .source)
+        original.editorSession.updateInteraction(
+            selections: [.init(anchor: 9, head: 12)], line: 3, column: 2, lineCount: 3,
+            documentVersion: 0, focusTarget: .editor, context: nil
+        )
+        original.scrollFraction = 0.61
+        original.suppressAutosave = true
+        let presentation = original.windowPresentationSnapshot
+        let failureDetail = "Fixture in-flight write failed"
+        original.isSavingEdit = true
+        // The existing save-task slot supplies the suspension boundary. Its
+        // completion clears saving state as finishSaveAttempt does, so a
+        // discarded error cannot be hidden by a later saving-state timeout.
+        let save = Task<EditorSaveOutcome, Error> { @MainActor in
+            defer {
+                original.activeSaveTask = nil
+                original.isSavingEdit = false
+            }
+            if fails {
+                original.editError = failureDetail
+                original.canRetrySave = true
+                throw VaultRepositoryError.writeFailed(failureDetail)
+            }
+            original.originalEditingSource = exactSource
+            return .clean
+        }
+        original.activeSaveTask = save
+        defer {
+            save.cancel()
+            original.cancelScheduledWork()
+        }
+
+        if fails {
+            do {
+                try await source.prepareSessionTransfer(note)
+                Issue.record("A failed in-flight save must stop transfer preparation")
+            } catch VaultRepositoryError.writeFailed(let detail) {
+                #expect(detail == failureDetail)
+            } catch {
+                Issue.record("Expected the original write failure, received \(error)")
+            }
+            #expect(source.selectedDocument == note)
+            #expect(source.retainedSessionCount == 1)
+            #expect(destination.retainedSessionCount == 0)
+            #expect(source.session(for: note.editingTarget) === original)
+            #expect(original.editError == failureDetail)
+            #expect(original.canRetrySave)
+            #expect(original.hasUnsavedChanges)
+            #expect(Data(original.originalEditingSource.utf8) == Data("\u{FEFF}# Saving\r\n".utf8))
+        } else {
+            try await source.prepareSessionTransfer(note)
+            let transfer = try #require(source.takeSessionForTransfer(note))
+            destination.receiveSessionTransfer(transfer)
+            #expect(source.selectedDocument == nil)
+            #expect(source.retainedSessionCount == 0)
+            #expect(destination.selectedDocument == note)
+            #expect(destination.session(for: note.editingTarget) === original)
+            #expect(!original.hasUnsavedChanges)
+        }
+        #expect(original.activeSaveTask == nil)
+        #expect(!original.isSavingEdit)
+        #expect(Data(original.retainedExactSource.utf8) == Data(exactSource.utf8))
+        #expect(original.windowPresentationSnapshot == presentation)
+    }
+
     @Test("Late source-view cleanup cannot dismiss Find in the destination")
     func transferredFindPresentationOwnership() throws {
         let source = DocumentController()
