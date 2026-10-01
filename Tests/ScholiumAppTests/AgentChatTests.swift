@@ -492,7 +492,7 @@ struct AgentChatTests {
         var writtenNotes: [String] = []
         let triptych = UUID()
         let registry = AgentChatRegistry(root: root, workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: $0) }, previewUpdate: preview)
-        { request in
+        { request, _ in
             if request.tool == .updateNote { writtenNotes.append(request.arguments["note_id"]?.stringValue ?? "") }
             return success(request)
         }
@@ -1105,7 +1105,7 @@ struct AgentChatTests {
         let controller = AgentChatController(
             triptychID: triptych, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
-            saveHistory: { try await gate.save($0) }, toolHandler: success)
+            saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
         try await connect(controller)
         controller.editDraft("original request")
         let owner = try #require(controller.selectedID)
@@ -1154,7 +1154,7 @@ struct AgentChatTests {
         let controller = AgentChatController(
             triptychID: triptych, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
-            saveHistory: { try await gate.save($0) }, toolHandler: success)
+            saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
         try await connect(controller)
         controller.editDraft("hold captured request")
         let owner = try #require(controller.selectedID)
@@ -1192,7 +1192,7 @@ struct AgentChatTests {
         let controller = AgentChatController(
             triptychID: triptych, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
-            saveHistory: { try await gate.save($0) }, toolHandler: success)
+            saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
         try await connect(controller)
         controller.editDraft("hold original")
         controller.send()
@@ -1230,7 +1230,7 @@ struct AgentChatTests {
         let controller = AgentChatController(
             triptychID: triptych, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
-            saveHistory: { try await gate.save($0) }, toolHandler: success)
+            saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
         try await connect(controller)
         controller.editDraft("unsent across disconnect")
         try await controller.flushPersistence()

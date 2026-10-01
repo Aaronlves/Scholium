@@ -51,8 +51,10 @@ extension ScholiumUITests {
         let actionRows = window.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium.selectionActions.row."))
         let pageSave = window.buttons["scholium.selectionActions.save"]
-        let name = window.textFields["scholium.selectionActions.name"]
-        let instruction = window.textViews["scholium.selectionActions.prompt"]
+        let editors = window.descendants(matching: .any).matching(identifier: "scholium.selectionActions.editor")
+        let editor = editors.firstMatch
+        let name = editor.textFields["scholium.selectionActions.name"]
+        let instruction = editor.textViews["scholium.selectionActions.prompt"]
         XCTAssertTrue(actionRows.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(pageSave.waitForExistence(timeout: 5))
         let form = settingsContentScrollView(in: window)
@@ -69,7 +71,9 @@ extension ScholiumUITests {
 
         click(window.buttons["Add Action"])
         XCTAssertTrue(name.waitForExistence(timeout: 3))
-        XCTAssertEqual(window.sheets.count, 1, "Action editing must open a native sheet")
+        XCTAssertEqual(window.sheets.count, 0, "Action editing must remain in the settings page")
+        XCTAssertTrue(editor.exists)
+        XCTAssertEqual(editors.count, 1, "The editor must expose one container without overwriting its fields' identifiers")
         XCTAssertTrue(window.staticTexts["Edit Selection Action"].exists)
         XCTAssertFalse(pageSave.isEnabled)
         XCTAssertTrue(window.descendants(matching: .any)["scholium.selectionActions.validation"].exists)
@@ -77,7 +81,7 @@ extension ScholiumUITests {
         XCTAssertTrue(name.exists, "Return must not accept an invalid action")
         typeCommittedText("QA", into: name, in: app)
         XCTAssertFalse(pageSave.isEnabled, "An instruction is required as well as a name")
-        window.buttons["Cancel"].click()
+        click(editor.buttons["Cancel"])
         XCTAssertFalse(name.exists)
         XCTAssertFalse(actionRows.staticTexts["QA"].exists)
         XCTAssertFalse(pageSave.isEnabled, "Cancelling must restore the saved collection")
@@ -85,9 +89,19 @@ extension ScholiumUITests {
         click(window.buttons["Add Action"])
         XCTAssertTrue(name.waitForExistence(timeout: 3))
         typeCommittedText("QA", into: name, in: app)
+        scrollUntilHittable(instruction, in: form)
         typeCommittedText("Explain the selected passage without editing it.", into: instruction, in: app)
-        XCTAssertTrue(window.sheets.firstMatch.staticTexts["QA"].exists, "The sheet must identify the action being edited")
-        window.buttons["scholium.selectionActions.done"].click()
+        XCTAssertEqual(name.value as? String, "QA", "The inline editor must identify the action being edited")
+        XCTAssertFalse(pageSave.isEnabled, "A valid unfinished edit must not be committed by the page's Save")
+        selectSettingsCategory("shortcuts", in: window)
+        XCTAssertFalse(editor.exists, "An inactive inline editor must leave the accessibility tree")
+        app.typeKey(.return, modifierFlags: [])
+        selectSettingsCategory("writing", in: window)
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        XCTAssertEqual(name.value as? String, "QA")
+        XCTAssertEqual(instruction.value as? String, "Explain the selected passage without editing it.")
+        XCTAssertFalse(pageSave.isEnabled, "Navigation must retain the unfinished edit")
+        click(editor.buttons["scholium.selectionActions.done"])
         XCTAssertFalse(name.exists)
         XCTAssertTrue(pageSave.isEnabled)
 
@@ -101,11 +115,7 @@ extension ScholiumUITests {
         let search = window.searchFields["scholium.settings.search"]
         typeCommittedText("shortcut", into: search, in: app)
         XCTAssertTrue(actionRows.staticTexts["QA"].exists, "Typing a query must retain the current draft page")
-        let shortcutResult = window.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.settings.result.shortcut.")
-        ).firstMatch
-        XCTAssertTrue(shortcutResult.waitForExistence(timeout: 5))
-        shortcutResult.click()
+        selectSettingsSearchResult("shortcut.searchResearch", in: window)
         XCTAssertTrue(window.descendants(matching: .any)["scholium.hotkeys"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(actionRows.firstMatch.exists)
         search.buttons["cancel"].click()
@@ -124,12 +134,17 @@ extension ScholiumUITests {
         scrollUntilHittable(savedActionEdit, in: form)
         captureSettingsTransaction(window, named: "settings-selection-actions-minimum-width")
         click(savedActionEdit)
-        XCTAssertTrue(window.sheets.firstMatch.staticTexts["QA"].waitForExistence(timeout: 3))
-        let editorAttachment = XCTAttachment(screenshot: window.sheets.firstMatch.screenshot())
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        XCTAssertEqual(name.value as? String, "QA")
+        XCTAssertEqual(window.sheets.count, 0)
+        scrollUntilHittable(editor.buttons["Cancel"], in: form)
+        XCTAssertGreaterThanOrEqual(editor.frame.minX, form.frame.minX - 1)
+        XCTAssertLessThanOrEqual(editor.frame.maxX, form.frame.maxX + 1, "The inline editor must fit the resized settings form")
+        let editorAttachment = XCTAttachment(screenshot: window.screenshot())
         editorAttachment.name = "settings-selection-action-editor-minimum-width"
         editorAttachment.lifetime = .keepAlways
         add(editorAttachment)
-        window.sheets.firstMatch.buttons["Cancel"].click()
+        click(editor.buttons["Cancel"])
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(waitUntil(timeout: 3) { !window.exists })
         let restored = openSettingsForTransactionTest()
@@ -253,17 +268,40 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    private func selectSettingsCategory(_ key: String, in window: XCUIElement) {
-        let category = window.descendants(matching: .any)["scholium.settings.category.\(key)"].firstMatch
-        XCTAssertTrue(category.waitForExistence(timeout: 5))
-        category.click()
+    func selectSettingsCategory(_ key: String, in window: XCUIElement) {
+        let nativeLabels: [String: [String]] = [
+            "workspace": ["Workspace", "工作区"],
+            "document": ["Document", "文稿"],
+            "writing": ["Writing", "写作"],
+            "agents": ["Agents", "Agent"],
+            "shortcuts": ["Shortcuts", "快捷键"],
+            "zotero": ["Zotero"],
+        ]
+        guard let labels = nativeLabels[key] else {
+            XCTFail("Unknown settings category: \(key)")
+            return
+        }
+        let matches = window.toolbars.buttons.matching(NSPredicate(format: "label IN %@", labels))
+        XCTAssertTrue(matches.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(matches.count, 1, "The native preferences toolbar must have one button for \(key)")
+        matches.firstMatch.click()
     }
 
     @MainActor
-    private func selectSettingsSearchResult(_ id: String, in window: XCUIElement) {
-        let result = window.buttons["scholium.settings.result.\(id)"]
+    func selectSettingsSearchResult(_ id: String, in window: XCUIElement) {
+        let search = window.searchFields["scholium.settings.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        let query = search.value as? String
+        let result = app.descendants(matching: .any)["scholium.settings.result.\(id)"].firstMatch
+        if !result.exists {
+            search.click()
+        }
         XCTAssertTrue(result.waitForExistence(timeout: 5))
         result.click()
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            !self.app.descendants(matching: .any)["scholium.settings.searchResults"].firstMatch.exists
+        }, "Choosing a result must close the temporary search presentation")
+        XCTAssertEqual(search.value as? String, query, "Choosing a result must preserve the query for another setting")
     }
 
     @MainActor

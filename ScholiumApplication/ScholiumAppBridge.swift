@@ -262,9 +262,12 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
                 )
             }
             return response
-        } catch ScholiumAppBridgeError.timeout {
+        } catch {
+            // Once the complete request has been sent, EOF, malformed replies,
+            // correlation failures and remote transport errors cannot prove
+            // that an admitted operation failed before committing.
             if sent { throw ScholiumAppBridgeError.outcomeUnknown }
-            throw ScholiumAppBridgeError.timeout
+            throw error
         }
     }
 }
@@ -414,6 +417,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
 
     private func handle(_ peer: Int32) {
         var correlationID = UUID()
+        var operationAdmitted = false
         do {
             try AppBridgeIO.configure(peer, timeout: timeout)
             let clientNonce = try AppBridgeIO.readFrame(from: peer)
@@ -471,6 +475,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 return task
             }
             guard let task else { throw ScholiumAppBridgeError.permissionDenied }
+            operationAdmitted = true
             let budget = request.mcpRequest.conversationToken == nil ? operationTimeout : 590
             let finished = semaphore.wait(timeout: .now() + budget) == .success
             guard finished else {
@@ -492,7 +497,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             )
         } catch {
             let payload = ScholiumAppBridgeRemoteError(
-                code: "bridge_failed",
+                code: operationAdmitted ? "operation_uncertain" : "bridge_failed",
                 message: error.localizedDescription
             )
             if let response = try? ScholiumAppBridgeResponse(

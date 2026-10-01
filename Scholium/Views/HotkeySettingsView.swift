@@ -7,8 +7,6 @@ struct HotkeySettingsView: View {
     @State private var pendingResetAll = false
     @FocusState private var shortcutCommand: ScholiumHotkeyCommand?
 
-    let searchQuery: String
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Form {
@@ -37,13 +35,6 @@ struct HotkeySettingsView: View {
                     } header: {
                         Text(category.title)
                     }
-                }
-                if visibleCategories.isEmpty {
-                    ScholiumContentStateView(
-                        "No Matching Shortcuts",
-                        detail: Text("Try a command name or menu location."),
-                        indicator: .symbol("keyboard")
-                    )
                 }
             }
             .scholiumSettingsFormStyle()
@@ -101,18 +92,8 @@ struct HotkeySettingsView: View {
         in category: ScholiumHotkeyCategory
     ) -> [ScholiumHotkeyCommand] {
         ScholiumHotkeyCommand.customizableCommands.filter {
-            $0.category == category && (matchesSearch($0) || editingCommand == $0)
+            $0.category == category
         }
-    }
-
-    private func matchesSearch(_ command: ScholiumHotkeyCommand) -> Bool {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return true }
-        return [
-            String(localized: command.title),
-            String(localized: command.menuPath),
-            String(localized: command.category.title),
-        ].contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
     private func hotkeyMenu(_ command: ScholiumHotkeyCommand) -> some View {

@@ -23,7 +23,7 @@ final class SelectionActionsSettingsDraft: ObservableObject {
 
     func synchronize(with saved: [SelectionActionDefinition]) {
         guard saved != baseline else { return }
-        if actions == baseline {
+        if actions == baseline && editingActionID == nil {
             reload(saved)
         } else {
             hasExternalChange = true
@@ -41,6 +41,7 @@ final class SelectionActionsSettingsDraft: ObservableObject {
     }
 
     func beginEditing(_ action: SelectionActionDefinition, isNew: Bool = false) {
+        guard editingActionID == nil, !hasExternalChange else { return }
         editingActionID = action.id
         selectedActionID = action.id
         editingOriginal = isNew ? nil : action
@@ -66,6 +67,7 @@ final class SelectionActionsSettingsDraft: ObservableObject {
     }
 
     func save() {
+        guard editingActionID == nil else { return }
         guard preferences.actions == baseline else {
             hasExternalChange = true
             return
@@ -84,10 +86,11 @@ final class SelectionActionsSettingsDraft: ObservableObject {
 }
 
 struct SelectionActionsSettingsContent: View {
+    @Environment(\.scholiumSettingsPaneIsActive) private var isPaneActive
     @ObservedObject var state: SelectionActionsSettingsDraft
     @ObservedObject private var preferences: SelectionActionPreferences
-    @FocusState private var nameFocused: Bool
-    @FocusState private var editButtonID: UUID?
+    private enum FocusTarget: Hashable { case name, edit(UUID), add, reload }
+    @FocusState private var focusedTarget: FocusTarget?
 
     init(state: SelectionActionsSettingsDraft) {
         self.state = state
@@ -128,10 +131,11 @@ struct SelectionActionsSettingsContent: View {
 
                         Button("Edit") {
                             state.beginEditing(action)
-                            nameFocused = true
+                            focusedTarget = .name
                         }
                         .buttonStyle(.borderless)
-                        .focused($editButtonID, equals: action.id)
+                        .focused($focusedTarget, equals: .edit(action.id))
+                        .disabled(state.editingActionID != nil)
                         .accessibilityLabel(Text(verbatim: String(format: ScholiumL10n.string("Edit %@"), displayName(action))))
                         .accessibilityIdentifier("scholium.selectionActions.edit")
 
@@ -145,10 +149,17 @@ struct SelectionActionsSettingsContent: View {
                             Label("More", systemImage: "ellipsis.circle").labelStyle(.iconOnly)
                         }
                         .menuStyle(.borderlessButton)
+                        .disabled(state.editingActionID != nil)
                         .accessibilityLabel(Text(verbatim: "\(ScholiumL10n.string("More")) \(displayName(action))"))
                     }
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("scholium.selectionActions.row.\(action.id.uuidString)")
+                    .disabled(state.hasExternalChange)
+
+                    if state.editingActionID == action.id {
+                        actionEditor(for: action)
+                            .id("selection.action.editor.\(action.id.uuidString)")
+                    }
                 }
             }
 
@@ -157,8 +168,10 @@ struct SelectionActionsSettingsContent: View {
                     let action = SelectionActionDefinition(name: "", prompt: "")
                     state.actions.append(action)
                     state.beginEditing(action, isNew: true)
+                    focusedTarget = .name
                 }
-                .disabled(state.actions.count >= SelectionActionPreferences.maximumCount || state.editingActionID != nil)
+                .focused($focusedTarget, equals: .add)
+                .disabled(state.actions.count >= SelectionActionPreferences.maximumCount || state.editingActionID != nil || state.hasExternalChange)
                 Spacer()
                 Button("Restore Defaults") {
                     state.actions = SelectionActionPreferences.defaultActions
@@ -166,6 +179,19 @@ struct SelectionActionsSettingsContent: View {
                     state.selectedActionID = nil
                     state.error = nil
                 }
+                .disabled(state.editingActionID != nil || state.hasExternalChange)
+            }
+
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text("Preview")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                SelectionActionBarPreview(actions: state.actions)
+                    .id(previewIdentity)
+                    .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                Text("Shown when text is selected. Custom actions appear in More Actions.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if state.hasExternalChange {
@@ -173,9 +199,13 @@ struct SelectionActionsSettingsContent: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("scholium.selectionActions.conflict")
-                Button("Reload Saved Actions") { state.reload(preferences.actions) }
+                Button("Reload Saved Actions") {
+                    state.reload(preferences.actions)
+                    focusedTarget = state.actions.first.map { .edit($0.id) } ?? .add
+                }
+                .focused($focusedTarget, equals: .reload)
             }
-            if let message = state.error ?? preferences.loadError ?? SelectionActionPreferences.validationError(state.actions) {
+            if let message = state.error ?? preferences.loadError ?? (state.editingActionID == nil ? SelectionActionPreferences.validationError(state.actions) : nil) {
                 Text(message)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -186,11 +216,11 @@ struct SelectionActionsSettingsContent: View {
                 Button("Save Selection Actions") {
                     state.save()
                     if state.error == nil && !state.hasExternalChange {
-                        editButtonID = state.selectedActionID
+                        focusedTarget = state.selectedActionID.map(FocusTarget.edit)
                     }
                 }
                 .scholiumSettingsDefaultAction()
-                .disabled(state.hasExternalChange || SelectionActionPreferences.validationError(state.actions) != nil || state.actions == preferences.actions)
+                .disabled(state.editingActionID != nil || state.hasExternalChange || SelectionActionPreferences.validationError(state.actions) != nil || state.actions == preferences.actions)
                 .accessibilityIdentifier("scholium.selectionActions.save")
             }
         } header: {
@@ -201,51 +231,23 @@ struct SelectionActionsSettingsContent: View {
         .id("writing.selection")
         .onAppear { state.synchronize(with: preferences.actions) }
         .onChange(of: preferences.actions) { _, actions in state.synchronize(with: actions) }
-        .sheet(isPresented: editingPresented) {
-            if let id = state.editingActionID,
-                let action = state.actions.first(where: { $0.id == id })
-            {
-                actionEditor(for: action)
-            }
-        }
-
-        Section("Preview") {
-            SelectionActionBarPreview(actions: state.actions)
-                .id(previewIdentity)
-                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-            Text("Shown when text is selected. Custom actions appear in More Actions.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 
     private var previewIdentity: String {
         state.actions.filter(\.isEnabled).map { "\($0.id.uuidString):\($0.name)" }.joined(separator: "|")
     }
 
-    private var editingPresented: Binding<Bool> {
-        Binding(
-            get: { state.editingActionID != nil },
-            set: { if !$0, state.editingActionID != nil { state.cancelEditing() } }
-        )
-    }
-
     private func actionEditor(for action: SelectionActionDefinition) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Edit Selection Action")
-                    .font(.title2.bold())
-                    .accessibilityAddTraits(.isHeader)
-                Text(verbatim: displayName(action))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(24)
-
-            Form {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Edit Selection Action")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            Group {
                 LabeledContent("Name") {
                     TextField("", text: actionBinding(action.id, keyPath: \.name, fallback: ""))
                         .textFieldStyle(.roundedBorder)
-                        .focused($nameFocused)
+                        .focused($focusedTarget, equals: .name)
+                        .accessibilityLabel(Text("Name"))
                         .accessibilityIdentifier("scholium.selectionActions.name")
                 }
                 VStack(alignment: .leading, spacing: 8) {
@@ -265,30 +267,34 @@ struct SelectionActionsSettingsContent: View {
                         .accessibilityIdentifier("scholium.selectionActions.validation")
                 }
             }
-            .formStyle(.grouped)
+            .disabled(state.hasExternalChange)
 
+            Text("Save Selection Actions on the page to keep these changes.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack {
-                Text("Save Selection Actions on the page to keep these changes.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel") {
                     state.cancelEditing()
-                    nameFocused = false
+                    if state.hasExternalChange {
+                        focusedTarget = .reload
+                    } else {
+                        focusedTarget = state.actions.contains { $0.id == action.id } ? .edit(action.id) : .add
+                    }
                 }
-                .keyboardShortcut(.cancelAction)
+                .keyboardShortcut(isPaneActive ? .cancelAction : nil)
                 Button("Done") {
                     state.finishEditing()
-                    nameFocused = false
-                    editButtonID = action.id
+                    focusedTarget = .edit(action.id)
                 }
-                .disabled(SelectionActionPreferences.validationError([action]) != nil)
+                .disabled(state.hasExternalChange || SelectionActionPreferences.validationError([action]) != nil)
                 .accessibilityIdentifier("scholium.selectionActions.done")
             }
-            .padding(24)
         }
-        .frame(minWidth: 520, idealWidth: 600, minHeight: 430)
-        .interactiveDismissDisabled()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.selectionActions.editor")
     }
 
     private func displayName(_ action: SelectionActionDefinition) -> String {

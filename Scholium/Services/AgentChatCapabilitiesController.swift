@@ -305,7 +305,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
     }
 
     func canSignIn(_ server: AgentChatConnectedTool) -> Bool {
-        isConnected && !isRefreshing && !isChanging && authenticatingTool == nil
+        isConnected && !isRefreshing && !isChanging && authenticatingTool == nil && agentAuthenticationThreadIDs.isEmpty
             && tools.contains(server) && (server.authStatus == "notLoggedIn" || server.connectionStatus == "authenticationRequired")
     }
 
@@ -352,10 +352,14 @@ final class AgentChatCapabilitiesController: ObservableObject {
         let uiAuthentication =
             name == authenticatingTool
             && params["threadId"]?.stringValue == authenticationThreadID
-        let agentThread = agentAuthenticationThreadIDs.removeValue(forKey: name)
-        guard uiAuthentication || agentThread != nil else { return }
+        let agentThread = agentAuthenticationThreadIDs[name]
+        let agentAuthentication = agentThread.map { thread in
+            params["threadId"]?.stringValue == (thread.isEmpty ? nil : thread)
+        } ?? false
+        guard uiAuthentication || agentAuthentication else { return }
         authenticationFeedbackTool = name
-        if let agentThread {
+        if agentAuthentication, let agentThread {
+            agentAuthenticationThreadIDs.removeValue(forKey: name)
             authenticationNotice = success ? String(localized: "Signed In: \(name)") : nil
             authenticationError =
                 success
@@ -456,6 +460,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
                 code: .operationUncertain, message: "The Skill change was saved on a replaced connection.",
                 recovery: "Inspect the current Skill setting before trying again.")
         }
+        isChanging = false
         refresh(threadID: threadID)
         return .init(
             selection: method.selection, description: method.description, enabled: effective,
@@ -541,6 +546,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
                 code: .operationUncertain, message: "The tool configuration was saved on a replaced connection.",
                 recovery: "Inspect the current tool configuration version before trying again.")
         }
+        isChanging = false
         refresh(threadID: threadID)
         return .init(configuration: current, overridden: overridden)
     }

@@ -102,14 +102,14 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 }
                 return try await router.previewChatUpdate(request)
             }
-        ) { [weak self] request in
+        ) { [weak self] request, admission in
             guard let router = self?.requestRouter else {
                 return try! ScholiumMCPBridgeResponse(
                     requestID: request.requestID,
                     error: .init(
                         code: .appUnavailable, message: "Scholium is unavailable.", recovery: "Reconnect Chat."))
             }
-            return await router.handleChatOperation(request)
+            return await router.handleChatOperation(request, mutationAdmission: admission)
         }
         chatRegistryStorage = registry
         return registry
@@ -689,18 +689,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     )
                     return try await settingsSnapshot(preferredTriptychID: handle.id)
                 },
-                saveTriptychSettings: { [self] id, settings, expectedRevision in
-                    let handle = try await workspaceHandle(id: id)
-                    let outcome = try await handle.research.saveSettingsOutcome(
-                        settings,
-                        expectedRevision: expectedRevision
-                    )
-                    return WorkspaceSettingsCommit(
-                        triptychID: id,
-                        snapshot: outcome.committedValue,
-                        derivedRefreshWarning: outcome.derivedRefreshWarning
-                    )
-                },
                 loadSettingsRecovery: { [self] id in
                     let handle = try await workspaceHandle(id: id)
                     return try await handle.research.settingsRecoverySnapshot()
@@ -719,9 +707,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 portableContainerURL: { [self] url in
                     await portableContainerURL(forWorksURL: url)
                 }
-            ),
-            machine: WorkspaceSettingsMachineCapabilities(
-                openExternal: { [self] url in openExternal(url) }
             ),
             zotero: WorkspaceSettingsZoteroCapabilities(
                 zoteroConnectionInfo: { [self] in await zoteroBridge.connectionInfo() },

@@ -18,21 +18,15 @@ public actor MCPBridgeOperations {
                 mcpRequest: request
             ))
         guard let bridgeResponse = response.mcpResponse,
-            bridgeResponse.requestID == request.requestID
+            bridgeResponse.schemaVersion == ScholiumMCPBridgeResponse.currentSchemaVersion,
+            bridgeResponse.requestID == request.requestID,
+            (bridgeResponse.result == nil) != (bridgeResponse.error == nil)
         else {
-            throw ScholiumMCPFailure(
-                code: .internalError,
-                message: "The running App returned an invalid MCP response.",
-                recovery: "Restart Scholium and begin again with workspace status."
-            )
+            throw ScholiumAppBridgeError.outcomeUnknown
         }
         if let error = bridgeResponse.error { throw error }
         guard let result = bridgeResponse.result else {
-            throw ScholiumMCPFailure(
-                code: .internalError,
-                message: "The running App returned no MCP result.",
-                recovery: "Restart Scholium and begin again with workspace status."
-            )
+            throw ScholiumAppBridgeError.outcomeUnknown
         }
         return result
     }

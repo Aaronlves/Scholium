@@ -250,14 +250,14 @@ struct AgentChatCapabilitiesSettingsView: View {
                 Text("Wait for the Agent to finish before changing Skills or Tools.", bundle: .module)
                     .foregroundStyle(.secondary)
             }
-            if capabilities.configurationHome != nil {
+            if !zoteroOnly, capabilities.configurationHome != nil {
                 LabeledContent("Configuration") {
                     Text(capabilities.isShared ? "Shared Codex Settings" : "Scholium Codex Settings")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            if let version = controller.runtimeVersion {
+            if !zoteroOnly, let version = controller.runtimeVersion {
                 LabeledContent("Runtime") {
                     Text(version)
                         .font(.caption)

@@ -28,6 +28,7 @@ struct WritingSettingsView: View {
 
     var body: some View {
         Form {
+            WritingAssistanceModelSettingsContent()
             WritingContinuationSettingsContent()
             SelectionActionsSettingsContent(state: selectionActions)
         }
@@ -70,7 +71,7 @@ func localizedInterfaceString(_ keyAndValue: String.LocalizationValue) -> String
 /// The revision makes repeated links work even when the remembered pane is equal.
 @MainActor
 enum SettingsNavigationRequest {
-    static func select(_ pane: WorkspaceSettingsPane, agentCategory: AgentSettingsCategory? = nil) {
+    static func select(_ pane: ScholiumSettingsDestination, agentCategory: AgentSettingsCategory? = nil) {
         if let agentCategory {
             UserDefaults.standard.set(agentCategory.rawValue, forKey: "scholium.settings.agentCategory")
         }

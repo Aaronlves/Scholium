@@ -8,7 +8,7 @@ final class AgentChatRegistry {
     private let root: URL
     private let workspaceDirectory: @MainActor (UUID) async throws -> URL
     private let displayWindow: @MainActor (UUID, UUID) -> AgentChatDisplayScope?
-    private let handler: @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
+    private let handler: @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     private let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
     private let notificationSink: AgentChatNotificationSink
 
@@ -18,7 +18,7 @@ final class AgentChatRegistry {
         displayWindow: @escaping @MainActor (UUID, UUID) -> AgentChatDisplayScope? = { _, _ in nil },
         notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
         previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview,
-        handler: @escaping @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
+        handler: @escaping @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     ) {
         self.root = root
         self.workspaceDirectory = workspaceDirectory

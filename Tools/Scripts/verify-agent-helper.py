@@ -27,9 +27,11 @@ def check(executable, root):
     external = call(["mcp", "serve"], [initialize, listing, status])
     assert external[0]["result"]["serverInfo"]
     assert len(external[1]["result"]["tools"]) == 16
+    assert all(tool["outputSchema"]["type"] == "object" for tool in external[1]["result"]["tools"])
     assert external[2].get("error") or external[2]["result"].get("isError") is True
     scoped = call(["mcp", "serve", "--conversation-token", str(uuid.uuid4())], [listing])
     assert len(scoped[0]["result"]["tools"]) == 20
+    assert all(tool["outputSchema"]["type"] == "object" for tool in scoped[0]["result"]["tools"])
     zotero = call(["zotero", "mcp", "serve"], [initialize, listing])
     assert zotero[0]["result"]["serverInfo"]["name"] == "scholium-zotero"
     zotero_names = {tool["name"] for tool in zotero[1]["result"]["tools"]}

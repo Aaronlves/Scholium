@@ -37,13 +37,13 @@ final class MCPAppBridgeRequestRouter {
         self.didConfirmChange = didConfirmChange
     }
 
-    func handle(_ request: ScholiumMCPBridgeRequest) async
+    func handle(_ request: ScholiumMCPBridgeRequest, mutationAdmission: AgentMutationAdmission? = nil) async
         -> ScholiumMCPBridgeResponse
     {
         do {
             return try ScholiumMCPBridgeResponse(
                 requestID: request.requestID,
-                result: try await execute(request)
+                result: try await execute(request, mutationAdmission: mutationAdmission)
             )
         } catch let failure as ScholiumMCPFailure {
             return try! ScholiumMCPBridgeResponse(
@@ -58,7 +58,7 @@ final class MCPAppBridgeRequestRouter {
         }
     }
 
-    private func execute(_ request: ScholiumMCPBridgeRequest) async throws
+    private func execute(_ request: ScholiumMCPBridgeRequest, mutationAdmission: AgentMutationAdmission?) async throws
         -> MCPJSONValue
     {
         switch request.tool {
@@ -79,11 +79,11 @@ final class MCPAppBridgeRequestRouter {
         case .listLinks:
             return try await listLinks(request.arguments)
         case .createNote:
-            return try await createNote(request.arguments)
+            return try await createNote(request.arguments, admission: sourceAdmission(for: request, checking: mutationAdmission))
         case .updateNote:
-            return try await updateNote(request.arguments)
+            return try await updateNote(request.arguments, admission: sourceAdmission(for: request, checking: mutationAdmission))
         case .moveNote:
-            return try await moveNote(request.arguments)
+            return try await moveNote(request.arguments, admission: sourceAdmission(for: request, checking: mutationAdmission))
         case .previewMove:
             return try await previewMove(request.arguments)
         case .listChanges:
@@ -91,11 +91,27 @@ final class MCPAppBridgeRequestRouter {
         case .readChange:
             return try await readChange(request.arguments)
         case .undoChange:
-            return try await undoChange(request.arguments)
+            return try await undoChange(request.arguments, admission: sourceAdmission(for: request, checking: mutationAdmission))
         case .trashNote:
-            return try await trashNote(request.arguments)
+            return try await trashNote(request.arguments, admission: sourceAdmission(for: request, checking: mutationAdmission))
         case .capabilities, .configureSkill, .configureTool, .configureChat:
             throw invalid("conversation_token", "Capability management is available only inside an in-app Scholium Chat conversation.")
+        }
+    }
+
+    private func sourceAdmission(
+        for request: ScholiumMCPBridgeRequest, checking chatAdmission: AgentMutationAdmission?
+    ) throws -> AgentMutationAdmission {
+        guard request.conversationToken == nil || (chatAdmission != nil && request.runtimeContext != nil) else {
+            throw invalid("conversation_token", "A Chat mutation requires its exact live execution admission.")
+        }
+        let triptychID = try requiredUUID(request.arguments["triptych_id"], name: "triptych_id")
+        return { [weak self] in
+            guard let self else {
+                throw AgentCollaborationError.invalidRequest("Scholium is unavailable before source admission.")
+            }
+            try self.requireOpenTriptych(triptychID)
+            try chatAdmission?()
         }
     }
 
@@ -111,7 +127,7 @@ final class MCPAppBridgeRequestRouter {
                 $0.objectValue?["window_id"]?.stringValue.flatMap(UUID.init(uuidString:)) == window && $0.objectValue?["can_display"]?.boolValue == true
             })
         else { throw WorkspaceStore.displayUnavailable() }
-        let handle = try await runtime.openWorkspace(id: triptych)
+        let handle = try await openCurrentWorkspace(id: triptych)
         let target = try await handle.agentCollaboration.displayTarget(
             noteID: note, expectedFingerprint: requiredFingerprint(args["expected_fingerprint"]),
             startUTF8: args["start_utf8"].map { try boundedInteger($0, name: "start_utf8", default: 0, range: 0...Int.max) },
@@ -142,7 +158,7 @@ final class MCPAppBridgeRequestRouter {
         let offset = try boundedInteger(arguments["offset"], name: "offset", default: 0, range: 0...Int.max)
         let limit = try boundedInteger(arguments["limit"], name: "limit", default: 20, range: 1...100)
         _ = try await currentSnapshot(triptychID: triptych)
-        let handle = try await runtime.openWorkspace(id: triptych)
+        let handle = try await openCurrentWorkspace(id: triptych)
         let listing = try await handle.agentCollaboration.attachments(noteID: note)
         return try attachmentListingValue(
             listing, triptych: triptych, note: note, offset: offset, limit: limit,
@@ -198,7 +214,7 @@ final class MCPAppBridgeRequestRouter {
             expectedFingerprint: try arguments["expected_fingerprint"].map(requiredFingerprint))
         let expectedNote = try requiredFingerprint(arguments["expected_note_fingerprint"])
         _ = try await currentSnapshot(triptychID: triptych)
-        let handle = try await runtime.openWorkspace(id: triptych)
+        let handle = try await openCurrentWorkspace(id: triptych)
         let content = try await handle.agentCollaboration.readAttachment(
             noteID: note, attachmentID: attachment, expectedNoteFingerprint: expectedNote, request: read)
         return .object([
@@ -238,12 +254,12 @@ final class MCPAppBridgeRequestRouter {
         ])
     }
 
-    private func moveNote(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+    private func moveNote(_ arguments: [String: MCPJSONValue], admission: @escaping AgentMutationAdmission) async throws -> MCPJSONValue {
         let (triptychID, noteID, expected, path, planFingerprint) = try decodeMove(arguments)
         _ = try await currentSnapshot(triptychID: triptychID)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let result = try await handle.agentCollaboration.moveNote(
-            noteID: noteID, expectedFingerprint: expected, to: path, expectedPlanFingerprint: planFingerprint)
+            noteID: noteID, expectedFingerprint: expected, to: path, expectedPlanFingerprint: planFingerprint, admission: admission)
         didConfirmChange(result.change)
         return ok([
             "triptych_id": .string(triptychID.uuidString.lowercased()), "note_id": .string(noteID.uuidString.lowercased()),
@@ -268,7 +284,7 @@ final class MCPAppBridgeRequestRouter {
             throw invalid("expected_plan_fingerprint", "Continue with the full plan fingerprint from the first page.")
         }
         _ = try await currentSnapshot(triptychID: triptychID)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let preview = try await handle.agentCollaboration.previewMoveNote(noteID: noteID, expectedFingerprint: expected, to: destination)
         guard planFingerprint == nil || planFingerprint == preview.planFingerprint else {
             throw ScholiumMCPFailure(
@@ -332,7 +348,7 @@ final class MCPAppBridgeRequestRouter {
             throw invalid("expected_listing_fingerprint", "Continue with the listing fingerprint returned by the first page.")
         }
         try requireOpenTriptych(triptychID)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let changes = try await handle.agentCollaboration.agentChanges().filter {
             noteID == nil || $0.noteID == noteID || $0.moveEffects?.contains(where: { $0.noteID == noteID }) == true
         }
@@ -362,7 +378,7 @@ final class MCPAppBridgeRequestRouter {
         let limit = try boundedInteger(arguments["limit"], name: "limit", default: 200, range: 1...1000)
         let offset = try boundedInteger(arguments["offset"], name: "offset", default: 0, range: 0...Int.max)
         try requireOpenTriptych(triptychID)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let review = try await handle.agentCollaboration.agentChangeReview(id: changeID)
         let selectedNote = try optionalUUID(arguments["note_id"], name: "note_id") ?? review.change.noteID
         let sourceComparison: ExactSourceComparison?
@@ -438,13 +454,14 @@ final class MCPAppBridgeRequestRouter {
         )
     }
 
-    private func undoChange(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+    private func undoChange(_ arguments: [String: MCPJSONValue], admission: @escaping AgentMutationAdmission) async throws -> MCPJSONValue {
         let (triptychID, noteID, changeID, expected) = try decodeUndo(arguments)
         _ = try await currentSnapshot(triptychID: triptychID)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let preview = try await handle.agentCollaboration.previewUndoAgentChange(id: changeID, expectedAfterFingerprint: expected)
+        try requireOpenTriptych(triptychID)
         guard preview.noteID == noteID else { throw invalid("note_id", "The change belongs to another Note.") }
-        let result = try await handle.agentCollaboration.undoAgentChange(id: changeID, expectedAfterFingerprint: expected)
+        let result = try await handle.agentCollaboration.undoAgentChange(id: changeID, expectedAfterFingerprint: expected, admission: admission)
         return ok([
             "triptych_id": .string(triptychID.uuidString.lowercased()), "note_id": .string(noteID.uuidString.lowercased()),
             "change_id": .string(changeID.uuidString.lowercased()), "source_relative_path": .string(preview.relativePath),
@@ -605,7 +622,7 @@ final class MCPAppBridgeRequestRouter {
             arguments["roles"],
             snapshot: snapshot
         )
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let response = try await handle.discovery.search(
             SearchRequest(
                 query: query,
@@ -726,7 +743,7 @@ final class MCPAppBridgeRequestRouter {
         )
         let snapshot = try await currentSnapshot(triptychID: triptychID)
         _ = try resolveNote(noteID, snapshot: snapshot)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let source = try await handle.agentCollaboration.currentNoteSource(noteID: noteID)
         let slice = try Self.exactLineSlice(
             source.source,
@@ -802,7 +819,7 @@ final class MCPAppBridgeRequestRouter {
         )
         let snapshot = try await currentSnapshot(triptychID: triptychID)
         let note = try resolveNote(noteID, snapshot: snapshot)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         guard let graph = snapshot.discovery.catalog.graph else {
             throw ScholiumMCPFailure(
                 code: .workspaceNotReady, message: "The current link generation is unavailable.",
@@ -912,7 +929,7 @@ final class MCPAppBridgeRequestRouter {
     }
 
     private func createNote(
-        _ arguments: [String: MCPJSONValue]
+        _ arguments: [String: MCPJSONValue], admission: @escaping AgentMutationAdmission
     ) async throws -> MCPJSONValue {
         try requireOnly(
             arguments,
@@ -968,8 +985,8 @@ final class MCPAppBridgeRequestRouter {
                 error.localizedDescription
             )
         }
-        let handle = try await runtime.openWorkspace(id: triptychID)
-        let result = try await handle.agentCollaboration.createNote(request)
+        let handle = try await openCurrentWorkspace(id: triptychID)
+        let result = try await handle.agentCollaboration.createNote(request, admission: admission)
         didConfirmChange(result.change)
         return ok([
             "triptych_id": .string(triptychID.uuidString.lowercased()),
@@ -1034,7 +1051,7 @@ final class MCPAppBridgeRequestRouter {
             if request.tool == .moveNote {
                 let (triptychID, noteID, expected, path, planFingerprint) = try decodeMove(request.arguments)
                 try requireOpenTriptych(triptychID)
-                let handle = try await runtime.openWorkspace(id: triptychID)
+                let handle = try await openCurrentWorkspace(id: triptychID)
                 return try await handle.agentCollaboration.previewMoveMutation(
                     noteID: noteID, expectedFingerprint: expected,
                     to: path, expectedPlanFingerprint: planFingerprint)
@@ -1042,7 +1059,7 @@ final class MCPAppBridgeRequestRouter {
             if request.tool == .undoChange {
                 let (triptychID, noteID, changeID, expected) = try decodeUndo(request.arguments)
                 try requireOpenTriptych(triptychID)
-                let handle = try await runtime.openWorkspace(id: triptychID)
+                let handle = try await openCurrentWorkspace(id: triptychID)
                 let preview = try await handle.agentCollaboration.previewUndoAgentChange(id: changeID, expectedAfterFingerprint: expected)
                 guard preview.noteID == noteID else { throw invalid("note_id", "The change belongs to another Note.") }
                 return preview
@@ -1050,7 +1067,7 @@ final class MCPAppBridgeRequestRouter {
             guard request.tool == .updateNote else { throw invalid("tool", "Only Note updates and Undo have this comparison.") }
             let (triptychID, noteID, expected, update) = try decodeUpdate(request.arguments)
             try requireOpenTriptych(triptychID)
-            let handle = try await runtime.openWorkspace(id: triptychID)
+            let handle = try await openCurrentWorkspace(id: triptychID)
             return try await handle.agentCollaboration.previewUpdateNote(
                 noteID: noteID, expectedFingerprint: expected, update: update)
         } catch let failure as ScholiumMCPFailure { throw failure } catch { throw Self.failure(for: error) }
@@ -1068,14 +1085,14 @@ final class MCPAppBridgeRequestRouter {
         }
     }
 
-    private func updateNote(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+    private func updateNote(_ arguments: [String: MCPJSONValue], admission: @escaping AgentMutationAdmission) async throws -> MCPJSONValue {
         let (triptychID, noteID, expected, update) = try decodeUpdate(arguments)
         _ = try await currentSnapshot(triptychID: triptychID)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let result = try await handle.agentCollaboration.updateNote(
             noteID: noteID,
             expectedFingerprint: expected,
-            update: update
+            update: update, admission: admission
         )
         didConfirmChange(result.change)
         return ok([
@@ -1090,7 +1107,7 @@ final class MCPAppBridgeRequestRouter {
     }
 
     private func trashNote(
-        _ arguments: [String: MCPJSONValue]
+        _ arguments: [String: MCPJSONValue], admission: @escaping AgentMutationAdmission
     ) async throws -> MCPJSONValue {
         try requireOnly(
             arguments,
@@ -1103,10 +1120,10 @@ final class MCPAppBridgeRequestRouter {
         let noteID = try requiredUUID(arguments["note_id"], name: "note_id")
         let expected = try requiredFingerprint(arguments["expected_fingerprint"])
         _ = try await currentSnapshot(triptychID: triptychID)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let result = try await handle.agentCollaboration.trashNote(
             noteID: noteID,
-            expectedFingerprint: expected
+            expectedFingerprint: expected, admission: admission
         )
         didConfirmChange(result.change)
         return ok([
@@ -1126,8 +1143,10 @@ final class MCPAppBridgeRequestRouter {
     {
         try requireOpenTriptych(triptychID)
         try await flushEditors(triptychID)
-        let handle = try await runtime.openWorkspace(id: triptychID)
+        try requireOpenTriptych(triptychID)
+        let handle = try await openCurrentWorkspace(id: triptychID)
         let snapshot = try await handle.discovery.refresh()
+        try requireOpenTriptych(triptychID)
         guard snapshot.phase.isComplete,
             let searchGeneration = snapshot.discovery.searchGeneration
         else {
@@ -1148,6 +1167,13 @@ final class MCPAppBridgeRequestRouter {
             )
         }
         return snapshot
+    }
+
+    private func openCurrentWorkspace(id: UUID) async throws -> WorkspaceHandle {
+        try requireOpenTriptych(id)
+        let handle = try await runtime.openWorkspace(id: id)
+        try requireOpenTriptych(id)
+        return handle
     }
 
     private func requireOpenTriptych(_ triptychID: UUID) throws {

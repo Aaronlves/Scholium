@@ -139,7 +139,8 @@ enum ScholiumMetrics {
     }
 
     enum Settings {
-        static let navigationWidth: CGFloat = 240
+        static let searchFieldWidth = ScholiumGrid.foundationUnit * 56
+        static let searchResultsWidth = ScholiumGrid.foundationUnit * 92
         static let minimumWindowWidth: CGFloat = 780
         static let minimumWindowHeight: CGFloat = 560
         static let headingMatrixMinimumWidth: CGFloat = 650

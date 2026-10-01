@@ -8,6 +8,47 @@ import Testing
 @Suite("Running App MCP router", .serialized)
 @MainActor
 struct MCPAppBridgeRequestRouterTests {
+    @Test("Closing a Triptych during editor reconciliation blocks new MCP access and mutations", arguments: [ScholiumMCPToolName.workspaceStatus, .updateNote, .createNote])
+    func closingScopeDuringReconciliation(tool: ScholiumMCPToolName) async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.dispose() }
+        let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
+        let analysisURL = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
+        let before = try Data(contentsOf: analysisURL)
+        var isOpen = true
+        var deliveredChanges: [AgentChange] = []
+        let router = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime,
+            flushEditors: { _ in
+                await Task.yield()
+                isOpen = false
+            },
+            openTriptychs: { isOpen ? [fixture.assignment] : [] },
+            didConfirmChange: { deliveredChanges.append($0) }
+        )
+        var arguments: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString)]
+        switch tool {
+        case .updateNote:
+            arguments["note_id"] = .string(fixture.analysisNoteID.uuidString)
+            arguments["expected_fingerprint"] = fingerprintJSON(fixture.analysisFingerprint)
+            arguments["mode"] = .string("body")
+            arguments["content"] = .string("An old request must not change the closed Triptych.")
+        case .createNote:
+            arguments["role"] = .string("topics")
+            arguments["relative_path"] = .string("Closed.md")
+            arguments["content"] = .string("An old request must not create a Note in the closed Triptych.")
+        default:
+            break
+        }
+        let response = await router.handle(.init(tool: tool, arguments: arguments))
+        #expect(response.error?.code == .notFound)
+        #expect(response.result == nil)
+        #expect(try Data(contentsOf: analysisURL) == before)
+        #expect(!FileManager.default.fileExists(atPath: fixture.topicsURL.appendingPathComponent("Closed.md").path))
+        #expect(deliveredChanges.isEmpty)
+        #expect(try await handle.agentCollaboration.agentChanges().isEmpty)
+    }
+
     @Test("Chat move preview remains read-only and refers to the current Note location")
     func movePreviewChatReadOnly() async throws {
         let fixture = try await Fixture.make(standardTriptych: true)
@@ -16,7 +57,11 @@ struct MCPAppBridgeRequestRouterTests {
         let snapshot = try await handle.discovery.refresh()
         let topic = try #require(snapshot.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        let controller = fixtureChatController(triptychID: fixture.assignment.id, root: fixture.root.appendingPathComponent("Chat"), toolHandler: router.handle)
+        let chatRoot = fixture.root.appendingPathComponent("Chat")
+        let controller = AgentChatController(
+            triptychID: fixture.assignment.id, root: chatRoot,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: chatRoot, triptychID: fixture.assignment.id) },
+            toolHandler: { request, admission in await router.handle(request, mutationAdmission: admission) })
         func wait(_ predicate: () -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
             while !predicate() {
@@ -303,9 +348,12 @@ struct MCPAppBridgeRequestRouterTests {
                         "mode": .string("body"), "content": .string("Agent ending\r\n"),
                     ])))
         let ending = try Data(contentsOf: file)
-        let controller = fixtureChatController(
-            triptychID: fixture.assignment.id, root: fixture.root.appendingPathComponent("Chat"),
-            previewUpdate: router.previewUpdate, toolHandler: router.handle)
+        let chatRoot = fixture.root.appendingPathComponent("Chat")
+        let controller = AgentChatController(
+            triptychID: fixture.assignment.id, root: chatRoot,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: chatRoot, triptychID: fixture.assignment.id) },
+            previewUpdate: router.previewUpdate,
+            toolHandler: { request, admission in await router.handle(request, mutationAdmission: admission) })
         func wait(_ predicate: () -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
             while !predicate() {
@@ -604,9 +652,12 @@ struct MCPAppBridgeRequestRouterTests {
         let router = MCPAppBridgeRequestRouter(
             runtime: fixture.runtime,
             flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        let controller = fixtureChatController(
-            triptychID: fixture.assignment.id,
-            root: fixture.root.appendingPathComponent("Chat"), previewUpdate: router.previewUpdate, toolHandler: router.handle)
+        let chatRoot = fixture.root.appendingPathComponent("Chat")
+        let controller = AgentChatController(
+            triptychID: fixture.assignment.id, root: chatRoot,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: chatRoot, triptychID: fixture.assignment.id) },
+            previewUpdate: router.previewUpdate,
+            toolHandler: { request, admission in await router.handle(request, mutationAdmission: admission) })
         func wait(_ predicate: () -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
             while !predicate() {

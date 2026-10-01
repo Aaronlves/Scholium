@@ -1,4 +1,5 @@
-import Foundation
+import AppKit
+import SwiftUI
 import Testing
 
 @testable import ScholiumApp
@@ -6,6 +7,64 @@ import Testing
 @Suite("Settings search routing")
 @MainActor
 struct SettingsSearchRoutingTests {
+    @Test("Search retains native editable plain-text field-editor behavior")
+    func nativeSearchInput() throws {
+        _ = NSApplication.shared
+        let parent = ScholiumSettingsSearchField(text: .constant(""), reveal: { _ in })
+        let coordinator = parent.makeCoordinator()
+        let field = ScholiumSettingsSearchField.makeSearchField(coordinator: coordinator)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 60),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = field
+        defer {
+            ScholiumSettingsSearchField.dismantleNSView(field, coordinator: coordinator)
+            window.contentView = nil
+            window.close()
+        }
+        #expect(field.isEditable && field.isSelectable)
+        #expect(field.isBezeled && field.bezelStyle == .roundedBezel)
+        #expect(window.makeFirstResponder(field))
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        #expect(editor.isFieldEditor && !editor.isRichText)
+        #expect(editor.delegate === field)
+    }
+
+    @Test("Native results require a choice, reset it when the query changes, and expose accessible activation")
+    func nativeResultSelectionAndActivation() throws {
+        let results = SettingsSearchResultsController()
+        let targets = Array(SettingsSearchTarget.all.prefix(3))
+        var chosen: [String] = []
+        results.choose = { chosen.append($0.id) }
+        results.update(targets)
+        results.activateSelection()
+        #expect(chosen.isEmpty)
+        results.moveSelection(by: 1)
+        #expect(results.selectedTarget?.id == targets[0].id)
+        results.moveSelection(by: 100)
+        #expect(results.selectedTarget?.id == targets[2].id)
+        #expect(results.table.accessibilityPerformConfirm())
+        #expect(chosen == [targets[2].id])
+
+        results.update([targets[1]])
+        #expect(results.selectedTarget == nil)
+        let cell = try #require(results.tableView(results.table, viewFor: nil, row: 0))
+        #expect(cell.accessibilityPerformPress())
+        #expect(chosen == [targets[2].id, targets[1].id])
+        results.update([targets[0]])
+        #expect(!cell.accessibilityPerformPress())
+        #expect(results.selectedTarget == nil)
+        results.update([])
+        results.moveSelection(by: 1)
+        results.activateSelection()
+        #expect(results.selectedTarget == nil)
+        #expect(!results.table.accessibilityPerformConfirm())
+        let empty = try #require(results.tableView(results.table, viewFor: nil, row: 0))
+        #expect(empty.accessibilityRole() == .staticText)
+        #expect(!empty.accessibilityPerformPress())
+        #expect(chosen.count == 2)
+    }
+
     @Test("Every customizable command title and menu path reveals its shortcut editor")
     func commandSearchRevealsItsEditingLocation() {
         for command in ScholiumHotkeyCommand.customizableCommands {
@@ -26,7 +85,7 @@ struct SettingsSearchRoutingTests {
             ("正文字体", .document, "appearance.reading"),
             ("段落间距", .document, "appearance.body"),
             ("autocomplete", .writing, "writing.continuation"),
-            ("续写模型", .writing, "writing.continuation"),
+            ("续写模型", .writing, "writing.model"),
             ("选段操作", .writing, "writing.selection"),
             ("选区操作", .writing, "writing.selection"),
             ("回车", .agents, "agents.behavior"),

@@ -102,28 +102,23 @@ conflict, picker cancellation, retained Back input, parent authorization,
 480-point width, immediate handoff, relaunch and registration editing.
 Evidence: `.build/bootstrap-verification/RESULTS.md`.
 
-**2026-09-17 — Settings:** 61 scoped checks in 14 suites cover bilingual static
-search routing, scoped drafts, native fixed-sidebar/toolbar association,
-resizing/field-editor ownership, preferences and tool revision/authentication
-boundaries, including tool-specific feedback targets. Native normalization QA
-covers one system form background, protocol owner navigation and restoration of
-the resize mask. Four distinct QA journeys cover seven task categories, retained
-drafts, rename/cancel, hidden default actions and accessibility, sidebar arrows,
-empty-search recovery, repeated Agent-result and explicit Zotero routing,
-automatic H6 reveal, native 780-point resizing, inspected English/Dark and
-Chinese/Light titlebar regions, Notifications reload/discard/save/relaunch,
-inline Selection Actions validation/cancel/save/reopen/relaunch and disconnected
-continuation/model retention. Transactions use the App menu; a separate Computer
-Use observation opens Settings with Command-Comma from the focused QA editor.
-The beta XCTest literal-comma attempts remain failures, not keyboard proof.
-Evidence: `.build/settings-normalization-evidence/RESULTS.md`;
-unchanged transaction journeys: `.build/settings-redesign-evidence/RESULTS.md`.
-Recovery extensions have 121 owning checks and five distinct native journeys:
-corrupt portable settings, scoped appearance repair, reminder draft lifecycle,
-category navigation and default-value field repair. Exact backups, unknown-field
-retention and unchanged Note bytes are checked. Independent review added a
-rollback-writer preservation regression. Evidence:
-`.build/settings-recovery-evidence/RESULTS.md`.
+**2026-10-01 — Settings:** 103 scoped checks cover native preferences-toolbar
+projection, retained page state, bilingual search routing, native editable input,
+explicit result activation, stale result rejection, scoped drafts, recovery and
+shortcut preferences; changed groups were rerun after repairs. Five distinct
+native journeys pass: portable recovery, scoped profile repair, disconnected
+continuation/model retention, inline Selection Actions transactions and category
+navigation. They cover retained drafts, rename/cancel, hidden default actions/AX,
+repeated Agent results, explicit links, empty search, H6 reveal, keyboard choice,
+780-point resizing and all six toolbar items in English/Dark and Chinese/Light.
+Computer Use separately verifies Command-Comma opening and removal of the fixed
+search-row color band. Idempotent native property writes repair an observed idle
+main-thread feedback loop; the final 40.8-second Debug Time Profiler capture has
+zero detected Hangs. CPU samples are not click-to-paint or release evidence.
+Current proof, screenshots and limits: `.build/settings-native-optimization/RESULTS.md`.
+Earlier unchanged application recovery baseline:
+`.build/settings-recovery-evidence/RESULTS.md`. Chinese IME, VoiceOver and system
+accessibility adaptations still require human acceptance.
 
 **2026-09-22 — Chat response/reading:** Tests cover history batching, stream
 publication, WebKit selection, draft measurement and floating-composer geometry.

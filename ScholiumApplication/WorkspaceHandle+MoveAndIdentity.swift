@@ -86,10 +86,11 @@ extension WorkspaceHandle {
         expectedRevision: DocumentFingerprint,
         expectedStableNoteID: UUID? = nil,
         agentMove: AgentMoveAuthorization? = nil,
-        undoAgentMoveID: UUID? = nil
+        undoAgentMoveID: UUID? = nil,
+        admission: AgentMutationAdmission? = nil
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try requireActive()
-        let mutationLease = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation(admission: admission)
         var ownsMutation = true
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }

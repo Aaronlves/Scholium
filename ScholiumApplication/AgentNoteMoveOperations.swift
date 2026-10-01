@@ -10,7 +10,7 @@ struct AgentMoveAuthorization: Sendable {
 extension WorkspaceHandle {
     func moveAgentNote(
         noteID: UUID, expectedFingerprint: DocumentFingerprint, to path: String,
-        expectedPlanFingerprint: DocumentFingerprint
+        expectedPlanFingerprint: DocumentFingerprint, admission: AgentMutationAdmission?
     ) async throws -> AgentNoteMoveResult {
         guard (try? MarkdownRelativePath(path)) != nil, WorkspaceLibraryVisibility.includes(path) else {
             throw AgentCollaborationError.invalidRequest("Choose an exact same-vault Note path outside attachment storage.")
@@ -23,7 +23,7 @@ extension WorkspaceHandle {
         let changeID = UUID()
         let outcome = try await coordinatedMoveDocument(
             target.id, to: path, expectedRevision: expectedFingerprint,
-            expectedStableNoteID: noteID, agentMove: .init(changeID: changeID, planFingerprint: expectedPlanFingerprint))
+            expectedStableNoteID: noteID, agentMove: .init(changeID: changeID, planFingerprint: expectedPlanFingerprint), admission: admission)
         guard let change = try? await services.agentChangeStore.change(id: changeID), change.state == .confirmed else {
             throw AgentCollaborationError.changeConfirmationUncertain(changeID)
         }

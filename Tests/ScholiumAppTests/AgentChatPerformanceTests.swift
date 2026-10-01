@@ -42,7 +42,7 @@ struct AgentChatPerformanceTests {
                 await recorder.record(values)
                 try await storage.save(values)
             },
-            toolHandler: { _ in
+            toolHandler: { _, _ in
                 try! .init(requestID: UUID(), result: .object([:]))
             })
         #expect(await controller.waitUntilLoaded())
@@ -189,7 +189,7 @@ struct AgentChatPerformanceTests {
             root: root,
             workspaceDirectory: { root.appendingPathComponent("workspace", isDirectory: true) },
             saveHistory: { _ in },
-            toolHandler: { _ in try! .init(requestID: UUID(), result: .object([:])) })
+            toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })
         #expect(await controller.waitUntilLoaded())
 
         let start = ContinuousClock.now

@@ -49,44 +49,6 @@ private struct ScholiumSettingsPaneSurface: ViewModifier {
     }
 }
 
-struct ScholiumSettingsSearchField: NSViewRepresentable {
-    @Binding var text: String
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeNSView(context: Context) -> NSSearchField {
-        let searchField = NSSearchField()
-        searchField.placeholderString = ScholiumL10n.string("Search Settings")
-        searchField.sendsSearchStringImmediately = true
-        searchField.target = context.coordinator
-        searchField.action = #selector(Coordinator.searchChanged(_:))
-        searchField.setAccessibilityLabel(ScholiumL10n.string("Search Settings"))
-        return searchField
-    }
-
-    func updateNSView(_ searchField: NSSearchField, context: Context) {
-        context.coordinator.parent = self
-        if searchField.stringValue != text {
-            searchField.stringValue = text
-        }
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var parent: ScholiumSettingsSearchField
-
-        init(parent: ScholiumSettingsSearchField) {
-            self.parent = parent
-        }
-
-        @objc func searchChanged(_ sender: NSSearchField) {
-            parent.text = sender.stringValue
-        }
-    }
-}
-
 extension View {
     /// One system content background spans a Settings form and adjacent controls.
     /// Grouped rows retain their native surfaces; the scroll container does not

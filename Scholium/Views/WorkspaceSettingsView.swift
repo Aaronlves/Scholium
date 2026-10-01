@@ -1,4 +1,3 @@
-import Accessibility
 import AppKit
 import ScholiumContracts
 import SwiftUI
@@ -13,7 +12,17 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
     case zotero
 
     var id: String { rawValue }
-    var pane: WorkspaceSettingsPane { WorkspaceSettingsPane(rawValue: rawValue)! }
+
+    var toolbarTitle: LocalizedStringResource {
+        switch self {
+        case .workspace: ScholiumL10n.Settings.workspace
+        case .document: LocalizedStringResource("settings.toolbar.document", defaultValue: "Document", table: "Interface", bundle: .module)
+        case .writing: LocalizedStringResource("Writing", bundle: .module)
+        case .agents: LocalizedStringResource("settings.toolbar.agents", defaultValue: "Agents", table: "Interface", bundle: .module)
+        case .shortcuts: LocalizedStringResource("Shortcuts", bundle: .module)
+        case .zotero: LocalizedStringResource("Zotero", bundle: .module)
+        }
+    }
 
     var title: LocalizedStringResource {
         switch self {
@@ -48,16 +57,12 @@ struct ScholiumSettingsView: View {
     @State private var destinationBeforeSearch: ScholiumSettingsDestination?
     @State private var searchQuery = ""
     @State private var searchTarget: SettingsSearchTarget?
-    @FocusState private var sidebarFocused: Bool
-
-    private var searchResults: [SettingsSearchTarget] { SettingsSearchTarget.matches(searchQuery) }
     private var isSearching: Bool {
         !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
-        ScholiumSettingsNavigationHost(title: destination.title, sidebar: sidebar, page: selectedPage)
-            .ignoresSafeArea(.container, edges: .top)
+        ScholiumSettingsNavigationHost(selection: categorySelection, page: settingsContent)
             .frame(
                 minWidth: ScholiumMetrics.Settings.minimumWindowWidth,
                 minHeight: ScholiumMetrics.Settings.minimumWindowHeight
@@ -79,7 +84,6 @@ struct ScholiumSettingsView: View {
                 }
             }
             .onChange(of: destination) { _, destination in
-                settingsModel.selectPane(destination.pane)
                 if !isSearching { persistedPane = destination.rawValue }
             }
             .onChange(of: searchQuery) { _, _ in
@@ -97,49 +101,18 @@ struct ScholiumSettingsView: View {
             }
     }
 
-    private var sidebar: some View {
+    private var settingsContent: some View {
         VStack(spacing: 0) {
-            ScholiumSettingsSearchField(text: $searchQuery)
-                .accessibilityIdentifier("scholium.settings.search")
-                .padding(ScholiumGrid.Spacing.inlineControlGap)
-            List(selection: sidebarSelection) {
-                if isSearching {
-                    Section("Search Results") {
-                        if searchResults.isEmpty {
-                            Text("No Search Results")
-                                .foregroundStyle(.secondary)
-                                .accessibilityIdentifier("scholium.settings.noResults")
-                        } else {
-                            ForEach(searchResults) { result in
-                                Button {
-                                    reveal(result)
-                                } label: {
-                                    VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
-                                        Text(result.title)
-                                        Text(result.destination.title).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                                .buttonStyle(.borderless)
-                                .accessibilityIdentifier("scholium.settings.result.\(result.id)")
-                            }
-                        }
-                    }
-                } else {
-                    Section {
-                        ForEach(ScholiumSettingsDestination.allCases) { item in
-                            Label(item.title, systemImage: item.symbol)
-                                .tag(item)
-                                .accessibilityIdentifier("scholium.settings.category.\(item.rawValue)")
-                        }
-                    }
-                }
+            HStack {
+                Spacer()
+                ScholiumSettingsSearchField(text: $searchQuery, reveal: reveal)
+                    .frame(width: ScholiumMetrics.Settings.searchFieldWidth)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .focused($sidebarFocused)
-            .simultaneousGesture(TapGesture().onEnded { sidebarFocused = true })
-            .accessibilityLabel("Settings categories")
+            .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
+            .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+            selectedPage
         }
+        .scholiumSettingsPaneSurface()
     }
 
     private var selectedPage: some View {
@@ -163,14 +136,12 @@ struct ScholiumSettingsView: View {
 
     private func restoreRequestedDestination() {
         destination = ScholiumSettingsDestination(rawValue: persistedPane) ?? .workspace
-        settingsModel.selectPane(destination.pane)
     }
 
-    private var sidebarSelection: Binding<ScholiumSettingsDestination?> {
+    private var categorySelection: Binding<ScholiumSettingsDestination> {
         Binding(
             get: { destination },
             set: { value in
-                guard let value else { return }
                 destinationBeforeSearch = nil
                 searchQuery = ""
                 searchTarget = nil
@@ -203,7 +174,7 @@ struct ScholiumSettingsView: View {
             }
         case .writing: WritingSettingsView()
         case .agents: AgentIntegrationSettingsView(searchQuery: searchQuery)
-        case .shortcuts: HotkeySettingsView(searchQuery: "")
+        case .shortcuts: HotkeySettingsView()
         case .zotero: ZoteroSettingsPageView()
         }
     }
@@ -330,7 +301,7 @@ struct WorkspaceSettingsView: View {
                     } else if let error = settingsModel.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
                         Button("Reload Triptych Registration") {
-                            Task { await settingsModel.refreshRegisteredVaults() }
+                            Task { await settingsModel.refresh() }
                         }
                     } else {
                         ScholiumContentStateView(
@@ -345,7 +316,7 @@ struct WorkspaceSettingsView: View {
         .scholiumSettingsPaneSurface()
         .task(id: isPaneActive) {
             guard isPaneActive else { return }
-            await settingsModel.refreshRegisteredVaults()
+            await settingsModel.refresh()
             guard !Task.isCancelled else { return }
             if selectedTriptychID == nil {
                 selectedTriptychID =
@@ -376,7 +347,7 @@ struct WorkspaceSettingsView: View {
             set: { value in
                 selectedTriptychID = value
                 guard let value else { return }
-                Task { await settingsModel.activateRegisteredTriptych(id: value) }
+                Task { await settingsModel.activateTriptych(id: value) }
             }
         )
     }
@@ -580,6 +551,7 @@ private struct AppearanceSettingsView: View {
             appearanceRecoverySection
             AppearanceReadingEditor(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
             TypographySettingsView(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
+            AppearanceSourceEditor(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
             Section("CSS Snippets") { cssSnippetsContent }.id("appearance.css")
             configurationFileSection.id("appearance.file")
         }
@@ -934,6 +906,14 @@ private struct AppearanceReadingEditor: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }.id("appearance.reading")
+    }
+}
+
+private struct AppearanceSourceEditor: View {
+    @Binding var profile: DocumentAppearanceProfile
+    @ObservedObject var fontCatalog: ScholiumSettingsFontCatalog
+
+    var body: some View {
         Section("Source Font") {
             Picker("Source Font", selection: $profile.settings.source.fontFamily) {
                 ForEach(fontCatalog.families(retaining: profile.settings.source.fontFamily), id: \.self) {
@@ -999,15 +979,15 @@ private struct TypographySettingsView: View {
                         accessibilityUnit: nil)
                 }
             }.id("appearance.headingFont")
+            Section("Heading Hierarchy") {
+                AppearanceHeadingLevelMatrix(headings: $profile.settings.headings)
+            }.id("appearance.headings")
             Section("Text Styles") {
                 roleFont("Body Bold Font", selection: $profile.settings.body.cjkStrongFontFamily)
                 roleFont("Body Italic Font", selection: $profile.settings.body.cjkEmphasisFontFamily)
                 roleFont("Heading Bold Font", selection: $profile.settings.headings.cjkStrongFontFamily)
                 roleFont("Heading Italic Font", selection: $profile.settings.headings.cjkEmphasisFontFamily)
             }.id("appearance.styles")
-            Section("Heading Hierarchy") {
-                AppearanceHeadingLevelMatrix(headings: $profile.settings.headings)
-            }.id("appearance.headings")
         }
         .accessibilityIdentifier("scholium.settings.appearance.typography")
     }
@@ -1723,7 +1703,7 @@ private struct WorkspacePathEditor<Registration: View>: View {
                             Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
                         }
                         Button("Reload Triptych Registration") {
-                            Task { await settingsModel.refreshRegisteredVaults() }
+                            Task { await settingsModel.refresh() }
                         }
                     }
                 }
@@ -1761,7 +1741,7 @@ private struct WorkspacePathEditor<Registration: View>: View {
         .onChange(of: targetAssignment) { _, _ in loadCurrentValuesIfNeeded() }
         .task {
             loadCurrentValuesIfNeeded()
-            await settingsModel.refreshWorkspaceAssignment()
+            await settingsModel.refresh()
             loadCurrentValuesIfNeeded()
             await loadPortableContainerIfAvailable()
         }

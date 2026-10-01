@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Shortcuts": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Shortcuts"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "快捷键"}}}},
+    "Restore Writing Assistance Defaults": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore Writing Assistance Defaults"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复写作辅助默认设置"}}}},
     "Conflict": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Conflict"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "冲突"}}}},
     "Editor Unavailable": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Editor Unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "编辑器不可用"}}}},
     "Resume Editing": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Resume Editing"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复编辑"}}}},
@@ -197,7 +199,7 @@
     "Chat Connection": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Chat Connection"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "聊天连接"}}}},
     "Open Connection and Chat": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Connection and Chat"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开连接与聊天"}}}},
     "Open Workspace Settings": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Workspace Settings"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开工作区设置"}}}},
-    "Save Selection Actions on the page to keep these changes.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Save Selection Actions on the page to keep these changes."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "返回设置页面后，点击“保存选区操作”以保存这些更改。"}}}},
+    "Save Selection Actions on the page to keep these changes.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Save Selection Actions on the page to keep these changes."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "点击页面上的“保存选区操作”以保存这些更改。"}}}},
     "Connect Codex in Agents & Chat to use Zotero in Chat.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connect Codex in Agents & Chat to use Zotero in Chat."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "在“智能体与聊天”中连接 Codex，以在聊天中使用 Zotero。"}}}},
     "AI returned no usable writing suggestion.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI returned no usable writing suggestion."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 未返回可用的写作建议。"}}}},
     "AI-generated suggestion for discussion:": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI-generated suggestion for discussion:"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "供讨论的 AI 生成建议："}}}},
@@ -248,7 +250,6 @@
     "Recover CSS Snippet Settings…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover CSS Snippet Settings…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复 CSS 片段设置…"}}}},
     "Restore snippet settings with all snippets disabled. The previous settings file is preserved separately. CSS files, appearance profiles and research files are unchanged.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore snippet settings with all snippets disabled. The previous settings file is preserved separately. CSS files, appearance profiles and research files are unchanged."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复片段设置，并停用所有片段。原设置文件将另存副本。CSS 文件、外观配置及研究文件保持不变。"}}}},
     "Some shortcuts could not be loaded. Available shortcuts remain usable; restore defaults to repair the saved settings.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some shortcuts could not be loaded. Available shortcuts remain usable; restore defaults to repair the saved settings."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分快捷键无法载入，其余快捷键仍可使用；恢复默认值可以修复已保存的设置。"}}}},
-    "Restore Writing Continuation Defaults": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore Writing Continuation Defaults"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复续写默认设置"}}}},
     "Some selection actions could not be loaded. Available actions are retained. Save your changes or restore defaults to replace these settings.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some selection actions could not be loaded. Available actions are retained. Save your changes or restore defaults to replace these settings."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分选区操作无法载入，可用操作已保留。保存修改或恢复默认值可替换这些设置。"}}}},
     "Some writing assistance settings could not be loaded. Defaults are used for unavailable values; saved settings remain unchanged until edited or restored.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some writing assistance settings could not be loaded. Defaults are used for unavailable values; saved settings remain unchanged until edited or restored."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分写作辅助设置无法载入，不可用值暂用默认值；编辑或恢复之前，已保存的设置保持不变。"}}}},
     "Filter Skills and Tools": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Filter Skills and Tools"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "筛选技能与工具"}}}},
@@ -18635,16 +18636,6 @@
         }
       }
     },
-    "No Matching Shortcuts" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有匹配的快捷键"
-          }
-        }
-      }
-    },
     "No Skills Found" : {
       "localizations" : {
         "zh-Hans" : {
@@ -30325,16 +30316,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "脉络：%@"
-          }
-        }
-      }
-    },
-    "Try a command name or menu location." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请尝试命令名称或菜单位置。"
           }
         }
       }

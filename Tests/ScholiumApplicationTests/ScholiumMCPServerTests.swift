@@ -102,6 +102,7 @@ struct ScholiumMCPServerTests {
             let schema = try object(tool["inputSchema"])
             #expect(schema["additionalProperties"] as? Bool == false)
             let outputSchema = try object(tool["outputSchema"])
+            #expect(outputSchema["type"] as? String == "object")
             let variants = try #require(
                 outputSchema["oneOf"] as? [[String: Any]]
             )
@@ -149,6 +150,9 @@ struct ScholiumMCPServerTests {
         let tools = try #require(try object(listed["result"])["tools"] as? [[String: Any]])
         let names = tools.compactMap { $0["name"] as? String }
         #expect(names == ScholiumMCPToolName.allCases.map(\.rawValue))
+        for tool in tools {
+            #expect(try object(tool["outputSchema"])["type"] as? String == "object")
+        }
         #expect(
             Array(names.suffix(4)) == [
                 ScholiumMCPToolName.capabilities.rawValue,

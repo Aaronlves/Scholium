@@ -4,6 +4,8 @@ import Testing
 
 @testable import ScholiumApp
 
+@MainActor private final class SettingsTitleChangeCount { var value = 0 }
+
 @Suite("Settings pane containment")
 @MainActor
 struct SettingsPaneContainerTests {
@@ -33,16 +35,17 @@ struct SettingsPaneContainerTests {
         #expect(container.selectedView == nil)
     }
 
-    @Test("Native Settings sidebar and tracking toolbar retain their boundary while the page resizes")
-    func fixedNativeNavigation() throws {
+    @Test("Native preferences items project category selection without changing window size")
+    func nativePreferencesNavigation() throws {
         _ = NSApplication.shared
-        let controller = SettingsNavigationSplitController(
-            title: "Document Appearance",
-            sidebar: AnyView(Text("Settings categories")),
-            page: AnyView(Text("Disposable settings page")))
+        var selections: [ScholiumSettingsDestination] = []
+        let controller = SettingsNavigationController(
+            selection: .document, locale: Locale(identifier: "en"),
+            page: AnyView(Text("Disposable settings page")),
+            onSelect: { selections.append($0) })
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 920, height: 600),
-            styleMask: [.titled, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .resizable],
             backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentViewController = controller
@@ -54,92 +57,130 @@ struct SettingsPaneContainerTests {
         controller.attachToolbar()
         window.contentView?.layoutSubtreeIfNeeded()
         let toolbar = try #require(window.toolbar)
+        let expectedIdentifiers = [
+            "workspace", "document", "writing", "agents", "shortcuts", "zotero",
+        ].map { NSToolbarItem.Identifier("scholium.settings.category.\($0)") }
         #expect(toolbar.delegate === controller)
         #expect(toolbar.isVisible)
         #expect(!toolbar.allowsUserCustomization && !toolbar.autosavesConfiguration)
-        #expect(window.toolbarStyle == .unified)
+        #expect(!toolbar.allowsDisplayModeCustomization)
+        #expect(toolbar.displayMode == .iconAndLabel)
+        #expect(window.toolbarStyle == .preference)
         #expect(window.titleVisibility == .visible)
         #expect(window.title == "Document Appearance")
-        let trackingItems = toolbar.items.compactMap { $0 as? NSTrackingSeparatorToolbarItem }
-        #expect(trackingItems.count == 1)
-        let separator = try #require(trackingItems.first)
-        // The system's standard tracking separator associates both titlebar
-        // sections with the actual native boundary. Its rendered separator
-        // frame is AppKit-owned and has no documented public geometry API.
-        #expect(separator.itemIdentifier == .sidebarTrackingSeparator)
-        #expect(separator.splitView === controller.splitView)
-        #expect(separator.dividerIndex == 0)
-        #expect(separator.splitView.window === window)
-        #expect(!toolbar.items.contains { $0.itemIdentifier == .toggleSidebar })
+        #expect(toolbar.items.map(\.itemIdentifier) == expectedIdentifiers)
+        #expect(controller.toolbarSelectableItemIdentifiers(toolbar) == expectedIdentifiers)
+        #expect(toolbar.selectedItemIdentifier == expectedIdentifiers[1])
+        #expect(toolbar.items.map(\.label) == ["Workspace", "Document", "Writing", "Agents", "Shortcuts", "Zotero"])
+        #expect(toolbar.items.allSatisfy { $0.view == nil && $0.image != nil })
+        #expect(toolbar.items[1].toolTip == "Document Appearance")
+        #expect(toolbar.items[1].menuFormRepresentation?.state == .on)
+        #expect(controller.children.count == 1)
+        #expect(controller.children.first === controller.pageController)
+
+        // A scene projection with unchanged state must not repeatedly notify
+        // the window and create a SwiftUI/AppKit presentation feedback loop.
+        let titleChanges = SettingsTitleChangeCount()
+        let titleObservation = window.observe(\.title, options: [.new]) { _, _ in
+            MainActor.assumeIsolated { titleChanges.value += 1 }
+        }
+        for _ in 0..<3 { controller.update(selection: .document, locale: Locale(identifier: "en")) }
+        #expect(titleChanges.value == 0)
+        titleObservation.invalidate()
+
         let originalFrame = window.frame
-        // A later scene-content transaction must not retire native resizing.
-        window.styleMask.remove(.resizable)
-        controller.updateTitle("Writing Assistance")
-        #expect(window.styleMask.contains(.resizable))
+        let writingItem = toolbar.items[2]
+        let writingAction = try #require(writingItem.action)
+        #expect(NSApplication.shared.sendAction(writingAction, to: writingItem.target, from: writingItem))
+        #expect(selections == [.writing])
+        // The action is an intent. Only the parent selection projection updates
+        // the title and selected pane; sending it does not commit a page draft.
+        #expect(window.title == "Document Appearance")
+        controller.update(selection: .writing, locale: Locale(identifier: "en"))
+        #expect(toolbar.selectedItemIdentifier == expectedIdentifiers[2])
         #expect(window.title == "Writing Assistance")
         #expect(window.toolbar === toolbar)
         #expect(window.frame == originalFrame)
+        #expect(writingItem.menuFormRepresentation?.state == .on)
+        #expect(toolbar.items[1].menuFormRepresentation?.state == .off)
 
-        #expect(controller.splitViewItems.count == 2)
-        let navigation = try #require(controller.splitViewItems.first)
-        let content = try #require(controller.splitViewItems.last)
-        // The public sidebar behavior gives the system ownership of material
-        // and adaptation; the test does not depend on AppKit's private view tree.
-        #expect(navigation.behavior == .sidebar)
-        #expect(navigation.viewController === controller.sidebarController)
-        #expect(content.viewController === controller.pageController)
-        #expect(!navigation.canCollapse && !navigation.canCollapseFromWindowResize)
-        #expect(!content.canCollapse && !content.canCollapseFromWindowResize)
-        #expect(controller.splitView.isVertical)
-        #expect(controller.splitView.delegate === controller)
+        // Selecting the current pane still reaches the owner, which can leave
+        // a temporary search route. The native overflow menu uses that route too.
+        let writingMenu = try #require(writingItem.menuFormRepresentation)
+        let menuAction = try #require(writingMenu.action)
+        #expect(NSApplication.shared.sendAction(menuAction, to: writingMenu.target, from: writingMenu))
+        #expect(selections == [.writing, .writing])
+        let unknownItem = NSToolbarItem(itemIdentifier: .init("unknown-settings-category"))
+        #expect(NSApplication.shared.sendAction(writingAction, to: controller, from: unknownItem))
+        #expect(selections == [.writing, .writing])
 
-        var previousPageWidth: CGFloat?
+        // A later scene-content transaction must not retire native resizing.
+        window.styleMask.remove(.resizable)
+        controller.update(selection: .workspace, locale: Locale(identifier: "en"))
+        #expect(window.styleMask.contains(.resizable))
+        #expect(window.frame == originalFrame)
         for width in [CGFloat(920), CGFloat(780)] {
             window.setContentSize(NSSize(width: width, height: 600))
             window.contentView?.layoutSubtreeIfNeeded()
-            controller.splitView.layoutSubtreeIfNeeded()
-            let split = controller.splitView
-            let sidebarFrame = controller.sidebarController.view.convert(
-                controller.sidebarController.view.bounds, to: split)
-            let pageFrame = controller.pageController.view.convert(
-                controller.pageController.view.bounds, to: split)
-            #expect(abs(split.bounds.width - width) < 0.5)
-            #expect(abs(sidebarFrame.width - 240) < 0.5)
-            #expect(abs(sidebarFrame.minX - split.bounds.minX) < 0.5)
-            #expect(!navigation.isCollapsed && !content.isCollapsed)
+            controller.view.layoutSubtreeIfNeeded()
+            let contentFrame = controller.pageController.view.convert(
+                controller.pageController.view.bounds, to: controller.view)
+            let safeFrame = controller.view.safeAreaLayoutGuide.frame
+            #expect(abs(controller.view.bounds.width - width) < 0.5)
+            #expect(abs(contentFrame.width - safeFrame.width) < 0.5)
+            #expect(abs(contentFrame.minX - safeFrame.minX) < 0.5)
+            #expect(abs(contentFrame.minY - safeFrame.minY) < 0.5)
+            #expect(abs(contentFrame.maxY - safeFrame.maxY) < 0.5)
             #expect(window.toolbar === toolbar && toolbar.isVisible)
-            #expect(separator.splitView === split && separator.dividerIndex == 0)
-            let gap = pageFrame.minX - sidebarFrame.maxX
-            #expect(gap >= 0 && gap <= split.dividerThickness)
-            #expect(abs(pageFrame.maxX - split.bounds.maxX) < 0.5)
-            if let previousPageWidth {
-                #expect(abs(previousPageWidth - pageFrame.width - 140) < 0.5)
-            }
-            previousPageWidth = pageFrame.width
-
-            let divider = NSRect(
-                x: sidebarFrame.maxX, y: split.bounds.minY,
-                width: split.dividerThickness, height: split.bounds.height)
-            #expect(
-                controller.splitView(
-                    split, effectiveRect: divider.insetBy(dx: -8, dy: 0),
-                    forDrawnRect: divider, ofDividerAt: 0) == .zero)
-            #expect(controller.splitView(split, additionalEffectiveRectOfDividerAt: 0) == .zero)
         }
+
+        controller.update(selection: .document, locale: Locale(identifier: "zh-Hans"))
+        #expect(toolbar.items.map(\.label) == ["工作区", "文稿", "写作", "Agent", "快捷键", "Zotero"])
+        #expect(window.title == "文稿外观")
+        #expect(toolbar.selectedItemIdentifier == expectedIdentifiers[1])
+        #expect(toolbar.items[1].toolTip == "文稿外观")
+        #expect(selections == [.writing, .writing], "Projection must not send a selection intent")
+
         controller.detachToolbar()
         #expect(window.toolbar == nil)
     }
 
+    @Test("Detaching Settings preserves a toolbar installed by another owner")
+    func detachPreservesReplacementToolbar() {
+        _ = NSApplication.shared
+        let controller = SettingsNavigationController(
+            selection: .workspace, locale: Locale(identifier: "en"),
+            page: AnyView(Text("Disposable settings page")), onSelect: { _ in })
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
+            styleMask: [.titled, .resizable],
+            backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        defer {
+            controller.detachToolbar()
+            window.toolbar = nil
+            window.contentViewController = nil
+            window.close()
+        }
+        controller.attachToolbar()
+        let replacement = NSToolbar(identifier: "disposable.replacement.toolbar")
+        window.toolbar = replacement
+        controller.detachToolbar()
+        #expect(window.toolbar === replacement)
+    }
+
     @Test("Hiding an editing pane releases its field editor but preserves outside focus")
-    func outgoingFieldEditorAndSidebarFocus() {
+    func outgoingFieldEditorAndSearchFocus() {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { window.close() }
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 500))
         window.contentView = root
-        let sidebar = NSTextField(string: "Sidebar")
-        root.addSubview(sidebar)
+        let search = NSSearchField()
+        search.stringValue = "Search"
+        root.addSubview(search)
         let container = SettingsPaneContainerView(frame: NSRect(x: 200, y: 0, width: 600, height: 500))
         root.addSubview(container)
         let first = NSTextField(string: "Unsaved draft")
@@ -151,10 +192,10 @@ struct SettingsPaneContainerTests {
         #expect(window.firstResponder !== oldEditor)
         #expect(first.stringValue == "Unsaved draft")
 
-        #expect(window.makeFirstResponder(sidebar))
-        let sidebarEditor = window.firstResponder
+        #expect(window.makeFirstResponder(search))
+        let searchEditor = window.firstResponder
         container.show(first)
-        #expect(window.firstResponder === sidebarEditor)
+        #expect(window.firstResponder === searchEditor)
         #expect(first.stringValue == "Unsaved draft")
     }
 }

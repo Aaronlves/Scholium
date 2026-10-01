@@ -1,8 +1,39 @@
 import ScholiumContracts
 import SwiftUI
 
-struct WritingContinuationSettingsContent: View {
+struct WritingAssistanceModelSettingsContent: View {
     @Environment(\.agentChatSettingsController) private var controller
+    @ObservedObject private var preferences = WritingAssistancePreferences.shared
+
+    var body: some View {
+        Section {
+            if let error = preferences.loadError {
+                Label(error, systemImage: "exclamationmark.triangle")
+                Button("Restore Writing Assistance Defaults") { preferences.restoreDefaults() }
+            }
+            if let controller {
+                WritingAssistanceModelSettings(controller: controller, preferences: preferences)
+                    .id(controller.triptychID)
+            } else {
+                WritingAssistanceModelPicker(preferences: preferences, models: [], connected: false)
+                Text(ScholiumL10n.WritingAssistance.openTriptych)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(ScholiumL10n.WritingAssistance.contextAndAllowance)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } header: {
+            Text(ScholiumL10n.WritingAssistance.model)
+        } footer: {
+            Text("This Mac", bundle: .module)
+        }
+        .id("writing.model")
+    }
+}
+
+struct WritingContinuationSettingsContent: View {
     @ObservedObject private var preferences = WritingAssistancePreferences.shared
 
     var body: some View {
@@ -15,24 +46,6 @@ struct WritingContinuationSettingsContent: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if let error = preferences.loadError {
-                Label(error, systemImage: "exclamationmark.triangle")
-                Button("Restore Writing Continuation Defaults") { preferences.restoreDefaults() }
-            }
-            if let controller {
-                WritingContinuationModelSettings(controller: controller, preferences: preferences)
-                    .id(controller.triptychID)
-            } else {
-                WritingContinuationModelPicker(preferences: preferences, models: [], connected: false)
-                Text(ScholiumL10n.WritingAssistance.openTriptych)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Text(ScholiumL10n.WritingAssistance.contextAndAllowance)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         } header: {
             Text("Writing Continuation")
         } footer: {
@@ -42,20 +55,20 @@ struct WritingContinuationSettingsContent: View {
     }
 }
 
-private struct WritingContinuationModelSettings: View {
+private struct WritingAssistanceModelSettings: View {
     @ObservedObject var controller: AgentChatController
     @ObservedObject var preferences: WritingAssistancePreferences
 
     private var connected: Bool { controller.connectionState == .ready && controller.account != nil }
-    private var continuationModels: [AgentChatModel] { controller.writingAssistanceModels }
+    private var models: [AgentChatModel] { controller.writingAssistanceModels }
 
     var body: some View {
-        WritingContinuationModelPicker(preferences: preferences, models: continuationModels, connected: connected)
+        WritingAssistanceModelPicker(preferences: preferences, models: models, connected: connected)
         if !connected {
             Text(ScholiumL10n.WritingAssistance.connect)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-        } else if !continuationModels.contains(where: { $0.model == preferences.model }) {
+        } else if !models.contains(where: { $0.model == preferences.model }) {
             Text(ScholiumL10n.WritingAssistance.unavailableModel)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -63,7 +76,7 @@ private struct WritingContinuationModelSettings: View {
     }
 }
 
-private struct WritingContinuationModelPicker: View {
+private struct WritingAssistanceModelPicker: View {
     @ObservedObject var preferences: WritingAssistancePreferences
     let models: [AgentChatModel]
     let connected: Bool
@@ -79,7 +92,7 @@ private struct WritingContinuationModelPicker: View {
                 Text(verbatim: model.name).tag(model.model)
             }
         } label: {
-            Text(ScholiumL10n.WritingAssistance.model)
+            Text("Model")
         }
         .disabled(availableModels.isEmpty)
         .accessibilityIdentifier("scholium.settings.writingContinuation.model")

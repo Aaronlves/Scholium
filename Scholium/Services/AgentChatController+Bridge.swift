@@ -26,13 +26,21 @@ extension AgentChatController {
             executions[conversationID]?.state == .working,
             let owner = conversation(conversationID), owner.isAvailable == true,
             let context = request.runtimeContext, context == runtimeContext(for: requestToken),
-            let admission = executions[conversationID]?.admissionID
+            let admission = executions[conversationID]?.admissionID,
+            let operationConnection = connectionID
         else { return refusal("The conversation is not accepting operations.") }
-        func isAdmitted() -> Bool {
-            executions[conversationID]?.state == .working
-                && executions[conversationID]?.admissionID == admission
-                && runtimeContext(for: requestToken) == context
-                && conversation(conversationID)?.isAvailable == true
+        let isAdmitted: @MainActor @Sendable () -> Bool = { [weak self] in
+            guard let self else { return false }
+            return self.connectionID == operationConnection
+                && self.executions[conversationID]?.state == .working
+                && self.executions[conversationID]?.admissionID == admission
+                && self.runtimeContext(for: requestToken) == context
+                && self.conversation(conversationID)?.isAvailable == true
+        }
+        let mutationAdmission: AgentMutationAdmission = {
+            guard !Task.isCancelled, isAdmitted() else {
+                throw AgentCollaborationError.invalidRequest("The conversation ended before the source operation was admitted.")
+            }
         }
         let rawTriptych = request.arguments["triptych_id"]?.stringValue
         guard rawTriptych == nil || rawTriptych.flatMap(UUID.init(uuidString:)) == triptychID else {
@@ -105,7 +113,7 @@ extension AgentChatController {
                         arguments: [
                             "triptych_id": .string(triptychID.uuidString.lowercased()), "note_id": note,
                             "line_count": .integer(1),
-                        ]))
+                        ]), nil)
                 location = read.result?.objectValue?["relative_path"]?.stringValue ?? location
             }
             activity.subject = location
@@ -163,8 +171,9 @@ extension AgentChatController {
         let response = await toolHandler(
             .init(
                 requestID: request.requestID, tool: request.tool, arguments: arguments,
-                conversationToken: request.tool == .showNote ? request.conversationToken : nil,
-                runtimeContext: request.tool == .showNote ? request.runtimeContext : nil))
+                conversationToken: request.conversationToken,
+                runtimeContext: request.runtimeContext),
+            kind.isMutation ? mutationAdmission : nil)
         let result = response.result?.objectValue ?? [:]
         let changeID = result["change_id"]?.stringValue.flatMap(UUID.init(uuidString:))
         activity.status =

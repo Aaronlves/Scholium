@@ -709,13 +709,19 @@ extension WorkspaceHandle {
         startLiveIndexRefreshIfNeeded()
     }
 
-    func beginSourceMutation() async throws -> WorkspaceSourceOperationLease {
+    func beginSourceMutation(admission: AgentMutationAdmission? = nil) async throws -> WorkspaceSourceOperationLease {
         try requireActive()
         try requireRootAuthoritiesAvailable()
         do {
             let lease = try await acquireWorkspaceSourceOperation(.sourceMutation)
             do {
                 try Task.checkCancellation()
+                try requireActive()
+                try requireRootAuthoritiesAvailable()
+                // The live check runs only for the addressed Agent write while
+                // its consequential lease is held. Success admits this source
+                // transaction; Stop does not cancel its commit or recovery.
+                if let admission { try await admission() }
                 try requireActive()
                 try requireRootAuthoritiesAvailable()
                 return lease

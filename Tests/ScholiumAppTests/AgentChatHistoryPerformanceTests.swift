@@ -16,7 +16,7 @@ struct AgentChatHistoryPerformanceTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let controller = AgentChatController(
             triptychID: UUID(), root: root, workspaceDirectory: { root }, saveHistory: { _ in },
-            toolHandler: { _ in try! .init(requestID: UUID(), result: .object([:])) })
+            toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })
         #expect(await controller.waitUntilLoaded())
         let id = try #require(controller.selectedID)
         controller.update(in: id) { conversation in
@@ -73,7 +73,7 @@ struct AgentChatHistoryPerformanceTests {
         let controller = AgentChatController(
             triptychID: UUID(), root: root, workspaceDirectory: { root },
             saveHistory: { _ in },
-            toolHandler: { _ in try! .init(requestID: UUID(), result: .object([:])) })
+            toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })
         #expect(await controller.waitUntilLoaded())
         let id = try #require(controller.selectedID)
         controller.update(in: id) { conversation in

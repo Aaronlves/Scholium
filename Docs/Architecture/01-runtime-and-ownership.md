@@ -282,9 +282,8 @@ revision mismatch requires explicit reload, not last-writer-wins. Native retaine
 page hosts preserve drafts while inactive hosts lose input/accessibility/default
 actions. Background font discovery publishes names only, coalesces invalidation
 and rejects stale completion. Search uses static interface metadata, never research
-content or permission. The AppKit fixed sidebar container owns native material,
-titlebar/toolbar section association and divider geometry; SwiftUI owns selection
-and discovery.
+content or permission. AppKit owns the preferences toolbar, safe area and
+temporary search-result selection; SwiftUI owns category, query and destination.
 
 Shortcuts have one command catalog/validated preference writer; menus consume it.
 The application hotkey event adapter owns hardware-event normalization, while the

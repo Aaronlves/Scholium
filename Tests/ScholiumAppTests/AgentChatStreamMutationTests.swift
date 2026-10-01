@@ -24,7 +24,7 @@ struct AgentChatStreamMutationTests {
                 saves += 1
                 try await storage.save(values)
             },
-            toolHandler: { _ in try! .init(requestID: UUID(), result: .object([:])) })
+            toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })
         #expect(await controller.waitUntilLoaded())
         let first = try #require(controller.selectedID)
         controller.update(in: first) { $0.threadID = "thread" }
@@ -93,7 +93,7 @@ struct AgentChatStreamMutationTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let controller = AgentChatController(
             triptychID: UUID(), root: root, workspaceDirectory: { root }, saveHistory: { _ in },
-            toolHandler: { _ in try! .init(requestID: UUID(), result: .object([:])) })
+            toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })
         #expect(await controller.waitUntilLoaded())
         let id = try #require(controller.selectedID)
         controller.update(in: id) { conversation in

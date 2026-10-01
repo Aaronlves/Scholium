@@ -263,25 +263,33 @@ public struct AgentNoteTrashResult: Sendable {
     }
 }
 
+/// Process-local check of an already selected Agent operation. Successful
+/// checking while holding the source lease admits that transaction; later
+/// conversation changes do not cancel its commit or evidence recovery.
+public typealias AgentMutationAdmission = @MainActor @Sendable () throws -> Void
+
 public protocol AgentCollaborationUseCases: Sendable {
     func currentNoteSource(noteID: UUID) async throws -> AgentNoteSource
     func currentNoteContext(noteID: UUID, expectedFingerprint: DocumentFingerprint) async throws -> AgentNoteContext
-    func createNote(_ request: ManagedNoteCreationRequest) async throws
+    func createNote(_ request: ManagedNoteCreationRequest, admission: AgentMutationAdmission?) async throws
         -> AgentNoteCreationResult
     func updateNote(
         noteID: UUID,
         expectedFingerprint: DocumentFingerprint,
-        update: AgentNoteUpdate
+        update: AgentNoteUpdate,
+        admission: AgentMutationAdmission?
     ) async throws -> AgentNoteUpdateResult
     func trashNote(
         noteID: UUID,
-        expectedFingerprint: DocumentFingerprint
+        expectedFingerprint: DocumentFingerprint,
+        admission: AgentMutationAdmission?
     ) async throws -> AgentNoteTrashResult
     func agentChanges() async throws -> [AgentChange]
     func agentChangeReview(id: UUID) async throws -> AgentChangeReview
     func undoAgentChange(
         id: UUID,
-        expectedAfterFingerprint: DocumentFingerprint
+        expectedAfterFingerprint: DocumentFingerprint,
+        admission: AgentMutationAdmission?
     ) async throws -> AgentChangeUndoResult
 }
 

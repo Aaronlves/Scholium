@@ -21,14 +21,17 @@ extension WorkspaceHandle {
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint,
-        undoAgentChangeID: UUID? = nil
+        expectedStableNoteID: UUID? = nil,
+        undoAgentChangeID: UUID? = nil,
+        admission: AgentMutationAdmission? = nil
     ) async throws -> WorkspaceMutationOutcome<SaveResult> {
         switch try await performDocumentSave(
             id,
             changeSet: changeSet,
             expectedRevision: expectedRevision,
             completion: .sourceAndDerived,
-            undoAgentChangeID: undoAgentChangeID
+            expectedStableNoteID: expectedStableNoteID,
+            undoAgentChangeID: undoAgentChangeID, admission: admission
         ) {
         case .committed(let outcome):
             return outcome
@@ -66,10 +69,12 @@ extension WorkspaceHandle {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint,
         completion: DocumentSaveCompletion,
-        undoAgentChangeID: UUID? = nil
+        expectedStableNoteID: UUID? = nil,
+        undoAgentChangeID: UUID? = nil,
+        admission: AgentMutationAdmission? = nil
     ) async throws -> DocumentSaveOperationOutcome {
         try requireActive()
-        let mutationLease = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation(admission: admission)
         var ownsMutation = true
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }
@@ -82,9 +87,28 @@ extension WorkspaceHandle {
                 change.state == .confirmed,
                 change.afterFingerprint == expectedRevision
             else { throw AgentChangeError.undoUnavailable(undoAgentChangeID) }
+            try requireExpectedIdentity(
+                expectedStableNoteID,
+                resolved: change.noteID,
+                relativePath: id.relativePath
+            )
             undoEvidence = change
         } else {
             undoEvidence = nil
+        }
+        // A captured path and identical source bytes can belong to a different
+        // Note while this writer waits for the source lease. Undo's receipt is
+        // itself a mandatory identity binding, even without a caller-supplied ID.
+        if let stableNoteID = undoEvidence?.noteID ?? expectedStableNoteID {
+            let identity = try await resolvedIdentity(
+                for: id,
+                expectedRevision: expectedRevision
+            )
+            try requireExpectedIdentity(
+                stableNoteID,
+                resolved: identity.id,
+                relativePath: id.relativePath
+            )
         }
         let save = try await repository.saveOutcome(
             relativePath: id.relativePath,
@@ -277,7 +301,7 @@ extension WorkspaceHandle {
     }
 
     func moveToSystemTrash(
-        _ preview: SystemTrashDeletionPreview
+        _ preview: SystemTrashDeletionPreview, admission: AgentMutationAdmission? = nil
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
         try requireActive()
         guard let vaultID = preview.sources.first?.vaultID,
@@ -287,7 +311,7 @@ extension WorkspaceHandle {
                 "A system-Trash plan must belong to exactly one vault."
             )
         }
-        let mutationLease = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation(admission: admission)
         var ownsMutation = true
         defer { if ownsMutation { endSourceMutation(mutationLease) } }
         let commit: SystemTrashDeletionCommit

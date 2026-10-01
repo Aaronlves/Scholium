@@ -27,5 +27,6 @@ func fixtureChatController(
         triptychID: triptychID, root: root,
         workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptychID) },
         methodDefaults: methodDefaults, displayWindow: displayWindow,
-        notificationSink: notificationSink, previewUpdate: previewUpdate, toolHandler: toolHandler)
+        notificationSink: notificationSink, previewUpdate: previewUpdate,
+        toolHandler: { request, _ in await toolHandler(request) })
 }

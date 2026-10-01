@@ -154,13 +154,13 @@ public actor ScholiumMCPServer {
         } catch let error as ScholiumAppBridgeError {
             let failure: ScholiumMCPFailure
             switch error {
-            case .unavailable:
+            case .unavailable, .timeout:
                 failure = ScholiumMCPFailure(
                     code: .appUnavailable,
                     message: "The Scholium App bridge is unavailable.",
                     recovery: "Launch Scholium, open a Triptych, and call workspace status again."
                 )
-            case .outcomeUnknown, .timeout:
+            case .outcomeUnknown:
                 failure = ScholiumMCPFailure(
                     code: .operationUncertain,
                     message: "The App bridge could not determine the operation outcome.",
@@ -1169,6 +1169,7 @@ public actor ScholiumMCPServer {
                 ]
             }
         return .object([
+            "type": .string("object"),
             "oneOf": .array(successes + [failureSchema])
         ])
     }

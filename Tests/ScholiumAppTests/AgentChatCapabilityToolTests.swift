@@ -20,6 +20,88 @@ struct AgentChatCapabilityToolTests {
         }
     }
 
+    @Test(
+        "Successful Agent capability writes refresh retained inventory and native configuration",
+        arguments: ["skill", "tool"])
+    func successfulWriteRefreshesRetainedCapabilities(_ operation: String) async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/capability-refresh-\(UUID())")
+        let suite = "scholium.agent-capability-refresh.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        do {
+            try #require(await controller.waitUntilLoaded())
+            let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+            controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
+            try #require(await controller.waitUntilConnectionReady())
+            controller.editDraft("hold capability configuration")
+            controller.send()
+            try await wait({ controller.state == .working && controller.selected?.pendingMessageID == nil }, reason: "working turn")
+            let token = try #require(controller.token)
+            let context = try #require(controller.runtimeContext(for: token))
+            let caps = controller.capabilities
+            let method = try #require(caps.methods.first { !$0.isProtected })
+            let inspected = await controller.handle(.init(tool: .capabilities, conversationToken: token, runtimeContext: context))
+            let initialVersion = try #require(inspected.result?.objectValue?["tool_configuration"]?.objectValue?["version"]?.stringValue)
+            let request: ScholiumMCPBridgeRequest
+            if operation == "skill" {
+                request = .init(
+                    tool: .configureSkill,
+                    arguments: ["action": .string("disable"), "path": .string(method.selection.path)],
+                    conversationToken: token, runtimeContext: context)
+            } else {
+                request = .init(
+                    tool: .configureTool,
+                    arguments: [
+                        "action": .string("add"), "expected_version": .string(initialVersion),
+                        "name": .string("retained-parser"), "kind": .string("remote"),
+                        "address": .string("https://parser.example.invalid/mcp"), "enabled": .bool(false),
+                    ], conversationToken: token, runtimeContext: context)
+            }
+            let response = await controller.handle(request)
+            try #require(response.error == nil)
+            try await wait({ !caps.isRefreshing && !caps.isChanging }, reason: "settled capability refresh")
+            #expect(caps.hasMethods && caps.hasTools && caps.workspaceReady)
+            #expect(caps.methodError == nil && caps.toolError == nil && caps.toolConfigurationError == nil)
+            #expect(caps.tools.contains { $0.name == "scholium" })
+            #expect(controller.state == .working && controller.runtimeContext(for: token) == context)
+
+            let expectedVersion: String
+            if operation == "skill" {
+                #expect(FileManager.default.fileExists(atPath: controller.runtimeHome.appendingPathComponent("method-disabled").path))
+                #expect(caps.methods.first { $0.selection.path == method.selection.path }?.enabled == false)
+                #expect(!caps.contains(method.selection))
+                expectedVersion = initialVersion
+            } else {
+                expectedVersion = try #require(response.result?.objectValue?["configuration"]?.objectValue?["version"]?.stringValue)
+                let saved = try Data(contentsOf: controller.runtimeHome.appendingPathComponent("fixture-tool-config.json"))
+                let configuration = try JSONDecoder().decode(MCPJSONValue.self, from: saved).objectValue
+                #expect(configuration?["servers"]?.objectValue?["retained-parser"]?.objectValue?["enabled"]?.boolValue == false)
+                #expect(caps.toolConnections.first { $0.name == "retained-parser" }?.enabled == false)
+                #expect(caps.tools.first { $0.name == "retained-parser" }?.connectionStatus == "disabled")
+                #expect(expectedVersion != initialVersion)
+            }
+
+            controller.stop()
+            try await wait({ controller.state == .ready && !controller.isBusy }, reason: "idle conversation")
+            #expect(!caps.isChanging && !caps.isRefreshing && caps.canConfigureTools)
+            #expect(await controller.waitUntilConnectionReady())
+            #expect(caps.editTool()?.revision == expectedVersion)
+            if operation == "tool" {
+                #expect(caps.editTool(named: "retained-parser")?.revision == expectedVersion)
+            }
+        } catch {
+            await controller.disconnect()
+            throw error
+        }
+        await controller.disconnect()
+    }
+
     @Test("An active Agent turn can inspect and configure runtime Skills, Tools and Chat settings")
     func activeTurnCanConfigureCapabilities() async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/capabilities-(UUID())")

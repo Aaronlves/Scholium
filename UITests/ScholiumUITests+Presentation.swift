@@ -58,18 +58,13 @@ extension ScholiumUITests {
         let window = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         let originalFrame = window.frame
-        func category(_ key: String) -> XCUIElement {
-            window.descendants(matching: .any)["scholium.settings.category.\(key)"].firstMatch
-        }
         func select(_ key: String) {
-            let item = category(key)
-            XCTAssertTrue(item.waitForExistence(timeout: 5))
-            item.click()
+            selectSettingsCategory(key, in: window)
             XCTAssertEqual(window.frame.width, originalFrame.width, accuracy: 1)
             XCTAssertEqual(window.frame.height, originalFrame.height, accuracy: 1)
         }
-        func capture(_ name: String) {
-            let attachment = XCTAttachment(screenshot: window.screenshot())
+        func capture(_ name: String, includeSearchResults: Bool = false) {
+            let attachment = XCTAttachment(screenshot: includeSearchResults ? app.screenshot() : window.screenshot())
             attachment.name = name
             attachment.lifetime = .keepAlways
             add(attachment)
@@ -113,13 +108,10 @@ extension ScholiumUITests {
         typeCommittedText("Core Protocol", into: taskSearch, in: app)
         let protectedSkill = window.staticTexts["Protected Skill"]
         XCTAssertFalse(protectedSkill.exists, "Typing must not switch the Agent segment")
-        let protocolResult = window.buttons["scholium.settings.result.agents.protocol"]
-        XCTAssertTrue(protocolResult.waitForExistence(timeout: 5))
-        protocolResult.click()
+        selectSettingsSearchResult("agents.protocol", in: window)
         XCTAssertTrue(protectedSkill.waitForExistence(timeout: 5))
         window.radioButtons["External Access"].click()
-        XCTAssertTrue(protocolResult.waitForExistence(timeout: 5))
-        protocolResult.click()
+        selectSettingsSearchResult("agents.protocol", in: window)
         XCTAssertTrue(waitUntil(timeout: 5) { protectedSkill.isHittable }, "Repeating a result must reveal its owning Agent segment")
         capture("settings-agent-skills")
         taskSearch.buttons["cancel"].click()
@@ -134,9 +126,7 @@ extension ScholiumUITests {
         window.radioButtons["Connection and Chat"].click()
         select("zotero")
         typeCommittedText("Connected Tools", into: taskSearch, in: app)
-        let toolsResult = window.buttons["scholium.settings.result.agents.tools"]
-        XCTAssertTrue(toolsResult.waitForExistence(timeout: 5))
-        toolsResult.click()
+        selectSettingsSearchResult("agents.tools", in: window)
         let connectionLink = window.buttons["Open Connection and Chat"]
         XCTAssertTrue(connectionLink.waitForExistence(timeout: 5))
         connectionLink.click()
@@ -157,9 +147,9 @@ extension ScholiumUITests {
         let search = window.searchFields["scholium.settings.search"]
         typeCommittedText("no-such-setting-qa", into: search, in: app)
         XCTAssertEqual(search.value as? String, "no-such-setting-qa")
-        XCTAssertTrue(window.descendants(matching: .any)["scholium.settings.noResults"].firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.settings.noResults"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(window.buttons["Save Appearance"].exists, "No matches must retain the browsing page")
-        capture("settings-empty-search")
+        capture("settings-empty-search", includeSearchResults: true)
         search.buttons["cancel"].click()
         XCTAssertTrue(size.waitForExistence(timeout: 5))
         XCTAssertEqual(size.value as? String, "17")
@@ -177,13 +167,22 @@ extension ScholiumUITests {
         if let savedName { typeCommittedText(savedName, into: name, in: app) }
         capture("settings-workspace")
 
-        // Native sidebar selection keeps keyboard focus across successive moves.
-        category("workspace").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        // The native search field retains typing focus while keyboard selection
+        // reveals a setting through the same category route as pointer selection.
+        let keyboardSearch = window.searchFields["scholium.settings.search"]
+        typeCommittedText("Writing Assistance Model", into: keyboardSearch, in: app)
+        XCTAssertEqual(window.title, "Workspace")
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.settings.result.writing.model"].firstMatch.waitForExistence(timeout: 5))
         app.typeKey(.downArrow, modifierFlags: [])
-        XCTAssertTrue(size.waitForExistence(timeout: 5))
-        app.typeKey(.downArrow, modifierFlags: [])
+        app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(window.descendants(matching: .any)["scholium.settings.writing"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(keyboardSearch.value as? String, "Writing Assistance Model")
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            !self.app.descendants(matching: .any)["scholium.settings.searchResults"].firstMatch.exists
+        })
         XCTAssertEqual(window.frame.size, originalFrame.size)
+        keyboardSearch.buttons["cancel"].click()
+        XCTAssertTrue(name.waitForExistence(timeout: 5), "Clearing search must restore its original browsing category")
 
         select("document")
         // Resize from the straight edge; the rounded corner falls outside the
@@ -192,14 +191,15 @@ extension ScholiumUITests {
             .withOffset(CGVector(dx: -1, dy: 0))
         rightEdge.click(forDuration: 0.15, thenDragTo: rightEdge.withOffset(CGVector(dx: 780 - window.frame.width, dy: 0)))
         XCTAssertTrue(waitUntil(timeout: 5) { abs(window.frame.width - 780) < 2 })
+        for label in ["Workspace", "Document", "Writing", "Agents", "Shortcuts", "Zotero"] {
+            XCTAssertTrue(window.toolbars.buttons[label].isHittable, "Every category must remain visible at minimum width")
+        }
         XCTAssertTrue(window.buttons["Save Appearance"].isHittable)
         XCTAssertTrue(window.popUpButtons["scholium.appearance.bodyFont"].isHittable)
         capture("settings-appearance-minimum-width")
         let searchForDetails = window.searchFields["scholium.settings.search"]
         typeCommittedText("H6 spacing", into: searchForDetails, in: app)
-        let h6Result = window.buttons["scholium.settings.result.appearance.h6"]
-        XCTAssertTrue(h6Result.waitForExistence(timeout: 5))
-        h6Result.click()
+        selectSettingsSearchResult("appearance.h6", in: window)
         let h6Spacing = window.textFields["H6 space after"]
         XCTAssertTrue(h6Spacing.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil(timeout: 5) { h6Spacing.isHittable }, "Search must reveal the specific heading controls without manual scrolling")
@@ -215,15 +215,20 @@ extension ScholiumUITests {
         app.menuItems["设置…"].click()
         let localizedWindow = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
         XCTAssertTrue(localizedWindow.waitForExistence(timeout: 5))
-        let appearance = localizedWindow.descendants(matching: .any)["scholium.settings.category.document"].firstMatch
-        XCTAssertTrue(appearance.waitForExistence(timeout: 5))
-        appearance.click()
+        let localizedRightEdge = localizedWindow.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: -1, dy: 0))
+        localizedRightEdge.click(forDuration: 0.15, thenDragTo: localizedRightEdge.withOffset(CGVector(dx: 780 - localizedWindow.frame.width, dy: 0)))
+        XCTAssertTrue(waitUntil(timeout: 5) { abs(localizedWindow.frame.width - 780) < 2 })
+        for label in ["工作区", "文稿", "写作", "Agent", "快捷键", "Zotero"] {
+            XCTAssertTrue(localizedWindow.toolbars.buttons[label].isHittable)
+        }
+        selectSettingsCategory("document", in: localizedWindow)
         XCTAssertTrue(localizedWindow.textFields["正文字号"].waitForExistence(timeout: 5))
         let localizedAttachment = XCTAttachment(screenshot: localizedWindow.screenshot())
         localizedAttachment.name = "settings-appearance-chinese-light"
         localizedAttachment.lifetime = .keepAlways
         add(localizedAttachment)
-        localizedWindow.descendants(matching: .any)["scholium.settings.category.agents"].firstMatch.click()
+        selectSettingsCategory("agents", in: localizedWindow)
         XCTAssertTrue(localizedWindow.radioButtons["连接与聊天"].waitForExistence(timeout: 5))
         let agentAttachment = XCTAttachment(screenshot: localizedWindow.screenshot())
         agentAttachment.name = "settings-agents-chinese-light-normalized"

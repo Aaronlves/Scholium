@@ -50,6 +50,91 @@ struct AgentChatToolAuthenticationTests {
         try #require(await controller.waitUntilConnectionReady(), "Chat runtime did not finish capability initialization")
     }
 
+    @Test("Agent tool sign-in accepts only completion from its exact runtime thread")
+    func agentAuthenticationRequiresExactThread() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/agent-auth-thread-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        do {
+            try await connect(controller)
+            controller.editDraft("hold while authorizing agent tools")
+            controller.send()
+            try await wait(for: controller.objectWillChange) { controller.state == .working && controller.selected?.pendingMessageID == nil }
+            let token = try #require(controller.token)
+            let context = try #require(controller.runtimeContext(for: token))
+            let caps = controller.capabilities
+            let request = ScholiumMCPBridgeRequest(
+                tool: .configureTool,
+                arguments: ["action": .string("sign_in"), "name": .string("fixture-library")],
+                conversationToken: token, runtimeContext: context)
+            let started = await controller.handle(request)
+            try #require(started.error == nil && started.result?.objectValue?["authorization_url"]?.stringValue != nil)
+
+            caps.authenticationCompleted(
+                ["name": .string("fixture-library"), "threadId": .string("another-thread"), "success": .bool(true)],
+                visibleThreadID: context.threadID)
+            #expect(caps.authenticationNotice == nil && caps.authenticationError == nil)
+            #expect(caps.authenticationFeedbackTool == nil)
+            let repeated = await controller.handle(request)
+            #expect(repeated.error?.code == .conflict)
+
+            caps.authenticationCompleted(
+                ["name": .string("fixture-library"), "threadId": .string(context.threadID), "success": .bool(false),
+                    "error": .string("Fixture authorization declined")],
+                visibleThreadID: context.threadID)
+            try await wait(for: caps.objectWillChange) { caps.hasTools && !caps.isRefreshing }
+            #expect(caps.authenticationNotice == nil && caps.authenticationError == "Fixture authorization declined")
+            let server = try #require(caps.tools.first { $0.name == "fixture-library" })
+            #expect(caps.canSignIn(server))
+            #expect(controller.runtimeContext(for: token) == context)
+        } catch {
+            await controller.disconnect()
+            throw error
+        }
+        await controller.disconnect()
+    }
+
+    @Test("Native tool sign-in waits for an existing Agent authorization flow")
+    func nativeSignInWaitsForAgentAuthorization() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/agent-auth-overlap-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        do {
+            try await connect(controller)
+            controller.editDraft("hold while authorizing agent tools")
+            controller.send()
+            try await wait(for: controller.objectWillChange) { controller.state == .working && controller.selected?.pendingMessageID == nil }
+            let token = try #require(controller.token)
+            let context = try #require(controller.runtimeContext(for: token))
+            let caps = controller.capabilities
+            let server = try #require(caps.tools.first { $0.name == "fixture-library" })
+            let started = await controller.handle(
+                .init(
+                    tool: .configureTool,
+                    arguments: ["action": .string("sign_in"), "name": .string(server.name)],
+                    conversationToken: token, runtimeContext: context))
+            try #require(started.error == nil)
+            #expect(!caps.canSignIn(server))
+            var opened = 0
+            caps.signIn(server, threadID: context.threadID) { _ in opened += 1 }
+            try await wait(for: caps.objectWillChange) { caps.authenticationError != nil || caps.authorizationURL != nil }
+            #expect(opened == 0 && caps.authorizationURL == nil && caps.authenticatingTool == nil)
+            caps.authenticationCompleted(
+                ["name": .string(server.name), "threadId": .string(context.threadID), "success": .bool(false)],
+                visibleThreadID: context.threadID)
+            try await wait(for: caps.objectWillChange) { caps.hasTools && !caps.isRefreshing }
+            #expect(caps.canSignIn(server) && caps.authenticatingTool == nil)
+        } catch {
+            await controller.disconnect()
+            throw error
+        }
+        await controller.disconnect()
+    }
+
     @Test("Opening a page does not confirm sign-in; only the matching runtime event does")
     func authentication() async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/auth-\(UUID())")

@@ -87,7 +87,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     @Published var preparingMaterials: Set<UUID> = []
     @Published var materialErrors: [UUID: String] = [:]
     var materialTasks: [UUID: Task<Bool, Never>] = [:]
-    let toolHandler: @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
+    let toolHandler: @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     let displayWindow: @MainActor (UUID) -> AgentChatDisplayScope?
     let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
     var runtime: CodexAppServer?
@@ -124,7 +124,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview = { _ in
             throw AgentCollaborationError.invalidRequest("Note comparison is unavailable.")
         },
-        toolHandler: @escaping @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
+        toolHandler: @escaping @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     ) {
         self.triptychID = triptychID
         self.workspaceDirectory = workspaceDirectory

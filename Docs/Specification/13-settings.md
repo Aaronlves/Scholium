@@ -22,17 +22,23 @@ requirements; implementation evidence remains in the Status set.
 ### Navigation, discovery and scope
 
 One native preferences window opens through the App menu and Command-Comma.
-A fixed native icon-and-label navigation column remains visible and identifies
-the selected category; it has no collapse action or draggable split divider.
-The sidebar and content retain their separate native titlebar regions, with
-sidebar material continuing to the window’s top edge.
+A native preferences toolbar below the window title presents the six category
+items with system symbols and short visible labels. It remains visible and
+cannot be customized; the native selected item identifies the current pane.
+The short labels are Workspace, Document, Writing, Agents, Shortcuts and Zotero
+(工作区、文稿、写作、Agent、快捷键、Zotero). Full category names retain their
+meaning in the window title, search results and accessible description; an
+accessible item name includes its visible label. All six items remain visible
+at the supported minimum width in English and Simplified Chinese. Native
+controls own toolbar geometry, material, selection, focus and adaptation.
+The content below uses the complete window width without a navigation sidebar.
 The window title reflects that pane. Reopening restores the last category. The
 window retains its size while switching categories; the researcher can resize it.
 Category changes do not animate window geometry or discard unsaved drafts,
 selection or scroll position in pages already opened in the settings session.
 Inactive pages have no keyboard, pointer or accessibility interaction.
 
-The navigation column presents six task categories: Workspace, Document
+The toolbar presents six task categories: Workspace, Document
 Appearance, Writing Assistance, Agents & Chat, Keyboard Shortcuts and Zotero.
 Workspace owns Triptych registration,
 folder access, portable-data location and machine-local Changes history.
@@ -64,6 +70,12 @@ Each setting has one editing location. Contextual links and Settings search
 lead to that location rather than maintaining duplicate controls. Search indexes
 static page/control metadata, including English and Simplified Chinese labels
 and common user-facing synonyms, never research or Skill content.
+The native search field stays in a fixed content row below the toolbar, outside
+the form's scroll plane. Results appear in a native popover anchored to the
+field; typing retains text focus and does not navigate. Keyboard selection
+shares the result list's selection and yields to input-method composition.
+Choosing a result closes the popover while retaining the query. Escape closes
+the results without clearing the query; refocusing search can reopen them.
 Results name the setting and category; choosing a result selects the owning
 category and Agent segment, then reveals the named
 control or group in the existing scroll plane without changing its value.
@@ -71,6 +83,7 @@ Search navigation preserves the prior browsing category and segment; clearing
 the query restores them. Configuration links select their explicit destination
 rather than restoring a prior search destination.
 No matches preserves the query; clearing search restores the browsing context.
+Choosing a toolbar category exits search and establishes a new browsing context.
 
 ### Page composition
 

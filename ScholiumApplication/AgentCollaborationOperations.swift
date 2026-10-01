@@ -54,20 +54,20 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
     }
 
     public func createNote(
-        _ request: ManagedNoteCreationRequest
+        _ request: ManagedNoteCreationRequest, admission: AgentMutationAdmission? = nil
     ) async throws -> AgentNoteCreationResult {
         let handle = try await reference.requireHandle()
-        return try await handle.createAgentNote(request)
+        return try await handle.createAgentNote(request, admission: admission)
     }
 
     public func moveNote(
         noteID: UUID, expectedFingerprint: DocumentFingerprint, to path: String,
-        expectedPlanFingerprint: DocumentFingerprint
+        expectedPlanFingerprint: DocumentFingerprint, admission: AgentMutationAdmission? = nil
     ) async throws -> AgentNoteMoveResult {
         let handle = try await reference.requireHandle()
         return try await handle.moveAgentNote(
             noteID: noteID, expectedFingerprint: expectedFingerprint,
-            to: path, expectedPlanFingerprint: expectedPlanFingerprint)
+            to: path, expectedPlanFingerprint: expectedPlanFingerprint, admission: admission)
     }
 
     public func previewMoveMutation(
@@ -97,24 +97,24 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
     public func updateNote(
         noteID: UUID,
         expectedFingerprint: DocumentFingerprint,
-        update: AgentNoteUpdate
+        update: AgentNoteUpdate, admission: AgentMutationAdmission? = nil
     ) async throws -> AgentNoteUpdateResult {
         let handle = try await reference.requireHandle()
         return try await handle.updateAgentNote(
             noteID: noteID,
             expectedFingerprint: expectedFingerprint,
-            update: update
+            update: update, admission: admission
         )
     }
 
     public func trashNote(
         noteID: UUID,
-        expectedFingerprint: DocumentFingerprint
+        expectedFingerprint: DocumentFingerprint, admission: AgentMutationAdmission? = nil
     ) async throws -> AgentNoteTrashResult {
         let handle = try await reference.requireHandle()
         return try await handle.trashAgentNote(
             noteID: noteID,
-            expectedFingerprint: expectedFingerprint
+            expectedFingerprint: expectedFingerprint, admission: admission
         )
     }
 
@@ -135,12 +135,12 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
 
     public func undoAgentChange(
         id: UUID,
-        expectedAfterFingerprint: DocumentFingerprint
+        expectedAfterFingerprint: DocumentFingerprint, admission: AgentMutationAdmission? = nil
     ) async throws -> AgentChangeUndoResult {
         let handle = try await reference.requireHandle()
         return try await handle.undoAgentChange(
             id: id,
-            expectedAfterFingerprint: expectedAfterFingerprint
+            expectedAfterFingerprint: expectedAfterFingerprint, admission: admission
         )
     }
 }
@@ -148,7 +148,7 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
 extension WorkspaceHandle {
 
     func createAgentNote(
-        _ request: ManagedNoteCreationRequest
+        _ request: ManagedNoteCreationRequest, admission: AgentMutationAdmission?
     ) async throws -> AgentNoteCreationResult {
         try requireActive()
         guard case .mcp(let reservedIdentity) = request.authority else {
@@ -182,7 +182,7 @@ extension WorkspaceHandle {
             afterData: intendedData
         )
         do {
-            let outcome = try await createManagedNote(request)
+            let outcome = try await createManagedNote(request, admission: admission)
             let commit = outcome.committedValue
             guard commit.id.relativePath == relativePath,
                 commit.id.vaultID == request.vaultID,
@@ -290,7 +290,7 @@ extension WorkspaceHandle {
 
     func updateAgentNote(
         noteID: UUID, expectedFingerprint: DocumentFingerprint,
-        update: AgentNoteUpdate
+        update: AgentNoteUpdate, admission: AgentMutationAdmission?
     ) async throws -> AgentNoteUpdateResult {
         let (target, current, changeSet, intended) = try await prepareAgentNoteUpdate(
             noteID: noteID, expectedFingerprint: expectedFingerprint, update: update)
@@ -309,7 +309,8 @@ extension WorkspaceHandle {
             let outcome = try await saveDocument(
                 target.id,
                 changeSet: changeSet,
-                expectedRevision: expectedFingerprint
+                expectedRevision: expectedFingerprint,
+                expectedStableNoteID: noteID, admission: admission
             )
             let saved = outcome.committedValue.document
             guard saved.sourceBytes == intended.sourceBytes else {
@@ -349,7 +350,7 @@ extension WorkspaceHandle {
 
     func trashAgentNote(
         noteID: UUID,
-        expectedFingerprint: DocumentFingerprint
+        expectedFingerprint: DocumentFingerprint, admission: AgentMutationAdmission?
     ) async throws -> AgentNoteTrashResult {
         let target = try await currentAgentNote(noteID: noteID)
         let current = try await loadDocument(target.id)
@@ -375,7 +376,7 @@ extension WorkspaceHandle {
                 revision: current.fingerprint
             )
             let preview = try await prepareSystemTrash(mutationTarget)
-            let outcome = try await moveToSystemTrash(preview)
+            let outcome = try await moveToSystemTrash(preview, admission: admission)
             let commit = outcome.committedValue
             guard commit.noteIDs == [noteID],
                 commit.originalRelativePaths == [target.id.relativePath]
@@ -491,10 +492,10 @@ extension WorkspaceHandle {
         return .init(noteID: prepared.change.noteID, relativePath: prepared.target.id.relativePath, comparison: comparison)
     }
 
-    func undoAgentChange(id: UUID, expectedAfterFingerprint: DocumentFingerprint) async throws -> AgentChangeUndoResult {
+    func undoAgentChange(id: UUID, expectedAfterFingerprint: DocumentFingerprint, admission: AgentMutationAdmission?) async throws -> AgentChangeUndoResult {
 
         if try await services.agentChangeStore.change(id: id).operation == .move {
-            return try await undoAgentMove(id: id, expectedAfterFingerprint: expectedAfterFingerprint)
+            return try await undoAgentMove(id: id, expectedAfterFingerprint: expectedAfterFingerprint, admission: admission)
         }
         let (change, target, _, beforeData) = try await prepareAgentChangeUndo(id: id, expectedAfterFingerprint: expectedAfterFingerprint)
         guard let beforeSource = NoteDocument.decodeUTF8PreservingBOM(beforeData) else { throw AgentChangeError.invalid(id) }
@@ -503,7 +504,8 @@ extension WorkspaceHandle {
             let outcome = try await saveDocument(
                 target.id, changeSet: .exactContent(beforeSource),
                 expectedRevision: expectedAfterFingerprint,
-                undoAgentChangeID: id
+                expectedStableNoteID: change.noteID,
+                undoAgentChangeID: id, admission: admission
             )
             let restored = outcome.committedValue.document.fingerprint
             guard restored == change.beforeFingerprint else { throw AgentCollaborationError.changeConfirmationUncertain(id) }

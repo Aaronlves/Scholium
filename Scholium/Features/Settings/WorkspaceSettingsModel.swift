@@ -2,17 +2,6 @@ import Combine
 import Foundation
 import ScholiumContracts
 
-enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
-    case workspace
-    case document
-    case writing
-    case agents
-    case shortcuts
-    case zotero
-
-    var id: String { rawValue }
-}
-
 enum WorkspacePortableSettingsState: Equatable, Sendable {
     case unavailable
     case readFailed(String)
@@ -77,12 +66,6 @@ struct WorkspacePortableSettingsRead: Equatable, Sendable {
     let state: WorkspacePortableSettingsState
 }
 
-struct WorkspaceSettingsCommit: Equatable, Sendable {
-    let triptychID: UUID
-    let snapshot: TriptychSettingsSnapshot
-    let derivedRefreshWarning: String?
-}
-
 struct WorkspaceSettingsRecoveryCommit: Sendable {
     let triptychID: UUID
     let recovery: TriptychSettingsRecoveryResult
@@ -94,16 +77,9 @@ struct WorkspaceSettingsRecoveryRequest: Sendable {
     let revision: SettingsRevision?
 }
 
-struct WorkspaceSettingsSaveResult: Equatable, Sendable {
-    let warning: String?
-    let targetIsCurrent: Bool
-}
-
 enum WorkspaceSettingsMutationError: LocalizedError, Equatable {
     case triptychChanged
-    case commitRequiresReview(String)
     case reconciliationRequired
-    case recoveryRequiresReview
 
     var errorDescription: String? {
         switch self {
@@ -112,19 +88,10 @@ enum WorkspaceSettingsMutationError: LocalizedError, Equatable {
                 localized:
                     "The active Triptych changed. Reload the current settings before trying again.",
                 table: "Localizable", bundle: .module)
-        case .commitRequiresReview:
-            String(
-                localized:
-                    "Scholium reread the portable settings after an uncertain save. Review the current saved version before trying again.",
-                table: "Localizable", bundle: .module)
-        case .recoveryRequiresReview:
-            String(
-                localized: "The settings recovery outcome is uncertain. Inspect the saved settings and use portable settings recovery before saving again.",
-                table: "Localizable", bundle: .module)
         case .reconciliationRequired:
             String(
                 localized:
-                    "Portable settings must be reread successfully before another save can be attempted.",
+                    "Portable settings must be reread successfully before recovery can continue.",
                 table: "Localizable", bundle: .module)
         }
     }
@@ -139,19 +106,9 @@ struct WorkspaceSettingsWorkspaceCapabilities {
         (
             URL, URL, URL, URL, UUID?, String?
         ) async throws -> WorkspaceSettingsSnapshot
-    let saveTriptychSettings:
-        (
-            UUID, TriptychSettings, SettingsRevision
-        ) async throws -> WorkspaceSettingsCommit
     let loadSettingsRecovery: (UUID) async throws -> TriptychSettingsRecoverySnapshot
     let resetTriptychSettings: (UUID, SettingsRevision?) async throws -> WorkspaceSettingsRecoveryCommit
     let portableContainerURL: (URL) async -> URL?
-}
-
-/// Delivery-neutral external-opening operations used by Settings.
-@MainActor
-struct WorkspaceSettingsMachineCapabilities {
-    let openExternal: (URL) -> Bool
 }
 
 /// Zotero operations used by its dedicated settings page.
@@ -181,7 +138,6 @@ struct WorkspaceChangesHistoryCapabilities {
 @MainActor
 struct WorkspaceSettingsCapabilities {
     let workspace: WorkspaceSettingsWorkspaceCapabilities
-    let machine: WorkspaceSettingsMachineCapabilities
     let zotero: WorkspaceSettingsZoteroCapabilities
     let changesHistory: WorkspaceChangesHistoryCapabilities
 }
@@ -196,12 +152,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         @MainActor (
             UUID
         ) async throws -> WorkspacePortableSettingsRead
-    typealias SettingsSaver =
-        @MainActor (
-            UUID, TriptychSettings, SettingsRevision
-        ) async throws -> WorkspaceSettingsCommit
-
-    @Published private(set) var selectedPane: WorkspaceSettingsPane
     @Published private(set) var snapshot: WorkspaceSettingsSnapshot
     @Published private(set) var isRefreshing = false
     @Published private(set) var errorMessage: String?
@@ -217,7 +167,6 @@ final class WorkspaceSettingsModel: ObservableObject {
     private let loadSnapshot: SnapshotLoader?
     private let activateSnapshot: TriptychActivator?
     private let loadPortableSettingsSnapshot: PortableSettingsLoader?
-    private let saveSnapshot: SettingsSaver?
     private let loadRecoverySnapshot: (@MainActor (UUID) async throws -> TriptychSettingsRecoverySnapshot)?
     private let resetSnapshot: (@MainActor (UUID, SettingsRevision?) async throws -> WorkspaceSettingsRecoveryCommit)?
     @Published private(set) var isRestoringSettings = false
@@ -232,10 +181,8 @@ final class WorkspaceSettingsModel: ObservableObject {
         cssSnippetStore: CSSSnippetStore,
         agentBridgeAvailability: @escaping @MainActor () -> AgentBridgeAvailability = {
             .unavailable("The App bridge is unavailable.")
-        },
-        selectedPane: WorkspaceSettingsPane = .workspace
+        }
     ) {
-        self.selectedPane = selectedPane
         self.snapshot = WorkspaceSettingsSnapshot()
         self.capabilities = capabilities
         self.cssSnippetStore = cssSnippetStore
@@ -243,23 +190,19 @@ final class WorkspaceSettingsModel: ObservableObject {
         self.loadSnapshot = nil
         self.activateSnapshot = nil
         self.loadPortableSettingsSnapshot = nil
-        self.saveSnapshot = nil
         self.loadRecoverySnapshot = nil
         self.resetSnapshot = nil
     }
 
     /// Pure construction seam for feature tests and previews.
     init(
-        selectedPane: WorkspaceSettingsPane = .workspace,
         snapshot: WorkspaceSettingsSnapshot = WorkspaceSettingsSnapshot(),
         loadSnapshot: SnapshotLoader? = nil,
         activateTriptych: TriptychActivator? = nil,
         loadPortableSettings: PortableSettingsLoader? = nil,
-        saveSettings: SettingsSaver? = nil,
         loadSettingsRecovery: (@MainActor (UUID) async throws -> TriptychSettingsRecoverySnapshot)? = nil,
         resetSettings: (@MainActor (UUID, SettingsRevision?) async throws -> WorkspaceSettingsRecoveryCommit)? = nil
     ) {
-        self.selectedPane = selectedPane
         self.snapshot = snapshot
         self.capabilities = nil
         self.cssSnippetStore = nil
@@ -269,7 +212,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         self.loadSnapshot = loadSnapshot
         self.activateSnapshot = activateTriptych
         self.loadPortableSettingsSnapshot = loadPortableSettings
-        self.saveSnapshot = saveSettings
         self.loadRecoverySnapshot = loadSettingsRecovery
         self.resetSnapshot = resetSettings
         self.activeTriptychServicesID = snapshot.activeTriptychID
@@ -292,10 +234,6 @@ final class WorkspaceSettingsModel: ObservableObject {
     var agentBridgeAvailability: AgentBridgeAvailability {
         agentBridgeAvailabilityProvider()
     }
-    func selectPane(_ pane: WorkspaceSettingsPane) {
-        selectedPane = pane
-    }
-
     func replaceSnapshot(_ snapshot: WorkspaceSettingsSnapshot) {
         refreshGeneration &+= 1
         isRefreshing = false
@@ -327,14 +265,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         return false
     }
 
-    func refreshRegisteredVaults() async {
-        await refresh()
-    }
-
-    func refreshWorkspaceAssignment() async {
-        await refresh()
-    }
-
     func restorePreferredWorkspaceIfNeeded(activeTriptychID: UUID? = nil) async {
         // The application activation is already authoritative enough to route
         // delivery-neutral Settings capabilities. Publish that ID before the
@@ -360,131 +290,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             await perform { try await capabilities.workspace.loadSnapshot(id) }
         } else if let activateSnapshot {
             await perform { try await activateSnapshot(id) }
-        }
-    }
-
-    func activateRegisteredTriptych(id: UUID) async {
-        await activateTriptych(id: id)
-    }
-
-    @discardableResult
-    func saveTriptychSettings(
-        _ settings: TriptychSettings
-    ) async throws -> WorkspaceSettingsSaveResult {
-        guard let triptychID = snapshot.activeTriptychID,
-            let expectedRevision = settingsRevision
-        else {
-            throw TriptychControlError.settingsMissing
-        }
-        return try await saveTriptychSettings(
-            settings,
-            targetTriptychID: triptychID,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    @discardableResult
-    func saveTriptychSettings(
-        _ settings: TriptychSettings,
-        targetTriptychID: UUID,
-        expectedRevision: SettingsRevision
-    ) async throws -> WorkspaceSettingsSaveResult {
-        guard snapshot.activeTriptychID == targetTriptychID else {
-            throw WorkspaceSettingsMutationError.triptychChanged
-        }
-        guard !uncertainSettingsRecoveryTriptychIDs.contains(targetTriptychID) else {
-            throw WorkspaceSettingsMutationError.recoveryRequiresReview
-        }
-        guard !settingsReconciliationRequiredTriptychIDs.contains(targetTriptychID) else {
-            throw WorkspaceSettingsMutationError.reconciliationRequired
-        }
-        do {
-            let commit: WorkspaceSettingsCommit
-            if let saveSnapshot {
-                commit = try await saveSnapshot(
-                    targetTriptychID,
-                    settings,
-                    expectedRevision
-                )
-            } else {
-                guard let capabilities else {
-                    throw WorkspaceRegistryError.incompleteWorkspace
-                }
-                commit = try await capabilities.workspace.saveTriptychSettings(
-                    targetTriptychID,
-                    settings,
-                    expectedRevision
-                )
-            }
-            guard commit.triptychID == targetTriptychID else {
-                throw WorkspaceSettingsMutationError.triptychChanged
-            }
-            let targetIsCurrent = snapshot.activeTriptychID == targetTriptychID
-            if targetIsCurrent {
-                installPortableSettings(
-                    WorkspacePortableSettingsRead(
-                        triptychID: targetTriptychID,
-                        settings: commit.snapshot.settings,
-                        state: .current(commit.snapshot.revision)
-                    ))
-            }
-            let warning: String?
-            if !targetIsCurrent {
-                warning = String(
-                    localized:
-                        "The settings were saved to the Triptych where the edit began. Reload settings to show the currently active Triptych.",
-                    table: "Localizable", bundle: .module)
-            } else if commit.derivedRefreshWarning != nil {
-                warning = String(
-                    localized:
-                        "Portable settings were saved. Research views will refresh when the workspace is available.",
-                    table: "Localizable",
-                    bundle: .module)
-            } else {
-                warning = nil
-            }
-            return WorkspaceSettingsSaveResult(
-                warning: warning,
-                targetIsCurrent: targetIsCurrent
-            )
-        } catch let error as ScholiumApplicationError
-            where error.mutationRequiresReconciliation
-        {
-            let reread: WorkspacePortableSettingsRead
-            do {
-                if let loadPortableSettingsSnapshot {
-                    reread = try await loadPortableSettingsSnapshot(targetTriptychID)
-                } else if let capabilities {
-                    reread = try await capabilities.workspace.loadPortableSettings(
-                        targetTriptychID
-                    )
-                } else {
-                    throw error
-                }
-            } catch {
-                settingsReconciliationRequiredTriptychIDs.insert(targetTriptychID)
-                throw WorkspaceSettingsMutationError.reconciliationRequired
-            }
-            let targetIsCurrent = snapshot.activeTriptychID == targetTriptychID
-            if targetIsCurrent {
-                installPortableSettings(reread)
-            }
-            if case .current = reread.state, reread.settings == settings {
-                return WorkspaceSettingsSaveResult(
-                    warning: targetIsCurrent
-                        ? String(
-                            localized: "Portable settings were reread and the requested save is present.",
-                            table: "Localizable", bundle: .module)
-                        : String(
-                            localized:
-                                "The settings were saved to the Triptych where the edit began. Reload settings to show the currently active Triptych.",
-                            table: "Localizable", bundle: .module),
-                    targetIsCurrent: targetIsCurrent
-                )
-            }
-            throw WorkspaceSettingsMutationError.commitRequiresReview(
-                error.localizedDescription
-            )
         }
     }
 
@@ -634,10 +439,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             return ZoteroLibraryInfo(status: .appUnavailable, lastSuccessfulConnection: nil)
         }
         return try await capabilities.zotero.refreshZoteroLibraryInfo()
-    }
-
-    func openExternal(_ url: URL) {
-        _ = capabilities?.machine.openExternal(url)
     }
 
     @discardableResult

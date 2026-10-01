@@ -122,7 +122,7 @@ extension WorkspaceHandle {
         return try agentMoveComparison(preview: preview, before: before, after: after, move: move, reversed: true)
     }
 
-    func undoAgentMove(id: UUID, expectedAfterFingerprint: DocumentFingerprint) async throws -> AgentChangeUndoResult {
+    func undoAgentMove(id: UUID, expectedAfterFingerprint: DocumentFingerprint, admission: AgentMutationAdmission?) async throws -> AgentChangeUndoResult {
         let evidence = try await services.agentChangeStore.evidence(id: id)
         guard let move = evidence.move, evidence.change.state == .confirmed,
             evidence.change.afterFingerprint == expectedAfterFingerprint
@@ -131,7 +131,7 @@ extension WorkspaceHandle {
         guard target.id == move.primary.destination else { throw AgentCollaborationError.invalidRequest("The Note moved again after this change.") }
         let result = try await coordinatedMoveDocument(
             target.id, to: move.primary.source.relativePath,
-            expectedRevision: expectedAfterFingerprint, expectedStableNoteID: evidence.change.noteID, undoAgentMoveID: id)
+            expectedRevision: expectedAfterFingerprint, expectedStableNoteID: evidence.change.noteID, undoAgentMoveID: id, admission: admission)
         return .init(changeID: id, noteID: evidence.change.noteID, restoredFingerprint: result.committedValue.committedRevision)
     }
 

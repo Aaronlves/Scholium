@@ -1370,13 +1370,10 @@ struct WindowControllerArchitectureTests {
 
     @Test("Settings constructs independently of any document window")
     func standaloneSettingsConstruction() {
-        let model = WorkspaceSettingsModel(selectedPane: .workspace)
+        let model = WorkspaceSettingsModel()
 
-        #expect(model.selectedPane == .workspace)
         #expect(model.snapshot.registeredVaults.isEmpty)
         #expect(model.snapshot.registeredTriptychs.isEmpty)
-        model.selectPane(.agents)
-        #expect(model.selectedPane == .agents)
     }
 
     @Test("Window model routes application operations through feature controllers")

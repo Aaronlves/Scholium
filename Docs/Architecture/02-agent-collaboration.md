@@ -15,8 +15,8 @@ an exact stable workspace identity.
 External clients and in-app Chat use the same Application research-operation
 owners. Chat adds a connection-bound conversation route and exact runtime
 thread/turn metadata. Transport authentication is not mutation permission.
-The registry resolves the route and rechecks turn admission before each effect
-after suspension. Stop/completion revoke turn admission;
+The source owner rechecks captured Chat admission while holding its lease;
+native editor saves retain their authority. Stop/completion revoke new admission;
 connection replacement invalidates routes. Pending server-request identities must
 be unique across the connection: ambiguity revokes all admission before teardown.
 Queued replies recheck connection generation and exact turn before I/O.

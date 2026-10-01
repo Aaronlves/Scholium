@@ -59,19 +59,60 @@ struct SelectionActionsSettingsDraftTests {
         }
     }
 
-    @Test("Finishing the action sheet retains a draft until the page is saved")
+    @Test("Finishing the inline action editor retains a draft until the page is saved")
     func finishingEditorDoesNotCommit() throws {
         try withPreferences { preferences in
             let draft = SelectionActionsSettingsDraft(preferences: preferences)
             let saved = preferences.actions
             draft.beginEditing(draft.actions[0])
-            draft.actions[0].prompt = "Edited instruction in sheet"
+            draft.actions[0].prompt = "Edited instruction inline"
             draft.finishEditing()
             #expect(draft.editingActionID == nil)
-            #expect(draft.actions[0].prompt == "Edited instruction in sheet")
+            #expect(draft.actions[0].prompt == "Edited instruction inline")
             #expect(preferences.actions == saved)
             draft.save()
-            #expect(preferences.actions[0].prompt == "Edited instruction in sheet")
+            #expect(preferences.actions[0].prompt == "Edited instruction inline")
+        }
+    }
+
+    @Test("Saving the page cannot commit an unfinished inline action edit")
+    func unfinishedEditorCannotCommit() throws {
+        try withPreferences { preferences in
+            let draft = SelectionActionsSettingsDraft(preferences: preferences)
+            let saved = preferences.actions
+            draft.beginEditing(draft.actions[0])
+            draft.actions[0].prompt = "Unfinished inline instruction"
+            draft.save()
+            #expect(preferences.actions == saved)
+            #expect(draft.editingActionID == saved[0].id)
+            #expect(draft.actions[0].prompt == "Unfinished inline instruction")
+            draft.finishEditing()
+            draft.save()
+            #expect(preferences.actions[0].prompt == "Unfinished inline instruction")
+        }
+    }
+
+    @Test("An external change retains an open unchanged editor until explicit reload")
+    func externalChangeRetainsOpenEditor() throws {
+        try withPreferences { preferences in
+            let draft = SelectionActionsSettingsDraft(preferences: preferences)
+            let original = draft.actions[0]
+            draft.beginEditing(original)
+            var external = preferences.actions
+            external[0].prompt = "Instruction changed elsewhere"
+            try preferences.save(external)
+            draft.synchronize(with: preferences.actions)
+            #expect(draft.editingActionID == original.id)
+            #expect(draft.actions[0] == original)
+            #expect(draft.hasExternalChange)
+            draft.save()
+            #expect(preferences.actions == external)
+            draft.cancelEditing()
+            #expect(draft.actions[0] == original)
+            #expect(draft.hasExternalChange)
+            draft.reload(preferences.actions)
+            #expect(draft.actions == external)
+            #expect(!draft.hasExternalChange)
         }
     }
 }

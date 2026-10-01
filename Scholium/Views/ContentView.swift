@@ -732,7 +732,8 @@ struct ContentView: View {
                     }
                     _ = try await operations.undoAgentChange(
                         id: change.id,
-                        expectedAfterFingerprint: fingerprint
+                        expectedAfterFingerprint: fingerprint,
+                        admission: nil
                     )
                     await appState.refreshWorkspaceCatalog()
                     _ = try await researchController.loadAgentChanges()

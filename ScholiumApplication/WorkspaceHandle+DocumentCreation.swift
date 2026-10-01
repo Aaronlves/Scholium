@@ -221,7 +221,7 @@ extension WorkspaceHandle {
     /// complete candidate, atomically claims the path, and then commits the
     /// portable stable identity before publishing a source-ahead result.
     func createManagedNote(
-        _ request: ManagedNoteCreationRequest
+        _ request: ManagedNoteCreationRequest, admission: AgentMutationAdmission? = nil
     ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
         try requireActive()
         guard services.manifest.vaultIDs.contains(where: { $0.value == request.vaultID }) else {
@@ -230,7 +230,7 @@ extension WorkspaceHandle {
         if let barrier = managedCreationPreLeaseBarrierForTesting {
             await barrier()
         }
-        let mutationLease = try await beginSourceMutation()
+        let mutationLease = try await beginSourceMutation(admission: admission)
         var ownsMutation = true
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }
