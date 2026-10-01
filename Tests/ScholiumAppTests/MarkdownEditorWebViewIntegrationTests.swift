@@ -7071,7 +7071,35 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(constructMenu.item(withTitle: ScholiumL10n.string("Copy"))?.isEnabled == false)
         #expect(constructMenu.item(withTitle: ScholiumL10n.string("Paste"))?.isEnabled == false)
         #expect(constructMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) != nil)
-        #expect(constructMenu.item(withTitle: ScholiumL10n.string("Table"))?.submenu != nil)
+        let rowOnlyTable = constructMenu.item(withTitle: ScholiumL10n.string("Table"))?.submenu
+        #expect(rowOnlyTable?.items.map(\.title) == [ScholiumL10n.string("Insert Row After")])
+        #expect(rowOnlyTable?.items.contains(where: \.isSeparatorItem) == false)
+
+        let groupedMenu = webView.makeEditorContextMenu(
+            context: context(
+                selection: MarkdownEditorSelectionRange(anchor: 4, head: 4),
+                available: [.tableDeleteRow, .tableInsertColumnAfter, .tableAlignRight]
+            ),
+            mode: .livePreview,
+            canPaste: false
+        )
+        let tableItems = groupedMenu.item(withTitle: ScholiumL10n.string("Table"))?.submenu?.items
+        #expect(tableItems?.map(\.isSeparatorItem) == [false, true, false, true, false])
+        #expect(tableItems?.filter { !$0.isSeparatorItem }.map(\.title) == [
+            ScholiumL10n.string("Delete Row"), ScholiumL10n.string("Insert Column After"),
+            ScholiumL10n.string("Align Right"),
+        ])
+
+        let sparseMenu = webView.makeEditorContextMenu(
+            context: context(
+                selection: MarkdownEditorSelectionRange(anchor: 4, head: 4),
+                available: [.tableDeleteRow, .tableAlignRight]
+            ),
+            mode: .livePreview,
+            canPaste: false
+        )
+        #expect(sparseMenu.item(withTitle: ScholiumL10n.string("Table"))?.submenu?.items.map(\.isSeparatorItem)
+            == [false, true, false])
 
         let sourceMenu = webView.makeEditorContextMenu(
             context: context(

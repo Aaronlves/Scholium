@@ -73,7 +73,7 @@ struct ResearchSearchFieldTests {
         }
     }
 
-    @Test("Search filter menus expose current scope and preserve the query")
+    @Test("Search scope choices preserve the query and show the current scope")
     func filtersPreserveQuery() throws {
         var query = "aurora-fixture"
         var scope: SearchPresentationScope = .triptych
@@ -90,8 +90,13 @@ struct ResearchSearchFieldTests {
         #expect(coordinator.validateMenuItem(thisVault))
         #expect(thisVault.state == .on)
         #expect(query == "aurora-fixture")
-        coordinator.clearFilters(NSMenuItem())
+        let triptych = try #require(menu.items.first?.submenu?.items[1])
+        coordinator.selectScope(triptych)
         #expect(scope == .triptych)
+        #expect(coordinator.validateMenuItem(triptych))
+        #expect(triptych.state == .on)
+        #expect(coordinator.validateMenuItem(thisVault))
+        #expect(thisVault.state == .off)
         #expect(query == "aurora-fixture")
     }
 

@@ -30,9 +30,6 @@ private struct ScholiumFileCreationCommandContent: View {
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.newWindow)
         .disabled(!storageReady)
-        Divider()
-        Button("Open Markdown…") { fileOpening.chooseFiles() }
-            .scholiumKeyboardShortcut(.openMarkdown)
         Button("New Triptych…") {
             openWindow(
                 id: "scholium-bootstrap",
@@ -41,6 +38,9 @@ private struct ScholiumFileCreationCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(!storageReady)
+        Divider()
+        Button("Open Markdown…") { fileOpening.chooseFiles() }
+            .scholiumKeyboardShortcut(.openMarkdown)
         Menu("Open Triptych") {
             ForEach(appState?.registeredTriptychs ?? []) { assignment in
                 Button(triptychCommandLabel(assignment)) {
@@ -82,7 +82,7 @@ private struct ScholiumCloseTabCommandContent: View {
             Button("Close Window") { external.closeWindow() }
                 .scholiumKeyboardShortcut(.closeTab).disabled(!external.canRequestClose)
         } else {
-            Button("Close Tab") {
+            Button(ScholiumL10n.dynamicString(appState?.isDetachedDocumentWindow == true ? "Close Window" : "Close Tab")) {
                 if appState?.isDetachedDocumentWindow == true {
                     appState?.nativeWindowCoordinator?.requestNativeClose()
                     return
@@ -218,7 +218,6 @@ private struct ScholiumPasteboardCommandContent: View {
             .disabled(appState?.documentController.canFindSelectedDocument != true && external?.snapshot == nil)
         }
         .scholiumActivationPointer()
-        .disabled(appState?.currentNote == nil && external?.snapshot == nil)
     }
 
     private func markdownPasteboardPayload() -> String? {
@@ -346,7 +345,6 @@ private struct ScholiumTextFormattingCommandContent: View {
 private struct ScholiumInsertCommandContent: View {
     @FocusedObject private var appState: WindowModel?
     @FocusedObject private var external: ExternalMarkdownWindowModel?
-    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
     let commandRevision: UInt64
     private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
 
@@ -361,15 +359,6 @@ private struct ScholiumInsertCommandContent: View {
         Button("Annotated Wikilink") { editorActions?.perform(.annotatedWikilink) }
             .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.annotatedWikilink) != true)
-        Divider()
-        Button("Find Writing References…") {
-            guard let appState else { return }
-            appState.researchController.selectInspectorMode(.related)
-            workspaceWindowActions?.setResearchInspectorVisible(true)
-            appState.findRelatedMaterials()
-        }
-        .scholiumKeyboardShortcut(.findWritingReferences)
-        .disabled(appState?.canFindWritingReferences != true)
         Divider()
         Button("Footnote") { editorActions?.perform(.insertFootnote) }
             .scholiumActivationPointer()
@@ -540,21 +529,20 @@ private struct ScholiumViewCommandContent: View {
         .scholiumKeyboardShortcut(.toggleReviewEdit)
         .disabled(reviewEditDestination == nil || editorActions?.isComposing == true)
         Menu("Document Mode") {
-            Button("Review") { if let external { external.selectMode(.read) } else { appState?.requestDocumentMode(.read) } }
+            Toggle("Review", isOn: documentModeSelection(.read))
                 .scholiumActivationPointer()
-                .disabled(external?.canSelectMode(.read) == false)
-            Button("Edit") { if let external { external.selectMode(.livePreview) } else { appState?.requestDocumentMode(.livePreview) } }
+                .disabled(!canSelectDocumentMode(.read))
+            Toggle("Edit", isOn: documentModeSelection(.livePreview))
                 .scholiumActivationPointer()
-                .disabled(external.map { !$0.canSelectMode(.livePreview) } ?? (appState?.canEditCurrentNote != true))
+                .disabled(!canSelectDocumentMode(.livePreview))
             if appState?.isDetachedDocumentWindow != true {
-                Button("Source") { if let external { external.selectMode(.source) } else { appState?.requestDocumentMode(.source) } }
+                Toggle("Source", isOn: documentModeSelection(.source))
                     .scholiumActivationPointer()
                     .scholiumKeyboardShortcut(.showSource)
-                    .disabled(external.map { !$0.canSelectMode(.source) } ?? (appState?.canEditCurrentNote != true))
+                    .disabled(!canSelectDocumentMode(.source))
             }
         }
         .scholiumActivationPointer()
-        .disabled((appState?.currentNote == nil && external?.snapshot == nil) || editorActions?.isComposing == true || external?.isBusy == true)
         Divider()
         Menu("Document Text Size") {
             Button("Increase Text Size") {
@@ -575,7 +563,7 @@ private struct ScholiumViewCommandContent: View {
                 !hasDocument
                     || documentTextScale == ScholiumMetrics.Document.minimumTextScale
             )
-            Button("Actual Size (100%)") { setDocumentTextScale(ScholiumMetrics.Document.defaultTextScale) }
+            Toggle("Actual Size (100%)", isOn: documentTextScaleSelection(ScholiumMetrics.Document.defaultTextScale))
                 .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(.actualTextSize)
                 .disabled(
@@ -583,12 +571,10 @@ private struct ScholiumViewCommandContent: View {
                         || documentTextScale == ScholiumMetrics.Document.defaultTextScale
                 )
             Divider()
-            Button("150%") { setDocumentTextScale(1.5) }
+            Toggle("150%", isOn: documentTextScaleSelection(1.5))
                 .scholiumActivationPointer()
                 .disabled(!hasDocument || documentTextScale == 1.5)
-            Button("200%") {
-                setDocumentTextScale(ScholiumMetrics.Document.maximumTextScale)
-            }
+            Toggle("200%", isOn: documentTextScaleSelection(ScholiumMetrics.Document.maximumTextScale))
             .scholiumActivationPointer()
             .disabled(
                 !hasDocument
@@ -596,14 +582,16 @@ private struct ScholiumViewCommandContent: View {
             )
         }
         .scholiumActivationPointer()
-        .disabled(!hasDocument)
         Menu("Appearance") {
-            Button("Use System Appearance") { setColorScheme(.system) }
+            Toggle("Use System Appearance", isOn: colorSchemeSelection(.system))
                 .scholiumActivationPointer()
-            Button("Light") { setColorScheme(.light) }
+                .disabled(appState == nil && external == nil)
+            Toggle("Light", isOn: colorSchemeSelection(.light))
                 .scholiumActivationPointer()
-            Button("Dark") { setColorScheme(.dark) }
+                .disabled(appState == nil && external == nil)
+            Toggle("Dark", isOn: colorSchemeSelection(.dark))
                 .scholiumActivationPointer()
+                .disabled(appState == nil && external == nil)
         }
         .scholiumActivationPointer()
     }
@@ -617,6 +605,36 @@ private struct ScholiumViewCommandContent: View {
 
     private func setColorScheme(_ scheme: WindowColorSchemeChoice) {
         if let external { external.colorScheme = scheme } else { appState?.colorScheme = scheme }
+    }
+
+    private func canSelectDocumentMode(_ mode: NotePresentationMode) -> Bool {
+        if let external { return external.canSelectMode(mode) }
+        guard hasDocument, editorActions?.isComposing != true else { return false }
+        return mode == .read || appState?.canEditCurrentNote == true
+    }
+
+    private func documentModeSelection(_ mode: NotePresentationMode) -> Binding<Bool> {
+        Binding(
+            get: { hasDocument && (external?.mode ?? appState?.presentedDocumentMode) == mode },
+            set: { selected in
+                guard selected, canSelectDocumentMode(mode) else { return }
+                if let external { external.selectMode(mode) } else { appState?.requestDocumentMode(mode) }
+            }
+        )
+    }
+
+    private func documentTextScaleSelection(_ scale: Double) -> Binding<Bool> {
+        Binding(
+            get: { hasDocument && documentTextScale == scale },
+            set: { selected in if selected && hasDocument { setDocumentTextScale(scale) } }
+        )
+    }
+
+    private func colorSchemeSelection(_ scheme: WindowColorSchemeChoice) -> Binding<Bool> {
+        Binding(
+            get: { (external?.colorScheme ?? appState?.colorScheme) == scheme },
+            set: { selected in if selected { setColorScheme(scheme) } }
+        )
     }
 
     private var reviewEditDestination: NotePresentationMode? {
@@ -643,7 +661,16 @@ private struct ScholiumResearchCommandContent: View {
         Button("Find Related Material") {
             appState?.performPassageAction(.relatedMaterial)
         }
-        .disabled(appState?.currentNote == nil)
+        .disabled(appState?.currentNote == nil || appState?.isDetachedDocumentWindow == true || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
+        Button("Find Writing References") {
+            guard let appState else { return }
+            appState.researchController.selectInspectorMode(.related)
+            workspaceWindowActions?.setResearchInspectorVisible(true)
+            appState.findRelatedMaterials()
+        }
+        .scholiumKeyboardShortcut(.findWritingReferences)
+        .disabled(appState?.canFindWritingReferences != true || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
+        Divider()
         Button("Add Note to Chat") { appState?.performNoteAction(.addToChat) }
             .scholiumActivationPointer()
             .disabled(appState?.canPerformNoteAction(.addToChat) != true)
@@ -657,7 +684,7 @@ private struct ScholiumResearchCommandContent: View {
             }
         }
         .scholiumKeyboardShortcut(.addSelectionToChat)
-        .disabled(appState?.currentNote == nil)
+        .disabled(appState?.currentNote == nil || appState?.chatController == nil)
         if let controller = appState?.chatController {
             AgentChatStopCommand(controller: controller)
         }
@@ -682,9 +709,20 @@ private struct ScholiumWindowCommandContent: View {
 
     var body: some View {
         Menu("Document Tabs") {
-            ForEach(appState?.documentTabController.tabs ?? []) { tab in
-                Button(tab.title) { appState?.selectDocumentTab(withID: tab.id) }
+            let owner = appState
+            Picker("Document Tabs", selection: Binding<UUID?>(
+                get: { owner?.documentTabController.selectedTabID },
+                set: { selected in
+                    if let selected { owner?.selectDocumentTab(withID: selected) }
+                }
+            )) {
+                ForEach(owner?.documentTabController.tabs ?? []) { tab in
+                    Text(verbatim: tab.title).tag(Optional(tab.id))
+                }
             }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            .menuActionDismissBehavior(.enabled)
         }
         .disabled(appState?.documentTabController.tabs.isEmpty != false)
         Button("Next Tab") { appState?.selectAdjacentDocumentTab(offset: 1) }
@@ -796,7 +834,9 @@ struct ScholiumCommands: Commands {
             fileCreationCommand
         }
         CommandGroup(after: .newItem) {
+            Divider()
             ScholiumCloseTabCommandContent(commandRevision: commandRevision)
+            Divider()
             fileDocumentCommand
         }
         CommandGroup(after: .pasteboard) {

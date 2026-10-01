@@ -193,21 +193,30 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
                 ))
         }
 
-        let tableCommands: [(String, MarkdownEditorCommand)] = [
-            (ScholiumL10n.string("Insert Row Before"), .tableInsertRowBefore),
-            (ScholiumL10n.string("Insert Row After"), .tableInsertRowAfter),
-            (ScholiumL10n.string("Delete Row"), .tableDeleteRow),
-            (ScholiumL10n.string("Insert Column Before"), .tableInsertColumnBefore),
-            (ScholiumL10n.string("Insert Column After"), .tableInsertColumnAfter),
-            (ScholiumL10n.string("Delete Column"), .tableDeleteColumn),
-            (ScholiumL10n.string("Align Left"), .tableAlignLeft),
-            (ScholiumL10n.string("Align Center"), .tableAlignCenter),
-            (ScholiumL10n.string("Align Right"), .tableAlignRight),
-        ].filter { available.contains($0.1) }
-        if !tableCommands.isEmpty {
+        let tableCommandGroups: [[(String, MarkdownEditorCommand)]] = [
+            [
+                (ScholiumL10n.string("Insert Row Before"), .tableInsertRowBefore),
+                (ScholiumL10n.string("Insert Row After"), .tableInsertRowAfter),
+                (ScholiumL10n.string("Delete Row"), .tableDeleteRow),
+            ],
+            [
+                (ScholiumL10n.string("Insert Column Before"), .tableInsertColumnBefore),
+                (ScholiumL10n.string("Insert Column After"), .tableInsertColumnAfter),
+                (ScholiumL10n.string("Delete Column"), .tableDeleteColumn),
+            ],
+            [
+                (ScholiumL10n.string("Align Left"), .tableAlignLeft),
+                (ScholiumL10n.string("Align Center"), .tableAlignCenter),
+                (ScholiumL10n.string("Align Right"), .tableAlignRight),
+            ],
+        ].map { $0.filter { available.contains($0.1) } }.filter { !$0.isEmpty }
+        if !tableCommandGroups.isEmpty {
             let submenu = NSMenu(title: ScholiumL10n.string("Table"))
             submenu.autoenablesItems = false
-            tableCommands.forEach { submenu.addItem(editorMenuItem($0.0, command: $0.1)) }
+            for (index, group) in tableCommandGroups.enumerated() {
+                if index > 0 { submenu.addItem(.separator()) }
+                group.forEach { submenu.addItem(editorMenuItem($0.0, command: $0.1)) }
+            }
             let item = NSMenuItem(
                 title: ScholiumL10n.string("Table"),
                 action: nil,

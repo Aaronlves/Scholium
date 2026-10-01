@@ -2972,18 +2972,18 @@
     }
   }
 },
-    "Insert → Find Writing References…": {
+    "Research → Find Writing References": {
   "localizations": {
     "en": {
       "stringUnit": {
         "state": "translated",
-        "value": "Insert → Find Writing References…"
+        "value": "Research → Find Writing References"
       }
     },
     "zh-Hans": {
       "stringUnit": {
         "state": "translated",
-        "value": "插入 → 查找写作参考…"
+        "value": "研究 → 查找写作参考"
       }
     }
   }
@@ -3033,22 +3033,6 @@
       "stringUnit": {
         "state": "translated",
         "value": "查找写作参考"
-      }
-    }
-  }
-},
-    "Find Writing References…": {
-  "localizations": {
-    "en": {
-      "stringUnit": {
-        "state": "translated",
-        "value": "Find Writing References…"
-      }
-    },
-    "zh-Hans": {
-      "stringUnit": {
-        "state": "translated",
-        "value": "查找写作参考…"
       }
     }
   }
@@ -8970,22 +8954,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除连接记录"
-          }
-        }
-      }
-    },
-    "Clear Filters" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clear Filters"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除筛选"
           }
         }
       }

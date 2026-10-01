@@ -41,8 +41,8 @@ struct RelatedMaterialNoteGroupView: View {
                 .disabled(!canInsertParagraph)
                 .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Insert Paragraph Link")), \(first.sourceIdentity)")))
                 .help("Creates a paragraph anchor in the source note when needed, then inserts a link at the writing cursor.")
-                Button("Open Linked Note") { open(first) }
-                    .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Open Linked Note")), \(first.sourceIdentity)")))
+                Button("Open Source") { open(first) }
+                    .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Open Source")), \(first.sourceIdentity)")))
                 Menu("Add to Chat") {
                     ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
                         Button {
@@ -130,7 +130,7 @@ private struct RelatedMaterialPassageView: View {
             if !isLoading {
                 Button("Insert Paragraph Link", action: insertParagraph).disabled(!canInsertParagraph)
                 Button("Add to Chat", action: addToChat).disabled(card.attachment == nil)
-                Button("Open Linked Note", action: open)
+                Button("Open Source", action: open)
             }
         }
         .accessibilityActions {

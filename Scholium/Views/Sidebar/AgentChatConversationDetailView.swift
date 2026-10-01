@@ -1264,10 +1264,19 @@ struct AgentChatConversationDetailView: View {
                     Button("Choose File…") { chooseFiles() }
                         .disabled(fileSelectionTask != nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
                     Button {
-                        presentation.completion.begin("@")
+                        if let conversationID { presentation.notePickerTarget = .init(id: conversationID) }
                     } label: {
                         Text("Choose Note…", bundle: .module)
                     }
+                    .disabled(conversationID == nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
+                    Button("Add Selection to Chat") {
+                        guard let conversationID else { return }
+                        Task { @MainActor in
+                            if await addSelection(conversationID) { presentation.messageIsFocused = true }
+                        }
+                    }
+                    .disabled(conversationID == nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
+                    Divider()
                     Button {
                         presentation.completion.begin("$")
                     } label: {

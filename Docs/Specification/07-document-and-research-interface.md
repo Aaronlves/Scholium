@@ -100,7 +100,7 @@ preview is not source. Typing/caret/focus/composition/configuration changes canc
 requests/previews. Literal/code/frontmatter/multiple selections suppress both.
 Statuses never enter source/history; spelling/grammar stays separate from prediction.
 
-**Find Writing References…** in Insert (default Shift-Command-J, configurable)
+**Find Writing References** in Research (default Shift-Command-J, configurable)
 shares selection recommendations' pane/session. It captures selections,
 otherwise the current logical source line, independent of soft wrapping. Blank
 lines never borrow preceding prose. Silent Note preparation works with the pane

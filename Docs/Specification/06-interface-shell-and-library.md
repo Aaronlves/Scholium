@@ -210,12 +210,12 @@ to read or edit.** as one read-only accessibility group.
 
 Menu group order:
 
-- **File**: create/open; close; import; duplicate/rename/move; Export Note; attachments; reveal; Trash.
+- **File**: create/open; close/save; import; duplicate/move; Export Note; attachments; reveal; Trash.
 - **Edit**: native editing; Markdown paste; Find.
 - **Format**: styles; headings/lists; quotations/code; tables.
 - **Insert**: links; footnotes; images; tables/breaks; comments/Callouts.
 - **View**: history/search; panes; Document mode; text size/appearance.
-- **Research**: related material; Note or selection to Chat; Changes.
+- **Research**: passage material/writing references; Note or selection to Chat; paragraph links/reorganization; Changes.
 - **Window**: native windows; tabs/transfer; Notifications.
 - **App**: native commands and Settings (§18.2.1).
 
@@ -324,9 +324,10 @@ Short forms fit their content; long file lists scroll within a bounded region
 while actions remain visible. Progress occupies the action row; errors and
 per-file outcomes remain readable and selectable without covering the inputs.
 
-Menus and accessibility actions provide creation, Rename, Move, Copy Relative
-Path, Reveal, disclosure, and Trash. Notes offer native left-swipe Move to Trash
-with confirmation; right swipe has no action. AppKit owns feedback. Drag carries Note identity/revision or Folder vault/path,
+Menus and accessibility actions provide creation, Folder Rename, Move, Copy
+Relative Path, Reveal, disclosure, and Trash; Note titles change inline in Edit
+(§5.3). Notes offer native left-swipe Move to Trash with confirmation; right
+swipe has no action. AppKit owns feedback. Drag carries Note identity/revision or Folder vault/path,
 never source text. Invalid,
 cross-vault, stale, self/descendant, protected, or ambiguous drops fail without
 source change.
@@ -418,13 +419,13 @@ identifies indeterminate Notes alongside confirmed results; zero confirmed resul
 with indeterminate Notes is distinct from an ordinary empty result.
 
 Quick Search keeps its native editable field in place and shows concise results
-below it. The field's native magnifying-glass menu holds scope,
-Reset Filters, and Advanced Search. Scope choices are This Vault and Triptych,
+below it. The field's native magnifying-glass menu holds scope
+and Advanced Search. Scope choices are This Vault and Triptych,
 without a This Note menu option; document-local Find remains separate.
 The field's native clear button is the only pointer clear/dismiss control for
 quick search, with no adjacent custom close button. Active scope remains visible
-in one muted result-summary line. Reset affects these menu filters, not query
-text. Clearing quick-search text reveals the retained Library immediately.
+in one muted result-summary line. Changing scope preserves query text.
+Clearing quick-search text reveals the retained Library immediately.
 Its result list inherits the Sidebar's existing background without painting a
 second content surface; the system continues to own row selection feedback.
 

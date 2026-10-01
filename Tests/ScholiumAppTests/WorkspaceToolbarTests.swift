@@ -5,7 +5,7 @@ import Testing
 
 @testable import ScholiumApp
 
-@Suite("Workspace toolbar")
+@Suite("Workspace toolbar", .serialized)
 @MainActor
 struct WorkspaceToolbarTests {
     @Test("Notifications retain their native popover when Focus Layout hides the toolbar")
@@ -747,6 +747,12 @@ struct WorkspaceToolbarTests {
                 in: toolbar
             ))
         #expect((sidebar.view as? NSSegmentedControl)?.isSelected(forSegment: 0) == true)
+        let sidebarMenu = try #require(sidebar.menuFormRepresentation?.submenu)
+        let libraryItem = try #require(sidebarMenu.items.first { $0.tag == SidebarContent.library.rawValue })
+        let chatItem = try #require(sidebarMenu.items.first { $0.tag == SidebarContent.chat.rawValue })
+        #expect(controller.validateMenuItem(libraryItem))
+        #expect(!controller.validateMenuItem(chatItem))
+        #expect(libraryItem.state == .on && chatItem.state == .off)
 
         model.shellState.recordLibraryVisibility(false)
         await withCheckedContinuation { continuation in
@@ -756,7 +762,11 @@ struct WorkspaceToolbarTests {
         }
 
         #expect((sidebar.view as? NSSegmentedControl)?.isSelected(forSegment: 0) == false)
+        #expect(controller.validateMenuItem(libraryItem))
+        #expect(!controller.validateMenuItem(chatItem))
+        #expect(sidebarMenu.items.allSatisfy { $0.state == .off })
         controller.invalidate()
+        #expect(!controller.validateMenuItem(libraryItem))
         model.shellState.recordLibraryVisibility(true)
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async { continuation.resume() }

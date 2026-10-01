@@ -78,8 +78,14 @@ struct AgentChatConversationListView: View {
 
     private var archiveMenu: some View {
         Menu {
-            Button("Conversations") { state.showsArchived = false }
-            Button("Archived Chats") { state.showsArchived = true }
+            Toggle("Conversations", isOn: Binding(
+                get: { !state.showsArchived },
+                set: { if $0 { state.showsArchived = false } }
+            ))
+            Toggle("Archived Chats", isOn: Binding(
+                get: { state.showsArchived },
+                set: { if $0 { state.showsArchived = true } }
+            ))
             Divider()
             Button("Account Usage") { showAccountUsage() }
         } label: {
@@ -225,13 +231,15 @@ struct AgentChatConversationListView: View {
         Button(conversation.importantAt == nil ? "Mark as Important" : "Unmark Important") {
             controller.setImportant(conversation.id, important: conversation.importantAt == nil)
         }
-        if conversation.archivedAt != nil {
-            Button("Delete", role: .destructive) { deletionTarget = conversation.id }
-                .disabled(!controller.canArchive(conversation.id))
-        }
+        Divider()
         Button(conversation.archivedAt == nil ? "Archive Chat" : "Restore Chat") {
             controller.setArchived(conversation.id, archived: conversation.archivedAt == nil)
         }.disabled(!controller.canArchive(conversation.id))
+        if conversation.archivedAt != nil {
+            Divider()
+            Button("Delete", role: .destructive) { deletionTarget = conversation.id }
+                .disabled(!controller.canArchive(conversation.id))
+        }
     }
 
 }

@@ -131,10 +131,6 @@ struct ResearchSearchField: NSViewRepresentable {
             let scope = NSMenuItem(title: scopeMenu.title, action: nil, keyEquivalent: "")
             scope.submenu = scopeMenu
             menu.addItem(scope)
-            menu.addItem(.separator())
-            let clear = NSMenuItem(title: ScholiumL10n.string("Clear Filters"), action: #selector(clearFilters(_:)), keyEquivalent: "")
-            clear.target = self
-            menu.addItem(clear)
             if parent.openAdvanced != nil {
                 menu.addItem(.separator())
                 let advanced = NSMenuItem(title: ScholiumL10n.string("Advanced Search…"), action: #selector(advancedSearch(_:)), keyEquivalent: "")
@@ -147,16 +143,11 @@ struct ResearchSearchField: NSViewRepresentable {
             guard Self.scopeOptions.indices.contains(sender.tag) else { return }
             parent.scope = Self.scopeOptions[sender.tag].scope
         }
-        @objc func clearFilters(_ sender: NSMenuItem) {
-            parent.scope = .triptych
-        }
         @objc func advancedSearch(_ sender: NSMenuItem) { parent.openAdvanced?() }
         func validateMenuItem(_ item: NSMenuItem) -> Bool {
             if item.action == #selector(selectScope(_:)) {
                 guard Self.scopeOptions.indices.contains(item.tag) else { return false }
                 item.state = Self.scopeOptions[item.tag].scope == parent.scope ? .on : .off
-            } else if item.action == #selector(clearFilters(_:)) {
-                return parent.scope != .triptych
             }
             return true
         }

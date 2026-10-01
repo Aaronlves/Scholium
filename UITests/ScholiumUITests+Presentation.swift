@@ -4,6 +4,89 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    /// One menu journey verifies live mode, scale, tab and empty-state routes,
+    /// preserving source and retaining native-menu screenshots for visual review.
+    @MainActor
+    func testMenusReflectWindowChoicesAndKeepSourceUnchanged() throws {
+        waitForCurrentDocumentSurface()
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let original = try Data(contentsOf: noteURL)
+
+        func captureMenu(_ name: String) {
+            guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.scholium.qa" else {
+                XCTFail("The QA app lost foreground focus; menu capture was skipped.")
+                return
+            }
+            let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        func openSubmenu(_ title: String, in menu: String) {
+            app.menuBars.menuBarItems[menu].click()
+            app.menuItems[title].firstMatch.hover()
+        }
+        func dismissMenu() {
+            app.typeKey(.escape, modifierFlags: [])
+            app.typeKey(.escape, modifierFlags: [])
+        }
+        app.menuBars.menuBarItems["File"].click()
+        XCTAssertLessThan(app.menuItems["New Triptych…"].frame.minY, app.menuItems["Open Markdown…"].frame.minY)
+        dismissMenu()
+        app.menuBars.menuBarItems["Insert"].click()
+        XCTAssertFalse(app.menuBars.menuBarItems["Insert"].menuItems["Find Writing References"].exists)
+        dismissMenu()
+        app.menuBars.menuBarItems["Research"].click()
+        XCTAssertTrue(app.menuItems["Find Writing References"].waitForExistence(timeout: 3))
+        dismissMenu()
+
+        selectDocumentMode("Source")
+        openSubmenu("Document Mode", in: "View")
+        XCTAssertEqual(documentModeState(documentModeControl()), "Source")
+        captureMenu("menu-document-mode-source")
+        app.menuBars.menuBarItems["View"].menuItems["Source"].firstMatch.click()
+        XCTAssertEqual(documentModeState(documentModeControl()), "Source", "Selecting the active mode must not unset it.")
+        openSubmenu("Appearance", in: "View")
+        app.menuItems["Dark"].click()
+        openSubmenu("Appearance", in: "View")
+        captureMenu("menu-appearance-dark")
+        dismissMenu()
+        openSubmenu("Document Text Size", in: "View")
+        app.menuItems["150%"].click()
+        openSubmenu("Document Text Size", in: "View")
+        XCTAssertFalse(app.menuItems["150%"].isEnabled)
+        XCTAssertTrue(app.menuItems["Actual Size (100%)"].isEnabled)
+        captureMenu("menu-text-size-150")
+        dismissMenu()
+
+        _ = clickLibraryRow("QA Autosave B.md", rightMouseButton: true)
+        app.menuItems["Open in New Tab"].click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
+        openSubmenu("Document Tabs", in: "Window")
+        captureMenu("menu-document-tabs")
+        app.menuBars.menuBarItems["Window"].menuItems["QA Autosave A"].firstMatch.hover()
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 8))
+        XCTAssertEqual(try Data(contentsOf: noteURL), original)
+        app.menuBars.menuBarItems["File"].click()
+        app.menuBars.menuBarItems["File"].menuItems["Close Tab"].firstMatch.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
+        app.menuBars.menuBarItems["File"].click()
+        app.menuBars.menuBarItems["File"].menuItems["Close Tab"].firstMatch.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.noDocumentState"].firstMatch.waitForExistence(timeout: 8))
+        app.menuBars.menuBarItems["Research"].click()
+        XCTAssertFalse(app.menuItems["Find Writing References"].isEnabled)
+        XCTAssertFalse(app.menuItems["Add Note to Chat"].isEnabled)
+        dismissMenu()
+        openSubmenu("Document Mode", in: "View")
+        let modes = app.menuBars.menuBarItems["View"].menuItems["Document Mode"].firstMatch
+        XCTAssertTrue(modes.menuItems["Review"].firstMatch.waitForExistence(timeout: 3))
+        XCTAssertFalse(modes.menuItems["Review"].firstMatch.isEnabled)
+        XCTAssertFalse(modes.menuItems["Source"].firstMatch.isEnabled)
+        dismissMenu()
+        XCTAssertEqual(try Data(contentsOf: noteURL), original)
+    }
+
     /// App language is independent of region; rendered research remains exact.
     @MainActor
     func testChineseInterfacePreservesResearchSourceWithEnglishRegion() throws {
@@ -79,6 +162,14 @@ extension ScholiumUITests {
         let composer = app.textViews["scholium.chat.message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         typeCommittedText("First sidebar draft", into: composer, in: app, clickWithinVisibleFrame: true)
+
+        app.descendants(matching: .any)["scholium.chat.addMaterial"].firstMatch.click()
+        XCTAssertTrue(app.menuItems["Add Selection to Chat"].exists)
+        app.menuItems["Choose Note…"].click()
+        let notePicker = app.sheets.firstMatch
+        XCTAssertTrue(notePicker.searchFields["scholium.chat.notePicker.search"].waitForExistence(timeout: 5))
+        notePicker.buttons["Cancel"].click()
+        XCTAssertEqual(composer.value as? String, "First sidebar draft", "Opening and cancelling Choose Note must preserve the unsent draft.")
 
         app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
         app.menuItems["Find in Conversation"].click()

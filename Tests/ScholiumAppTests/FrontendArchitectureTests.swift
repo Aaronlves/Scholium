@@ -1277,7 +1277,7 @@ struct FrontendArchitectureTests {
         let documentModeMenu = appSource[
             menuStart.lowerBound..<menuEnd.lowerBound
         ]
-        #expect(documentModeMenu.contains("Button(\"Source\")"))
+        #expect(documentModeMenu.contains("Toggle(\"Source\""))
         #expect(
             !documentModeMenu.contains(
                 ".scholiumKeyboardShortcut(.toggleReviewEdit)"

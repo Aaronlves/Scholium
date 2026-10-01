@@ -637,6 +637,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard !isInvalidated else { return false }
         if item.action == #selector(selectSidebarMenu(_:)) {
+            item.state = appState.shellState.libraryVisible
+                && item.tag == appState.shellState.sidebarContent.rawValue ? .on : .off
             return item.tag != SidebarContent.chat.rawValue || appState.workspaceAssignment != nil
         }
         if item.action == #selector(selectInspectorModeFromMenu(_:)) {

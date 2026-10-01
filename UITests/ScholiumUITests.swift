@@ -182,10 +182,12 @@ final class ScholiumUITests: XCTestCase {
             where window.exists
                 && window.identifier.hasPrefix("scholium")
             {
-                let attachment = XCTAttachment(screenshot: window.screenshot())
-                attachment.name = "Scholium UI failure — \(window.identifier)"
-                attachment.lifetime = .keepAlways
-                add(attachment)
+                if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.scholium.qa" {
+                    let attachment = XCTAttachment(screenshot: window.screenshot())
+                    attachment.name = "Scholium UI failure — \(window.identifier)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
                 let hierarchy = XCTAttachment(string: window.debugDescription)
                 hierarchy.name = "Scholium window accessibility — \(window.identifier)"
                 hierarchy.lifetime = .keepAlways

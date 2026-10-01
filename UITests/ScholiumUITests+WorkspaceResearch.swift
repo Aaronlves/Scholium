@@ -87,8 +87,8 @@ extension ScholiumUITests {
         // Menu entry captures the middle source line. Both adjacent lines are
         // nonempty and include the Topic's distinct vocabulary, so paragraph
         // expansion would visibly admit the unwanted Topic passage as well.
-        app.menuBars.menuBarItems["Insert"].click()
-        let find = app.menuItems["Find Writing References…"].firstMatch
+        app.menuBars.menuBarItems["Research"].click()
+        let find = app.menuItems["Find Writing References"].firstMatch
         XCTAssertTrue(find.waitForExistence(timeout: 5))
         XCTAssertTrue(find.isEnabled)
         find.click()

@@ -5,7 +5,7 @@ struct WritingReferenceHint: View {
 
     var body: some View {
         HStack {
-            Text("Insert → Find Writing References…")
+            Text("Research → Find Writing References")
             if let binding = ScholiumHotkeyPreferences.binding(for: .findWritingReferences, data: hotkeys) {
                 Text(binding.displayName)
             }
