@@ -273,7 +273,7 @@ extension ScholiumUITests {
             "workspace": ["Workspace", "工作区"],
             "document": ["Document", "文稿"],
             "writing": ["Writing", "写作"],
-            "agents": ["Agents", "Agent"],
+            "agents": ["Agents", "智能体"],
             "shortcuts": ["Shortcuts", "快捷键"],
             "zotero": ["Zotero"],
         ]
@@ -298,9 +298,10 @@ extension ScholiumUITests {
         }
         XCTAssertTrue(result.waitForExistence(timeout: 5))
         result.click()
-        XCTAssertTrue(waitUntil(timeout: 3) {
-            !self.app.descendants(matching: .any)["scholium.settings.searchResults"].firstMatch.exists
-        }, "Choosing a result must close the temporary search presentation")
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                !self.app.descendants(matching: .any)["scholium.settings.searchResults"].firstMatch.exists
+            }, "Choosing a result must close the temporary search presentation")
         XCTAssertEqual(search.value as? String, query, "Choosing a result must preserve the query for another setting")
     }
 

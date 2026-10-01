@@ -12,6 +12,7 @@ import {
 } from "./performance";
 import type {LinkPreview} from "./previews";
 import {localized, localizedTemplate} from "./localization";
+import {localizeRenderedInterface} from "./rendered-interface-localization";
 
 type PreviewAnchorRect = Pick<DOMRect, "left" | "right" | "top" | "bottom">;
 
@@ -77,6 +78,7 @@ export function renderPreviewMathNodes(root: Document | HTMLElement) {
 export function populatePreviewDocument(body: HTMLElement, preview: LinkPreview) {
   body.innerHTML = preview.htmlBody;
   sanitizePreviewDocument(body);
+  localizeRenderedInterface(body);
   renderPreviewMathNodes(body);
   const firstHeading = body.querySelector<HTMLElement>(":scope > h1:first-child");
   if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
@@ -129,7 +131,8 @@ export function createPreviewPopoverController(
     button.setAttribute("aria-expanded", expanded ? "true" : "false");
     button.setAttribute(
       "aria-label",
-      `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${annotationTarget(button)}`,
+      localizedTemplate(expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
+        {title: annotationTarget(button)}),
     );
   }
 

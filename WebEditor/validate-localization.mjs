@@ -36,14 +36,15 @@ if (missing.length || extra.length) {
   throw new Error(`WebKitInterface.xcstrings key mismatch. Missing: ${missing.join(", ")} Extra: ${extra.join(", ")}`);
 }
 
-const placeholderNames = (value) => [...value.matchAll(/\{([A-Za-z]+)\}/g)]
+const placeholderNames = (value) => [...value.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)]
   .map((match) => match[1])
   .sort();
 for (const key of keys) {
   const entry = catalog.strings[key];
   const english = entry?.localizations?.en?.stringUnit?.value;
   const chinese = entry?.localizations?.["zh-Hans"]?.stringUnit;
-  if (english !== key || chinese?.state !== "translated" || typeof chinese.value !== "string") {
+  if (english !== key || chinese?.state !== "translated" || typeof chinese.value !== "string"
+      || !chinese.value.trim() || chinese.value.length > 4_096) {
     throw new Error(`Web interface localization is incomplete for: ${key}`);
   }
   if (placeholderNames(english).join("\0") !== placeholderNames(chinese.value).join("\0")) {
@@ -54,19 +55,14 @@ for (const key of keys) {
 // `label` and `meaning` also name typed data fields; their rendering sites
 // localize the values, so object fields are not direct DOM sinks.
 const directUISinkPatterns = [
-  /setAttribute\(\s*["']aria-label["']\s*,\s*["'`]\s*[A-Z]/g,
+  /setAttribute\(\s*["'](?:aria-label|aria-description|title|placeholder)["']\s*,\s*["'`]\s*[A-Z]/g,
   /\.textContent\s*=\s*["'`]\s*[A-Z]/g,
+  /\.(?:title|placeholder)\s*=\s*["'`]\s*[A-Z]/g,
   /(?:createToolbarButton|addMenuItem|addSubmenuItem)\(\s*["'`]\s*[A-Z]/g,
   /announceEditorMessage\([\s\S]{0,160}?,\s*["'`]\s*[A-Z]/g,
+  /\brejected\([\s\S]{0,160}?,\s*["'`]\s*[A-Z]/g,
 ];
-const editorUISources = [
-  "accessibility.ts",
-  "chat-reply.ts",
-  "editor.ts",
-  "input-suggestions.ts",
-  "markdown-fragment.ts",
-  "preview-popover.ts",
-];
+const editorUISources = fs.readdirSync(editorRoot).filter(name => name.endsWith(".ts"));
 for (const relativePath of editorUISources) {
   const text = fs.readFileSync(path.join(editorRoot, relativePath), "utf8");
   for (const pattern of directUISinkPatterns) {
@@ -75,12 +71,18 @@ for (const relativePath of editorUISources) {
       throw new Error(`${relativePath} contains app-authored English in a user-facing sink.`);
     }
   }
+  for (const match of text.matchAll(/\blocalized(?:Template)?\(\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g)) {
+    const key = match[1].startsWith('"') ? JSON.parse(match[1])
+      : match[1].slice(1, -1).replace(/\\'/g, "'");
+    if (!keys.includes(key)) throw new Error(`${relativePath} uses an unregistered Web interface key: ${key}`);
+  }
 }
 
 const reviewSource = fs.readFileSync(reviewSourcePath, "utf8");
 const directReviewPatterns = [
-  /setAttribute\(\s*'aria-label'\s*,\s*'\s*[A-Z]/g,
+  /setAttribute\(\s*'(?:(?:aria-label|aria-description)|title|placeholder)'\s*,\s*'\s*[A-Z]/g,
   /\.textContent\s*=\s*'\s*[A-Z]/g,
+  /\.(?:title|placeholder)\s*=\s*'\s*[A-Z]/g,
   /mermaidDiagnostic\([\s\S]{0,160}?,\s*'\s*[A-Z]/g,
   /defaultCommentHelpText\s*=\s*'\s*[A-Z]/g,
 ];

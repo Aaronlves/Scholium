@@ -483,7 +483,7 @@ private final class ScholiumBootstrapModel: ObservableObject {
                 }
                 isReadyToOpenWorkspace = workspaceAssignment != nil
                 if workspaceAssignment == nil {
-                    recoveryMessage = "This Triptych is no longer registered on this Mac. Choose its three folders again."
+                    recoveryMessage = ScholiumL10n.string("This Triptych is no longer registered on this Mac. Choose its three folders again.")
                 }
             }
         } catch {
@@ -944,12 +944,12 @@ private struct ScholiumSettingsRoot: View {
                 cssSnippetStore: workspaceStore.cssSnippetStore,
                 agentBridgeAvailability: { [weak workspaceStore] in
                     guard let workspaceStore else {
-                        return .unavailable("Scholium is shutting down.")
+                        return .unavailable(ScholiumL10n.string("Scholium is shutting down."))
                     }
                     if workspaceStore.appBridge != nil { return .available }
                     return .unavailable(
                         workspaceStore.appBridgeStartupFailure?.localizedDescription
-                            ?? "The App bridge did not start."
+                            ?? ScholiumL10n.string("The App bridge did not start.")
                     )
                 }
             )

@@ -355,7 +355,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             switch error {
             case .disconnected, .server: failure = .connectionError
             case .timedOut: failure = .timedOut
-            case .invalidMessage: failure = .serviceError
+            case .invalidMessage, .installationChanged: failure = .serviceError
             }
             return .failure(failure)
         } catch {

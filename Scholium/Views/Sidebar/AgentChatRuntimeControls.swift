@@ -84,7 +84,7 @@ struct AgentChatConfigurationMenu: View {
         .menuIndicator(.hidden)
         .agentChatComposerControl()
         .disabled(!isEnabled)
-        .help(Text(verbatim: "\(ScholiumL10n.string("Chat Settings", locale: locale)): \(modelLabel)"))
+        .help(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Chat Settings", locale: locale)): \(modelLabel)", locale: locale)))
         .accessibilityLabel(Text("Chat Settings", bundle: .module))
         .accessibilityIdentifier("scholium.chat.configuration")
         .accessibilityValue(
@@ -214,7 +214,7 @@ struct AgentChatPlanView: View {
                     if !isExpanded, plan.runStatus.isActive,
                         let current = plan.steps.first(where: { $0.status == .inProgress })
                     {
-                        Text(verbatim: ScholiumL10n.string("Plan", locale: locale) + ": " + current.step).lineLimit(2)
+                        Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Plan", locale: locale)): \(current.step)", locale: locale)).lineLimit(2)
                     } else {
                         Text("Plan", bundle: .module)
                     }

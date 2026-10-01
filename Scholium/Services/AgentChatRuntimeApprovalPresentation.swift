@@ -72,7 +72,8 @@ extension AgentChatRuntimeApproval {
                 case .delete: ScholiumL10n.string("Delete File", locale: locale)
                 case .update: ScholiumL10n.string("Edit File", locale: locale)
                 }
-            lines.append(action + ": " + name + (file.destination.map { " → " + URL(fileURLWithPath: $0).lastPathComponent } ?? ""))
+            let target = name + (file.destination.map { " → " + URL(fileURLWithPath: $0).lastPathComponent } ?? "")
+            lines.append(ScholiumL10n.string("\(action): \(target)", locale: locale))
         }
         if let grantRoot { lines.append(ScholiumL10n.string("Change files in: \(grantRoot)", locale: locale)) }
         return lines
@@ -81,16 +82,25 @@ extension AgentChatRuntimeApproval {
     func scopeLines(locale: Locale = .current) -> [String] {
         var lines: [String] = []
         if let toolServer { lines.append(toolServer) }
-        if let networkHost { lines.append(ScholiumL10n.string("Network Destination", locale: locale) + ": " + (networkProtocol ?? "") + " · " + networkHost) }
-        if let cwd { lines.append(ScholiumL10n.string("Working Directory", locale: locale) + ": " + cwd) }
-        if let environmentID { lines.append(ScholiumL10n.string("Execution Environment", locale: locale) + ": " + environmentID) }
-        if let grantRoot { lines.append(ScholiumL10n.string("Requested Session Write Folder", locale: locale) + ": " + grantRoot) }
+        if let networkHost {
+            let destination = (networkProtocol ?? "") + " · " + networkHost
+            lines.append(ScholiumL10n.string("\(ScholiumL10n.string("Network Destination", locale: locale)): \(destination)", locale: locale))
+        }
+        if let cwd { lines.append(ScholiumL10n.string("\(ScholiumL10n.string("Working Directory", locale: locale)): \(cwd)", locale: locale)) }
+        if let environmentID {
+            lines.append(ScholiumL10n.string("\(ScholiumL10n.string("Execution Environment", locale: locale)): \(environmentID)", locale: locale))
+        }
+        if let grantRoot {
+            lines.append(ScholiumL10n.string("\(ScholiumL10n.string("Requested Session Write Folder", locale: locale)): \(grantRoot)", locale: locale))
+        }
         if let permissions {
             if let enabled = permissions.network {
                 lines.append(
                     enabled ? ScholiumL10n.string("Network Access: Enabled", locale: locale) : ScholiumL10n.string("Network Access: Disabled", locale: locale))
             }
-            lines += permissions.rules.map { $0.access.label(locale: locale) + ": " + $0.path.label(locale: locale) }
+            lines += permissions.rules.map {
+                ScholiumL10n.string("\($0.access.label(locale: locale)): \($0.path.label(locale: locale))", locale: locale)
+            }
             if let depth = permissions.globScanMaxDepth { lines.append(ScholiumL10n.string("Pattern Scan Depth: \(depth)", locale: locale)) }
         }
         return lines
@@ -130,7 +140,7 @@ extension AgentChatRuntimeApproval.Path {
     func label(locale: Locale = .current) -> String {
         switch self {
         case .literal(let path): path
-        case .pattern(let pattern): ScholiumL10n.string("Pattern", locale: locale) + ": " + pattern
+        case .pattern(let pattern): ScholiumL10n.string("\(ScholiumL10n.string("Pattern", locale: locale)): \(pattern)", locale: locale)
         case .special(let root, let subpath): root.label(locale: locale) + (subpath.map { " / " + $0 } ?? "")
         }
     }
@@ -156,6 +166,7 @@ extension AgentChatRuntimeApproval.File {
             case .delete: ScholiumL10n.string("Delete File", locale: locale)
             case .update: ScholiumL10n.string("Edit File", locale: locale)
             }
-        return effect + ": " + path + (destination.map { " → " + $0 } ?? "")
+        let target = path + (destination.map { " → " + $0 } ?? "")
+        return ScholiumL10n.string("\(effect): \(target)", locale: locale)
     }
 }

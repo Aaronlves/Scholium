@@ -129,7 +129,7 @@ struct ExternalMarkdownWindowView: View {
             } else {
                 ScholiumContentStateView(
                     "Original Markdown Unavailable",
-                    detail: Text(model.error ?? "The original file could not be opened."),
+                    detail: Text(verbatim: model.error ?? ScholiumL10n.string("The original file could not be opened.")),
                     indicator: .symbol("exclamationmark.triangle", role: .attention)
                 ) {
                     Button("Retry") { Task { await model.open() } }

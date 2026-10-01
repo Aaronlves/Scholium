@@ -13850,6 +13850,11 @@
     "AI continuation could not be generated. Library completion remains available.",
     "The edited Markdown document exceeds the supported editor size.",
     "Finish editing the note title before switching documents.",
+    "The insertion position changed. Confirm the cursor again.",
+    "The reference is too large.",
+    "Finish composition before adopting a suggestion.",
+    "The passage changed. Request a new suggestion.",
+    "The suggestion is too large.",
     "Copy",
     "Expand",
     "YAML frontmatter",
@@ -13857,6 +13862,8 @@
     "Markdown editor, Edit mode",
     "Markdown source editor",
     "Note title",
+    "Empty Note",
+    "This note has no body content.",
     "Heading level {level}",
     "Link",
     "Callout",
@@ -13869,9 +13876,12 @@
     "Inline code",
     "Exact Markdown and YAML source",
     "Task item",
-    "Show Link Annotation",
-    "Hide Link Annotation",
+    "Completed task",
+    "Incomplete task",
+    "Show Link Annotation for {title}",
+    "Hide Link Annotation for {title}",
     "Link Annotation",
+    "Callout: {title}",
     "linked note",
     "Markdown table",
     "Embedded note {title}",
@@ -13886,6 +13896,8 @@
     "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
     "This Mermaid diagram could not be rendered. Source is shown.",
     "Footnote {ordinal}",
+    "Footnotes",
+    "Return to footnote reference {ordinal}",
     "Edit mode unavailable",
     "Close the YAML frontmatter in Source mode to restore the visual projection.",
     "The editor could not preserve the exact source line endings.",
@@ -13936,31 +13948,59 @@
     "Open {count} comments at lines {start} through {end}",
     "Could not save. Your Comment is still here.",
     "This Comment is too long to save here.",
-    "Saving\u2026"
+    "Saving\u2026",
+    "{label}. {meaning}"
   ];
   var fallbackPayload = {
     languageTag: "en",
     strings: {}
   };
+  var templatePlaceholder = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+  var interfaceLanguageIdentifier = /^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$/;
+  function placeholders(value) {
+    return [...value.matchAll(templatePlaceholder)].map((match) => match[1]).sort().join("\0");
+  }
+  function supportedInterfaceLanguage(identifier4) {
+    if (identifier4.length > 64 || !interfaceLanguageIdentifier.test(identifier4)) return "en";
+    const normalized2 = identifier4.replaceAll("_", "-").toLowerCase();
+    const parts = normalized2.split("-");
+    return parts[0] === "zh" && (parts.length === 1 || parts[1] === "hans" || parts[1] === "cn" || parts[1] === "sg") ? "zh-Hans" : "en";
+  }
+  function validatedInterfaceLocalization(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const candidate = value;
+    if (typeof candidate.languageTag !== "string" || candidate.languageTag.length > 64 || !interfaceLanguageIdentifier.test(candidate.languageTag) || !candidate.strings || typeof candidate.strings !== "object" || Array.isArray(candidate.strings)) return null;
+    const strings = {};
+    const languageTag = supportedInterfaceLanguage(candidate.languageTag);
+    if (languageTag === "en" && !/^en(?:[-_]|$)/i.test(candidate.languageTag)) {
+      return { ...fallbackPayload };
+    }
+    const entries = candidate.strings;
+    for (const key of webInterfaceLocalizationKeys) {
+      if (!Object.hasOwn(entries, key)) continue;
+      const translation = entries[key];
+      if (typeof translation === "string" && translation.trim().length > 0 && translation.length <= 4096 && placeholders(translation) === placeholders(key)) {
+        strings[key] = translation;
+      }
+    }
+    return { languageTag, strings };
+  }
+  function interfaceLocalizationFromBase64(encoded) {
+    if (!encoded || encoded.length > 2796204) return fallbackPayload;
+    try {
+      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+      if (bytes.byteLength > 2097152) return fallbackPayload;
+      return validatedInterfaceLocalization(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))) ?? fallbackPayload;
+    } catch {
+      return fallbackPayload;
+    }
+  }
   function payloadFromDocument() {
     if (typeof document === "undefined") return fallbackPayload;
     const encoded = document.querySelector(
       'meta[name="scholium-interface-localization"]'
     )?.content;
-    if (!encoded) return fallbackPayload;
-    try {
-      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-      const candidate = JSON.parse(new TextDecoder().decode(bytes));
-      if (typeof candidate.languageTag !== "string" || !candidate.strings || typeof candidate.strings !== "object") return fallbackPayload;
-      const strings = {};
-      for (const key of webInterfaceLocalizationKeys) {
-        const value = candidate.strings[key];
-        if (typeof value === "string" && value.length <= 4096) strings[key] = value;
-      }
-      return { languageTag: candidate.languageTag.slice(0, 32), strings };
-    } catch {
-      return fallbackPayload;
-    }
+    return interfaceLocalizationFromBase64(encoded ?? "");
   }
   var activePayload = payloadFromDocument();
   function localized(key) {
@@ -13974,7 +14014,7 @@
   }
   function localizedTemplateFrom(payload, key, replacements) {
     return localizedFrom(payload, key).replace(
-      /\{([A-Za-z]+)\}/g,
+      templatePlaceholder,
       (placeholder, name2) => Object.hasOwn(replacements, name2) ? String(replacements[name2]) : placeholder
     );
   }
@@ -32490,6 +32530,53 @@ ${fence}
     };
   }
 
+  // rendered-interface-localization.ts
+  function localizeRenderedInterface(root, localize = (key, replacements = {}) => localizedTemplate(key, replacements)) {
+    root.querySelectorAll(".scholium-callout").forEach((callout) => {
+      const identifier4 = Object.keys(calloutLocalizationKeys).find((role2) => callout.classList.contains(`scholium-callout-${role2}`));
+      if (!identifier4) return;
+      const [labelKey, meaningKey] = calloutLocalizationKeys[identifier4];
+      const label = localize(labelKey);
+      const meaning = localize(meaningKey);
+      const role = callout.querySelector(".scholium-callout-role");
+      if (role?.closest(".scholium-callout") === callout) {
+        if (role.textContent !== label) role.textContent = label;
+        if (role.title !== meaning) role.title = meaning;
+        role.setAttribute("aria-label", localize("{label}. {meaning}", { label, meaning }));
+      }
+      const generatedTitle = callout.querySelector(".scholium-callout-default-title");
+      if (generatedTitle?.closest(".scholium-callout") === callout && generatedTitle.textContent !== label) {
+        generatedTitle.textContent = label;
+      }
+    });
+    root.querySelectorAll(".footnote-reference[data-footnote]").forEach((reference) => {
+      const ordinal = reference.dataset.footnote;
+      if (ordinal) reference.setAttribute("aria-label", localize("Footnote {ordinal}", { ordinal }));
+    });
+    root.querySelectorAll(".footnote-return[data-footnote]").forEach((reference) => {
+      const ordinal = reference.dataset.footnote;
+      if (ordinal) reference.setAttribute("aria-label", localize("Return to footnote reference {ordinal}", { ordinal }));
+    });
+    root.querySelectorAll(".footnotes").forEach((section) => {
+      section.setAttribute("aria-label", localize("Footnotes"));
+    });
+    root.querySelectorAll(".scholium-task-checkbox").forEach((checkbox) => {
+      checkbox.setAttribute("aria-label", localize(checkbox.checked ? "Completed task" : "Incomplete task"));
+    });
+    root.querySelectorAll(".scholium-table").forEach((table) => {
+      table.setAttribute("aria-label", localize("Markdown table"));
+    });
+    root.querySelectorAll("button[data-link-annotation]").forEach((button) => {
+      const title = button.dataset.linkAnnotationTarget?.trim() || button.closest(".scholium-annotated-link")?.querySelector(".wiki-link")?.textContent?.trim() || localize("linked note");
+      button.dataset.linkAnnotationTarget = title;
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-label", localize(
+        expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
+        { title }
+      ));
+    });
+  }
+
   // preview-popover.ts
   function normalizedTitle(value) {
     return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
@@ -32547,6 +32634,7 @@ ${fence}
   function populatePreviewDocument(body, preview) {
     body.innerHTML = preview.htmlBody;
     sanitizePreviewDocument(body);
+    localizeRenderedInterface(body);
     renderPreviewMathNodes(body);
     const firstHeading = body.querySelector(":scope > h1:first-child");
     if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
@@ -32580,7 +32668,10 @@ ${fence}
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
       button.setAttribute(
         "aria-label",
-        `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${annotationTarget(button)}`
+        localizedTemplate(
+          expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
+          { title: annotationTarget(button) }
+        )
       );
     }
     function setFootnoteExpanded(button, expanded) {
@@ -33526,7 +33617,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     button.dataset.linkAnnotation = "true";
     button.dataset.linkAnnotationTarget = alias || target;
     button.setAttribute("aria-expanded", "false");
-    button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
+    button.setAttribute("aria-label", localizedTemplate("Show Link Annotation for {title}", { title: alias || target }));
     button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document2));
     const template = document2.createElement("template");
     template.className = "scholium-link-annotation-template";
@@ -35131,14 +35222,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
 
   // callout-presentation.ts
-  var neutralCallout = {
-    identifier: "neutral",
-    label: localized("Note"),
-    meaning: localized("Preserves an unsupported callout without assigning a research role.")
-  };
   function calloutDefinition(dialect, rawKind) {
     const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-    const definition = dialect?.callouts.find((callout) => callout.identifier === kind) ?? neutralCallout;
+    const definition = dialect?.callouts.find((callout) => callout.identifier === kind) ?? {
+      identifier: "neutral",
+      label: localized("Note"),
+      meaning: localized("Preserves an unsupported callout without assigning a research role.")
+    };
     return { ...definition, ...localizedCallout(definition.identifier, definition) };
   }
   function calloutHeader(text) {
@@ -36863,7 +36953,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           button.className = "cm-live-callout-disclosure";
           button.textContent = "";
           button.setAttribute("aria-expanded", String(!this.collapsed));
-          button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
+          button.setAttribute("aria-label", localizedTemplate("Callout: {title}", { title: this.title || this.label }));
           button.addEventListener("mousedown", (event) => event.preventDefault());
           button.addEventListener("click", () => {
             const from = Number(root.dataset.calloutFrom);
@@ -36894,7 +36984,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (button) {
           button.textContent = "";
           button.setAttribute("aria-expanded", String(!this.collapsed));
-          button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
+          button.setAttribute("aria-label", localizedTemplate("Callout: {title}", { title: this.title || this.label }));
         }
         if (label) {
           label.className = this.title ? "cm-live-callout-role-label" : "scholium-callout-default-title scholium-callout-title";
@@ -37562,7 +37652,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         button.dataset.linkAnnotation = "true";
         button.dataset.linkAnnotationTarget = this.target;
         button.setAttribute("aria-expanded", "false");
-        button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${this.target}`);
+        button.setAttribute("aria-label", localizedTemplate("Show Link Annotation for {title}", { title: this.target }));
         button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon"));
         const template = document.createElement("template");
         template.className = "scholium-link-annotation-template";
@@ -40570,11 +40660,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "insertReference": {
         const selection = editor.state.selection.main;
         if (documentVersion !== operation.generation || editor.composing || editor.state.selection.ranges.length !== 1 || !selection.empty || selection.anchor !== operation.selection.anchor || selection.head !== operation.selection.head || protectedCommandRanges(editor.state).some((range) => selection.head >= range.from && Math.max(0, selection.head - 1) < range.to)) {
-          return rejected(request.requestID, documentVersion, "The insertion position changed. Confirm the cursor again.");
+          return rejected(request.requestID, documentVersion, localized("The insertion position changed. Confirm the cursor again."));
         }
         const text = `[[${operation.target}]]`;
         if (!exactSourceFitsChanges(editor.state, [{ from: selection.head, to: selection.head, insert: text }])) {
-          return rejected(request.requestID, documentVersion, "The reference is too large.");
+          return rejected(request.requestID, documentVersion, localized("The reference is too large."));
         }
         editor.dispatch({
           changes: { from: selection.head, insert: text },
@@ -40586,7 +40676,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return successfulResult(request.requestID, true, "Insert Wikilink");
       }
       case "replacePassage": {
-        if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, "Finish composition before adopting a suggestion.");
+        if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, localized("Finish composition before adopting a suggestion."));
         const change = passageReplacement(
           exactEditorSource(),
           operation.expectedText,
@@ -40594,9 +40684,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           operation.toUTF16,
           operation.replacement
         );
-        if (!change) return rejected(request.requestID, documentVersion, "The passage changed. Request a new suggestion.");
+        if (!change) return rejected(request.requestID, documentVersion, localized("The passage changed. Request a new suggestion."));
         if (!exactSourceFitsChanges(editor.state, [change])) {
-          return rejected(request.requestID, documentVersion, "The suggestion is too large.");
+          return rejected(request.requestID, documentVersion, localized("The suggestion is too large."));
         }
         editor.dispatch({
           changes: change,
@@ -40697,7 +40787,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       const result = rejected(
         value.requestID,
         documentVersion,
-        error instanceof Error ? error.message : "editor request failed"
+        error instanceof Error ? error.message === sourceCapacityMessage ? localized(sourceCapacityMessage) : error.message : "editor request failed"
       );
       recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes, resultBytes: encodedByteLength(result) });
       return result;

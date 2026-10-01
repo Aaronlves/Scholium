@@ -1,7 +1,7 @@
 import {Range, StateEffect, StateField, type EditorState, type Extension} from "@codemirror/state";
 import {Decoration, DecorationSet, EditorView, ViewPlugin, WidgetType, type ViewUpdate} from "@codemirror/view";
 import {createTableDOM} from "./markdown-fragment";
-import {localized} from "./localization";
+import {localizedTemplate} from "./localization";
 import {calloutDefinition, calloutHeader} from "./callout-presentation";
 import type {MarkdownEditingDialect} from "./protocol";
 import {
@@ -189,7 +189,7 @@ export function createLiveStructuredBlockProjections(options: {
         button.className = "cm-live-callout-disclosure";
         button.textContent = "";
         button.setAttribute("aria-expanded", String(!this.collapsed));
-        button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
+        button.setAttribute("aria-label", localizedTemplate("Callout: {title}", {title: this.title || this.label}));
         button.addEventListener("mousedown", event => event.preventDefault());
         button.addEventListener("click", () => {
           const from = Number(root.dataset.calloutFrom);
@@ -222,7 +222,7 @@ export function createLiveStructuredBlockProjections(options: {
       if (button) {
         button.textContent = "";
         button.setAttribute("aria-expanded", String(!this.collapsed));
-        button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
+        button.setAttribute("aria-label", localizedTemplate("Callout: {title}", {title: this.title || this.label}));
       }
       if (label) {
         label.className = this.title ? "cm-live-callout-role-label" : "scholium-callout-default-title scholium-callout-title";

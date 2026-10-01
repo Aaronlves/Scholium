@@ -413,7 +413,7 @@ private struct BootstrapFlowView: View {
             } catch is CancellationError {
                 return
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = ScholiumErrorLocalization.message(error)
             }
         }
     }
@@ -448,7 +448,7 @@ private struct BootstrapFlowView: View {
             } catch is CancellationError {
                 return
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = ScholiumErrorLocalization.message(error)
             }
         }
     }
@@ -521,7 +521,7 @@ private struct BootstrapFlowView: View {
                     pendingPortableControlRecovery = attemptedSelection
                     errorMessage = nil
                 } else {
-                    errorMessage = error.localizedDescription
+                    errorMessage = ScholiumErrorLocalization.message(error)
                 }
             }
         }
@@ -545,7 +545,7 @@ private struct BootstrapFlowView: View {
                 openWorkspace()
             } catch {
                 isSaving = false
-                errorMessage = error.localizedDescription
+                errorMessage = ScholiumErrorLocalization.message(error)
             }
         }
     }

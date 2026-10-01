@@ -348,22 +348,105 @@ public enum SearchQueryDiagnosticCode: String, Codable, Hashable, Sendable {
     case unsupportedSyntax
 }
 
+/// App presentation consumes this semantic reason and its literal parameters.
+/// The protocol message remains a separate, untranslated diagnostic record.
+public enum SearchQueryDiagnosticReason: Codable, Hashable, Sendable {
+    case queryTooLong(limit: Int)
+    case tooManyTokens(limit: Int)
+    case misplacedProvider
+    case unexpectedOperator, conditionSeparatorRequired, conditionRequired
+    case paragraphRequiresPositiveText, fieldGroupUnsupported, inheritedFieldOverride
+    case groupDepthExceeded(limit: Int)
+    case unclosedGroup
+    case duplicateProvider, providerValueRequired, unknownProvider
+    case missingFieldValue(field: String)
+    case unsupportedField(field: String)
+    case unknownField(field: String)
+    case emptyClause, prefixUnsupported, cjkPrefixUnsupported, prefixTooShort
+    case structuredValueSyntax
+    case unknownStructuredValue(field: SearchStructuredField, value: String)
+    case invalidPropertyKey, propertyValueRequired, propertyPrefixUnsupported, emptyPropertyValue
+    case linkPrefixUnsupported, emptyLinkIdentity, phrasePrefixUnsupported, unclosedPhrase
+    case invalidPhraseEscape, trailingPhraseEscape, partialQuotedValue, invalidPrefixPlacement
+    case operatorTextRequiresQuotes, unsupportedPatternSyntax, scopeSelectorInQuery
+    case currentNoteRequiresPositiveText, directLinksUnavailableForCurrentNote
+    case missingLinkIdentity(identity: String)
+    case ambiguousLinkIdentity(identity: String, candidates: [String])
+    case linkGraphNotCurrent, openingVaultLexicalOnly, inconsistentScopes, invalidVaultSubset
+    case vaultOutsideTriptych, openingVaultUnavailable, noteOutsideTriptych
+
+    public var code: SearchQueryDiagnosticCode {
+        switch self {
+        case .emptyClause, .emptyPropertyValue, .emptyLinkIdentity: .emptyClause
+        case .unclosedPhrase: .unclosedPhrase
+        case .invalidPhraseEscape, .trailingPhraseEscape: .invalidEscape
+        case .prefixTooShort, .phrasePrefixUnsupported, .invalidPrefixPlacement: .invalidPrefix
+        case .cjkPrefixUnsupported: .cjkPrefixUnsupported
+        case .unknownField: .unknownField
+        case .unsupportedField: .unsupportedField
+        case .scopeSelectorInQuery: .unsupportedScopeSelector
+        case .duplicateProvider: .duplicateClause
+        case .ambiguousLinkIdentity: .ambiguousIdentity
+        case .currentNoteRequiresPositiveText, .directLinksUnavailableForCurrentNote,
+            .missingLinkIdentity, .linkGraphNotCurrent, .openingVaultLexicalOnly,
+            .inconsistentScopes, .invalidVaultSubset, .vaultOutsideTriptych,
+            .openingVaultUnavailable, .noteOutsideTriptych:
+            .notApplicable
+        case .providerValueRequired, .missingFieldValue, .propertyValueRequired: .missingFieldValue
+        case .unknownProvider, .unknownStructuredValue: .unknownStructuredValue
+        case .queryTooLong, .tooManyTokens, .misplacedProvider, .unexpectedOperator,
+            .conditionSeparatorRequired, .conditionRequired, .paragraphRequiresPositiveText,
+            .fieldGroupUnsupported, .inheritedFieldOverride, .groupDepthExceeded,
+            .unclosedGroup, .prefixUnsupported, .structuredValueSyntax, .invalidPropertyKey,
+            .propertyPrefixUnsupported, .linkPrefixUnsupported, .partialQuotedValue,
+            .operatorTextRequiresQuotes, .unsupportedPatternSyntax:
+            .unsupportedSyntax
+        }
+    }
+}
+
 public struct SearchQueryDiagnostic: Error, Codable, Hashable, Sendable {
-    public let code: SearchQueryDiagnosticCode
+    public let reason: SearchQueryDiagnosticReason
+    public var code: SearchQueryDiagnosticCode { reason.code }
     public let message: String
     public let utf16LowerBound: Int
     public let utf16UpperBound: Int
 
     public init(
-        code: SearchQueryDiagnosticCode,
+        reason: SearchQueryDiagnosticReason,
         message: String,
         utf16LowerBound: Int,
         utf16UpperBound: Int
     ) {
-        self.code = code
+        self.reason = reason
         self.message = message
         self.utf16LowerBound = utf16LowerBound
         self.utf16UpperBound = utf16UpperBound
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case reason, code, message, utf16LowerBound, utf16UpperBound
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        reason = try values.decode(SearchQueryDiagnosticReason.self, forKey: .reason)
+        guard try values.decode(SearchQueryDiagnosticCode.self, forKey: .code) == reason.code else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .code, in: values, debugDescription: "Search diagnostic code does not match its reason.")
+        }
+        message = try values.decode(String.self, forKey: .message)
+        utf16LowerBound = try values.decode(Int.self, forKey: .utf16LowerBound)
+        utf16UpperBound = try values.decode(Int.self, forKey: .utf16UpperBound)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(reason, forKey: .reason)
+        try values.encode(code, forKey: .code)
+        try values.encode(message, forKey: .message)
+        try values.encode(utf16LowerBound, forKey: .utf16LowerBound)
+        try values.encode(utf16UpperBound, forKey: .utf16UpperBound)
     }
 }
 

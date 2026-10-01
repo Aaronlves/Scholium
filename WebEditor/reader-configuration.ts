@@ -1,3 +1,5 @@
+import {validatedInterfaceLocalization, type WebInterfaceLocalizationPayload} from "./localization";
+
 export interface ReadLinkPreview {
   utf16LowerBound: number;
   utf16UpperBound: number;
@@ -6,11 +8,6 @@ export interface ReadLinkPreview {
   fragment?: string;
   htmlBody: string;
 }
-
-export interface ReaderLocalization {
-  strings: Record<string, string>;
-}
-
 
 export interface ReaderConfiguration {
   version: 7;
@@ -22,7 +19,7 @@ export interface ReaderConfiguration {
   testingEnabled: boolean;
   presentationCSS: string;
   userCSS: string;
-  localization: ReaderLocalization;
+  localization: WebInterfaceLocalizationPayload;
   linkPreviews: ReadLinkPreview[];
 }
 
@@ -44,6 +41,7 @@ export function validatedReaderConfiguration(value: unknown): ReaderConfiguratio
       || !config.localization.strings || typeof config.localization.strings !== "object"
       || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128
       ) return null;
-
-  return config as ReaderConfiguration;
+  const localization = validatedInterfaceLocalization(config.localization);
+  if (!localization) return null;
+  return {...config, localization} as ReaderConfiguration;
 }

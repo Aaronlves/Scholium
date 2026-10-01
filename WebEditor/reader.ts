@@ -18,6 +18,8 @@ import {
 import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
 import {AnimationFrameCoalescer} from "./interaction-reporting";
 import {decorateAttachmentLinks} from "./attachment-presentation";
+import {createInterfaceLocalizer} from "./localization";
+import {localizeRenderedInterface} from "./rendered-interface-localization";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -93,14 +95,8 @@ async function initializeReader(value: unknown): Promise<void> {
     heading.setAttribute('role', 'heading');
     heading.setAttribute('aria-level', String(bodyHeadingAccessibilityLevel(level)));
   });
-  const strings = localization.strings || {};
-  const localized = (key: string, replacements: Record<string, unknown> = {}) =>
-    String(strings[key] || key).replace(
-      /\{([A-Za-z]+)\}/g,
-      (placeholder, name: string) => Object.prototype.hasOwnProperty.call(replacements, name)
-        ? String(replacements[name])
-        : placeholder,
-    );
+  const localized = createInterfaceLocalizer(localization);
+  localizeRenderedInterface(documentRoot, localized);
   const handler = readerWindow.webkit?.messageHandlers?.scholiumRead;
   const post = (type: string, extra: Record<string, unknown> = {}) => handler?.postMessage({
     version, documentID, fingerprint, loadGeneration, type, ...extra,
@@ -370,6 +366,7 @@ async function initializeReader(value: unknown): Promise<void> {
           || typeof update.html !== 'string' || update.html.length > 16_777_216
           || typeof update.presentationCSS !== 'string' || typeof update.userCSS !== 'string') return false;
       const restoreSelection = replyProjection!.apply(update.html);
+      localizeRenderedInterface(documentRoot, localized);
       decorateAttachmentLinks(documentRoot);
       decorateChatReplyLinks(documentRoot);
       fingerprint = update.fingerprint;
@@ -404,7 +401,7 @@ async function initializeReader(value: unknown): Promise<void> {
     button.dataset.linkAnnotationTarget = linkName;
     button.setAttribute(
       'aria-label',
-      `${localized('Show Link Annotation')} ${linkName}`,
+      localized('Show Link Annotation for {title}', {title: linkName}),
     );
   });
 
@@ -419,7 +416,8 @@ async function initializeReader(value: unknown): Promise<void> {
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     button.setAttribute(
       'aria-label',
-      `${localized(expanded ? 'Hide Link Annotation' : 'Show Link Annotation')} ${annotationTarget(button)}`,
+      localized(expanded ? 'Hide Link Annotation for {title}' : 'Show Link Annotation for {title}',
+        {title: annotationTarget(button)}),
     );
   }
   function setFootnoteExpanded(button: HTMLButtonElement, expanded: boolean) {
@@ -476,6 +474,7 @@ async function initializeReader(value: unknown): Promise<void> {
       node.removeAttribute('aria-owns');
       node.tabIndex = -1;
     });
+    localizeRenderedInterface(container, localized);
   }
 
   function installInertDocumentContent(container: HTMLElement, preview: ReadLinkPreview) {
@@ -620,6 +619,7 @@ async function initializeReader(value: unknown): Promise<void> {
 
   function showFootnotePopover(button: HTMLElement) {
     const ordinal = button.dataset.footnote;
+    if (!ordinal) return;
     const definition = document.getElementById('fn-' + ordinal);
     const content = definition && definition.querySelector('.footnote-content');
     if (!content) return;

@@ -52,8 +52,12 @@ struct WebKitInterfaceLocalization: Codable, Equatable, Sendable {
 
     private static func supportedLanguageTag(for identifier: String) -> String {
         let normalized = identifier.replacingOccurrences(of: "_", with: "-").lowercased()
-        if normalized == "zh" || normalized.hasPrefix("zh-hans")
-            || normalized.hasPrefix("zh-cn") || normalized.hasPrefix("zh-sg")
+        guard normalized.count <= 64,
+            normalized.range(of: #"^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$"#, options: .regularExpression) != nil
+        else { return "en" }
+        let parts = normalized.split(separator: "-")
+        if parts.first == "zh"
+            && (parts.count == 1 || ["hans", "cn", "sg"].contains(String(parts[1])))
         {
             return "zh-Hans"
         }

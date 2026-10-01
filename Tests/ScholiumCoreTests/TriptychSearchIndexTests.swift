@@ -798,6 +798,7 @@ struct TriptychSearchIndexTests {
             ))
         #expect(filterOnly.noteResults.isEmpty)
         #expect(filterOnly.diagnostics.first?.code == .notApplicable)
+        #expect(filterOnly.diagnostics.first?.reason == .currentNoteRequiresPositiveText)
     }
 
     @Test("This Note reports only portable stable identity and ignores forged YAML identity")
@@ -1084,6 +1085,7 @@ struct TriptychSearchIndexTests {
             ))
         #expect(response.noteResults.isEmpty)
         #expect(response.diagnostics.first?.code == .notApplicable)
+        #expect(response.diagnostics.first?.reason == .inconsistentScopes)
     }
 
     @Test("Corrupt generated state is staged and replaced without touching v1 or source")

@@ -100,7 +100,7 @@ struct HotkeySettingsView: View {
         Menu {
             hotkeyActions(command)
         } label: {
-            Text(binding(for: command)?.displayName ?? "None")
+            Text(verbatim: binding(for: command)?.displayName ?? ScholiumL10n.string("None"))
                 .monospacedDigit()
                 .frame(minWidth: 64)
         }
@@ -108,7 +108,7 @@ struct HotkeySettingsView: View {
         .focused($shortcutCommand, equals: command)
         .controlSize(.small)
         .accessibilityLabel(Text("Shortcut for \(String(localized: command.title))"))
-        .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
+        .accessibilityValue(Text(verbatim: binding(for: command)?.displayName ?? ScholiumL10n.string("None")))
         .accessibilityIdentifier("scholium.hotkeys.command.\(command.rawValue)")
     }
     @ViewBuilder

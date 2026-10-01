@@ -3,13 +3,14 @@ import ScholiumContracts
 import Subprocess
 
 public enum CodexConnectionError: LocalizedError, Sendable {
-    case disconnected, timedOut, invalidMessage
+    case disconnected, timedOut, invalidMessage, installationChanged
     case server(String)
     public var errorDescription: String? {
         switch self {
         case .disconnected: "Codex disconnected. Check the conversation before sending again."
         case .timedOut: "Codex did not confirm the request. Check its outcome before sending again."
         case .invalidMessage: "Codex returned an invalid protocol message."
+        case .installationChanged: "The Codex installation changed. Reconnect after checking the installation."
         case .server(let message): message
         }
     }
@@ -78,7 +79,7 @@ public actor CodexAppServer {
                     let launchExecutable: URL
                     if automaticallyDiscovered {
                         guard let verified = ScholiumAgentIntegrationResources.verifiedCodexRuntimeURL(at: executable)
-                        else { throw CodexConnectionError.server("The Codex installation changed. Reconnect after checking the installation.") }
+                        else { throw CodexConnectionError.installationChanged }
                         launchExecutable = verified
                     } else {
                         launchExecutable = executable

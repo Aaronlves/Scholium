@@ -1,20 +1,6 @@
 import Foundation
 import ScholiumContracts
 
-public enum IndexedAttachmentAccessError: LocalizedError, Sendable {
-    case damaged(String)
-    case bookmarkUnavailable(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .damaged(let reason):
-            "The machine-local indexed-attachment access store is damaged: \(reason)"
-        case .bookmarkUnavailable(let path):
-            "Scholium could not retain read access to the indexed attachment at \(path)."
-        }
-    }
-}
-
 /// Machine-local read authorization for Finder-owned attachment references.
 /// Absolute paths and bookmark bytes stay here; portable catalogs retain only
 /// stable identity and a neutral filename descriptor.

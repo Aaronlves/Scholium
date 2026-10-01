@@ -1,17 +1,6 @@
 import Darwin
 import Foundation
-
-public enum ExactFileReplacementError: LocalizedError, Sendable {
-    case revisionConflict
-    case commitUncertain(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .revisionConflict: "The configuration file or its directory changed. Reload before trying again."
-        case .commitUncertain(let reason): "The configuration replacement could not be proven: \(reason)"
-        }
-    }
-}
+import ScholiumContracts
 
 public struct ExactFileReplacementResult: Sendable {
     public let data: Data

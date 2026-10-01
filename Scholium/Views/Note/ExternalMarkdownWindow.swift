@@ -25,8 +25,8 @@ enum ExternalMarkdownWindowIssue: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .renameUnavailable: "Rename this external file in Finder, then reopen it."
-        case .unsaved: "The external Markdown window could not be saved. Its edits remain open."
+        case .renameUnavailable: ScholiumL10n.string("Rename this external file in Finder, then reopen it.")
+        case .unsaved: ScholiumL10n.string("The external Markdown window could not be saved. Its edits remain open.")
         }
     }
 }
@@ -329,7 +329,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             if retainsEditor, let snapshot, opened.snapshot.fingerprint != snapshot.fingerprint {
                 await opened.session.close()
                 hasConflict = true
-                error = ScholiumL10n.dynamicString(ExternalMarkdownFileError.changed.localizedDescription)
+                error = ScholiumErrorLocalization.message(ExternalMarkdownFileError.changed)
                 asksForAccess = false
                 return
             }
@@ -352,7 +352,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             asksForAccess = false
             needsFileAccess = false
         } catch {
-            self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+            self.error = ScholiumErrorLocalization.message(error)
             asksForAccess = error as? ExternalMarkdownFileError == .permissionDenied
             needsFileAccess = asksForAccess
         }
@@ -396,7 +396,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
                         await editorSession.resignFocusAndWait()
                         if !isClosed { mode = .read }
                     }
-                } catch { self.error = ScholiumL10n.dynamicString(error.localizedDescription) }
+                } catch { self.error = ScholiumErrorLocalization.message(error) }
                 await resumeInput()
                 isChangingMode = false
                 modeTransitionTask = nil
@@ -461,7 +461,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             error = nil
             return acknowledgement == .clean
         } catch {
-            self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+            self.error = ScholiumErrorLocalization.message(error)
             if error as? ExternalMarkdownFileError == .permissionDenied { needsFileAccess = true }
             if error as? ExternalMarkdownFileError == .changed { hasConflict = true }
             return false
@@ -508,7 +508,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             }
         } catch {
             if !isClosed {
-                self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+                self.error = ScholiumErrorLocalization.message(error)
                 if error as? ExternalMarkdownFileError == .permissionDenied { needsFileAccess = true }
                 if error as? ExternalMarkdownFileError == .changed { hasConflict = true }
             }
@@ -531,7 +531,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             install(loaded)
             startObservation()
         } catch {
-            self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+            self.error = ScholiumErrorLocalization.message(error)
             if error as? ExternalMarkdownFileError == .permissionDenied { needsFileAccess = true }
         }
     }
@@ -559,7 +559,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             guard !isClosed else { throw CancellationError() }
             return candidate
         } catch {
-            self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+            self.error = ScholiumErrorLocalization.message(error)
             if error as? ExternalMarkdownFileError == .permissionDenied { needsFileAccess = true }
             if error as? ExternalMarkdownFileError == .changed {
                 hasConflict = true
@@ -582,7 +582,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
                 ? try await editorSession.persistenceSnapshot(expectedRevision: snapshot.fingerprint).text
                 : snapshot.source
             comparison = ExternalMarkdownComparison(buffer: buffer, disk: opened.snapshot.source)
-        } catch { self.error = ScholiumL10n.dynamicString(error.localizedDescription) }
+        } catch { self.error = ScholiumErrorLocalization.message(error) }
     }
 
     func reveal(displaying url: URL? = nil) {
@@ -652,7 +652,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         isTerminating = true
         do { try await suspendInput() } catch {
             isTerminating = false
-            self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+            self.error = ScholiumErrorLocalization.message(error)
             reveal()
             return false
         }
@@ -736,7 +736,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
                 if self.isDirty { self.confirmClose(sender) } else { self.finishClose(sender) }
             } catch {
                 self.isPreparingClose = false
-                self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+                self.error = ScholiumErrorLocalization.message(error)
                 await self.resumeInput()
             }
         }
@@ -805,7 +805,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         } catch {
             guard !isClosed, editorSession === observedEditor else { return }
             inputSuspensionID = suspensionID
-            inputResumeError = ScholiumL10n.dynamicString(error.localizedDescription)
+            inputResumeError = ScholiumErrorLocalization.message(error)
         }
     }
 
@@ -836,7 +836,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
                 editorReady
             else { return }
             do { try await editorSession.perform(command, argument: argument) } catch {
-                self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+                self.error = ScholiumErrorLocalization.message(error)
             }
         }
     }

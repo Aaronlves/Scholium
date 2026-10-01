@@ -153,6 +153,7 @@ struct IdentityMigrationNotice: View {
 struct IdentityAmbiguityNotice: View {
     let ambiguity: NoteIdentityAmbiguity
     let onResolve: () -> Void
+    @Environment(\.locale) private var locale
 
     var body: some View {
         ScholiumRecoveryNotice(
@@ -170,10 +171,24 @@ struct IdentityAmbiguityNotice: View {
     }
 
     private var ambiguityExplanation: String {
-        let opening =
-            ambiguity.candidates.isEmpty
-            ? "This file’s prior identity is unresolved."
-            : "This file matches \(ambiguity.candidates.count) previous notes."
-        return opening + " You can keep reading, but identity-dependent restore and file changes remain unavailable until you identify it."
+        IdentityResolutionPresentation.ambiguity(candidateCount: ambiguity.candidates.count, locale: locale)
+    }
+}
+
+enum IdentityResolutionPresentation {
+    static func ambiguity(candidateCount: Int, locale: Locale = .current) -> String {
+        if candidateCount == 0 {
+            return ScholiumL10n.string(
+                "This file’s prior identity is unresolved. You can keep reading, but identity-dependent restore and file changes remain unavailable until you identify it.",
+                locale: locale)
+        }
+        if candidateCount == 1 {
+            return ScholiumL10n.string(
+                "This file matches one previous note. You can keep reading, but identity-dependent restore and file changes remain unavailable until you identify it.",
+                locale: locale)
+        }
+        return ScholiumL10n.string(
+            "This file matches \(candidateCount) previous notes. You can keep reading, but identity-dependent restore and file changes remain unavailable until you identify it.",
+            locale: locale)
     }
 }

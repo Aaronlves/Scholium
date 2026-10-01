@@ -1340,6 +1340,7 @@ struct WorkspaceRuntimeTests {
             ))
         #expect(vaultResponse.results.isEmpty)
         #expect(vaultResponse.diagnostics.map(\.code) == [.notApplicable])
+        #expect(vaultResponse.diagnostics.map(\.reason) == [.vaultOutsideTriptych])
 
         let mismatched = try await handle.discovery.search(
             SearchRequest(
@@ -1350,6 +1351,7 @@ struct WorkspaceRuntimeTests {
             ))
         #expect(mismatched.results.isEmpty)
         #expect(mismatched.diagnostics.map(\.code) == [.notApplicable])
+        #expect(mismatched.diagnostics.map(\.reason) == [.inconsistentScopes])
 
         let forgedNote = SearchSourceSnapshot(
             noteID: VaultQualifiedNoteID(
@@ -1369,6 +1371,7 @@ struct WorkspaceRuntimeTests {
             ))
         #expect(noteResponse.results.isEmpty)
         #expect(noteResponse.diagnostics.map(\.code) == [.notApplicable])
+        #expect(noteResponse.diagnostics.map(\.reason) == [.noteOutsideTriptych])
 
         let authorizedNote = try #require(
             await handle.snapshot().document(id: fixture.analysisNoteID)
@@ -1388,6 +1391,7 @@ struct WorkspaceRuntimeTests {
             ))
         #expect(structuredResponse.results.isEmpty)
         #expect(structuredResponse.diagnostics.map(\.code) == [.notApplicable])
+        #expect(structuredResponse.diagnostics.map(\.reason) == [.currentNoteRequiresPositiveText])
         await runtime.shutdown()
     }
 

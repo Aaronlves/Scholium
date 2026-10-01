@@ -1056,3 +1056,79 @@ final class WindowModel: ObservableObject {
     }
 
 }
+
+// Application-defined failures are projected at this existing delivery composition
+// root. The localization owner reaches backend contracts without a new import edge.
+extension ScholiumErrorLocalization {
+    static func applicationMessage(_ error: any Error, locale: Locale) -> String? {
+        switch error {
+        case let error as BootstrapStructurePreparationError:
+            return switch error {
+            case .invalidName: ScholiumL10n.string("Enter a Triptych name that can be used as a folder name.", locale: locale)
+            case .destinationExists(let path):
+                ScholiumL10n.string("A folder already exists at \(path). Choose Connect Existing Folders or use another name.", locale: locale)
+            }
+        case let error as CodexChatToolConfigurationError:
+            return switch error {
+            case .accessConfirmationRequired:
+                ScholiumL10n.string("Confirm whether existing access settings may be used with the new destination.", locale: locale)
+            case .invalidName: ScholiumL10n.string("Enter a connection name without line breaks or control characters.", locale: locale)
+            case .duplicateName: ScholiumL10n.string("A tool connection already uses this name.", locale: locale)
+            case .managedConnection: ScholiumL10n.string("This connection is managed by another configuration or by Scholium.", locale: locale)
+            case .invalidAddress:
+                ScholiumL10n.string("Enter a program or a valid HTTPS server address. Local servers may use HTTP on the loopback address.", locale: locale)
+            case .invalidVariable: ScholiumL10n.string("Enter environment variable names only, without values, spaces or equals signs.", locale: locale)
+            }
+        case let error as ScholiumAppBridgeError:
+            return switch error {
+            case .unavailable: ScholiumL10n.string("The running Scholium App bridge is unavailable.", locale: locale)
+            case .invalidFrame: ScholiumL10n.string("The Scholium App bridge frame is invalid.", locale: locale)
+            case .invalidRequest: ScholiumL10n.string("The Scholium App bridge request is invalid.", locale: locale)
+            case .invalidResponse: ScholiumL10n.string("The Scholium App bridge response is invalid.", locale: locale)
+            case .unsupportedVersion(let version):
+                ScholiumL10n.string("The Scholium App bridge schema version \(String(version)) is unsupported.", locale: locale)
+            case .permissionDenied: ScholiumL10n.string("The Scholium App bridge rejected current-user authentication.", locale: locale)
+            case .timeout: ScholiumL10n.string("The Scholium App bridge timed out before sending a request.", locale: locale)
+            case .outcomeUnknown: ScholiumL10n.string("The Scholium App bridge cannot determine whether the request completed.", locale: locale)
+            case .alreadyRunning: ScholiumL10n.string("Another Scholium App bridge already owns this endpoint.", locale: locale)
+            case .remote(_, let message): message
+            case .systemCall: error.localizedDescription
+            }
+        case let error as CodexWritingAssistanceError:
+            return switch error {
+            case .unavailable: ScholiumL10n.string("Writing assistance is unavailable for the selected model or connection.", locale: locale)
+            case .busy: ScholiumL10n.string("Another writing request is still running or stopping.", locale: locale)
+            case .invalidContext: ScholiumL10n.string("Select a shorter passage or a valid writing context.", locale: locale)
+            case .invalidOutput: ScholiumL10n.string("AI returned no usable writing suggestion.", locale: locale)
+            case .unsafeRuntime: ScholiumL10n.string("The runtime could not provide isolated, tool-free writing assistance.", locale: locale)
+            case .timedOut: ScholiumL10n.string("Writing assistance took too long.", locale: locale)
+            }
+        case let error as ExternalMarkdownFileError:
+            return switch error {
+            case .unsupportedType: ScholiumL10n.string("Choose a Markdown file (.md or .markdown).", locale: locale)
+            case .missing: ScholiumL10n.string("The original Markdown file is missing.", locale: locale)
+            case .notRegularFile: ScholiumL10n.string("The original is not a regular, unlinked file.", locale: locale)
+            case .invalidUTF8: ScholiumL10n.string("The Markdown file is not valid UTF-8.", locale: locale)
+            case .tooLarge: ScholiumL10n.string("This Markdown file exceeds the 1 MB editor limit.", locale: locale)
+            case .permissionDenied: ScholiumL10n.string("Scholium no longer has permission to access this file.", locale: locale)
+            case .changed: ScholiumL10n.string("The original Markdown file changed. Your edits remain available in the editor.", locale: locale)
+            case .closed: ScholiumL10n.string("This external Markdown session is closed.", locale: locale)
+            case .commitUncertain:
+                ScholiumL10n.string(
+                    "The save could not be verified. Keep the editor open. Check the original; a prior copy may remain in a hidden Scholium file beside it.",
+                    locale: locale)
+            case .io(let description): ScholiumL10n.string("The Markdown file could not be accessed: \(description)", locale: locale)
+            }
+        case let error as CodexConnectionError:
+            return switch error {
+            case .disconnected: ScholiumL10n.string("Codex disconnected. Check the conversation before sending again.", locale: locale)
+            case .timedOut: ScholiumL10n.string("Codex did not confirm the request. Check its outcome before sending again.", locale: locale)
+            case .invalidMessage: ScholiumL10n.string("Codex returned an invalid protocol message.", locale: locale)
+            case .installationChanged: ScholiumL10n.string("The Codex installation changed. Reconnect after checking the installation.", locale: locale)
+            case .server(let message): message
+            }
+        default:
+            return nil
+        }
+    }
+}

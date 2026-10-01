@@ -398,27 +398,55 @@ private struct ScholiumInsertCommandContent: View {
             .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.markdownComment) != true)
         Menu("Callout") {
-            Button("Orientation") { editorActions?.perform(.calloutOrient) }
-                .scholiumActivationPointer()
-                .disabled(editorActions?.isAvailable(.calloutOrient) != true)
-            Button("Source") { editorActions?.perform(.calloutCite) }
-                .scholiumActivationPointer()
-                .disabled(editorActions?.isAvailable(.calloutCite) != true)
-            Button("Connections") { editorActions?.perform(.calloutConnect) }
-                .scholiumActivationPointer()
-                .disabled(editorActions?.isAvailable(.calloutConnect) != true)
-            Button("Statement") { editorActions?.perform(.calloutState) }
-                .scholiumActivationPointer()
-                .disabled(editorActions?.isAvailable(.calloutState) != true)
-            Button("Illustration") { editorActions?.perform(.calloutIllustrate) }
-                .scholiumActivationPointer()
-                .disabled(editorActions?.isAvailable(.calloutIllustrate) != true)
-            Button("Quotation") { editorActions?.perform(.calloutQuote) }
-                .scholiumActivationPointer()
-                .disabled(editorActions?.isAvailable(.calloutQuote) != true)
-            Button("Caution") { editorActions?.perform(.calloutFlag) }
-                .scholiumActivationPointer()
-                .disabled(editorActions?.isAvailable(.calloutFlag) != true)
+            Button {
+                editorActions?.perform(.calloutOrient)
+            } label: {
+                Text("Orientation", tableName: "WebKitInterface", bundle: .module)
+            }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.calloutOrient) != true)
+            Button {
+                editorActions?.perform(.calloutCite)
+            } label: {
+                Text("Source", tableName: "WebKitInterface", bundle: .module)
+            }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.calloutCite) != true)
+            Button {
+                editorActions?.perform(.calloutConnect)
+            } label: {
+                Text("Connections", tableName: "WebKitInterface", bundle: .module)
+            }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.calloutConnect) != true)
+            Button {
+                editorActions?.perform(.calloutState)
+            } label: {
+                Text("Statement", tableName: "WebKitInterface", bundle: .module)
+            }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.calloutState) != true)
+            Button {
+                editorActions?.perform(.calloutIllustrate)
+            } label: {
+                Text("Illustration", tableName: "WebKitInterface", bundle: .module)
+            }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.calloutIllustrate) != true)
+            Button {
+                editorActions?.perform(.calloutQuote)
+            } label: {
+                Text("Quotation", tableName: "WebKitInterface", bundle: .module)
+            }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.calloutQuote) != true)
+            Button {
+                editorActions?.perform(.calloutFlag)
+            } label: {
+                Text("Caution", tableName: "WebKitInterface", bundle: .module)
+            }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.calloutFlag) != true)
         }
         .scholiumActivationPointer()
     }

@@ -342,7 +342,7 @@ extension WorkspaceHandle {
                             ast: ast,
                             diagnostics: [
                                 SearchQueryDiagnostic(
-                                    code: .notApplicable,
+                                    reason: .openingVaultLexicalOnly,
                                     message: "While this Triptych is opening, This Vault Search supports words, phrases, and lexical fields only.",
                                     utf16LowerBound: 0,
                                     utf16UpperBound: request.query.utf16.count
@@ -478,7 +478,7 @@ extension WorkspaceHandle {
     ) -> SearchQueryDiagnostic? {
         guard request.hasConsistentScopes else {
             return SearchQueryDiagnostic(
-                code: .notApplicable,
+                reason: .inconsistentScopes,
                 message: "Search presentation and execution scopes do not match.",
                 utf16LowerBound: 0,
                 utf16UpperBound: 0
@@ -490,7 +490,7 @@ extension WorkspaceHandle {
                 || !Set(includedVaultIDs).isSubset(of: authorizedVaultIDs)
         {
             return SearchQueryDiagnostic(
-                code: .notApplicable,
+                reason: .invalidVaultSubset,
                 message: "The selected Search vault subset is empty or outside this Triptych.",
                 utf16LowerBound: 0,
                 utf16UpperBound: 0
@@ -502,7 +502,7 @@ extension WorkspaceHandle {
         case .currentVault(let vaultID):
             guard authorizedVaultIDs.contains(vaultID) else {
                 return SearchQueryDiagnostic(
-                    code: .notApplicable,
+                    reason: .vaultOutsideTriptych,
                     message: "The selected Search vault is not part of this Triptych.",
                     utf16LowerBound: 0,
                     utf16UpperBound: 0
@@ -512,7 +512,7 @@ extension WorkspaceHandle {
                 assignment.vault(for: availableSlot)?.id != vaultID
             {
                 return SearchQueryDiagnostic(
-                    code: .notApplicable,
+                    reason: .openingVaultUnavailable,
                     message: "Only the currently open vault can be searched while this Triptych finishes opening.",
                     utf16LowerBound: 0,
                     utf16UpperBound: 0
@@ -526,7 +526,7 @@ extension WorkspaceHandle {
                 })
             else {
                 return SearchQueryDiagnostic(
-                    code: .notApplicable,
+                    reason: .noteOutsideTriptych,
                     message: "The selected Search Note is not part of this Triptych.",
                     utf16LowerBound: 0,
                     utf16UpperBound: 0

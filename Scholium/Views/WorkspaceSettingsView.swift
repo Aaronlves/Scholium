@@ -1849,7 +1849,7 @@ struct PortableControlFolderRow: View {
                     Text("Authorizes portable settings stored beside Works")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(containerURL?.path(percentEncoded: false) ?? "Authorization required")
+                    Text(verbatim: containerURL?.path(percentEncoded: false) ?? ScholiumL10n.string("Authorization required"))
                         .font(.caption)
                         .foregroundStyle(containerURL == nil ? .secondary : .primary)
                         .lineLimit(1)

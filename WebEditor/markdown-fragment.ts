@@ -6,7 +6,7 @@ import {
   type TablePresentationCell,
 } from "./table-presentation";
 import {systemSymbolElement} from "./system-symbols";
-import {localized} from "./localization";
+import {localized, localizedTemplate} from "./localization";
 import {linkAnnotationAfter} from "./link-annotation";
 import {cjkPresentationRanges, languageForText} from "./text-language";
 
@@ -283,7 +283,7 @@ function appendAnnotatedWikilink(
   button.dataset.linkAnnotation = "true";
   button.dataset.linkAnnotationTarget = alias || target;
   button.setAttribute("aria-expanded", "false");
-  button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
+  button.setAttribute("aria-label", localizedTemplate("Show Link Annotation for {title}", {title: alias || target}));
   button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document));
   const template = document.createElement("template");
   template.className = "scholium-link-annotation-template";

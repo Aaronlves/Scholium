@@ -292,7 +292,7 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
             do {
                 try await editorSession.perform(command)
             } catch {
-                editorSession.reportError(error.localizedDescription)
+                editorSession.reportError(ScholiumErrorLocalization.message(error))
             }
         }
     }

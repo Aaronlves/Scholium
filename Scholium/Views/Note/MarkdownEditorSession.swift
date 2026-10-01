@@ -754,7 +754,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
                     self.webView === webView
                 else { return }
-                let message = "The document mode change was not applied because the editor changed during text composition."
+                let message = ScholiumL10n.string("The document mode change was not applied because the editor changed during text composition.")
                 self.updatePresentation { $0.report(message) }
                 _ = try? await self.send(.announceStatus(message), in: webView)
             }
@@ -1376,7 +1376,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard intendedRequestEpoch == requestEpoch,
             self.webView === webView
         else {
-            throw SessionError.bridgeRejected("The editor identity changed while reading its scroll position.")
+            throw SessionError.staleRequest
         }
         let anchor = recordScrollPosition(
             result.scrollAnchor,
@@ -2067,7 +2067,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     in: webView,
                     requiringRequestEpoch: intendedRequestEpoch
                 )
-                updatePresentation { $0.fail(error.localizedDescription) }
+                updatePresentation { $0.fail(ScholiumErrorLocalization.message(error)) }
             }
         }
     }
@@ -2275,7 +2275,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 throw SessionError.invalidResult
             }
             guard result.accepted else {
-                throw SessionError.bridgeRejected(result.error ?? "The Markdown editor rejected the request.")
+                throw SessionError.bridgeRejected(result.error ?? ScholiumL10n.string("The Markdown editor rejected the request."))
             }
             guard result.resultingGeneration >= 0 else {
                 throw SessionError.invalidResult

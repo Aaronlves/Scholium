@@ -22,6 +22,11 @@ export const webInterfaceLocalizationKeys = [
 
   "The edited Markdown document exceeds the supported editor size.",
   "Finish editing the note title before switching documents.",
+  "The insertion position changed. Confirm the cursor again.",
+  "The reference is too large.",
+  "Finish composition before adopting a suggestion.",
+  "The passage changed. Request a new suggestion.",
+  "The suggestion is too large.",
   "Copy",
   "Expand",
   "YAML frontmatter",
@@ -29,6 +34,8 @@ export const webInterfaceLocalizationKeys = [
   "Markdown editor, Edit mode",
   "Markdown source editor",
   "Note title",
+  "Empty Note",
+  "This note has no body content.",
   "Heading level {level}",
   "Link",
   "Callout",
@@ -41,9 +48,12 @@ export const webInterfaceLocalizationKeys = [
   "Inline code",
   "Exact Markdown and YAML source",
   "Task item",
-  "Show Link Annotation",
-  "Hide Link Annotation",
+  "Completed task",
+  "Incomplete task",
+  "Show Link Annotation for {title}",
+  "Hide Link Annotation for {title}",
   "Link Annotation",
+  "Callout: {title}",
   "linked note",
   "Markdown table",
   "Embedded note {title}",
@@ -58,6 +68,8 @@ export const webInterfaceLocalizationKeys = [
   "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
   "This Mermaid diagram could not be rendered. Source is shown.",
   "Footnote {ordinal}",
+  "Footnotes",
+  "Return to footnote reference {ordinal}",
   "Edit mode unavailable",
   "Close the YAML frontmatter in Source mode to restore the visual projection.",
   "The editor could not preserve the exact source line endings.",
@@ -109,11 +121,12 @@ export const webInterfaceLocalizationKeys = [
   "Could not save. Your Comment is still here.",
   "This Comment is too long to save here.",
   "Saving…",
+  "{label}. {meaning}",
 ] as const;
 
 export type WebInterfaceLocalizationKey = typeof webInterfaceLocalizationKeys[number];
 
-interface WebInterfaceLocalizationPayload {
+export interface WebInterfaceLocalizationPayload {
   languageTag: string;
   strings: Partial<Record<WebInterfaceLocalizationKey, string>>;
 }
@@ -123,26 +136,66 @@ const fallbackPayload: WebInterfaceLocalizationPayload = {
   strings: {},
 };
 
+const templatePlaceholder = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+const interfaceLanguageIdentifier = /^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$/;
+
+function placeholders(value: string) {
+  return [...value.matchAll(templatePlaceholder)].map(match => match[1]).sort().join("\0");
+}
+
+/** Native and page-side language identifiers resolve to the same two shipped languages. */
+export function supportedInterfaceLanguage(identifier: string): "en" | "zh-Hans" {
+  if (identifier.length > 64 || !interfaceLanguageIdentifier.test(identifier)) return "en";
+  const normalized = identifier.replaceAll("_", "-").toLowerCase();
+  const parts = normalized.split("-");
+  return parts[0] === "zh" && (parts.length === 1 || parts[1] === "hans"
+    || parts[1] === "cn" || parts[1] === "sg") ? "zh-Hans" : "en";
+}
+
+/** Only registered, bounded interface copy crosses this boundary; source never does. */
+export function validatedInterfaceLocalization(value: unknown): WebInterfaceLocalizationPayload | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as {languageTag?: unknown; strings?: unknown};
+  if (typeof candidate.languageTag !== "string" || candidate.languageTag.length > 64
+      || !interfaceLanguageIdentifier.test(candidate.languageTag)
+      || !candidate.strings || typeof candidate.strings !== "object"
+      || Array.isArray(candidate.strings)) return null;
+  const strings: Partial<Record<WebInterfaceLocalizationKey, string>> = {};
+  const languageTag = supportedInterfaceLanguage(candidate.languageTag);
+  if (languageTag === "en" && !/^en(?:[-_]|$)/i.test(candidate.languageTag)) {
+    return {...fallbackPayload};
+  }
+  const entries = candidate.strings as Record<string, unknown>;
+  for (const key of webInterfaceLocalizationKeys) {
+    if (!Object.hasOwn(entries, key)) continue;
+    const translation = entries[key];
+    if (typeof translation === "string" && translation.trim().length > 0
+        && translation.length <= 4_096 && placeholders(translation) === placeholders(key)) {
+      strings[key] = translation;
+    }
+  }
+  return {languageTag, strings};
+}
+
+export function interfaceLocalizationFromBase64(encoded: string): WebInterfaceLocalizationPayload {
+  // The registered table is small; never allocate an unbounded metadata payload.
+  if (!encoded || encoded.length > 2_796_204) return fallbackPayload;
+  try {
+    const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
+    if (bytes.byteLength > 2_097_152) return fallbackPayload;
+    return validatedInterfaceLocalization(JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(bytes)))
+      ?? fallbackPayload;
+  } catch {
+    return fallbackPayload;
+  }
+}
+
 function payloadFromDocument(): WebInterfaceLocalizationPayload {
   if (typeof document === "undefined") return fallbackPayload;
   const encoded = document.querySelector<HTMLMetaElement>(
     'meta[name="scholium-interface-localization"]',
   )?.content;
-  if (!encoded) return fallbackPayload;
-  try {
-    const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-    const candidate = JSON.parse(new TextDecoder().decode(bytes)) as Partial<WebInterfaceLocalizationPayload>;
-    if (typeof candidate.languageTag !== "string"
-        || !candidate.strings || typeof candidate.strings !== "object") return fallbackPayload;
-    const strings: Partial<Record<WebInterfaceLocalizationKey, string>> = {};
-    for (const key of webInterfaceLocalizationKeys) {
-      const value = candidate.strings[key];
-      if (typeof value === "string" && value.length <= 4_096) strings[key] = value;
-    }
-    return {languageTag: candidate.languageTag.slice(0, 32), strings};
-  } catch {
-    return fallbackPayload;
-  }
+  return interfaceLocalizationFromBase64(encoded ?? "");
 }
 
 let activePayload = payloadFromDocument();
@@ -170,12 +223,19 @@ function localizedTemplateFrom(
   key: WebInterfaceLocalizationKey,
   replacements: Readonly<Record<string, string | number>>,
 ) {
-  return localizedFrom(payload, key).replace(/\{([A-Za-z]+)\}/g, (placeholder, name: string) =>
+  return localizedFrom(payload, key).replace(templatePlaceholder, (placeholder, name: string) =>
     Object.hasOwn(replacements, name) ? String(replacements[name]) : placeholder,
   );
 }
 
-const calloutLocalizationKeys = {
+/** Review retains its own payload so an instance never changes another surface's copy. */
+export function createInterfaceLocalizer(payload: WebInterfaceLocalizationPayload) {
+  const localization = validatedInterfaceLocalization(payload) ?? fallbackPayload;
+  return (key: WebInterfaceLocalizationKey, replacements: Readonly<Record<string, string | number>> = {}) =>
+    localizedTemplateFrom(localization, key, replacements);
+}
+
+export const calloutLocalizationKeys = {
   orient: ["Orientation", "Introduces the note's purpose, scope, and route."],
   cite: ["Source", "Records sources that anchor the note without implying that they support every claim."],
   connect: ["Connections", "Routes the reader to a curated set of neighboring knowledge objects."],
@@ -199,7 +259,7 @@ export function localizedCallout(
 
 export const localizationTesting = {
   install(payload: WebInterfaceLocalizationPayload) {
-    activePayload = payload;
+    activePayload = validatedInterfaceLocalization(payload) ?? fallbackPayload;
   },
   reset() {
     activePayload = payloadFromDocument();
@@ -209,6 +269,6 @@ export const localizationTesting = {
     key: WebInterfaceLocalizationKey,
     replacements: Readonly<Record<string, string | number>> = {},
   ) {
-    return localizedTemplateFrom(payload, key, replacements);
+    return createInterfaceLocalizer(payload)(key, replacements);
   },
 };

@@ -178,7 +178,7 @@ struct RestoreWorkspaceAccessView: View {
             } catch is CancellationError {
                 return
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = ScholiumErrorLocalization.message(error)
                 isRestoring = false
             }
         }
@@ -194,7 +194,7 @@ struct RestoreWorkspaceAccessView: View {
             } catch is CancellationError {
                 isRemovingRegistration = false
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = ScholiumErrorLocalization.message(error)
                 isRemovingRegistration = false
             }
         }
@@ -210,7 +210,7 @@ struct RestoreWorkspaceAccessView: View {
             } catch is CancellationError {
                 isRebuildingPortableControl = false
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = ScholiumErrorLocalization.message(error)
                 isRebuildingPortableControl = false
             }
         }

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import ScholiumContracts
 import Testing
 
 @testable import ScholiumCore

@@ -1596,7 +1596,7 @@ final class DocumentController: ObservableObject {
                 do {
                     try finishEditing(session: session, target: target)
                 } catch {
-                    session.editError = error.localizedDescription
+                    session.editError = ScholiumErrorLocalization.message(error)
                     setSaveError(session.editError)
                 }
             } else {
@@ -1888,10 +1888,11 @@ final class DocumentController: ObservableObject {
             if let latestConflict = session.conflict, latestConflict != conflict {
                 // A publication during reload already installed a newer conflict;
                 // an older callback must neither clear nor reconstruct that state.
-                session.editError =
+                session.editError = ScholiumErrorLocalization.message(
                     VaultRepositoryError.conflict(
                         expected: latestConflict.baseRevision, current: latestConflict.diskRevision
-                    ).localizedDescription
+                    )
+                )
                 if selectedDocument?.editingTarget == target { setSaveError(session.editError) }
             } else {
                 await presentSaveFailure(error, session: session, target: target)
@@ -2107,7 +2108,7 @@ final class DocumentController: ObservableObject {
         session: DocumentSessionModel,
         target: DocumentEditingTarget
     ) async {
-        let message = error.localizedDescription
+        let message = ScholiumErrorLocalization.message(error)
         setSaveError(message)
         if case VaultRepositoryError.conflict = error,
             let diskDocument = try? await loadDocument(for: target),
@@ -2410,7 +2411,7 @@ final class DocumentController: ObservableObject {
             case .failure(let error):
                 guard !(error is CancellationError) else { return }
                 if self.selectedDocument?.editingTarget == target {
-                    self.setSaveError(error.localizedDescription)
+                    self.setSaveError(ScholiumErrorLocalization.message(error))
                 }
             }
         }
@@ -2512,11 +2513,12 @@ final class DocumentController: ObservableObject {
                 baseRevision: baseRevision
             )
             session.canRetrySave = false
-            session.editError =
+            session.editError = ScholiumErrorLocalization.message(
                 VaultRepositoryError.conflict(
                     expected: baseRevision,
                     current: snapshot.fingerprint
-                ).localizedDescription
+                )
+            )
             if selectedDocument?.sessionKey == session.key { setSaveError(session.editError) }
             return
         }

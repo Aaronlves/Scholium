@@ -17,7 +17,7 @@ struct ScholiumHotkeyRecorder: NSViewRepresentable {
         let button = RecorderButton(title: "", target: context.coordinator, action: #selector(Coordinator.beginRecording))
         button.bezelStyle = .rounded
         button.controlSize = .large
-        button.setAccessibilityLabel("Shortcut recorder")
+        button.setAccessibilityLabel(ScholiumL10n.string("Shortcut recorder"))
         context.coordinator.button = button
         update(button, coordinator: context.coordinator)
         return button
@@ -31,16 +31,16 @@ struct ScholiumHotkeyRecorder: NSViewRepresentable {
     private func update(_ button: RecorderButton, coordinator: Coordinator) {
         button.title =
             isRecording
-            ? String(localized: "Press a Shortcut…")
-            : binding?.displayName ?? String(localized: "Record Shortcut")
+            ? ScholiumL10n.string("Press a Shortcut…")
+            : binding?.displayName ?? ScholiumL10n.string("Record Shortcut")
         button.isRecording = isRecording && isActive
         button.isEnabled = isActive
         if !isActive, button.window?.firstResponder === button {
             button.window?.makeFirstResponder(nil)
         }
-        button.setAccessibilityValue(binding?.displayName ?? String(localized: "No shortcut"))
+        button.setAccessibilityValue(binding?.displayName ?? ScholiumL10n.string("No shortcut"))
         button.setAccessibilityHelp(
-            "Activate, then press a shortcut that includes the Command key."
+            ScholiumL10n.string("Activate, then press a shortcut that includes the Command key.")
         )
         button.capture = { captured in
             coordinator.parent.binding = captured
@@ -68,7 +68,7 @@ struct ScholiumHotkeyRecorder: NSViewRepresentable {
             guard parent.isActive else { return }
             parent.isRecording = true
             button?.isRecording = true
-            button?.title = String(localized: "Press a Shortcut…")
+            button?.title = ScholiumL10n.string("Press a Shortcut…")
             button?.window?.makeFirstResponder(button)
         }
     }

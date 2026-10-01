@@ -399,7 +399,7 @@ struct NoteContentView<ShellNotices: View>: View {
                         do {
                             try await editorSession.perform(command)
                         } catch {
-                            actions.notify(error.localizedDescription, .error)
+                            actions.notify(ScholiumErrorLocalization.message(error), .error)
                         }
                     }
                 },
@@ -408,7 +408,7 @@ struct NoteContentView<ShellNotices: View>: View {
                         do {
                             try await editorSession.perform(command, argument: argument)
                         } catch {
-                            actions.notify(error.localizedDescription, .error)
+                            actions.notify(ScholiumErrorLocalization.message(error), .error)
                         }
                     }
                 },
@@ -1285,7 +1285,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     return
                 }
                 quickLook.present(lease) { token in await controller.releaseDocumentAttachmentPreview(accessToken: token) }
-            } catch { actions.notify(error.localizedDescription, .error) }
+            } catch { actions.notify(ScholiumErrorLocalization.message(error), .error) }
         }
     }
 
@@ -1310,9 +1310,9 @@ struct NoteContentView<ShellNotices: View>: View {
                 prepared = nil
                 AccessibilityNotification.Announcement(String(localized: "Attachment link inserted.")).post()
             } catch {
-                var message = error.localizedDescription
+                var message = ScholiumErrorLocalization.message(error)
                 if let prepared {
-                    do { try await controller.rollbackSourceAttachment(prepared) } catch { message += " " + error.localizedDescription }
+                    do { try await controller.rollbackSourceAttachment(prepared) } catch { message += " " + ScholiumErrorLocalization.message(error) }
                 }
                 actions.notify(message, .error)
             }
@@ -1444,7 +1444,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     String(localized: "Image inserted.")
                 ).post()
             } catch {
-                var message = error.localizedDescription
+                var message = ScholiumErrorLocalization.message(error)
                 if let prepared {
                     do {
                         try await controller.rollbackSourceAttachment(prepared)
@@ -1452,7 +1452,7 @@ struct NoteContentView<ShellNotices: View>: View {
                         message +=
                             " "
                             + String(
-                                localized: "Attachment cleanup needs attention: \(error.localizedDescription)"
+                                localized: "Attachment cleanup needs attention: \(ScholiumErrorLocalization.message(error))"
                             )
                     }
                 }
@@ -1518,7 +1518,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     String(localized: "Image inserted.")
                 ).post()
             } catch {
-                var message = error.localizedDescription
+                var message = ScholiumErrorLocalization.message(error)
                 if let prepared {
                     do {
                         try await controller.rollbackSourceAttachment(prepared)
@@ -1526,7 +1526,7 @@ struct NoteContentView<ShellNotices: View>: View {
                         message +=
                             " "
                             + String(
-                                localized: "Attachment cleanup needs attention: \(error.localizedDescription)"
+                                localized: "Attachment cleanup needs attention: \(ScholiumErrorLocalization.message(error))"
                             )
                     }
                 }
@@ -1773,10 +1773,10 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private func reportReviewHandoffError(_ error: Error) {
-        documentSession.editError = error.localizedDescription
+        documentSession.editError = ScholiumErrorLocalization.message(error)
         documentSession.canRetrySave = DocumentController.saveFailureAllowsRetry(error)
         if controller.selectedDocument?.editingTarget == target {
-            controller.setSaveError(error.localizedDescription)
+            controller.setSaveError(ScholiumErrorLocalization.message(error))
         }
     }
 

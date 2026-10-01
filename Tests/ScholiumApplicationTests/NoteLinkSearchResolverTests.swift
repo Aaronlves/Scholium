@@ -63,10 +63,14 @@ struct NoteLinkSearchResolverTests {
         let ambiguous = try fixture.resolve("from-note:Anchor", catalog: catalog)
         #expect(ambiguous.matches.isEmpty)
         #expect(ambiguous.diagnostic?.code == .ambiguousIdentity)
+        let ambiguity = try #require(ambiguous.diagnostic)
+        let candidates = ["Analyses/Anchor.md", "Topics/Anchor.md"]
+        #expect(ambiguity.reason == .ambiguousLinkIdentity(identity: "anchor", candidates: candidates))
 
         let missing = try fixture.resolve("from-note:Missing", catalog: catalog)
         #expect(missing.matches.isEmpty)
         #expect(missing.diagnostic?.code == .notApplicable)
+        #expect(missing.diagnostic?.reason == .missingLinkIdentity(identity: "missing"))
 
         let thisNote = try fixture.resolve(
             "from-note:Anchor",
@@ -81,6 +85,7 @@ struct NoteLinkSearchResolverTests {
         )
         #expect(thisNote.matches.isEmpty)
         #expect(thisNote.diagnostic?.code == .notApplicable)
+        #expect(thisNote.diagnostic?.reason == .directLinksUnavailableForCurrentNote)
     }
 
     @Test("A Graph from another source manifest fails the complete link clause closed")
@@ -102,6 +107,7 @@ struct NoteLinkSearchResolverTests {
 
         #expect(resolution.matches.isEmpty)
         #expect(resolution.diagnostic?.code == .notApplicable)
+        #expect(resolution.diagnostic?.reason == .linkGraphNotCurrent)
         #expect(resolution.diagnostic?.message == "Direct link Search is unavailable until Graph and Note Search share one complete source manifest.")
     }
 }

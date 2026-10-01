@@ -120,7 +120,7 @@ struct ExternalMarkdownImportView: View {
             assignments = try await store.registeredTriptychs()
             if assignments.count == 1, triptychID == nil { triptychID = assignments.first?.id }
             if original.pendingImport == nil { error = nil }
-        } catch { self.error = ScholiumL10n.dynamicString(error.localizedDescription) }
+        } catch { self.error = ScholiumErrorLocalization.message(error) }
     }
 
     private func performImport() async {
@@ -153,7 +153,7 @@ struct ExternalMarkdownImportView: View {
             if original.pendingImport?.requiresRecovery != true { original.pendingImport = nil }
             dismiss()
         } catch {
-            self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+            self.error = ScholiumErrorLocalization.message(error)
             original.pendingImport?.message = self.error
             if let transaction = error as? TriptychTransactionError {
                 let record: TriptychMutationRecoveryRecord?
@@ -193,6 +193,6 @@ struct ExternalMarkdownImportView: View {
             }
             if original.pendingImport?.requiresRecovery != true { original.pendingImport = nil }
             dismiss()
-        } catch { self.error = ScholiumL10n.dynamicString(error.localizedDescription) }
+        } catch { self.error = ScholiumErrorLocalization.message(error) }
     }
 }

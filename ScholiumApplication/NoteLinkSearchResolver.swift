@@ -23,7 +23,7 @@ enum NoteLinkSearchResolver {
             return Resolution(
                 matches: [:],
                 diagnostic: diagnostic(
-                    .notApplicable,
+                    .directLinksUnavailableForCurrentNote,
                     "Direct link clauses are not applicable to This Note occurrence Search.", range: ast.linkQueries[0].sourceRange))
         }
         var resolutions: [SearchLinkQuery: SearchLinkResolution] = [:]
@@ -60,19 +60,19 @@ enum NoteLinkSearchResolver {
                 return AnchorResolution(
                     matches: [:],
                     diagnostic: diagnostic(
-                        .notApplicable,
+                        .missingLinkIdentity(identity: query.noteIdentity),
                         "No authorized Note has the exact link identity ‘\(query.noteIdentity)’.",
                         range: query.sourceRange
                     ))
             }
             let candidates = anchors.map {
                 "\($0.reference.vaultName)/\($0.reference.relativePath)"
-            }.sorted().joined(separator: ", ")
+            }.sorted()
             return AnchorResolution(
                 matches: [:],
                 diagnostic: diagnostic(
-                    .ambiguousIdentity,
-                    "The link identity ‘\(query.noteIdentity)’ is ambiguous: \(candidates).",
+                    .ambiguousLinkIdentity(identity: query.noteIdentity, candidates: candidates),
+                    "The link identity ‘\(query.noteIdentity)’ is ambiguous: \(candidates.joined(separator: ", ")).",
                     range: query.sourceRange
                 ))
         }
@@ -83,7 +83,7 @@ enum NoteLinkSearchResolver {
             return AnchorResolution(
                 matches: [:],
                 diagnostic: diagnostic(
-                    .notApplicable,
+                    .linkGraphNotCurrent,
                     "Direct link Search is unavailable until Graph and Note Search share one complete source manifest.",
                     range: query.sourceRange
                 ))
@@ -161,12 +161,12 @@ enum NoteLinkSearchResolver {
     }
 
     private static func diagnostic(
-        _ code: SearchQueryDiagnosticCode,
+        _ reason: SearchQueryDiagnosticReason,
         _ message: String,
         range: Range<Int>
     ) -> SearchQueryDiagnostic {
         SearchQueryDiagnostic(
-            code: code,
+            reason: reason,
             message: message,
             utf16LowerBound: range.lowerBound,
             utf16UpperBound: range.upperBound

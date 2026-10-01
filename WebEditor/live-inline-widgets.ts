@@ -162,7 +162,7 @@ export function createLiveInlineWidgets(options: {
       button.dataset.linkAnnotation = "true";
       button.dataset.linkAnnotationTarget = this.target;
       button.setAttribute("aria-expanded", "false");
-      button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${this.target}`);
+      button.setAttribute("aria-label", localizedTemplate("Show Link Annotation for {title}", {title: this.target}));
       button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon"));
       const template = document.createElement("template");
       template.className = "scholium-link-annotation-template";

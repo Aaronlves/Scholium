@@ -830,7 +830,7 @@ extension AgentChatController {
                 _ = try await runtime.request("turn/interrupt", params: ["threadId": .string(thread), "turnId": .string(turnID)])
             } catch {
                 guard let self, self.connectionID == connection, !Task.isCancelled else { return }
-                self.executions[conversationID]?.error = error.localizedDescription
+                self.executions[conversationID]?.error = ScholiumErrorLocalization.message(error)
             }
         }
     }

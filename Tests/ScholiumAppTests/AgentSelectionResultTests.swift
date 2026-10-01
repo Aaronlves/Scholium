@@ -54,6 +54,31 @@ struct AgentSelectionResultTests {
         #expect(result.error == "Fixture failure" && result.canRegenerate)
     }
 
+    @Test("Foreign diagnostic text remains exact across generation and adoption")
+    func foreignDiagnosticBypassesCatalog() async {
+        let raw = "Review"
+        let failure = NSError(domain: "ForeignRuntimeFixture", code: 7, userInfo: [NSLocalizedDescriptionKey: raw])
+        var attempts = 0
+        let result = AgentSelectionResult(
+            title: "Polish", original: "Original", adopt: { _ in throw failure },
+            openReference: { _ in false },
+            generate: {
+                attempts += 1
+                if attempts > 1 { throw failure }
+                return "Exact proposal\r\n"
+            }, continueInChat: { _ in })
+        result.regenerate()
+        await finish(result)
+        result.regenerate()
+        await finish(result)
+        #expect(result.error == raw)
+        #expect(result.finalReply == "Exact proposal\r\n")
+        result.adoptSelectedVersion()
+        await finishAdoption(result)
+        #expect(result.adoptionError == raw)
+        #expect(!result.isAdopted && result.canAdopt)
+    }
+
     @Test("A cancelled generation cannot publish a late success or erase a prior result")
     func cancellationRejectsLateReply() async {
         let gate = GenerationGate()

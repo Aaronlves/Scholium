@@ -357,7 +357,7 @@ final class WindowSearchController: ObservableObject {
             case .failed:
                 dependencies.setAvailabilityStatus("Search failed")
                 dependencies.reportCatalogFailure(
-                    "Search refresh failed. \(error.localizedDescription)"
+                    ScholiumL10n.string("Search refresh failed. \(ScholiumErrorLocalization.message(error))")
                 )
             }
             discoveryController.failPendingSearch(issue, for: state)

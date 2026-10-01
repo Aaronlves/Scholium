@@ -1,18 +1,5 @@
 import Foundation
-
-public enum BundledResearchSkillResourceError: LocalizedError, Sendable {
-    case unavailable
-    case invalid(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .unavailable:
-            "The bundled Scholium Core Protocol is unavailable."
-        case .invalid(let path):
-            "The bundled Scholium Core Protocol is invalid at \(path)."
-        }
-    }
-}
+import ScholiumContracts
 
 public enum BundledResearchSkillResources {
     public static func coreProtocolSkillDirectoryURL() throws -> URL {

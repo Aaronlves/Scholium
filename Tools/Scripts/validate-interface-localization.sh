@@ -13,11 +13,9 @@ trap cleanup EXIT
 
 rm -rf -- "${temporary_root}"
 
-source_file="${repository_root}/Scholium/Localization/ScholiumL10n.swift"
 interface_catalog="${repository_root}/Scholium/Resources/Interface.xcstrings"
 localizable_catalog="${repository_root}/Scholium/Resources/Localizable.xcstrings"
 webkit_catalog="${repository_root}/Scholium/Resources/WebKitInterface.xcstrings"
-extracted_directory="${temporary_root}/extracted"
 all_extracted_directory="${temporary_root}/all-extracted"
 compiled_directory="${temporary_root}/compiled"
 source_keys="${temporary_root}/source-keys.txt"
@@ -25,22 +23,7 @@ catalog_keys="${temporary_root}/catalog-keys.txt"
 all_source_keys="${temporary_root}/all-source-keys.txt"
 localizable_keys="${temporary_root}/localizable-keys.txt"
 
-mkdir -p "${extracted_directory}" "${all_extracted_directory}" "${compiled_directory}"
-
-DEVELOPER_DIR="${developer_dir}" xcrun xcstringstool extract \
-  --modern-localizable-strings \
-  --output-format xcstrings \
-  --output-directory "${extracted_directory}" \
-  "${source_file}"
-
-jq -r '.strings | keys[]' \
-  "${extracted_directory}/Interface.xcstrings" > "${source_keys}"
-jq -r '.strings | keys[]' "${interface_catalog}" > "${catalog_keys}"
-
-if ! diff -u "${source_keys}" "${catalog_keys}"; then
-  print -u2 "Interface.xcstrings keys do not match ScholiumL10n.swift."
-  exit 1
-fi
+mkdir -p "${all_extracted_directory}" "${compiled_directory}"
 
 find "${repository_root}/Scholium" -type f -name '*.swift' -print0 \
   | xargs -0 env DEVELOPER_DIR="${developer_dir}" xcrun xcstringstool extract \
@@ -48,6 +31,16 @@ find "${repository_root}/Scholium" -type f -name '*.swift' -print0 \
       --modern-localizable-strings \
       --output-format xcstrings \
       --output-directory "${all_extracted_directory}"
+
+jq -r '.strings | keys[]' \
+  "${all_extracted_directory}/Interface.xcstrings" > "${source_keys}"
+jq -r '.strings | keys[]' "${interface_catalog}" > "${catalog_keys}"
+
+if ! diff -u "${source_keys}" "${catalog_keys}"; then
+  print -u2 "Interface.xcstrings keys do not match the App's localized resources."
+  exit 1
+fi
+
 jq -r '.strings | keys[]' \
   "${all_extracted_directory}/Localizable.xcstrings" \
   | sed -E 's/%([0-9]+\$)?(lld|ld|d|f|@|arg)/%arg/g' \
@@ -62,54 +55,8 @@ if [[ -n "${missing_static_keys}" ]]; then
   exit 1
 fi
 
-missing_simplified_chinese="$({
-  jq -r '
-    .strings
-    | to_entries[]
-    | select(.value.localizations["zh-Hans"].stringUnit.state != "translated")
-    | .key
-  ' "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"
-})"
-
-if [[ -n "${missing_simplified_chinese}" ]]; then
-  print -u2 "A string catalog has untranslated zh-Hans entries:"
-  print -u2 -- "${missing_simplified_chinese}"
-  exit 1
-fi
-
-placeholder_mismatches="$({
-  jq -r '
-    .strings
-    | to_entries[]
-    | .key as $key
-    | ([(.value.localizations.en.stringUnit.value // .key) | scan("%(?:[0-9]+\\$)?(?:arg|@|d|lld|ld|f)")] | sort) as $en
-    | ([.value.localizations["zh-Hans"].stringUnit.value | scan("%(?:[0-9]+\\$)?(?:arg|@|d|lld|ld|f)")] | sort) as $zh
-    | select($en != $zh)
-    | $key
-  ' "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"
-})"
-if [[ -n "${placeholder_mismatches}" ]]; then
-  print -u2 "Localized format placeholders changed:"
-  print -u2 -- "${placeholder_mismatches}"
-  exit 1
-fi
-
-ascii_chinese_punctuation="$({
-  jq -r '
-    .strings
-    | to_entries[]
-    | select(
-        .value.localizations["zh-Hans"].stringUnit.value
-        | test("\\.\\.\\.|[,;!?()]|: ")
-      )
-    | .key
-  ' "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"
-})"
-if [[ -n "${ascii_chinese_punctuation}" ]]; then
-  print -u2 "Simplified Chinese interface prose uses ASCII punctuation:"
-  print -u2 -- "${ascii_chinese_punctuation}"
-  exit 1
-fi
+python3 "${script_dir}/validate-localization-catalogs.py" --self-test \
+  "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"
 
 for catalog_file in "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"; do
   DEVELOPER_DIR="${developer_dir}" xcrun xcstringstool compile \

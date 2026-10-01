@@ -211,7 +211,7 @@ final class ResearchController: ObservableObject {
             return changes
         } catch {
             guard generation == pendingChangesRefreshGeneration else { throw error }
-            if !(error is CancellationError) { pendingChangesError = error.localizedDescription }
+            if !(error is CancellationError) { pendingChangesError = ScholiumErrorLocalization.message(error) }
             throw error
         }
     }
@@ -235,7 +235,7 @@ final class ResearchController: ObservableObject {
                 throw error
             }
             if !(error is CancellationError) {
-                agentChangesError = error.localizedDescription
+                agentChangesError = ScholiumErrorLocalization.message(error)
             }
             throw error
         }
@@ -299,7 +299,8 @@ final class ResearchController: ObservableObject {
             transactionRecoveryRecords =
                 transactionRecoveryRecords.filter { !retainedIDs.contains($0.id) }
                 + retainedRecoveryRecords
-            let readFailure = "Scholium could not read the durable recovery records. Their file remains unchanged. \(error.localizedDescription)"
+            let readFailure = ScholiumL10n.string(
+                "Scholium could not read the durable recovery records. Their file remains unchanged. \(ScholiumErrorLocalization.message(error))")
             transactionRecoveryError = [readFailure, retainedRecoveryFailures].compactMap { $0 }.joined(separator: "\n")
         }
     }
@@ -311,7 +312,9 @@ final class ResearchController: ObservableObject {
     private var retainedRecoveryFailures: String? {
         let failures = retainedRecoveries.values.compactMap { retained -> String? in
             guard let failure = retained.persistenceFailure else { return nil }
-            return TriptychTransactionError.recoveryPersistenceFailed(retained.record, failure).localizedDescription
+            return ScholiumErrorLocalization.message(
+                TriptychTransactionError.recoveryPersistenceFailed(retained.record, failure)
+            )
         }.sorted()
         guard !failures.isEmpty else { return nil }
         return failures.joined(separator: "\n")

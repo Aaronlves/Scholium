@@ -5,6 +5,20 @@ import Testing
 
 @Suite("WebKit interface localization")
 struct WebKitInterfaceLocalizationTests {
+    @Test("WebKit resolves the shipped language families consistently")
+    func supportedLanguageFamilies() {
+        for language in ["zh", "zh-Hans", "zh-Hans-CN", "zh_CN", "zh-SG"] {
+            let localization = WebKitInterfaceLocalization.localized(languageTag: language)
+            #expect(localization.languageTag == "zh-Hans")
+            #expect(localization.string("Note title") == "笔记标题")
+        }
+        for language in ["en", "en-GB", "fr", "zh-Hant", "zh-TW", "zh-Hansfake", "zh-Hans-", "zh--CN", ""] {
+            let localization = WebKitInterfaceLocalization.localized(languageTag: language)
+            #expect(localization.languageTag == "en")
+            #expect(localization.string("Note title") == "Note title")
+        }
+    }
+
     @Test("English and Simplified Chinese tables provide the same complete WebKit surface")
     func localizedTablesAreComplete() throws {
         let english = WebKitInterfaceLocalization.localized(languageTag: "en")
@@ -22,11 +36,20 @@ struct WebKitInterfaceLocalizationTests {
         #expect(simplifiedChinese.string("Note title") == "笔记标题")
         #expect(simplifiedChinese.string("Index") == "索引")
         #expect(simplifiedChinese.string("Accept index suggestion: {text} (Tab)") == "接受索引建议：{text}（Tab）")
+        #expect(
+            simplifiedChinese.string("Show Link Annotation for {title}")
+                == "显示“{title}”的链接注释"
+        )
+        #expect(
+            simplifiedChinese.string("Hide Link Annotation for {title}")
+                == "隐藏“{title}”的链接注释"
+        )
+        #expect(simplifiedChinese.string("Callout: {title}") == "语义块：{title}")
         let philosophicalCalloutLabels = [
             "Callout": "语义块",
             "Orientation": "导读",
             "Source": "文献",
-            "Connections": "关联",
+            "Connections": "连接",
             "Statement": "论点",
             "Illustration": "例证",
             "Quotation": "引文",
@@ -82,5 +105,20 @@ struct WebKitInterfaceLocalizationTests {
 
         #expect(decoded == localization)
         #expect(!String(decoding: data, as: UTF8.self).contains("</script>"))
+    }
+
+    @Test("Review empty-state chrome uses the supplied interface language")
+    @MainActor
+    func reviewEmptyStateUsesSuppliedLanguage() {
+        let english = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "", localization: .localized(languageTag: "en")
+        )
+        let chinese = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "", localization: .localized(languageTag: "zh-Hans")
+        )
+        #expect(english.contains(#"aria-label="Empty Note""#))
+        #expect(english.contains("This note has no body content."))
+        #expect(chinese.contains(#"aria-label="空笔记""#))
+        #expect(chinese.contains("此笔记没有正文内容。"))
     }
 }

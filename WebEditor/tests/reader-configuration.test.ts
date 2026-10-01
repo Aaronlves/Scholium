@@ -10,7 +10,7 @@ const currentConfiguration = {
   testingEnabled: true,
   presentationCSS: "",
   userCSS: "",
-  localization: {strings: {}},
+  localization: {languageTag: "en", strings: {}},
   linkPreviews: [],
 };
 
@@ -30,5 +30,20 @@ describe("reader configuration", () => {
       ...currentConfiguration,
       linkPreviews: Array.from({length: 129}, () => ({})),
     })).toBeNull();
+  });
+
+  it("requires the same bounded interface-language payload used by Edit", () => {
+    for (const localization of [{strings: {}}, {languageTag: "zh-Hans", strings: []},
+      {languageTag: "<script>", strings: {}}]) {
+      expect(validatedReaderConfiguration({...currentConfiguration, localization})).toBeNull();
+    }
+    const result = validatedReaderConfiguration({...currentConfiguration, localization: {
+      languageTag: "zh_CN", strings: {
+        "Note title": "笔记标题",
+        "Embedded note {title}": "错误模板 {other}",
+        "private research text": "must not become an interface key",
+      },
+    }});
+    expect(result?.localization).toEqual({languageTag: "zh-Hans", strings: {"Note title": "笔记标题"}});
   });
 });

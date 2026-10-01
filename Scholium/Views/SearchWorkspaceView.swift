@@ -950,23 +950,7 @@ struct ResearchSearchView<Library: View>: View {
     }
 
     private func explanationClause(_ clause: SearchExplanationClause) -> String {
-        switch clause.kind {
-        case .lexical(let field, let value, let kind, let excluded):
-            let location = field.map { "\($0.rawValue) " } ?? "text "
-            let operation = kind == .prefix ? "begins with" : "contains"
-            return (excluded ? "not " : "") + location + operation + " ‘\(value)’"
-        case .structured(let field, let value, let excluded):
-            return (excluded ? "not " : "") + "\(field.rawValue) is \(value)"
-        case .property(let key, let value):
-            return value.map { "Property \(key) equals ‘\($0)’" }
-                ?? "Property \(key) is present"
-        case .paragraph(let expression):
-            return "paragraph:" + expression.rendered(\.queryDescription)
-        case .link(let direction, let identity):
-            return direction == .fromNote
-                ? "is a direct destination of a link authored in ‘\(identity)’"
-                : "directly links to ‘\(identity)’"
-        }
+        SearchQueryExplanationPresentation.clause(clause)
     }
 
     private func scheduleSearch(immediately: Bool = false) {
@@ -1073,58 +1057,183 @@ struct ResearchSearchView<Library: View>: View {
     }
 
     private func localizedDiagnostic(_ diagnostic: SearchQueryDiagnostic) -> String {
-        switch diagnostic.code {
-        case .emptyClause:
-            String(localized: "A Search clause cannot be empty.")
-        case .unclosedPhrase:
-            String(localized: "The quoted phrase is not closed.")
-        case .invalidEscape:
-            String(localized: "Only escaped quotes and backslashes are valid inside a Search phrase.")
-        case .invalidPrefix:
-            String(localized: "A prefix must contain at least two non-CJK characters and place * only at the end.")
-        case .cjkPrefixUnsupported:
-            String(localized: "CJK clauses do not use *. Continuous character matching is automatic.")
-        case .unknownField:
-            String(localized: "This Search field is not supported.")
-        case .unsupportedField:
-            String(localized: "This known Search field is not available in the current contract.")
-        case .unsupportedScopeSelector:
-            String(localized: "Choose Search scope with the visible scope control.")
-        case .duplicateClause:
-            String(localized: "This Search clause may appear only once.")
-        case .missingCompanion:
-            String(localized: "This Search clause requires its companion clause.")
-        case .ambiguousIdentity:
-            diagnostic.message
-        case .notApplicable:
-            ScholiumL10n.dynamicString(diagnostic.message)
-        case .missingFieldValue:
-            String(localized: "This Search field requires a value.")
-        case .unknownStructuredValue:
-            String(localized: "This structured value is not a canonical Scholium value.")
-        case .unsupportedSyntax:
-            ScholiumL10n.dynamicString(diagnostic.message)
-        }
+        SearchDiagnosticPresentation.message(diagnostic)
     }
 
     private func localizedMatchedField(_ field: SearchMatchedField) -> String {
-        switch field {
-        case .title: String(localized: "title")
-        case .alias: String(localized: "alias")
-        case .heading: String(localized: "heading")
-        case .summary: String(localized: "summary")
-        case .author: String(localized: "author")
-        case .publicationDate: String(localized: "publication date")
-        case .tag: String(localized: "keyword")
-        case .path: String(localized: "path")
-        case .callout: String(localized: "callout")
-        case .footnote: String(localized: "footnote")
-        case .linkAnnotation: String(localized: "link annotation")
-        case .brokenLink: String(localized: "broken link")
-        case .body: String(localized: "body")
+        SearchQueryExplanationPresentation.field(field)
+    }
+
+}
+
+/// Interface explanations retain the literal query values and Boolean nesting.
+/// They do not translate, reparse, or reconstruct the executable query.
+enum SearchQueryExplanationPresentation {
+    static func clause(_ clause: SearchExplanationClause, locale: Locale = .current) -> String {
+        switch clause.kind {
+        case .lexical(let lexicalField, let value, let kind, let excluded):
+            let location =
+                lexicalField.flatMap { SearchMatchedField(rawValue: $0.rawValue) }
+                .map { field($0, locale: locale) } ?? ScholiumL10n.string("text", locale: locale)
+            if kind == .prefix {
+                return excluded
+                    ? ScholiumL10n.string("\(location) does not begin with ‘\(value)’", locale: locale)
+                    : ScholiumL10n.string("\(location) begins with ‘\(value)’", locale: locale)
+            }
+            return excluded
+                ? ScholiumL10n.string("\(location) does not contain ‘\(value)’", locale: locale)
+                : ScholiumL10n.string("\(location) contains ‘\(value)’", locale: locale)
+        case .structured(let field, let value, let excluded):
+            switch field {
+            case .callout:
+                return excluded
+                    ? ScholiumL10n.string("Callout kind is not ‘\(value)’", locale: locale)
+                    : ScholiumL10n.string("Callout kind is ‘\(value)’", locale: locale)
+            case .has:
+                return excluded
+                    ? ScholiumL10n.string("Does not have ‘\(value)’", locale: locale)
+                    : ScholiumL10n.string("Has ‘\(value)’", locale: locale)
+            }
+        case .property(let key, let value):
+            if let value {
+                return ScholiumL10n.string("Property \(key) equals ‘\(value)’", locale: locale)
+            }
+            return ScholiumL10n.string("Property \(key) is present", locale: locale)
+        case .paragraph(let expression):
+            let content = expression.rendered { Self.clause(SearchPredicate(clause: $0).explanation, locale: locale) }
+            return ScholiumL10n.string("In one paragraph: \(content)", locale: locale)
+        case .link(let direction, let identity):
+            return direction == .fromNote
+                ? ScholiumL10n.string("Is a direct destination of a link authored in ‘\(identity)’", locale: locale)
+                : ScholiumL10n.string("Directly links to ‘\(identity)’", locale: locale)
         }
     }
 
+    static func field(_ field: SearchMatchedField, locale: Locale = .current) -> String {
+        let key: String.LocalizationValue
+        switch field {
+        case .title: key = "title"
+        case .alias: key = "alias"
+        case .heading: key = "heading"
+        case .summary: key = "summary"
+        case .author: key = "author"
+        case .publicationDate: key = "publication date"
+        case .tag: key = "keyword"
+        case .path: key = "path"
+        case .callout: key = "callout"
+        case .footnote: key = "footnote"
+        case .linkAnnotation: key = "link annotation"
+        case .brokenLink: key = "broken link"
+        case .body: key = "body"
+        }
+        return ScholiumL10n.string(key, locale: locale)
+    }
+}
+
+enum SearchDiagnosticPresentation {
+    static func message(_ diagnostic: SearchQueryDiagnostic, locale: Locale = .current) -> String {
+        switch diagnostic.reason {
+        case .queryTooLong(let limit):
+            ScholiumL10n.string("Search queries are limited to \(limit) UTF-16 code units.", locale: locale)
+        case .tooManyTokens(let limit):
+            ScholiumL10n.string("Search queries are limited to \(limit) tokens.", locale: locale)
+        case .misplacedProvider:
+            ScholiumL10n.string("Put kind:note once at the start of the query.", locale: locale)
+        case .unexpectedOperator:
+            ScholiumL10n.string("Unexpected closing parenthesis or operator.", locale: locale)
+        case .conditionSeparatorRequired:
+            ScholiumL10n.string("Separate conditions with whitespace or an operator.", locale: locale)
+        case .conditionRequired:
+            ScholiumL10n.string("An operator or group requires a condition.", locale: locale)
+        case .paragraphRequiresPositiveText:
+            ScholiumL10n.string("Paragraph groups require unfielded text and a positive condition in every alternative.", locale: locale)
+        case .fieldGroupUnsupported:
+            ScholiumL10n.string("This field cannot contain a field group. Combine complete conditions instead.", locale: locale)
+        case .inheritedFieldOverride:
+            ScholiumL10n.string("A field group cannot override its inherited field.", locale: locale)
+        case .groupDepthExceeded(let limit):
+            ScholiumL10n.string("Search groups are limited to \(limit) levels.", locale: locale)
+        case .unclosedGroup:
+            ScholiumL10n.string("The group is not closed.", locale: locale)
+        case .duplicateProvider:
+            ScholiumL10n.string("kind: may appear only once.", locale: locale)
+        case .providerValueRequired:
+            ScholiumL10n.string("The kind field requires note.", locale: locale)
+        case .unknownProvider:
+            ScholiumL10n.string("kind: accepts only note.", locale: locale)
+        case .missingFieldValue(let field):
+            ScholiumL10n.string("The \(field) field requires a value.", locale: locale)
+        case .unsupportedField(let field):
+            ScholiumL10n.string("The \(field): field is known but is not supported by the current Search contract.", locale: locale)
+        case .unknownField(let field):
+            ScholiumL10n.string("Unknown Search field \(field):.", locale: locale)
+        case .emptyClause:
+            ScholiumL10n.string("A Search clause cannot be empty.", locale: locale)
+        case .prefixUnsupported:
+            ScholiumL10n.string("This field does not support prefix values.", locale: locale)
+        case .cjkPrefixUnsupported:
+            ScholiumL10n.string("CJK clauses do not use *. Continuous character matching is automatic.", locale: locale)
+        case .prefixTooShort:
+            ScholiumL10n.string("A prefix must contain at least two non-CJK characters and place * only at the end.", locale: locale)
+        case .structuredValueSyntax:
+            ScholiumL10n.string("Structured Search values are canonical identifiers, not phrases or prefixes.", locale: locale)
+        case .unknownStructuredValue(let field, let value):
+            ScholiumL10n.string("Unknown canonical \(field.rawValue) value \(value).", locale: locale)
+        case .invalidPropertyKey:
+            ScholiumL10n.string("Property keys use an identifier or a double-quoted top-level key.", locale: locale)
+        case .propertyValueRequired:
+            ScholiumL10n.string("Property equality requires a scalar text value.", locale: locale)
+        case .propertyPrefixUnsupported:
+            ScholiumL10n.string("Property equality is exact and does not support prefixes.", locale: locale)
+        case .emptyPropertyValue:
+            ScholiumL10n.string("A Property value cannot be empty.", locale: locale)
+        case .linkPrefixUnsupported:
+            ScholiumL10n.string("Link identities do not support prefixes.", locale: locale)
+        case .emptyLinkIdentity:
+            ScholiumL10n.string("A link identity cannot be empty.", locale: locale)
+        case .phrasePrefixUnsupported:
+            ScholiumL10n.string("A quoted phrase cannot also be a prefix query.", locale: locale)
+        case .unclosedPhrase:
+            ScholiumL10n.string("The quoted phrase is not closed.", locale: locale)
+        case .invalidPhraseEscape:
+            ScholiumL10n.string("Only escaped quotes and backslashes are valid inside a Search phrase.", locale: locale)
+        case .trailingPhraseEscape:
+            ScholiumL10n.string("A phrase cannot end with an escape marker.", locale: locale)
+        case .partialQuotedValue:
+            ScholiumL10n.string("A quote must enclose the complete value of one Search clause.", locale: locale)
+        case .invalidPrefixPlacement:
+            ScholiumL10n.string("* is supported only once at the end of an unquoted term.", locale: locale)
+        case .operatorTextRequiresQuotes:
+            ScholiumL10n.string("Quote operator words to search them as text. NEAR and alternate-expression syntax are not supported.", locale: locale)
+        case .unsupportedPatternSyntax:
+            ScholiumL10n.string("Regular-expression, fuzzy, and range syntax are not supported.", locale: locale)
+        case .scopeSelectorInQuery:
+            ScholiumL10n.string("Choose Search scope with the visible scope control.", locale: locale)
+        case .currentNoteRequiresPositiveText:
+            ScholiumL10n.string(
+                "This Note requires a positive text condition in every alternative and does not use property, structural, or link filters.", locale: locale)
+        case .directLinksUnavailableForCurrentNote:
+            ScholiumL10n.string("Direct link clauses are not applicable to This Note occurrence Search.", locale: locale)
+        case .missingLinkIdentity(let identity):
+            ScholiumL10n.string("No authorized Note has the exact link identity ‘\(identity)’.", locale: locale)
+        case .ambiguousLinkIdentity(let identity, let candidates):
+            ScholiumL10n.string("The link identity ‘\(identity)’ is ambiguous: \(candidates.formatted(.list(type: .and).locale(locale))).", locale: locale)
+        case .linkGraphNotCurrent:
+            ScholiumL10n.string("Direct link Search is unavailable until Graph and Note Search share one complete source manifest.", locale: locale)
+        case .openingVaultLexicalOnly:
+            ScholiumL10n.string("While this Triptych is opening, This Vault Search supports words, phrases, and lexical fields only.", locale: locale)
+        case .inconsistentScopes:
+            ScholiumL10n.string("Search presentation and execution scopes do not match.", locale: locale)
+        case .invalidVaultSubset:
+            ScholiumL10n.string("The selected Search vault subset is empty or outside this Triptych.", locale: locale)
+        case .vaultOutsideTriptych:
+            ScholiumL10n.string("The selected Search vault is not part of this Triptych.", locale: locale)
+        case .openingVaultUnavailable:
+            ScholiumL10n.string("Only the currently open vault can be searched while this Triptych finishes opening.", locale: locale)
+        case .noteOutsideTriptych:
+            ScholiumL10n.string("The selected Search Note is not part of this Triptych.", locale: locale)
+        }
+    }
 }
 
 private extension NoteSearchResult {

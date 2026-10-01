@@ -50,13 +50,13 @@ private enum NoteExportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidTextSize: "The export text size is invalid."
-        case .invalidSource: "The Note source could not be decoded for export."
-        case .emptyOutput: "The export produced no document data."
-        case .invalidPDF: "PDF export could not preserve the complete note."
-        case .pageLoadTimedOut: "The export page did not finish loading."
+        case .invalidTextSize: ScholiumL10n.string("The export text size is invalid.")
+        case .invalidSource: ScholiumL10n.string("The Note source could not be decoded for export.")
+        case .emptyOutput: ScholiumL10n.string("The export produced no document data.")
+        case .invalidPDF: ScholiumL10n.string("PDF export could not preserve the complete note.")
+        case .pageLoadTimedOut: ScholiumL10n.string("The export page did not finish loading.")
         case .missingLocalImage(let destination):
-            "The image at \(destination) could not be included in the export."
+            ScholiumL10n.string("The image at \(destination) could not be included in the export.")
         }
     }
 }

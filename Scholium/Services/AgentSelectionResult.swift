@@ -69,7 +69,7 @@ final class AgentSelectionResult: ObservableObject {
                 self.isStopped = true
             } catch {
                 guard let self, self.generation == identity else { return }
-                self.error = ScholiumL10n.dynamicString(error.localizedDescription)
+                self.error = ScholiumErrorLocalization.message(error)
             }
             guard let self, self.generation == identity else { return }
             self.isGenerating = false
@@ -110,7 +110,7 @@ final class AgentSelectionResult: ObservableObject {
                 try await adopt(reply)
                 isAdopted = true
             } catch {
-                adoptionError = ScholiumL10n.dynamicString(error.localizedDescription)
+                adoptionError = ScholiumErrorLocalization.message(error)
             }
         }
     }

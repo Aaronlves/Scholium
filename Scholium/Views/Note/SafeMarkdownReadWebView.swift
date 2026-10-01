@@ -1599,8 +1599,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let bodyMarkup =
                 if body.isEmpty {
                     """
-                    <section class="scholium-document-empty-state" role="status" aria-label="\(escapedHTMLText(ScholiumL10n.string("Empty Note")))" data-scholium-protected="empty-document">
-                      <p>\(escapedHTMLText(ScholiumL10n.string("This note has no body content.")))</p>
+                    <section class="scholium-document-empty-state" role="status" aria-label="\(escapedHTMLText(localization.string("Empty Note")))" data-scholium-protected="empty-document">
+                      <p>\(escapedHTMLText(localization.string("This note has no body content.")))</p>
                     </section>
                     """
                 } else {

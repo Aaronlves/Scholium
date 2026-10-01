@@ -266,6 +266,9 @@ struct SearchProtocolContractsTests {
             count: SearchContract.maximumQueryUTF16Count + 1
         )
         #expect(SearchQueryParser.parse(oversized).diagnostics.first?.code == .unsupportedSyntax)
+        #expect(
+            SearchQueryParser.parse(oversized).diagnostics.first?.reason
+                == .queryTooLong(limit: SearchContract.maximumQueryUTF16Count))
 
         let tooManyClauses = Array(
             repeating: "term",
@@ -275,6 +278,9 @@ struct SearchProtocolContractsTests {
             SearchQueryParser.parse(tooManyClauses).diagnostics.first?.code
                 == .unsupportedSyntax
         )
+        #expect(
+            SearchQueryParser.parse(tooManyClauses).diagnostics.first?.reason
+                == .tooManyTokens(limit: SearchContract.maximumQueryTokenCount))
     }
 
     @Test("Saved Searches persist current definitions without compatibility states")

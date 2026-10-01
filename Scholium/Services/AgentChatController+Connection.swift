@@ -87,7 +87,7 @@ extension AgentChatController {
                 if signInIfNeeded && self.account == nil { self.login() }
             } catch {
                 guard self.connectionID == connectionToken else { return }
-                await self.recoverConnection(after: error.localizedDescription)
+                await self.recoverConnection(after: ScholiumErrorLocalization.message(error))
             }
         }
     }
@@ -149,7 +149,7 @@ extension AgentChatController {
                     throw CodexConnectionError.invalidMessage
                 }
                 NSWorkspace.shared.open(url)
-            } catch { self?.connectionError = error.localizedDescription }
+            } catch { self?.connectionError = ScholiumErrorLocalization.message(error) }
         }
     }
 }

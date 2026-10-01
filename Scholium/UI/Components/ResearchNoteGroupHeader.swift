@@ -27,7 +27,9 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
                 },
                 role.map { ScholiumL10n.dynamicString($0.displayName) }, relativePath,
             ].compactMap { $0 })
-            .joined(separator: ", ")
+            .reduce("") { result, value in
+                result.isEmpty ? value : ScholiumL10n.string("\(result), \(value)")
+            }
     }
 
     private var symbol: String {
@@ -99,7 +101,7 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
             .scholiumSidebarHeaderControl()
             .focused($keyboardFocused)
             .accessibilityFocused($accessibilityFocused)
-            .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString("More Actions") + ", " + sourceIdentity))
+            .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("More Actions")), \(sourceIdentity)")))
             .help("More Actions")
         }
         .padding(.top, separatesFromPreviousGroup ? ScholiumGrid.Apparatus.noteGroupSeparation : 0)

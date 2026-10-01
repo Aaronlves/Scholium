@@ -44,7 +44,7 @@ struct AgentChatActivitySummary: View {
                     .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget, alignment: .leading)
                     .help(Text("Open Note", bundle: .module))
                     .accessibilityLabel(
-                        Text(verbatim: "\(ScholiumL10n.string("Open Note", locale: locale)): \(noteTarget.title)")
+                        Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Open Note", locale: locale)): \(noteTarget.title)", locale: locale))
                     )
                 }
             } else {

@@ -19,7 +19,9 @@ COPYFILE_DISABLE=1 DEVELOPER_DIR="${developer_dir}" swift build \
 typeset -a stringsdata_arguments
 while IFS= read -r -d '' stringsdata_file; do
   stringsdata_arguments+=(--stringsdata "${stringsdata_file}")
-done < <(find "${scratch_root}" -type f -name '*.stringsdata' -print0)
+done < <(find "${scratch_root}" \
+  \( -path '*/ScholiumApp-*.build/*' -o -path '*/ScholiumApp.build/*' \) \
+  -name '*.stringsdata' -print0)
 
 (( ${#stringsdata_arguments[@]} > 0 )) || {
   print -u2 "The compiler emitted no localization source data."
@@ -29,6 +31,7 @@ done < <(find "${scratch_root}" -type f -name '*.stringsdata' -print0)
 DEVELOPER_DIR="${developer_dir}" xcrun xcstringstool sync \
   "${repository_root}/Scholium/Resources/Interface.xcstrings" \
   "${repository_root}/Scholium/Resources/Localizable.xcstrings" \
+  "${repository_root}/Scholium/Resources/WebKitInterface.xcstrings" \
   "${stringsdata_arguments[@]}" \
   --skip-marking-strings-stale
 
@@ -37,7 +40,8 @@ missing_count="$(jq -s '
   | length
 ' \
   "${repository_root}/Scholium/Resources/Interface.xcstrings" \
-  "${repository_root}/Scholium/Resources/Localizable.xcstrings")"
+  "${repository_root}/Scholium/Resources/Localizable.xcstrings" \
+  "${repository_root}/Scholium/Resources/WebKitInterface.xcstrings")"
 
 print "String Catalogs synchronized from compiler output."
 print "Simplified Chinese entries still requiring translation: ${missing_count}"

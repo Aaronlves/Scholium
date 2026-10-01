@@ -808,7 +808,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             didFail navigation: WKNavigation!,
             withError error: any Error
         ) {
-            session.reportError(error.localizedDescription)
+            session.reportError(ScholiumErrorLocalization.message(error))
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -950,7 +950,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     result = (
                         false,
                         request.expectedTitle,
-                        String(error.localizedDescription.prefix(2_000))
+                        String(ScholiumErrorLocalization.message(error).prefix(2_000))
                     )
                 }
                 guard !Task.isCancelled,

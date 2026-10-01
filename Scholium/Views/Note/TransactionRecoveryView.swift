@@ -30,7 +30,10 @@ struct TransactionRecoveryNotice: View {
         } else {
             ScholiumRecoveryNoticePresentation(
                 "Transaction Recovery Required",
-                message: Text(verbatim: "\(count) interrupted operation\(count == 1 ? "" : "s") need file-by-file inspection."),
+                message: Text(
+                    verbatim: count == 1
+                        ? ScholiumL10n.string("1 interrupted operation needs file-by-file inspection.")
+                        : ScholiumL10n.string("\(count) interrupted operations need file-by-file inspection.")),
                 systemImage: "exclamationmark.arrow.triangle.2.circlepath"
             )
         }
@@ -144,7 +147,7 @@ struct TransactionRecoveryView: View {
                             .committedRefreshMessage
                         await refresh()
                     } catch {
-                        operationError = error.localizedDescription
+                        operationError = ScholiumErrorLocalization.message(error)
                     }
                 }
             }
@@ -182,7 +185,7 @@ struct TransactionRecoveryView: View {
                                 bundle: .module
                             )
                     } catch {
-                        operationError = error.localizedDescription
+                        operationError = ScholiumErrorLocalization.message(error)
                         await refresh()
                     }
                 }
@@ -216,8 +219,8 @@ struct TransactionRecoveryView: View {
         Section {
             LabeledContent("Operation", value: operationName(record.operation))
             LabeledContent("Recorded", value: record.createdAt.formatted(date: .abbreviated, time: .standard))
-            LabeledContent("Failure") {
-                Text(record.failure)
+            LabeledContent("Diagnostic Details") {
+                Text(verbatim: record.failure)
                     .font(ScholiumTypography.interface(.body))
                     .textSelection(.enabled)
                     .multilineTextAlignment(.trailing)
@@ -455,10 +458,13 @@ private struct InterruptedSaveRecoveryRow: View {
                 .font(ScholiumTypography.exact(.small))
                 .scholiumForeground(.secondaryText)
                 .textSelection(.enabled)
-            Text(recovery.retainedReason)
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            LabeledContent("Diagnostic Details") {
+                Text(verbatim: recovery.retainedReason)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(ScholiumTypography.interface(.body))
+            .scholiumForeground(.secondaryText)
             if let sourceStateDetail {
                 Text(sourceStateDetail)
                     .font(ScholiumTypography.interface(.body))
@@ -542,7 +548,7 @@ private struct InterruptedSaveRecoveryRow: View {
             content = try await loadContent()
             contentError = nil
         } catch {
-            contentError = error.localizedDescription
+            contentError = ScholiumErrorLocalization.message(error)
         }
     }
 
@@ -569,7 +575,7 @@ private struct InterruptedSaveRecoveryRow: View {
                     try await reveal()
                     actionMessage = nil
                 } catch {
-                    actionMessage = error.localizedDescription
+                    actionMessage = ScholiumErrorLocalization.message(error)
                 }
             }
         }

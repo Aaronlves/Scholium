@@ -42,7 +42,7 @@
     "Comment" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Comment"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"评论"}}}},
     "Comment for line {start}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Comment for line {start}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"评论第 {start} 行"}}}},
     "Comment for lines {start} through {end}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Comment for lines {start} through {end}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"评论第 {start} 至 {end} 行"}}}},
-    "Connections" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Connections"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"关联"}}}},
+    "Connections" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Connections"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"连接"}}}},
     "Could not save. Your Comment is still here." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Could not save. Your Comment is still here."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无法保存。你的评论仍保留在此处。"}}}},
     "Date" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Date"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"日期"}}}},
     "Diagram rendering is unavailable. Mermaid source is shown." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Diagram rendering is unavailable. Mermaid source is shown."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"图表渲染不可用，现显示 Mermaid 源文本。"}}}},
@@ -60,7 +60,6 @@
     "Heading level {level}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Heading level {level}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"{level} 级标题"}}}},
     "Highlight" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Highlight"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"高亮"}}}},
     "Illustration" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Illustration"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"例证"}}}},
-    "Hide Link Annotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Hide Link Annotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"收起链接注释"}}}},
     "Inline Code" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline Code"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内代码"}}}},
     "Inline Math" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline Math"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内公式"}}}},
     "Inline code" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline code"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内代码"}}}},
@@ -93,7 +92,6 @@
     "Preview content" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Preview content"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预览内容"}}}},
     "Quotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Quotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"引文"}}}},
     "Records sources that anchor the note without implying that they support every claim." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Records sources that anchor the note without implying that they support every claim."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"列出与笔记相关的文献，不据此推定它们支持其中的每项主张。"}}}},
-    "Show Link Annotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Show Link Annotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"展开链接注释"}}}},
     "Return saves · Shift-Return adds a line · Escape cancels" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Return saves · Shift-Return adds a line · Escape cancels"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"Return 保存 · Shift-Return 换行 · Escape 取消"}}}},
     "Routes the reader to a curated set of neighboring knowledge objects." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Routes the reader to a curated set of neighboring knowledge objects."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"指向经研究者选择的相关论题、概念或笔记。"}}}},
     "Saving…" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Saving…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正在保存…"}}}},
@@ -112,7 +110,262 @@
     "This Mermaid diagram could not be rendered. Source is shown." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"This Mermaid diagram could not be rendered. Source is shown."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此 Mermaid 图无法渲染，现显示源文本。"}}}},
     "This Mermaid diagram is unsupported or could not be rendered. Source is shown." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"This Mermaid diagram is unsupported or could not be rendered. Source is shown."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此 Mermaid 图不受支持或无法渲染，现显示源文本。"}}}},
     "Annotated Wikilink" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Annotated Wikilink"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"带注释双链"}}}},
-    "linked note" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"linked note"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"所链接的笔记"}}}}
+    "linked note" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"linked note"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"所链接的笔记"}}}},
+    "Show Link Annotation for {title}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Link Annotation for {title}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示“{title}”的链接注释"
+          }
+        }
+      }
+    },
+    "Hide Link Annotation for {title}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide Link Annotation for {title}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏“{title}”的链接注释"
+          }
+        }
+      }
+    },
+    "Callout: {title}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Callout: {title}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语义块：{title}"
+          }
+        }
+      }
+    },
+    "The insertion position changed. Confirm the cursor again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The insertion position changed. Confirm the cursor again."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入位置已改变。请重新确认光标位置。"
+          }
+        }
+      }
+    },
+    "The reference is too large." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The reference is too large."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引用内容过长。"
+          }
+        }
+      }
+    },
+    "Finish composition before adopting a suggestion." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish composition before adopting a suggestion."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先完成输入法组字，再采用建议。"
+          }
+        }
+      }
+    },
+    "The passage changed. Request a new suggestion." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The passage changed. Request a new suggestion."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原文段落已改变。请重新请求建议。"
+          }
+        }
+      }
+    },
+    "The suggestion is too large." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The suggestion is too large."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建议内容过长。"
+          }
+        }
+      }
+    },
+    "Empty Note" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empty Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空笔记"
+          }
+        }
+      }
+    },
+    "This note has no body content." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This note has no body content."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此笔记没有正文内容。"
+          }
+        }
+      }
+    },
+    "Footnotes" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Footnotes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "脚注"
+          }
+        }
+      }
+    },
+    "Return to footnote reference {ordinal}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return to footnote reference {ordinal}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回脚注 {ordinal} 的引用处"
+          }
+        }
+      }
+    },
+    "Completed task" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completed task"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已完成的任务"
+          }
+        }
+      }
+    },
+    "Incomplete task" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incomplete task"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未完成的任务"
+          }
+        }
+      }
+    },
+    "{label}. {meaning}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{label}. {meaning}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{label}。{meaning}"
+          }
+        }
+      }
+    }
   },
   "version" : "1.3"
 }

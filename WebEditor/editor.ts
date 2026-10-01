@@ -2330,11 +2330,11 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     if (documentVersion !== operation.generation || editor.composing || editor.state.selection.ranges.length !== 1 || !selection.empty
       || selection.anchor !== operation.selection.anchor || selection.head !== operation.selection.head
       || protectedCommandRanges(editor.state).some(range => selection.head >= range.from && Math.max(0, selection.head - 1) < range.to)) {
-      return rejected(request.requestID, documentVersion, "The insertion position changed. Confirm the cursor again.");
+      return rejected(request.requestID, documentVersion, localized("The insertion position changed. Confirm the cursor again."));
     }
     const text = `[[${operation.target}]]`;
     if (!exactSourceFitsChanges(editor.state, [{from: selection.head, to: selection.head, insert: text}])) {
-      return rejected(request.requestID, documentVersion, "The reference is too large.");
+      return rejected(request.requestID, documentVersion, localized("The reference is too large."));
     }
     editor.dispatch({changes: {from: selection.head, insert: text}, selection: {anchor: selection.head + text.length},
       annotations: [Transaction.userEvent.of("input.scholium.reference"), isolateHistory.of("full")]});
@@ -2343,12 +2343,12 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return successfulResult(request.requestID, true, "Insert Wikilink");
   }
   case "replacePassage": {
-    if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, "Finish composition before adopting a suggestion.");
+    if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, localized("Finish composition before adopting a suggestion."));
     const change = passageReplacement(exactEditorSource(), operation.expectedText,
       operation.fromUTF16, operation.toUTF16, operation.replacement);
-    if (!change) return rejected(request.requestID, documentVersion, "The passage changed. Request a new suggestion.");
+    if (!change) return rejected(request.requestID, documentVersion, localized("The passage changed. Request a new suggestion."));
     if (!exactSourceFitsChanges(editor.state, [change])) {
-      return rejected(request.requestID, documentVersion, "The suggestion is too large.");
+      return rejected(request.requestID, documentVersion, localized("The suggestion is too large."));
     }
     editor.dispatch({changes: change,
       ...(operation.preserveSelection ? {} : {
@@ -2436,7 +2436,9 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
     const result = rejected(
       value.requestID,
       documentVersion,
-      error instanceof Error ? error.message : "editor request failed",
+      error instanceof Error
+        ? error.message === sourceCapacityMessage ? localized(sourceCapacityMessage) : error.message
+        : "editor request failed",
     );
     recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes: encodedByteLength(result)});
     return result;

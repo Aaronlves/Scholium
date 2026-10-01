@@ -177,7 +177,7 @@ final class WindowLibraryMutationController: ObservableObject {
                     relativePath: target.documentID.relativePath
                 )),
             vaultID: target.documentID.vaultID,
-            failureMessage: { "Could not move this note. \($0.localizedDescription)" }
+            failureMessage: { ScholiumL10n.string("Could not move this note. \(ScholiumErrorLocalization.message($0))") }
         ) { [self] in
             try await performMoveNote(target, to: destinationRelativePath)
         }
@@ -194,7 +194,7 @@ final class WindowLibraryMutationController: ObservableObject {
                     vaultID: target.vaultID, relativePath: target.relativePath
                 )),
             vaultID: target.vaultID,
-            failureMessage: { "Could not move this folder. \($0.localizedDescription)" }
+            failureMessage: { ScholiumL10n.string("Could not move this folder. \(ScholiumErrorLocalization.message($0))") }
         ) { [self] in
             try await performMoveFolder(target, to: destinationRelativePath)
         }
@@ -263,7 +263,7 @@ final class WindowLibraryMutationController: ObservableObject {
             { [weak self] error in
                 self?.dependencies.reportError(
                     String(
-                        localized: "Could not create note: \(error.localizedDescription)",
+                        localized: "Could not create note: \(ScholiumErrorLocalization.message(error))",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -280,7 +280,7 @@ final class WindowLibraryMutationController: ObservableObject {
             context.sourceScope == .library
         else {
             dependencies.reportError(
-                WorkspaceRegistryError.incompleteWorkspace.localizedDescription
+                ScholiumErrorLocalization.message(WorkspaceRegistryError.incompleteWorkspace)
             )
             return
         }
@@ -300,7 +300,7 @@ final class WindowLibraryMutationController: ObservableObject {
             } catch {
                 self.dependencies.reportError(
                     String(
-                        localized: "Could not create folder: \(error.localizedDescription)",
+                        localized: "Could not create folder: \(ScholiumErrorLocalization.message(error))",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -503,7 +503,7 @@ final class WindowLibraryMutationController: ObservableObject {
             } catch is CancellationError {
                 return
             } catch {
-                self.dependencies.reportError(error.localizedDescription)
+                self.dependencies.reportError(ScholiumErrorLocalization.message(error))
             }
         }
     }
@@ -545,7 +545,7 @@ final class WindowLibraryMutationController: ObservableObject {
                 failures.append(
                     WindowMarkdownImportFailure(
                         sourceName: url.lastPathComponent,
-                        reason: error.localizedDescription
+                        reason: ScholiumErrorLocalization.message(error)
                     ))
             }
         }
@@ -554,7 +554,7 @@ final class WindowLibraryMutationController: ObservableObject {
             do {
                 try await dependencies.importedDocumentsCommitted(context.vault)
             } catch {
-                presentationWarning = error.localizedDescription
+                presentationWarning = ScholiumErrorLocalization.message(error)
             }
         }
         return WindowMarkdownImportBatchOutcome(

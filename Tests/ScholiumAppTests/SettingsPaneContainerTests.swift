@@ -135,7 +135,7 @@ struct SettingsPaneContainerTests {
         }
 
         controller.update(selection: .document, locale: Locale(identifier: "zh-Hans"))
-        #expect(toolbar.items.map(\.label) == ["工作区", "文稿", "写作", "Agent", "快捷键", "Zotero"])
+        #expect(toolbar.items.map(\.label) == ["工作区", "文稿", "写作", "智能体", "快捷键", "Zotero"])
         #expect(window.title == "文稿外观")
         #expect(toolbar.selectedItemIdentifier == expectedIdentifiers[1])
         #expect(toolbar.items[1].toolTip == "文稿外观")

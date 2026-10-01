@@ -124,8 +124,8 @@ struct ScholiumLocalizationTests {
     func inspectorInterfaceCopy() {
         let expectations: [(String.LocalizationValue, String)] = [
             ("Related Material", "相关材料"),
-            ("Outgoing Links", "本笔记指向的链接"),
-            ("Incoming Links", "指向本笔记的链接"),
+            ("Outgoing Links", "传出连接"),
+            ("Incoming Links", "传入连接"),
             ("NEEDS ATTENTION", "需要注意"),
             ("Edit at Source", "在源笔记中编辑"),
             ("Edit Link Annotation", "编辑链接注释"),
@@ -172,7 +172,7 @@ struct ScholiumLocalizationTests {
         )
 
         #expect(!catalog.contains("垃圾箱"))
-        #expect(ScholiumL10n.string("Move Note to Trash", locale: simplifiedChinese) == "将笔记移到废纸篓")
+        #expect(ScholiumL10n.string("Move Note to Trash", locale: simplifiedChinese) == "将笔记移至纸篓")
         for retiredKey in [
             "\"Research Action\" :",
             "\"Discussion\" :",

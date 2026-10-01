@@ -177,7 +177,7 @@ struct AgentChangeReceiptView: View {
         } catch {
             guard requestedID == changeID else { return }
             review = nil
-            errorMessage = error.localizedDescription
+            errorMessage = ScholiumErrorLocalization.message(error)
         }
         isLoading = false
     }
@@ -189,7 +189,7 @@ struct AgentChangeReceiptView: View {
             try await undo(change)
             await reload()
         } catch {
-            actionErrorMessage = error.localizedDescription
+            actionErrorMessage = ScholiumErrorLocalization.message(error)
         }
         isUndoing = false
     }

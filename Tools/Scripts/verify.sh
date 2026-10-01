@@ -430,6 +430,12 @@ for test_product in \
   fi
 done
 
+python3 "${ROOT}/Tools/Scripts/validate-localization-catalogs.py" \
+  --stringsdata-root "${SCRATCH}" \
+  "${ROOT}/Scholium/Resources/Interface.xcstrings" \
+  "${ROOT}/Scholium/Resources/Localizable.xcstrings" \
+  "${ROOT}/Scholium/Resources/WebKitInterface.xcstrings"
+
 # Public Application signatures must be expressible entirely in Contracts and
 # Foundation. A leaked Core nominal would defeat the package dependency wall.
 swift package --package-path "${ROOT}" --scratch-path "${SCRATCH}" \

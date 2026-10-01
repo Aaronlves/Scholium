@@ -264,7 +264,7 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
         }
         guard !hasNonLexical, expression.guaranteesPositiveLexicalMatch else {
             return SearchQueryDiagnostic(
-                code: .notApplicable,
+                reason: .currentNoteRequiresPositiveText,
                 message: "This Note requires a positive text condition in every alternative and does not use property, structural, or link filters.",
                 utf16LowerBound: 0, utf16UpperBound: queryUTF16Count)
         }
@@ -342,7 +342,7 @@ public enum SearchQueryParser {
                 ast: nil,
                 diagnostics: [
                     SearchQueryDiagnostic(
-                        code: .unsupportedSyntax,
+                        reason: .queryTooLong(limit: SearchContract.maximumQueryUTF16Count),
                         message: "Search queries are limited to \(SearchContract.maximumQueryUTF16Count) UTF-16 code units.",
                         utf16LowerBound: 0,
                         utf16UpperBound: SearchContract.maximumQueryUTF16Count
@@ -371,7 +371,7 @@ public enum SearchQueryParser {
                 ast: nil,
                 diagnostics: [
                     SearchQueryDiagnostic(
-                        code: .unsupportedSyntax,
+                        reason: .tooManyTokens(limit: SearchContract.maximumQueryTokenCount),
                         message: "Search queries are limited to \(SearchContract.maximumQueryTokenCount) tokens.",
                         utf16LowerBound: overflow.range.lowerBound,
                         utf16UpperBound: overflow.range.upperBound
@@ -391,7 +391,7 @@ public enum SearchQueryParser {
         }
 
         if let misplaced = tokenized.tokens.dropFirst().first(where: isKindToken) {
-            return SearchQueryParseResult(ast: nil, diagnostics: [diagnostic(.unsupportedSyntax, "Put kind:note once at the start of the query.", misplaced)])
+            return SearchQueryParseResult(ast: nil, diagnostics: [diagnostic(.misplacedProvider, "Put kind:note once at the start of the query.", misplaced)])
         }
         let tokens = tokenized.tokens.first.map(isKindToken) == true ? Array(tokenized.tokens.dropFirst()) : tokenized.tokens
         do {
@@ -415,12 +415,12 @@ public enum SearchQueryParser {
         mutating func read() throws(SearchQueryDiagnostic) -> SearchExpression {
             guard !tokens.isEmpty else { return .and([]) }
             let result = try disjunction(field: nil, depth: 0)
-            guard index == tokens.count else { throw error("Unexpected closing parenthesis or operator.") }
+            guard index == tokens.count else { throw error(.unexpectedOperator, "Unexpected closing parenthesis or operator.") }
             return result
         }
-        func error(_ message: String) -> SearchQueryDiagnostic {
+        func error(_ reason: SearchQueryDiagnosticReason, _ message: String) -> SearchQueryDiagnostic {
             let token = index < tokens.count ? tokens[index] : tokens.last ?? Token(raw: "", range: 0..<0)
-            return diagnostic(.unsupportedSyntax, message, token)
+            return diagnostic(reason, message, token)
         }
         mutating func disjunction(field: String?, depth: Int) throws(SearchQueryDiagnostic) -> SearchExpression {
             var values = [try conjunction(field: field, depth: depth)]
@@ -436,7 +436,7 @@ public enum SearchQueryParser {
                 if tokens[index].raw == "AND" {
                     index += 1
                 } else if tokens[index - 1].range.upperBound == tokens[index].range.lowerBound {
-                    throw error("Separate conditions with whitespace or an operator.")
+                    throw error(.conditionSeparatorRequired, "Separate conditions with whitespace or an operator.")
                 }
                 values.append(try unary(field: field, depth: depth))
             }
@@ -449,7 +449,7 @@ public enum SearchQueryParser {
                 index += 1
             }
             guard index < tokens.count, !["AND", "OR", ")"].contains(tokens[index].raw) else {
-                throw error("An operator or group requires a condition.")
+                throw error(.conditionRequired, "An operator or group requires a condition.")
             }
             let token = tokens[index]
             index += 1
@@ -464,7 +464,8 @@ public enum SearchQueryParser {
                     guard inner.predicates.allSatisfy({ if case .lexical(let clause) = $0.clause { clause.field == nil } else { false } }),
                         inner.guaranteesPositiveLexicalMatch
                     else {
-                        throw diagnostic(.unsupportedSyntax, "Paragraph groups require unfielded text and a positive condition in every alternative.", token)
+                        throw diagnostic(
+                            .paragraphRequiresPositiveText, "Paragraph groups require unfielded text and a positive condition in every alternative.", token)
                     }
                     let paragraph = SearchExpression.clause(
                         .paragraph(
@@ -474,13 +475,13 @@ public enum SearchQueryParser {
                     return negated ? .not(paragraph) : paragraph
                 }
                 guard field == nil, SearchLexicalField(rawValue: name) != nil || SearchStructuredField(rawValue: name) != nil else {
-                    throw diagnostic(.unsupportedSyntax, "This field cannot contain a field group. Combine complete conditions instead.", token)
+                    throw diagnostic(.fieldGroupUnsupported, "This field cannot contain a field group. Combine complete conditions instead.", token)
                 }
                 index += 1
                 result = try group(field: name, depth: depth, opening: tokens[index - 1])
             } else {
                 if field != nil, splitField(token.raw).field != nil {
-                    throw diagnostic(.unsupportedSyntax, "A field group cannot override its inherited field.", token)
+                    throw diagnostic(.inheritedFieldOverride, "A field group cannot override its inherited field.", token)
                 }
                 let inherited = Token(raw: field.map { $0 + ":" + token.raw } ?? token.raw, range: token.range)
                 switch parseNote(inherited) {
@@ -494,11 +495,11 @@ public enum SearchQueryParser {
         }
         mutating func group(field: String?, depth: Int, opening: Token) throws(SearchQueryDiagnostic) -> SearchExpression {
             guard depth < SearchContract.maximumQueryGroupDepth else {
-                throw diagnostic(.unsupportedSyntax, "Search groups are limited to 8 levels.", opening)
+                throw diagnostic(.groupDepthExceeded(limit: SearchContract.maximumQueryGroupDepth), "Search groups are limited to 8 levels.", opening)
             }
             let value = try disjunction(field: field, depth: depth + 1)
             guard index < tokens.count, tokens[index].raw == ")" else {
-                throw diagnostic(.unsupportedSyntax, "The group is not closed.", opening)
+                throw diagnostic(.unclosedGroup, "The group is not closed.", opening)
             }
             index += 1
             return value
@@ -514,7 +515,7 @@ public enum SearchQueryParser {
                 .note, true,
                 [
                     diagnostic(
-                        .duplicateClause,
+                        .duplicateProvider,
                         "kind: may appear only once.",
                         kindTokens[1]
                     )
@@ -529,7 +530,7 @@ public enum SearchQueryParser {
                 .note, true,
                 [
                     diagnostic(
-                        .missingFieldValue,
+                        .providerValueRequired,
                         "The kind field requires note.",
                         token
                     )
@@ -548,7 +549,7 @@ public enum SearchQueryParser {
                 .note, true,
                 [
                     diagnostic(
-                        .unknownStructuredValue,
+                        .unknownProvider,
                         "kind: accepts only note.",
                         token
                     )
@@ -580,7 +581,7 @@ public enum SearchQueryParser {
         guard !split.value.isEmpty else {
             return .diagnostic(
                 diagnostic(
-                    .missingFieldValue,
+                    .missingFieldValue(field: field),
                     "The \(field) field requires a value.",
                     token
                 ))
@@ -591,7 +592,7 @@ public enum SearchQueryParser {
         if knownUnsupportedFields.contains(field) {
             return .diagnostic(
                 diagnostic(
-                    .unsupportedField,
+                    .unsupportedField(field: field),
                     "The \(field): field is known but is not supported by the current Search contract.",
                     token
                 ))
@@ -632,7 +633,7 @@ public enum SearchQueryParser {
             case .failure(let error): return .diagnostic(error)
             }
         default:
-            return .diagnostic(diagnostic(.unknownField, "Unknown Search field \(field):.", token))
+            return .diagnostic(diagnostic(.unknownField(field: field), "Unknown Search field \(field):.", token))
         }
     }
 
@@ -671,7 +672,7 @@ public enum SearchQueryParser {
             guard permitsPrefix else {
                 return .failure(
                     diagnostic(
-                        .unsupportedSyntax,
+                        .prefixUnsupported,
                         "This field does not support prefix values.",
                         token
                     ))
@@ -687,7 +688,7 @@ public enum SearchQueryParser {
             guard normalized.unicodeScalars.count >= 2 else {
                 return .failure(
                     diagnostic(
-                        .invalidPrefix,
+                        .prefixTooShort,
                         "A prefix requires at least two non-CJK Unicode scalars before *.",
                         token
                     ))
@@ -710,7 +711,7 @@ public enum SearchQueryParser {
         guard !value.quoted, !value.hadTrailingAsterisk else {
             return .failure(
                 diagnostic(
-                    .unsupportedSyntax,
+                    .structuredValueSyntax,
                     "Structured Search values are canonical identifiers, not phrases or prefixes.",
                     token
                 ))
@@ -724,7 +725,7 @@ public enum SearchQueryParser {
         guard allowed.contains(normalized) else {
             return .failure(
                 diagnostic(
-                    .unknownStructuredValue,
+                    .unknownStructuredValue(field: field, value: value.text),
                     "Unknown canonical \(field.rawValue) value \(value.text).",
                     token
                 ))
@@ -776,7 +777,7 @@ public enum SearchQueryParser {
         else {
             return .failure(
                 diagnostic(
-                    .unsupportedSyntax,
+                    .invalidPropertyKey,
                     "Property keys use an identifier or a double-quoted top-level key.",
                     token
                 ))
@@ -795,7 +796,7 @@ public enum SearchQueryParser {
         guard !rawEqualityValue.isEmpty else {
             return .failure(
                 diagnostic(
-                    .missingFieldValue,
+                    .propertyValueRequired,
                     "Property equality requires a scalar text value.",
                     token
                 ))
@@ -808,14 +809,14 @@ public enum SearchQueryParser {
         guard !decoded.hadTrailingAsterisk else {
             return .failure(
                 diagnostic(
-                    .unsupportedSyntax,
+                    .propertyPrefixUnsupported,
                     "Property equality is exact and does not support prefixes.",
                     token
                 ))
         }
         let normalized = SearchTextNormalization.normalize(decoded.text)
         guard !normalized.isEmpty else {
-            return .failure(diagnostic(.emptyClause, "A Property value cannot be empty.", token))
+            return .failure(diagnostic(.emptyPropertyValue, "A Property value cannot be empty.", token))
         }
         return .success(
             SearchPropertyClause(
@@ -840,14 +841,14 @@ public enum SearchQueryParser {
         guard !value.hadTrailingAsterisk else {
             return .failure(
                 diagnostic(
-                    .unsupportedSyntax,
+                    .linkPrefixUnsupported,
                     "Link identities do not support prefixes.",
                     token
                 ))
         }
         let identity = SearchTextNormalization.normalize(value.text)
         guard !identity.isEmpty else {
-            return .failure(diagnostic(.emptyClause, "A link identity cannot be empty.", token))
+            return .failure(diagnostic(.emptyLinkIdentity, "A link identity cannot be empty.", token))
         }
         return .success(
             LinkAnchor(
@@ -871,7 +872,7 @@ public enum SearchQueryParser {
             if raw.hasSuffix("\"*") {
                 return .failure(
                     diagnostic(
-                        .invalidPrefix,
+                        .phrasePrefixUnsupported,
                         "A quoted phrase cannot also be a prefix query.",
                         token
                     ))
@@ -886,7 +887,7 @@ public enum SearchQueryParser {
                     guard character == "\"" || character == "\\" else {
                         return .failure(
                             diagnostic(
-                                .invalidEscape,
+                                .invalidPhraseEscape,
                                 "Only \\\" and \\\\ are valid Search phrase escapes.",
                                 token
                             ))
@@ -902,7 +903,7 @@ public enum SearchQueryParser {
             if escaped {
                 return .failure(
                     diagnostic(
-                        .invalidEscape,
+                        .trailingPhraseEscape,
                         "A phrase cannot end with an escape marker.",
                         token
                     ))
@@ -917,7 +918,7 @@ public enum SearchQueryParser {
         if raw.contains("\"") {
             return .failure(
                 diagnostic(
-                    .unsupportedSyntax,
+                    .partialQuotedValue,
                     "A quote must enclose the complete value of one Search clause.",
                     token
                 ))
@@ -926,7 +927,7 @@ public enum SearchQueryParser {
         guard stars == 0 || (stars == 1 && raw.hasSuffix("*")) else {
             return .failure(
                 diagnostic(
-                    .invalidPrefix,
+                    .invalidPrefixPlacement,
                     "* is supported only once at the end of an unquoted term.",
                     token
                 ))
@@ -949,7 +950,7 @@ public enum SearchQueryParser {
             || syntax.contains("(") || syntax.contains(")") || syntax.contains("|")
         {
             return diagnostic(
-                .unsupportedSyntax,
+                .operatorTextRequiresQuotes,
                 "Quote operator words to search them as text. NEAR and alternate-expression syntax are not supported.",
                 token
             )
@@ -962,7 +963,7 @@ public enum SearchQueryParser {
                 && candidate.hasSuffix("/"))
         {
             return diagnostic(
-                .unsupportedSyntax,
+                .unsupportedPatternSyntax,
                 "Regular-expression, fuzzy, and range syntax are not supported.",
                 token
             )
@@ -1041,19 +1042,19 @@ public enum SearchQueryParser {
 
     private static func scopeSelectorDiagnostic(_ token: Token) -> SearchQueryDiagnostic {
         diagnostic(
-            .unsupportedScopeSelector,
+            .scopeSelectorInQuery,
             "Choose This Note, This Vault, or Triptych outside the query.",
             token
         )
     }
 
     private static func diagnostic(
-        _ code: SearchQueryDiagnosticCode,
+        _ reason: SearchQueryDiagnosticReason,
         _ message: String,
         _ token: Token
     ) -> SearchQueryDiagnostic {
         SearchQueryDiagnostic(
-            code: code,
+            reason: reason,
             message: message,
             utf16LowerBound: token.range.lowerBound,
             utf16UpperBound: token.range.upperBound
@@ -1107,7 +1108,7 @@ public enum SearchQueryParser {
                     [],
                     [
                         SearchQueryDiagnostic(
-                            code: .unclosedPhrase,
+                            reason: .unclosedPhrase,
                             message: "The quoted phrase is not closed.",
                             utf16LowerBound: range.lowerBound,
                             utf16UpperBound: range.upperBound

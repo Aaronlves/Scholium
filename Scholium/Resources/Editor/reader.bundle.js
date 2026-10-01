@@ -940,12 +940,218 @@
     return presentation;
   }
 
+  // localization.ts
+  var webInterfaceLocalizationKeys = [
+    "Tab",
+    "AI",
+    "Index",
+    "Accept AI continuation: {text} (Tab)",
+    "Accept index suggestion: {text} (Tab)",
+    "AI continuation timed out.",
+    "AI continuation is preparing.",
+    "AI continuation is retrieving related context.",
+    "AI continuation is composing.",
+    "AI continuation is not enabled.",
+    "AI continuation is not connected. Connect Codex in Agents & Chat.",
+    "AI continuation is not ready. Check Writing Assistance settings.",
+    "The selected AI continuation model is unavailable. Choose an available model in Writing Assistance.",
+    "AI continuation is still stopping. Try again in a moment.",
+    "AI continuation could not connect. Check Agents & Chat.",
+    "AI continuation timed out. Library completion remains available.",
+    "AI returned no usable continuation. Library completion remains available.",
+    "AI continuation could not be used for this writing context.",
+    "AI continuation was cancelled.",
+    "AI continuation could not be generated. Library completion remains available.",
+    "The edited Markdown document exceeds the supported editor size.",
+    "Finish editing the note title before switching documents.",
+    "The insertion position changed. Confirm the cursor again.",
+    "The reference is too large.",
+    "Finish composition before adopting a suggestion.",
+    "The passage changed. Request a new suggestion.",
+    "The suggestion is too large.",
+    "Copy",
+    "Expand",
+    "YAML frontmatter",
+    "File and image paste is not supported in Editor 1.0.",
+    "Markdown editor, Edit mode",
+    "Markdown source editor",
+    "Note title",
+    "Empty Note",
+    "This note has no body content.",
+    "Heading level {level}",
+    "Link",
+    "Callout",
+    "Quotation",
+    "Table",
+    "Bulleted list",
+    "Numbered list",
+    "Bold text",
+    "Emphasized text",
+    "Inline code",
+    "Exact Markdown and YAML source",
+    "Task item",
+    "Completed task",
+    "Incomplete task",
+    "Show Link Annotation for {title}",
+    "Hide Link Annotation for {title}",
+    "Link Annotation",
+    "Callout: {title}",
+    "linked note",
+    "Markdown table",
+    "Embedded note {title}",
+    "Open embedded note {title}",
+    "Embedded note content for {title}",
+    "Embedded note",
+    "Mathematics could not be rendered. Source is shown.",
+    "Diagram rendering is unavailable. Mermaid source is shown.",
+    "This Mermaid diagram is unsupported or could not be rendered. Source is shown.",
+    "This Mermaid diagram could not be isolated safely. Source is shown.",
+    "Mermaid source: {source}",
+    "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
+    "This Mermaid diagram could not be rendered. Source is shown.",
+    "Footnote {ordinal}",
+    "Footnotes",
+    "Return to footnote reference {ordinal}",
+    "Edit mode unavailable",
+    "Close the YAML frontmatter in Source mode to restore the visual projection.",
+    "The editor could not preserve the exact source line endings.",
+    "The replacement would make the document too large.",
+    "The Markdown editor could not start.",
+    "The Review renderer stopped unexpectedly.",
+    "No preview is available at the insertion point.",
+    "Preview content",
+    "Paragraph",
+    "Bold",
+    "Italic",
+    "Strikethrough",
+    "Highlight",
+    "Annotated Wikilink",
+    "Inline Code",
+    "Code Block",
+    "Blockquote",
+    "Comment",
+    "Date",
+    "Inline Math",
+    "Display Math",
+    "Mermaid",
+    "Footnote",
+    "Divider",
+    "Orientation",
+    "Introduces the note's purpose, scope, and route.",
+    "Source",
+    "Records sources that anchor the note without implying that they support every claim.",
+    "Connections",
+    "Routes the reader to a curated set of neighboring knowledge objects.",
+    "Statement",
+    "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it.",
+    "Illustration",
+    "Presents a scenario, example, thought experiment, or test case used in reasoning.",
+    "Preserves source-specific wording with attribution.",
+    "Caution",
+    "Marks a limitation, unresolved dependency, source restriction, or interpretive warning.",
+    "Note",
+    "Preserves an unsupported callout without assigning a research role.",
+    "Selection actions",
+    "Return saves \xB7 Shift-Return adds a line \xB7 Escape cancels",
+    "Submit Comment for QA",
+    "Comment for line {start}",
+    "Comment for lines {start} through {end}",
+    "Open comment at line {start}",
+    "Open comment at lines {start} through {end}",
+    "Open {count} comments at line {start}",
+    "Open {count} comments at lines {start} through {end}",
+    "Could not save. Your Comment is still here.",
+    "This Comment is too long to save here.",
+    "Saving\u2026",
+    "{label}. {meaning}"
+  ];
+  var fallbackPayload = {
+    languageTag: "en",
+    strings: {}
+  };
+  var templatePlaceholder = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+  var interfaceLanguageIdentifier = /^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$/;
+  function placeholders(value) {
+    return [...value.matchAll(templatePlaceholder)].map((match) => match[1]).sort().join("\0");
+  }
+  function supportedInterfaceLanguage(identifier) {
+    if (identifier.length > 64 || !interfaceLanguageIdentifier.test(identifier)) return "en";
+    const normalized = identifier.replaceAll("_", "-").toLowerCase();
+    const parts = normalized.split("-");
+    return parts[0] === "zh" && (parts.length === 1 || parts[1] === "hans" || parts[1] === "cn" || parts[1] === "sg") ? "zh-Hans" : "en";
+  }
+  function validatedInterfaceLocalization(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const candidate = value;
+    if (typeof candidate.languageTag !== "string" || candidate.languageTag.length > 64 || !interfaceLanguageIdentifier.test(candidate.languageTag) || !candidate.strings || typeof candidate.strings !== "object" || Array.isArray(candidate.strings)) return null;
+    const strings = {};
+    const languageTag = supportedInterfaceLanguage(candidate.languageTag);
+    if (languageTag === "en" && !/^en(?:[-_]|$)/i.test(candidate.languageTag)) {
+      return { ...fallbackPayload };
+    }
+    const entries = candidate.strings;
+    for (const key of webInterfaceLocalizationKeys) {
+      if (!Object.hasOwn(entries, key)) continue;
+      const translation = entries[key];
+      if (typeof translation === "string" && translation.trim().length > 0 && translation.length <= 4096 && placeholders(translation) === placeholders(key)) {
+        strings[key] = translation;
+      }
+    }
+    return { languageTag, strings };
+  }
+  function interfaceLocalizationFromBase64(encoded) {
+    if (!encoded || encoded.length > 2796204) return fallbackPayload;
+    try {
+      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+      if (bytes.byteLength > 2097152) return fallbackPayload;
+      return validatedInterfaceLocalization(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))) ?? fallbackPayload;
+    } catch {
+      return fallbackPayload;
+    }
+  }
+  function payloadFromDocument() {
+    if (typeof document === "undefined") return fallbackPayload;
+    const encoded = document.querySelector(
+      'meta[name="scholium-interface-localization"]'
+    )?.content;
+    return interfaceLocalizationFromBase64(encoded ?? "");
+  }
+  var activePayload = payloadFromDocument();
+  function localizedTemplate(key, replacements) {
+    return localizedTemplateFrom(activePayload, key, replacements);
+  }
+  function localizedFrom(payload, key) {
+    return payload.strings[key] ?? key;
+  }
+  function localizedTemplateFrom(payload, key, replacements) {
+    return localizedFrom(payload, key).replace(
+      templatePlaceholder,
+      (placeholder, name) => Object.hasOwn(replacements, name) ? String(replacements[name]) : placeholder
+    );
+  }
+  function createInterfaceLocalizer(payload) {
+    const localization = validatedInterfaceLocalization(payload) ?? fallbackPayload;
+    return (key, replacements = {}) => localizedTemplateFrom(localization, key, replacements);
+  }
+  var calloutLocalizationKeys = {
+    orient: ["Orientation", "Introduces the note's purpose, scope, and route."],
+    cite: ["Source", "Records sources that anchor the note without implying that they support every claim."],
+    connect: ["Connections", "Routes the reader to a curated set of neighboring knowledge objects."],
+    state: ["Statement", "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it."],
+    illustrate: ["Illustration", "Presents a scenario, example, thought experiment, or test case used in reasoning."],
+    quote: ["Quotation", "Preserves source-specific wording with attribution."],
+    flag: ["Caution", "Marks a limitation, unresolved dependency, source restriction, or interpretive warning."],
+    neutral: ["Note", "Preserves an unsupported callout without assigning a research role."]
+  };
+
   // reader-configuration.ts
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
     if (config.version !== 7 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || config.replyProjection !== void 0 && typeof config.replyProjection !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
-    return config;
+    const localization = validatedInterfaceLocalization(config.localization);
+    if (!localization) return null;
+    return { ...config, localization };
   }
 
   // heading-accessibility.ts
@@ -1001,6 +1207,53 @@
     }
   };
 
+  // rendered-interface-localization.ts
+  function localizeRenderedInterface(root, localize = (key, replacements = {}) => localizedTemplate(key, replacements)) {
+    root.querySelectorAll(".scholium-callout").forEach((callout) => {
+      const identifier = Object.keys(calloutLocalizationKeys).find((role2) => callout.classList.contains(`scholium-callout-${role2}`));
+      if (!identifier) return;
+      const [labelKey, meaningKey] = calloutLocalizationKeys[identifier];
+      const label = localize(labelKey);
+      const meaning = localize(meaningKey);
+      const role = callout.querySelector(".scholium-callout-role");
+      if (role?.closest(".scholium-callout") === callout) {
+        if (role.textContent !== label) role.textContent = label;
+        if (role.title !== meaning) role.title = meaning;
+        role.setAttribute("aria-label", localize("{label}. {meaning}", { label, meaning }));
+      }
+      const generatedTitle = callout.querySelector(".scholium-callout-default-title");
+      if (generatedTitle?.closest(".scholium-callout") === callout && generatedTitle.textContent !== label) {
+        generatedTitle.textContent = label;
+      }
+    });
+    root.querySelectorAll(".footnote-reference[data-footnote]").forEach((reference) => {
+      const ordinal = reference.dataset.footnote;
+      if (ordinal) reference.setAttribute("aria-label", localize("Footnote {ordinal}", { ordinal }));
+    });
+    root.querySelectorAll(".footnote-return[data-footnote]").forEach((reference) => {
+      const ordinal = reference.dataset.footnote;
+      if (ordinal) reference.setAttribute("aria-label", localize("Return to footnote reference {ordinal}", { ordinal }));
+    });
+    root.querySelectorAll(".footnotes").forEach((section) => {
+      section.setAttribute("aria-label", localize("Footnotes"));
+    });
+    root.querySelectorAll(".scholium-task-checkbox").forEach((checkbox) => {
+      checkbox.setAttribute("aria-label", localize(checkbox.checked ? "Completed task" : "Incomplete task"));
+    });
+    root.querySelectorAll(".scholium-table").forEach((table) => {
+      table.setAttribute("aria-label", localize("Markdown table"));
+    });
+    root.querySelectorAll("button[data-link-annotation]").forEach((button) => {
+      const title = button.dataset.linkAnnotationTarget?.trim() || button.closest(".scholium-annotated-link")?.querySelector(".wiki-link")?.textContent?.trim() || localize("linked note");
+      button.dataset.linkAnnotationTarget = title;
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-label", localize(
+        expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
+        { title }
+      ));
+    });
+  }
+
   // reader.ts
   var readerWindow = window;
   function requiredElement(id) {
@@ -1040,11 +1293,8 @@
       heading.setAttribute("role", "heading");
       heading.setAttribute("aria-level", String(bodyHeadingAccessibilityLevel(level)));
     });
-    const strings = localization.strings || {};
-    const localized = (key, replacements = {}) => String(strings[key] || key).replace(
-      /\{([A-Za-z]+)\}/g,
-      (placeholder, name) => Object.prototype.hasOwnProperty.call(replacements, name) ? String(replacements[name]) : placeholder
-    );
+    const localized = createInterfaceLocalizer(localization);
+    localizeRenderedInterface(documentRoot, localized);
     const handler = readerWindow.webkit?.messageHandlers?.scholiumRead;
     const post = (type, extra = {}) => handler?.postMessage({
       version,
@@ -1298,6 +1548,7 @@
         const update = value2;
         if (update.version !== version || update.documentID !== documentID || update.loadGeneration !== loadGeneration || update.previousFingerprint !== fingerprint || typeof update.fingerprint !== "string" || !update.fingerprint || update.fingerprint.length > 256 || typeof update.html !== "string" || update.html.length > 16777216 || typeof update.presentationCSS !== "string" || typeof update.userCSS !== "string") return false;
         const restoreSelection = replyProjection.apply(update.html);
+        localizeRenderedInterface(documentRoot, localized);
         decorateAttachmentLinks(documentRoot);
         decorateChatReplyLinks(documentRoot);
         fingerprint = update.fingerprint;
@@ -1328,7 +1579,7 @@
       button.dataset.linkAnnotationTarget = linkName;
       button.setAttribute(
         "aria-label",
-        `${localized("Show Link Annotation")} ${linkName}`
+        localized("Show Link Annotation for {title}", { title: linkName })
       );
     });
     let popoverHideTimer;
@@ -1342,7 +1593,10 @@
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
       button.setAttribute(
         "aria-label",
-        `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${annotationTarget(button)}`
+        localized(
+          expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
+          { title: annotationTarget(button) }
+        )
       );
     }
     function setFootnoteExpanded(button, expanded) {
@@ -1395,6 +1649,7 @@
         node.removeAttribute("aria-owns");
         node.tabIndex = -1;
       });
+      localizeRenderedInterface(container, localized);
     }
     function installInertDocumentContent(container, preview) {
       container.innerHTML = preview.htmlBody;
@@ -1536,6 +1791,7 @@
     }
     function showFootnotePopover(button) {
       const ordinal = button.dataset.footnote;
+      if (!ordinal) return;
       const definition = document.getElementById("fn-" + ordinal);
       const content = definition && definition.querySelector(".footnote-content");
       if (!content) return;

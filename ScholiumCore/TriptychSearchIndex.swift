@@ -734,7 +734,7 @@ public actor TriptychSearchIndex {
                     hasMore: false,
                     diagnostics: [
                         SearchQueryDiagnostic(
-                            code: .notApplicable,
+                            reason: .inconsistentScopes,
                             message: "Search presentation and execution scopes do not match.",
                             utf16LowerBound: 0,
                             utf16UpperBound: 0

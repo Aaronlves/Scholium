@@ -340,7 +340,7 @@ struct ContentView: View {
         case nil:
             if appState.workspaceCatalog != nil { return .current }
             return .unavailable(
-                appState.workspaceCatalogError ?? "No complete derived workspace snapshot is available."
+                appState.workspaceCatalogError ?? ScholiumL10n.string("No complete derived workspace snapshot is available.")
             )
         }
     }
@@ -694,7 +694,7 @@ struct ContentView: View {
                 ambiguity: ambiguity,
                 vaultName: appState.currentDocumentVault?.name
                     ?? appState.currentRegisteredVault?.name
-                    ?? "Current Vault",
+                    ?? ScholiumL10n.string("Current Vault"),
                 isResolving: appState.isResolvingIdentity,
                 errorMessage: appState.identityResolutionError,
                 onConfirm: { candidateID in
@@ -850,7 +850,7 @@ struct ContentView: View {
         }
         if let status = appState.refreshStatusText {
             ScholiumDocumentStatusNotice(
-                status, detail: "",
+                ScholiumL10n.dynamicString(status), detail: "",
                 kind: appState.hasDerivedRefreshFailure ? .attention : .information
             ) {
                 if appState.hasDerivedRefreshFailure {

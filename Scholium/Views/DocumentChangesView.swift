@@ -558,7 +558,7 @@ struct DocumentChangesView: View {
             return
         } catch {
             guard generation == reloadGeneration, scope.identity == scopeIdentity else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = ScholiumErrorLocalization.message(error)
         }
         isLoading = false
     }
@@ -618,7 +618,7 @@ struct DocumentChangesView: View {
             guard generation == detailGeneration, scope.identity == scopeIdentity,
                 page == selectedPage
             else { return }
-            detailErrorMessage = error.localizedDescription
+            detailErrorMessage = ScholiumErrorLocalization.message(error)
         }
         if generation == detailGeneration, page == selectedPage { isLoadingDetail = false }
     }
@@ -639,7 +639,7 @@ struct DocumentChangesView: View {
             showingDetail = false
             await reload()
         } catch {
-            if scope.identity == scopeIdentity { actionErrorMessage = error.localizedDescription }
+            if scope.identity == scopeIdentity { actionErrorMessage = ScholiumErrorLocalization.message(error) }
         }
         isMutating = false
     }
@@ -661,7 +661,7 @@ struct DocumentChangesView: View {
             await reload()
         } catch {
             if scope.identity == scopeIdentity {
-                let issue = error.localizedDescription
+                let issue = ScholiumErrorLocalization.message(error)
                 historyDetail = nil
                 showingDetail = false
                 await reload()

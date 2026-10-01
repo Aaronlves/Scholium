@@ -4,6 +4,70 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    /// App language is independent of region; rendered research remains exact.
+    @MainActor
+    func testChineseInterfacePreservesResearchSourceWithEnglishRegion() throws {
+        app.terminate()
+        let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        var source = try Data(contentsOf: sourceURL)
+        source.append(
+            Data(
+                """
+
+
+                > [!state] Statement
+                > Authored Statement stays verbatim.
+
+                - [x] Completed task remains verbatim.
+
+                A footnote[^localization].
+
+                [^localization]: Research source — 中文 stays verbatim.
+
+                """.utf8))
+        try source.write(to: sourceURL)
+        app = configuredApplication(sessionID: sessionID, appearance: .light)
+        app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "en_US"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.librarySurface"].waitForExistence(timeout: 20))
+        let editor = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "Markdown 编辑器，编辑模式")
+        ).firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 20))
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 10))
+
+        app.typeKey("r", modifierFlags: .command)
+        XCTAssertTrue(app.groups["脚注"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Authored Statement stays verbatim."].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["已完成的任务"].exists)
+        XCTAssertTrue(app.buttons["返回脚注 1 的引用处"].exists)
+        XCTAssertEqual(try Data(contentsOf: sourceURL), source)
+
+        let search = app.searchFields["scholium.searchField"]
+        typeCommittedText("kind:paragraph", into: search, in: app)
+        let diagnostic = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@ OR value BEGINSWITH %@", "搜索条件无效", "搜索条件无效")
+        ).firstMatch
+        XCTAssertTrue(diagnostic.waitForExistence(timeout: 10))
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "chinese-reader-and-search-english-region"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        search.click()
+        search.typeKey("a", modifierFlags: .command)
+        search.typeKey(.delete, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { (search.value as? String) == "" })
+
+        app.menuBars.menuBarItems["Scholium QA"].click()
+        app.menuItems["设置…"].click()
+        let settings = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        selectSettingsCategory("agents", in: settings)
+        XCTAssertTrue(settings.radioButtons["连接与聊天"].waitForExistence(timeout: 5))
+        XCTAssertTrue(settings.toolbars.buttons["智能体"].isHittable)
+        XCTAssertEqual(try Data(contentsOf: sourceURL), source)
+    }
+
     /// One offline Chat journey covers page lifetime without dispatching any message.
     @MainActor
     func testChatSidebarPageTransitionsRetainDraftAndFind() throws {
@@ -63,8 +127,8 @@ extension ScholiumUITests {
             XCTAssertEqual(window.frame.width, originalFrame.width, accuracy: 1)
             XCTAssertEqual(window.frame.height, originalFrame.height, accuracy: 1)
         }
-        func capture(_ name: String, includeSearchResults: Bool = false) {
-            let attachment = XCTAttachment(screenshot: includeSearchResults ? app.screenshot() : window.screenshot())
+        func capture(_ name: String) {
+            let attachment = XCTAttachment(screenshot: window.screenshot())
             attachment.name = name
             attachment.lifetime = .keepAlways
             add(attachment)
@@ -149,7 +213,7 @@ extension ScholiumUITests {
         XCTAssertEqual(search.value as? String, "no-such-setting-qa")
         XCTAssertTrue(app.descendants(matching: .any)["scholium.settings.noResults"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(window.buttons["Save Appearance"].exists, "No matches must retain the browsing page")
-        capture("settings-empty-search", includeSearchResults: true)
+        capture("settings-empty-search")
         search.buttons["cancel"].click()
         XCTAssertTrue(size.waitForExistence(timeout: 5))
         XCTAssertEqual(size.value as? String, "17")
@@ -177,9 +241,10 @@ extension ScholiumUITests {
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(window.descendants(matching: .any)["scholium.settings.writing"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(keyboardSearch.value as? String, "Writing Assistance Model")
-        XCTAssertTrue(waitUntil(timeout: 3) {
-            !self.app.descendants(matching: .any)["scholium.settings.searchResults"].firstMatch.exists
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                !self.app.descendants(matching: .any)["scholium.settings.searchResults"].firstMatch.exists
+            })
         XCTAssertEqual(window.frame.size, originalFrame.size)
         keyboardSearch.buttons["cancel"].click()
         XCTAssertTrue(name.waitForExistence(timeout: 5), "Clearing search must restore its original browsing category")
@@ -219,7 +284,7 @@ extension ScholiumUITests {
             .withOffset(CGVector(dx: -1, dy: 0))
         localizedRightEdge.click(forDuration: 0.15, thenDragTo: localizedRightEdge.withOffset(CGVector(dx: 780 - localizedWindow.frame.width, dy: 0)))
         XCTAssertTrue(waitUntil(timeout: 5) { abs(localizedWindow.frame.width - 780) < 2 })
-        for label in ["工作区", "文稿", "写作", "Agent", "快捷键", "Zotero"] {
+        for label in ["工作区", "文稿", "写作", "智能体", "快捷键", "Zotero"] {
             XCTAssertTrue(localizedWindow.toolbars.buttons[label].isHittable)
         }
         selectSettingsCategory("document", in: localizedWindow)

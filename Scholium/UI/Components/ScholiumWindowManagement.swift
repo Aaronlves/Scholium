@@ -14,11 +14,17 @@ enum ScholiumWindowLifecycleError: LocalizedError, Equatable, Sendable {
         case .failed(let message):
             message
         case .unregisteredBeforeReady:
-            "The destination window closed before its native content became ready."
+            ScholiumL10n.string("The destination window closed before its native content became ready.")
         case .cancelled:
-            "Waiting for the destination window was cancelled."
+            ScholiumL10n.string("Waiting for the destination window was cancelled.")
         case .timedOut(let phase):
-            "Scholium timed out while waiting for \(phase.description)."
+            switch phase {
+            case .bridgeRequest: ScholiumL10n.string("Scholium timed out while waiting for the editor bridge.")
+            case .routeReadiness: ScholiumL10n.string("Scholium timed out while waiting for the destination window.")
+            case .contentFlush: ScholiumL10n.string("Scholium timed out while waiting for document content to save.")
+            case .presentationSnapshot: ScholiumL10n.string("Scholium timed out while waiting for window state to save.")
+            case .applicationTermination: ScholiumL10n.string("Scholium timed out while waiting for all windows to finish saving.")
+            }
         }
     }
 }
@@ -29,16 +35,6 @@ enum ScholiumLifecyclePhase: String, Equatable, Sendable {
     case contentFlush
     case presentationSnapshot
     case applicationTermination
-
-    var description: String {
-        switch self {
-        case .bridgeRequest: "the editor bridge"
-        case .routeReadiness: "the destination window"
-        case .contentFlush: "document content to save"
-        case .presentationSnapshot: "window state to save"
-        case .applicationTermination: "all windows to finish saving"
-        }
-    }
 }
 
 struct ScholiumLifecyclePolicy: Sendable {
@@ -229,7 +225,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
     func markFailed(id: UUID, error: any Error) {
         let entry = entry(for: id)
         guard case .pending = entry.readiness else { return }
-        let lifecycleError = ScholiumWindowLifecycleError.failed(error.localizedDescription)
+        let lifecycleError = ScholiumWindowLifecycleError.failed(ScholiumErrorLocalization.message(error))
         entry.readiness = .failed(lifecycleError)
         resumeWaiters(in: entry, with: .failure(lifecycleError))
     }
@@ -1085,10 +1081,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                     self.window === sender
                 else { return }
                 flushInFlight = false
-                appState.lastSaveError = error.localizedDescription
+                appState.lastSaveError = ScholiumErrorLocalization.message(error)
                 appState.reportOperationIssue(
                     String(
-                        localized: "Scholium kept this window open because the current note could not be saved. \(error.localizedDescription)",
+                        localized: "Scholium kept this window open because the current note could not be saved. \(ScholiumErrorLocalization.message(error))",
                         table: "Localizable",
                         bundle: .module
                     ),

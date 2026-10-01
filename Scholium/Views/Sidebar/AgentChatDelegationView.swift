@@ -148,7 +148,8 @@ struct AgentChatDelegationPresentation {
             if !issues.contains(issue) { issues.append(issue) }
         }
         if !issues.isEmpty {
-            labels.append(ScholiumL10n.string("Reported Agent States", locale: locale) + ": " + issues.joined(separator: ", "))
+            let states = issues.formatted(.list(type: .and).locale(locale))
+            labels.append(ScholiumL10n.string("\(ScholiumL10n.string("Reported Agent States", locale: locale)): \(states)", locale: locale))
         }
         return labels.isEmpty ? nil : labels.joined(separator: " · ")
     }

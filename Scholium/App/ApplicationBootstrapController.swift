@@ -19,7 +19,7 @@ struct ApplicationRegistryRecovery: Equatable, Sendable {
 
     var summary: String {
         switch source {
-        case .triptych(let health, _): health.summary
+        case .triptych(let health, _): ScholiumErrorLocalization.registrySummary(health)
         }
     }
 
@@ -39,10 +39,13 @@ struct ApplicationRegistryRecovery: Equatable, Sendable {
         var lines: [String]
         switch source {
         case .triptych(let health, let registryURL):
-            lines = [health.details, "Registry location: \(registryURL.path)"]
+            lines = [
+                ScholiumErrorLocalization.registryDetails(health),
+                ScholiumL10n.string("Registry location: \(registryURL.path)"),
+            ]
         }
         if let recoveryFailure {
-            lines.append("Recovery could not preserve the original file: \(recoveryFailure)")
+            lines.append(ScholiumL10n.string("Recovery could not preserve the original file: \(recoveryFailure)"))
         }
         return lines.joined(separator: "\n\n")
     }
@@ -63,7 +66,7 @@ struct ApplicationRegistryRecovery: Equatable, Sendable {
         }
         return Self(
             source: updatedSource,
-            recoveryFailure: error.localizedDescription
+            recoveryFailure: ScholiumErrorLocalization.message(error)
         )
     }
 }
@@ -143,7 +146,7 @@ final class ApplicationBootstrapController: ObservableObject {
                                     localized:
                                         "Scholium cannot establish its Application Support storage."
                                 ),
-                                details: error.localizedDescription
+                                details: ScholiumErrorLocalization.message(error)
                             ))
                         return
                     }
@@ -163,7 +166,7 @@ final class ApplicationBootstrapController: ObservableObject {
                                 localized:
                                     "Scholium cannot establish its Application Support storage."
                             ),
-                            details: error.localizedDescription
+                            details: ScholiumErrorLocalization.message(error)
                         ))
                 }
             } catch {
@@ -174,7 +177,7 @@ final class ApplicationBootstrapController: ObservableObject {
                             localized:
                                 "Scholium cannot establish its Application Support storage."
                         ),
-                        details: error.localizedDescription
+                        details: ScholiumErrorLocalization.message(error)
                     ))
             }
         }

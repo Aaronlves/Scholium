@@ -107,7 +107,7 @@ struct PortableSettingsRecoverySection: View {
                 return
             } catch {
                 guard generation == preparationGeneration, isPaneActive, isCurrent else { return }
-                message = error.localizedDescription
+                message = ScholiumErrorLocalization.message(error)
             }
         }
     }
@@ -135,7 +135,7 @@ struct PortableSettingsRecoverySection: View {
                     : ScholiumL10n.string("Defaults were saved. Research views will refresh when the workspace is available.")
             } catch {
                 guard isCurrent else { return }
-                message = error.localizedDescription
+                message = ScholiumErrorLocalization.message(error)
             }
         }
     }
