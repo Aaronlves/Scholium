@@ -653,6 +653,26 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     let webView = message.webView as? WindowAttachedWebView
                 else { return }
                 _ = webView.consumePastedImage()
+            case .requestTextPaste(let request):
+                guard surfaceVisibility.isActive,
+                    validEnvelope(request.envelope),
+                    session.acceptsInteractionRanges(request.selections, documentVersion: request.envelope.documentVersion),
+                    let webView = message.webView,
+                    let plainText = NSPasteboard.general.string(forType: .string)
+                else { return }
+                Task { @MainActor [weak self, weak webView] in
+                    guard let self, let webView,
+                        self.activeWebView === webView,
+                        self.surfaceVisibility.isActive,
+                        self.validEnvelope(request.envelope), !self.session.isComposing
+                    else { return }
+                    do {
+                        try await self.session.pasteClipboard(plainText: plainText, selections: request.selections)
+                    } catch {
+                        guard self.activeWebView === webView, self.validEnvelope(request.envelope) else { return }
+                        self.session.reportError(ScholiumErrorLocalization.message(error))
+                    }
+                }
             case .requestMermaidRuntime(let envelope):
                 guard validEnvelope(envelope),
                     let webView = message.webView,

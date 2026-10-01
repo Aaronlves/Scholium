@@ -827,6 +827,37 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         flushPendingSourceRange()
     }
 
+    func selectAll() async throws {
+        guard isReady, isLoaded, !isComposing, let webView else { return }
+        try await sendCapturedEditorInput(.selectAll, in: webView)
+    }
+
+    func pasteClipboard(plainText: String, selections: [MarkdownEditorSelectionRange]) async throws {
+        guard isReady, isLoaded, !isComposing, let webView else { return }
+        guard plainText.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes else {
+            let message = WebKitInterfaceLocalization.current().string("The edited Markdown document exceeds the supported editor size.")
+            _ = try? await send(.announceStatus(message), in: webView)
+            return
+        }
+        try await sendCapturedEditorInput(.pasteClipboard(plainText: plainText, selections: selections), in: webView)
+    }
+
+    private func sendCapturedEditorInput(_ operation: MarkdownEditorOperation, in webView: WKWebView) async throws {
+        do {
+            _ = try await send(operation, in: webView)
+        } catch SessionError.bridgeRejected(let message)
+            where message == "clipboard selection changed"
+            || message == "stale editor generation"
+            || message == "editor identity cannot change during composition"
+        {
+            // A newer input or composition cancels this captured intent without
+            // making the editor unavailable for the next input.
+            return
+        } catch SessionError.staleRequest {
+            return
+        }
+    }
+
     /// Applies an original-source locator through the existing generation-checked bridge.
     func revealSourceLocation(_ request: DocumentSourceLocationRequest) async throws {
         guard isReady, isLoaded, !isComposing, let webView else { throw SessionError.unavailable }

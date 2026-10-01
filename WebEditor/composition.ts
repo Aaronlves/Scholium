@@ -9,7 +9,7 @@ export type CompositionRequestPolicy = "allow" | "defer" | "reject";
 
 // Every protocol addition must choose its marked-text behavior explicitly.
 const policies: Record<EditorOperation["type"], CompositionRequestPolicy> = {
-  initialize: "reject", replacePassage: "reject", insertReference: "reject",
+  initialize: "reject", replacePassage: "reject", insertReference: "reject", pasteClipboard: "reject", selectAll: "reject",
   queryText: "defer", querySelection: "defer", captureRecovery: "defer",
   markClean: "defer", setMode: "defer", setDocumentTitle: "defer",
   setWritingContinuation: "allow", setWritingIndexContext: "allow",

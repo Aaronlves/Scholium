@@ -3650,14 +3650,23 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.waitUntilPresentation(stage: "Callout restored before modified link") {
             $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
         }
+        let beforeContextClick = harness.session.context?.selections
         try await harness.session.testingModifiedClickVisibleText(
             "linked note",
             modifierFlags: .control
         )
+        #expect(harness.activatedLinks.isEmpty, "Control-click belongs to the context-menu route.")
+        #expect(
+            harness.session.context?.selections == beforeContextClick,
+            "Control-click mouse-down must leave selection to the context-menu owner.")
+        try await harness.session.testingModifiedClickVisibleText(
+            "linked note",
+            modifierFlags: .command
+        )
         let activationDeadline = ContinuousClock().now.advanced(by: .seconds(3))
         while harness.activatedLinks != ["work-031"] {
             if ContinuousClock().now >= activationDeadline {
-                Issue.record("Control-click did not activate the projected Callout link.")
+                Issue.record("Command-click did not activate the projected Callout link.")
                 break
             }
             try await Task.sleep(for: .milliseconds(20))
@@ -7008,6 +7017,293 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Clipboard input remains plain in literal source and retains exact Undo", arguments: [MarkdownEditorMode.livePreview, .source])
+    func clipboardPasteInLiteralSource(mode: MarkdownEditorMode) async throws {
+        let source = "\u{feff}---\r\ncustom: 'unchanged' # retained\r\n---\r\n\r\n```text\r\nSelected 中文 😀 e\u{301}\r\n```\r\nTail without final newline"
+        let selected = "Selected 中文 😀 e\u{301}"
+        let range = try #require(source.range(of: selected))
+        let harness = EditorHarness(source: source, initialMode: mode)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        for payload in ["Plain 中文 😀 e\u{301}\nsecond line", "https://example.test/exact"] {
+            let offsets = EditorSourceOffsetMap(source: source)
+            let anchor = try #require(
+                offsets.editorUTF16Offset(forSourceUTF16Offset: range.lowerBound.utf16Offset(in: source)))
+            let expectedHead = try #require(
+                offsets.editorUTF16Offset(forSourceUTF16Offset: range.upperBound.utf16Offset(in: source)))
+            harness.session.revealSourceRange(fromUTF16: anchor, toUTF16: expectedHead)
+            try await harness.waitUntilSelection(head: expectedHead)
+            let consumed = try await harness.callPageJavaScript(
+                """
+                const transfer = new DataTransfer();
+                transfer.setData('text/plain', payload);
+                const event = new ClipboardEvent('paste', {bubbles: true, cancelable: true, clipboardData: transfer});
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """, arguments: ["payload": payload])
+            #expect(consumed as? Bool == true)
+            let expected = source.replacingOccurrences(of: selected, with: payload.replacingOccurrences(of: "\n", with: "\r\n"))
+            #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(expected.utf8))
+            #expect(harness.session.context?.undoLabel == "Paste")
+            _ = try await harness.callPageJavaScript(
+                """
+                document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {
+                  key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true
+                }));
+                """)
+            #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(source.utf8))
+        }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Native clipboard input retains Unicode and rejects a moved insertion point")
+    func nativeClipboardSelectionBinding() async throws {
+        let source = "Original 中文 text."
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let selections = try #require(harness.session.context?.selections)
+        let payload = "e\u{301} 😀 "
+        _ = try await harness.session.send(.pasteClipboard(plainText: payload, selections: selections), in: webView)
+        #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual((payload + source).utf8))
+        let captured = try #require(harness.session.context?.selections)
+        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 1)
+        try await harness.waitUntilSelection(head: 1)
+        let generation = harness.session.generation
+        do {
+            _ = try await harness.session.send(.pasteClipboard(plainText: "WRONG", selections: captured), in: webView)
+            Issue.record("A clipboard reply inserted at a different caret.")
+        } catch MarkdownEditorSession.SessionError.bridgeRejected(let message) {
+            #expect(message == "clipboard selection changed")
+        }
+        #expect(harness.session.generation == generation)
+        #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual((payload + source).utf8))
+        try await harness.session.pasteClipboard(plainText: "CANCELLED", selections: captured)
+        try await harness.session.pasteClipboard(plainText: String(repeating: "x", count: 8_000_001), selections: captured)
+        #expect(harness.session.isReady && harness.session.isLoaded)
+        #expect(harness.session.errorMessage == nil)
+        #expect(harness.session.generation == generation)
+        #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual((payload + source).utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Captured clipboard and menu input yield to a newer edit or composition", arguments: [false, true], [false, true])
+    func capturedEditorInputCancellation(startsComposition: Bool, selectsAll: Bool) async throws {
+        let source = "Preserved 中文 source."
+        let dispatcher = RacingEditorInputBridgeDispatcher(startsComposition: startsComposition, selectsAll: selectsAll)
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.focusAndWait()
+        let selections = try #require(harness.session.context?.selections)
+        if selectsAll {
+            try await harness.session.selectAll()
+        } else {
+            try await harness.session.pasteClipboard(plainText: "CANCELLED", selections: selections)
+        }
+        #expect(dispatcher.rejection == (startsComposition ? "editor identity cannot change during composition" : "stale editor generation"))
+        #expect(harness.session.isReady && harness.session.isLoaded)
+        #expect(harness.session.errorMessage == nil)
+        if startsComposition {
+            try await harness.session.testingDispatchCompositionEvent("compositionend")
+        }
+        let prefix = startsComposition ? "" : "OTHER "
+        #expect(try await harness.session.currentText(for: harness.documentID) == prefix + source)
+        #expect(harness.session.generation == (startsComposition ? 0 : 1))
+        #expect(harness.session.context?.selections == [MarkdownEditorSelectionRange(anchor: prefix.utf16.count, head: prefix.utf16.count)])
+        try await harness.session.pasteClipboard(plainText: "NEXT ", selections: try #require(harness.session.context?.selections))
+        #expect(try await harness.session.currentText(for: harness.documentID) == prefix + "NEXT " + source)
+        #expect(harness.session.isReady && harness.session.isLoaded)
+        await harness.closeAndDrain()
+    }
+
+    @Test("An oversized clipboard paste is consumed without changing source or history")
+    func clipboardPasteCapacityRefusal() async throws {
+        let source = "Preserved 中文 source."
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.perform(.bold)
+        let before = try await harness.session.currentText(for: harness.documentID)
+        let generation = harness.session.generation
+        let undoLabel = try #require(harness.session.context?.undoLabel)
+        let range = try #require(before.range(of: "Preserved"))
+        harness.session.revealSourceRange(
+            fromUTF16: range.lowerBound.utf16Offset(in: before), toUTF16: range.upperBound.utf16Offset(in: before))
+        try await harness.waitUntilSelection(head: range.upperBound.utf16Offset(in: before))
+        let selections = harness.session.context?.selections
+        for linkPaste in [false, true] {
+            let consumed = try await harness.callPageJavaScript(
+                """
+                const transfer = new DataTransfer();
+                transfer.setData('text/plain', (linkPaste ? 'https://example.test/' : '') + 'x'.repeat(8_000_001));
+                const event = new ClipboardEvent('paste', {bubbles: true, cancelable: true, clipboardData: transfer});
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """, arguments: ["linkPaste": linkPaste])
+            #expect(consumed as? Bool == true)
+            #expect(try await harness.session.currentText(for: harness.documentID) == before)
+            #expect(harness.session.context?.selections == selections)
+            #expect(harness.session.context?.undoLabel == undoLabel)
+            #expect(harness.session.generation == generation)
+            #expect(harness.session.isDirty)
+        }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Native context Select All updates CodeMirror before Control-click", arguments: [MarkdownEditorMode.livePreview, .source])
+    func nativeContextSelectAllRetainsControlClickSelection(mode: MarkdownEditorMode) async throws {
+        let source = "\u{feff}First 中文 e\u{301} paragraph.\r\n\r\nSecond paragraph."
+        let harness = EditorHarness(source: source, initialMode: mode, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 4)
+        try await harness.waitUntilSelection(head: 4)
+        try await harness.session.perform(.bold)
+        let before = try await harness.session.currentText(for: harness.documentID)
+        let generation = harness.session.generation
+        let undoLabel = harness.session.context?.undoLabel
+        let end = EditorSourceOffsetMap(source: before).editorUTF16Length
+        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 1)
+        try await harness.waitUntilSelection(head: 1)
+        let webView = try #require(harness.session.webView as? WindowAttachedWebView)
+        let menu = webView.makeEditorContextMenu(
+            context: try #require(harness.session.context), mode: mode, canPaste: true)
+        let item = try #require(menu.item(withTitle: ScholiumL10n.string("Select All")))
+        #expect(NSApp.sendAction(try #require(item.action), to: item.target, from: item))
+        try await harness.waitUntilSelection(head: end)
+        let selections = harness.session.context?.selections
+        #expect(selections == [MarkdownEditorSelectionRange(anchor: 0, head: end)])
+        let consumed = try await harness.callPageJavaScript(
+            """
+            const line = document.querySelector('.cm-line');
+            const rect = line.getBoundingClientRect();
+            const event = new MouseEvent('mousedown', {
+              bubbles: true, cancelable: true, button: 0, ctrlKey: true,
+              clientX: rect.left + 12, clientY: rect.top + 4
+            });
+            line.dispatchEvent(event);
+            return event.defaultPrevented;
+            """)
+        #expect(consumed as? Bool == true)
+        #expect(harness.session.context?.selections == selections)
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.undoLabel == undoLabel)
+        #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(before.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Application Select All preserves system menu items and text-input ownership")
+    func applicationSelectAllPreservesFocusedInputOwner() async throws {
+        let source = "Body 中文 paragraph."
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let window = try #require(webView.window)
+        #expect(window.makeFirstResponder(webView))
+        try await harness.session.focusAndWait()
+        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 1)
+        try await harness.waitUntilSelection(head: 1)
+        let menu = NSMenu()
+        let deleteItem = NSMenuItem(title: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
+        let selectAllItem = NSMenuItem(title: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
+        menu.addItem(deleteItem)
+        menu.addItem(selectAllItem)
+        let delegate = ScholiumApplicationDelegate()
+        #expect(deleteItem.action == #selector(NSText.delete(_:)))
+        #expect(deleteItem.target == nil)
+        #expect(selectAllItem.action == #selector(NSResponder.selectAll(_:)))
+        #expect(selectAllItem.target == nil)
+        let owner = try #require(delegate.focusedMarkdownEditor(for: window.firstResponder))
+        #expect(owner === webView)
+        #expect(delegate.synchronizeEditorSelectAll(selectAllItem, responder: window.firstResponder))
+        try await harness.waitUntilSelection(head: source.utf16.count)
+        var selections = harness.session.context?.selections
+        #expect(selections == [MarkdownEditorSelectionRange(anchor: 0, head: source.utf16.count)])
+
+        let input = NSTextField(string: "Independent search input")
+        window.contentView?.addSubview(input)
+        defer { input.removeFromSuperview() }
+        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 1)
+        try await harness.waitUntilSelection(head: 1)
+        selections = harness.session.context?.selections
+        owner.performSelectAll(selectAllItem)
+        #expect(window.makeFirstResponder(input))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.context?.selections == selections)
+        #expect(delegate.focusedMarkdownEditor(for: window.firstResponder) == nil)
+        #expect(!delegate.synchronizeEditorSelectAll(selectAllItem, responder: window.firstResponder))
+        #expect(harness.session.context?.selections == selections)
+        #expect(harness.session.generation == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Title secondary clicks retain the independent text input and its selection")
+    func titleContextMenuRetainsIndependentInput() async throws {
+        let source = "Body 中文 paragraph."
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let selections = harness.session.context?.selections
+        let result = try await harness.callPageJavaScript(
+            """
+            const title = document.querySelector('[data-scholium-title-input]');
+            title.focus();
+            title.setSelectionRange(1, 4);
+            const press = new MouseEvent('mousedown', {bubbles: true, cancelable: true, button: 0, ctrlKey: true});
+            title.dispatchEvent(press);
+            const menu = new MouseEvent('contextmenu', {bubbles: true, cancelable: true, button: 0, ctrlKey: true});
+            title.dispatchEvent(menu);
+            const transfer = new DataTransfer();
+            transfer.setData('text/plain', 'TITLE INPUT');
+            const paste = new ClipboardEvent('paste', {bubbles: true, cancelable: true, clipboardData: transfer});
+            title.dispatchEvent(paste);
+            return {pressConsumed: press.defaultPrevented, menuConsumed: menu.defaultPrevented,
+              pasteConsumed: paste.defaultPrevented,
+              titleFocused: document.activeElement === title, from: title.selectionStart, to: title.selectionEnd};
+            """)
+        let values = try #require(result as? [String: Any])
+        #expect(values["pressConsumed"] as? Bool == false)
+        #expect(values["menuConsumed"] as? Bool == false)
+        #expect(values["pasteConsumed"] as? Bool == false)
+        #expect(values["titleFocused"] as? Bool == true)
+        #expect(values["from"] as? Int == 1)
+        #expect(values["to"] as? Int == 4)
+        #expect(harness.session.context?.selections == selections)
+        #expect(harness.session.generation == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Secondary click yields to marked-text composition without changing selection")
+    func contextMenuPreservesCompositionSelection() async throws {
+        let source = "First paragraph.\n\nSecond 中文 paragraph."
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 2, toUTF16: 5)
+        try await harness.waitUntilSelection(head: 5)
+        let selections = harness.session.context?.selections
+        try await harness.session.testingDispatchCompositionEvent("compositionstart")
+        _ = try await harness.callPageJavaScript(
+            """
+            const line = Array.from(document.querySelectorAll('.cm-line')).find(line => line.textContent.includes('Second'));
+            const rect = line.getBoundingClientRect();
+            line.dispatchEvent(new MouseEvent('contextmenu', {
+              bubbles: true, cancelable: true, button: 2, clientX: rect.left + 12, clientY: rect.top + 4
+            }));
+            """)
+        #expect(harness.session.context?.selections == selections)
+        try await harness.session.testingDispatchCompositionEvent("compositionend")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        #expect(harness.session.context?.selections == selections)
+        await harness.closeAndDrain()
+    }
+
     @Test("Editor context menu starts with standard editing and adds only clicked-construct actions")
     func editorContextMenuOwnsOneCompactCommandProjection() {
         let webView = WindowAttachedWebView(
@@ -8349,6 +8645,48 @@ struct MarkdownEditorWebViewIntegrationTests {
                 requestJSON: requestJSON,
                 in: webView
             )
+        }
+    }
+
+    @MainActor
+    private final class RacingEditorInputBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private let startsComposition: Bool
+        private let selectsAll: Bool
+        private var didRace = false
+        private(set) var rejection: String?
+
+        init(startsComposition: Bool, selectsAll: Bool) {
+            self.startsComposition = startsComposition
+            self.selectsAll = selectsAll
+        }
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let matchesInput: Bool
+            switch request.operation {
+            case .selectAll: matchesInput = selectsAll
+            case .pasteClipboard: matchesInput = !selectsAll
+            default: matchesInput = false
+            }
+            if matchesInput && !didRace {
+                didRace = true
+                _ = try await webView.callAsyncJavaScript(
+                    """
+                    const content = document.querySelector('.cm-content');
+                    if (startsComposition) {
+                      content.dispatchEvent(new CompositionEvent('compositionstart', {bubbles: true, data: ''}));
+                    } else {
+                      const transfer = new DataTransfer();
+                      transfer.setData('text/plain', 'OTHER ');
+                      content.dispatchEvent(new ClipboardEvent('paste', {bubbles: true, cancelable: true, clipboardData: transfer}));
+                    }
+                    """, arguments: ["startsComposition": startsComposition], in: nil, contentWorld: .page)
+                let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+                rejection = (result as? [String: Any])?["error"] as? String
+                return result
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
         }
     }
 

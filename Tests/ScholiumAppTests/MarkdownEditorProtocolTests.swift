@@ -130,6 +130,16 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .blur)
     }
 
+    @Test("Select All uses a typed nonmutating editor operation")
+    func selectAllOperationRoundTrip() throws {
+        let operation = MarkdownEditorOperation.selectAll
+        #expect(!operation.serializesSourceMutation)
+        let data = try JSONEncoder().encode(operation)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "selectAll")
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+    }
+
     @Test("Title focus round trips as a nonmutating bridge operation")
     func titleFocusOperationRoundTrip() throws {
         let data = try JSONEncoder().encode(MarkdownEditorOperation.focusTitle)
@@ -238,13 +248,73 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
 
+    @Test("Native clipboard transport preserves Unicode bytes and its captured selection")
+    func nativeClipboardOperationRoundTrip() throws {
+        let plainText = "\u{feff}中文😀e\u{301}\r\nunchanged"
+        let selections = [MarkdownEditorSelectionRange(anchor: 2, head: 7), .init(anchor: 10, head: 10)]
+        let operation = MarkdownEditorOperation.pasteClipboard(plainText: plainText, selections: selections)
+        #expect(operation.serializesSourceMutation)
+        let data = try JSONEncoder().encode(operation)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "pasteClipboard")
+        guard
+            case .pasteClipboard(let decodedText, let decodedSelections) =
+                try JSONDecoder().decode(MarkdownEditorOperation.self, from: data)
+        else {
+            Issue.record("Expected native clipboard operation")
+            return
+        }
+        #expect(decodedText.utf8.elementsEqual(plainText.utf8))
+        #expect(decodedSelections == selections)
+
+        for invalidSelections in [[], [.init(anchor: -1, head: 0)], Array(repeating: .init(anchor: 0, head: 0), count: 129)] as [[MarkdownEditorSelectionRange]]
+        {
+            #expect(throws: EncodingError.self) {
+                try JSONEncoder().encode(MarkdownEditorOperation.pasteClipboard(plainText: plainText, selections: invalidSelections))
+            }
+        }
+        var invalidObject = object
+        invalidObject["plainText"] = String(repeating: "x", count: MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 1)
+        let invalidData = try JSONSerialization.data(withJSONObject: invalidObject)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(MarkdownEditorOperation.self, from: invalidData)
+        }
+    }
+
+    @Test("Native text paste requests carry only identity, generation, and bounded selections")
+    func nativeTextPasteMessageDecoding() throws {
+        let object: [String: Any] = [
+            "type": "requestTextPaste",
+            "protocolVersion": markdownEditorProtocolVersion,
+            "sessionID": "11111111-2222-3333-4444-555555555555",
+            "documentID": "topics:Scope.md",
+            "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 3,
+            "selections": [["anchor": 2, "head": 7], ["anchor": 10, "head": 10]],
+        ]
+        guard case .requestTextPaste(let request) = try #require(EditorBridgeMessageDecoder.decode(object)) else {
+            Issue.record("Expected native text paste request")
+            return
+        }
+        #expect(request.envelope.documentVersion == 3)
+        #expect(request.selections == [.init(anchor: 2, head: 7), .init(anchor: 10, head: 10)])
+        #expect(EditorBridgeMessageDecoder.decode(object.merging(["plainText": "untrusted"]) { _, next in next }) == nil)
+        #expect(EditorBridgeMessageDecoder.decode(object.merging(["protocolVersion": markdownEditorProtocolVersion - 1]) { _, next in next }) == nil)
+        for selections in [[], [["anchor": -1, "head": 2]], Array(repeating: ["anchor": 0, "head": 0], count: 129)] as [[[String: Int]]] {
+            #expect(EditorBridgeMessageDecoder.decode(object.merging(["selections": selections]) { _, next in next }) == nil)
+        }
+        var missing = object
+        missing.removeValue(forKey: "selections")
+        #expect(EditorBridgeMessageDecoder.decode(missing) == nil)
+    }
+
     @Test("Context-menu message carries finalized selection, mode, and viewport anchor")
     func contextMenuMessageDecoding() throws {
         let data = try #require(
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 41,
+              "protocolVersion": 42,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -282,7 +352,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 41,
+            "protocolVersion": 42,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -313,7 +383,7 @@ struct MarkdownEditorProtocolTests {
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 41,
+            "protocolVersion": 42,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -354,7 +424,7 @@ struct MarkdownEditorProtocolTests {
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 41,
+            "protocolVersion": 42,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -381,7 +451,7 @@ struct MarkdownEditorProtocolTests {
     func dropFocusRequestUsesExactEnvelope() throws {
         let object: [String: Any] = [
             "type": "requestEditorFocus",
-            "protocolVersion": 41,
+            "protocolVersion": 42,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -414,7 +484,7 @@ struct MarkdownEditorProtocolTests {
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 41,
+            "protocolVersion": 42,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),

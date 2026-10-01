@@ -32,9 +32,27 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the exact-insertion byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(41);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(42);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
+  it("binds Select All to the current editor generation", () => {
+    expect(isEditorRequest({...request, operation: {type: "selectAll"}})).toBe(true);
+    expect(generationCanExecuteEditorRequest("selectAll", 4, 4)).toBe(true);
+    expect(generationCanExecuteEditorRequest("selectAll", 3, 4)).toBe(false);
+  });
+  it("bounds native clipboard text and the captured selection without relaxing generation", () => {
+    const operation = {type: "pasteClipboard", plainText: "\uFEFF中文😀e\u0301\r\n", selections: [{anchor: 2, head: 7}]};
+    expect(isEditorRequest({...request, operation})).toBe(true);
+    expect(isEditorRequest({...request, operation: {...operation, plainText: "x".repeat(8_000_000)}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {...operation, plainText: "x".repeat(8_000_001)}})).toBe(false);
+    for (const selections of [[], [{anchor: -1, head: 2}], [{anchor: 2.5, head: 3}], [{anchor: 0, head: 8_000_001}], Array(129).fill({anchor: 0, head: 0})]) {
+      expect(isEditorRequest({...request, operation: {...operation, selections}})).toBe(false);
+    }
+    expect(isEditorRequest({...request, operation: {...operation, plainText: 4}})).toBe(false);
+    expect(generationCanExecuteEditorRequest("pasteClipboard", 4, 4)).toBe(true);
+    expect(generationCanExecuteEditorRequest("pasteClipboard", 3, 4)).toBe(false);
+    expect(generationCanExecuteEditorRequest("pasteClipboard", 5, 4)).toBe(false);
+  });
   it("rejects retired title positioning while retaining blur", () => {
     expect(isEditorRequest({...request, operation: {type: "positionDocumentTitle"}})).toBe(false);
     expect(isEditorRequest({...request, operation: {type: "blur"}})).toBe(true);

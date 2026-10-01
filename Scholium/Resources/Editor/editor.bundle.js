@@ -22373,7 +22373,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 41;
+  var EDITOR_PROTOCOL_VERSION = 42;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -22393,6 +22393,7 @@
     "announceStatus",
     "goToLine",
     "revealSourceRange",
+    "selectAll",
     "setScrollFraction",
     "setScrollAnchor",
     "queryText",
@@ -22406,6 +22407,7 @@
     "replacePassage",
     "insertReference",
     "command",
+    "pasteClipboard",
     "documentFind",
     "clearDocumentFind",
     "markClean",
@@ -22559,6 +22561,8 @@
         return typeof operation.suspensionID === "string" && operation.suspensionID.length > 0 && operation.suspensionID.length <= 128;
       case "command":
         return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
+      case "pasteClipboard":
+        return typeof operation.plainText === "string" && exactSourceFits(operation.plainText) && Array.isArray(operation.selections) && operation.selections.length > 0 && operation.selections.length <= 128 && operation.selections.every((range) => Boolean(range) && Number.isSafeInteger(range?.anchor) && Number(range?.anchor) >= 0 && Number(range?.anchor) <= MAX_SOURCE_UTF8_BYTES && Number.isSafeInteger(range?.head) && Number(range?.head) >= 0 && Number(range?.head) <= MAX_SOURCE_UTF8_BYTES);
       case "documentFind": {
         const value = operation.value;
         return Boolean(value) && typeof value?.query === "string" && value.query.length <= 16384 && typeof value.replacement === "string" && value.replacement.length <= 1e6 && typeof value.caseSensitive === "boolean" && typeof value.wholeWord === "boolean" && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
@@ -22571,6 +22575,7 @@
       case "captureRecovery":
       case "showPreview":
       case "measureVisibleProjection":
+      case "selectAll":
       case "clearDocumentFind":
       case "markClean":
       case "focus":
@@ -22592,7 +22597,7 @@
     if (typeof type !== "string" || !operationTypes.has(type)) return false;
     if (!validOperation(request.operation)) return false;
     try {
-      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage"].includes(type);
+      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
       return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES);
     } catch {
       return false;
@@ -32393,6 +32398,8 @@ ${fence}
     initialize: "reject",
     replacePassage: "reject",
     insertReference: "reject",
+    pasteClipboard: "reject",
+    selectAll: "reject",
     queryText: "defer",
     querySelection: "defer",
     captureRecovery: "defer",
@@ -34262,24 +34269,24 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     );
     return belongsToSelection ? selection : EditorSelection.single(position);
   }
-  function selectionForParagraphContext(selection, position, paragraph) {
-    const clicked = selectionForContextClick(selection, position);
-    if (!clicked.main.empty || !paragraph || position < paragraph.from || position > paragraph.to) return clicked;
-    return EditorSelection.single(paragraph.from, paragraph.to);
-  }
   function createEditorContextMenuExtension(options) {
     return ViewPlugin.define((view) => {
-      const handleContextMenu = (event) => {
+      const handleSecondaryPress = (event) => {
+        if (event.target instanceof Element && event.target.closest("[data-scholium-title-input]")) return;
+        if (event.button !== 0 || !event.ctrlKey || options.context(view).composing) return;
         event.preventDefault();
         event.stopImmediatePropagation();
+      };
+      const handleContextMenu = (event) => {
+        if (event.target instanceof Element && event.target.closest("[data-scholium-title-input]")) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (options.context(view).composing) return;
         const isPointerInvocation = event.button === 2 || event.button === 0 && event.ctrlKey || event.detail > 0;
         if (isPointerInvocation) {
           const position = options.positionAtEvent?.(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY });
           if (position !== null) {
-            let node = syntaxTree(view.state).resolveInner(position, 1);
-            while (node.parent && node.name !== "Paragraph") node = node.parent;
-            const paragraph = node.name === "Paragraph" && node.parent?.name === "Document" ? { from: node.from, to: node.to } : null;
-            const selection = selectionForParagraphContext(view.state.selection, position, paragraph);
+            const selection = selectionForContextClick(view.state.selection, position);
             if (!selection.eq(view.state.selection)) {
               view.dispatch({
                 selection,
@@ -34297,9 +34304,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           context: options.context(view)
         });
       };
+      view.dom.addEventListener("mousedown", handleSecondaryPress, { capture: true });
       view.dom.addEventListener("contextmenu", handleContextMenu, { capture: true });
       return {
         destroy() {
+          view.dom.removeEventListener("mousedown", handleSecondaryPress, { capture: true });
           view.dom.removeEventListener("contextmenu", handleContextMenu, { capture: true });
         }
       };
@@ -38969,7 +38978,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     view.focus();
   }
   function modifiedProjectedLink(view, event) {
-    if (!event.metaKey && !event.ctrlKey) return false;
+    if (!event.metaKey || event.ctrlKey) return false;
     const targetElement = event.target instanceof Element ? event.target : null;
     const fragmentLink = targetElement?.closest("[data-scholium-link-target]");
     let target = fragmentLink?.dataset.scholiumLinkTarget?.trim() ?? "";
@@ -39860,7 +39869,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   var linkActivation = EditorView.domEventHandlers({
     click(event) {
-      if (event.metaKey || event.ctrlKey) {
+      if (event.metaKey && !event.ctrlKey) {
         const targetElement = event.target instanceof Element ? event.target : null;
         const fragmentTarget = targetElement?.closest("[data-scholium-link-target]")?.dataset.scholiumLinkTarget;
         const position = editor.posAtCoords({ x: event.clientX, y: event.clientY });
@@ -39931,6 +39940,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   function applyInteraction(transformation, userEvent) {
     if (!transformation) return false;
+    const before = documentVersion;
     editor.dispatch({
       changes: transformation.changes,
       selection: EditorSelection.create(
@@ -39938,8 +39948,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       ),
       annotations: Transaction.userEvent.of(userEvent)
     });
-    lastUndoLabel = transformation.undoLabel;
-    lastRedoLabel = transformation.undoLabel;
+    if (documentVersion !== before) {
+      lastUndoLabel = transformation.undoLabel;
+      lastRedoLabel = transformation.undoLabel;
+    }
     return true;
   }
   var structuralInteractionKeymap = keymap.of([
@@ -40169,7 +40181,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentIdentity: () => documentAttachment,
       compositionActive: () => compositionGate.active,
       projectedPosition: (view, event) => configuredEditorMode(view.state) === "livePreview" ? projectedHeadingSourceOffset(view, event) : null,
-      protection: (state) => commandProtection("pastePlain", state),
+      protection: (state) => editingFrontmatterSelection(state) ? [] : protectedCommandRanges(state),
       unsupportedFile: () => announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage()),
       didInsert: (label) => {
         lastUndoLabel = lastRedoLabel = label;
@@ -40324,7 +40336,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return end > 0 && state.selection.ranges.every((range) => range.from < end && range.to <= end);
   }
   function commandProtection(command2, state = editor.state) {
-    return editingFrontmatterSelection(state) && (command2 === "pastePlain" || command2 === "pasteMarkdown") ? [] : protectedCommandRanges(state);
+    return command2 === "pastePlain" || editingFrontmatterSelection(state) && command2 === "pasteMarkdown" ? [] : protectedCommandRanges(state);
   }
   function indexedTablePositionAt(state, offset) {
     return projectionRangeContaining(
@@ -40556,6 +40568,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "revealSourceRange":
         editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16);
         break;
+      case "selectAll":
+        if (document.activeElement === editor.contentDOM) selectAll(editor);
+        break;
       case "setScrollFraction":
         editorOperations.setScrollFraction(operation.fraction);
         break;
@@ -40717,6 +40732,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         lastRedoLabel = transformed.undoLabel;
         return successfulResult(request.requestID, true, transformed.undoLabel);
       }
+      case "pasteClipboard": {
+        const selections = editorSelections();
+        if (selections.length !== operation.selections.length || selections.some((range, index) => range.anchor !== operation.selections[index].anchor || range.head !== operation.selections[index].head)) {
+          return rejected(request.requestID, documentVersion, "clipboard selection changed");
+        }
+        const before = documentVersion;
+        if (!pasteClipboardText(operation.plainText)) {
+          return rejected(request.requestID, documentVersion, "clipboard paste is unavailable");
+        }
+        const changed = documentVersion !== before;
+        return successfulResult(request.requestID, changed, changed ? lastUndoLabel : void 0);
+      }
       case "documentFind": {
         previewPopover.hide();
         const result = performDocumentFind(editor, operation.value);
@@ -40814,7 +40841,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (attachment === documentAttachment) publishEditorContext();
     });
   });
-  function pasteTransfer(transfer, requestNativeImageImport = false) {
+  function pasteTransfer(transfer, requestNativeImageImport = false, requestNativeTextPaste = false) {
     if (editor.state.readOnly || !editor.state.facet(EditorView.editable) || editor.composing || compositionGate.active) return true;
     if (Array.from(transfer.files).length > 0 || Array.from(transfer.items).some((item) => item.kind === "file")) {
       const image = Array.from(transfer.files).some((file) => file.type.startsWith("image/")) || Array.from(transfer.items).some((item) => item.kind === "file" && item.type.startsWith("image/"));
@@ -40827,17 +40854,34 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     const text = normalizedDocumentText(transfer.getData("text/plain"));
     if (!text) return false;
+    if (requestNativeTextPaste) {
+      post({ type: "requestTextPaste", selections: editorSelections() });
+      return true;
+    }
+    pasteClipboardText(text);
+    return true;
+  }
+  function pasteClipboardText(plainText) {
+    if (editor.state.readOnly || !editor.state.facet(EditorView.editable) || editor.composing || compositionGate.active || !plainText) return false;
+    const text = normalizedDocumentText(plainText);
     const url = editingFrontmatterSelection() ? null : isSingleSafeURL(text);
-    const command2 = url && editor.state.selection.ranges.every((selection) => !selection.empty) ? "linkSelectedText" : "pastePlain";
-    const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), command2, {
-      argument: url ?? text,
-      protectedRanges: commandProtection(command2)
-    });
-    return applyInteraction(transformed, command2 === "linkSelectedText" ? "input.scholium.linkPaste" : "input.scholium.plainPaste");
+    const link = url && editor.state.selection.ranges.every((selection) => !selection.empty) ? markdownCommandTransformation(editor.state, "linkSelectedText", url) : null;
+    if (link) {
+      applyInteraction(link, "input.scholium.linkPaste");
+    } else {
+      const before = documentVersion;
+      editor.dispatch({
+        ...editor.state.replaceSelection(text),
+        annotations: Transaction.userEvent.of("input.scholium.plainPaste")
+      });
+      if (documentVersion !== before) lastUndoLabel = lastRedoLabel = "Paste";
+    }
+    return true;
   }
   editor.contentDOM.addEventListener("paste", (event) => {
+    if (documentTitle.ownsCompositionEvent(event)) return;
     if (!event.clipboardData) return;
-    if (pasteTransfer(event.clipboardData, true)) event.preventDefault();
+    if (pasteTransfer(event.clipboardData, true, event.isTrusted)) event.preventDefault();
   }, { capture: true });
   function refreshMermaidTheme() {
     mermaidThemeRevision += 1;

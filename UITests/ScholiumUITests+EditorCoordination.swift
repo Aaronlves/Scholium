@@ -6,6 +6,163 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testEditorClipboardShortcutsAndContextMenuPreserveText() throws {
+        let pasteboard = NSPasteboard.general
+        let savedItems = pasteboard.pasteboardItems?.map { item in
+            item.types.reduce(into: [NSPasteboard.PasteboardType: Data]()) { values, type in
+                values[type] = item.data(forType: type)
+            }
+        }
+        var ownedChangeCount = pasteboard.changeCount
+        defer {
+            if pasteboard.changeCount == ownedChangeCount {
+                pasteboard.clearContents()
+                if let savedItems {
+                    pasteboard.writeObjects(
+                        savedItems.map { values in
+                            let item = NSPasteboardItem()
+                            values.forEach { item.setData($0.value, forType: $0.key) }
+                            return item
+                        })
+                }
+            }
+        }
+        let original = "Clipboard 中文 😀 e\u{301} keeps every character and Markdown *marker*."
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        try write(original, to: noteURL)
+
+        func putOnClipboard(_ text: String) {
+            pasteboard.clearContents()
+            XCTAssertTrue(pasteboard.setString(text, forType: .string))
+            ownedChangeCount = pasteboard.changeCount
+        }
+        func editorIsEmpty(_ editor: XCUIElement) -> Bool {
+            // WebKit exposes the empty contenteditable's placeholder BR as
+            // one AX newline. Saving below separately verifies empty source.
+            guard let text = editor.value as? String else { return false }
+            return text.isEmpty || text == "\n"
+        }
+        func contextMenu(_ editor: XCUIElement, controlClick: Bool = false) -> XCUIElement {
+            let menu = app.menus["scholium.editor.contextMenu"].firstMatch
+            XCTAssertTrue(waitUntil(timeout: 3) { !menu.exists }, "The previous native menu must finish dismissing.")
+            let text = editor.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "Clipboard")).firstMatch
+            if text.exists {
+                if controlClick {
+                    XCUIElement.perform(withKeyModifiers: .control) { text.click() }
+                } else {
+                    text.rightClick()
+                }
+            } else {
+                // The Edit root includes the filename input above an empty
+                // body. This point stays below both that input and the toolbar.
+                editor.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.35)).rightClick()
+            }
+            XCTAssertTrue(menu.waitForExistence(timeout: 5), "Secondary click must open one editor menu.")
+            return menu
+        }
+        for mode in ["Source", "Edit"] {
+            selectDocumentMode(mode)
+            let editor = app.descendants(matching: .any)[
+                mode == "Source" ? "Markdown source editor" : "Markdown editor, Edit mode"
+            ].firstMatch
+            XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == original })
+            editor.click()
+            editor.typeKey(.leftArrow, modifierFlags: .command)
+            putOnClipboard("INSERTED-中文-😀")
+            let collapsedMenu = contextMenu(editor)
+            XCTAssertFalse(collapsedMenu.menuItems["scholium.editor.cut"].isEnabled)
+            XCTAssertFalse(
+                collapsedMenu.menuItems["scholium.editor.copy"].isEnabled,
+                "Secondary click must retain an insertion point instead of selecting a paragraph.")
+            XCTAssertTrue(collapsedMenu.menuItems["scholium.editor.paste"].isEnabled)
+            collapsedMenu.menuItems["scholium.editor.paste"].click()
+            XCTAssertTrue(
+                waitUntil(timeout: 5) {
+                    guard let text = editor.value as? String else { return false }
+                    return text.utf16.count == original.utf16.count + "INSERTED-中文-😀".utf16.count
+                        && text.replacingOccurrences(of: "INSERTED-中文-😀", with: "") == original
+                }, "Context Paste must insert at the clicked caret without removing neighboring text.")
+            app.typeKey("z", modifierFlags: .command)
+            XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == original })
+
+            app.typeKey("a", modifierFlags: .command)
+            app.typeKey("c", modifierFlags: .command)
+            ownedChangeCount = pasteboard.changeCount
+            XCTAssertEqual(Data((pasteboard.string(forType: .string) ?? "").utf8), Data(original.utf8))
+            app.typeKey("x", modifierFlags: .command)
+            ownedChangeCount = pasteboard.changeCount
+            XCTAssertTrue(waitUntil(timeout: 5) { editorIsEmpty(editor) })
+            app.typeKey("s", modifierFlags: .command)
+            XCTAssertTrue(waitUntil(timeout: 8) { (try? Data(contentsOf: noteURL)) == Data() })
+            XCTAssertEqual(Data((pasteboard.string(forType: .string) ?? "").utf8), Data(original.utf8))
+            app.typeKey("v", modifierFlags: .command)
+            XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == original })
+            app.typeKey("z", modifierFlags: .command)
+            XCTAssertTrue(waitUntil(timeout: 5) { editorIsEmpty(editor) })
+            app.typeKey("z", modifierFlags: [.command, .shift])
+            XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == original })
+
+            app.menuBars.menuBarItems["Edit"].click()
+            let selectAll = app.menuItems["Select All"].firstMatch
+            XCTAssertTrue(selectAll.waitForExistence(timeout: 3) && selectAll.isEnabled)
+            selectAll.click()
+            for title in ["Copy", "Cut", "Paste"] {
+                app.menuBars.menuBarItems["Edit"].click()
+                let item = app.menuItems[title].firstMatch
+                XCTAssertTrue(item.waitForExistence(timeout: 3) && item.isEnabled)
+                item.click()
+                ownedChangeCount = pasteboard.changeCount
+                XCTAssertTrue(
+                    waitUntil(timeout: 5) {
+                        title == "Cut" ? editorIsEmpty(editor) : editor.value as? String == original
+                    })
+                XCTAssertEqual(Data((pasteboard.string(forType: .string) ?? "").utf8), Data(original.utf8))
+            }
+
+            // Select All, Copy, Cut and Paste must execute through the actual
+            // native menu, after the menu bar and keyboard paths above.
+            let menu = contextMenu(editor)
+            menu.menuItems["scholium.editor.selectAll"].click()
+            let copyMenu = contextMenu(editor, controlClick: mode == "Edit")
+            XCTAssertTrue(copyMenu.menuItems["scholium.editor.copy"].isEnabled)
+            copyMenu.menuItems["scholium.editor.copy"].click()
+            ownedChangeCount = pasteboard.changeCount
+            XCTAssertEqual(Data((pasteboard.string(forType: .string) ?? "").utf8), Data(original.utf8))
+            let cutMenu = contextMenu(editor)
+            cutMenu.menuItems["scholium.editor.cut"].click()
+            ownedChangeCount = pasteboard.changeCount
+            XCTAssertTrue(waitUntil(timeout: 5) { editorIsEmpty(editor) })
+            let pasteMenu = contextMenu(editor)
+            pasteMenu.menuItems["scholium.editor.paste"].click()
+            XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == original })
+            app.typeKey("s", modifierFlags: .command)
+            let savedExactly = waitUntil(timeout: 8) { (try? Data(contentsOf: noteURL)) == Data(original.utf8) }
+            XCTAssertTrue(
+                savedExactly,
+                "Saved clipboard bytes: \(Array((try? Data(contentsOf: noteURL)) ?? Data())); expected: \(Array(original.utf8))")
+        }
+
+        let title = app.textViews["Note title"].firstMatch
+        XCTAssertTrue(title.exists)
+        title.click()
+        app.menuBars.menuBarItems["Edit"].click()
+        app.menuItems["Select All"].firstMatch.click()
+        for command in ["Copy", "Cut", "Paste"] {
+            app.menuBars.menuBarItems["Edit"].click()
+            let item = app.menuItems[command].firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 3) && item.isEnabled)
+            item.click()
+            ownedChangeCount = pasteboard.changeCount
+            XCTAssertTrue(
+                waitUntil(timeout: 5) {
+                    command == "Cut" ? (title.value as? String)?.isEmpty == true : title.value as? String == "QA Autosave A"
+                })
+            XCTAssertEqual(pasteboard.string(forType: .string), "QA Autosave A")
+        }
+        XCTAssertEqual(try Data(contentsOf: noteURL), Data(original.utf8))
+    }
+
+    @MainActor
     func testSelectionActionResultReplacesBarAndPreservesPassage() throws {
         try enterLivePreviewAndAppend("\n\nSelection action fixture")
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch

@@ -54,6 +54,7 @@ import {
   indentLess,
   indentMore,
   redoDepth,
+  selectAll,
   selectLineBoundaryBackward,
   selectLineBoundaryForward,
   undoDepth,
@@ -367,7 +368,7 @@ function dispatchProjectedPointerSelection(
 }
 
 function modifiedProjectedLink(view: EditorView, event: MouseEvent) {
-  if (!event.metaKey && !event.ctrlKey) return false;
+  if (!event.metaKey || event.ctrlKey) return false;
   const targetElement = event.target instanceof Element ? event.target : null;
   const fragmentLink = targetElement?.closest<HTMLElement>("[data-scholium-link-target]");
   let target = fragmentLink?.dataset.scholiumLinkTarget?.trim() ?? "";
@@ -1524,7 +1525,7 @@ const stateReporter = EditorView.updateListener.of((update) => {
 
 const linkActivation = EditorView.domEventHandlers({
   click(event) {
-    if (event.metaKey || event.ctrlKey) {
+    if (event.metaKey && !event.ctrlKey) {
       const targetElement = event.target instanceof Element ? event.target : null;
       const fragmentTarget = targetElement
         ?.closest<HTMLElement>("[data-scholium-link-target]")
@@ -1626,6 +1627,7 @@ function applyInteraction(
   userEvent: string,
 ) {
   if (!transformation) return false;
+  const before = documentVersion;
   editor.dispatch({
     changes: transformation.changes,
     selection: EditorSelection.create(
@@ -1633,8 +1635,10 @@ function applyInteraction(
     ),
     annotations: Transaction.userEvent.of(userEvent),
   });
-  lastUndoLabel = transformation.undoLabel;
-  lastRedoLabel = transformation.undoLabel;
+  if (documentVersion !== before) {
+    lastUndoLabel = transformation.undoLabel;
+    lastRedoLabel = transformation.undoLabel;
+  }
   return true;
 }
 
@@ -1903,7 +1907,7 @@ const editorExtensions = [
     compositionActive: () => compositionGate.active,
     projectedPosition: (view, event) => configuredEditorMode(view.state) === "livePreview"
       ? projectedHeadingSourceOffset(view, event) : null,
-    protection: state => commandProtection("pastePlain", state),
+    protection: state => editingFrontmatterSelection(state) ? [] : protectedCommandRanges(state),
     unsupportedFile: () => announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage()),
     didInsert: label => {
       lastUndoLabel = lastRedoLabel = label;
@@ -2029,7 +2033,7 @@ function editingFrontmatterSelection(state = editor.state) {
 }
 
 function commandProtection(command: string, state = editor.state) {
-  return editingFrontmatterSelection(state) && (command === "pastePlain" || command === "pasteMarkdown")
+  return command === "pastePlain" || (editingFrontmatterSelection(state) && command === "pasteMarkdown")
     ? [] : protectedCommandRanges(state);
 }
 
@@ -2230,6 +2234,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
   case "goToLine": editorOperations.goToLine(operation.line, operation.focusesEditor); break;
   case "revealSourceRange": editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16); break;
+  case "selectAll":
+    // A queued menu intent cannot take selection back from another input.
+    if (document.activeElement === editor.contentDOM) selectAll(editor);
+    break;
   case "setScrollFraction": editorOperations.setScrollFraction(operation.fraction); break;
   case "setScrollAnchor": editorOperations.setScrollAnchor(operation.anchor); break;
   case "queryText": return {...successfulResult(request.requestID), text: exactEditorSource()};
@@ -2377,6 +2385,19 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     lastRedoLabel = transformed.undoLabel;
     return successfulResult(request.requestID, true, transformed.undoLabel);
   }
+  case "pasteClipboard": {
+    const selections = editorSelections();
+    if (selections.length !== operation.selections.length || selections.some((range, index) =>
+      range.anchor !== operation.selections[index].anchor || range.head !== operation.selections[index].head)) {
+      return rejected(request.requestID, documentVersion, "clipboard selection changed");
+    }
+    const before = documentVersion;
+    if (!pasteClipboardText(operation.plainText)) {
+      return rejected(request.requestID, documentVersion, "clipboard paste is unavailable");
+    }
+    const changed = documentVersion !== before;
+    return successfulResult(request.requestID, changed, changed ? lastUndoLabel : undefined);
+  }
   case "documentFind": {
     previewPopover.hide();
     const result = performDocumentFind(editor, operation.value);
@@ -2471,6 +2492,7 @@ editor.contentDOM.addEventListener("compositionstart", event => {
 function pasteTransfer(
   transfer: DataTransfer,
   requestNativeImageImport = false,
+  requestNativeTextPaste = false,
 ) {
   if (editor.state.readOnly || !editor.state.facet(EditorView.editable)
       || editor.composing || compositionGate.active) return true;
@@ -2488,20 +2510,43 @@ function pasteTransfer(
   }
   const text = normalizedDocumentText(transfer.getData("text/plain"));
   if (!text) return false;
+  if (requestNativeTextPaste) {
+    // WebKit normalizes text/plain to NFC when reading the native pasteboard.
+    // Read that input once through AppKit, retaining its original code points.
+    post({type: "requestTextPaste", selections: editorSelections()});
+    return true;
+  }
+  pasteClipboardText(text);
+  return true;
+}
+
+function pasteClipboardText(plainText: string) {
+  if (editor.state.readOnly || !editor.state.facet(EditorView.editable)
+      || editor.composing || compositionGate.active || !plainText) return false;
+  const text = normalizedDocumentText(plainText);
   const url = editingFrontmatterSelection() ? null : isSingleSafeURL(text);
-  const command = url && editor.state.selection.ranges.every((selection) => !selection.empty)
-    ? "linkSelectedText"
-    : "pastePlain";
-  const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), command, {
-    argument: url ?? text,
-    protectedRanges: commandProtection(command),
-  });
-  return applyInteraction(transformed, command === "linkSelectedText" ? "input.scholium.linkPaste" : "input.scholium.plainPaste");
+  const link = url && editor.state.selection.ranges.every((selection) => !selection.empty)
+    ? markdownCommandTransformation(editor.state, "linkSelectedText", url) : null;
+  if (link) {
+    applyInteraction(link, "input.scholium.linkPaste");
+  } else {
+    // Literal source remains writable. CodeMirror's replacement handles all
+    // ranges; the exact-source transaction filter owns capacity and endings.
+    const before = documentVersion;
+    editor.dispatch({
+      ...editor.state.replaceSelection(text),
+      annotations: Transaction.userEvent.of("input.scholium.plainPaste"),
+    });
+    if (documentVersion !== before) lastUndoLabel = lastRedoLabel = "Paste";
+  }
+  // A handled paste must never fall through to a second default insertion.
+  return true;
 }
 
 editor.contentDOM.addEventListener("paste", (event) => {
+  if (documentTitle.ownsCompositionEvent(event)) return;
   if (!event.clipboardData) return;
-  if (pasteTransfer(event.clipboardData, true)) event.preventDefault();
+  if (pasteTransfer(event.clipboardData, true, event.isTrusted)) event.preventDefault();
 }, {capture: true});
 
 function refreshMermaidTheme() {

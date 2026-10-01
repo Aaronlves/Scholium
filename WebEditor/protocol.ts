@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 41;
+export const EDITOR_PROTOCOL_VERSION = 42;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {MAX_SOURCE_UTF8_BYTES, exactSourceFits} from "./source-capacity";
 export {MAX_SOURCE_UTF8_BYTES} from "./source-capacity";
@@ -117,6 +117,7 @@ export type EditorOperation =
   | {type: "announceStatus"; value: string}
   | {type: "goToLine"; line: number; focusesEditor: boolean}
   | {type: "revealSourceRange"; fromUTF16: number; toUTF16: number}
+  | {type: "selectAll"}
   | {type: "setScrollFraction"; fraction: number}
   | {type: "setScrollAnchor"; anchor: EditorScrollAnchor}
   | {type: "queryText"} | {type: "querySelection"} | {type: "queryContext"} | {type: "queryScrollAnchor"}
@@ -129,6 +130,7 @@ export type EditorOperation =
   | {type: "insertReference"; selection: SelectionRange; generation: number; target: string}
   | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string; preserveSelection: boolean}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
+  | {type: "pasteClipboard"; plainText: string; selections: SelectionRange[]}
   | {type: "suspendForDetachment"; suspensionID: string}
   | {type: "resumeAfterDetachment"; suspensionID: string}
   | {type: "markClean"} | {type: "focus"} | {type: "focusTitle"} | {type: "blur"};
@@ -162,8 +164,8 @@ export interface EditorCommandResult {
 
 const operationTypes = new Set([
   "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setWritingContinuation", "setWritingIndexContext", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
-  "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
+  "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
+  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
@@ -358,6 +360,12 @@ function validOperation(operation: Record<string, unknown>) {
   case "command":
     return typeof operation.command === "string" && commandTypes.has(operation.command as MarkdownEditorCommand)
       && (operation.argument === undefined || typeof operation.argument === "string");
+  case "pasteClipboard":
+    return typeof operation.plainText === "string" && exactSourceFits(operation.plainText)
+      && Array.isArray(operation.selections) && operation.selections.length > 0 && operation.selections.length <= 128
+      && operation.selections.every((range: Partial<SelectionRange> | null) => Boolean(range)
+        && Number.isSafeInteger(range?.anchor) && Number(range?.anchor) >= 0 && Number(range?.anchor) <= MAX_SOURCE_UTF8_BYTES
+        && Number.isSafeInteger(range?.head) && Number(range?.head) >= 0 && Number(range?.head) <= MAX_SOURCE_UTF8_BYTES);
   case "documentFind": {
     const value = operation.value as Partial<DocumentFindQuery> | undefined;
     return Boolean(value)
@@ -368,7 +376,7 @@ function validOperation(operation: Record<string, unknown>) {
       && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
   }
   case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection":
-  case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;
+  case "selectAll": case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;
   default: return false;
   }
 }
@@ -390,7 +398,7 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
   if (typeof type !== "string" || !operationTypes.has(type)) return false;
   if (!validOperation(request.operation as unknown as Record<string, unknown>)) return false;
   try {
-    const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage"].includes(type);
+    const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
     return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES);
   } catch { return false; }
 }

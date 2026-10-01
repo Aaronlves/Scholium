@@ -150,6 +150,11 @@ struct EditorFindShortcutMessage: Equatable, Sendable {
     let action: DocumentFindShortcut
 }
 
+struct EditorTextPasteMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let selections: [MarkdownEditorSelectionRange]
+}
+
 struct EditorDocumentTitleRenameMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
     let requestID: String
@@ -201,6 +206,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case requestDocumentFind(EditorFindShortcutMessage)
     case requestDocumentTitleRename(EditorDocumentTitleRenameMessage)
     case requestImagePaste(EditorBridgeEnvelope)
+    case requestTextPaste(EditorTextPasteMessage)
     case requestMermaidRuntime(EditorBridgeEnvelope)
     case requestMathRuntime(EditorBridgeEnvelope)
     case linkCompletionQuery(EditorLinkCompletionQueryMessage)
@@ -226,6 +232,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
             envelope
         case .requestDocumentTitleRename(let message): message.envelope
         case .requestDocumentFind(let message): message.envelope
+        case .requestTextPaste(let message): message.envelope
         case .linkCompletionQuery(let message): message.envelope
         case .writingContinuationQuery(let message): message.envelope
         case .cancelWritingContinuation(let message): message.envelope
@@ -392,6 +399,13 @@ enum EditorBridgeMessageDecoder {
                 ))
         case "requestImagePaste":
             return exactEnvelopeMessage(object, envelope: envelope, case: .requestImagePaste)
+        case "requestTextPaste":
+            guard hasOnlyKeys(object, additional: ["type", "selections"]),
+                let selections: [MarkdownEditorSelectionRange] = decodable(object["selections"]),
+                markdownEditorSelectionRangesAreValid(
+                    selections, forEditorUTF16Length: MarkdownEditorDeltaApplier.maximumResultUTF8Bytes)
+            else { return nil }
+            return .requestTextPaste(EditorTextPasteMessage(envelope: envelope, selections: selections))
         case "requestMermaidRuntime":
             return exactEnvelopeMessage(object, envelope: envelope, case: .requestMermaidRuntime)
         case "requestMathRuntime":

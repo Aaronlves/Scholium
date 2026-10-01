@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 41
+let markdownEditorProtocolVersion = 42
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 // Two exact-source strings may each require six JSON bytes per source byte.
@@ -228,6 +228,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case announceStatus(String)
     case goToLine(Int, focusesEditor: Bool)
     case revealSourceRange(fromUTF16: Int, toUTF16: Int)
+    case selectAll
     case setScrollFraction(Double)
     case setScrollAnchor(MarkdownEditorWireScrollAnchor)
     case queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance, captureRecovery
@@ -240,6 +241,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String, preserveSelection: Bool)
     case insertReference(selection: MarkdownEditorSelectionRange, generation: Int, target: String)
     case command(MarkdownEditorCommand, argument: String?)
+    case pasteClipboard(plainText: String, selections: [MarkdownEditorSelectionRange])
     case markClean, focus, focusTitle, blur
 
     /// Only operations that can replace or mutate authoritative source need
@@ -247,7 +249,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     /// queue behind one another or behind an obsolete content generation.
     var serializesSourceMutation: Bool {
         switch self {
-        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .command,
+        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .command, .pasteClipboard,
             .suspendForDetachment, .resumeAfterDetachment:
             true
         case .documentFind(let query):
@@ -260,16 +262,17 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
         case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
-            enabled, contextKey
+            enabled, contextKey, plainText, selections
     }
     private enum Kind: String, Codable {
         case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews,
             setWritingContinuation, setWritingIndexContext, showPreview,
             measureVisibleProjection, showPreviewAt,
             announceStatus
-        case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
+        case goToLine, revealSourceRange, selectAll, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor,
+            queryPerformance
         case captureRecovery, suspendForDetachment, resumeAfterDetachment, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, insertReference,
-            command, documentFind, clearDocumentFind,
+            command, pasteClipboard, documentFind, clearDocumentFind,
             markClean, focus,
             focusTitle, blur
     }
@@ -314,6 +317,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 toUTF16: container.decode(Int.self, forKey: .toUTF16)
             )
         case .setScrollFraction: self = try .setScrollFraction(container.decode(Double.self, forKey: .fraction))
+        case .selectAll: self = .selectAll
         case .setScrollAnchor: self = try .setScrollAnchor(container.decode(MarkdownEditorWireScrollAnchor.self, forKey: .anchor))
         case .queryText: self = .queryText
         case .querySelection: self = .querySelection
@@ -351,6 +355,17 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 container.decode(MarkdownEditorCommand.self, forKey: .command),
                 argument: container.decodeIfPresent(String.self, forKey: .argument)
             )
+        case .pasteClipboard:
+            let plainText = try container.decode(String.self, forKey: .plainText)
+            let selections = try container.decode([MarkdownEditorSelectionRange].self, forKey: .selections)
+            guard plainText.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes,
+                markdownEditorSelectionRangesAreValid(
+                    selections, forEditorUTF16Length: MarkdownEditorDeltaApplier.maximumResultUTF8Bytes)
+            else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .plainText, in: container, debugDescription: "Clipboard source or selection exceeds the editor bounds")
+            }
+            self = .pasteClipboard(plainText: plainText, selections: selections)
         case .markClean: self = .markClean
         case .focus: self = .focus
         case .focusTitle: self = .focusTitle
@@ -434,6 +449,18 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(Kind.command, forKey: .type)
             try container.encode(command, forKey: .command)
             try container.encodeIfPresent(argument, forKey: .argument)
+        case .pasteClipboard(let plainText, let selections):
+            guard plainText.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes,
+                markdownEditorSelectionRangesAreValid(
+                    selections, forEditorUTF16Length: MarkdownEditorDeltaApplier.maximumResultUTF8Bytes)
+            else {
+                throw EncodingError.invalidValue(
+                    self, .init(codingPath: encoder.codingPath, debugDescription: "Clipboard source or selection exceeds the editor bounds"))
+            }
+            try container.encode(Kind.pasteClipboard, forKey: .type)
+            try container.encode(plainText, forKey: .plainText)
+            try container.encode(selections, forKey: .selections)
+        case .selectAll: try container.encode(Kind.selectAll, forKey: .type)
         case .markClean: try container.encode(Kind.markClean, forKey: .type)
         case .focus: try container.encode(Kind.focus, forKey: .type)
         case .focusTitle: try container.encode(Kind.focusTitle, forKey: .type)

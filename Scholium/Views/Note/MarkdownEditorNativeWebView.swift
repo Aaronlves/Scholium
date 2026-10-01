@@ -114,6 +114,28 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
         NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: sender)
     }
 
+    @objc func performSelectAll(_ sender: Any?) {
+        guard let editorSession else { return }
+        let sessionID = editorSession.sessionID
+        let documentID = editorSession.documentID
+        let responder = window?.firstResponder
+        Task { @MainActor [weak self] in
+            guard self?.editorSession === editorSession,
+                editorSession.sessionID == sessionID, editorSession.documentID == documentID,
+                self?.window?.firstResponder === responder
+            else { return }
+            do {
+                try await editorSession.selectAll()
+            } catch {
+                guard self?.editorSession === editorSession,
+                    editorSession.sessionID == sessionID, editorSession.documentID == documentID,
+                    self?.window?.firstResponder === responder
+                else { return }
+                editorSession.reportError(ScholiumErrorLocalization.message(error))
+            }
+        }
+    }
+
     func makeEditorContextMenu(
         context: MarkdownEditorContext,
         mode: MarkdownEditorMode,
@@ -147,13 +169,14 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
         pasteItem.target = self
         menu.addItem(pasteItem)
         menu.addItem(.separator())
-        menu.addItem(
-            standardEditItem(
-                ScholiumL10n.string("Select All"),
-                action: #selector(NSResponder.selectAll(_:)),
-                identifier: "selectAll",
-                isEnabled: !context.composing
-            ))
+        let selectAllItem = standardEditItem(
+            ScholiumL10n.string("Select All"),
+            action: #selector(performSelectAll(_:)),
+            identifier: "selectAll",
+            isEnabled: !context.composing
+        )
+        selectAllItem.target = self
+        menu.addItem(selectAllItem)
         menu.addItem(.separator())
         menu.addItem(spellingAndGrammarItem())
 

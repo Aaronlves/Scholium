@@ -44,12 +44,12 @@ not another writable path-mapped presentation record.
 
 ### Editor boundary contract
 
-Edit and Source share one CodeMirror EditorState, selection, composition and Undo
-owner. Review projects a committed revision. Exact Markdown remains writable
-authority: normalized LF editor coordinates and exact BOM/CRLF/LF bytes are distinct.
-The immutable exact-source StateField and inverted transaction effects preserve
-original newline bytes through Undo/Redo. Mapping between normalized positions,
-UTF-16 source coordinates and UTF-8 ranges never reconstructs bytes from HTML.
+Edit and Source share CodeMirror state, selection, composition and Undo; Review
+projects committed source. Writable authority remains exact Markdown, never HTML.
+LF editor, exact UTF-16 source and UTF-8 coordinates remain distinct. The immutable
+exact-source StateField and inverse effects preserve BOM/newlines through Undo/Redo.
+Trusted paste reads original AppKit Unicode, avoiding WebKit NFC, through a
+document/generation/selection-bound CodeMirror request.
 
 Swift retains a checked exact mirror and generation. Ordered deltas prove deleted
 spans and exact insertions before atomic application. Full-buffer capture is

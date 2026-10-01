@@ -1,5 +1,4 @@
 import {EditorSelection, Transaction, type Extension} from "@codemirror/state";
-import {syntaxTree} from "@codemirror/language";
 import {EditorView, ViewPlugin} from "@codemirror/view";
 import type {EditorContext, EditorMode} from "./protocol";
 
@@ -25,14 +24,6 @@ export function selectionForContextClick(
   return belongsToSelection ? selection : EditorSelection.single(position);
 }
 
-export function selectionForParagraphContext(
-  selection: EditorSelection, position: number, paragraph: {from: number; to: number} | null,
-): EditorSelection {
-  const clicked = selectionForContextClick(selection, position);
-  if (!clicked.main.empty || !paragraph || position < paragraph.from || position > paragraph.to) return clicked;
-  return EditorSelection.single(paragraph.from, paragraph.to);
-}
-
 /**
  * WebKit's default macOS menu is suppressed only after the DOM context-menu
  * event has reached CodeMirror. Native AppKit then presents one compact menu
@@ -46,9 +37,21 @@ export function createEditorContextMenuExtension(options: {
   request(value: EditorContextMenuRequest): void;
 }): Extension {
   return ViewPlugin.define((view) => {
-    const handleContextMenu = (event: MouseEvent) => {
+    const handleSecondaryPress = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-scholium-title-input]")) return;
+      if (event.button !== 0 || !event.ctrlKey || options.context(view).composing) return;
+      // CodeMirror treats Control-left-click as ordinary mouse selection.
+      // Keep both it and WebKit's default selection out of the secondary
+      // click; the finalized contextmenu event alone chooses its source range.
       event.preventDefault();
       event.stopImmediatePropagation();
+    };
+    const handleContextMenu = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-scholium-title-input]")) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      // Marked text owns both selection and its candidate menu until commit.
+      if (options.context(view).composing) return;
 
       const isPointerInvocation = event.button === 2
         || (event.button === 0 && event.ctrlKey)
@@ -57,11 +60,7 @@ export function createEditorContextMenuExtension(options: {
         const position = options.positionAtEvent?.(view, event)
           ?? view.posAtCoords({x: event.clientX, y: event.clientY});
         if (position !== null) {
-          let node = syntaxTree(view.state).resolveInner(position, 1);
-          while (node.parent && node.name !== "Paragraph") node = node.parent;
-          const paragraph = node.name === "Paragraph" && node.parent?.name === "Document"
-            ? {from: node.from, to: node.to} : null;
-          const selection = selectionForParagraphContext(view.state.selection, position, paragraph);
+          const selection = selectionForContextClick(view.state.selection, position);
           if (!selection.eq(view.state.selection)) {
             view.dispatch({
               selection,
@@ -89,9 +88,11 @@ export function createEditorContextMenuExtension(options: {
     // a secondary click around CodeMirror's finalized-selection menu path.
     // This also prevents WebKit from substituting its generic Reload or text
     // menu for a click on a non-editable projected construct.
+    view.dom.addEventListener("mousedown", handleSecondaryPress, {capture: true});
     view.dom.addEventListener("contextmenu", handleContextMenu, {capture: true});
     return {
       destroy() {
+        view.dom.removeEventListener("mousedown", handleSecondaryPress, {capture: true});
         view.dom.removeEventListener("contextmenu", handleContextMenu, {capture: true});
       },
     };
