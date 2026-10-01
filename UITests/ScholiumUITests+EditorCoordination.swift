@@ -863,6 +863,46 @@ extension ScholiumUITests {
         _ = clickLibraryRow(secondPath, rightMouseButton: true)
         let noteContextMenu = app.menus["scholium.noteRow.\(secondPath)"]
         XCTAssertTrue(noteContextMenu.waitForExistence(timeout: 3))
+        let noteList = app.outlines["scholium.noteList"].firstMatch
+        let contextTarget = noteList.descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.noteRow.\(secondPath)").firstMatch
+        XCTAssertTrue(contextTarget.isSelected,
+            "A contextual action must visibly select its Library target.")
+        XCTAssertEqual(documentTitle(), "QA Autosave A",
+            "Selecting a contextual target must preserve the active Document.")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !noteContextMenu.exists })
+        XCTAssertTrue(contextTarget.isSelected)
+        XCTAssertEqual(documentTitle(), "QA Autosave A")
+        XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: noteList),
+            "Dismissing the context menu must return keyboard focus to the Library.")
+        _ = clickLibraryRow(secondPath)
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B"),
+            "An ordinary click on the contextual selection must still open it.")
+        _ = clickLibraryRow("QA Autosave A.md")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
+        XCUIElement.perform(withKeyModifiers: [.control]) {
+            contextTarget.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        }
+        XCTAssertTrue(noteContextMenu.waitForExistence(timeout: 3))
+        XCTAssertTrue(contextTarget.isSelected)
+        XCTAssertEqual(documentTitle(), "QA Autosave A")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !noteContextMenu.exists })
+        let firstLibraryRow = noteList.descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.noteRow.QA Autosave A.md").firstMatch
+        XCUIElement.perform(withKeyModifiers: [.command]) {
+            firstLibraryRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        }
+        XCTAssertTrue(firstLibraryRow.isSelected && contextTarget.isSelected)
+        contextTarget.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).rightClick()
+        XCTAssertTrue(app.menuItems["Move Notes…"].firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(firstLibraryRow.isSelected && contextTarget.isSelected)
+        XCTAssertEqual(documentTitle(), "QA Autosave A")
+        app.typeKey(.escape, modifierFlags: [])
+        _ = clickLibraryRow("QA Autosave A.md")
+        _ = clickLibraryRow(secondPath, rightMouseButton: true)
+        XCTAssertTrue(noteContextMenu.waitForExistence(timeout: 3))
         let openInNewTab = noteContextMenu.menuItems["Open in New Tab"]
         XCTAssertTrue(openInNewTab.waitForExistence(timeout: 3))
         openInNewTab.click()
@@ -870,15 +910,11 @@ extension ScholiumUITests {
         // Expand a known collection only after opening the second root note.
         // Expanding a large first folder can move root notes outside the lazy
         // Library viewport, which is not evidence about document tabs.
-        let noteList = app.outlines["scholium.noteList"].firstMatch
-        let sharedFolder = noteList.descendants(matching: .outlineRow).containing(
-            .any,
-            identifier: "scholium.folderRow.格式与检索"
-        ).firstMatch
+        let sharedFolder = noteList.descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.folderRow.格式与检索").firstMatch
         XCTAssertTrue(sharedFolder.waitForExistence(timeout: 8))
-        // The app exposes expansion on the named folder content; AppKit's
-        // structural OutlineRow does not publish that value.
-        let sharedFolderLabel = noteList.staticTexts["scholium.folderRow.格式与检索"]
+        let sharedFolderLabel = noteList.descendants(matching: .any)
+            .matching(identifier: "scholium.folderRow.格式与检索").firstMatch
         if sharedFolderLabel.value as? String != "Expanded" {
             let disclosure = sharedFolder.descendants(
                 matching: .disclosureTriangle
@@ -978,8 +1014,40 @@ extension ScholiumUITests {
                 (try? self.source(at: firstURL).contains(backgroundToken)) == true
             }, "The retained background editor must save without being selected again.")
 
+        // Exercise a fresh opening while two sessions already exist, including
+        // departure from Edit. This coarse UI timing includes XCTest input and
+        // accessibility polling; it is diagnostic evidence, not a release gate.
+        app.descendants(matching: .any)["scholium.libraryFilters"].firstMatch.click()
+        let collapseAll = app.menuItems["Collapse All Folders"].firstMatch
+        XCTAssertTrue(collapseAll.waitForExistence(timeout: 3))
+        collapseAll.click()
+        _ = clickLibraryRow("示例材料.md", rightMouseButton: true)
+        let thirdNoteMenu = app.menus["scholium.noteRow.示例材料.md"]
+        XCTAssertTrue(thirdNoteMenu.waitForExistence(timeout: 3))
+        let openingStart = ContinuousClock.now
+        thirdNoteMenu.menuItems["Open in New Tab"].click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            self.documentTitle() == "示例材料" && self.documentSurfaceIsUsable()
+        })
+        let openingDuration = openingStart.duration(to: .now).components
+        let openingMilliseconds = Double(openingDuration.seconds) * 1_000
+            + Double(openingDuration.attoseconds) / 1e15
+        print("TAB_UI_FRESH_OPEN_EXISTING_TABS_MS=\(String(format: "%.3f", openingMilliseconds))")
+        app.menuBars.menuBarItems["File"].click()
+        app.menuItems["Close Tab"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            self.documentTitle() == "QA Autosave B" && self.documentSurfaceIsUsable()
+        })
+
+        let retainedStart = ContinuousClock.now
         firstTab.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { self.documentTitle() == "QA Autosave A" })
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            self.documentTitle() == "QA Autosave A" && self.documentSurfaceIsUsable()
+        })
+        let retainedDuration = retainedStart.duration(to: .now).components
+        let retainedMilliseconds = Double(retainedDuration.seconds) * 1_000
+            + Double(retainedDuration.attoseconds) / 1e15
+        print("TAB_UI_RETAINED_SELECTION_MS=\(String(format: "%.3f", retainedMilliseconds))")
         selectDocumentMode("Review")
         waitForCurrentDocumentSurface()
         secondTab.click()

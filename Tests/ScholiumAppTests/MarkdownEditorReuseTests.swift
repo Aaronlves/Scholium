@@ -581,6 +581,64 @@ struct MarkdownEditorReuseTests {
         #expect(reused.newWebViewCount == 1)
     }
 
+    @MainActor
+    private final class DepartureMeasurementDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        var suspensionCount = 0
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            if case .suspendForDetachment = request.operation { suspensionCount += 1 }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
+    }
+
+    @Test("A frozen departure reuses its proven history and recaptures after commit or resume")
+    func frozenDepartureCaptureIsIdempotent() async throws {
+        let dispatcher = DepartureMeasurementDispatcher()
+        let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        let harness = SwitchingHarness()
+        defer { harness.close() }
+        let original = "\u{FEFF}# Frozen\r\n\r\n中文 😀 e\u{301}。\r\n"
+        let edited = original + "Unsaved draft。\r\n"
+        try await harness.show(editor, source: original, title: "Frozen", mode: .livePreview)
+        _ = try await editor.send(.replacePassage(
+            expectedText: original, fromUTF16: 0, toUTF16: original.utf16.count,
+            replacement: edited, preserveSelection: false), in: try #require(editor.webView))
+        let selection = try #require(editor.context?.selections)
+        let undo = try #require(editor.context?.undoLabel)
+        try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
+        let suspensionID = try #require(editor.detachmentSuspensionID)
+        try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
+        #expect(dispatcher.suspensionCount == 1)
+        #expect(editor.detachmentSuspensionID == suspensionID)
+        #expect(Data(try await editor.currentText().utf8) == Data(edited.utf8))
+        #expect(editor.context?.selections == selection)
+        #expect(editor.context?.undoLabel == undo)
+
+        // A successful source commit rebases the fingerprint. The old capture
+        // cannot authorize that new identity until WebKit proves it again.
+        let committed = DocumentFingerprint(content: edited)
+        let acknowledgement = try await editor.acknowledgeCommittedSnapshot(
+            expectedText: edited, committedText: edited, fingerprint: committed, documentID: editor.documentID)
+        #expect(acknowledgement == .clean)
+        try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
+        #expect(dispatcher.suspensionCount == 2)
+        #expect(editor.startingFingerprint == committed.sha256)
+        #expect(editor.context?.undoLabel == undo)
+        let committedSuspensionID = try #require(editor.detachmentSuspensionID)
+
+        try await editor.resumeAfterDetachment(suspensionID: committedSuspensionID)
+        #expect(editor.detachmentSuspensionID == nil)
+        try await harness.undo()
+        #expect(Data(try await editor.currentText().utf8) == Data(original.utf8))
+        try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
+        #expect(dispatcher.suspensionCount == 3)
+        #expect(editor.detachmentSuspensionID != committedSuspensionID)
+        #expect(Data(try await editor.currentText().utf8) == Data(original.utf8))
+        await harness.closeAndDrain()
+    }
+
     private func makeSession(pool: MarkdownEditorWebViewPool?) -> MarkdownEditorSession {
         let session = MarkdownEditorSession()
         session.webViewPool = pool

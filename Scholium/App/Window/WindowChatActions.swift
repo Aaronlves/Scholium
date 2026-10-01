@@ -463,7 +463,10 @@ extension WindowModel {
         }
         let target = DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)
         let navigationMode = presentedDocumentMode
-        enqueueDocumentTransition(preservingCurrentEditorState: false, retainingCurrentDocument: target) { [weak self] in
+        enqueueDocumentTransition(
+            preparation: openingPreparation(for: reference, placement: disposition == .newTab ? .newTab : .replaceSelected),
+            retainingCurrentDocument: target
+        ) { [weak self] in
             guard let self, self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else {
                 throw CancellationError()
             }

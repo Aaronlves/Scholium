@@ -61,6 +61,24 @@ final class DocumentTabController: ObservableObject {
         tabs.first { $0.id == selectedTabID }
     }
 
+    func tab(for document: WindowSelectedDocument) -> DocumentTabItem? {
+        let key = DocumentTabKey(document)
+        return tabs.first { DocumentTabKey($0.document) == key }
+    }
+
+    func tab(for reference: VaultNoteReference) -> DocumentTabItem? {
+        if let stableID = reference.stableNoteID {
+            guard let noteID = UUID(uuidString: stableID) else { return nil }
+            return tabs.first {
+                $0.document.sessionKey == DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)
+            }
+        }
+        return tabs.first {
+            $0.document.vaultID == reference.vaultID
+                && $0.document.relativePath.utf8.elementsEqual(reference.relativePath.utf8)
+        }
+    }
+
     func activate(
         document: WindowSelectedDocument,
         title: String,

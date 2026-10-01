@@ -102,7 +102,7 @@ extension WindowModel {
             requestOpenNote(reference, disposition: .newTab)
             return
         }
-        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
+        enqueueDocumentTransition(preparation: openingPreparation(for: path)) { [weak self] in
             guard let self else { return }
             try await self.openNote(path)
         }
@@ -152,7 +152,7 @@ extension WindowModel {
             openInNewTab(reference)
             return
         }
-        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
+        enqueueDocumentTransition(preparation: openingPreparation(for: reference)) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
                 reference,
@@ -173,7 +173,7 @@ extension WindowModel {
             Task { await owner.openWorkspaceReference(reference, line: sourceLine, mode: mode) }
             return
         }
-        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
+        enqueueDocumentTransition(preparation: openingPreparation(for: path)) { [weak self] in
             guard let self else { return }
             try await self.openNote(path)
             guard self.selectedDocumentPath == path else { return }

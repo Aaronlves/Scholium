@@ -25,9 +25,8 @@ struct SidebarNativeStrings {
 }
 
 /// AppKit owns the populated Library list: hierarchy, exact
-/// scroll extent, and row reuse. SwiftUI remains responsible only for
-/// Scholium's row content and location-valid actions inside the small set of
-/// visible native cells.
+/// scroll extent, cell content, accessibility, and row reuse. SwiftUI projects
+/// window-owned state and explicit intents into the native owner.
 struct SidebarOutlineSourceList: NSViewRepresentable {
     let roots: [TreeNode]
     let projectionRevision: UInt64

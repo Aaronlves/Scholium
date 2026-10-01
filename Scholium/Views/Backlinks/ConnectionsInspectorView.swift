@@ -230,6 +230,45 @@ struct InspectorLinkGroup: Identifiable {
     }
 }
 
+/// One immutable native List row per element. Disclosure changes the input
+/// collection rather than the number of rows emitted by a nested ForEach.
+enum InspectorLinkRow: Identifiable {
+    case freshness(ResearchProjectionFreshness)
+    case empty(LocalizedStringResource)
+    case external([SourceResourceReferences.ExternalLink])
+    case group(InspectorLinkGroup, separatesFromPrevious: Bool)
+    case occurrence(InspectorLinkItem)
+
+    var id: String {
+        switch self {
+        case .freshness: "links-state:freshness"
+        case .empty: "links-state:empty"
+        case .external: "links-state:external"
+        case .group(let group, _): group.id
+        case .occurrence(let item): "links-occurrence:" + item.id
+        }
+    }
+
+    static func make(
+        groups: [InspectorLinkGroup],
+        external: [SourceResourceReferences.ExternalLink],
+        collapsedGroups: Set<String>,
+        freshness: ResearchProjectionFreshness,
+        emptyAnnouncement: LocalizedStringResource
+    ) -> [Self] {
+        var rows: [Self] = freshness.isActionable ? [.freshness(freshness)] : []
+        if groups.isEmpty, external.isEmpty { rows.append(.empty(emptyAnnouncement)) }
+        if !external.isEmpty { rows.append(.external(external)) }
+        for (index, group) in groups.enumerated() {
+            rows.append(.group(group, separatesFromPrevious: index > 0))
+            if !collapsedGroups.contains(group.id) {
+                rows.append(contentsOf: group.items.map(Self.occurrence))
+            }
+        }
+        return rows
+    }
+}
+
 struct ConnectionsInspectorView: View {
     let context: ConnectionsInspectorContext
     @ObservedObject var session: LinksInspectorSession
@@ -239,145 +278,60 @@ struct ConnectionsInspectorView: View {
     private var locationKey: String {
         "\(context.current?.vaultID.uuidString ?? ""):\(context.current?.relativePath ?? ""):\(direction.rawValue)"
     }
-    private var query: Binding<String> {
+    private func query(for key: String) -> Binding<String> {
         Binding(
-            get: { session.location(for: locationKey).query },
-            set: { value in session.update(locationKey) { $0.query = value } })
+            get: { session.location(for: key).query },
+            set: { value in session.update(key) { $0.query = value } })
     }
-    private var groups: [InspectorLinkGroup] {
-        let term = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    var body: some View {
+        let key = locationKey
+        let location = session.location(for: key)
+        let term = location.query.trimmingCharacters(in: .whitespacesAndNewlines)
         let items = ConnectionsProjection.make(
             graph: context.graph, catalogNotes: context.catalog?.notes,
             current: context.current, direction: direction
         ).items.filter { $0.matches(term) }
-        return InspectorLinkGroup.make(items)
-    }
-
-    private var externalLinks: [SourceResourceReferences.ExternalLink] {
-        guard direction == .external else { return [] }
-        let term = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        return context.externalLinks.filter {
+        let groups = InspectorLinkGroup.make(items)
+        let external = direction == .external ? context.externalLinks.filter {
             term.isEmpty || $0.label.localizedStandardContains(term)
                 || $0.destination.localizedStandardContains(term)
-        }
-    }
-
-    var body: some View {
-        let noteGroups = groups
+        } : []
+        let rows = InspectorLinkRow.make(
+            groups: groups, external: external,
+            collapsedGroups: location.collapsedGroups, freshness: context.freshness,
+            emptyAnnouncement: location.query.isEmpty ? direction.emptyAnnouncement : "No Results")
         VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
             InspectorLinkDirectionControl(direction: $session.direction, isActive: isActive)
                 .padding(.horizontal, ResearchInspectorLayout.contentInset)
             ContextSearchField(
-                text: query, prompt: "Find in Links",
+                text: query(for: key), prompt: "Find in Links",
                 identifier: "scholium.links.search", isActive: isActive
             )
             .padding(.horizontal, ResearchInspectorLayout.contentInset)
             ScrollViewReader { proxy in
                 List {
-                    Group {
-                        ResearchProjectionFreshnessView(
-                            freshness: context.freshness, retry: context.retryRefresh)
-                        if noteGroups.isEmpty && externalLinks.isEmpty {
-                            ScholiumApparatusStateView(
-                                query.wrappedValue.isEmpty ? direction.emptyAnnouncement : "No Results",
-                                systemImage: "link"
-                            )
-                            .accessibilityIdentifier("scholium.connections.empty")
+                    ForEach(rows) { row in
+                        // Keep one concrete native row even when its semantic
+                        // content is conditional or a group is collapsed.
+                        VStack(alignment: .leading, spacing: 0) {
+                            rowContent(row, locationKey: key)
                         }
-                        if !externalLinks.isEmpty {
-                            VStack(alignment: .leading, spacing: ScholiumGrid.Apparatus.contentRowGap) {
-                                ForEach(externalLinks) { link in
-                                    Button {
-                                        context.openExternalURL(link.url)
-                                    } label: {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(link.label.isEmpty ? link.url.absoluteString : link.label)
-                                                .foregroundStyle(ScholiumNativeColorRole.label.color)
-                                                .scholiumContentControlInk(
-                                                    resting: .primaryText,
-                                                    emphasized: .accent
-                                                )
-                                        }.frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .scholiumActivationPointer()
-                                    .scholiumContentControlPointerFeedback(
-                                        in: RoundedRectangle(
-                                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                            style: .continuous
-                                        )
-                                    )
-                                    .disabled(!link.canOpen)
-                                    .help(link.destination)
-                                    .contextMenu {
-                                        Button("Copy Link") {
-                                            NSPasteboard.general.clearContents()
-                                            NSPasteboard.general.setString(link.destination, forType: .string)
-                                        }
-                                    }
-                                    .accessibilityHint("Open External Link")
-                                    .accessibilityIdentifier("scholium.links.external.\(link.id)")
-                                }
-                            }
-                            .accessibilityElement(children: .contain)
-                        }
-                        ForEach(noteGroups) { group in
-                            let expanded = Binding(
-                                get: { !session.location(for: locationKey).collapsedGroups.contains(group.id) },
-                                set: { expanded in
-                                    session.update(locationKey) {
-                                        if expanded {
-                                            $0.collapsedGroups.remove(group.id)
-                                        } else {
-                                            $0.collapsedGroups.insert(group.id)
-                                        }
-                                    }
-                                }
-                            )
-                            ResearchNoteGroupHeader(
-                                title: group.title, role: group.items.first?.peer?.reference.vaultRole,
-                                expanded: expanded, occurrenceCount: group.items.count,
-                                directoryContext: group.directoryContext,
-                                relativePath: group.relativePath,
-                                separatesFromPreviousGroup: group.id != noteGroups.first?.id
-                            ) {
-                                if let peer = group.items.first?.peer {
-                                    Button("Open Linked Note") { context.openReference(peer.reference, nil) }
-                                }
-                            }
-                            .contextMenu {
-                                if let peer = group.items.first?.peer {
-                                    Button("Open Linked Note") { context.openReference(peer.reference, nil) }
-                                }
-                            }
-                            .accessibilityIdentifier("scholium.links.group." + group.id)
-                            .id(group.id)
-                            if expanded.wrappedValue {
-                                ForEach(group.items) { item in
-                                    LinkOccurrenceRow(
-                                        item: item,
-                                        activate: {
-                                            guard let source = item.source else { return }
-                                            context.openReference(
-                                                source.reference, item.edge.occurrence.linkSpan.start.line)
-                                        }, openReference: context.openReference)
-                                }
-                            }
-                        }
+                        .id(row.id)
+                        .researchListRow()
                     }
-                    .researchListRow()
                 }
                 .researchListStyle()
                 .scrollPosition(
                     id: Binding(
-                        get: { session.location(for: locationKey).scrollID },
-                        set: { value in if let value { session.update(locationKey) { $0.scrollID = value } } }
+                        get: { session.location(for: key).scrollID },
+                        set: { value in if let value { session.update(key) { $0.scrollID = value } } }
                     )
                 )
-                .onChange(of: locationKey, initial: true) { _, key in
+                .onChange(of: key, initial: true) { _, key in
                     if let id = session.location(for: key).scrollID {
                         proxy.scrollTo(id, anchor: .top)
-                    } else if let id = noteGroups.first?.id {
+                    } else if let id = groups.first?.id {
                         proxy.scrollTo(id, anchor: .top)
                     }
                 }
@@ -385,6 +339,77 @@ struct ConnectionsInspectorView: View {
             }
         }
         .padding(.top, ResearchInspectorLayout.topInset)
+    }
+
+    @ViewBuilder
+    private func rowContent(_ row: InspectorLinkRow, locationKey key: String) -> some View {
+        switch row {
+        case .freshness(let freshness):
+            ResearchProjectionFreshnessView(freshness: freshness, retry: context.retryRefresh)
+        case .empty(let announcement):
+            ScholiumApparatusStateView(announcement, systemImage: "link")
+                .accessibilityIdentifier("scholium.connections.empty")
+        case .external(let links):
+            VStack(alignment: .leading, spacing: ScholiumGrid.Apparatus.contentRowGap) {
+                ForEach(links) { link in
+                    Button {
+                        context.openExternalURL(link.url)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(link.label.isEmpty ? link.url.absoluteString : link.label)
+                                .foregroundStyle(ScholiumNativeColorRole.label.color)
+                                .scholiumContentControlInk(resting: .primaryText, emphasized: .accent)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.borderless)
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(cornerRadius: ScholiumShape.editorialControlCornerRadius, style: .continuous))
+                    .disabled(!link.canOpen)
+                    .help(link.destination)
+                    .contextMenu {
+                        Button("Copy Link") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(link.destination, forType: .string)
+                        }
+                    }
+                    .accessibilityHint("Open External Link")
+                    .accessibilityIdentifier("scholium.links.external.\(link.id)")
+                }
+            }
+            .accessibilityElement(children: .contain)
+        case .group(let group, let separatesFromPrevious):
+            let expanded = Binding(
+                get: { !session.location(for: key).collapsedGroups.contains(group.id) },
+                set: { expanded in
+                    session.update(key) {
+                        if expanded { $0.collapsedGroups.remove(group.id) } else { $0.collapsedGroups.insert(group.id) }
+                    }
+                })
+            ResearchNoteGroupHeader(
+                title: group.title, role: group.items.first?.peer?.reference.vaultRole,
+                expanded: expanded, occurrenceCount: group.items.count,
+                directoryContext: group.directoryContext, relativePath: group.relativePath,
+                separatesFromPreviousGroup: separatesFromPrevious
+            ) {
+                if let peer = group.items.first?.peer {
+                    Button("Open Linked Note") { context.openReference(peer.reference, nil) }
+                }
+            }
+            .contextMenu {
+                if let peer = group.items.first?.peer {
+                    Button("Open Linked Note") { context.openReference(peer.reference, nil) }
+                }
+            }
+            .accessibilityIdentifier("scholium.links.group." + group.id)
+        case .occurrence(let item):
+            LinkOccurrenceRow(
+                item: item,
+                activate: {
+                    guard let source = item.source else { return }
+                    context.openReference(source.reference, item.edge.occurrence.linkSpan.start.line)
+                }, openReference: context.openReference)
+        }
     }
 }
 

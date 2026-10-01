@@ -207,6 +207,21 @@ extension WindowModel {
         else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
         }
+        if managedCreationBodyStartUTF16 == nil,
+            let retainedTab = documentTabController.tab(for: reference)
+        {
+            try validateDisplay()
+            guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
+            try validateDocumentIsAvailable(retainedTab.document)
+            if documentController.selectRetainedDocument(retainedTab.document) {
+                if let workspace = workspaceSlot(for: vault) {
+                    documentController.selectWorkspace(workspace)
+                    shellState.selectDocumentWorkspace(workspace)
+                }
+                synchronizeDocumentTabs(after: tabActivation, recordsNavigationHistory: recordsNavigationHistory)
+                return
+            }
+        }
         let hydrated: WorkspaceNoteSnapshot
         if let committedSnapshot {
             guard committedSnapshot.summary.hasSameSourceBinding(as: snapshot) else {
@@ -337,7 +352,7 @@ extension WindowModel {
                 DocumentSessionKey(vaultID: reference.vaultID, noteID: $0)
             }
         }
-        enqueueDocumentTransition(preservingCurrentEditorState: false, retainingCurrentDocument: retainedTarget) { [weak self] in
+        enqueueDocumentTransition(preparation: openingPreparation(for: reference), retainingCurrentDocument: retainedTarget) { [weak self] in
             guard let self else { return }
             let alreadyCurrent =
                 sourceFingerprint != nil
@@ -416,7 +431,7 @@ extension WindowModel {
             return
         }
         let navigationMode = mode ?? presentedDocumentMode
-        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
+        enqueueDocumentTransition(preparation: openingPreparation(for: reference)) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
                 reference,

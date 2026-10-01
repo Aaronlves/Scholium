@@ -356,7 +356,6 @@ struct ContentView: View {
             currentVaultID: appState.currentDocumentVaultID,
             vaultRole: appState.currentDocumentVaultRole,
             noteIdentityByPath: appState.currentDocumentIdentityByPath,
-            documentRevisions: appState.currentDocumentRevisions,
             workspaceCatalog: appState.workspaceCatalog,
             canEdit: appState.canEditCurrentNote,
             documentTextScale: appState.documentTextScale,

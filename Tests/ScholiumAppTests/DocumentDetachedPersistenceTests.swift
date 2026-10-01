@@ -161,13 +161,13 @@ struct DocumentDetachedPersistenceTests {
                 let external = "External revision\r\n"
                 try Data(external.utf8).write(to: file)
                 await #expect(throws: VaultRepositoryError.self) {
-                    try await controller.flushBeforeClosing(document)
+                    try await controller.flushDocumentBeforeDeparture(document)
                 }
                 #expect(try Data(contentsOf: file) == Data(external.utf8))
                 #expect(Data(try #require(session.conflict).editorSource.utf8) == Data(expected.utf8))
                 #expect(session.hasUnsavedChanges)
             } else {
-                try await controller.flushBeforeClosing(document)
+                try await controller.flushDocumentBeforeDeparture(document)
                 #expect(try Data(contentsOf: file) == Data(expected.utf8))
                 #expect(!session.hasUnsavedChanges)
                 #expect(session.editingRevision == DocumentFingerprint(content: expected))
@@ -178,7 +178,7 @@ struct DocumentDetachedPersistenceTests {
                 let reconstructed = fixture.editor.sourceForViewAttachment(proposedSource: original, documentID: fixture.editor.bridgeDocumentID)
                 #expect(Data(reconstructed.utf8) == Data(expected.utf8))
                 // Another lifecycle flush joins the same committed detached state.
-                try await controller.flushBeforeClosing(document)
+                try await controller.flushDocumentBeforeDeparture(document)
             }
             await store.shutdownApplicationRuntime()
         } catch {

@@ -1174,38 +1174,40 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 else { return nil }
                 return capture
             }
-            let suspensionID =
-                existingCapture?.suspensionID
-                ?? pendingDetachmentSuspensionID
-                ?? UUID().uuidString
-            pendingDetachmentSuspensionID = suspensionID
-            do {
-                let result = try await send(.suspendForDetachment(suspensionID: suspensionID), in: webView)
-                guard self.webView === webView,
-                    pendingDetachmentSuspensionID == suspensionID,
-                    let snapshot = result.recovery,
-                    snapshot.documentID == documentID,
-                    snapshot.fingerprint == startingFingerprint,
-                    snapshot.generation == generation,
-                    snapshot.source.utf8.elementsEqual(checkedSource.utf8),
-                    markdownEditorSelectionRangesAreValid(snapshot.ranges, forEditorUTF16Length: checkedEditorUTF16Length)
-                else { throw SessionError.invalidResult }
-                recoverySnapshot = snapshot
-                detachmentCapture = DetachmentCapture(
-                    suspensionID: suspensionID, transportSessionID: sessionID, snapshot: snapshot
-                )
-                pendingDetachmentSuspensionID = nil
-                lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
-                    documentID: snapshot.documentID, fingerprint: snapshot.fingerprint,
-                    generation: snapshot.generation, ranges: snapshot.ranges
-                )
-                if let focusTarget = snapshot.focusTarget {
-                    preferredDocumentFocusTarget = focusTarget
-                    automaticFocusTarget = focusTarget
+            // The acknowledged suspension freezes CodeMirror input. Repeated
+            // departure preparation can retain that exact recovery/history
+            // proof; commit rebase, resume, or reattachment invalidates it.
+            if existingCapture == nil {
+                let suspensionID = pendingDetachmentSuspensionID ?? UUID().uuidString
+                pendingDetachmentSuspensionID = suspensionID
+                do {
+                    let result = try await send(.suspendForDetachment(suspensionID: suspensionID), in: webView)
+                    guard self.webView === webView,
+                        pendingDetachmentSuspensionID == suspensionID,
+                        let snapshot = result.recovery,
+                        snapshot.documentID == documentID,
+                        snapshot.fingerprint == startingFingerprint,
+                        snapshot.generation == generation,
+                        snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+                        markdownEditorSelectionRangesAreValid(snapshot.ranges, forEditorUTF16Length: checkedEditorUTF16Length)
+                    else { throw SessionError.invalidResult }
+                    recoverySnapshot = snapshot
+                    detachmentCapture = DetachmentCapture(
+                        suspensionID: suspensionID, transportSessionID: sessionID, snapshot: snapshot
+                    )
+                    pendingDetachmentSuspensionID = nil
+                    lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+                        documentID: snapshot.documentID, fingerprint: snapshot.fingerprint,
+                        generation: snapshot.generation, ranges: snapshot.ranges
+                    )
+                    if let focusTarget = snapshot.focusTarget {
+                        preferredDocumentFocusTarget = focusTarget
+                        automaticFocusTarget = focusTarget
+                    }
+                } catch {
+                    try? await resumeAfterDetachment(suspensionID: suspensionID)
+                    throw error
                 }
-            } catch {
-                try? await resumeAfterDetachment(suspensionID: suspensionID)
-                throw error
             }
         } else {
             try await captureRecoverySnapshot(expectedKey: expectedKey)

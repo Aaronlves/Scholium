@@ -5,7 +5,7 @@ import ScholiumContracts
 /// windows, selection, navigation history and closing.
 extension WindowModel {
     func openInNewTab(_ reference: VaultNoteReference) {
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preparation: openingPreparation(for: reference, placement: .newTab)) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
                 reference,
@@ -199,7 +199,10 @@ extension WindowModel {
         {
             return
         }
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preparation: .openingDocument(placement: .replaceSelected, retainedTab: { [weak self] in
+            guard let self, let target = self.documentNavigationHistoryController.target(for: direction) else { return nil }
+            return self.documentTabController.tab(for: target)
+        })) { [weak self] in
             guard let self,
                 let target = self.documentNavigationHistoryController.target(
                     for: direction
@@ -224,7 +227,7 @@ extension WindowModel {
                     $0.id == id
                 })?.document
             else { return }
-            try await self.documentController.flushBeforeClosing(closingDocument)
+            try await self.documentController.flushDocumentBeforeDeparture(closingDocument)
             self.documentNavigationHistoryController.captureCurrent(
                 document: closingDocument,
                 position: self.documentController.navigationPosition(for: closingDocument)

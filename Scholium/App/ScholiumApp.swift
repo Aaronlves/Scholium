@@ -30,9 +30,10 @@ final class WindowModel: ObservableObject {
     }
 
     enum DocumentTransitionPreparation {
-        case saveOpenDocuments
+        case saveSelectedDocument
         case preserveSelectedDocument
         case operationOnly
+        case openingDocument(placement: DocumentTabPlacement, retainedTab: @MainActor () -> DocumentTabItem?)
     }
 
     enum DocumentTabActivation {
@@ -916,13 +917,6 @@ final class WindowModel: ObservableObject {
         return Dictionary(
             uniqueKeysWithValues: snapshot.documents.compactMap { note in
                 note.stableIdentity.resolvedID.map { (note.id.relativePath, $0) }
-            })
-    }
-
-    var currentDocumentRevisions: [String: DocumentFingerprint] {
-        Dictionary(
-            uniqueKeysWithValues: currentDocumentNotes.map {
-                ($0.relativePath, $0.summary.fingerprint)
             })
     }
 

@@ -1,11 +1,102 @@
+import AppKit
 import Foundation
 import ScholiumContracts
+import SwiftUI
 import Testing
 
 @testable import ScholiumApp
 
-@Suite("Links Inspector projection")
+@Suite("Links Inspector projection", .serialized)
 struct ConnectionsInspectorTests {
+    @Test("Flat Links rows retain error meaning and distinct authored external occurrences")
+    func flatRowsRetainStatesAndExternalLinks() throws {
+        let links = SourceResourceReferences.externalLinks(in: "[First](https://example.invalid/source) [Second](https://example.invalid/source)\n")
+        try #require(links.count == 2)
+        let reason = "Fixture graph refresh failed"
+        let rows = InspectorLinkRow.make(groups: [], external: links, collapsedGroups: [],
+            freshness: .failed(reason), emptyAnnouncement: "No External Links")
+        #expect(Set(rows.map(\.id)).count == rows.count)
+        try #require(rows.count == 2)
+        guard case .freshness(let freshness) = rows[0], case .external(let captured) = rows[1] else {
+            Issue.record("A refresh failure must precede the retained authored external links.")
+            return
+        }
+        #expect(freshness.detail == reason)
+        #expect(captured == links)
+        #expect(captured.map(\.label) == ["First", "Second"])
+        #expect(Set(captured.map(\.id)).count == 2)
+
+        let empty = InspectorLinkRow.make(groups: [], external: [], collapsedGroups: [],
+            freshness: .current, emptyAnnouncement: "No External Links")
+        try #require(empty.count == 1)
+        guard case .empty = empty[0] else {
+            Issue.record("A current empty projection needs its named empty row.")
+            return
+        }
+    }
+
+    @Test("Native Links rows survive Note replacement, close-like return, and disclosure changes")
+    @MainActor
+    func nativeLinksCollectionLifecycle() async throws {
+        _ = NSApplication.shared
+        let vault = RegisteredVault(name: "Synthetic", role: .topicKnowledge, canonicalPath: "/unused/links-fixture")
+        let documents = [
+            NoteDocument(relativePath: "Many.md", rawContent: (0..<4).map { "[[Target\($0)]] [[Target\($0)|Again]]\n" }.joined()),
+            NoteDocument(relativePath: "Few.md", rawContent: "[[Target0]]\n"),
+            NoteDocument(relativePath: "Empty.md", rawContent: "No links\n"),
+        ] + (0..<4).map { NoteDocument(relativePath: "Target\($0).md", rawContent: "Target \($0)\n") }
+        let semantics = Dictionary(uniqueKeysWithValues: documents.map {
+            (VaultQualifiedNoteID(vaultID: vault.id, relativePath: $0.relativePath), MarkdownSemanticDocument(parsing: $0))
+        })
+        let graph = LinkGraphBuilder.build(generation: 1, catalog: documents.map { LinkCatalogNote(vaultID: vault.id, document: $0) },
+            documents: semantics, resolutionScope: .sourceVault)
+        let catalog = WorkspaceCatalogBuilder.build(vaults: [vault], documents: [vault.id: documents], graph: graph)
+        let many = VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Many.md")
+        let few = VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Few.md")
+        let empty = VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Empty.md")
+        let state = LinksLifecycleFixture(current: many)
+        let session = LinksInspectorSession()
+        session.direction = .outgoing
+        let host = NSHostingView(rootView: LinksLifecycleView(state: state, graph: graph, catalog: catalog, session: session))
+        host.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 600),
+            styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        for iteration in 0..<8 {
+            for current in [many, few, empty, few, many] {
+                state.current = current
+                let key = "\(current.vaultID.uuidString):\(current.relativePath):outgoing"
+                let groups = InspectorLinkGroup.make(ConnectionsProjection.make(
+                    graph: graph, catalogNotes: catalog.notes, current: current, direction: .outgoing).items)
+                let collapsed = iteration.isMultiple(of: 2) ? Set(groups.prefix(1).map(\.id)) : []
+                session.update(key) { $0.collapsedGroups = collapsed }
+                let expected = groups.isEmpty ? 1 : groups.reduce(0) { $0 + 1 + (collapsed.contains($1.id) ? 0 : $1.items.count) }
+                let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+                var actual = -1
+                repeat {
+                    host.layoutSubtreeIfNeeded()
+                    if let outline = findOutline(in: host) { actual = outline.numberOfRows }
+                    if actual == expected { break }
+                    try await Task.sleep(for: .milliseconds(10))
+                } while ContinuousClock.now < deadline
+                #expect(actual == expected, "\(current.relativePath), iteration \(iteration)")
+                try #require(actual == expected)
+            }
+        }
+    }
+
+    @MainActor
+    private func findOutline(in view: NSView) -> NSOutlineView? {
+        if let outline = view as? NSOutlineView { return outline }
+        return view.subviews.lazy.compactMap { findOutline(in: $0) }.first
+    }
+
     @Test("Link group count has an accessible localized phrase")
     func localizedLinkCount() {
         #expect(ScholiumL10n.string("1 link", locale: Locale(identifier: "zh-Hans")) == "1 处链接")
@@ -98,5 +189,39 @@ struct ConnectionsInspectorTests {
         #expect(groups.allSatisfy { $0.title == "Target" })
         #expect(groups.compactMap(\.relativePath).sorted() == ["One/Target.md", "Two/Target.md"])
         #expect(groups.compactMap(\.directoryContext).sorted() == ["Topics / One", "Topics / Two"])
+
+        let expandedRows = InspectorLinkRow.make(groups: groups, external: [], collapsedGroups: [],
+            freshness: .current, emptyAnnouncement: "No Outgoing Links")
+        let firstGroup = try #require(groups.first)
+        let collapsedRows = InspectorLinkRow.make(groups: groups, external: [], collapsedGroups: [firstGroup.id],
+            freshness: .current, emptyAnnouncement: "No Outgoing Links")
+        #expect(expandedRows.count == 4)
+        try #require(expandedRows.count == 4)
+        #expect(Set(expandedRows.map(\.id)).count == expandedRows.count)
+        #expect(collapsedRows.count == 3)
+        #expect(collapsedRows.map(\.id) == [expandedRows[0].id, expandedRows[2].id, expandedRows[3].id])
+        let capturedOccurrences = expandedRows.compactMap { row -> InspectorLinkItem? in
+            if case .occurrence(let item) = row { return item }
+            return nil
+        }
+        #expect(capturedOccurrences.map { $0.edge.occurrence.span } == items.map { $0.edge.occurrence.span })
+    }
+}
+
+@MainActor
+private final class LinksLifecycleFixture: ObservableObject {
+    @Published var current: VaultQualifiedNoteID
+    init(current: VaultQualifiedNoteID) { self.current = current }
+}
+
+private struct LinksLifecycleView: View {
+    @ObservedObject var state: LinksLifecycleFixture
+    let graph: GraphSnapshot
+    let catalog: WorkspaceCatalogSnapshot
+    let session: LinksInspectorSession
+
+    var body: some View {
+        ConnectionsInspectorView(context: .init(graph: graph, catalog: catalog, current: state.current,
+            freshness: .current, retryRefresh: {}, openReference: { _, _ in }), session: session)
     }
 }

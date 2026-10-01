@@ -97,7 +97,6 @@ struct DocumentFeatureState {
     let currentVaultID: UUID?
     let vaultRole: VaultRole
     let noteIdentityByPath: [String: UUID]
-    let documentRevisions: [String: DocumentFingerprint]
     let workspaceCatalog: WorkspaceCatalogSnapshot?
     let canEdit: Bool
     let documentTextScale: Double
@@ -765,7 +764,10 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private var noteFingerprint: DocumentFingerprint {
-        state.documentRevisions[note.id.relativePath] ?? DocumentFingerprint(content: note.document.rawContent)
+        // Library summaries can advance before retained source hydration.
+        // Every projection and editing base must name these exact bytes so
+        // the hydration commit starts a new task for its own revision.
+        note.fingerprint
     }
 
     private var bodyEditor: AnyView {
@@ -1711,7 +1713,7 @@ struct NoteContentView<ShellNotices: View>: View {
             session: documentSession,
             target: target,
             source: note.document.rawContent,
-            revision: state.documentRevisions[note.id.relativePath],
+            revision: noteFingerprint,
             mode: mode
         )
     }
@@ -1931,7 +1933,6 @@ private struct ConflictComparisonSheet: View {
         noteIdentityByPath: [
             active.id.relativePath: active.stableIdentity.resolvedID
         ].compactMapValues { $0 },
-        documentRevisions: [active.id.relativePath: active.document.fingerprint],
         workspaceCatalog: nil,
         canEdit: false,
         documentTextScale: 1,

@@ -1,8 +1,8 @@
 import Foundation
 import ScholiumContracts
 
-/// Serialised document transitions: every change of the presented document
-/// flushes the editor that is losing it before the next one appears.
+/// Serialised document transitions preserve retained editors and save the
+/// outgoing document when its tab is replaced or closed.
 extension WindowModel {
     /// Resolves document-scoped commands through the selected document's
     /// vault-qualified identity. Library browsing deliberately owns a
@@ -101,15 +101,30 @@ extension WindowModel {
         try await flushRegisteredEditorIfNeeded()
     }
 
+    func openingPreparation(
+        for reference: VaultNoteReference,
+        placement: DocumentTabPlacement = .replaceSelected
+    ) -> DocumentTransitionPreparation {
+        .openingDocument(placement: placement, retainedTab: { [weak self] in
+            self?.documentTabController.tab(for: reference)
+        })
+    }
+
+    func openingPreparation(for path: String) -> DocumentTransitionPreparation {
+        .openingDocument(placement: .replaceSelected, retainedTab: { [weak self] in
+            guard let self, let reference = self.documentReference(for: path) else { return nil }
+            return self.documentTabController.tab(for: reference)
+        })
+    }
+
     /// Serializes every transition that can replace the active document view.
     /// The newest requested destination wins, but an already-running operation
     /// is allowed to finish before the next begins so vault state is never
-    /// mutated concurrently by two window transitions. Replacement navigation
-    /// still flushes CodeMirror's exact text, but skips serializing selection,
-    /// scroll, and undo state that will be discarded with the replaced tab.
+    /// mutated concurrently by two window transitions. Replacement guards only
+    /// its outgoing source; retained tabs keep their dirty sessions. Recovery
+    /// capture remains necessary if preparation or destination opening fails.
     func enqueueDocumentTransition(
-        preparation: DocumentTransitionPreparation = .saveOpenDocuments,
-        preservingCurrentEditorState: Bool = true,
+        preparation: DocumentTransitionPreparation = .saveSelectedDocument,
         retainingCurrentDocument target: DocumentSessionKey? = nil,
         _ operation: @escaping @MainActor () async throws -> Void,
         didFail customFailure: (@MainActor (Error) -> Void)? = nil,
@@ -118,12 +133,20 @@ extension WindowModel {
     ) {
         guard !transferInProgress else { return }
         var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
+        var resolvedPreparation = preparation
+        var retainedOpeningTab: DocumentTabItem?
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
-                switch preparation {
-                case .saveOpenDocuments:
+                if case .openingDocument(let placement, let retainedTab) = preparation {
+                    let effectivePlacement: DocumentTabPlacement = self.isDetachedDocumentWindow ? .replaceSelected : placement
+                    retainedOpeningTab = retainedTab()
+                    resolvedPreparation = effectivePlacement == .newTab || retainedOpeningTab != nil
+                        ? .preserveSelectedDocument : .saveSelectedDocument
+                }
+                switch resolvedPreparation {
+                case .saveSelectedDocument:
                     if let document = self.documentController.selectedDocument {
                         let session = self.documentController.session(for: document.editingTarget)
                         defer {
@@ -132,14 +155,12 @@ extension WindowModel {
                         // Freeze before the final save: input accepted while
                         // opening a destination must not escape the saved base.
                         try await self.documentController.prepareSessionTransfer(document)
-                        try await self.flushRegisteredEditorIfNeeded(capturingEditorState: false)
+                        try await self.documentController.flushDocumentBeforeDeparture(document, capturingEditorState: false)
                         if session.editorSession.hasAttachedWebView {
                             // A commit rebases the editor identity. Capture its
                             // final source/history while input remains frozen.
                             try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
                         }
-                    } else {
-                        try await self.flushRegisteredEditorIfNeeded(capturingEditorState: preservingCurrentEditorState)
                     }
                 case .preserveSelectedDocument:
                     if let document = self.documentController.selectedDocument {
@@ -151,6 +172,8 @@ extension WindowModel {
                     }
                 case .operationOnly:
                     break
+                case .openingDocument:
+                    preconditionFailure("Opening preparation must resolve against live tab membership")
                 }
                 if let displayed = self.documentController.selectedDocument {
                     self.documentNavigationHistoryController.captureCurrent(
@@ -163,6 +186,18 @@ extension WindowModel {
                 guard let self, isCurrent() else { throw CancellationError() }
                 self.activeDocumentTransitionCurrency = isCurrent
                 defer { self.activeDocumentTransitionCurrency = nil }
+                if case .openingDocument(let placement, let retainedTab) = preparation,
+                    (self.isDetachedDocumentWindow || placement == .replaceSelected),
+                    let retainedOpeningTab,
+                    retainedTab()?.id != retainedOpeningTab.id
+                        || retainedTab()?.document.editingTarget != retainedOpeningTab.document.editingTarget
+                {
+                    // Membership mutations serialize behind this operation.
+                    // If its retained destination is nevertheless lost during
+                    // preparation, retain the origin instead of changing this
+                    // request into an unprepared replacement.
+                    throw WindowNavigationError.noteUnavailable(retainedOpeningTab.document.relativePath)
+                }
                 try await operation()
                 guard isCurrent() else { throw CancellationError() }
             },
@@ -178,7 +213,7 @@ extension WindowModel {
                 }
                 if let navigationError = error as? WindowNavigationError {
                     self.documentTransitionIssueID = self.reportOperationIssue(navigationError.localizedDescription, kind: .warning)
-                } else if case .saveOpenDocuments = preparation {
+                } else if case .saveSelectedDocument = resolvedPreparation {
                     self.lastSaveError = error.localizedDescription
                     self.documentTransitionIssueID = self.reportOperationIssue(
                         String(

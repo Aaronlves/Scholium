@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 func sidebarControlSize(
     for rowSizeStyle: NSTableView.RowSizeStyle
@@ -73,72 +72,140 @@ final class SidebarOutlineItem: NSObject {
     }
 }
 
+/// The outline supplies native row proxies. Their cell's real text-field
+/// outlet supplies the reachable item name, identity and actions.
 @MainActor
-final class SidebarOutlineHostingCell: NSTableCellView {
-    private var hostingView: NSHostingView<SidebarTreeNodeRow>?
+final class SidebarOutlineLabel: NSTextField {
+    var folderState: String?
+    var actionProvider: (() -> [NSAccessibilityCustomAction])?
 
-    // AppKit owns selection emphasis. Only project its cell background into
-    // SwiftUI text; never write selection or responder state back to the row.
+    override func accessibilityValue() -> String? {
+        if let folderState { return folderState }
+        return super.accessibilityValue()
+    }
+
+    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+        (super.accessibilityCustomActions() ?? []) + (actionProvider?() ?? [])
+    }
+}
+
+@MainActor
+final class SidebarOutlineCell: NSTableCellView {
+    let titleLabel = SidebarOutlineLabel(labelWithString: "")
+    private let itemImageView = NSImageView()
+    private(set) var representationGeneration: UInt64 = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        installContent()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        installContent()
+    }
+
+    private func installContent() {
+        textField = titleLabel
+        imageView = itemImageView
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.maximumNumberOfLines = 1
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleLabel.setAccessibilityElement(true)
+        titleLabel.setAccessibilityRole(.staticText)
+        itemImageView.translatesAutoresizingMaskIntoConstraints = false
+        itemImageView.imageScaling = .scaleNone
+        itemImageView.setAccessibilityElement(false)
+        addSubview(itemImageView)
+        addSubview(titleLabel)
+        NSLayoutConstraint.activate([
+            itemImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            itemImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            itemImageView.widthAnchor.constraint(equalToConstant: ScholiumMetrics.Library.leadingSlotWidth),
+            itemImageView.heightAnchor.constraint(equalToConstant: ScholiumMetrics.Library.leadingSlotWidth),
+            titleLabel.leadingAnchor.constraint(
+                equalTo: itemImageView.trailingAnchor, constant: ScholiumGrid.Spacing.inlineControlGap
+            ),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleLabel.trailingAnchor.constraint(
+                equalTo: trailingAnchor, constant: -ScholiumMetrics.Library.rowHorizontalInset
+            ),
+        ])
+    }
+
     override var backgroundStyle: NSView.BackgroundStyle {
-        didSet {
-            guard oldValue != backgroundStyle, var row = hostingView?.rootView else { return }
-            row.usesEmphasizedSelectionForeground = backgroundStyle == .emphasized
-            hostingView?.rootView = row
-        }
+        didSet { updateForeground() }
     }
 
-    func configure(with row: SidebarTreeNodeRow) {
-        var row = row
-        row.usesEmphasizedSelectionForeground = backgroundStyle == .emphasized
-        if let hostingView {
-            hostingView.rootView = row
-        } else {
-            let hostingView = NSHostingView(rootView: row)
-            hostingView.sizingOptions = []
-            hostingView.frame = bounds
-            hostingView.autoresizingMask = [.width, .height]
-            addSubview(hostingView)
-            self.hostingView = hostingView
-        }
+    func configure(
+        item: SidebarOutlineItem,
+        isExpanded: Bool,
+        nativeStrings: SidebarNativeStrings,
+        presentation: SidebarSourceListRowPresentation
+    ) {
+        let label = item.node.note?.title ?? item.node.note?.displayName ?? item.node.name
+        if (objectValue as? SidebarOutlineItem) !== item { representationGeneration &+= 1 }
+        objectValue = item
+        titleLabel.stringValue = label
+        titleLabel.font = .systemFont(ofSize: presentation.textPointSize)
+        titleLabel.setAccessibilityLabel(label)
+        titleLabel.setAccessibilityIdentifier(
+            item.node.isFolder ? "scholium.folderRow.\(item.id)" : "scholium.noteRow.\(item.id)"
+        )
+        titleLabel.folderState = item.node.isFolder
+            ? nativeStrings.folderAccessibilityValue(isEmpty: item.children.isEmpty, isExpanded: isExpanded)
+            : nil
+        titleLabel.toolTip = label
+        toolTip = label
+        itemImageView.image = NSImage(
+            systemSymbolName: item.node.isFolder ? ScholiumSidebarItem.folder.symbol : ScholiumSidebarItem.note.symbol,
+            accessibilityDescription: nil
+        )?.withSymbolConfiguration(.init(pointSize: presentation.textPointSize, weight: .regular))
+        updateForeground()
     }
 
-    override func layout() {
-        super.layout()
-        hostingView?.frame = bounds
+    private func updateForeground() {
+        titleLabel.textColor = backgroundStyle == .emphasized
+            ? .alternateSelectedControlTextColor : ScholiumColorRole.primaryText.nsColor
+        itemImageView.contentTintColor = backgroundStyle == .emphasized
+            ? .alternateSelectedControlTextColor : ScholiumColorRole.secondaryText.nsColor
     }
 
-    /// Populated rows are native outline interactions. SwiftUI renders the
-    /// label and menus, but a primary-button press outside the explicit native
-    /// accessories belongs to NSOutlineView so AppKit can distinguish a click
-    /// from the start of a drag without a second gesture recognizer.
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        representationGeneration &+= 1
+        titleLabel.actionProvider = nil
+        titleLabel.folderState = nil
+        titleLabel.setAccessibilityIdentifier(nil)
+        titleLabel.setAccessibilityLabel(nil)
+        titleLabel.toolTip = nil
+        toolTip = nil
+        objectValue = nil
+    }
+
+    /// The native outline owns click/drag recognition and context selection;
+    /// the text field provides content semantics without becoming a responder.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let nativeHit = super.hitTest(point)
-        if NSApp.currentEvent?.type == .rightMouseDown,
-            let outlineView = enclosingOutlineView as? SidebarOutlineView,
-            outlineView.selectedRowIndexes.count > 1,
-            outlineView.selectedRowIndexes.contains(outlineView.row(for: self))
-        {
-            return self
+        switch NSApp.currentEvent?.type {
+        case .leftMouseDown?, .rightMouseDown?: return nativeHit == nil ? nil : self
+        default: return nativeHit
         }
-        guard NSApp.currentEvent?.type == .leftMouseDown else { return nativeHit }
-        return self
     }
 
     override func mouseDown(with event: NSEvent) {
         if let outlineView = enclosingOutlineView {
             outlineView.mouseDown(with: event)
-            return
+        } else {
+            super.mouseDown(with: event)
         }
-        super.mouseDown(with: event)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        if let outlineView = enclosingOutlineView as? SidebarOutlineView,
-            let menu = outlineView.selectionMenuProvider?(outlineView.row(for: self))
-        {
-            return menu
-        }
-        return super.menu(for: event)
+        (enclosingOutlineView as? SidebarOutlineView)?.contextMenu(
+            forRow: enclosingOutlineView?.row(for: self) ?? -1
+        )
     }
 
     private var enclosingOutlineView: NSOutlineView? {
@@ -152,43 +219,35 @@ final class SidebarOutlineHostingCell: NSTableCellView {
 }
 
 @MainActor
-final class SidebarOutlineRowView: NSTableRowView {
-    func configure(
-        item: SidebarOutlineItem,
-        isExpanded: Bool,
-        nativeStrings: SidebarNativeStrings
-    ) {
-        let label =
-            item.node.note?.title
-            ?? item.node.note?.displayName
-            ?? item.node.name
-        setAccessibilityLabel(label)
-        setAccessibilityIdentifier(
-            item.node.isFolder
-                ? "scholium.folderRow.\(item.id)"
-                : "scholium.noteRow.\(item.id)"
-        )
-        if item.node.isFolder {
-            setAccessibilityValue(
-                nativeStrings.folderAccessibilityValue(
-                    isEmpty: item.node.children.isEmpty,
-                    isExpanded: isExpanded
-                )
-            )
-        } else {
-            setAccessibilityValue(nil)
-        }
-    }
-}
-
-@MainActor
 final class SidebarOutlineView: NSOutlineView {
     var chatAccessibilityAction: (() -> NSAccessibilityCustomAction?)?
     var selectionAccessibilityActions: (() -> [NSAccessibilityCustomAction])?
     var selectionMenuProvider: ((Int) -> NSMenu?)?
+    var lifecycleDidBecomeUnavailable: (() -> Void)?
+    var lifecycleDidBecomeAvailable: (() -> Void)?
     var trashSelection: (() -> Bool)?
     var openSelection: (() -> Bool)?
     var dragSelectionIsValid: ((IndexSet) -> Bool)?
+    var primaryClickHandler: ((Int, NSEvent.ModifierFlags) -> Bool)?
+    private(set) var isHandlingPrimaryMouseDown = false
+    private var primaryMouseDownModifiers: NSEvent.ModifierFlags?
+
+    override func mouseDown(with event: NSEvent) {
+        isHandlingPrimaryMouseDown = true
+        primaryMouseDownModifiers = event.modifierFlags
+        defer {
+            isHandlingPrimaryMouseDown = false
+            primaryMouseDownModifiers = nil
+        }
+        super.mouseDown(with: event)
+    }
+
+    @objc func activateClickedRow(_ sender: Any?) {
+        guard let modifiers = primaryMouseDownModifiers else { return }
+        // NSTableView sends its action only after native click recognition.
+        // Disclosure and drag retain their native behavior without activation.
+        _ = primaryClickHandler?(clickedRow, modifiers)
+    }
 
     override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
         let native = super.accessibilityCustomActions() ?? []
@@ -199,12 +258,48 @@ final class SidebarOutlineView: NSOutlineView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let row = row(at: convert(event.locationInWindow, from: nil))
-        return selectionMenuProvider?(row) ?? super.menu(for: event)
+        return contextMenu(forRow: row)
     }
 
-    func requestKeyboardFocus() {
-        guard window != nil, !isHiddenOrHasHiddenAncestor else { return }
-        window?.makeFirstResponder(self)
+    func contextMenu(forRow row: Int) -> NSMenu? {
+        guard !isHiddenOrHasHiddenAncestor else { return nil }
+        return selectionMenuProvider?(row)
+    }
+
+    @discardableResult
+    func requestKeyboardFocus() -> Bool {
+        guard let window, !isHiddenOrHasHiddenAncestor else { return false }
+        return window.makeFirstResponder(self)
+    }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        lifecycleDidBecomeUnavailable?()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        lifecycleDidBecomeAvailable?()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if window !== newWindow { lifecycleDidBecomeUnavailable?() }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { lifecycleDidBecomeAvailable?() }
+    }
+
+    override func showContextMenuForSelection(_ sender: Any?) {
+        guard selectedRow >= 0,
+            let menu = contextMenu(forRow: selectedRow)
+        else { return }
+        // Keyboard and accessibility ShowMenu target the selected row, rather
+        // than the midpoint of an outline containing unrelated rows.
+        let rect = rect(ofRow: selectedRow)
+        menu.popUp(positioning: nil, at: NSPoint(x: rect.minX, y: rect.maxY), in: self)
     }
 
     override func insertNewline(_ sender: Any?) {
@@ -223,10 +318,8 @@ final class SidebarOutlineView: NSOutlineView {
         with rowIndexes: IndexSet,
         at mouseDownPoint: NSPoint
     ) -> Bool {
-        // The hosted row retains SwiftUI context-menu and accessibility
-        // surfaces. Let NSTableView keep drag recognition for the containing
-        // native row; the data source's process-private pasteboard writer
-        // remains the per-item authorization boundary.
+        // NSTableView owns recognition; the data source's process-private
+        // pasteboard writer remains the per-item authorization boundary.
         return dragSelectionIsValid?(rowIndexes) ?? false
     }
 }

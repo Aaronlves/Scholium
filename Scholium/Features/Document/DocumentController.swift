@@ -1068,11 +1068,14 @@ final class DocumentController: ObservableObject {
         }
     }
 
-    /// A tab close is a document-specific safety transaction. Inactive tabs
-    /// cannot rely on the currently selected view's registration.
-    func flushBeforeClosing(_ document: WindowSelectedDocument) async throws {
+    /// Replacement and close guard only the departing document. Whole-window
+    /// and Triptych release separately flush every leased or pinned session.
+    func flushDocumentBeforeDeparture(
+        _ document: WindowSelectedDocument,
+        capturingEditorState: Bool = true
+    ) async throws {
         guard let session = sessions.retainedSession(for: document.editingTarget) else { return }
-        if session.editorSession.hasAttachedWebView {
+        if capturingEditorState, session.editorSession.hasAttachedWebView {
             try await session.editorSession.captureStateForViewReconstruction()
         }
         guard

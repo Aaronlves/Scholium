@@ -819,9 +819,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let sidebarTreeRowsSource = try String(
+        let sidebarOutlineRowsSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Sidebar/SidebarTreeRows.swift"
+                "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
             ),
             encoding: .utf8
         )
@@ -1065,7 +1065,7 @@ struct FrontendArchitectureTests {
         #expect(appSource.contains(".windowToolbarStyle(.unified(showsTitle: true))"))
         #expect(windowManagementSource.contains("window.toolbarStyle = .unified"))
         #expect(!appSource.contains("Collapse Note"))
-        #expect(sidebarTreeRowsSource.contains("ScholiumTypography.nativeSourceList("))
+        #expect(sidebarOutlineRowsSource.contains("NSFont.systemFontSize("))
         #expect(sidebarSource.contains("ScholiumTypography.interface(.small, emphasis: .medium)"))
         #expect(ScholiumMetrics.Library.minimumReadableWidth == 300)
     }
@@ -1591,9 +1591,9 @@ struct FrontendArchitectureTests {
         #expect(!componentsSource.contains(".accessibilityRepresentation"))
         #expect(!componentsSource.contains("Image(systemName: \"chevron"))
         #expect(buttonStylesSource.contains(".menuIndicator(.hidden)"))
-        #expect(treeRowsSource.contains("ScholiumTypography.nativeSourceList("))
-        #expect(treeRowsSource.contains("ScholiumSidebarItem.folder.symbol"))
-        #expect(treeRowsSource.contains("ScholiumSidebarItem.note.symbol"))
+        #expect(outlineRowsSource.contains(".systemFont(ofSize: presentation.textPointSize)"))
+        #expect(outlineRowsSource.contains("ScholiumSidebarItem.folder.symbol"))
+        #expect(outlineRowsSource.contains("ScholiumSidebarItem.note.symbol"))
         #expect(!treeRowsSource.contains("isActive ?"))
         #expect(!componentsSource.contains("ScholiumEditorialIndexUnderline"))
         #expect(workspaceNavigatorSource.contains("NSViewRepresentable"))
@@ -1777,8 +1777,11 @@ struct FrontendArchitectureTests {
                 "} else if NSApp.currentEvent?.type == .leftMouseDown"
             ))
 
-        #expect(outlineRowsSource.contains("final class SidebarOutlineHostingCell"))
-        #expect(outlineRowsSource.contains("final class SidebarOutlineRowView"))
+        #expect(outlineRowsSource.contains("final class SidebarOutlineCell: NSTableCellView"))
+        #expect(outlineRowsSource.contains("final class SidebarOutlineLabel: NSTextField"))
+        #expect(outlineRowsSource.contains("textField = titleLabel"))
+        #expect(!outlineRowsSource.contains("NSHostingView"))
+        #expect(!outlineRowsSource.contains("final class SidebarOutlineRowView"))
         #expect(outlineRowsSource.contains("final class SidebarOutlineView"))
         #expect(!outlineRowsSource.contains("NSTrackingArea("))
         #expect(!outlineRowsSource.contains("override func mouseMoved"))

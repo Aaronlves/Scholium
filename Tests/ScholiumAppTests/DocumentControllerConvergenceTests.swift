@@ -1,6 +1,8 @@
+import AppKit
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
+import SwiftUI
 import Testing
 
 @testable import ScholiumApp
@@ -8,6 +10,127 @@ import Testing
 @Suite("Document controller convergence")
 @MainActor
 struct DocumentControllerConvergenceTests {
+    @Test("Retained presentation binds Review and Edit to hydrated source while a newer summary is pending", arguments: [false, true])
+    func retainedPresentationDuringHydration(enterSource: Bool) async throws {
+        _ = NSApplication.shared
+        let vaultID = UUID()
+        let base = note(vaultID: vaultID, noteID: UUID(), path: "Retained.md",
+            source: "\u{FEFF}---\r\ntitle: Retained\r\n---\r\n\r\nSaved BACKGROUND paragraph 🦉.\r\n")
+        let other = note(vaultID: vaultID, noteID: UUID(), path: "Other.md", source: "Other body.\n")
+        let external = note(vaultID: vaultID, noteID: base.stableIdentity.resolvedID!, path: base.id.relativePath,
+            source: base.document.rawContent + "\r\nExternal revision.\r\n")
+        let gate = HydrationGate()
+        let controller = DocumentController(hydrationLoader: { expected in
+            guard expected.hasSameSourceBinding(as: external.summary) else { throw WorkspaceHydrationError.staleSnapshot }
+            await gate.pause()
+            return external
+        })
+        controller.installOpenedDocument(base, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let first = try #require(controller.selectedDocument)
+        let session = controller.session(for: first.editingTarget)
+        session.preparePresentationMode(.read)
+        controller.installOpenedDocument(other, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let second = try #require(controller.selectedDocument)
+        controller.receive(workspace(vaultID: vaultID, notes: [external, other]), openDocuments: [first, second])
+        await gate.waitUntilStarted()
+        defer { gate.release() }
+        #expect(controller.selectRetainedDocument(first))
+        let projection = RetainedPresentationProjection(notes: [external, other])
+        let host = NSHostingView(rootView: RetainedPresentationFixture(controller: controller, projection: projection))
+        host.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            session.cancelScheduledWork()
+            window.contentView = nil
+            window.close()
+            controller.unbind()
+        }
+        try await waitForPresentation { !session.renderedReadFingerprint.isEmpty }
+        #expect(session.renderedReadFingerprint == base.fingerprint.sha256)
+        #expect(session.renderedReadHTML.contains("Saved BACKGROUND paragraph"))
+        #expect(!session.renderedReadHTML.contains("External revision"))
+        #expect(controller.pendingHydrationCount == 1)
+
+        let insertion = "Unsaved researcher thought e\u{301}."
+        let exactDraft = base.document.rawContent + insertion
+        if enterSource {
+            projection.requestedMode = .source
+            try await waitForPresentation {
+                session.isEditing && session.editorSession.isReady && session.editorSession.isLoaded
+                    && session.editorSession.presentedMode == .source
+            }
+            #expect(session.editingRevision == base.fingerprint)
+            #expect(session.originalEditingSource.utf8.elementsEqual(base.document.rawContent.utf8))
+            session.suppressAutosave = true
+            session.cancelAutosave()
+            let end = base.document.rawContent.utf16.count
+            let editorEnd = EditorSourceOffsetMap(source: base.document.rawContent).editorUTF16Length
+            session.editorSession.revealSourceRange(fromUTF16: end, toUTF16: end)
+            try await waitForPresentation { session.editorSession.context?.selections.first?.head == editorEnd }
+            try await session.editorSession.perform(.pastePlain, argument: insertion)
+            try await waitForPresentation { session.editorSession.checkedSource.utf8.elementsEqual(exactDraft.utf8) }
+            #expect(session.hasUnsavedChanges)
+        }
+        gate.release()
+        await controller.waitForPendingHydrations()
+        #expect(controller.activeSnapshot?.fingerprint == external.fingerprint)
+        if enterSource {
+            #expect(session.editingRevision == base.fingerprint)
+            #expect(session.editingSource.utf8.elementsEqual(exactDraft.utf8))
+            #expect(session.conflict?.baseRevision == base.fingerprint)
+            #expect(session.conflict?.diskSource.utf8.elementsEqual(external.document.rawContent.utf8) == true)
+        } else {
+            try await waitForPresentation { session.renderedReadHTML.contains("External revision") }
+            #expect(session.renderedReadFingerprint == external.fingerprint.sha256)
+            #expect(session.renderedReadHTML.contains("Saved BACKGROUND paragraph"))
+            #expect(session.conflict == nil)
+            #expect(session.editingRevision == external.fingerprint)
+        }
+    }
+
+    private func waitForPresentation(_ ready: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+        while !ready(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(ready())
+    }
+
+    private final class RetainedPresentationProjection: ObservableObject {
+        let notes: [WorkspaceNoteSnapshot]
+        @Published var requestedMode: NotePresentationMode?
+
+        init(notes: [WorkspaceNoteSnapshot]) { self.notes = notes }
+    }
+
+    private struct RetainedPresentationFixture: View {
+        @ObservedObject var controller: DocumentController
+        @ObservedObject var projection: RetainedPresentationProjection
+
+        var body: some View {
+            let active = controller.activeSnapshot
+            let state = DocumentFeatureState(
+                notes: projection.notes.map { .workspace($0.summary) }, activeNote: active,
+                selectedDocumentPath: controller.selectedDocumentPath,
+                ordinarySearchScope: .triptych, currentVaultID: active?.id.vaultID, vaultRole: .sourceCorpus,
+                noteIdentityByPath: Dictionary(uniqueKeysWithValues: projection.notes.map { ($0.id.relativePath, $0.stableIdentity.resolvedID!) }),
+                workspaceCatalog: nil, canEdit: true, documentTextScale: 1, appearanceCSS: "", readCSS: "", livePreviewCSS: "",
+                initialScrollFraction: 0, requestedPresentationMode: projection.requestedMode, sourceLocationRequest: nil,
+                identityAmbiguity: nil, pendingIdentityRebinding: nil, identityMigrationFailureMessage: nil, isResolvingIdentity: false
+            )
+            let actions = DocumentFeatureActions(
+                requestIdentityResolution: {}, retryIdentityRecovery: {}, beginSearch: { _ in },
+                clearRequestedPresentationMode: { projection.requestedMode = nil }, consumeSourceLocation: { _ in },
+                navigateToSourceLine: { _, _ in }, rememberScrollPosition: { _ in }, openInternalLink: { _ in },
+                openExternalURL: { _ in }, enterCSSSafeMode: { _ in }, rememberPresentationMode: { _ in },
+                setSidebarVisible: { _ in }, setResearchInspectorVisible: { _ in }, openingDocumentPresentationDidComplete: {},
+                renameNote: { _, _, title in title }, notify: { _, _ in }
+            )
+            DocumentFeatureView(controller: controller, state: state, actions: actions, hasShellNotices: false) { EmptyView() }
+        }
+    }
+
     @Test("Unavailable visit capture cannot borrow the next document's revision")
     func unavailableVisitUsesOnlyItsOwnSnapshot() throws {
         let vaultID = UUID()

@@ -164,7 +164,7 @@ struct SidebarTreeTests {
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
         coordinator.apply(configuration: configuration)
-        defer { coordinator.detach(from: fixture.scrollView) }
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
         let outline = fixture.outlineView
         #expect(outline.chatAccessibilityAction?() == nil)
         outline.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
@@ -206,7 +206,7 @@ struct SidebarTreeTests {
             onBatchMove: { moved.append($0) }, onBatchTrash: { trashed.append($0) })
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView) }
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
         let outline = fixture.outlineView
         coordinator.apply(configuration: configuration)
         #expect(outline.selectedRowIndexes.count == 2)
@@ -235,6 +235,418 @@ struct SidebarTreeTests {
         #expect(outline.canDragRows(with: outline.selectedRowIndexes, at: .zero) == false)
         let menu = try #require(outline.selectionMenuProvider?(folderRow))
         #expect(menu.items.allSatisfy { !$0.isEnabled })
+    }
+
+    @MainActor
+    @Test("Secondary selection names its Note without opening it and retains a selected group")
+    func contextualSelectionAndFocus() throws {
+        let vaultID = UUID()
+        let notes = ["First.md", "Second.md"].map {
+            workspaceNote(vaultID: vaultID, stableID: UUID(), path: $0, source: "# Material\n")
+        }
+        let projection = LibraryTreeProjection(preorderedNotes: notes)
+        var selected: [Set<String>] = []
+        var opened: [String] = []
+        var copied: [String] = []
+        var configuration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots, notes: notes,
+            scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+            selectedDocumentPath: "First.md", revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+            canMutate: true, onSelectionChange: { selected.append($0) },
+            onSelect: { opened.append($0.relativePath) }, copyRelativePath: { copied.append($0) }
+        )
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        coordinator.apply(configuration: configuration)
+        let outline = fixture.outlineView
+        let secondRow = try #require((0..<outline.numberOfRows).first {
+            (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
+        })
+        let menu = try #require(outline.contextMenu(forRow: secondRow))
+        #expect(outline.selectedRowIndexes == IndexSet(integer: secondRow))
+        #expect(selected.last == ["Second.md"])
+        #expect(opened.isEmpty)
+        #expect(fixture.window.firstResponder === outline)
+        #expect(menu.accessibilityIdentifier() == "scholium.noteRow.Second.md")
+        let copyIndex = try #require(menu.items.firstIndex { $0.title == "Copy Relative Path" })
+        menu.performActionForItem(at: copyIndex)
+        #expect(copied == ["Second.md"])
+        let cell = try #require(
+            outline.view(atColumn: 0, row: secondRow, makeIfNecessary: true) as? SidebarOutlineCell
+        )
+        #expect(cell.textField === cell.titleLabel)
+        #expect(cell.titleLabel.accessibilityLabel() == notes[1].title)
+        #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.noteRow.Second.md")
+        #expect(cell.titleLabel.accessibilityCustomActions()?.contains { $0.name == "Copy Relative Path" } == true)
+
+        configuration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots, notes: notes,
+            scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+            revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+            selectedRowIDs: ["First.md", "Second.md"], canMutate: true,
+            onSelect: { opened.append($0.relativePath) }
+        )
+        coordinator.apply(configuration: configuration)
+        let groupMenu = try #require(outline.contextMenu(forRow: secondRow))
+        #expect(outline.selectedRowIndexes.count == 2)
+        #expect(groupMenu.items.map(\.title) == ["Move Notes…", "Move to Trash…"])
+        #expect(opened.isEmpty)
+    }
+
+    @MainActor
+    @Test("Native primary activation opens unchanged contextual selection and rejects modified or invalid clicks")
+    func primaryClickOpensUnchangedSelection() throws {
+        let vaultID = UUID()
+        let notes = ["First.md", "Second.md"].map {
+            workspaceNote(vaultID: vaultID, stableID: UUID(), path: $0, source: "# Material\n")
+        }
+        var opened: [String] = []
+        let configuration = makeSidebarCoordinatorConfiguration(
+            roots: LibraryTreeProjection(preorderedNotes: notes, folderRelativePaths: ["Folder"]).roots,
+            notes: notes, scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+            selectedDocumentPath: "First.md", revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+            onSelect: { opened.append($0.relativePath) }
+        )
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        coordinator.apply(configuration: configuration)
+        let outline = fixture.outlineView
+        let secondRow = try #require((0..<outline.numberOfRows).first {
+            (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
+        })
+        #expect(outline.contextMenu(forRow: secondRow) != nil)
+        #expect(opened.isEmpty)
+        let primaryClick = try #require(outline.primaryClickHandler)
+        #expect(outline.target === outline)
+        #expect(outline.action != nil)
+        let modifiers: [NSEvent.ModifierFlags] = [.command, .shift, .control]
+        for modifier in modifiers {
+            #expect(primaryClick(secondRow, modifier) == false)
+        }
+        #expect(primaryClick(-1, []) == false)
+        #expect(opened.isEmpty)
+        // Simulate one click already recognized by NSTableView; the selected
+        // row is unchanged, so no selection-change notification can open it.
+        #expect(primaryClick(secondRow, []) == true)
+        #expect(opened == ["Second.md"])
+        #expect(outline.openSelection?() == true)
+        #expect(opened == ["Second.md", "Second.md"])
+        outline.isHidden = true
+        #expect(primaryClick(secondRow, []) == false)
+        outline.isHidden = false
+        coordinator.detach(from: fixture.scrollView)
+        #expect(primaryClick(secondRow, []) == false)
+        #expect(outline.action == nil)
+        #expect(opened == ["Second.md", "Second.md"])
+    }
+
+    @MainActor
+    @Test("Option-click retains ordinary Note opening while selection and contextual modifiers still take precedence")
+    func optionClickRetainsOrdinaryOpening() throws {
+        let vaultID = UUID()
+        let notes = ["First.md", "Second.md"].map {
+            workspaceNote(vaultID: vaultID, stableID: UUID(), path: $0, source: "# Material\n")
+        }
+        var opened: [String] = []
+        let configuration = makeSidebarCoordinatorConfiguration(
+            roots: LibraryTreeProjection(preorderedNotes: notes).roots, notes: notes,
+            scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+            selectedDocumentPath: "First.md", revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+            onSelect: { opened.append($0.relativePath) }
+        )
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        coordinator.apply(configuration: configuration)
+        let outline = fixture.outlineView
+        let secondRow = try #require((0..<outline.numberOfRows).first {
+            (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
+        })
+        #expect(outline.contextMenu(forRow: secondRow) != nil)
+        let primaryClick = try #require(outline.primaryClickHandler)
+        #expect(primaryClick(secondRow, [.option, .command]) == false)
+        #expect(primaryClick(secondRow, [.option, .shift]) == false)
+        #expect(primaryClick(secondRow, [.option, .control]) == false)
+        #expect(opened.isEmpty)
+        #expect(primaryClick(secondRow, .option) == true)
+        #expect(opened == ["Second.md"])
+    }
+
+    @MainActor
+    @Test("Native cells retain semantic colors, selection adaptation and item identity across system appearances")
+    func nativeCellSemanticAdaptation() throws {
+        _ = NSApplication.shared
+        let note = WindowDocumentLocation.syntheticPreview(relativePath: "示例 Note.md", rawContent: "# Example\n")
+        let node = try #require(LibraryTreeProjection(preorderedNotes: [note]).roots.first)
+        let cell = SidebarOutlineCell(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
+        cell.configure(
+            item: SidebarOutlineItem(node: node), isExpanded: false,
+            nativeStrings: .init(locale: Locale(identifier: "zh-Hans")),
+            presentation: .init(effectiveRowSizeStyle: .default)
+        )
+        let generation = cell.representationGeneration
+        let identifier = cell.titleLabel.accessibilityIdentifier()
+        func channels(_ color: NSColor, appearance: NSAppearance) throws -> [CGFloat] {
+            var resolved: NSColor?
+            appearance.performAsCurrentDrawingAppearance {
+                resolved = color.usingColorSpace(.sRGB)
+            }
+            let rgb = try #require(resolved)
+            return [rgb.redComponent, rgb.greenComponent, rgb.blueComponent, rgb.alphaComponent]
+        }
+        var normalColors: [NSAppearance.Name: [CGFloat]] = [:]
+        let appearances: [NSAppearance.Name] = [
+            .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua,
+        ]
+        for name in appearances {
+            let appearance = try #require(NSAppearance(named: name))
+            cell.appearance = appearance
+            let styles: [NSView.BackgroundStyle] = [.normal, .emphasized, .normal]
+            for style in styles {
+                cell.backgroundStyle = style
+                let title = try #require(cell.titleLabel.textColor)
+                let icon = try #require(cell.imageView?.contentTintColor)
+                let expectedTitle: NSColor = style == .emphasized
+                    ? .alternateSelectedControlTextColor : ScholiumColorRole.primaryText.nsColor
+                let expectedIcon: NSColor = style == .emphasized
+                    ? .alternateSelectedControlTextColor : ScholiumColorRole.secondaryText.nsColor
+                #expect(try channels(title, appearance: appearance) == channels(expectedTitle, appearance: appearance))
+                #expect(try channels(icon, appearance: appearance) == channels(expectedIcon, appearance: appearance))
+                if style == .normal { normalColors[name] = try channels(title, appearance: appearance) }
+                #expect(cell.titleLabel.accessibilityIdentifier() == identifier)
+                #expect(cell.titleLabel.accessibilityLabel() == note.title)
+                #expect(cell.titleLabel.toolTip == note.title)
+                #expect(cell.representationGeneration == generation)
+                #expect(cell.titleLabel.font?.pointSize == NSFont.systemFontSize(for: .regular))
+            }
+        }
+        #expect(normalColors[.aqua] != normalColors[.darkAqua])
+        func containsMaterial(_ view: NSView) -> Bool {
+            view is NSVisualEffectView || view.subviews.contains(where: containsMaterial)
+        }
+        // The native sidebar/row own material and transition adaptation. The
+        // cell adds no blur, opacity treatment, background or app animation.
+        #expect(!containsMaterial(cell))
+        #expect(cell.alphaValue == 1)
+        #expect(!cell.titleLabel.drawsBackground)
+        #expect(cell.layer?.backgroundColor == nil)
+        #expect((cell.layer?.animationKeys() ?? []).isEmpty)
+    }
+
+    @MainActor
+    @Test("Captured row menus and accessibility actions reject hidden, removed and detached targets")
+    func contextualActionsRejectStaleLifecycle() throws {
+        let vaultID = UUID()
+        let note = workspaceNote(vaultID: vaultID, stableID: UUID(), path: "Note.md", source: "# Note\n")
+        let projection = LibraryTreeProjection(preorderedNotes: [note])
+        var copied: [String] = []
+        func configuration(roots: [TreeNode], revision: UInt64 = 1) -> SidebarOutlineSourceList {
+            makeSidebarCoordinatorConfiguration(
+                roots: roots, notes: [note],
+                scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+                revealRequest: nil, requestedFocusPath: nil,
+                onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+                copyRelativePath: { copied.append($0) }, projectionRevision: revision
+            )
+        }
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration(roots: projection.roots))
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        coordinator.apply(configuration: configuration(roots: projection.roots))
+        let outline = fixture.outlineView
+        let menu = try #require(outline.contextMenu(forRow: 0))
+        let index = try #require(menu.items.firstIndex { $0.title == "Copy Relative Path" })
+        let cell = try #require(outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? SidebarOutlineCell)
+        let action = try #require(cell.titleLabel.accessibilityCustomActions()?.first { $0.name == "Copy Relative Path" })
+        outline.isHidden = true
+        #expect(outline.contextMenu(forRow: 0) == nil)
+        menu.performActionForItem(at: index)
+        #expect(action.handler?() == false)
+        outline.isHidden = false
+        menu.performActionForItem(at: index)
+        #expect(copied.isEmpty)
+        let currentMenu = try #require(outline.contextMenu(forRow: 0))
+        let currentIndex = try #require(currentMenu.items.firstIndex { $0.title == "Copy Relative Path" })
+        currentMenu.performActionForItem(at: currentIndex)
+        #expect(copied == ["Note.md"])
+        coordinator.apply(configuration: configuration(roots: [], revision: 2))
+        currentMenu.performActionForItem(at: currentIndex)
+        #expect(action.handler?() == false)
+        #expect(copied == ["Note.md"])
+        coordinator.detach(from: fixture.scrollView)
+        currentMenu.performActionForItem(at: currentIndex)
+        #expect(outline.delegate == nil)
+        #expect(outline.dataSource == nil)
+        #expect(copied == ["Note.md"])
+    }
+
+    @MainActor
+    @Test("Native label exposes Note identity and rejects actions retained across cell reuse")
+    func nativeCellLabelAndActionReuse() throws {
+        let vaultID = UUID()
+        let notes = ["First.md", "Second.md", "Folder/Nested.md"].map {
+            workspaceNote(vaultID: vaultID, stableID: UUID(), path: $0, source: "# Material\n")
+        }
+        var copied: [String] = []
+        let configuration = makeSidebarCoordinatorConfiguration(
+            roots: LibraryTreeProjection(preorderedNotes: notes).roots, notes: notes,
+            scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: ["Folder"],
+            revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+            copyRelativePath: { copied.append($0) }
+        )
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        coordinator.apply(configuration: configuration)
+        let outline = fixture.outlineView
+        func item(_ id: String) throws -> SidebarOutlineItem {
+            try #require((0..<outline.numberOfRows).compactMap {
+                outline.item(atRow: $0) as? SidebarOutlineItem
+            }.first { $0.id == id })
+        }
+        let first = try item("First.md")
+        let second = try item("Second.md")
+        let folder = try item("Folder")
+        let cell = try #require(
+            outline.view(atColumn: 0, row: outline.row(forItem: first), makeIfNecessary: true) as? SidebarOutlineCell
+        )
+        #expect(cell.textField === cell.titleLabel)
+        #expect(cell.titleLabel.accessibilityRole() == .staticText)
+        #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.noteRow.First.md")
+        #expect(cell.titleLabel.toolTip == notes[0].title)
+        #expect(cell.imageView?.isAccessibilityElement() == false)
+        let action = try #require(cell.titleLabel.accessibilityCustomActions()?.first {
+            $0.name == "Copy Relative Path"
+        })
+        #expect(action.handler?() == true)
+        #expect(copied == ["First.md"])
+        cell.prepareForReuse()
+        #expect(action.handler?() == false)
+        #expect(cell.titleLabel.actionProvider == nil)
+        #expect((cell.titleLabel.accessibilityIdentifier() ?? "").isEmpty)
+        let strings = SidebarNativeStrings(locale: Locale(identifier: "en_US"))
+        let presentation = SidebarSourceListRowPresentation(effectiveRowSizeStyle: .default)
+        cell.configure(item: second, isExpanded: false, nativeStrings: strings, presentation: presentation)
+        #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.noteRow.Second.md")
+        #expect(action.handler?() == false)
+        cell.configure(item: first, isExpanded: false, nativeStrings: strings, presentation: presentation)
+        #expect(action.handler?() == false)
+        cell.configure(item: folder, isExpanded: true, nativeStrings: strings, presentation: presentation)
+        #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.folderRow.Folder")
+        #expect(cell.titleLabel.accessibilityLabel() == "Folder")
+        #expect(cell.titleLabel.accessibilityValue() as? String == "Expanded")
+        #expect(copied == ["First.md"])
+    }
+
+    @MainActor
+    @Test("An open menu ends when its exact Note snapshot changes, while unrelated updates retain it")
+    func contextualMenuSnapshotInvalidation() throws {
+        let vaultID = UUID()
+        let firstID = UUID()
+        let secondID = UUID()
+        let first = workspaceNote(vaultID: vaultID, stableID: firstID, path: "First.md", source: "# First\n")
+        let second = workspaceNote(vaultID: vaultID, stableID: secondID, path: "Second.md", source: "# Second\n")
+        var copied: [String] = []
+        func configuration(notes: [WindowDocumentLocation], revision: UInt64) -> SidebarOutlineSourceList {
+            makeSidebarCoordinatorConfiguration(
+                roots: LibraryTreeProjection(preorderedNotes: notes).roots, notes: notes,
+                scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+                revealRequest: nil, requestedFocusPath: nil,
+                onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+                selectedRowIDs: ["First.md"], copyRelativePath: { copied.append($0) },
+                projectionRevision: revision
+            )
+        }
+        let initial = configuration(notes: [first, second], revision: 1)
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: initial)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        coordinator.apply(configuration: initial)
+        let menu = try #require(fixture.outlineView.contextMenu(forRow: 0))
+        let copyIndex = try #require(menu.items.firstIndex { $0.title == "Copy Relative Path" })
+        let updatedSecond = workspaceNote(
+            vaultID: vaultID, stableID: secondID, path: "Second.md", source: "# Second revised\n"
+        )
+        coordinator.apply(configuration: configuration(notes: [first, updatedSecond], revision: 2))
+        #expect(menu.delegate === coordinator)
+        menu.performActionForItem(at: copyIndex)
+        #expect(copied == ["First.md"])
+        let updatedFirst = workspaceNote(
+            vaultID: vaultID, stableID: firstID, path: "First.md", source: "# First revised\n"
+        )
+        coordinator.apply(configuration: configuration(notes: [updatedFirst, updatedSecond], revision: 3))
+        #expect(menu.delegate == nil)
+        menu.performActionForItem(at: copyIndex)
+        #expect(copied == ["First.md"])
+    }
+
+    @MainActor
+    @Test("Hidden Library defers reveal and focus until it can own the responder again")
+    func hiddenLibraryDefersFocusAndReveal() async throws {
+        let vaultID = UUID()
+        let note = workspaceNote(vaultID: vaultID, stableID: UUID(), path: "Folder/Note.md", source: "# Note\n")
+        let projection = LibraryTreeProjection(preorderedNotes: [note])
+        let scope = LibraryDisclosureScope(vaultID: vaultID, sourceScope: .library)
+        var reveals = 0
+        var focuses = 0
+        let configuration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots, notes: [note], scope: scope, expandedFolderIDs: ["Folder"],
+            selectedDocumentPath: note.relativePath,
+            revealRequest: .init(generation: 1, scope: scope, relativePath: note.relativePath, alignment: .nearest),
+            requestedFocusPath: note.relativePath,
+            onConsumeRevealRequest: { _ in reveals += 1 }, onFocusRequestHandled: { focuses += 1 }
+        )
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        coordinator.apply(configuration: configuration)
+        fixture.outlineView.isHidden = true
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(reveals == 0)
+        #expect(focuses == 0)
+        fixture.outlineView.isHidden = false
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(reveals == 1)
+        #expect(focuses == 1)
+        #expect(fixture.window.firstResponder === fixture.outlineView)
+    }
+
+    @MainActor
+    @Test("Repeated focus intent for the same row is handled and removed targets cannot finish queued work")
+    func repeatedFocusAndRemovedTarget() async throws {
+        let vaultID = UUID()
+        let note = workspaceNote(vaultID: vaultID, stableID: UUID(), path: "Note.md", source: "# Note\n")
+        let projection = LibraryTreeProjection(preorderedNotes: [note])
+        var focuses = 0
+        func configuration(roots: [TreeNode], revision: UInt64, generation: UInt64) -> SidebarOutlineSourceList {
+            makeSidebarCoordinatorConfiguration(
+                roots: roots, notes: [note], scope: .init(vaultID: vaultID, sourceScope: .library),
+                expandedFolderIDs: [], revealRequest: nil, requestedFocusPath: note.relativePath,
+                onConsumeRevealRequest: { _ in }, onFocusRequestHandled: { focuses += 1 },
+                projectionRevision: revision, focusRequestGeneration: generation
+            )
+        }
+        let initial = configuration(roots: projection.roots, revision: 1, generation: 1)
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: initial)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        coordinator.apply(configuration: initial)
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(focuses == 1)
+        coordinator.apply(configuration: configuration(roots: projection.roots, revision: 1, generation: 2))
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(focuses == 2)
+        coordinator.apply(configuration: configuration(roots: projection.roots, revision: 1, generation: 3))
+        coordinator.apply(configuration: configuration(roots: [], revision: 2, generation: 3))
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(focuses == 2)
     }
 
     @MainActor
@@ -1129,6 +1541,7 @@ struct SidebarTreeTests {
         try await Task.sleep(for: .milliseconds(25))
         #expect(fixture.outlineView.selectedRow == retainedRow)
         coordinator.detach(from: fixture.scrollView)
+        fixture.window.close()
     }
 
     @MainActor
@@ -1178,6 +1591,7 @@ struct SidebarTreeTests {
             configuration: initialConfiguration
         )
         let firstFixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { firstFixture.window.close() }
         coordinator.apply(configuration: initialConfiguration)
         try await Task.sleep(for: .milliseconds(25))
 
@@ -1222,6 +1636,7 @@ struct SidebarTreeTests {
             onFocusRequestHandled: { focusCount += 1 }
         )
         let replacementFixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { replacementFixture.window.close() }
         coordinator.apply(configuration: replacementConfiguration)
         try await Task.sleep(for: .milliseconds(25))
 
@@ -1277,7 +1692,10 @@ private func makeSidebarCoordinatorConfiguration(
     onSelectionChange: @escaping (Set<String>) -> Void = { _ in },
     onSelect: @escaping (WindowDocumentLocation) -> Void = { _ in },
     onBatchMove: @escaping ([NoteMutationTarget]) -> Void = { _ in },
-    onBatchTrash: @escaping ([NoteMutationTarget]) -> Void = { _ in }
+    onBatchTrash: @escaping ([NoteMutationTarget]) -> Void = { _ in },
+    copyRelativePath: @escaping (String) -> Void = { _ in },
+    projectionRevision: UInt64 = 1,
+    focusRequestGeneration: UInt64 = 0
 ) -> SidebarOutlineSourceList {
     let context = SidebarTreeContext(
         currentVaultID: scope.vaultID,
@@ -1291,7 +1709,7 @@ private func makeSidebarCoordinatorConfiguration(
         createUntitledFolder: { _ in },
         requestFolderFileOperation: { _ in },
         requestFolderSystemTrash: { _ in },
-        copyRelativePath: { _ in },
+        copyRelativePath: copyRelativePath,
         revealNote: { _ in },
         requestSystemTrash: { _ in },
         showError: { _ in }
@@ -1309,7 +1727,7 @@ private func makeSidebarCoordinatorConfiguration(
     )
     return SidebarOutlineSourceList(
         roots: roots,
-        projectionRevision: 1,
+        projectionRevision: projectionRevision,
         locale: Locale(identifier: "en_US"),
         expandedFolders: .constant(expandedFolderIDs),
         expandedFolderIDs: expandedFolderIDs,
@@ -1319,7 +1737,7 @@ private func makeSidebarCoordinatorConfiguration(
         dropInventory: dropInventory,
         revealRequest: revealRequest,
         disclosureScope: scope,
-        focusRequestGeneration: 0,
+        focusRequestGeneration: focusRequestGeneration,
         requestedFocusPath: requestedFocusPath,
         onConsumeRevealRequest: onConsumeRevealRequest,
         onFocusRequestHandled: onFocusRequestHandled,
@@ -1337,7 +1755,13 @@ private func makeSidebarCoordinatorConfiguration(
 @MainActor
 private func makeSidebarCoordinatorOutline(
     _ coordinator: SidebarOutlineSourceList.Coordinator
-) -> (scrollView: NSScrollView, outlineView: SidebarOutlineView) {
+) -> (window: NSWindow, scrollView: NSScrollView, outlineView: SidebarOutlineView) {
+    _ = NSApplication.shared
+    let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 320, height: 320),
+        styleMask: [.titled], backing: .buffered, defer: false
+    )
+    window.isReleasedWhenClosed = false
     let scrollView = NSScrollView(
         frame: NSRect(x: 0, y: 0, width: 320, height: 320)
     )
@@ -1358,6 +1782,7 @@ private func makeSidebarCoordinatorOutline(
     outlineView.addTableColumn(column)
     outlineView.outlineTableColumn = column
     scrollView.documentView = outlineView
+    window.contentView = scrollView
     coordinator.attach(outlineView: outlineView, scrollView: scrollView)
-    return (scrollView, outlineView)
+    return (window, scrollView, outlineView)
 }
