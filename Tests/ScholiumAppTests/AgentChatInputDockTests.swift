@@ -55,6 +55,7 @@ struct AgentChatInputDockTests {
     func inputAreaKeepsEditorAndAnchorsCandidates() async throws {
         _ = NSApplication.shared
         let conversation = UUID()
+        let nativeSession = AgentChatComposerSession(conversationID: conversation)
         let originalDraft = "Draft with 尚未发送的选区."
         var draft = originalDraft
         var focused = false
@@ -76,7 +77,9 @@ struct AgentChatInputDockTests {
                         AgentChatComposerInput(
                             text: Binding(get: { draft }, set: { draft = $0 }),
                             isFocused: Binding(get: { focused }, set: { focused = $0 }),
-                            conversationID: conversation, isEnabled: true, submit: {})
+                            nativeSession: nativeSession,
+                            readCurrentDraft: { draft },
+                            isEnabled: true, submit: {})
                     }
                 } candidates: {
                     Text("Measured candidates").frame(height: candidateHeight)
@@ -215,6 +218,7 @@ struct AgentChatInputDockTests {
     func retainsNativeDraft() async throws {
         _ = NSApplication.shared
         let conversation = UUID()
+        let nativeSession = AgentChatComposerSession(conversationID: conversation)
         var draft = "尚未发送的草稿，保留选区。"
         var focused = false
         var answers: [String: AgentChatQuestionAnswer] = [:]
@@ -254,7 +258,8 @@ struct AgentChatInputDockTests {
                 } composer: {
                     AgentChatComposerInput(
                         text: Binding(get: { draft }, set: { draft = $0 }),
-                        isFocused: Binding(get: { focused }, set: { focused = $0 }), conversationID: conversation,
+                        isFocused: Binding(get: { focused }, set: { focused = $0 }), nativeSession: nativeSession,
+                        readCurrentDraft: { draft },
                         isEnabled: true, submit: { sent += 1 })
                     HStack {
                         Image(systemName: "plus")

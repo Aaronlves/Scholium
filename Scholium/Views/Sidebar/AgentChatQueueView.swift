@@ -1,10 +1,22 @@
 import ScholiumContracts
 import SwiftUI
 
+enum AgentChatQueueAction: Equatable {
+    case sendNext, steer
+
+    init(isWorking: Bool) { self = isWorking ? .steer : .sendNext }
+
+    func isEnabled(canSend: Bool, canSteer: Bool) -> Bool {
+        self == .steer ? canSteer : canSend
+    }
+}
+
 /// A compact, persistent list of researcher-authored input waiting for the
 /// next turn. Runtime admission remains with AgentChatController.
 struct AgentChatQueueView: View {
     let messages: [AgentChatMessage]
+    let isWorking: Bool
+    let blockedReason: (AgentChatMessage) -> String?
     let canSend: (AgentChatMessage) -> Bool
     let send: (String) -> Void
     let canSteer: (AgentChatMessage) -> Bool
@@ -58,37 +70,43 @@ struct AgentChatQueueView: View {
         AgentChatContentScroll(maximumHeight: 144) {
             VStack(spacing: 6) {
                 ForEach(messages) { message in
-                    HStack(spacing: 8) {
-                        Button {
-                            isExpanded = true
-                            inspectedMessage = message
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "text.badge.plus").foregroundStyle(.secondary)
-                                Text(message.text.isEmpty ? String(localized: "Materials", bundle: .module) : message.text)
-                                    .lineLimit(1).truncationMode(.tail)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .help(Text("Queued message", bundle: .module))
-                        .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
-                        deliveryButton(message)
-                        Menu {
+                    VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) {
+                        HStack(spacing: 8) {
                             Button {
                                 isExpanded = true
-                                edit(message)
+                                inspectedMessage = message
                             } label: {
-                                Text("Edit Message", bundle: .module)
+                                HStack(spacing: 8) {
+                                    Image(systemName: "text.badge.plus").foregroundStyle(.secondary)
+                                    Text(message.text.isEmpty ? String(localized: "Materials", bundle: .module) : message.text)
+                                        .lineLimit(1).truncationMode(.tail)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
-                            Button("Remove from Queue", role: .destructive) { remove(message.id) }
-                        } label: {
-                            ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.more.symbol, placement: .action)
-                                .accessibilityLabel(Text("Queued message actions", bundle: .module))
+                            .help(Text("Queued message", bundle: .module))
+                            .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
+                            deliveryButton(message)
+                            Menu {
+                                Button {
+                                    isExpanded = true
+                                    edit(message)
+                                } label: {
+                                    Text("Edit Message", bundle: .module)
+                                }
+                                Button("Remove from Queue", role: .destructive) { remove(message.id) }
+                            } label: {
+                                ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.more.symbol, placement: .action)
+                                    .accessibilityLabel(Text("Queued message actions", bundle: .module))
+                            }
+                            .scholiumContentActionMenu().menuIndicator(.hidden)
+                            .help("Queued message actions").accessibilityLabel("Queued message actions")
+                        }.frame(minHeight: 24)
+                        if message.id == messages.first?.id, !deliveryIsEnabled(message), let reason = blockedReason(message) {
+                            Text(verbatim: reason).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .scholiumContentActionMenu().menuIndicator(.hidden)
-                        .help("Queued message actions").accessibilityLabel("Queued message actions")
-                    }.frame(minHeight: 24)
+                    }
                 }
             }
         }
@@ -96,14 +114,15 @@ struct AgentChatQueueView: View {
 
     @ViewBuilder
     private func deliveryButton(_ message: AgentChatMessage) -> some View {
-        if canSend(message) {
+        if AgentChatQueueAction(isWorking: isWorking) == .sendNext {
             Button("Send Next") {
                 isExpanded = true
                 send(message.id)
             }
             .fixedSize()
             .buttonStyle(ScholiumContentActionButtonStyle())
-            .help(Text("Send Next", bundle: .module))
+            .disabled(!canSend(message))
+            .help(Text(verbatim: blockedReason(message) ?? ScholiumL10n.string("Send Next")))
         } else {
             Button {
                 isExpanded = true
@@ -118,9 +137,13 @@ struct AgentChatQueueView: View {
             .fixedSize()
             .buttonStyle(ScholiumContentActionButtonStyle())
             .disabled(!canSteer(message))
-            .help(Text("Add to Current Turn", bundle: .module))
+            .help(Text(verbatim: blockedReason(message) ?? ScholiumL10n.string("Add to Current Turn")))
             .accessibilityLabel(Text("Add to Current Turn", bundle: .module))
         }
+    }
+
+    private func deliveryIsEnabled(_ message: AgentChatMessage) -> Bool {
+        AgentChatQueueAction(isWorking: isWorking).isEnabled(canSend: canSend(message), canSteer: canSteer(message))
     }
 
 }

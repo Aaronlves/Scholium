@@ -53,6 +53,15 @@ extension AgentChatController {
         return canSend(message: message, in: conversation)
     }
 
+    func queuedMessageBlockReason(_ messageID: String) -> String? {
+        guard let selected, let execution = executions[selected.id],
+            let index = selected.queuedMessages.firstIndex(where: { $0.id == messageID })
+        else { return nil }
+        if let reason = sendBlockReason(message: selected.queuedMessages[index], in: selected, queued: true) { return reason }
+        if execution.state == .ready && index != 0 { return ScholiumL10n.string("Earlier queued messages will be sent first.") }
+        return nil
+    }
+
     @discardableResult
     func sendQueuedMessage(_ messageID: String) -> Bool {
         guard let selectedID, canSendQueuedMessage(messageID) else { return false }
@@ -78,7 +87,9 @@ extension AgentChatController {
         guard let owner = conversationID ?? selectedID,
             let message = conversation(owner)?.queuedMessages.first(where: { $0.id == messageID })
         else { return }
+        let removedHead = conversation(owner)?.queuedMessages.first?.id == messageID
         update(in: owner) { $0.queuedMessages.removeAll { $0.id == messageID } }
+        if removedHead, executions[owner]?.recovery == .queuedInputBlocked { executions[owner]?.error = nil }
         persist()
         let materials = message.localMaterials
         guard !materials.isEmpty else { return }
@@ -148,8 +159,8 @@ extension AgentChatController {
         else { return }
         if !dispatchQueuedMessage(message.id, in: conversationID) {
             executions[conversationID]?.automaticallyAdvancesQueue = false
-            executions[conversationID]?.error = ScholiumL10n.string(
-                "The next queued message needs attention before it can be sent.")
+            executions[conversationID]?.report(.queuedInputBlocked, detail: ScholiumL10n.string(
+                "The next queued message needs attention before it can be sent."))
         }
     }
 
@@ -257,9 +268,9 @@ extension AgentChatController {
                 if let expectedTurnID,
                     self.executions[conversationID]?.state != .working || self.executions[conversationID]?.turnID != expectedTurnID
                 {
-                    self.executions[conversationID]?.error = String(
+                    self.executions[conversationID]?.report(.turnEnded, detail: String(
                         localized:
-                            "The previous turn has ended. Your input is preserved; send it as a new request.", bundle: .module)
+                            "The previous turn has ended. Your input is preserved; send it as a new request.", bundle: .module))
                     return
                 }
                 if expectedTurnID == nil { self.configureTools(in: conversationID) }
@@ -362,15 +373,15 @@ extension AgentChatController {
                 guard self.connectionID == connectionID else { return }
                 guard receipt == .unconfirmed else {
                     if !Task.isCancelled {
-                        self.executions[conversationID]?.error = String(
-                            localized: "The message was not sent. Your input is preserved. \(error.localizedDescription)", bundle: .module)
+                        self.executions[conversationID]?.report(.messageNotSent, detail: String(
+                            localized: "The message was not sent. Your input is preserved. \(error.localizedDescription)", bundle: .module))
                     }
                     return
                 }
-                self.executions[conversationID]?.error = String(
+                self.executions[conversationID]?.report(.deliveryUnconfirmed, detail: String(
                     localized:
                         "Delivery not confirmed. Review the conversation before continuing. \(error.localizedDescription)"
-                )
+                ))
                 self.update(in: conversationID) { $0.lastRunStatus = .uncertain }
                 if self.executions[conversationID]?.turnID == nil { self.executions[conversationID]?.state = self.runtime == nil ? .disconnected : .ready }
                 self.persist()
@@ -448,8 +459,8 @@ extension AgentChatController {
                     self.executions[conversationID]?.error = nil
                     return
                 }
-                self.executions[conversationID]?.error = String(
-                    localized: "Conversation history could not be refreshed. \(error.localizedDescription)")
+                self.executions[conversationID]?.report(.historyRefreshFailed, detail: String(
+                    localized: "Conversation history could not be refreshed. \(error.localizedDescription)"))
             }
         }
     }

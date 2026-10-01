@@ -18,6 +18,7 @@ struct AgentChatHeader<Actions: View>: View {
                 .accessibilityIdentifier("scholium.chat.back")
             }
             Text(title).font(.headline).lineLimit(1)
+                .help(title)
                 .padding(.leading, back == nil ? ScholiumSidebarLayout.rowInset : 0)
             Spacer(minLength: 0)
             ScholiumSidebarHeaderActions {

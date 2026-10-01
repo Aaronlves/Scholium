@@ -29,9 +29,13 @@ struct AgentChatConversationDetailView: View {
         nonmutating set { readingSession.expandedActivities = newValue }
     }
     @State private var fileSelectionTask: Task<Void, Never>?
+    @State private var topBarHeight: CGFloat = 0
+    @State private var accessoryHeight: CGFloat = 0
 
     @Bindable var presentation: AgentChatDetailPresentation
     let readingSession: AgentChatReadingSession
+    let nativeSession: AgentChatComposerSession
+    private var isCurrentConversation: Bool { nativeSession.conversationID == controller.selectedID }
     let focusRequest: UUID?
     let consumeFocusRequest: (UUID) -> Void
     let replyNavigation: AgentChatReplyNavigation?
@@ -44,7 +48,12 @@ struct AgentChatConversationDetailView: View {
     @Binding var diagnosticsPresentation: AgentChatDiagnosticsPresentation?
 
     var body: some View {
-        conversationDetail
+        GeometryReader { geometry in
+            conversationDetail(viewportHeight: geometry.size.height)
+        }
+            .disabled(!isCurrentConversation)
+            .allowsHitTesting(isCurrentConversation)
+            .accessibilityHidden(!isCurrentConversation)
             .sheet(item: $presentation.queueEditTarget) { target in
                 AgentChatQueuedMessageEditor(
                     message: target.message,
@@ -68,12 +77,15 @@ struct AgentChatConversationDetailView: View {
                 diagnosticsPresentation = nil
             }
             .onChange(of: focusRequest, initial: true) { _, request in
-                guard let request else { return }
-                presentation.messageIsFocused = isVisible
+                guard let request, isVisible, isCurrentConversation else { return }
+                presentation.messageIsFocused = true
                 consumeFocusRequest(request)
             }
             .onChange(of: isVisible) { _, visible in
-                if visible, controller.contextPresentationID != nil { presentation.messageIsFocused = true }
+                if visible, isCurrentConversation, let focusRequest {
+                    presentation.messageIsFocused = true
+                    consumeFocusRequest(focusRequest)
+                }
                 if !visible {
                     presentation.completion.dismiss()
                     presentation.messageIsFocused = false
@@ -154,6 +166,10 @@ struct AgentChatConversationDetailView: View {
     }
 
     private func openFind() {
+        guard isCurrentConversation else { return }
+        if !presentation.showsFind, let window = nativeSession.host.window {
+            presentation.findReturnFocus = AgentChatFindReturnFocus(window: window)
+        }
         presentation.showsFind = true
         presentation.messageIsFocused = false
         presentation.findFocusRequest = UUID()
@@ -175,9 +191,13 @@ struct AgentChatConversationDetailView: View {
     }
 
     private func dismissFind() {
+        let returnFocus = presentation.findReturnFocus
+        presentation.findReturnFocus = nil
         presentation.showsFind = false
         presentation.find = .init()
-        presentation.messageIsFocused = isVisible && controller.selected?.isAvailable == true
+        presentation.findFocusRequest = nil
+        let restored = isVisible && isCurrentConversation && returnFocus?.restore(in: nativeSession.host.window) == true
+        presentation.messageIsFocused = restored && returnFocus?.targets(nativeSession.host.editor) == true
     }
 
     private var timelineMessages: [AgentChatMessage] {
@@ -249,17 +269,12 @@ struct AgentChatConversationDetailView: View {
         VStack(spacing: 0) {
             header
             AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: $diagnosticsPresentation)
-            if controller.selected?.pendingMessageID != nil, !controller.isBusy {
-                Button("Continue Without Resending") { controller.confirmContinueAfterUncertainDelivery() }
-                    .buttonStyle(ScholiumContentActionButtonStyle())
-                    .accessibilityLabel("Continue Without Resending")
-                    .padding(8)
-            }
             if presentation.showsFind {
                 AgentChatFindBar(
                     query: $presentation.find.query, focusRequest: presentation.findFocusRequest,
                     position: presentation.find.position, count: presentation.find.messageIDs.count,
-                    move: { backwards in presentation.find.move(backwards: backwards) }, dismiss: dismissFind)
+                    move: { backwards in presentation.find.move(backwards: backwards) }, dismiss: dismissFind,
+                    isActive: isVisible && isCurrentConversation)
             }
             if isHydratingHistory, !timelineMessages.isEmpty {
                 HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
@@ -277,7 +292,7 @@ struct AgentChatConversationDetailView: View {
         }
     }
 
-    private var conversationDetail: some View {
+    private func conversationDetail(viewportHeight: CGFloat) -> some View {
         let projection = AgentChatTimelineProjection(timelineMessages)
         let visibleTimelineItems = Array(projection.items[readingSession.history.range(in: projection.ids)])
         return ScrollView {
@@ -409,6 +424,7 @@ struct AgentChatConversationDetailView: View {
                             conversationNavigationButtons
                         }
                     }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { accessoryHeight = $0 }
                 }
                 if controller.selected?.isAvailable == false {
                     Button("Restore Chat") {
@@ -418,11 +434,14 @@ struct AgentChatConversationDetailView: View {
                         }
                     }.buttonStyle(.glass).padding()
                 } else {
-                    inputDock
+                    inputDock(viewportHeight: max(0, viewportHeight - topBarHeight - accessoryHeight))
                 }
             }
         }
-        .safeAreaBar(edge: .top, spacing: 0) { conversationTopBar }
+        .safeAreaBar(edge: .top, spacing: 0) {
+            conversationTopBar
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { topBarHeight = $0 }
+        }
         .onAppear {
             if presentation.showsFind { refreshFind() }
             presentation.arrivalBaseline = Set(projection.messages.map(\.id))
@@ -432,7 +451,9 @@ struct AgentChatConversationDetailView: View {
             readingSession.contentDidChange(in: ids, readerIDs: visibleReplyReaderIDs)
         }
         .onDisappear { presentation.arrivalBaseline = nil }
-        .task { if isVisible && pendingRequest == nil && controller.pendingAsyncQuestion == nil { presentation.messageIsFocused = true } }
+        .onChange(of: hasConversationAccessories) { _, hasAccessories in
+            if !hasAccessories { accessoryHeight = 0 }
+        }
     }
 
     @ViewBuilder
@@ -487,7 +508,7 @@ struct AgentChatConversationDetailView: View {
     }
 
     private func messageView(_ message: AgentChatMessage) -> some View {
-        let conversationID = controller.selectedID
+        let conversationID = nativeSession.conversationID
         return AgentChatMessageActionVisibility {
             AgentChatMessageSurface(isUser: message.role == .user) {
                 VStack(alignment: .leading, spacing: ScholiumChatAppearance.contentSpacing) {
@@ -598,7 +619,7 @@ struct AgentChatConversationDetailView: View {
 
     @ViewBuilder private func quoteCards(_ quotes: [AgentChatReplyQuote], editable: Bool) -> some View {
         if !quotes.isEmpty {
-            let owner = controller.selectedID
+            let owner = nativeSession.conversationID
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(quotes) { quote in
@@ -659,7 +680,7 @@ struct AgentChatConversationDetailView: View {
                         report: report, operationStatus: activity.status,
                         orbStyle: orbStyle,
                         openAgent: { target in
-                            guard let conversation = controller.selectedID else { return }
+                            guard isCurrentConversation, let conversation = nativeSession.conversationID else { return }
                             presentation.inspectedAgent = controller.childController(targetID: target, messageID: message.id, in: conversation)
                         },
                         expansion: Binding(
@@ -939,7 +960,7 @@ struct AgentChatConversationDetailView: View {
     }
 
     private func chooseFiles(replacing materialID: UUID? = nil) {
-        guard fileSelectionTask == nil, let conversationID = controller.selectedID,
+        guard isCurrentConversation, fileSelectionTask == nil, let conversationID = nativeSession.conversationID,
             !controller.preparingMaterials.contains(conversationID)
         else { return }
         controller.reportMaterialError(nil, in: conversationID)
@@ -1098,8 +1119,8 @@ struct AgentChatConversationDetailView: View {
         controller.approvals.first(where: { !$0.isSubmitting }) ?? controller.approvals.first
     }
 
-    private var inputDock: some View {
-        let conversationID = controller.selectedID
+    private func inputDock(viewportHeight: CGFloat) -> some View {
+        let conversationID = nativeSession.conversationID
         let pending = pendingRequest
         let asyncMessage = pending == nil ? controller.pendingAsyncQuestion : nil
         let title =
@@ -1109,22 +1130,28 @@ struct AgentChatConversationDetailView: View {
                 ? String(localized: "Answer Agent", bundle: .module)
                 : String(localized: "Review Permission", bundle: .module)
         let turnID = controller.currentTurnID
-        return AgentChatInputArea(hasQueue: !controller.queuedMessages.isEmpty) {
+        return AgentChatInputArea(
+            hasQueue: !controller.queuedMessages.isEmpty, viewportHeight: viewportHeight,
+            hasPreparedContent: hasPreparedComposerContent,
+            hasFooterStatus: controller.selected?.permission == .fullAccess
+        ) {
             AgentChatQueueView(
                 messages: controller.queuedMessages,
-                canSend: { controller.canSendQueuedMessage($0.id) },
-                send: { _ = controller.sendQueuedMessage($0) },
-                canSteer: { controller.canSteerQueuedMessage($0.id) },
-                steer: { id in if let turnID { _ = controller.steerQueuedMessage(id, expectedTurnID: turnID) } },
-                remove: { controller.removeQueuedMessage($0) },
+                isWorking: controller.state == .working,
+                blockedReason: { controller.queuedMessageBlockReason($0.id) },
+                canSend: { isCurrentConversation && controller.canSendQueuedMessage($0.id) },
+                send: { id in if isCurrentConversation { _ = controller.sendQueuedMessage(id) } },
+                canSteer: { isCurrentConversation && controller.canSteerQueuedMessage($0.id) },
+                steer: { id in if isCurrentConversation, let turnID { _ = controller.steerQueuedMessage(id, expectedTurnID: turnID) } },
+                remove: { id in if isCurrentConversation { controller.removeQueuedMessage(id) } },
                 edit: { message in
-                    guard let conversationID else { return }
+                    guard isCurrentConversation, let conversationID else { return }
                     presentation.queueEditTarget = .init(conversationID: conversationID, message: message)
                 })
         } input: {
             AgentChatInputDock(
                 requestID: pending.map { "approval:\($0.id)" } ?? asyncMessage.map { "question:\($0.id)" }, requestTitle: title,
-                requestCount: controller.pendingRequestCount, isActive: isVisible,
+                requestCount: controller.pendingRequestCount, isActive: isVisible && isCurrentConversation,
                 isReadingHistory: isAwayFromLatest || readingSession.isRetainingPosition || presentation.transcriptIsScrolling,
                 isEditingDraft: presentation.messageIsFocused
                     && (controller.selected?.draft.isEmpty == false
@@ -1163,15 +1190,99 @@ struct AgentChatConversationDetailView: View {
         }
     }
 
+    private var composerBlockReason: String? {
+        guard let conversation = controller.selected,
+            !conversation.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            !controller.preparingMaterials.contains(conversation.id),
+            let reason = controller.sendBlockReason(message: controller.draftMessage(conversation), in: conversation),
+            reason != controller.materialInputIssue && reason != controller.materialErrors[conversation.id],
+            conversation.selectedMethods?.allSatisfy(controller.capabilities.contains) != false
+        else { return nil }
+        return reason
+    }
+
+    private var hasPreparedComposerContent: Bool {
+        guard let conversation = controller.selected else { return false }
+        return conversation.selectedMethods?.isEmpty == false
+            || !conversation.attachments.isEmpty || !conversation.localMaterials.isEmpty
+            || conversation.draftReplyQuotes?.isEmpty == false
+            || conversation.draftCoordinationTarget != nil
+            || controller.preparingMaterials.contains(conversation.id)
+            || controller.materialInputIssue != nil || controller.materialErrors[conversation.id] != nil
+            || composerBlockReason != nil
+            || !nativeSession.retainedInputs.isEmpty
+    }
+
     private var composer: some View {
-        let conversationID = controller.selectedID
-        return VStack(alignment: .leading) {
+        let conversationID = nativeSession.conversationID
+        return AgentChatComposerLayout(hasPreparedContent: hasPreparedComposerContent) {
+            preparedComposerContent
+        } input: { maximumHeight in
+            AgentChatComposerInput(
+                text: Binding(
+                    get: { controller.conversations.first { $0.id == conversationID }?.draft ?? "" },
+                    set: { value in
+                        if let conversationID { controller.editDraft(value, in: conversationID) }
+                    }),
+                isFocused: Binding(get: { presentation.messageIsFocused }, set: { presentation.messageIsFocused = $0 }),
+                nativeSession: nativeSession,
+                readCurrentDraft: { controller.conversations.first { $0.id == conversationID }?.draft ?? "" },
+                isEnabled: controller.isLoaded && isCurrentConversation,
+                submit: {
+                    guard controller.selectedID == conversationID, presentation.completion.canSubmit(in: conversationID) else { return }
+                    controller.submitDraft(whileWorking: inputBehavior)
+                },
+                completion: presentation.completion, candidates: completionCandidates, candidateQuery: presentation.completion.query,
+                canChooseCompletion: { canChooseCompletion($0, in: conversationID) },
+                chooseCompletion: { candidate, finish in chooseCompletion(candidate, in: conversationID, finish: finish) },
+                transferMaterials: { materials, origin in
+                    guard let conversationID else { return }
+                    guard !controller.preparingMaterials.contains(conversationID) else {
+                        controller.reportMaterialError(ScholiumL10n.string("Finish preparing the current material before adding another."), in: conversationID)
+                        return
+                    }
+                    Task { @MainActor in
+                        await controller.addTransferredMaterials(materials, origin: origin, to: conversationID) { item in
+                            let note = try AgentChatPasteboardSnapshot.resolve(item, in: noteChoices)
+                            try await addNote(note, conversationID)
+                        }
+                    }
+                },
+                maximumHeight: maximumHeight
+            )
+            .frame(maxWidth: .infinity)
+        } controls: {
+            composerControls
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private var preparedComposerContent: some View {
+        let conversationID = nativeSession.conversationID
+        return VStack(alignment: .leading, spacing: ScholiumSidebarLayout.itemSpacing) {
+            ForEach(nativeSession.retainedInputs, id: \.self) { earlierInput in
+                VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) {
+                    Text("Earlier Input Retained").font(.caption.weight(.medium))
+                    Text("The draft changed elsewhere. Copy this earlier input before discarding it.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(verbatim: earlierInput).font(.callout).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                        ScholiumCopyButton(label: "Copy Earlier Input", contentIdentity: earlierInput) {
+                            NSPasteboard.general.clearContents()
+                            return NSPasteboard.general.setString(earlierInput, forType: .string)
+                        }
+                        Button("Discard Earlier Input", role: .destructive) { nativeSession.discardRetainedInput(earlierInput) }
+                    }
+                }
+                .accessibilityIdentifier("scholium.chat.retainedInput")
+            }
             if let methods = controller.selected?.selectedMethods, !methods.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(methods) { method in
                             Button {
-                                controller.toggleMethod(method)
+                                if isCurrentConversation { controller.toggleMethod(method) }
                             } label: {
                                 Label(method.title, systemImage: ScholiumSidebarAction.remove.symbol)
                             }
@@ -1193,7 +1304,7 @@ struct AgentChatConversationDetailView: View {
                         ForEach(controller.selected?.attachments ?? []) { attachment in
                             AgentChatMaterialChip(
                                 attachment: attachment, isEmbeddedInComposer: true,
-                                remove: { controller.removeAttachment(attachment.id) },
+                                remove: { if isCurrentConversation { controller.removeAttachment(attachment.id) } },
                                 open: { openAttachment(attachment) })
                         }
                         ForEach(controller.selected?.localMaterials ?? []) { material in
@@ -1220,6 +1331,10 @@ struct AgentChatConversationDetailView: View {
             if let message = controller.materialInputIssue ?? conversationID.flatMap({ controller.materialErrors[$0] }) {
                 Text(message).font(.caption).foregroundStyle(.secondary)
             }
+            if let reason = composerBlockReason {
+                Text(verbatim: reason).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             quoteCards(controller.selected?.draftReplyQuotes ?? [], editable: true)
             if let target = controller.selected?.draftCoordinationTarget {
                 coordinationReference(target, editable: true)
@@ -1228,63 +1343,38 @@ struct AgentChatConversationDetailView: View {
                         .font(.caption).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                 }
             }
-            AgentChatComposerInput(
-                text: Binding(
-                    get: { controller.selected?.draft ?? "" },
-                    set: { value in
-                        if let conversationID { controller.editDraft(value, in: conversationID) }
-                    }),
-                isFocused: Binding(get: { presentation.messageIsFocused }, set: { presentation.messageIsFocused = $0 }),
-                conversationID: conversationID,
-                isEnabled: controller.isLoaded,
-                submit: {
-                    guard controller.selectedID == conversationID, presentation.completion.canSubmit(in: conversationID) else { return }
-                    controller.submitDraft(whileWorking: inputBehavior)
-                },
-                completion: presentation.completion, candidates: completionCandidates, candidateQuery: presentation.completion.query,
-                canChooseCompletion: { canChooseCompletion($0, in: conversationID) },
-                chooseCompletion: { candidate, finish in chooseCompletion(candidate, in: conversationID, finish: finish) },
-                transferMaterials: { materials, origin in
-                    guard let conversationID else { return }
-                    guard !controller.preparingMaterials.contains(conversationID) else {
-                        controller.reportMaterialError(ScholiumL10n.string("Finish preparing the current material before adding another."), in: conversationID)
-                        return
-                    }
-                    Task { @MainActor in
-                        await controller.addTransferredMaterials(materials, origin: origin, to: conversationID) { item in
-                            let note = try AgentChatPasteboardSnapshot.resolve(item, in: noteChoices)
-                            try await addNote(note, conversationID)
-                        }
-                    }
-                }
-            )
-            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var composerControls: some View {
+        let conversationID = nativeSession.conversationID
+        return VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Menu {
                     Button("Choose File…") { chooseFiles() }
                         .disabled(fileSelectionTask != nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
                     Button {
-                        if let conversationID { presentation.notePickerTarget = .init(id: conversationID) }
+                        if isCurrentConversation, let conversationID { presentation.notePickerTarget = .init(id: conversationID) }
                     } label: {
                         Text("Choose Note…", bundle: .module)
                     }
                     .disabled(conversationID == nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
                     Button("Add Selection to Chat") {
-                        guard let conversationID else { return }
+                        guard isCurrentConversation, let conversationID else { return }
                         Task { @MainActor in
-                            if await addSelection(conversationID) { presentation.messageIsFocused = true }
+                            if await addSelection(conversationID), isCurrentConversation, isVisible { presentation.messageIsFocused = true }
                         }
                     }
                     .disabled(conversationID == nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
                     Divider()
                     Button {
-                        presentation.completion.begin("$")
+                        if isCurrentConversation { presentation.completion.begin("$") }
                     } label: {
                         Text("Skills", bundle: .module)
                     }
                     Divider()
                     Button {
-                        presentation.completion.begin("/")
+                        if isCurrentConversation { presentation.completion.begin("/") }
                     } label: {
                         Text("Commands", bundle: .module)
                     }
@@ -1305,9 +1395,11 @@ struct AgentChatConversationDetailView: View {
                     preferences: controller.selected?.preferences ?? .init(), selectedModel: controller.selectedModel,
                     selectedEffort: controller.selectedEffort,
                     permission: controller.selected?.permission ?? .ask,
-                    isEnabled: !controller.isBusy, canSelectModel: controller.account != nil,
-                    selectModel: controller.setModel, selectEffort: controller.setEffort,
-                    selectPermission: controller.setPermission, selectWebSearch: controller.setWebSearch
+                    isEnabled: isCurrentConversation && !controller.isBusy, canSelectModel: controller.account != nil,
+                    selectModel: { if isCurrentConversation { controller.setModel($0) } },
+                    selectEffort: { if isCurrentConversation { controller.setEffort($0) } },
+                    selectPermission: { if isCurrentConversation { controller.setPermission($0) } },
+                    selectWebSearch: { if isCurrentConversation { controller.setWebSearch($0) } }
                 )
                 Spacer(minLength: 0)
                 AgentChatComposerActionButton(
@@ -1319,7 +1411,7 @@ struct AgentChatConversationDetailView: View {
                         guard controller.selectedID == conversationID, presentation.completion.canSubmit(in: conversationID) else { return }
                         controller.submitDraft(whileWorking: inputBehavior)
                     },
-                    stop: controller.stop)
+                    stop: { if isCurrentConversation { controller.stop() } })
             }
             .controlSize(.regular)
             .menuStyle(.borderlessButton)
@@ -1328,14 +1420,7 @@ struct AgentChatConversationDetailView: View {
                 Text("Full Access").font(.caption).foregroundStyle(.secondary)
                     .accessibilityLabel("Permission").accessibilityValue("Full Access")
             }
-            if controller.state == .disconnected && controller.selected?.draft.isEmpty == false {
-                Text("Connect an agent before sending.").font(.caption).foregroundStyle(.secondary)
-            }
-            if !controller.selectionIsAvailable {
-                Text("Choose an available model and reasoning level.").font(.caption).foregroundStyle(.secondary)
-            }
         }
-        .buttonStyle(.borderless)
     }
 
     @ViewBuilder

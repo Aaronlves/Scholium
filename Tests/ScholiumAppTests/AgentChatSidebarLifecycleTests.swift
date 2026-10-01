@@ -72,6 +72,8 @@ struct AgentChatSidebarLifecycleTests {
         query.stringValue = "first-only query"
         try #require(query.target as? ContextSearchField.Coordinator).searchChanged(query)
         try await settle(host) { controller.selected?.draft == firstDraft }
+        let firstSelection = first.editor.selectedRange()
+        let firstUndo = try #require(first.editor.undoManager)
 
         #expect(await controller.selectNotification(.init(triptychID: controller.triptychID, conversationID: secondID, event: .inputRequired)))
         try await settle(host) {
@@ -89,9 +91,138 @@ struct AgentChatSidebarLifecycleTests {
             composer(in: host)?.conversationID == firstID && findField(in: host) == nil
         }
         #expect(composer(in: host)?.editor.string == firstDraft)
+        #expect(composer(in: host)?.editor === first.editor)
+        #expect(composer(in: host)?.editor.selectedRange() == firstSelection)
+        #expect(composer(in: host)?.editor.undoManager === firstUndo)
         #expect(controller.conversations.first { $0.id == secondID }?.draft == "第二个未发送草稿，补充")
         #expect(controller.conversations.allSatisfy { $0.messages.isEmpty })
         #expect(controller.connectionState == .disconnected)
+        try await controller.flushPersistence()
+    }
+
+    @Test("An outgoing or hidden detail relinquishes Find focus without retargeting its native draft or Undo")
+    func outgoingDetailKeepsItsConversationIdentity() async throws {
+        _ = NSApplication.shared
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/outgoing-identity-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await settle { controller.isLoaded }
+        let firstID = try #require(controller.selectedID)
+        controller.editDraft("First native draft")
+        controller.newConversation()
+        let secondID = try #require(controller.selectedID)
+        controller.editDraft("Second independent draft")
+        controller.select(firstID)
+        let nativeSession = AgentChatComposerSession(conversationID: firstID)
+        let presentation = AgentChatDetailPresentation()
+        let readingSession = AgentChatReadingSession()
+        func detail(visible: Bool) -> some View {
+            AgentChatConversationDetailView(
+                controller: controller, isVisible: visible, addSelection: { _ in false },
+                noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+                openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                showConversationChanges: { _ in }, presentation: presentation,
+                readingSession: readingSession, nativeSession: nativeSession,
+                focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
+                newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
+                showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
+        }
+        let host = NSHostingView(rootView: AnyView(detail(visible: true)))
+        let window = mount(host)
+        defer { window.contentView = nil; window.close() }
+        try await settle(host) { nativeSession.host.window === window && nativeSession.host.editor.isEditable }
+        let editor = nativeSession.host.editor
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping()
+        editor.insertText(" edited", replacementRange: NSRange(location: editor.string.utf16.count, length: 0))
+        undo.endUndoGrouping()
+        editor.breakUndoCoalescing()
+        editor.setSelectedRange(NSRange(location: 2, length: 4))
+        let retained = editor.string
+        let selection = editor.selectedRange()
+        try #require(undo.canUndo)
+        presentation.showsFind = true
+        presentation.findFocusRequest = UUID()
+        try await settle(host) {
+            guard let field = findField(in: host), let fieldEditor = field.currentEditor() else { return false }
+            return field.isEnabled && window.firstResponder === fieldEditor
+        }
+        let find = try #require(findField(in: host))
+        let findEditor = try #require(find.currentEditor())
+
+        // Keep A's actual detail mounted while its observed controller selects B,
+        // as happens during the outgoing page's navigation transition.
+        controller.select(secondID)
+        try await settle(host) { !editor.isEditable && !find.isEnabled && window.firstResponder !== findEditor }
+        #expect(nativeSession.conversationID == firstID && nativeSession.host.conversationID == firstID)
+        #expect(editor.string == retained && editor.selectedRange() == selection)
+        #expect(editor.undoManager === undo && undo.canUndo)
+        #expect(controller.conversations.first { $0.id == firstID }?.draft == retained)
+        #expect(controller.conversations.first { $0.id == secondID }?.draft == "Second independent draft")
+        controller.select(firstID)
+        try await settle(host) { editor.isEditable && find.isEnabled }
+
+        // The same native field also relinquishes focus when its current detail
+        // becomes hidden, independently of the selected-conversation guard.
+        try #require(window.makeFirstResponder(find))
+        let resumedFindEditor = try #require(find.currentEditor())
+        try #require(window.firstResponder === resumedFindEditor)
+        host.rootView = AnyView(detail(visible: false))
+        try await settle(host) { !find.isEnabled && window.firstResponder !== resumedFindEditor }
+        #expect(findField(in: host) === find)
+        #expect(editor.string == retained && editor.selectedRange() == selection)
+        #expect(editor.undoManager === undo && undo.canUndo)
+        #expect(controller.conversations.first { $0.id == firstID }?.draft == retained)
+        #expect(controller.conversations.first { $0.id == secondID }?.draft == "Second independent draft")
+        host.rootView = AnyView(detail(visible: true))
+        try await settle(host) { editor.isEditable && find.isEnabled }
+        undo.undo()
+        #expect(editor.string == "First native draft" && controller.selected?.draft == "First native draft")
+        try await controller.flushPersistence()
+    }
+
+    @Test("A hidden explicit focus intent is consumed once and a historical handoff never refocuses on visibility")
+    func visibilityUsesOnlyPendingFocusIntent() async throws {
+        _ = NSApplication.shared
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/focus-intent-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await settle { controller.isLoaded }
+        let nativeSession = AgentChatComposerSession(conversationID: controller.selectedID)
+        let presentation = AgentChatDetailPresentation()
+        let readingSession = AgentChatReadingSession()
+        var pendingFocus: UUID? = UUID()
+        var consumed = 0
+        func detail(visible: Bool) -> some View {
+            AgentChatConversationDetailView(
+                controller: controller, isVisible: visible, addSelection: { _ in false },
+                noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+                openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                showConversationChanges: { _ in }, presentation: presentation,
+                readingSession: readingSession, nativeSession: nativeSession,
+                focusRequest: pendingFocus, consumeFocusRequest: { id in
+                    if pendingFocus == id { pendingFocus = nil; consumed += 1 }
+                }, replyNavigation: nil, openReply: { _ in }, showList: {}, newConversation: {},
+                didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
+        }
+        let host = NSHostingView(rootView: AnyView(detail(visible: false)))
+        let window = mount(host)
+        defer { window.contentView = nil; window.close() }
+        try await settle(host) { nativeSession.host.window === window }
+        #expect(consumed == 0 && pendingFocus != nil && !presentation.messageIsFocused)
+        host.rootView = AnyView(detail(visible: true))
+        try await settle(host) { consumed == 1 && pendingFocus == nil && window.firstResponder === nativeSession.host.editor }
+        host.rootView = AnyView(detail(visible: false))
+        try await settle(host) { !presentation.messageIsFocused && window.firstResponder !== nativeSession.host.editor }
+        controller.contextPresentationID = UUID()
+        host.rootView = AnyView(detail(visible: true))
+        host.layoutSubtreeIfNeeded()
+        #expect(consumed == 1 && !presentation.messageIsFocused)
+        #expect(window.firstResponder !== nativeSession.host.editor)
         try await controller.flushPersistence()
     }
 
@@ -116,17 +247,19 @@ struct AgentChatSidebarLifecycleTests {
             let presentation = AgentChatDetailPresentation()
             presentation.showsFind = true
             presentation.find.query = "retained"
+            presentation.findFocusRequest = UUID()
             presentation.find.refresh(messages: controller.selected?.messages ?? [], reset: true)
             let originalMatches = presentation.find.messageIDs.count
             #expect(originalMatches == 1)
             let session = AgentChatReadingSession()
+            let nativeSession = AgentChatComposerSession(conversationID: conversationID)
 
             func detail() -> some View {
                 AgentChatConversationDetailView(
                     controller: controller, isVisible: true, addSelection: { _ in false },
                     noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
                     openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
-                    showConversationChanges: { _ in }, presentation: presentation, readingSession: session,
+                    showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: nativeSession,
                     focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
                     newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
                     showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
@@ -147,6 +280,7 @@ struct AgentChatSidebarLifecycleTests {
             }
             #expect(!session.isRetainingPosition)
             #expect(session.viewportRequest == nil)
+            #expect(window.firstResponder === findField(in: host)?.currentEditor())
             session.pause()
             session.anchor = .init(id: firstMessage.id, offset: -120)
             session.viewport?.reconcile()
@@ -181,6 +315,7 @@ struct AgentChatSidebarLifecycleTests {
             }
             #expect(session.isRetainingPosition)
             #expect(findField(in: host)?.stringValue == "retained")
+            #expect(window.firstResponder === findField(in: host)?.currentEditor())
             #expect(composer(in: host)?.editor.string == "Unsent draft after background completion")
             try await controller.flushPersistence()
         } catch {
@@ -226,12 +361,13 @@ struct AgentChatSidebarLifecycleTests {
 
         let presentation = AgentChatDetailPresentation()
         let session = AgentChatReadingSession()
+        let nativeSession = AgentChatComposerSession(conversationID: conversation.id)
         let projection = AgentChatTimelineProjection(conversation.messages)
         let detail = AgentChatConversationDetailView(
             controller: controller, isVisible: true, addSelection: { _ in false },
             noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
             openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
-            showConversationChanges: { _ in }, presentation: presentation, readingSession: session,
+            showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: nativeSession,
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
             showAccountUsage: {}, diagnosticsPresentation: .constant(nil))

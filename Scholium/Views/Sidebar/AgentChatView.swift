@@ -42,6 +42,7 @@ struct AgentChatView: View {
         detailStore.presentation(for: controller.selectedID)
     }
     @State private var readingStore = AgentChatReadingStore()
+    @State private var composerStore = AgentChatComposerSessionStore()
     @State private var focusRequest: UUID?
     @State private var replyNavigation: AgentChatReplyNavigation?
     @State private var showsAccountUsage = false
@@ -107,7 +108,10 @@ struct AgentChatView: View {
             showsRename = false
             markVisibleConversationRead()
         }
-        .onChange(of: controller.conversations.map(\.id)) { _, ids in readingStore.retain(Set(ids)) }
+        .onChange(of: controller.conversations.map(\.id)) { _, ids in
+            readingStore.retain(Set(ids))
+            composerStore.retain(Set(ids))
+        }
         .onChange(of: controller.selected?.unreadAt) { _, _ in markVisibleConversationRead() }
         .onChange(of: isVisible) { _, visible in
             if !visible {
@@ -154,6 +158,7 @@ struct AgentChatView: View {
             changesError: changesError,
             presentation: detailPresentation,
             readingSession: readingStore.session(for: controller.selectedID),
+            nativeSession: composerStore.session(for: controller.selectedID),
             focusRequest: focusRequest,
             consumeFocusRequest: { if focusRequest == $0 { focusRequest = nil } },
             replyNavigation: replyNavigation,

@@ -45,7 +45,7 @@ struct AgentChatFloatingComposerTests {
             controller: controller, isVisible: true, addSelection: { _ in false },
             noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
             openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
-            showConversationChanges: { _ in }, presentation: presentation, readingSession: session,
+            showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: AgentChatComposerSession(conversationID: conversation.id),
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
             showAccountUsage: {}, diagnosticsPresentation: .constant(nil))

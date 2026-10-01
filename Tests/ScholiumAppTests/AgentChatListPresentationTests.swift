@@ -53,6 +53,28 @@ struct AgentChatListPresentationTests {
         #expect(conversation == before)
     }
 
+    @Test("Conversation markers and execution state do not displace a matching research passage")
+    func matchingPassageHasItsOwnSummary() {
+        var conversation = AgentChatConversation(triptychID: UUID())
+        conversation.unreadAt = Date()
+        conversation.importantAt = Date()
+        conversation.draft = "未发送的另一问题。"
+        conversation.messages = [.init(role: .assistant, text: "The target requirement concerns normative explanation.")]
+        let before = conversation
+        for status in [AgentChatActivity.Status.waitingForInput, .waitingForApproval, .failed, .uncertain, .interrupted, .running] {
+            #expect(
+                AgentChatListPresentation.summary(conversation, query: "normative")
+                    == AgentChatListPresentation.preview(conversation, query: "normative"))
+            let context = AgentChatListPresentation.context(conversation, query: "normative", status: status)
+            #expect(context.contains(status.label))
+            #expect(context.contains(String(localized: "Unread")))
+            #expect(context.contains(String(localized: "Important")))
+        }
+        #expect(conversation == before)
+        #expect(AgentChatListPresentation.summary(conversation, query: "").hasPrefix(String(localized: "Draft")))
+        #expect(AgentChatListPresentation.summary(conversation, query: "").contains("未发送的另一问题。"))
+    }
+
     @Test("Only observed current execution or consequential outcomes occupy the status slot")
     func states() {
         var conversation = AgentChatConversation(triptychID: UUID())

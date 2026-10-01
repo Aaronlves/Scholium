@@ -240,8 +240,8 @@ timeout and disconnect interrupt the exact turn. Window-owned selection results
 retain variants; popovers own presentation. Explicit Chat handoff creates drafts;
 Document owns validation and replacement.
 
-The composer owns selection, marked text, Undo and focus; conversations
-own durable drafts. The Chat controller uses window-scoped visibility tokens to
+Window-local composer sessions retain native input, selection and Undo across
+navigation; conversations own durable drafts. The Chat controller uses window-scoped visibility tokens to
 avoid cycling unread markers during visible streaming. Sanitized reply snapshots
 own rich-object identities; Copy/Expand cannot reparse objects. The safe reader
 preserves continuous selection; one native viewport owns scrolling, and reading

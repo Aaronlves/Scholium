@@ -47,6 +47,25 @@ enum AgentChatListPresentation {
         default: return nil  // A completed prior turn is ordinary history, not a current selection or pending task.
         }
     }
+
+    static func summary(_ conversation: AgentChatConversation, query: String) -> String {
+        let preview = preview(conversation, query: query)
+        guard query.isEmpty, AgentChatListFilter.hasDraft(conversation) else { return preview }
+        return [String(localized: "Draft"), preview].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    static func context(_ conversation: AgentChatConversation, query: String, status: AgentChatActivity.Status?) -> String {
+        var labels: [String] = []
+        if conversation.unreadAt != nil { labels.append(String(localized: "Unread")) }
+        if conversation.importantAt != nil { labels.append(String(localized: "Important")) }
+        if !query.isEmpty {
+            labels.append(String(localized: "Search Match"))
+        } else if AgentChatListFilter.hasDraft(conversation) {
+            labels.append(String(localized: "Draft"))
+        }
+        if let status { labels.append(status.label) }
+        return labels.joined(separator: " · ")
+    }
 }
 
 struct AgentChatConversationRow: View {
@@ -58,16 +77,7 @@ struct AgentChatConversationRow: View {
         conversation.title.isEmpty ? String(localized: "New Conversation") : conversation.title
     }
     private var context: String {
-        var labels: [String] = []
-        if conversation.unreadAt != nil { labels.append(String(localized: "Unread")) }
-        if conversation.importantAt != nil { labels.append(String(localized: "Important")) }
-        if !query.isEmpty {
-            labels.append(String(localized: "Search Match"))
-        } else if AgentChatListFilter.hasDraft(conversation) {
-            labels.append(String(localized: "Draft"))
-        }
-        if let status { labels.append(status.label) }
-        return labels.joined(separator: " · ")
+        AgentChatListPresentation.context(conversation, query: query, status: status)
     }
 
     var body: some View {
@@ -99,10 +109,14 @@ struct AgentChatConversationRow: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                let preview = AgentChatListPresentation.preview(conversation, query: query)
-                let summary = [context, preview].filter { !$0.isEmpty }.joined(separator: " · ")
-                Text(summary).font(.callout).foregroundStyle(.secondary)
+                Text(AgentChatListPresentation.summary(conversation, query: query))
+                    .font(.callout).foregroundStyle(.secondary)
                     .lineLimit(2, reservesSpace: true)
+                if let status {
+                    Label(status.label, systemImage: status.symbol)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -108,6 +108,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
 
 /// Short requests fit their content; long requests retain a bounded native viewport.
 struct AgentChatContentScroll<Content: View>: View {
+    @Environment(\.agentChatContentMaximumHeight) private var inputAreaMaximumHeight
     var maximumHeight: CGFloat = 240
     @ViewBuilder let content: () -> Content
 
@@ -116,7 +117,7 @@ struct AgentChatContentScroll<Content: View>: View {
             content()
                 .padding(ScholiumSidebarLayout.textSpacing)
         }
-        .frame(maxHeight: maximumHeight)
+        .frame(maxHeight: min(maximumHeight, inputAreaMaximumHeight ?? maximumHeight))
         .fixedSize(horizontal: false, vertical: true)
     }
 }

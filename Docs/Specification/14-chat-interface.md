@@ -16,9 +16,17 @@ Chat inherits the Sidebar background with list-to-detail
 navigation. The list and detail move in the direction of navigation without
 moving the Sidebar or Document; Back reverses the direction. Contextual handoffs
 and Reduce Motion present the destination immediately. Conversation drafts and
-reading positions survive either route. A native sidebar List scrolls; buttons open conversations without persistent selection. Text-aligned separators divide rows in one continuous list. Dates accompany titles; no date sections. Titles wrap and expose Help; previews
-strip Markdown while retaining search matches. Draft, Unread, Important
-and current activity have text equivalents; completed turns carry no checkmark.
+reading positions survive either route. Within the window, native draft
+selection and Undo also survive navigation. Ordinary returns preserve the active
+reading or Find context; explicit writing handoffs focus the composer. An
+intervening draft replacement keeps the newer draft current; unpublished earlier
+input remains available to copy within its originating window. A native
+sidebar List scrolls; buttons open conversations without persistent selection.
+Text-aligned separators divide rows in one continuous list. Dates accompany
+titles; no date sections. Titles wrap and expose Help; previews strip Markdown
+while retaining search matches. Current activity and consequential outcomes have
+their own quiet status line, leaving the preview readable. Draft, Unread and
+Important retain text equivalents; completed turns carry no checkmark.
 One click opens; native button focus and keyboard activation remain available. Organize switches
 current and archived lists, without batch mode.
 While the list is open, existing rows retain their order as live previews update.
@@ -46,7 +54,10 @@ extra opaque backing, gradient mask or simulated blur. One bottom area arranges
 the queue, input/request surface and candidate anchor. Its measured inset
 lets the latest message and every action scroll fully clear of the controls;
 growing drafts and material changes update that inset without moving a researcher
-reading earlier messages. New replies follow the bottom only while already there;
+reading earlier messages. The complete bottom area adapts to the available height,
+retaining readable transcript space. Prepared materials and long request bodies
+scroll locally while native draft editing and delivery controls remain usable.
+New replies follow the bottom only while already there;
 otherwise a compact latest-reply action preserves the reading position.
 Selecting or operating reply content also pauses automatic follow until the
 researcher returns to the latest reply. Streaming preserves the active passage selection.

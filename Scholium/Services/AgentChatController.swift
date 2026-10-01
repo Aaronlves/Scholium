@@ -59,7 +59,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var connectedAutomaticallyDiscovered = false
     var state: State { state(for: selectedID) }
     var approvals: [AgentChatApproval] { selectedID.flatMap { executions[$0]?.approvals } ?? [] }
-    var error: String? { selectedID.flatMap { executions[$0]?.error } ?? connectionError }
+    var error: String? { localHistoryError ?? selectedID.flatMap { executions[$0]?.error } ?? connectionError }
     var token: UUID? {
         guard let id = selectedID, executions[id]?.admissionID != nil else { return nil }
         return executions[id]?.routeToken
@@ -72,6 +72,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     @Published var quotaError: String?
     @Published var isRefreshingQuota = false
     @Published var isLoaded = false
+    @Published private(set) var isLoadingLocalHistory = true
+    @Published private(set) var localHistoryError: String?
     let capabilities: AgentChatCapabilitiesController
     private var capabilityObservation: AnyCancellable?
     let triptychID: UUID
@@ -626,26 +628,71 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     func canSend(message: AgentChatMessage, in conversation: AgentChatConversation) -> Bool {
+        sendBlockReason(message: message, in: conversation) == nil
+    }
+
+    /// The same admission checks supply both availability and an actionable explanation.
+    /// Queued context remains immutable; its repairs must not imply editing the live draft repairs it.
+    func sendBlockReason(message: AgentChatMessage, in conversation: AgentChatConversation, queued: Bool = false) -> String? {
         let execution = executions[conversation.id]
-        return isLoaded && connectionState == .ready && account != nil && selectionIsAvailable(conversation.preferences)
-            && (!isRenewingSettings || execution?.state == .working)
-            && capabilities.workspaceReady && !capabilities.isChanging && (message.methods ?? []).allSatisfy(capabilities.contains)
-            && !message.localMaterials.contains(where: { $0.issue != nil })
-            && (!message.localMaterials.contains(where: \.requiresImageInput)
-                || model(for: conversation.preferences)?.inputModalities.contains("image") == true)
-            && execution != nil && execution?.historyUnavailable == false && execution?.isSending == false && execution?.isRefreshingHistory == false
-            && (execution?.state == .ready || (execution?.state == .working && execution?.turnID != nil))
-            && runtime != nil && conversation.isAvailable == true && conversation.pendingMessageID == nil
-            && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (message.coordinationTarget == nil || message.coordinationTarget?.parentThreadID == conversation.threadID)
+        guard isLoaded else { return ScholiumL10n.string("Wait for conversation history to load.") }
+        guard connectionState == .ready else { return ScholiumL10n.string("Connect Codex before sending.") }
+        guard account != nil else { return ScholiumL10n.string("Sign in before sending.") }
+        guard selectionIsAvailable(conversation.preferences) else { return ScholiumL10n.string("Choose an available model and reasoning level.") }
+        guard !isRenewingSettings || execution?.state == .working else { return ScholiumL10n.string("Wait for Chat settings to be applied.") }
+        guard capabilities.workspaceReady else { return ScholiumL10n.string("Refresh Skills before sending.") }
+        guard !capabilities.isChanging else { return ScholiumL10n.string("Wait for Skills and tools to finish updating.") }
+        guard (message.methods ?? []).allSatisfy(capabilities.contains) else {
+            return ScholiumL10n.string(queued
+                ? "A requested Skill is unavailable. Refresh Skills or remove this queued message."
+                : "A selected Skill is unavailable. Refresh Skills or remove it to continue.")
+        }
+        guard !message.localMaterials.contains(where: { $0.issue != nil }) else {
+            return ScholiumL10n.string(queued
+                ? "An attached material is unavailable. Remove this queued message or prepare a new request."
+                : "Replace or remove the unavailable material before sending.")
+        }
+        guard !message.localMaterials.contains(where: \.requiresImageInput)
+            || model(for: conversation.preferences)?.inputModalities.contains("image") == true
+        else {
+            return ScholiumL10n.string(queued
+                ? "Choose a model with image input before sending this queued message."
+                : "Choose a model with image input or remove the image.")
+        }
+        guard let execution else { return ScholiumL10n.string("Open an available conversation before sending.") }
+        guard !execution.historyUnavailable else { return ScholiumL10n.string("Retry loading this conversation or start a new one.") }
+        guard !execution.isSending else { return ScholiumL10n.string("Wait for the current input to be confirmed.") }
+        guard !execution.isRefreshingHistory else { return ScholiumL10n.string("Wait for conversation history to finish updating.") }
+        guard execution.state == .ready || (execution.state == .working && execution.turnID != nil) else {
+            return ScholiumL10n.string("Wait for the current operation to finish.")
+        }
+        guard runtime != nil else { return ScholiumL10n.string("Connect Codex before sending.") }
+        guard conversation.isAvailable == true else { return ScholiumL10n.string("Restore this conversation before sending.") }
+        guard conversation.pendingMessageID == nil else { return ScholiumL10n.string("Review the unconfirmed delivery before continuing.") }
+        guard !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return ScholiumL10n.string("Enter a message before sending.") }
+        guard message.coordinationTarget == nil || message.coordinationTarget?.parentThreadID == conversation.threadID else {
+            return ScholiumL10n.string(queued
+                ? "This Agent belongs to the original conversation. Remove this queued message or return to its original conversation."
+                : "This Agent belongs to the original conversation.")
+        }
+        return nil
+    }
+
+    func retryLocalHistory() {
+        guard !isLoaded, !isLoadingLocalHistory else { return }
+        isLoadingLocalHistory = true
+        localHistoryError = nil
+        initialLoadTask = Task { [weak self] in await self?.load() }
     }
 
     private func load() async {
+        defer { isLoadingLocalHistory = false }
         do {
-            conversations = try await storage.load()
-            guard conversations.allSatisfy({ $0.triptychID == triptychID }) else {
+            let loaded = try await storage.load()
+            guard loaded.allSatisfy({ $0.triptychID == triptychID }) else {
                 throw CocoaError(.fileReadCorruptFile)
             }
+            conversations = loaded
             for index in conversations.indices {
                 if conversations[index].lastRunStatus?.isActive == true {
                     conversations[index].lastRunStatus = .interrupted
@@ -664,13 +711,14 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 conversations.filter { $0.isAvailable == true }
                 .sorted { $0.updatedAt > $1.updatedAt }.first?.id
             executions = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, AgentChatExecutionState()) })
+            localHistoryError = nil
             isLoaded = true
             if selectedID == nil { newConversation() }
             if connectionDefaults.bool(forKey: connectionIntentKey) {
                 connectConfigured(automatically: true)
             }
         } catch {
-            self.connectionError = String(
+            self.localHistoryError = String(
                 localized: "Conversation history could not be opened: \(error.localizedDescription)")
         }
     }

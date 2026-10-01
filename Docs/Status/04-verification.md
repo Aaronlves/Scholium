@@ -120,18 +120,17 @@ Earlier unchanged application recovery baseline:
 `.build/settings-recovery-evidence/RESULTS.md`. Chinese IME, VoiceOver and system
 accessibility adaptations still require human acceptance.
 
-**2026-09-22 — Chat response/reading:** Tests cover history batching, stream
-publication, WebKit selection, draft measurement and floating-composer geometry.
-Synthetic 4,000-message hydration: 10.7s→22–42ms; 200 unchanged-draft sizing probes:
-1.027s→13ms. These are microbenchmarks, not provider latency. Narrow Light/Dark
-native QA verified input growth/shrink and latest-reply clearance; draft/Find/back
-UI verification passed. Ten dark-reader mounts completed.
-Evidence: `.build/chat-viewport-final.log`, `.build/chat-reader-dark-scheme-check.log`,
-`.build/chat-experience-ui-final.log`.
-Earlier delivery/queue/material and native-input proof remains in
-`.build/chat-fixes/verification.md`, `.build/chat-layering/verification.md`.
-Neither establishes installed-IME, VoiceOver, real inference or researcher visual
-acceptance.
+**2026-10-02 — Chat reading/sidebar:** 107 scoped tests cover history recovery,
+queue blockers, draft/Find/selection/Undo continuity and short-window prepared
+input. One offline 500-Note native journey verifies page returns, retained Find
+focus, Note preparation and source preservation. Narrow Light/Dark composition
+was inspected. Synthetic 4,000-message hydration: 10.7s→22–42ms; 200 unchanged-draft
+sizing probes: 1.027s→13ms. These are microbenchmarks, not provider latency.
+Evidence: `.build/chat-optimization/`, `.build/chat-viewport-final.log`,
+`.build/chat-reader-dark-scheme-check.log`. Earlier delivery/material proof remains
+in `.build/chat-fixes/verification.md`, `.build/chat-layering/verification.md`.
+Installed IME, VoiceOver, real inference, full adaptations and researcher visual
+acceptance remain open.
 
 **Retained Chat component boundaries:** Deterministic fixtures and inspected
 Light/Dark offscreen native renders cover Note/file/image/PDF materials and

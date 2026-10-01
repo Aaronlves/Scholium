@@ -184,6 +184,16 @@ extension ScholiumUITests {
         XCTAssertTrue(find.waitForExistence(timeout: 5))
         XCTAssertEqual(find.value as? String, "retained query")
         XCTAssertEqual(composer.value as? String, "First sidebar draft")
+        // Reopening retained Find must restore its native input context. Send
+        // the key to the application without clicking either field first.
+        app.typeKey(.rightArrow, modifierFlags: [])
+        app.typeKey(.delete, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { find.value as? String == "retained quer" })
+        XCTAssertEqual(composer.value as? String, "First sidebar draft", "Returning to Find must not route typing to the draft.")
+        let retainedFind = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        retainedFind.name = "chat-retained-find-and-draft"
+        retainedFind.lifetime = .keepAlways
+        add(retainedFind)
 
         create.click()
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -201,6 +211,56 @@ extension ScholiumUITests {
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         XCTAssertEqual(composer.value as? String, "First sidebar draft")
         XCTAssertFalse(find.exists)
+        let returnedDraft = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        returnedDraft.name = "chat-returned-draft"
+        returnedDraft.lifetime = .keepAlways
+        add(returnedDraft)
+
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalSource = try Data(contentsOf: noteURL)
+        let longDraft = String(repeating: "Keep supplied wording exact. 保留原文与尚待核对的问题。\n", count: 10)
+        typeCommittedText(longDraft, into: composer, in: app, clickWithinVisibleFrame: true)
+        app.descendants(matching: .any)["scholium.chat.addMaterial"].firstMatch.click()
+        app.menuItems["Choose Note…"].click()
+        let preparationPicker = app.sheets.firstMatch
+        let noteSearch = preparationPicker.searchFields["scholium.chat.notePicker.search"]
+        XCTAssertTrue(noteSearch.waitForExistence(timeout: 5))
+        typeCommittedText("QA Autosave A", into: noteSearch, in: app)
+        preparationPicker.staticTexts["QA Autosave A"].firstMatch.click()
+        preparationPicker.buttons["Add"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !preparationPicker.exists })
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.preparedMaterials"].firstMatch.exists)
+        XCTAssertEqual(composer.value as? String, longDraft)
+        app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
+        app.menuItems["Find in Conversation"].click()
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        typeCommittedText("source", into: find, in: app)
+        let window = app.windows.firstMatch
+        resizeProofWindow(window, toWidth: 960, height: 640)
+        XCTAssertTrue(window.frame.contains(composer.frame))
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.addMaterial"].firstMatch.isHittable)
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Light"].click()
+        let preparedLight = XCTAttachment(screenshot: window.screenshot())
+        preparedLight.name = "chat-prepared-input-short-light"
+        preparedLight.lifetime = .keepAlways
+        add(preparedLight)
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Dark"].click()
+        XCTAssertEqual(composer.value as? String, longDraft)
+        let preparedDark = XCTAttachment(screenshot: window.screenshot())
+        preparedDark.name = "chat-prepared-input-short-dark"
+        preparedDark.lifetime = .keepAlways
+        add(preparedDark)
+        app.buttons["scholium.chat.back"].click()
+        XCTAssertTrue(app.buttons[originalRowID].waitForExistence(timeout: 5))
+        let conversationList = XCTAttachment(screenshot: window.screenshot())
+        conversationList.name = "chat-conversation-list-dark"
+        conversationList.lifetime = .keepAlways
+        add(conversationList)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalSource)
     }
 
     /// One settings journey covers stable geometry, draft lifetime, search and

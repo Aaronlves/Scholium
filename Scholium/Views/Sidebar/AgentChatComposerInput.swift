@@ -8,7 +8,9 @@ struct AgentChatComposerInput: NSViewRepresentable {
     @Environment(\.isEnabled) private var environmentIsEnabled
     @Binding var text: String
     @Binding var isFocused: Bool
-    let conversationID: UUID?
+    let nativeSession: AgentChatComposerSession
+    let readCurrentDraft: () -> String
+    private var conversationID: UUID? { nativeSession.conversationID }
     let isEnabled: Bool
     let submit: () -> Void
     var completion: AgentChatComposerCompletion? = nil
@@ -17,12 +19,19 @@ struct AgentChatComposerInput: NSViewRepresentable {
     var canChooseCompletion: ((AgentChatComposerCandidate) -> Bool)? = nil
     var chooseCompletion: ((AgentChatComposerCandidate, @escaping (Bool) -> Void) -> Void)? = nil
     var transferMaterials: (([AgentChatTransferredMaterial], AgentChatLocalMaterial.CaptureOrigin) -> Void)? = nil
+    var maximumHeight: CGFloat? = nil
 
-    func makeNSView(context: Context) -> AgentChatComposerHost {
-        AgentChatComposerHost()
+    func makeNSView(context: Context) -> AgentChatComposerMountView {
+        AgentChatComposerMountView(session: nativeSession)
     }
 
-    func updateNSView(_ host: AgentChatComposerHost, context: Context) {
+    func updateNSView(_ mount: AgentChatComposerMountView, context: Context) {
+        guard !mount.isRetired else { return }
+        mount.install(nativeSession)
+        let host = nativeSession.host
+        // An outgoing representable can still carry a Binding render snapshot.
+        // Only the captured conversation's live owner may replace native input.
+        let modelText = readCurrentDraft()
         var replacedDraft = false
         if host.completion !== completion { host.completion?.detach(from: host.editor) }
         host.completion = completion
@@ -36,13 +45,16 @@ struct AgentChatComposerInput: NSViewRepresentable {
             host.commitCurrentDraft()
             host.editor.unmarkText()
             host.conversationID = conversationID
-            host.editor.replaceDraft(text, selection: NSRange(location: (text as NSString).length, length: 0))
-            host.lastPublishedText = text
+            host.editor.replaceDraft(modelText, selection: NSRange(location: (modelText as NSString).length, length: 0))
+            host.lastPublishedText = modelText
             replacedDraft = true
-        } else if host.editor.string != text, !host.editor.hasMarkedText() {
+        } else if host.editor.string != modelText, !host.editor.hasMarkedText() {
+            if modelText != host.lastPublishedText, host.editor.string != host.lastPublishedText {
+                nativeSession.retainInput(host.editor.string)
+            }
             let selection = host.editor.selectedRange()
-            host.editor.replaceDraft(text, selection: NSRange(location: min(selection.location, (text as NSString).length), length: 0))
-            host.lastPublishedText = text
+            host.editor.replaceDraft(modelText, selection: NSRange(location: min(selection.location, (modelText as NSString).length), length: 0))
+            host.lastPublishedText = modelText
             replacedDraft = true
         }
         host.editor.completionConversationID = conversationID
@@ -51,11 +63,19 @@ struct AgentChatComposerInput: NSViewRepresentable {
         // publish the initialized draft's query only after that handoff finishes.
         completion?.refresh(from: host.editor, in: conversationID)
         host.onEdit = { text = $0 }
+        host.readDraft = readCurrentDraft
+        host.onRetainInput = { [weak nativeSession] in nativeSession?.retainInput($0) }
         host.onFocus = { if isFocused != $0 { isFocused = $0 } }
         host.editor.onSubmit = submit
         host.editor.onTransferMaterials = transferMaterials
         host.editor.isEditable = isEnabled && environmentIsEnabled
         host.editor.isSelectable = isEnabled && environmentIsEnabled
+        let font = ScholiumChatAppearance.messageNSFont
+        if host.editor.font != font {
+            host.editor.font = font
+            host.invalidateIntrinsicContentSize()
+            host.needsLayout = true
+        }
         if host.focusValue != isFocused {
             host.focusValue = isFocused
             host.requestedFocus = isFocused
@@ -67,28 +87,18 @@ struct AgentChatComposerInput: NSViewRepresentable {
         }
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: AgentChatComposerHost, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: AgentChatComposerMountView, context: Context) -> CGSize? {
         // SwiftUI also probes an unbounded size. Do not pass that probe into
         // AppKit's text layout or its constraint system.
         let proposedWidth = proposal.width ?? nsView.bounds.width
         let width =
             proposedWidth.isFinite && proposedWidth < CGFloat.greatestFiniteMagnitude
             ? max(1, proposedWidth) : max(1, nsView.bounds.width)
-        return CGSize(width: width, height: nsView.fittingHeight(width: width))
+        return CGSize(width: width, height: nativeSession.host.fittingHeight(width: width, maximumHeight: maximumHeight))
     }
 
-    static func dismantleNSView(_ host: AgentChatComposerHost, coordinator: ()) {
-        host.commitCurrentDraft()
-        host.onEdit = nil
-        host.onFocus = nil
-        host.editor.onSubmit = nil
-        host.editor.onTransferMaterials = nil
-        host.editor.onFocusChange = nil
-        host.editor.onCompositionChange = nil
-        host.editor.delegate = nil
-        host.editor.onCompletionKey = nil
-        host.completion?.detach(from: host.editor)
-        host.completion = nil
+    static func dismantleNSView(_ mount: AgentChatComposerMountView, coordinator: ()) {
+        mount.detach()
     }
 }
 
@@ -97,6 +107,8 @@ struct AgentChatComposerInput: NSViewRepresentable {
     weak var completion: AgentChatComposerCompletion?
     var conversationID: UUID?
     var onEdit: ((String) -> Void)?
+    var readDraft: (() -> String)?
+    var onRetainInput: ((String) -> Void)?
     var onFocus: ((Bool) -> Void)?
     var focusValue = false
     var requestedFocus: Bool?
@@ -118,7 +130,7 @@ struct AgentChatComposerInput: NSViewRepresentable {
         editor.registerForDraggedTypes(Array(Set(editor.registeredDraggedTypes + AgentChatPasteboardSnapshot.materialTypes)))
         editor.drawsBackground = false
         editor.allowsUndo = true
-        editor.font = .systemFont(ofSize: NSFont.systemFontSize)
+        editor.font = ScholiumChatAppearance.messageNSFont
         editor.textColor = .textColor
         editor.textContainerInset = NSSize(width: 4, height: 6)
         editor.isHorizontallyResizable = false
@@ -157,9 +169,11 @@ struct AgentChatComposerInput: NSViewRepresentable {
         }
     }
 
-    func fittingHeight(width: CGFloat) -> CGFloat {
+    func fittingHeight(width: CGFloat, maximumHeight: CGFloat? = nil) -> CGFloat {
         let lineHeight = editor.layoutManager?.defaultLineHeight(for: editor.font ?? .systemFont(ofSize: NSFont.systemFontSize)) ?? 17
-        return min(max(40, measuredTextHeight(width: width)), lineHeight * 7 + 12)
+        let natural = min(max(40, measuredTextHeight(width: width)), lineHeight * 7 + 12)
+        guard let maximumHeight, maximumHeight.isFinite else { return natural }
+        return min(natural, max(lineHeight + 2 * editor.textContainerInset.height, maximumHeight))
     }
 
     private func measuredTextHeight(width: CGFloat) -> CGFloat {
@@ -186,8 +200,40 @@ struct AgentChatComposerInput: NSViewRepresentable {
 
     func commitCurrentDraft() {
         guard editor.string != lastPublishedText else { return }
+        if let model = readDraft?(), model != lastPublishedText {
+            onRetainInput?(editor.string)
+            return
+        }
         lastPublishedText = editor.string
         onEdit?(editor.string)
+    }
+
+    func suspend() {
+        // Leaving the page finishes its native input session without replacing
+        // the visible preedit text. Publish to the old conversation before its
+        // binding detaches; no marked range can migrate into another draft.
+        commitCurrentDraft()
+        if editor.hasMarkedText() { editor.unmarkText() }
+        if let window, window.firstResponder === editor { window.makeFirstResponder(nil) }
+        commitCurrentDraft()
+        if let model = readDraft?(), model != lastPublishedText {
+            let selection = editor.selectedRange()
+            editor.replaceDraft(model, selection: NSRange(location: min(selection.location, model.utf16.count), length: 0))
+            lastPublishedText = model
+        }
+        onEdit = nil
+        readDraft = nil
+        onRetainInput = nil
+        onFocus = nil
+        editor.onSubmit = nil
+        editor.onTransferMaterials = nil
+        editor.onCompletionKey = nil
+        completion?.detach(from: editor)
+        completion = nil
+        editor.isEditable = false
+        editor.isSelectable = false
+        focusValue = false
+        requestedFocus = nil
     }
     func textDidChange(_ notification: Notification) {
         commitCurrentDraft()
