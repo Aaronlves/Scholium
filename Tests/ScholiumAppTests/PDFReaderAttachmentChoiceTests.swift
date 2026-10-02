@@ -96,7 +96,8 @@ struct PDFReaderAttachmentChoiceTests {
 
         let unbound = PDFReaderNoteContext(triptychID: context.triptychID, target: context.target, authoredPath: nil)
         reader.follow(unbound, operations: operations)
-        button.menuNeedsUpdate(menu)
+        let menuOwner = try #require(menu.delegate as? PDFReaderCommandMenu)
+        menuOwner.menuNeedsUpdate(menu)
         #expect(!detach.isEnabled)
         #expect(NSApplication.shared.sendAction(try #require(detach.action), to: detach.target, from: detach))
         await Task.yield()

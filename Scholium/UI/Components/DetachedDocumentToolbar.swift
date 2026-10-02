@@ -10,7 +10,7 @@ final class DetachedDocumentToolbar: NSObject, NSToolbarDelegate, NSToolbarItemV
     private var geometryObservation: AnyCancellable?
     private weak var window: NSWindow?
     private var readingDivider: NSTrackingSeparatorToolbarItem?
-    private var readerControls: PDFReaderToolbarItem?
+    private var readerControls: PDFReaderToolbarController?
     private let mode: ScholiumDocumentModeToolbarItem
     private let more: DocumentNoteActionsToolbarItem
     private let pdfReader: NSToolbarItemGroup
@@ -28,6 +28,7 @@ final class DetachedDocumentToolbar: NSObject, NSToolbarDelegate, NSToolbarItemV
             identifier: .init("scholium.toolbar.pdfReader"), label: pdfReaderCommand.label,
             items: [pdfReaderCommand], target: nil, action: nil)
         super.init()
+        readerControls = PDFReaderToolbarController(controller: model.pdfReaderController) { [weak self] in self?.refreshReaderPresentation() }
         toolbar.delegate = self
         toolbar.allowsUserCustomization = false
         toolbar.allowsDisplayModeCustomization = false
@@ -101,18 +102,19 @@ final class DetachedDocumentToolbar: NSObject, NSToolbarDelegate, NSToolbarItemV
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        Self.itemIdentifiers(readerVisible: readingController?.readerIsVisible == true)
+        Self.itemIdentifiers(
+            readerVisible: readingController?.readerIsVisible == true,
+            readerPresentation: readerControls?.presentation ?? .actions)
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
-    static func itemIdentifiers(readerVisible: Bool) -> [NSToolbarItem.Identifier] {
+    static func itemIdentifiers(readerVisible: Bool, readerPresentation: PDFReaderToolbarController.Presentation = .expanded) -> [NSToolbarItem.Identifier] {
         [.flexibleSpace, .init("mode"), .init("more")]
             + (readerVisible
-                ? [
-                    ScholiumWorkspaceToolbarController.Item.readingDivider,
-                    ScholiumWorkspaceToolbarController.Item.readerControls,
-                    .flexibleSpace,
-                ] : [.space]) + [ScholiumWorkspaceToolbarController.Item.pdfReader]
+                ? [ScholiumWorkspaceToolbarController.Item.readingDivider]
+                    + PDFReaderToolbarController.itemIdentifiers(for: readerPresentation) + [.flexibleSpace] : [.space]) + [
+                ScholiumWorkspaceToolbarController.Item.pdfReader
+            ]
     }
 
     private var readingController: ScholiumDocumentReadingSplitController? {
@@ -132,13 +134,12 @@ final class DetachedDocumentToolbar: NSObject, NSToolbarDelegate, NSToolbarItemV
             }
             return readingDivider
         }
-        if id == ScholiumWorkspaceToolbarController.Item.readerControls {
-            guard let model else { return nil }
-            if readerControls == nil { readerControls = PDFReaderToolbarItem(identifier: id, controller: model.pdfReaderController) }
-            if let window { readerControls?.install(in: window) }
+        if PDFReaderToolbarController.allIdentifiers.contains(id) {
+            if let window {
+                readerControls?.install(in: window, toolbar: toolbar, readerView: readingController?.readerController.view)
+            }
             updateReaderRegionWidth()
-            readerControls?.refresh()
-            return readerControls
+            return readerControls?.item(for: id)
         }
         if id == pdfReader.itemIdentifier {
             refreshReaderPresentation(updateTopology: false)
@@ -175,8 +176,14 @@ final class DetachedDocumentToolbar: NSObject, NSToolbarDelegate, NSToolbarItemV
 
     private func refreshReaderPresentation(updateTopology: Bool = true) {
         guard !isInvalidated, let model else { return }
+        if let window {
+            readerControls?.install(in: window, toolbar: toolbar, readerView: readingController?.readerController.view)
+        }
+        updateReaderRegionWidth()
         if updateTopology, window != nil {
-            let identifiers = Self.itemIdentifiers(readerVisible: readingController?.readerIsVisible == true)
+            let identifiers = Self.itemIdentifiers(
+                readerVisible: readingController?.readerIsVisible == true,
+                readerPresentation: readerControls?.presentation ?? .actions)
             if toolbar.itemIdentifiers != identifiers { toolbar.itemIdentifiers = identifiers }
             if let readingController, let readingDivider { readingDivider.splitView = readingController.splitView }
         }

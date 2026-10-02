@@ -89,7 +89,7 @@ final class PDFReaderController: ObservableObject {
     @Published private(set) var pageCount = 0
     @Published private(set) var hasSelection = false
     @Published private(set) var annotations: [PDFReaderAnnotationRow] = []
-    @Published var tool: Tool = .select
+    @Published private(set) var tool: Tool = .select
     @Published var annotationDraft: PDFReaderAnnotationDraft?
     @Published var annotationDetail: PDFReaderAnnotationRow?
     @Published private(set) var annotationDetailStatus: String?
@@ -172,6 +172,15 @@ final class PDFReaderController: ObservableObject {
 
     private var acceptsInteraction: Bool { !isClosed && !isDeparting && allowsInteraction() }
     var canUseReaderCommands: Bool { acceptsInteraction && !isImporting }
+
+    func canSelectTool(_ tool: Tool) -> Bool {
+        canUseReaderCommands && document != nil && (tool == .select || canAnnotate)
+    }
+
+    func selectTool(_ tool: Tool) {
+        guard isVisible, canSelectTool(tool) else { return }
+        self.tool = tool
+    }
 
     var canAnnotate: Bool {
         guard acceptsInteraction, let session, document === session.document, context == session.context else { return false }

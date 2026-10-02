@@ -150,8 +150,8 @@ through inline preview; identity guards clear both. Machine-local Writing Assist
 selection actions and remain independent of conversation settings.
 
 Attachment I/O belongs to [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties);
-Quick Look owns its lease. `PDFReaderController` owns PDFKit sessions;
-`WindowSidePaneCoordinator` owns exclusive pane transitions; `ScholiumDocumentReadingSplitView` owns geometry. `PDFReaderOperations` shares
+Quick Look owns its lease. `PDFReaderController` owns PDFKit sessions; `PDFReaderNativeHostView` owns overlays;
+`WindowSidePaneCoordinator` owns exclusive pane transitions; `ScholiumDocumentReadingSplitView` owns split geometry. `PDFReaderOperations` shares
 `SharedPDFStore` and `PDFReaderStateStore` across Triptych windows. Runtime/file
 hints prompt checked clean-peer refresh, never carry source.
 Portable records locate copies; authored `pdf` alone binds Notes. Immutable

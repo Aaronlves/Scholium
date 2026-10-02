@@ -269,19 +269,19 @@ navigation uses a short smooth reveal and the existing transient arrival marker.
 Reduce Motion uses immediate positioning and static feedback. The rail hides
 before it would compress or cover readable Document content.
 
-Attachments remain authored file links or image embeds with quiet file-type
-symbols in Review/inactive Edit. File insertion uses the editor selection;
-Quick Look retains ordinary attachment previews. **PDF Reader** is a separate
-resizable right-side reading pane beside Markdown, distinct from Inspector.
-They share one side-pane slot; Document mode is unchanged. Opaque paper fills the scrolling plane; native
-toolbar controls follow its divider. Search opens on demand. It follows
-the selected Note's optional `pdf` binding (§5.2), with empty/loading/unavailable states.
-Controls provide distinct attachment identities, navigation, zoom, search,
-direct highlighting, and comment creation/edit/deletion.
-Annotations identify passages and reveal precise locations; full comments remain
-readable without editing permission. Unavailable bindings retain their locator,
-Retry, Replace and guarded Detach. Opening or resizing
-preserves Markdown. §7 owns save, conflict and recovery.
+Attachments retain authored links/embeds with quiet type symbols in Review/inactive
+Edit; insertion uses selection and Quick Look previews remain.
+**PDF Reader** shares Inspector's resizable right-side slot, preserving Markdown
+and mode. Its opaque viewport follows the selected Note's optional `pdf` binding
+(§5.2), with empty/loading/unavailable states.
+Upper native controls offer page navigation, on-demand search and More. Loaded
+PDFs retain a bottom-centered native floating strip: Select, Highlight, Comment
+and zoom. Page ends scroll above it; the upper toolbar omits separate tool/zoom
+selectors. Tools retain position/selection.
+More preserves distinct attachment identities/actions, tool alternatives and the
+annotation list. Annotations locate passages and support comment creation/edit/deletion;
+full comments remain readable without editing permission. Unavailable bindings
+retain locator, Retry, Replace and guarded Detach. §7 owns save, conflict and recovery.
 
 Edit entry restores fingerprint-valid title/body focus and selection; otherwise
 it maps an exact Review selection or places the caret at the first body position

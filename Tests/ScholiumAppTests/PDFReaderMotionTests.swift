@@ -15,7 +15,10 @@ struct PDFReaderMotionTests {
         defer { reader.shutdown() }
         let view = PDFReaderNativePDFView(frame: NSRect(x: 0, y: 0, width: 500, height: 650))
         let window = makeWindow(view)
-        defer { view.invalidate(); window.close() }
+        defer {
+            view.invalidate()
+            window.close()
+        }
         try await fixture.load()
         let document = try #require(reader.document)
         view.updatePresentation(reduceMotion: reduceMotion)
@@ -45,12 +48,18 @@ struct PDFReaderMotionTests {
     func interruptionKeepsCurrentDocument() async throws {
         let first = try Fixture()
         let second = try Fixture()
-        defer { first.reader.shutdown(); second.reader.shutdown() }
+        defer {
+            first.reader.shutdown()
+            second.reader.shutdown()
+        }
         try await first.load()
         try await second.load()
         let view = PDFReaderNativePDFView(frame: NSRect(x: 0, y: 0, width: 500, height: 650))
         let window = makeWindow(view)
-        defer { view.invalidate(); window.close() }
+        defer {
+            view.invalidate()
+            window.close()
+        }
         view.updatePresentation(reduceMotion: false)
         view.apply(first.reader)
         view.isHidden = true
@@ -77,7 +86,7 @@ struct PDFReaderMotionTests {
     private func makeWindow(_ view: NSView) -> NSWindow {
         let window = NSWindow(contentRect: view.bounds, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        window.contentView = view
+        window.contentView = (view as? PDFReaderNativePDFView).map(PDFReaderNativeHostView.init(pdfView:)) ?? view
         window.layoutIfNeeded()
         return window
     }
@@ -98,23 +107,28 @@ struct PDFReaderMotionTests {
                 id: attachmentID, vaultID: nil,
                 location: .triptychRelative(try AttachmentRelativePath("attachments/files/\(attachmentID.uuidString)/motion.pdf"))
             )
-            let snapshot = PDFReaderSnapshot(record: record, data: data, revision: PDFReaderRevision(
-                fingerprint: DocumentFingerprint(data: data), device: 1, inode: 1, parentDevice: 1, parentInode: 1
-            ))
-            context = PDFReaderNoteContext(triptychID: UUID(), target: SourceAttachmentTarget(
-                noteID: UUID(), vaultID: UUID(), relativePath: "synthetic-motion.md"
-            ), authoredPath: "../.scholium/attachments/files/motion.pdf")
+            let snapshot = PDFReaderSnapshot(
+                record: record, data: data,
+                revision: PDFReaderRevision(
+                    fingerprint: DocumentFingerprint(data: data), device: 1, inode: 1, parentDevice: 1, parentInode: 1
+                ))
+            context = PDFReaderNoteContext(
+                triptychID: UUID(),
+                target: SourceAttachmentTarget(
+                    noteID: UUID(), vaultID: UUID(), relativePath: "synthetic-motion.md"
+                ), authoredPath: "../.scholium/attachments/files/motion.pdf")
             operations = ControlledPDFReaderOperations(notes: [context.target.noteID: snapshot])
             reader = PDFReaderController(windowID: UUID(), setBinding: { _, _, _ in }, reportIssue: { _ in nil })
         }
 
         func load() async throws {
-            await operations.seedPosition(PDFReaderReadingState(pageIndex: 1, scaleFactor: 1.4, autoScales: false),
+            await operations.seedPosition(
+                PDFReaderReadingState(pageIndex: 1, scaleFactor: 1.4, autoScales: false),
                 noteID: context.target.noteID, attachmentID: attachmentID)
             reader.follow(context, operations: operations)
             #expect(reader.setVisible(true))
             let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-            while (reader.document == nil || reader.isLoading), reader.error == nil, ContinuousClock.now < deadline {
+            while reader.document == nil || reader.isLoading, reader.error == nil, ContinuousClock.now < deadline {
                 await Task.yield()
             }
             try #require(reader.document != nil && !reader.isLoading && reader.error == nil)

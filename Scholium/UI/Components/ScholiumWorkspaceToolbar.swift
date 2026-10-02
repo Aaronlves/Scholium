@@ -57,7 +57,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     private var chatObservation: AnyCancellable?
     private var presentationCancellables: Set<AnyCancellable> = []
     private var readingDivider: NSTrackingSeparatorToolbarItem?
-    private var readerControls: PDFReaderToolbarItem?
+    private var readerControls: PDFReaderToolbarController?
 
     init(
         appState: WindowModel,
@@ -84,6 +84,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
         notificationsPopover.behavior = .transient
         notificationsPopover.delegate = self
+        readerControls = PDFReaderToolbarController(controller: appState.pdfReaderController) { [weak self] in self?.refreshPresentation() }
         observePresentation()
         observeReadingGeometry()
     }
@@ -124,8 +125,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 noteActions.invalidate()
             } else if let mode = item as? ScholiumDocumentModeToolbarItem {
                 mode.invalidate()
-            } else if let reader = item as? PDFReaderToolbarItem {
-                reader.invalidate()
             } else {
                 item.menuFormRepresentation = nil
             }
@@ -163,6 +162,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.noteActions,
             Item.readingDivider,
             Item.readerControls,
+            PDFReaderToolbarController.searchID,
+            PDFReaderToolbarController.actionsID,
+            PDFReaderToolbarController.compactID,
             Item.apparatusDivider,
             Item.inspectorModes,
             Item.paneVisibility,
@@ -170,7 +172,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     var itemIdentifiers: [NSToolbarItem.Identifier] {
-        Self.itemIdentifiers(tabIdentifiers: documentTabs.visibleIdentifiers, readerVisible: readingController?.readerIsVisible == true)
+        Self.itemIdentifiers(
+            tabIdentifiers: documentTabs.visibleIdentifiers, readerVisible: readingController?.readerIsVisible == true,
+            readerPresentation: readerControls?.presentation ?? .actions,
+            inspectorVisible: appState.shellState.inspector.isVisible)
     }
 
     private var readingController: ScholiumDocumentReadingSplitController? {
@@ -178,7 +183,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     static func itemIdentifiers(
-        tabIdentifiers: [NSToolbarItem.Identifier], readerVisible: Bool = false
+        tabIdentifiers: [NSToolbarItem.Identifier], readerVisible: Bool = false,
+        readerPresentation: PDFReaderToolbarController.Presentation = .expanded,
+        inspectorVisible: Bool = false
     ) -> [NSToolbarItem.Identifier] {
         [
             Item.sidebar,
@@ -196,14 +203,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.noteActions,
         ]
             + (readerVisible
-                ? [
-                    Item.readingDivider,
-                    Item.readerControls,
-                    .flexibleSpace,
-                ] : []) + [
+                ? [Item.readingDivider] + PDFReaderToolbarController.itemIdentifiers(for: readerPresentation) + [.flexibleSpace] : []) + [
                 Item.apparatusDivider,
                 Item.inspectorModes,
-                .flexibleSpace,
+            ] + (inspectorVisible ? [.flexibleSpace] : []) + [
                 .space,
                 Item.paneVisibility,
             ]
@@ -272,14 +275,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 readingDivider?.visibilityPriority = .user
             }
             return readingDivider
-        case Item.readerControls:
-            if readerControls == nil {
-                readerControls = PDFReaderToolbarItem(identifier: itemIdentifier, controller: appState.pdfReaderController)
+        case Item.readerControls, PDFReaderToolbarController.searchID, PDFReaderToolbarController.actionsID, PDFReaderToolbarController.compactID:
+            if let window {
+                readerControls?.install(in: window, toolbar: toolbar, readerView: readingController?.readerController.view)
             }
-            if let window { readerControls?.install(in: window) }
             updateReaderRegionWidth()
-            readerControls?.refresh()
-            return readerControls
+            return readerControls?.item(for: itemIdentifier)
         case Item.paneVisibility:
             return paneVisibilityItem(identifier: itemIdentifier)
         case Item.pdfReader:
@@ -592,8 +593,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
 
     private func refreshPresentation() {
         guard !isInvalidated else { return }
-        installToolbarItemsIfNeeded()
+        if let window {
+            readerControls?.install(in: window, toolbar: toolbar, readerView: readingController?.readerController.view)
+        }
         updateReaderRegionWidth()
+        installToolbarItemsIfNeeded()
         readerControls?.refresh()
         let shellState = appState.shellState
         let chat = appState.chatController

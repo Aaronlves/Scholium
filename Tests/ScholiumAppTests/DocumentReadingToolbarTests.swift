@@ -53,7 +53,7 @@ struct DocumentReadingToolbarTests {
             Task { await operations.cancelPending() }
         }
         let toolbar = try #require(window.toolbar)
-        let controls = try #require(item(ID.readerControls, in: toolbar) as? PDFReaderToolbarItem)
+        let controls = try #require(item(ID.readerControls, in: toolbar) as? NSToolbarItemGroup)
         let divider = try #require(item(ID.readingDivider, in: toolbar) as? NSTrackingSeparatorToolbarItem)
         let document = reading.documentController.view
         model.pdfReaderController.recordPaneWidth(620)
@@ -64,18 +64,19 @@ struct DocumentReadingToolbarTests {
             await drainPresentation()
             #expect(abs(reading.readerController.view.bounds.width - width) < 1)
             #expect(model.pdfReaderController.paneWidth == 620)
-            #expect(controls.usesCompactPresentation == compact)
+            #expect((item(PDFReaderToolbarController.compactID, in: toolbar) != nil) == compact)
             #expect(item(ID.readerControls, in: toolbar) === controls)
             #expect(divider.splitView === reading.splitView && reading.documentController.view === document)
-            let view = try #require(controls.view)
-            let compactButton = (view as? NSStackView)?.arrangedSubviews.first { $0.accessibilityIdentifier() == "scholium.pdf.compactControls" }
-            #expect((compactButton?.isHidden ?? true) == !compact)
-            if compact { #expect(view.fittingSize.width + CGFloat(detached ? 44 : 88) + 16 <= width) }
-            // AppKit exposes toolbar view placement only after its native host
-            // participates; the isolated app journey owns visible AX edges.
-            if view.window === window {
-                let boundary = document.convert(NSPoint(x: document.bounds.maxX, y: 0), to: nil).x
-                #expect(view.convert(.zero, to: nil).x >= boundary - 1)
+            let pageItem = try #require(controls.subitems.first { $0.itemIdentifier.rawValue == "scholium.pdf.page.control" })
+            let page = try #require((pageItem.view as? NSStackView)?.arrangedSubviews.first as? NSTextField)
+            #expect(page.isEnabled && !page.isBezeled && !page.drawsBackground)
+            #expect(controls.subitems.count == (compact ? 1 : 3))
+            if !compact {
+                #expect(controls.subitems.first?.view == nil && controls.subitems.last?.view == nil)
+                toolbar.validateVisibleItems()
+                #expect(controls.subitems.first?.isEnabled == false && controls.subitems.last?.isEnabled == true)
+                let actions = try #require(item(PDFReaderToolbarController.actionsID, in: toolbar) as? NSMenuToolbarItem)
+                #expect(actions.view == nil && !actions.showsIndicator)
             }
         }
         workspaceOwner?.invalidate()
@@ -83,7 +84,7 @@ struct DocumentReadingToolbarTests {
         reading.splitView.setPosition(reading.splitView.bounds.maxX - 280 - reading.splitView.dividerThickness, ofDividerAt: 0)
         NotificationCenter.default.post(name: NSWindow.didResizeNotification, object: window)
         await drainPresentation()
-        #expect(!controls.usesCompactPresentation && !controls.isEnabled)
+        #expect(!controls.isEnabled)
     }
 
     @Test("The three side-pane states retain commands and bind the toolbar to the nested Markdown divider")
@@ -156,9 +157,9 @@ struct DocumentReadingToolbarTests {
             let moreIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ID.noteActions))
             if readerVisible {
                 #expect(toolbar.itemIdentifiers[moreIndex + 1] == ID.readingDivider)
-                #expect(toolbar.itemIdentifiers[moreIndex + 2] == ID.readerControls)
+                #expect(toolbar.itemIdentifiers[moreIndex + 2] == PDFReaderToolbarController.actionsID)
                 let divider = try #require(item(ID.readingDivider, in: toolbar) as? NSTrackingSeparatorToolbarItem)
-                let controls = try #require(item(ID.readerControls, in: toolbar) as? PDFReaderToolbarItem)
+                let controls = try #require(item(PDFReaderToolbarController.actionsID, in: toolbar) as? NSMenuToolbarItem)
                 #expect(divider.splitView === reading.splitView && divider.dividerIndex == 0)
                 #expect(divider.splitView !== split.splitView)
                 if let retainedPDFControls { #expect(controls === retainedPDFControls) }
@@ -183,7 +184,7 @@ struct DocumentReadingToolbarTests {
                 #expect(divider.splitView === reading.splitView)
             } else {
                 #expect(toolbar.itemIdentifiers[moreIndex + 1] == ID.apparatusDivider)
-                #expect(item(ID.readerControls, in: toolbar) == nil)
+                #expect(PDFReaderToolbarController.allIdentifiers.allSatisfy { item($0, in: toolbar) == nil })
                 #expect(item(ID.readingDivider, in: toolbar) == nil)
             }
             #expect(toolbar.itemIdentifiers.last == ID.paneVisibility)
@@ -223,8 +224,8 @@ struct DocumentReadingToolbarTests {
         let divider = try #require(item(ID.readingDivider, in: owner.toolbar) as? NSTrackingSeparatorToolbarItem)
         #expect(divider.splitView === reading.splitView && divider.splitView.window === window)
         #expect(divider.splitView !== foreign.splitView)
-        #expect(owner.toolbar.itemIdentifiers == DetachedDocumentToolbar.itemIdentifiers(readerVisible: true))
-        let controls = try #require(item(ID.readerControls, in: owner.toolbar) as? PDFReaderToolbarItem)
+        #expect(owner.toolbar.itemIdentifiers == DetachedDocumentToolbar.itemIdentifiers(readerVisible: true, readerPresentation: .actions))
+        let controls = try #require(item(PDFReaderToolbarController.actionsID, in: owner.toolbar) as? NSMenuToolbarItem)
         reading.invalidate()
         await drainPresentation()
         #expect(!owner.toolbar.itemIdentifiers.contains(ID.readingDivider))

@@ -77,7 +77,8 @@ PDF Reader and Inspector switches. At most one is active; clicking it closes the
 side pane. Both use persistent native Accent, selected state and accessible names.
 Switching preserves PDF position and crosses its draft/save barrier; failure retains
 the prior pane. Restoration normalizes both-open state to PDF. Document actions align right within Markdown;
-PDF controls align left within PDF, across their native tracking divider. Pane
+PDF navigation and search align left within PDF, across their native tracking divider;
+§18.4 owns its floating reading tools. Pane
 toggles remain at the trailing edge. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,
 including embedded editors. Native overflow preserves access. Toolbar customization is not required.

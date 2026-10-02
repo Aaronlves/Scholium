@@ -2,6 +2,26 @@ import AppKit
 import PDFKit
 import SwiftUI
 
+/// Native sibling composition keeps controls outside PDFKit's paper and AX
+/// subtree. The PDF view remains the reading/selection/session adapter.
+@MainActor
+final class PDFReaderNativeHostView: NSView {
+    let pdfView: PDFReaderNativePDFView
+
+    init(pdfView: PDFReaderNativePDFView) {
+        self.pdfView = pdfView
+        super.init(frame: pdfView.bounds)
+        pdfView.frame = bounds
+        pdfView.autoresizingMask = [.width, .height]
+        addSubview(pdfView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("Code-only PDF host") }
+
+    override func accessibilityChildren() -> [Any]? { isHidden ? [] : subviews }
+}
+
 /// PDFKit owns reading, selection, links and scrolling. This adapter translates
 /// only reader-tool input and reports native state to the current controller.
 @MainActor
@@ -21,6 +41,10 @@ final class PDFReaderNativePDFView: PDFView {
     private var needsContentReveal = false
     private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     private var displayOptionsObserver: NSObjectProtocol?
+    private(set) var floatingTools: PDFReaderFloatingToolsView?
+    private weak var insetScrollView: NSScrollView?
+    private var originalScrollInsets = NSEdgeInsets()
+    private var originalAutomaticInsets = true
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -57,6 +81,8 @@ final class PDFReaderNativePDFView: PDFView {
             self.controller = controller
         }
         if ownerChanged || document !== controller.document {
+            floatingTools?.cancelTracking()
+            restoreScrollInsets()
             stopContentReveal()
             interactionGeneration &+= 1
             gestureDocument = nil
@@ -67,6 +93,8 @@ final class PDFReaderNativePDFView: PDFView {
             isRestoring = false
             synchronizeClipObserver()
         }
+        installFloatingToolsIfNeeded(controller)
+        floatingTools?.update(controller)
         attachWhenReady()
         revealContentWhenReady()
     }
@@ -75,14 +103,29 @@ final class PDFReaderNativePDFView: PDFView {
         super.layout()
         synchronizeClipObserver()
         attachWhenReady()
+        synchronizeScrollInsets()
+        if let controller { floatingTools?.update(controller) }
+        revealContentWhenReady()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        attachWhenReady()
+        synchronizeScrollInsets()
+        if let controller { floatingTools?.update(controller) }
         revealContentWhenReady()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         removeEventMonitor()
+        interactionGeneration &+= 1
+        gestureDocument = nil
+        floatingTools?.cancelTracking()
         guard !isInvalidated, window != nil else {
             stopContentReveal()
+            restoreScrollInsets()
+            if let controller { floatingTools?.update(controller) }
             return
         }
         // PDFKit's document subview may handle pointer events before PDFView.
@@ -95,6 +138,8 @@ final class PDFReaderNativePDFView: PDFView {
             return shouldDeliver ? event : nil
         }
         attachWhenReady()
+        if let controller { floatingTools?.update(controller) }
+        synchronizeScrollInsets()
         revealContentWhenReady()
     }
 
@@ -103,12 +148,15 @@ final class PDFReaderNativePDFView: PDFView {
         interactionGeneration &+= 1
         gestureDocument = nil
         stopContentReveal()
+        floatingTools?.cancelTracking()
+        if let controller { floatingTools?.update(controller) }
     }
 
     override func viewDidUnhide() {
         super.viewDidUnhide()
         needsContentReveal = document != nil
         attachWhenReady()
+        if let controller { floatingTools?.update(controller) }
         revealContentWhenReady()
     }
 
@@ -119,6 +167,8 @@ final class PDFReaderNativePDFView: PDFView {
         interactionGeneration &+= 1
         gestureDocument = nil
         controller = nil
+        floatingTools?.invalidate()
+        restoreScrollInsets()
         stopContentReveal()
         if let displayOptionsObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(displayOptionsObserver)
@@ -142,10 +192,58 @@ final class PDFReaderNativePDFView: PDFView {
         // Restoration occurs once after native geometry exists. Published
         // page, selection and save changes never reapply a reading destination.
         layoutDocumentView()
+        synchronizeScrollInsets()
         controller.attach(view: self)
         isRestoring = false
         synchronizeClipObserver()
         controller.selectionDidChange()
+        floatingTools?.update(controller)
+    }
+
+    private func installFloatingToolsIfNeeded(_ controller: PDFReaderController) {
+        guard floatingTools == nil, let host = superview as? PDFReaderNativeHostView else { return }
+        let tools = PDFReaderFloatingToolsView(controller: controller) { [weak self] in
+            self?.canReport == true && self?.isHiddenOrHasHiddenAncestor == false && self?.controller?.isVisible == true
+        }
+        floatingTools = tools
+        tools.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(tools)
+        NSLayoutConstraint.activate([
+            tools.centerXAnchor.constraint(equalTo: host.safeAreaLayoutGuide.centerXAnchor),
+            tools.bottomAnchor.constraint(equalTo: host.safeAreaLayoutGuide.bottomAnchor, constant: -ScholiumMetrics.PDFReader.toolsBottomInset),
+        ])
+    }
+
+    private func synchronizeScrollInsets() {
+        guard !isInvalidated, let tools = floatingTools, controller?.isVisible == true,
+            window != nil, !isHiddenOrHasHiddenAncestor, document != nil,
+            let scroll = documentView?.enclosingScrollView
+        else {
+            restoreScrollInsets()
+            return
+        }
+        if insetScrollView !== scroll {
+            restoreScrollInsets()
+            insetScrollView = scroll
+            originalScrollInsets = scroll.contentInsets
+            originalAutomaticInsets = scroll.automaticallyAdjustsContentInsets
+            // Automatic tiling otherwise replaces the explicit overlay inset.
+            scroll.automaticallyAdjustsContentInsets = false
+        }
+        let bottom =
+            originalScrollInsets.bottom + tools.intrinsicContentSize.height
+            + ScholiumMetrics.PDFReader.toolsBottomInset + (tools.superview?.safeAreaInsets.bottom ?? 0)
+        guard abs(scroll.contentInsets.bottom - bottom) > 0.5 else { return }
+        var insets = scroll.contentInsets
+        insets.bottom = bottom
+        scroll.contentInsets = insets
+    }
+
+    private func restoreScrollInsets() {
+        guard let scroll = insetScrollView else { return }
+        insetScrollView = nil
+        scroll.contentInsets = originalScrollInsets
+        scroll.automaticallyAdjustsContentInsets = originalAutomaticInsets
     }
 
     private func revealContentWhenReady() {
@@ -246,6 +344,14 @@ final class PDFReaderNativePDFView: PDFView {
             return event
         }
         let point = convert(event.locationInWindow, from: nil)
+        // The native sibling capsule owns its input even while a PDF tool is
+        // armed; surrounding paper retains highlighting and commenting.
+        if let floatingTools, let host = floatingTools.superview,
+            floatingTools.hitTest(host.convert(point, from: self)) != nil
+        {
+            gestureDocument = nil
+            return event
+        }
         guard window.contentLayoutRect.contains(event.locationInWindow), bounds.contains(point) else {
             if event.type == .leftMouseUp { gestureDocument = nil }
             return event
@@ -357,22 +463,23 @@ final class PDFReaderNativePDFView: PDFView {
 }
 
 struct PDFReaderNativeView: NSViewRepresentable {
-    let controller: PDFReaderController
+    @ObservedObject var controller: PDFReaderController
     @Environment(\.scholiumReduceMotion) private var reduceMotion
 
-    func makeNSView(context: Context) -> PDFReaderNativePDFView {
+    func makeNSView(context: Context) -> PDFReaderNativeHostView {
         let view = PDFReaderNativePDFView(frame: .zero)
+        let host = PDFReaderNativeHostView(pdfView: view)
         view.updatePresentation(reduceMotion: reduceMotion)
         view.apply(controller)
-        return view
+        return host
     }
 
-    func updateNSView(_ view: PDFReaderNativePDFView, context: Context) {
-        view.updatePresentation(reduceMotion: reduceMotion)
-        view.apply(controller)
+    func updateNSView(_ host: PDFReaderNativeHostView, context: Context) {
+        host.pdfView.updatePresentation(reduceMotion: reduceMotion)
+        host.pdfView.apply(controller)
     }
 
-    static func dismantleNSView(_ view: PDFReaderNativePDFView, coordinator: ()) {
-        view.invalidate()
+    static func dismantleNSView(_ host: PDFReaderNativeHostView, coordinator: ()) {
+        host.pdfView.invalidate()
     }
 }

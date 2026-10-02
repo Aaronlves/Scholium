@@ -1144,7 +1144,7 @@ struct FrontendArchitectureTests {
     func stablePeripheralToolbarLayout() throws {
         typealias Item = ScholiumWorkspaceToolbarController.Item
 
-        let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers(tabIdentifiers: [])
+        let identifiers = ScholiumWorkspaceToolbarController.itemIdentifiers(tabIdentifiers: [], inspectorVisible: true)
         let documentFlexibleSpaceIndex = try #require(
             identifiers.indices.filter { identifiers[$0] == .flexibleSpace }.dropFirst().first
         )
@@ -1188,6 +1188,10 @@ struct FrontendArchitectureTests {
         #expect(identifiers.filter { $0 == Item.forward }.count == 1)
         #expect(identifiers.filter { $0 == Item.inspectorModes }.count == 1)
         #expect(identifiers.filter { $0 == Item.paneVisibility }.count == 1)
+
+        let editorOnly = ScholiumWorkspaceToolbarController.itemIdentifiers(tabIdentifiers: [])
+        let editorActionsIndex = try #require(editorOnly.firstIndex(of: Item.noteActions))
+        #expect(!editorOnly.dropFirst(editorActionsIndex + 1).contains(.flexibleSpace))
 
         let readingIdentifiers = ScholiumWorkspaceToolbarController.itemIdentifiers(tabIdentifiers: [], readerVisible: true)
         let readingDividerIndex = try #require(readingIdentifiers.firstIndex(of: Item.readingDivider))

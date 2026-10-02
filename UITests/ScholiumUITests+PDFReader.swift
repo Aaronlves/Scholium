@@ -20,6 +20,13 @@ extension ScholiumUITests {
         app.typeKey("p", modifierFlags: [.control, .command])
         let pane = main.descendants(matching: .any)["scholium.pdf.pane"]
         XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        let emptyActions = pdfToolbarButton("PDF Actions", in: main)
+        XCTAssertTrue(emptyActions.waitForExistence(timeout: 5) && emptyActions.isHittable)
+        let noteActions = pdfToolbarButton("Note Actions", in: main)
+        XCTAssertEqual(emptyActions.frame.height, noteActions.frame.height, accuracy: 4)
+        XCTAssertEqual(emptyActions.frame.width, noteActions.frame.width, accuracy: 10)
+        XCTAssertTrue(waitUntil(timeout: 5) { abs(noteActions.frame.maxX - pane.frame.minX) <= 10 })
+        attachReaderScreenshot("PDF Reader — empty pane, native More and aligned document actions", window: main)
         pane.buttons["scholium.pdf.attach"].click()
         let chooseFile = app.buttons["scholium.pdf.chooseFile"]
         XCTAssertTrue(chooseFile.waitForExistence(timeout: 5))
@@ -28,12 +35,13 @@ extension ScholiumUITests {
         let page = main.textFields["scholium.pdf.page"]
         XCTAssertTrue(page.waitForExistence(timeout: 15))
         resizeProofWindow(main, toWidth: 900)
-        let divider = main.coordinate(withNormalizedOffset: .zero).withOffset(
-            CGVector(dx: pane.frame.minX - main.frame.minX - 1, dy: pane.frame.midY - main.frame.minY))
+        let divider = main.splitGroups["scholium.documentReadingSplit"].splitters.firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         divider.click(forDuration: 0.15, thenDragTo: divider.withOffset(CGVector(dx: pane.frame.width - 280, dy: 0)))
         XCTAssertTrue(waitUntil(timeout: 5) { pane.frame.width >= 279 && pane.frame.width <= 300 })
+        XCTAssertTrue(waitUntil(timeout: 5) { abs(noteActions.frame.maxX - pane.frame.minX) <= 10 })
         XCTAssertEqual(page.label, "PDF Page")
-        let compact = main.toolbars.firstMatch.descendants(matching: .any)["scholium.pdf.compactControls"]
+        let compact = pdfToolbarButton("PDF Reader", in: main)
         XCTAssertTrue(waitUntil(timeout: 5) { compact.isHittable })
         XCTAssertEqual(compact.label, "PDF Reader")
         XCTAssertGreaterThanOrEqual(page.frame.minX, pane.frame.minX - 2)
@@ -43,14 +51,14 @@ extension ScholiumUITests {
         typeCommittedText("2", into: page, in: app)
         page.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" })
-        // Actual Tab/Space reaches the compact native menu. Every full-size
-        // command remains available, including page navigation and Search.
-        app.typeKey(.tab, modifierFlags: [])
-        app.typeKey(.space, modifierFlags: [])
+        // AppKit owns toolbar focus traversal under the user's Keyboard
+        // Navigation settings. This journey verifies native menu keyboard
+        // selection and dispatch after opening the standard menu button.
+        compact.click()
         XCTAssertTrue(app.menuItems["Search PDF"].firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(app.menuItems["Previous PDF Page"].firstMatch.isEnabled)
         XCTAssertFalse(app.menuItems["Next PDF Page"].firstMatch.isEnabled)
-        for label in ["PDF Zoom", "PDF Annotations", "PDF Actions"] {
+        for label in ["PDF Actions"] {
             XCTAssertTrue(app.menuItems[label].firstMatch.exists)
         }
         app.typeKey("s", modifierFlags: [])
@@ -103,10 +111,10 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" })
         attachReaderScreenshot("PDF Reader — minimum pane, labels and keyboard navigation", window: main)
         resizeProofWindow(main, toWidth: 1400)
-        let widerDivider = main.coordinate(withNormalizedOffset: .zero).withOffset(
-            CGVector(dx: pane.frame.minX - main.frame.minX - 1, dy: pane.frame.midY - main.frame.minY))
+        let widerDivider = main.splitGroups["scholium.documentReadingSplit"].splitters.firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         widerDivider.click(forDuration: 0.15, thenDragTo: widerDivider.withOffset(CGVector(dx: -300, dy: 0)))
-        let fullSearch = main.toolbars.firstMatch.buttons["scholium.pdf.search.toggle"]
+        let fullSearch = main.toolbars.firstMatch.buttons["Search PDF"]
         XCTAssertTrue(waitUntil(timeout: 5) { fullSearch.isHittable && !compact.isHittable })
         XCTAssertGreaterThanOrEqual(page.frame.minX, pane.frame.minX - 2)
         XCTAssertLessThanOrEqual(more.frame.maxX, pane.frame.minX + 2)
@@ -114,10 +122,16 @@ extension ScholiumUITests {
         typeCommittedText("2", into: page, in: app)
         page.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" })
+        let beforeCloseActionsX = more.frame.maxX
+        let closingReaderWidth = pane.frame.width
         app.typeKey("p", modifierFlags: [.control, .command])
         XCTAssertTrue(waitUntil(timeout: 5) { !page.exists })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { more.frame.maxX > beforeCloseActionsX + closingReaderWidth - 120 },
+            "Document actions follow the expanded Markdown region when PDF closes.")
         app.typeKey("p", modifierFlags: [.control, .command])
         XCTAssertTrue(page.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) { abs(more.frame.maxX - pane.frame.minX) <= 10 })
         XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" })
         XCTAssertEqual(try Data(contentsOf: originalURL), original)
     }
@@ -184,8 +198,22 @@ extension ScholiumUITests {
         XCTAssertEqual(try sourceWithoutPDFBinding(boundSource), initialSource)
         let nativePDF = pane.scrollViews.firstMatch
         XCTAssertTrue(nativePDF.waitForExistence(timeout: 5))
+        let tools = pane.descendants(matching: .any)["scholium.pdf.tools"]
+        XCTAssertTrue(tools.waitForExistence(timeout: 5))
+        XCTAssertEqual(tools.frame.midX, pane.frame.midX, accuracy: 3)
+        XCTAssertLessThan(tools.frame.width, pane.frame.width)
+        XCTAssertGreaterThan(tools.frame.minY, pane.frame.midY)
+        for (tool, label) in [("select", "Select"), ("highlight", "Highlight"), ("comment", "Comment")] {
+            let control = pane.descendants(matching: .any)["scholium.pdf.tool." + tool]
+            XCTAssertTrue(control.exists && control.isEnabled)
+            XCTAssertEqual(control.label, label)
+        }
+        XCTAssertFalse(main.toolbars.firstMatch.descendants(matching: .any)["scholium.pdf.zoom"].exists)
         XCTAssertLessThan(nativePDF.frame.minY - pane.frame.minY, 55, "PDF paper starts at the native toolbar edge, without a stacked reader header.")
-        XCTAssertEqual(nativePDF.frame.maxY, pane.frame.maxY, accuracy: 5, "Toolbar controls do not shorten the PDF scrolling surface.")
+        XCTAssertEqual(
+            pane.frame.maxY - nativePDF.frame.maxY,
+            tools.frame.height + pane.frame.maxY - tools.frame.maxY, accuracy: 6,
+            "The native scroll extent reserves the floating tools' clearance.")
         let readerToggle = pdfToolbarButton("Hide PDF Reader", in: main)
         XCTAssertEqual((readerToggle.value as? NSNumber)?.intValue, 1)
         resizeProofWindow(main, toWidth: 1380)
@@ -220,14 +248,14 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { !info.exists })
         XCTAssertEqual(try source(at: noteURL), boundSource)
 
-        main.toolbars.firstMatch.buttons["scholium.pdf.search.toggle"].click()
+        main.toolbars.firstMatch.buttons["Search PDF"].click()
         let search = app.textFields["scholium.pdf.search"]
         XCTAssertTrue(search.waitForExistence(timeout: 3))
         typeCommittedText("Lifecycle Quartz", into: search, in: app)
         search.typeKey(.return, modifierFlags: [])
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })
-        chooseReaderMenuItem("Highlight Selection", menu: "PDF Annotations", in: pane)
+        chooseReaderMenuItem("Highlight Selection", menu: "PDF Actions", in: pane)
         XCTAssertTrue(
             waitUntil(timeout: 10) {
                 self.savedReaderAnnotations(at: managedURL).contains {
@@ -237,7 +265,7 @@ extension ScholiumUITests {
         exerciseBoundedReaderHighlightDrag(in: pane, managedURL: managedURL)
 
         let firstComment = "Synthetic lifecycle comment"
-        chooseReaderMenuItem("Add PDF Comment…", menu: "PDF Annotations", in: pane)
+        chooseReaderMenuItem("Add PDF Comment…", menu: "PDF Actions", in: pane)
         let comment = readerCommentEditor()
         XCTAssertTrue(comment.waitForExistence(timeout: 5))
         typeCommittedText(firstComment, into: comment, in: app)
@@ -253,10 +281,10 @@ extension ScholiumUITests {
 
         // Toolbar controls own their clicks even while the direct Comment
         // tool is armed; they cannot create an annotation behind themselves.
-        chooseReaderMenuItem("Comment", menu: "PDF Annotations", in: pane)
+        chooseReaderMenuItem("Comment", menu: "PDF Actions", in: pane)
         chooseReaderMenuItem("Zoom In", menu: "PDF Zoom", in: pane)
         XCTAssertFalse(app.descendants(matching: .any)["scholium.pdf.comment"].exists)
-        chooseReaderMenuItem("Select", menu: "PDF Annotations", in: pane)
+        chooseReaderMenuItem("Select", menu: "PDF Actions", in: pane)
 
         // Repeated toggles exercise collapse, observer teardown and reconnection
         // while preserving the document and already saved annotations.
@@ -272,14 +300,19 @@ extension ScholiumUITests {
         }
         pane = main.descendants(matching: .any)["scholium.pdf.pane"]
         let oldWidth = pane.frame.width
-        let divider = main.coordinate(withNormalizedOffset: .zero).withOffset(
-            CGVector(dx: pane.frame.minX - main.frame.minX - 1, dy: pane.frame.midY - main.frame.minY)
-        )
+        let oldBoundary = pane.frame.minX
+        let oldActionsX = pdfToolbarButton("Note Actions", in: main).frame.maxX
+        let divider = main.splitGroups["scholium.documentReadingSplit"].splitters.firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         divider.click(forDuration: 0.15, thenDragTo: divider.withOffset(CGVector(dx: -70, dy: 0)))
         XCTAssertTrue(waitUntil(timeout: 5) { pane.frame.width > oldWidth + 35 })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                abs((self.pdfToolbarButton("Note Actions", in: main).frame.maxX - oldActionsX) - (pane.frame.minX - oldBoundary)) <= 5
+            }, "Document actions move by the same amount as the native PDF divider.")
         resizeProofWindow(main, toWidth: 900)
         XCTAssertGreaterThanOrEqual(pane.frame.width, 279)
-        XCTAssertTrue(main.toolbars.firstMatch.buttons["scholium.pdf.search.toggle"].isHittable)
+        XCTAssertTrue(main.toolbars.firstMatch.buttons["Search PDF"].isHittable)
         main.buttons["Next PDF Page"].click()
         XCTAssertTrue(waitUntil(timeout: 5) { main.textFields["scholium.pdf.page"].value as? String == "2" })
         chooseReaderMenuItem("Fit PDF", menu: "PDF Zoom", in: pane)
@@ -309,7 +342,7 @@ extension ScholiumUITests {
         try assertReaderWidgetPreserved(at: managedURL)
         attachReaderScreenshot("PDF Reader — dark, restored page and pane", window: main)
 
-        chooseReaderMenuItem("Show Annotations", menu: "PDF Annotations", in: pane)
+        chooseReaderMenuItem("Show Annotations", menu: "PDF Actions", in: pane)
         let commentRow = pane.buttons.matching(NSPredicate(format: "label CONTAINS %@", firstComment)).firstMatch
         XCTAssertTrue(commentRow.waitForExistence(timeout: 5))
         commentRow.click()
@@ -388,6 +421,7 @@ extension ScholiumUITests {
 
     @MainActor
     private func verifyReaderPaneVisibilityMatrix(in window: XCUIElement) {
+        var closedActionsX: CGFloat?
         for (pdfVisible, inspectorVisible, name) in [
             (false, false, "editor only"), (true, false, "PDF only"),
             (false, true, "Inspector replaces PDF"), (false, false, "Inspector closes"),
@@ -405,6 +439,18 @@ extension ScholiumUITests {
             let pdf = window.descendants(matching: .any)["scholium.pdf.pane"]
             let inspector = window.descendants(matching: .any)["scholium.researchInspector"]
             XCTAssertTrue(waitUntil(timeout: 8) { pdf.exists == pdfVisible && inspector.exists == inspectorVisible })
+            let noteActions = pdfToolbarButton("Note Actions", in: window)
+            if pdfVisible || inspectorVisible {
+                let sidePane = pdfVisible ? pdf : inspector
+                XCTAssertTrue(
+                    waitUntil(timeout: 5) { abs(noteActions.frame.maxX - sidePane.frame.minX) <= 10 }, "Document actions track the visible side-pane boundary.")
+            } else if let closedActionsX {
+                XCTAssertTrue(
+                    waitUntil(timeout: 5) { abs(noteActions.frame.maxX - closedActionsX) <= 5 },
+                    "Closing either side pane restores the same document toolbar layout.")
+            } else {
+                closedActionsX = noteActions.frame.maxX
+            }
             for (visible, show, hide) in [
                 (pdfVisible, "Show PDF Reader", "Hide PDF Reader"),
                 (inspectorVisible, "Show Research Inspector", "Hide Research Inspector"),
@@ -419,13 +465,21 @@ extension ScholiumUITests {
 
     @MainActor
     private func openReaderMenu(_ menu: String) {
-        let identifiers = ["PDF Actions": "scholium.pdf.actions", "PDF Zoom": "scholium.pdf.zoom", "PDF Annotations": "scholium.pdf.annotations"]
+        let identifiers = ["PDF Actions": "scholium.pdf.actions", "PDF Zoom": "scholium.pdf.zoom"]
         let toolbar = app.windows.firstMatch.toolbars.firstMatch
-        let control = toolbar.descendants(matching: .any)[identifiers[menu]!]
+        let control =
+            menu == "PDF Actions"
+            ? pdfToolbarButton("PDF Actions", in: app.windows.firstMatch)
+            : app.windows.firstMatch.descendants(matching: .any)[identifiers[menu]!]
+        if menu == "PDF Zoom" {
+            XCTAssertTrue(control.waitForExistence(timeout: 5) && control.isEnabled)
+            control.click()
+            return
+        }
         if control.exists && control.isHittable {
             control.click()
         } else {
-            let compact = toolbar.descendants(matching: .any)["scholium.pdf.compactControls"]
+            let compact = toolbar.menuButtons["PDF Reader"]
             XCTAssertTrue(compact.waitForExistence(timeout: 5))
             compact.click()
             let submenu = app.menuItems[identifiers[menu]! + ".group"]
@@ -436,7 +490,14 @@ extension ScholiumUITests {
 
     @MainActor
     private func chooseReaderMenuItem(_ title: String, menu: String, in pane: XCUIElement) {
-        let identifiers = ["PDF Actions": "scholium.pdf.actions", "PDF Zoom": "scholium.pdf.zoom", "PDF Annotations": "scholium.pdf.annotations"]
+        if menu == "PDF Actions", let tool = ["Select": "select", "Highlight": "highlight", "Comment": "comment"][title] {
+            let button = pane.descendants(matching: .any)["scholium.pdf.tool." + tool]
+            XCTAssertTrue(button.waitForExistence(timeout: 5) && button.isEnabled)
+            button.click()
+            XCTAssertEqual((button.value as? NSNumber)?.intValue, 1)
+            return
+        }
+        let identifiers = ["PDF Actions": "scholium.pdf.actions", "PDF Zoom": "scholium.pdf.zoom"]
         openReaderMenu(menu)
         let commands = [
             "Attach or Replace PDF…": "attach", "Reload PDF": "reload",
@@ -477,7 +538,7 @@ extension ScholiumUITests {
             add(evidence)
             return
         }
-        chooseReaderMenuItem("Highlight", menu: "PDF Annotations", in: pane)
+        chooseReaderMenuItem("Highlight", menu: "PDF Actions", in: pane)
         let countBefore = savedReaderAnnotations(at: managedURL).filter {
             $0.value(forAnnotationKey: .subtype) as? String == PDFAnnotationSubtype.highlight.rawValue
         }.count
@@ -491,7 +552,7 @@ extension ScholiumUITests {
                     $0.value(forAnnotationKey: .subtype) as? String == PDFAnnotationSubtype.highlight.rawValue
                 }.count > countBefore
             }, "Dragging the native Highlight tool over a bounded line must persist a highlight.")
-        chooseReaderMenuItem("Select", menu: "PDF Annotations", in: pane)
+        chooseReaderMenuItem("Select", menu: "PDF Actions", in: pane)
     }
 
     @MainActor
