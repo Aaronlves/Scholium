@@ -6,6 +6,7 @@ import SwiftUI
 /// only reader-tool input and reports native state to the current controller.
 @MainActor
 final class PDFReaderNativePDFView: PDFView {
+    static let contentRevealAnimationKey = "scholium.pdf.contentReveal"
     weak var controller: PDFReaderController?
     private var observers: [NSObjectProtocol] = []
     private var eventMonitor: Any?
@@ -17,6 +18,9 @@ final class PDFReaderNativePDFView: PDFView {
     private var isRestoring = false
     private var isInvalidated = false
     private var interactionGeneration: UInt64 = 0
+    private var needsContentReveal = false
+    private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    private var displayOptionsObserver: NSObjectProtocol?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -27,10 +31,23 @@ final class PDFReaderNativePDFView: PDFView {
         setAccessibilityIdentifier("PDFReader.View")
         setAccessibilityLabel(ScholiumL10n.string("PDF Reader"))
         installObservers()
+        displayOptionsObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { self?.stopContentReveal() }
+            }
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("Code-only PDF reader") }
+
+    func updatePresentation(reduceMotion: Bool) {
+        guard !isInvalidated else { return }
+        self.reduceMotion = reduceMotion
+        if reduceMotion { stopContentReveal() }
+    }
 
     func apply(_ controller: PDFReaderController) {
         guard !isInvalidated else { return }
@@ -40,27 +57,34 @@ final class PDFReaderNativePDFView: PDFView {
             self.controller = controller
         }
         if ownerChanged || document !== controller.document {
+            stopContentReveal()
             interactionGeneration &+= 1
             gestureDocument = nil
             isRestoring = true
             document = controller.document
             needsAttachment = document != nil
+            needsContentReveal = document != nil
             isRestoring = false
             synchronizeClipObserver()
         }
         attachWhenReady()
+        revealContentWhenReady()
     }
 
     override func layout() {
         super.layout()
         synchronizeClipObserver()
         attachWhenReady()
+        revealContentWhenReady()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         removeEventMonitor()
-        guard !isInvalidated, window != nil else { return }
+        guard !isInvalidated, window != nil else {
+            stopContentReveal()
+            return
+        }
         // PDFKit's document subview may handle pointer events before PDFView.
         // Observe only this view's exact window and visible content boundary.
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown, .keyDown]) { [weak self] event in
@@ -71,12 +95,21 @@ final class PDFReaderNativePDFView: PDFView {
             return shouldDeliver ? event : nil
         }
         attachWhenReady()
+        revealContentWhenReady()
     }
 
     override func viewDidHide() {
         super.viewDidHide()
         interactionGeneration &+= 1
         gestureDocument = nil
+        stopContentReveal()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        needsContentReveal = document != nil
+        attachWhenReady()
+        revealContentWhenReady()
     }
 
     func invalidate() {
@@ -86,6 +119,11 @@ final class PDFReaderNativePDFView: PDFView {
         interactionGeneration &+= 1
         gestureDocument = nil
         controller = nil
+        stopContentReveal()
+        if let displayOptionsObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(displayOptionsObserver)
+        }
+        displayOptionsObserver = nil
         removeEventMonitor()
         removeClipObserver()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
@@ -108,6 +146,31 @@ final class PDFReaderNativePDFView: PDFView {
         isRestoring = false
         synchronizeClipObserver()
         controller.selectionDidChange()
+    }
+
+    private func revealContentWhenReady() {
+        guard needsContentReveal, !isInvalidated, !needsAttachment, !isRestoring,
+            window != nil, !isHiddenOrHasHiddenAncestor,
+            bounds.width > 0, bounds.height > 0,
+            document != nil, document === controller?.document
+        else { return }
+        needsContentReveal = false
+        stopContentReveal()
+        guard !reduceMotion, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        // Animate viewer opacity after position restoration. The model
+        // stays fully visible and interactive; split geometry and PDFKit's
+        // document, selection and scrolling never wait for this presentation.
+        wantsLayer = true
+        let animation = CABasicAnimation(keyPath: "opacity")
+        animation.fromValue = 0
+        animation.toValue = 1
+        animation.duration = ScholiumMotion.pdfContentRevealDuration
+        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer?.add(animation, forKey: Self.contentRevealAnimationKey)
+    }
+
+    private func stopContentReveal() {
+        layer?.removeAnimation(forKey: Self.contentRevealAnimationKey)
     }
 
     private func installObservers() {
@@ -295,14 +358,17 @@ final class PDFReaderNativePDFView: PDFView {
 
 struct PDFReaderNativeView: NSViewRepresentable {
     let controller: PDFReaderController
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
 
     func makeNSView(context: Context) -> PDFReaderNativePDFView {
         let view = PDFReaderNativePDFView(frame: .zero)
+        view.updatePresentation(reduceMotion: reduceMotion)
         view.apply(controller)
         return view
     }
 
     func updateNSView(_ view: PDFReaderNativePDFView, context: Context) {
+        view.updatePresentation(reduceMotion: reduceMotion)
         view.apply(controller)
     }
 

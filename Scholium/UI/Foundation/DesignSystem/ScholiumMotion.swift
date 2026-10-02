@@ -4,6 +4,7 @@ import SwiftUI
 enum ScholiumMotion {
     static let sidebarPageDuration: TimeInterval = 0.16
     static let libraryWorkspaceDuration: TimeInterval = 0.14
+    static let pdfContentRevealDuration: TimeInterval = 0.16
 
     /// Native preview window motion; reduced motion uses only a short fade.
     static func contentPreviewDuration(closing: Bool, reduceMotion: Bool) -> TimeInterval {
