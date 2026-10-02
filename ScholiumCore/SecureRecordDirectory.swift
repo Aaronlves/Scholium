@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-/// Shared descriptor-relative storage for bounded machine-local JSON state.
+/// Shared descriptor-relative storage for bounded machine-local state.
 ///
 /// This primitive owns containment, no-follow access, byte limits, atomic
 /// replacement, readback, and staging recovery. It does not interpret any
@@ -81,11 +81,19 @@ enum SecureRecordDirectoryError: LocalizedError {
 /// Minimal descriptor-relative file primitive shared by machine-local stores.
 /// It does not interpret caller semantics.
 struct SecureRecordDirectory: Sendable {
+    enum FilePolicy: Sendable {
+        case jsonRecords
+        /// Only UUID-named root metadata and the two PDF byte snapshots inside
+        /// a UUID transaction directory; no general-purpose binary filenames.
+        case pdfRecovery
+    }
+
     let trustedRootURL: URL
     let components: [String]
     let directoryMode: mode_t
     let fileMode: mode_t
     let maximumByteCount: Int
+    let filePolicy: FilePolicy
     /// Internal deterministic fault seam used to prove behavior after staging
     /// durability but before rename. Production construction always leaves it
     /// nil.
@@ -107,6 +115,7 @@ struct SecureRecordDirectory: Sendable {
         directoryMode: mode_t,
         fileMode: mode_t,
         maximumByteCount: Int,
+        filePolicy: FilePolicy = .jsonRecords,
         preCommitFault: (@Sendable (String) throws -> Void)? = nil,
         postCommitFault: (@Sendable (String) throws -> Void)? = nil
     ) {
@@ -117,6 +126,7 @@ struct SecureRecordDirectory: Sendable {
         self.directoryMode = directoryMode
         self.fileMode = fileMode
         self.maximumByteCount = maximumByteCount
+        self.filePolicy = filePolicy
         self.preCommitFault = preCommitFault
         self.postCommitFault = postCommitFault
     }
@@ -170,7 +180,7 @@ struct SecureRecordDirectory: Sendable {
     }
 
     func read(directory: String?, fileName: String) throws -> Data {
-        try validateFileName(fileName)
+        try validateFileName(fileName, directory: directory)
         let parent = try openTargetDirectory(directory, createIfMissing: false)
         defer { Darwin.close(parent) }
         return try read(parent: parent, fileName: fileName)
@@ -276,7 +286,7 @@ struct SecureRecordDirectory: Sendable {
     }
 
     func removeIfPresent(directory: String?, fileName: String) throws {
-        try validateFileName(fileName)
+        try validateFileName(fileName, directory: directory)
         let parent = try openTargetDirectory(directory, createIfMissing: false)
         defer { Darwin.close(parent) }
         let result = fileName.withCString { unlinkat(parent, $0, 0) }
@@ -286,8 +296,22 @@ struct SecureRecordDirectory: Sendable {
         }
     }
 
+    /// Transaction owners may remove their attempt-owned empty directory only;
+    /// the kernel refuses any directory that still contains bytes.
+    func removeEmptyDirectory(_ directory: String) throws {
+        guard Self.isSafeComponent(directory) else { throw unsafe("remove invalid empty directory") }
+        let parent = try openStorageDirectory(createIfMissing: false)
+        defer { Darwin.close(parent) }
+        var status = stat()
+        guard fstatat(parent, directory, &status, AT_SYMLINK_NOFOLLOW) == 0,
+            (status.st_mode & S_IFMT) == S_IFDIR,
+            unlinkat(parent, directory, AT_REMOVEDIR) == 0,
+            fsync(parent) == 0
+        else { throw unsafe("remove empty transaction directory") }
+    }
+
     func remove(directory: String?, fileName: String, expected: Data) throws {
-        try validateFileName(fileName)
+        try validateFileName(fileName, directory: directory)
         let parent = try openTargetDirectory(directory, createIfMissing: false)
         defer { Darwin.close(parent) }
         let deletingName = ".scholium-deleting-\(fileName)"
@@ -316,7 +340,7 @@ struct SecureRecordDirectory: Sendable {
             let observed = try read(parent: parent, fileName: deletingName)
             guard observed == expected else {
                 throw SecureRecordDirectoryError.replacementNotCommitted(
-                    "Stored JSON \(fileName) changed before deletion."
+                    "Stored file \(fileName) changed before deletion."
                 )
             }
             let unlinkResult = deletingName.withCString { unlinkat(parent, $0, 0) }
@@ -357,7 +381,7 @@ struct SecureRecordDirectory: Sendable {
             }
             guard rollback == 0, fsync(parent) == 0 else {
                 throw SecureRecordDirectoryError.replacementCommitUncertain(
-                    "The unverified stored JSON was preserved as \(deletingName)."
+                    "The unverified stored file was preserved as \(deletingName)."
                 )
             }
             throw error
@@ -371,7 +395,7 @@ struct SecureRecordDirectory: Sendable {
         for deletingName in try fileNames(parent: parent, includingStaging: true)
         where deletingName.hasPrefix(prefix) {
             let fileName = String(deletingName.dropFirst(prefix.count))
-            try validateFileName(fileName)
+            try validateFileName(fileName, directory: directory)
             let result = deletingName.withCString { source in
                 fileName.withCString { destination in
                     renameatx_np(
@@ -419,9 +443,9 @@ struct SecureRecordDirectory: Sendable {
         exclusive: Bool
     ) throws -> Data {
         guard data.count <= maximumByteCount else {
-            throw SecureRecordDirectoryError.unsafe("Stored JSON exceeds its byte boundary.")
+            throw SecureRecordDirectoryError.unsafe("Stored bytes exceed their byte boundary.")
         }
-        try validateFileName(fileName)
+        try validateFileName(fileName, directory: directory)
         let parent = try openTargetDirectory(directory, createIfMissing: true)
         defer { Darwin.close(parent) }
 
@@ -516,7 +540,7 @@ struct SecureRecordDirectory: Sendable {
         }
         guard readback == data else {
             throw SecureRecordDirectoryError.replacementCommitUncertain(
-                "Committed stored JSON \(fileName) did not match readback."
+                "Committed stored file \(fileName) did not match readback."
             )
         }
         return readback
@@ -628,7 +652,7 @@ struct SecureRecordDirectory: Sendable {
             before.st_size <= maximumByteCount
         else {
             throw SecureRecordDirectoryError.unsafe(
-                "Stored JSON \(fileName) is linked, malformed, or too large."
+                "Stored file \(fileName) is linked, malformed, or too large."
             )
         }
         let expected = Int(before.st_size)
@@ -652,15 +676,27 @@ struct SecureRecordDirectory: Sendable {
             Self.sameFile(before, after)
         else {
             throw SecureRecordDirectoryError.unsafe(
-                "Stored JSON \(fileName) changed while it was read."
+                "Stored file \(fileName) changed while it was read."
             )
         }
         return data
     }
 
-    private func validateFileName(_ fileName: String) throws {
-        guard Self.isSafeComponent(fileName), fileName.hasSuffix(".json") else {
-            throw SecureRecordDirectoryError.unsafe("Invalid stored JSON file name.")
+    private func validateFileName(_ fileName: String, directory: String?) throws {
+        guard Self.isSafeComponent(fileName) else { throw unsafe("access invalid stored filename") }
+        switch filePolicy {
+        case .jsonRecords:
+            guard fileName.hasSuffix(".json") else { throw unsafe("access invalid stored JSON filename") }
+        case .pdfRecovery:
+            if let directory {
+                guard UUID(uuidString: directory) != nil,
+                    fileName == "baseline.pdf" || fileName == "candidate.pdf"
+                else { throw unsafe("access invalid PDF recovery snapshot") }
+            } else {
+                guard fileName.hasSuffix(".json"), UUID(uuidString: String(fileName.dropLast(5))) != nil else {
+                    throw unsafe("access invalid PDF recovery metadata")
+                }
+            }
         }
     }
 

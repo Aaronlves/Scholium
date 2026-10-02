@@ -38,6 +38,7 @@ struct ContentView: View {
     @ObservedObject private var cssSnippetStore: CSSSnippetStore
     @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
     @ObservedObject private var libraryMutationController: WindowLibraryMutationController
+    @ObservedObject private var pdfReaderController: PDFReaderController
     let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openWindow) private var openWindow
@@ -65,19 +66,33 @@ struct ContentView: View {
         _libraryMutationController = ObservedObject(
             wrappedValue: appState.libraryMutationController
         )
+        _pdfReaderController = ObservedObject(wrappedValue: appState.pdfReaderController)
     }
 
     var body: some View {
         Group {
             if appState.isDetachedDocumentWindow {
-                detailRegion
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(ScholiumColorRole.documentBackground.color)
+                ScholiumDocumentReadingSplitView(
+                    readerVisible: readerVisible,
+                    readerWidth: pdfReaderController.paneWidth,
+                    widthDidChange: { pdfReaderController.recordPaneWidth($0) },
+                    focusDocument: { windowCoordinator.focusCurrentDocument() },
+                    document: detailRegion,
+                    reader: PDFReaderPane(controller: pdfReaderController)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(ScholiumColorRole.documentBackground.color)
             } else {
                 workspaceShell
             }
         }
         .task { await searchController.loadTermGroups() }
+        .task(id: appState.currentDocumentDescriptor?.sessionKey) {
+            appState.refreshPDFReaderContext()
+        }
+        .onChange(of: appState.currentNote?.workspaceSnapshot?.fingerprint) { _, _ in
+            appState.refreshPDFReaderContext()
+        }
         .environment(
             \.openChatExternalMarkdown,
             { url in
@@ -165,7 +180,12 @@ struct ContentView: View {
             },
             splitControllerDidDetach: {
                 windowCoordinator.detach(splitController: $0)
-            }
+            },
+            readerVisible: readerVisible,
+            readerWidth: pdfReaderController.paneWidth,
+            readerWidthDidChange: { pdfReaderController.recordPaneWidth($0) },
+            focusDocument: { windowCoordinator.focusCurrentDocument() },
+            reader: AnyView(PDFReaderPane(controller: pdfReaderController))
         ) {
             ScholiumSidebarPageSurface(label: "Library", identifier: "scholium.librarySurface") {
                 ResearchSearchSurface(
@@ -281,6 +301,10 @@ struct ContentView: View {
             appState.vaultConfig != nil
         else { return true }
         return shellState.libraryVisible
+    }
+
+    private var readerVisible: Bool {
+        pdfReaderController.isVisible && !shellState.isFocusLayoutActive
     }
 
     private var shellApparatusVisible: Bool {

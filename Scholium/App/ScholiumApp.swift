@@ -54,6 +54,31 @@ final class WindowModel: ObservableObject {
     var windowSessionID = UUID()
     let nativeWindowID: UUID
     var noteExportWindowController: ScholiumNoteExportWindowController?
+    var noteInfoWindowController: NoteInfoWindowController?
+    lazy var sidePaneCoordinator = WindowSidePaneCoordinator(model: self)
+    lazy var pdfReaderController = PDFReaderController(
+        windowID: nativeWindowID,
+        zotero: workspaceStore.zoteroBridge,
+        setBinding: { [weak self] path, target, expectedBinding in
+            guard let self else { throw CancellationError() }
+            try await self.setNotePDFBinding(path, for: target, expectedBinding: expectedBinding)
+        },
+        reportIssue: { [weak self] message in
+            self?.reportOperationIssue(message, kind: .error)
+        },
+        allowsInteraction: { [weak self] in
+            self?.acceptsPDFInteraction() == true
+        },
+        resolveIssue: { [weak self] id in
+            self?.shellState.dismissOperationIssue(id: id)
+        }
+    )
+
+    private func acceptsPDFInteraction() -> Bool {
+        !windowCloseCoordinator.isPreparingOrFinalized
+            && !(nativeWindowCoordinator?.isNativeCloseInProgress ?? false)
+            && !(nativeWindowCoordinator?.registry.isTerminationAttemptInProgress ?? false)
+    }
 
     // MARK: Published State
     @Published var noteExportPreparationInProgress = false
@@ -266,7 +291,9 @@ final class WindowModel: ObservableObject {
         documentController: documentController,
         documentTabController: documentTabController,
         documentNavigationHistoryController: documentNavigationHistoryController,
-        workspaceProjectionController: workspaceProjectionController
+        workspaceProjectionController: workspaceProjectionController,
+        pdfReaderController: pdfReaderController,
+        sidePaneCoordinator: sidePaneCoordinator
     )
     private weak var editorCommandPort: ScholiumEditorCommandPort?
 
@@ -524,7 +551,7 @@ final class WindowModel: ObservableObject {
 
     var researchInspectorVisible: Bool {
         get { researchController.inspector.isVisible }
-        set { researchController.showResearchInspector(newValue) }
+        set { sidePaneCoordinator.setInspectorVisible(newValue) }
     }
 
     var noteFileRequest: NoteFileRequest? {
@@ -629,7 +656,15 @@ final class WindowModel: ObservableObject {
                 throw ScholiumWindowLifecycleError.unregisteredBeforeReady
             }
             guard !self.transferInProgress else { throw CancellationError() }
+            self.sidePaneCoordinator.cancelPending()
+            let pdfDeparture = self.pdfReaderController.beginDeparture()
+            defer { self.pdfReaderController.endDeparture(pdfDeparture) }
+            if let info = self.noteInfoWindowController {
+                guard await info.prepareForWindowClose() else { throw CancellationError() }
+                info.close()
+            }
             try await self.flushRegisteredEditorIfNeeded(capturingEditorState: true)
+            try await self.pdfReaderController.flushPersistence()
             try await self.chatController?.flushPersistence()
         },
         presentationSnapshot: { [weak self] in
@@ -658,6 +693,10 @@ final class WindowModel: ObservableObject {
             self.libraryRevealTask?.cancel()
             self.libraryRevealTask = nil
             self.editorFlushCoordinator.shutdown()
+            self.sidePaneCoordinator.shutdown()
+            self.pdfReaderController.shutdown()
+            self.noteInfoWindowController?.close()
+            self.noteInfoWindowController = nil
         }
     )
     let windowWorkspaceController: WindowWorkspaceController
@@ -988,7 +1027,7 @@ final class WindowModel: ObservableObject {
     /// Mirrors the native Inspector state without driving its geometry.
     func recordResearchInspectorVisibility(_ visible: Bool) {
         guard visible != researchInspectorVisible else { return }
-        researchInspectorVisible = visible
+        researchController.showResearchInspector(visible)
     }
 
     func migrateInMemoryPath(

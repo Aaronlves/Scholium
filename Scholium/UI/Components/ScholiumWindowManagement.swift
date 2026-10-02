@@ -651,6 +651,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             splitController.setResearchInspectorVisible(visible, animated: !reduceMotion)
         }
         recordNativeVisibility(from: splitController)
+        appState.sidePaneCoordinator.reconcileVisibility()
         installToolbarIfPossible()
         markReadyIfPossible()
     }
@@ -669,6 +670,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func detach() {
+        appState.sidePaneCoordinator.cancelPending()
         systemAppearanceObservation = nil
         resetFocusLayout()
         appState.searchController.dismiss()
@@ -751,6 +753,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private func beginFullScreenFocus() {
         guard let window, splitController != nil || appState.isDetachedDocumentWindow else { return }
+        appState.sidePaneCoordinator.cancelPending()
         focusLayout.beginFullScreen(in: window, split: splitController) { [weak self, weak window] in
             guard let self, let window else { return }
             self.focusCurrentDocument(in: window)
@@ -853,7 +856,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private func setResearchInspectorVisible(_ visible: Bool) {
         guard !visible || !focusLayout.isFullScreenEnforced else { return }
         guard !visible || appState.canToggleResearchInspector else { return }
-        if visible { exitFocusLayout() }
+        appState.sidePaneCoordinator.setInspectorVisible(visible)
+    }
+
+    /// Applies an admitted side-pane choice; command policy and asynchronous
+    /// PDF departure are owned by the window's side-pane coordinator.
+    func applySidePaneInspectorVisibility(_ visible: Bool, revealsPane: Bool) {
+        if revealsPane { exitFocusLayout() }
+        appState.recordResearchInspectorVisibility(visible)
         guard let splitController else {
             pendingInspectorVisibility = visible
             return
@@ -884,6 +894,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private func toggleFocusLayout() {
         guard canToggleFocusLayout, let window else { return }
+        appState.sidePaneCoordinator.cancelPending()
         if focusLayout.isActive {
             exitFocusLayout()
         } else {
@@ -914,6 +925,11 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     /// title/body choice. Review uses the selected visible native WebKit host.
     /// A presentation without a visible document host leaves window/menu
     /// focus available rather than traversing to an unrelated hidden control.
+    func focusCurrentDocument() {
+        guard let window, !isNativeCloseInProgress else { return }
+        focusCurrentDocument(in: window)
+    }
+
     private func focusCurrentDocument(in window: NSWindow) {
         if appState.presentedDocumentMode != .read,
             let descriptor = appState.currentDocumentDescriptor
@@ -979,7 +995,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private func installToolbarIfPossible() {
         if appState.isDetachedDocumentWindow, let window {
             if detachedToolbar == nil { detachedToolbar = DetachedDocumentToolbar(model: appState) }
-            window.toolbar = detachedToolbar?.toolbar
+            detachedToolbar?.install(in: window)
             return
         }
         guard let window,
@@ -1055,6 +1071,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             return previousDelegate?.windowShouldClose?(sender) ?? true
         }
         guard !flushInFlight else { return false }
+        appState.sidePaneCoordinator.cancelPending()
         flushInFlight = true
         closeAttemptGeneration &+= 1
         let attempt = closeAttemptGeneration

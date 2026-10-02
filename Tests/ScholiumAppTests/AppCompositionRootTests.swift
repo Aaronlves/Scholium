@@ -377,6 +377,11 @@ struct AppCompositionRootTests {
                 && window.workspaceProjectionController.cachedNote(
                     vaultID: topicVault.id, stableNoteID: nil, relativePath: "B.md") != nil
         }
+        // This scenario deliberately installs unavailable selections. Identity
+        // convergence has separate tests and must not promote them mid-close.
+        window.workspaceCancellables.removeAll()
+        await window.waitForDocumentTransitions()
+        await Task.yield()
         let a = WindowSelectedDocument.unavailable(vaultID: analysisVault.id, relativePath: "A.md")
         let b = WindowSelectedDocument.unavailable(vaultID: topicVault.id, relativePath: "B.md")
         let aSnapshot = try #require(
@@ -430,7 +435,7 @@ struct AppCompositionRootTests {
 
         try "# A changed externally\n".write(
             to: analyses.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
-        await window.refreshWindowProjection()
+        _ = await window.refreshAfterResearchHandoff()
         try await waitUntil("the changed rollback source is indexed") {
             window.workspaceProjectionController.cachedNote(
                 vaultID: analysisVault.id, stableNoteID: nil, relativePath: "A.md"

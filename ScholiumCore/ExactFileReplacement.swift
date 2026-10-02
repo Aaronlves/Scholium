@@ -7,8 +7,22 @@ public struct ExactFileReplacementResult: Sendable {
     public let preservedOriginalURL: URL?
 }
 
-/// Exact-byte transactions for owned configuration files. Callers retain
-/// configuration semantics, scope and researcher confirmation.
+public struct ExactFileReplacementIdentity: Equatable, Sendable {
+    public let device: UInt64
+    public let inode: UInt64
+    public let parentDevice: UInt64
+    public let parentInode: UInt64
+
+    public init(device: UInt64, inode: UInt64, parentDevice: UInt64, parentInode: UInt64) {
+        self.device = device
+        self.inode = inode
+        self.parentDevice = parentDevice
+        self.parentInode = parentInode
+    }
+}
+
+/// Exact-byte transactions for owned configuration and attachment files.
+/// Callers retain object semantics, scope, recovery, and researcher confirmation.
 public enum ExactFileReplacement {
     public static func replace(
         at url: URL,
@@ -16,13 +30,15 @@ public enum ExactFileReplacement {
         candidate: Data,
         preserveOriginal: Bool = false,
         preCommitHook: (@Sendable (URL) throws -> Void)? = nil,
-        postCommitHook: (@Sendable (URL) throws -> Void)? = nil
+        postCommitHook: (@Sendable (URL) throws -> Void)? = nil,
+        maximumByteCount: Int = 16 * 1_024 * 1_024,
+        expectedIdentity: ExactFileReplacementIdentity? = nil
     ) throws -> ExactFileReplacementResult {
         try replace(
             at: url, expected: expected, candidate: candidate,
             preserveOriginal: preserveOriginal,
             preCommitHook: preCommitHook, postCommitHook: postCommitHook,
-            preRollbackHook: nil
+            preRollbackHook: nil, maximumByteCount: maximumByteCount, expectedIdentity: expectedIdentity
         )
     }
 
@@ -35,13 +51,16 @@ public enum ExactFileReplacement {
         preserveOriginal: Bool = false,
         preCommitHook: (@Sendable (URL) throws -> Void)? = nil,
         postCommitHook: (@Sendable (URL) throws -> Void)? = nil,
-        preRollbackHook: (@Sendable (URL) throws -> Void)?
+        preRollbackHook: (@Sendable (URL) throws -> Void)?,
+        maximumByteCount: Int = 16 * 1_024 * 1_024,
+        expectedIdentity: ExactFileReplacementIdentity? = nil
     ) throws -> ExactFileReplacementResult {
         let parentURL = url.deletingLastPathComponent()
         let directory = Darwin.open(parentURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
         guard directory >= 0 else { throw posixError() }
         defer { Darwin.close(directory) }
         let name = url.lastPathComponent
+        guard candidate.count <= maximumByteCount else { throw POSIXError(.EFBIG) }
         let coordinator = NSFileCoordinator(filePresenter: nil)
         var coordinationError: NSError?
         var outcome: Result<ExactFileReplacementResult, Error>?
@@ -50,7 +69,8 @@ public enum ExactFileReplacement {
             outcome = Result {
                 guard coordinatedURL.standardizedFileURL == url.standardizedFileURL,
                     directoryMatches(directory, url: parentURL),
-                    try readIfPresent(directory: directory, name: name) == expected
+                    try readIfPresent(directory: directory, name: name, maximumByteCount: maximumByteCount) == expected,
+                    expectedIdentity == nil || identityMatches(expectedIdentity!, directory: directory, name: name)
                 else { throw ExactFileReplacementError.revisionConflict }
 
                 var preservedURL: URL?
@@ -62,7 +82,7 @@ public enum ExactFileReplacement {
                         : "\(name).recovery-\(UUID().uuidString.lowercased())"
                     try writeExclusive(expected, directory: directory, name: backupName)
                     guard fsync(directory) == 0,
-                        try read(directory: directory, name: backupName) == expected
+                        try read(directory: directory, name: backupName, maximumByteCount: maximumByteCount) == expected
                     else { throw POSIXError(.EIO) }
                     recoveryName = backupName
                     preservedURL = parentURL.appendingPathComponent(backupName)
@@ -73,7 +93,9 @@ public enum ExactFileReplacement {
                 defer { if stagingExists { _ = unlinkat(directory, stagingName, 0) } }
                 try writeExclusive(candidate, directory: directory, name: stagingName)
                 stagingExists = true
-                guard try readIfPresent(directory: directory, name: name) == expected else {
+                guard try readIfPresent(directory: directory, name: name, maximumByteCount: maximumByteCount) == expected,
+                    expectedIdentity == nil || identityMatches(expectedIdentity!, directory: directory, name: name)
+                else {
                     throw ExactFileReplacementError.revisionConflict
                 }
                 try preCommitHook?(url)
@@ -89,10 +111,12 @@ public enum ExactFileReplacement {
                 if expected == nil { stagingExists = false }
                 do {
                     try postCommitHook?(url)
-                    let canonical = try read(directory: directory, name: name)
+                    let canonical = try read(directory: directory, name: name, maximumByteCount: maximumByteCount)
                     if let expected {
-                        let displaced = try? read(directory: directory, name: stagingName)
-                        guard canonical == candidate, displaced == expected else {
+                        let displaced = try? read(directory: directory, name: stagingName, maximumByteCount: maximumByteCount)
+                        guard canonical == candidate, displaced == expected,
+                            expectedIdentity == nil || identityMatches(expectedIdentity!, directory: directory, name: stagingName)
+                        else {
                             if canonical == candidate {
                                 // A second external writer can replace the
                                 // candidate after its read. Preserve whatever
@@ -103,7 +127,7 @@ public enum ExactFileReplacement {
                                     throw ExactFileReplacementError.commitUncertain(
                                         "Conflict rollback did not complete. Displaced bytes remain in \(stagingName).")
                                 }
-                                guard try read(directory: directory, name: stagingName) == candidate,
+                                guard try read(directory: directory, name: stagingName, maximumByteCount: maximumByteCount) == candidate,
                                     fsync(directory) == 0,
                                     directoryMatches(directory, url: parentURL)
                                 else {
@@ -120,7 +144,7 @@ public enum ExactFileReplacement {
                         }
                         // Keep the displaced original until preservation is proven.
                         if let recoveryName {
-                            guard try read(directory: directory, name: recoveryName) == expected else {
+                            guard try read(directory: directory, name: recoveryName, maximumByteCount: maximumByteCount) == expected else {
                                 stagingExists = false
                                 throw ExactFileReplacementError.commitUncertain("The recovery copy changed. Original bytes remain in \(stagingName).")
                             }
@@ -130,7 +154,7 @@ public enum ExactFileReplacement {
                     }
                     guard fsync(directory) == 0 else { throw posixError() }
                     guard directoryMatches(directory, url: parentURL),
-                        try read(directory: directory, name: name) == candidate
+                        try read(directory: directory, name: name, maximumByteCount: maximumByteCount) == candidate
                     else { throw ExactFileReplacementError.revisionConflict }
                     if expected != nil {
                         guard unlinkat(directory, stagingName, 0) == 0 else { throw posixError() }
@@ -165,11 +189,13 @@ public enum ExactFileReplacement {
             && pinned.st_dev == live.st_dev && pinned.st_ino == live.st_ino
     }
 
-    private static func readIfPresent(directory: Int32, name: String) throws -> Data? {
-        do { return try read(directory: directory, name: name) } catch let error as POSIXError where error.code == .ENOENT { return nil }
+    private static func readIfPresent(directory: Int32, name: String, maximumByteCount: Int) throws -> Data? {
+        do { return try read(directory: directory, name: name, maximumByteCount: maximumByteCount) } catch let error as POSIXError where error.code == .ENOENT {
+            return nil
+        }
     }
 
-    static func read(directory: Int32, name: String) throws -> Data {
+    static func read(directory: Int32, name: String, maximumByteCount: Int = 16 * 1_024 * 1_024) throws -> Data {
         let descriptor = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         guard descriptor >= 0 else { throw posixError() }
         defer { Darwin.close(descriptor) }
@@ -177,7 +203,6 @@ public enum ExactFileReplacement {
         guard fstat(descriptor, &status) == 0,
             (status.st_mode & S_IFMT) == S_IFREG, status.st_nlink == 1
         else { throw POSIXError(.EINVAL) }
-        let maximumByteCount = 16 * 1_024 * 1_024
         guard status.st_size >= 0, status.st_size <= maximumByteCount else { throw POSIXError(.EFBIG) }
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 16_384)
@@ -213,4 +238,13 @@ public enum ExactFileReplacement {
     }
 
     private static func posixError() -> POSIXError { POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+
+    private static func identityMatches(_ identity: ExactFileReplacementIdentity, directory: Int32, name: String) -> Bool {
+        var parent = stat()
+        var file = stat()
+        return fstat(directory, &parent) == 0 && fstatat(directory, name, &file, AT_SYMLINK_NOFOLLOW) == 0
+            && (file.st_mode & S_IFMT) == S_IFREG && file.st_nlink == 1
+            && UInt64(parent.st_dev) == identity.parentDevice && UInt64(parent.st_ino) == identity.parentInode
+            && UInt64(file.st_dev) == identity.device && UInt64(file.st_ino) == identity.inode
+    }
 }

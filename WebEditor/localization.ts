@@ -25,6 +25,8 @@ export const webInterfaceLocalizationKeys = [
   "The insertion position changed. Confirm the cursor again.",
   "The reference is too large.",
   "Finish composition before adopting a suggestion.",
+  "Finish composition before changing note information.",
+  "The note changed. Reload Note Info before applying changes.",
   "The passage changed. Request a new suggestion.",
   "The suggestion is too large.",
   "Copy",

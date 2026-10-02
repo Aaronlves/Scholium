@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 42;
+export const EDITOR_PROTOCOL_VERSION = 43;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {MAX_SOURCE_UTF8_BYTES, exactSourceFits} from "./source-capacity";
 export {MAX_SOURCE_UTF8_BYTES} from "./source-capacity";
@@ -128,6 +128,7 @@ export type EditorOperation =
   | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
   | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string}
   | {type: "insertReference"; selection: SelectionRange; generation: number; target: string}
+  | {type: "applySourcePatch"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string}
   | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string; preserveSelection: boolean}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
   | {type: "pasteClipboard"; plainText: string; selections: SelectionRange[]}
@@ -165,7 +166,7 @@ export interface EditorCommandResult {
 const operationTypes = new Set([
   "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setWritingContinuation", "setWritingIndexContext", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
+  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "applySourcePatch", "replacePassage", "insertReference", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
@@ -349,6 +350,12 @@ function validOperation(operation: Record<string, unknown>) {
       && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0
       && selection?.anchor === selection?.head;
   }
+  case "applySourcePatch":
+    return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText)
+      && typeof operation.replacement === "string" && exactSourceFits(operation.replacement)
+      && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16)
+      && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16)
+      && Number(operation.toUTF16) <= operation.expectedText.length;
   case "replacePassage":
     return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string"
       && typeof operation.preserveSelection === "boolean"
@@ -398,7 +405,7 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
   if (typeof type !== "string" || !operationTypes.has(type)) return false;
   if (!validOperation(request.operation as unknown as Record<string, unknown>)) return false;
   try {
-    const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
+    const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "applySourcePatch", "replacePassage", "pasteClipboard"].includes(type);
     return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES);
   } catch { return false; }
 }

@@ -285,6 +285,12 @@ public protocol ZoteroUseCases: Sendable {
     func refreshLibraryInfo() async throws -> ZoteroLibraryInfo
     func clearConnectionHistory() async throws
     func searchLibrary(query: String, limit: Int) async throws -> [ZoteroSearchHit]
+    func pdfAttachments(for hit: ZoteroSearchHit) async throws -> [ZoteroPDFSource]
+    func resolvePDFImport(_ source: ZoteroPDFSource) async throws -> ZoteroPDFImportCandidate
+    func revalidatePDFImport(_ candidate: ZoteroPDFImportCandidate) async throws
+    func pdfImportOptions(for hit: ZoteroSearchHit) async throws -> [ZoteroPDFImportOption]
+    func resolvePDFLocalCopy(_ observation: ZoteroPDFLocalCopyObservation) async throws -> ZoteroPDFLocalCopyCandidate
+    func revalidatePDFLocalCopy(_ candidate: ZoteroPDFLocalCopyCandidate) async throws
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {

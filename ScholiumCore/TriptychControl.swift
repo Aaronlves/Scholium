@@ -631,10 +631,11 @@ public actor TriptychControlStore {
             records.append(record)
         }
         let relativeKeys = records.compactMap { record -> String? in
-            guard case .vaultRelative(let path) = record.location else {
-                return nil
+            switch record.location {
+            case .vaultRelative(let path): return "\(record.vaultID?.uuidString ?? ""):vault:\(path.rawValue)"
+            case .triptychRelative(let path): return "shared:\(path.rawValue)"
+            case .external: return nil
             }
-            return "\(record.vaultID.uuidString):\(path.rawValue)"
         }
         guard Set(records.map(\.id)).count == records.count,
             Set(relativeKeys).count == relativeKeys.count
@@ -645,13 +646,15 @@ public actor TriptychControlStore {
     }
 
     public func registerAttachment(
-        vaultID: UUID,
+        vaultID: UUID?,
         location: AttachmentLocation,
-        preferredID: UUID = UUID()
+        preferredID: UUID = UUID(),
+        importedSourceFingerprint: DocumentFingerprint? = nil,
+        zoteroSource: ZoteroPDFSource? = nil
     ) throws -> (record: PortableAttachmentRecord, created: Bool) {
         try withPortableControlLock {
             try ensureAttachmentCatalogDirectory()
-            if case .vaultRelative = location,
+            if !location.isExternal,
                 let existing = try attachmentRecords().first(where: {
                     $0.vaultID == vaultID && $0.location == location
                 })
@@ -661,13 +664,18 @@ public actor TriptychControlStore {
             let record = PortableAttachmentRecord(
                 id: preferredID,
                 vaultID: vaultID,
-                location: location
+                location: location,
+                importedSourceFingerprint: importedSourceFingerprint,
+                zoteroSource: zoteroSource
             )
             let url = attachmentRecordURL(id: record.id)
             guard !fileManager.fileExists(atPath: url.path) else {
                 throw ImageAttachmentError.catalogConflict
             }
             let candidate = try encodedData(record)
+            guard (try? decoder().decode(PortableAttachmentRecord.self, from: candidate)) == record else {
+                throw ImageAttachmentError.invalidCatalog
+            }
             try controlCreateHook?(url)
             do {
                 try candidate.write(to: url, options: .withoutOverwriting)

@@ -21,6 +21,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case searchResearch
     case toggleLibrary
     case toggleResearchInspector
+    case togglePDFReader
     case toggleFocusLayout
     case toggleReviewEdit
     case showSource
@@ -55,7 +56,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
 
     var isCustomizable: Bool {
         switch self {
-        case .searchResearch, .toggleLibrary, .toggleResearchInspector, .toggleFocusLayout,
+        case .searchResearch, .toggleLibrary, .toggleResearchInspector, .togglePDFReader, .toggleFocusLayout,
             .toggleReviewEdit, .showSource, .showAttention,
             .insertFootnote, .insertInlineFootnote, .findWritingReferences:
             true
@@ -67,7 +68,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
 
     var category: ScholiumHotkeyCategory {
         switch self {
-        case .searchResearch, .toggleLibrary, .toggleResearchInspector, .toggleFocusLayout,
+        case .searchResearch, .toggleLibrary, .toggleResearchInspector, .togglePDFReader, .toggleFocusLayout,
             .showAttention, .newWindow, .newNote, .openMarkdown, .closeTab, .nextTab, .previousTab:
             .workspace
         default:
@@ -101,6 +102,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .searchResearch: "Advanced Search"
         case .toggleLibrary: "Show or Hide Library"
         case .toggleResearchInspector: "Show or Hide Research Inspector"
+        case .togglePDFReader: "Show or Hide PDF Reader"
         case .toggleFocusLayout: "Focus Layout"
         case .toggleReviewEdit: "Switch Review and Edit"
         case .showSource: "Show Source"
@@ -137,6 +139,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .searchResearch: "View → Advanced Search"
         case .toggleLibrary: "View → Sidebar"
         case .toggleResearchInspector: "View → Research Inspector"
+        case .togglePDFReader: "View → PDF Reader"
         case .toggleFocusLayout: "View → Focus Layout"
         case .toggleReviewEdit: "View → Edit / Review"
         case .showSource: "View → Document Mode → Source"
@@ -197,6 +200,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "s", modifiers: [.control, .command])
         case .toggleResearchInspector:
             ScholiumHotkeyBinding(key: "b", modifiers: [.option, .command])
+        case .togglePDFReader:
+            ScholiumHotkeyBinding(key: "p", modifiers: [.control, .command])
         case .toggleReviewEdit:
             ScholiumHotkeyBinding(key: "r", modifiers: [.command])
         case .insertFootnote:

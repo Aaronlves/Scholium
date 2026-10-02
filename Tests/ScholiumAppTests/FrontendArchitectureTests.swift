@@ -992,7 +992,7 @@ struct FrontendArchitectureTests {
                 ScholiumWorkspaceToolbarController.Item.inspectorModes,
                 .flexibleSpace,
                 .space,
-                ScholiumWorkspaceToolbarController.Item.inspector,
+                ScholiumWorkspaceToolbarController.Item.paneVisibility,
             ])
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(!sidebarSource.contains("private var brandHeader"))
@@ -1084,6 +1084,11 @@ struct FrontendArchitectureTests {
             researchInspectorVisibilityDidChange: { _ in },
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
+            readerVisible: false,
+            readerWidth: 360,
+            readerWidthDidChange: { _ in },
+            focusDocument: {},
+            reader: AnyView(EmptyView()),
             library: EmptyView(),
             chat: EmptyView(), sidebarContent: .library,
             document: EmptyView(),
@@ -1156,7 +1161,7 @@ struct FrontendArchitectureTests {
         let documentControlSpaceIndex = try #require(
             identifiers.indices.last { $0 < modeIndex && identifiers[$0] == .space }
         )
-        let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
+        let paneVisibilityIndex = try #require(identifiers.firstIndex(of: Item.paneVisibility))
         let inspectorModesIndex = try #require(
             identifiers.firstIndex(of: Item.inspectorModes)
         )
@@ -1176,13 +1181,19 @@ struct FrontendArchitectureTests {
         #expect(modeIndex < apparatusDividerIndex)
         #expect(apparatusDividerIndex < inspectorModesIndex)
         #expect(inspectorModesIndex < apparatusFlexibleSpaceIndex)
-        #expect(apparatusFlexibleSpaceIndex < inspectorIndex)
+        #expect(apparatusFlexibleSpaceIndex < paneVisibilityIndex)
         #expect(identifiers.filter { $0 == .flexibleSpace }.count == 3)
         #expect(identifiers.filter { $0 == Item.sidebar }.count == 1)
         #expect(identifiers.filter { $0 == Item.back }.count == 1)
         #expect(identifiers.filter { $0 == Item.forward }.count == 1)
         #expect(identifiers.filter { $0 == Item.inspectorModes }.count == 1)
-        #expect(identifiers.filter { $0 == Item.inspector }.count == 1)
+        #expect(identifiers.filter { $0 == Item.paneVisibility }.count == 1)
+
+        let readingIdentifiers = ScholiumWorkspaceToolbarController.itemIdentifiers(tabIdentifiers: [], readerVisible: true)
+        let readingDividerIndex = try #require(readingIdentifiers.firstIndex(of: Item.readingDivider))
+        #expect(readingIdentifiers[readingDividerIndex - 1] == Item.noteActions)
+        #expect(readingIdentifiers[readingDividerIndex + 1] == Item.readerControls)
+        #expect(readingIdentifiers.last == Item.paneVisibility)
 
         let toolbarSource = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
@@ -1390,6 +1401,11 @@ struct FrontendArchitectureTests {
                 researchInspectorVisibilityDidChange: { _ in },
                 splitControllerDidAttach: { _ in },
                 splitControllerDidDetach: { _ in },
+                readerVisible: false,
+                readerWidth: 360,
+                readerWidthDidChange: { _ in },
+                focusDocument: {},
+                reader: AnyView(EmptyView()),
                 library: EmptyView(),
                 chat: EmptyView(), sidebarContent: .library,
                 document: EmptyView(),
@@ -1422,6 +1438,11 @@ struct FrontendArchitectureTests {
             researchInspectorVisibilityDidChange: { _ in },
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
+            readerVisible: false,
+            readerWidth: 360,
+            readerWidthDidChange: { _ in },
+            focusDocument: {},
+            reader: AnyView(EmptyView()),
             library: EmptyView(),
             chat: EmptyView(), sidebarContent: .library,
             document: EmptyView(),
@@ -2567,7 +2588,7 @@ struct FrontendArchitectureTests {
         #expect(
             toolbarSource.components(
                 separatedBy: "NSTrackingSeparatorToolbarItem("
-            ).count == 3)
+            ).count == 4)
         #expect(toolbarSource.contains("dividerIndex: 0"))
         #expect(toolbarSource.contains("dividerIndex: 1"))
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))

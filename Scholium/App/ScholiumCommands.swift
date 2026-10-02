@@ -516,6 +516,18 @@ private struct ScholiumViewCommandContent: View {
             workspaceWindowActions == nil || appState?.canToggleResearchInspector != true
                 || appState?.shellState.isFocusLayoutLockedByFullScreen == true
         )
+        Button(
+            ScholiumL10n.dynamicString(
+                appState.map { PDFReaderWindowCommand.isVisible(in: $0) } == true
+                    ? "Hide PDF Reader" : "Show PDF Reader"
+            )
+        ) {
+            guard let appState else { return }
+            PDFReaderWindowCommand.toggle(in: appState)
+        }
+        .scholiumActivationPointer()
+        .scholiumKeyboardShortcut(.togglePDFReader)
+        .disabled(appState.map { PDFReaderWindowCommand.isAvailable(in: $0) } != true)
         Divider()
         Button(
             ScholiumL10n.dynamicString(
@@ -575,11 +587,11 @@ private struct ScholiumViewCommandContent: View {
                 .scholiumActivationPointer()
                 .disabled(!hasDocument || documentTextScale == 1.5)
             Toggle("200%", isOn: documentTextScaleSelection(ScholiumMetrics.Document.maximumTextScale))
-            .scholiumActivationPointer()
-            .disabled(
-                !hasDocument
-                    || documentTextScale == ScholiumMetrics.Document.maximumTextScale
-            )
+                .scholiumActivationPointer()
+                .disabled(
+                    !hasDocument
+                        || documentTextScale == ScholiumMetrics.Document.maximumTextScale
+                )
         }
         .scholiumActivationPointer()
         Menu("Appearance") {
@@ -710,12 +722,15 @@ private struct ScholiumWindowCommandContent: View {
     var body: some View {
         Menu("Document Tabs") {
             let owner = appState
-            Picker("Document Tabs", selection: Binding<UUID?>(
-                get: { owner?.documentTabController.selectedTabID },
-                set: { selected in
-                    if let selected { owner?.selectDocumentTab(withID: selected) }
-                }
-            )) {
+            Picker(
+                "Document Tabs",
+                selection: Binding<UUID?>(
+                    get: { owner?.documentTabController.selectedTabID },
+                    set: { selected in
+                        if let selected { owner?.selectDocumentTab(withID: selected) }
+                    }
+                )
+            ) {
                 ForEach(owner?.documentTabController.tabs ?? []) { tab in
                     Text(verbatim: tab.title).tag(Optional(tab.id))
                 }

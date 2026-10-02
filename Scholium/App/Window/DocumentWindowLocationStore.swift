@@ -293,6 +293,12 @@ final class DocumentWindowLocationStore {
             moving[key] = nil
         }
         await source.waitForDocumentTransitions()
+        // Moving back closes this container directly after its session leaves.
+        // Settle the utility panel before transfer, while its Note is still here.
+        if let info = source.noteInfoWindowController {
+            guard await info.prepareForWindowClose() else { throw CancellationError() }
+            info.close()
+        }
         let original = origins[source.nativeWindowID].flatMap { windows[$0]?.model }
         let existing = ([original] + windows.values.map(\.model)).compactMap { $0 }.first {
             !$0.isDetachedDocumentWindow && !$0.windowCloseCoordinator.isFinalized
@@ -324,7 +330,7 @@ final class DocumentWindowLocationStore {
         coordinator.closeTransferredContainer()
     }
 
-    private func transfer(_ tab: DocumentTabItem, from source: WindowModel, to destination: WindowModel) async throws {
+    func transfer(_ tab: DocumentTabItem, from source: WindowModel, to destination: WindowModel) async throws {
         guard !destination.transferInProgress,
             canTransferFrom(source),
             let triptychID = source.workspaceAssignment?.id,
@@ -340,7 +346,19 @@ final class DocumentWindowLocationStore {
         }
         destination.transferInProgress = true
         defer { destination.transferInProgress = false }
+        let sourceReader = source.documentController.selectedDocument == tab.document ? source.pdfReaderController : nil
+        let sourceDeparture = sourceReader?.beginDeparture()
+        let destinationReader = destination.pdfReaderController
+        let destinationDeparture = destinationReader.beginDeparture()
+        defer {
+            source.refreshPDFReaderContext()
+            destination.refreshPDFReaderContext()
+            if let sourceDeparture { sourceReader?.endDeparture(sourceDeparture) }
+            destinationReader.endDeparture(destinationDeparture)
+        }
         await destination.waitForDocumentTransitions()
+        if let sourceReader { try await sourceReader.flushAnnotations() }
+        try await destinationReader.flushAnnotations()
         let previousDestination = destination.documentController.selectedDocument
         var destinationSuspensionID: String?
         var sourceSuspensionID: String?

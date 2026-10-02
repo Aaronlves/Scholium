@@ -31,6 +31,26 @@ actor ZoteroBridge {
         try await operations.searchLibrary(query: query, limit: 25)
     }
 
+    func pdfAttachments(for item: ZoteroSearchHit) async throws -> [ZoteroPDFSource] {
+        try await operations.pdfAttachments(for: item)
+    }
+
+    func resolvePDFImport(_ source: ZoteroPDFSource) async throws -> ZoteroPDFImportCandidate {
+        try await operations.resolvePDFImport(source)
+    }
+
+    func revalidatePDFImport(_ candidate: ZoteroPDFImportCandidate) async throws {
+        try await operations.revalidatePDFImport(candidate)
+    }
+
+    func pdfImportOptions(for item: ZoteroSearchHit) async throws -> [ZoteroPDFImportOption] {
+        try await operations.pdfImportOptions(for: item)
+    }
+
+    func resolvePDFLocalCopy(_ observation: ZoteroPDFLocalCopyObservation) async throws -> ZoteroPDFLocalCopyCandidate {
+        try await operations.resolvePDFLocalCopy(observation)
+    }
+
     func openZotero() {
         #if canImport(AppKit)
             if let url = URL(string: "zotero://select/library") {

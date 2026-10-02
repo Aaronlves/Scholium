@@ -140,7 +140,7 @@ final class ScholiumUITests: XCTestCase {
                 "testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
             ),
             autosaveDelayMS: 5_000,
-            appearance: name.contains("testSettingsNavigationRetainsDraftsAndWindowGeometry") ? .dark : nil,
+            appearance: name.contains("testSettingsNavigationRetainsDraftsAndWindowGeometry") ? .dark : (name.contains("testPDFReader") ? .light : nil),
             openNote: initialOpenNoteForCurrentTest
         )
         if name.contains("testAgentChangesShowsExactUpdateAndRestoresOriginalBytes") {

@@ -220,6 +220,11 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
         @MainActor (
             any ScholiumWorkspaceSplitControlling
         ) -> Void
+    let readerVisible: Bool
+    let readerWidth: Double
+    let readerWidthDidChange: (Double) -> Void
+    let focusDocument: () -> Void
+    let reader: AnyView
     let library: Library
     let chat: Chat
     let sidebarContent: SidebarContent
@@ -243,6 +248,11 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             @escaping @MainActor (
                 any ScholiumWorkspaceSplitControlling
             ) -> Void,
+        readerVisible: Bool,
+        readerWidth: Double,
+        readerWidthDidChange: @escaping (Double) -> Void,
+        focusDocument: @escaping () -> Void,
+        reader: AnyView,
         @ViewBuilder library: () -> Library,
         @ViewBuilder chat: () -> Chat,
         @ViewBuilder document: () -> Document,
@@ -257,6 +267,11 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
         self.researchInspectorVisibilityDidChange = researchInspectorVisibilityDidChange
         self.splitControllerDidAttach = splitControllerDidAttach
         self.splitControllerDidDetach = splitControllerDidDetach
+        self.readerVisible = readerVisible
+        self.readerWidth = readerWidth
+        self.readerWidthDidChange = readerWidthDidChange
+        self.focusDocument = focusDocument
+        self.reader = reader
         self.library = library()
         self.chat = chat()
         self.sidebarContent = sidebarContent
@@ -275,6 +290,11 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             researchInspectorVisibilityDidChange: researchInspectorVisibilityDidChange,
             splitControllerDidAttach: splitControllerDidAttach,
             splitControllerDidDetach: splitControllerDidDetach,
+            readerVisible: readerVisible,
+            readerWidth: readerWidth,
+            readerWidthDidChange: readerWidthDidChange,
+            focusDocument: focusDocument,
+            reader: reader,
             library: library,
             chat: chat,
             sidebarContent: sidebarContent,
@@ -298,14 +318,25 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             libraryVisibilityDidChange: libraryVisibilityDidChange,
             researchInspectorVisibilityDidChange: researchInspectorVisibilityDidChange,
             splitControllerDidAttach: splitControllerDidAttach,
-            splitControllerDidDetach: splitControllerDidDetach
+            splitControllerDidDetach: splitControllerDidDetach,
+            readerVisible: readerVisible,
+            readerWidth: readerWidth,
+            readerWidthDidChange: readerWidthDidChange,
+            focusDocument: focusDocument,
+            reader: reader
         )
+    }
+
+    static func dismantleNSViewController(_ controller: Controller, coordinator: ()) {
+        controller.invalidateReadingSplit()
     }
 
     @MainActor
     final class Controller: NSSplitViewController, ScholiumWorkspaceSplitControlling {
         private let sidebarController: ScholiumSidebarViewController<Library, Chat>
         private let documentTabsController: ScholiumDocumentTabsViewController<Document>
+        private let readerHost: NSHostingController<AnyView>
+        private let documentReadingController: ScholiumDocumentReadingSplitController
         private let apparatusHost: NSHostingController<Apparatus>
         private let documentBackgroundController: ScholiumSurfaceContainerViewController
         private let apparatusBackgroundController: ScholiumSurfaceContainerViewController
@@ -344,6 +375,11 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
                 @escaping @MainActor (
                     any ScholiumWorkspaceSplitControlling
                 ) -> Void,
+            readerVisible: Bool,
+            readerWidth: Double,
+            readerWidthDidChange: @escaping (Double) -> Void,
+            focusDocument: @escaping () -> Void,
+            reader: AnyView,
             library: Library,
             chat: Chat,
             sidebarContent: SidebarContent,
@@ -366,6 +402,19 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
                 selectTab: selectDocumentTab
             )
             let apparatusHost = NSHostingController(rootView: apparatus)
+            let readerHost = NSHostingController(rootView: reader)
+            readerHost.sizingOptions = []
+            self.readerHost = readerHost
+            let documentReadingController = ScholiumDocumentReadingSplitController(
+                documentController: documentTabsController,
+                readerController: ScholiumSurfaceContainerViewController(
+                    contentViewController: readerHost, backgroundRole: .document,
+                    contentExtendsUnderToolbar: true
+                ),
+                readerVisible: readerVisible, readerWidth: readerWidth,
+                widthDidChange: readerWidthDidChange, focusDocument: focusDocument
+            )
+            self.documentReadingController = documentReadingController
             // The native split item is the sole width owner. Inspector content
             // fills the container but must not publish intrinsic, minimum, or
             // maximum sizes back into AppKit as modes and content change.
@@ -374,7 +423,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             self.documentTabsController = documentTabsController
             self.apparatusHost = apparatusHost
             documentBackgroundController = ScholiumSurfaceContainerViewController(
-                contentViewController: documentTabsController,
+                contentViewController: documentReadingController,
                 backgroundRole: .document,
                 contentExtendsUnderToolbar: true
             )
@@ -506,7 +555,12 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             splitControllerDidDetach:
                 @escaping @MainActor (
                     any ScholiumWorkspaceSplitControlling
-                ) -> Void
+                ) -> Void,
+            readerVisible: Bool,
+            readerWidth: Double,
+            readerWidthDidChange: @escaping (Double) -> Void,
+            focusDocument: @escaping () -> Void,
+            reader: AnyView
         ) {
             sidebarController.update(library: library, chat: chat, selection: sidebarContent)
             documentTabsController.update(
@@ -516,11 +570,20 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
                 selectTab: selectDocumentTab
             )
             apparatusHost.rootView = apparatus
+            readerHost.rootView = reader
+            documentReadingController.update(
+                readerVisible: readerVisible, readerWidth: readerWidth,
+                widthDidChange: readerWidthDidChange, focusDocument: focusDocument
+            )
             self.libraryVisibilityDidChange = libraryVisibilityDidChange
             self.researchInspectorVisibilityDidChange =
                 researchInspectorVisibilityDidChange
             self.splitControllerDidAttach = splitControllerDidAttach
             self.splitControllerDidDetach = splitControllerDidDetach
+        }
+
+        func invalidateReadingSplit() {
+            documentReadingController.invalidate()
         }
 
         func setLibraryVisible(_ visible: Bool, animated: Bool) {

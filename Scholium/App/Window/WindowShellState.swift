@@ -87,6 +87,7 @@ final class WindowShellState: ObservableObject {
 
     private let userDefaults: UserDefaults
     private var didRestoreInspector = false
+    private var inspectorVisibilityWasChosen = false
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
@@ -180,6 +181,10 @@ final class WindowShellState: ObservableObject {
         inspector.isVisible = isVisible
     }
 
+    func recordInspectorVisibilityChoice() {
+        inspectorVisibilityWasChosen = true
+    }
+
     func restoreInspector(
         modesByWorkspace: [WorkspaceVaultSlot: String],
         isVisible: Bool?
@@ -193,7 +198,7 @@ final class WindowShellState: ObservableObject {
         }
         inspectorModesByWorkspace = restoredInspectorModes
         inspector.mode = inspectorMode(for: inspectorWorkspace)
-        inspector.isVisible = isVisible ?? false
+        if !inspectorVisibilityWasChosen { inspector.isVisible = isVisible ?? false }
     }
 
     func completeInitialRestore() {

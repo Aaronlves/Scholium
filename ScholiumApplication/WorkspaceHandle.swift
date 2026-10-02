@@ -16,6 +16,7 @@ struct WorkspaceServices: Sendable {
     let controlStore: TriptychControlStore
     let indexedAttachmentAccessStore: IndexedAttachmentAccessStore
     let zotero: ZoteroOperations
+    let pdfReader: PDFReaderOperations
     let agentChangeStore: AgentChangeStore
     let documentReviewStore: DocumentReviewStore?
     let transactionRecoveryStore: TriptychMutationRecoveryStore
@@ -58,6 +59,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public nonisolated let research: ResearchOperations
     public nonisolated let agentCollaboration: AgentCollaborationOperations
     public nonisolated let changes: DocumentChangeOperations
+    public nonisolated let pdfReader: any PDFReaderUseCases
 
     let services: WorkspaceServices
     private let leases: [SecurityScopeLease]
@@ -152,6 +154,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.research = research
         self.agentCollaboration = agentCollaboration
         self.changes = changes
+        pdfReader = services.pdfReader
         events = WorkspaceEventSource(initialSnapshot: initialSnapshot)
         refreshCoordinator = WorkspaceRefreshCoordinator(
             startingAfter: initialWorkspaceGeneration
@@ -317,6 +320,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     triptychID: manifest.id
                 ),
                 zotero: zotero,
+                pdfReader: try PDFReaderOperations(
+                    controlURL: controlURL, controlStore: controlStore, repositories: repositories,
+                    applicationSupportURL: applicationSupportURL, triptychID: manifest.id, zotero: zotero),
                 agentChangeStore: agentChangeStore,
                 documentReviewStore: try? DocumentReviewStore(
                     applicationSupportURL: applicationSupportURL,
@@ -521,6 +527,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         await sourceCommitRefresh?.value
         await events.finish(finalSnapshot: currentSnapshot)
         await services.indexedAttachmentAccessStore.endAllAccesses()
+        await services.pdfReader.shutdown()
         for lease in leases.reversed() where lease.started {
             lease.url.stopAccessingSecurityScopedResource()
         }

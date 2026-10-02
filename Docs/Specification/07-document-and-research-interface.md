@@ -269,11 +269,19 @@ navigation uses a short smooth reveal and the existing transient arrival marker.
 Reduce Motion uses immediate positioning and static feedback. The rail hides
 before it would compress or cover readable Document content.
 
-Attachments remain file links or image embeds. Review and inactive Edit
-add quiet file-type symbols beside authored link labels without changing source
-or activation. File-menu insertion uses the editor selection; system Quick Look
-owns file opening/dismissal. No attachment sidebar, global manager or persistent
-reader is added.
+Attachments remain authored file links or image embeds with quiet file-type
+symbols in Review/inactive Edit. File insertion uses the editor selection;
+Quick Look retains ordinary attachment previews. **PDF Reader** is a separate
+resizable right-side reading pane beside Markdown, distinct from Inspector.
+They share one side-pane slot; Document mode is unchanged. Opaque paper fills the scrolling plane; native
+toolbar controls follow its divider. Search opens on demand. It follows
+the selected Note's optional `pdf` binding (§5.2), with empty/loading/unavailable states.
+Controls provide distinct attachment identities, navigation, zoom, search,
+direct highlighting, and comment creation/edit/deletion.
+Annotations identify passages and reveal precise locations; full comments remain
+readable without editing permission. Unavailable bindings retain their locator,
+Retry, Replace and guarded Detach. Opening or resizing
+preserves Markdown. §7 owns save, conflict and recovery.
 
 Edit entry restores fingerprint-valid title/body focus and selection; otherwise
 it maps an exact Review selection or places the caret at the first body position
@@ -355,10 +363,13 @@ statistics have no interface entry in Inspector, toolbar, menus or popovers.
 Toolbar placement and available commands belong to §18.2. Document Text Size
 is per-window and source-neutral.
 
-Properties remain in the document's source-located YAML. There is no About,
-Overview, Metadata form, or dedicated attachment Inspector. Native controls,
-quiet hierarchy and system semantic colors follow Design; reference images do
-not prescribe copied card geometry or decorative glass.
+Properties remain source-located YAML. **Note Info…**, under Note Actions/More,
+opens a lightweight native panel for `summary`, `tags` and the PDF binding,
+plus read-only file location, size and dates. Apply uses targeted source edits
+with normal Undo and revision guards; unsupported shapes remain editable in
+Source. Drafts and failures survive rejected changes; no separate Metadata
+record is created. Command-I retains Italic. No attachment Inspector or global
+manager is added. Native presentation follows Design and §20.
 
 ### 18.4.1 Advanced CSS boundary
 

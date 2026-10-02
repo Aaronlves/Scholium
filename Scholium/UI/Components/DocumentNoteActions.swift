@@ -2,11 +2,11 @@ import AppKit
 import ScholiumContracts
 
 enum DocumentNoteAction: String, CaseIterable {
-    case copyLink, addToChat, move, duplicate, merge, find, agentChanges, export
+    case copyLink, addToChat, noteInfo, move, duplicate, merge, find, agentChanges, export
     case revealInFinder, moveWindow, close, trash
 
     static let groups: [[Self]] = [
-        [.copyLink, .addToChat], [.move, .duplicate, .merge],
+        [.copyLink, .addToChat, .noteInfo], [.move, .duplicate, .merge],
         [.find, .agentChanges, .export], [.revealInFinder, .moveWindow, .close], [.trash],
     ]
 
@@ -14,6 +14,7 @@ enum DocumentNoteAction: String, CaseIterable {
         switch self {
         case .copyLink: "Copy Note Link"
         case .addToChat: "Add to Chat"
+        case .noteInfo: "Note Info…"
         case .move: "Move Note…"
         case .duplicate: "Duplicate Note…"
         case .merge: "Merge into Another Note…"
@@ -162,6 +163,7 @@ extension WindowModel {
         switch action {
         case .copyLink: return currentDocumentDescriptor != nil && workspaceCatalog != nil
         case .addToChat: return currentDocumentDescriptor != nil && windowWorkspaceController.activeCapabilities != nil
+        case .noteInfo: return currentDocumentDescriptor != nil
         case .move: return currentDocumentCapabilities.allows(.move)
         case .duplicate: return currentDocumentCapabilities.allows(.duplicate)
         case .merge: return canMergeCurrentNote
@@ -208,6 +210,7 @@ extension WindowModel {
                 guard let self, document == self.documentController.selectedDocument else { return }
                 await self.addCurrentNoteToVisibleChat()
             }
+        case .noteInfo: showNoteInfo()
         case .move, .duplicate:
             guard let note = currentNote, let target = NoteMutationTarget(note) else { return }
             switch action {

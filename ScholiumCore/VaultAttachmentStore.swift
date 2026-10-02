@@ -134,13 +134,22 @@ public actor VaultAttachmentStore {
 
     /// Copies an immutable document snapshot selected through an existing scoped owner.
     public func copyDocumentSnapshot(_ data: Data, filename: String, attachmentID: UUID) throws -> PreparedVaultDocumentFile {
+        try copyDocumentSnapshot(data, filename: filename, attachmentID: attachmentID, shared: false)
+    }
+
+    /// The caller's root is the registered `.scholium` directory, never a Note vault.
+    func copySharedDocumentSnapshot(_ data: Data, filename: String, attachmentID: UUID) throws -> PreparedVaultDocumentFile {
+        try copyDocumentSnapshot(data, filename: filename, attachmentID: attachmentID, shared: true)
+    }
+
+    private func copyDocumentSnapshot(_ data: Data, filename: String, attachmentID: UUID, shared: Bool) throws -> PreparedVaultDocumentFile {
         guard filename == URL(fileURLWithPath: filename).lastPathComponent,
             !filename.isEmpty, filename != ".", filename != "..", !filename.contains("\0")
         else {
             throw DocumentAttachmentError.unsupportedDocument(filename)
         }
         let relativePath = try AttachmentRelativePath(
-            "Attachments/\(attachmentID.uuidString.lowercased())/\(filename)"
+            "\(shared ? "attachments/files" : "Attachments")/\(attachmentID.uuidString.lowercased())/\(filename)"
         )
         let destination = vaultURL.appendingPathComponent(
             relativePath.rawValue,
@@ -164,7 +173,7 @@ public actor VaultAttachmentStore {
             throw error
         }
         return PreparedVaultDocumentFile(
-            location: .vaultRelative(relativePath),
+            location: shared ? .triptychRelative(relativePath) : .vaultRelative(relativePath),
             copiedFileFingerprint: fingerprint,
             copiedRelativePath: relativePath
         )
@@ -434,9 +443,11 @@ public actor VaultAttachmentStore {
         _ relativePath: AttachmentRelativePath
     ) -> Bool {
         let components = relativePath.components.map(String.init)
-        return components.count >= 3
-            && components[0] == "Attachments"
-            && UUID(uuidString: components[1]) != nil
+        return
+            (components.count == 3 && components[0] == "Attachments"
+            && UUID(uuidString: components[1]) != nil)
+            || (components.count == 4 && components[0] == "attachments" && components[1] == "files"
+                && UUID(uuidString: components[2]) != nil)
     }
 
     private static func readStableRegularFile(at url: URL) throws -> Data {

@@ -13853,6 +13853,8 @@
     "The insertion position changed. Confirm the cursor again.",
     "The reference is too large.",
     "Finish composition before adopting a suggestion.",
+    "Finish composition before changing note information.",
+    "The note changed. Reload Note Info before applying changes.",
     "The passage changed. Request a new suggestion.",
     "The suggestion is too large.",
     "Copy",
@@ -22373,7 +22375,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 42;
+  var EDITOR_PROTOCOL_VERSION = 43;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -22404,6 +22406,7 @@
     "captureRecovery",
     "restoreRecovery",
     "acknowledgeCommittedSnapshot",
+    "applySourcePatch",
     "replacePassage",
     "insertReference",
     "command",
@@ -22554,6 +22557,8 @@
         const selection = operation.selection;
         return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
       }
+      case "applySourcePatch":
+        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string" && exactSourceFits(operation.replacement) && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16) && Number(operation.toUTF16) <= operation.expectedText.length;
       case "replacePassage":
         return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string" && typeof operation.preserveSelection === "boolean" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
       case "suspendForDetachment":
@@ -22597,7 +22602,7 @@
     if (typeof type !== "string" || !operationTypes.has(type)) return false;
     if (!validOperation(request.operation)) return false;
     try {
-      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
+      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "applySourcePatch", "replacePassage", "pasteClipboard"].includes(type);
       return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES);
     } catch {
       return false;
@@ -32335,6 +32340,19 @@ ${fence}
     return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
   }
 
+  // source-patch.ts
+  function sourcePatch(source, expected, from, to, replacement) {
+    if (source !== expected || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from || to > source.length) return null;
+    const boundary = (offset) => offset === 0 || offset === source.length || !(source.charCodeAt(offset - 1) === 13 && source.charCodeAt(offset) === 10) && !(source.charCodeAt(offset - 1) >= 55296 && source.charCodeAt(offset - 1) <= 56319 && source.charCodeAt(offset) >= 56320 && source.charCodeAt(offset) <= 57343);
+    if (!boundary(from) || !boundary(to) || from === 0 && source.charCodeAt(0) === 65279 && replacement.charCodeAt(0) !== 65279) return null;
+    return {
+      from: normalizedDocumentText(source.slice(0, from)).length,
+      to: normalizedDocumentText(source.slice(0, to)).length,
+      insert: normalizedDocumentText(replacement),
+      exactInsert: replacement
+    };
+  }
+
   // accessibility.ts
   function unsupportedFilePasteMessage() {
     return localized("File and image paste is not supported in Editor 1.0.");
@@ -32397,6 +32415,7 @@ ${fence}
   var policies = {
     initialize: "reject",
     replacePassage: "reject",
+    applySourcePatch: "reject",
     insertReference: "reject",
     pasteClipboard: "reject",
     selectAll: "reject",
@@ -40689,6 +40708,29 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         editor.focus();
         lastUndoLabel = lastRedoLabel = "Insert Wikilink";
         return successfulResult(request.requestID, true, "Insert Wikilink");
+      }
+      case "applySourcePatch": {
+        if (editor.composing || compositionGate.active) {
+          return rejected(request.requestID, documentVersion, localized("Finish composition before changing note information."));
+        }
+        const change = sourcePatch(
+          exactEditorSource(),
+          operation.expectedText,
+          operation.fromUTF16,
+          operation.toUTF16,
+          operation.replacement
+        );
+        if (!change) return rejected(request.requestID, documentVersion, localized("The note changed. Reload Note Info before applying changes."));
+        if (!exactSourceFitsChanges(editor.state, [change])) {
+          return rejected(request.requestID, documentVersion, sourceCapacityMessage);
+        }
+        editor.dispatch({
+          changes: change,
+          effects: exactInsertionEffects(change.exactInsert, change.from),
+          annotations: [Transaction.userEvent.of("input.scholium.noteInfo"), isolateHistory.of("full")]
+        });
+        lastUndoLabel = lastRedoLabel = "Edit Note Info";
+        return successfulResult(request.requestID, true, "Edit Note Info");
       }
       case "replacePassage": {
         if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, localized("Finish composition before adopting a suggestion."));

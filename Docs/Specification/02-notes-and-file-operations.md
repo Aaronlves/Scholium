@@ -7,7 +7,7 @@
 Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
 one exact Markdown buffer; autosave; create, duplicate, import, move,
 export, Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
-source properties, Changes, conflicts, and recovery.
+source properties, Changes, conflicts, recovery, and optional PDF reading and annotation.
 
 ### 5.1 Document modes and YAML
 
@@ -123,8 +123,8 @@ Protected constructs follow these rules:
 [Appendix A](#appendix-a-authored-source-properties) defines the cross-cutting
 source-property contract. YAML and body share one exact Markdown authority;
 §18.4 owns its editing and presentation. Source properties carry the same
-source fingerprint, revision checks, Undo and recovery as the body; there is no
-separate managed Metadata record or form.
+source fingerprint, revision checks, Undo and recovery as the body. Note Info
+provides bounded source-backed edits (§18.4), without a separate Metadata record.
 
 ### 5.3 Create, duplicate, move, and identity
 
@@ -321,16 +321,48 @@ preserving unrelated tabs and focus.
 
 ## 7. Written annotation
 
-Authoritative written annotation remains Markdown, including semantic
-Callouts and the occurrence-owned link annotations defined by §12. Selection
-creates no separate portable comment object.
+Note annotation remains Markdown, including semantic
+Callouts and the occurrence-owned link annotations defined by §12. Markdown
+selection creates no separate portable comment object.
+
+PDF highlights and comments belong to the separate shared PDF's bytes. A Note's
+optional authored binding follows Appendix A; §18.4 owns the reading pane.
+Researchers may select an existing shared PDF or import a copy of a local or
+Zotero PDF. Multiple Notes may bind the same file and share its annotations.
+Detaching, replacing a binding, or deleting a Note never deletes that PDF.
+Local imports and explicitly confirmed one-time Zotero copies reuse only local
+copies by original digest, retaining no Zotero source relationship. Zotero import
+with verified database identity uses that database/library/attachment identity
+and digest; changed bytes require explicit new-version import, preserving annotations.
+
+Annotation creation, editing and deletion save against the exact loaded PDF
+revision. External changes never authorize silent overwrite or replacement of
+unsaved annotations. Failure retains the candidate with Retry Save and an
+explicit export route; reload of a dirty reader requires a preserved export and
+explicit discard. Interrupted or uncertain saves retain durable recovery copies
+available after relaunch. Missing, moved, unreadable or unsupported files retain
+their binding and offer repair without filename matching.
+A save in another Scholium window refreshes clean readers of that shared file
+without changing their reading position. Drafts, in-progress saves and unsaved
+annotations remain intact; conflicting readers expose recovery rather than reload.
+
+Note changes, window transfer, close and quit await annotation saves; an unfinished
+comment requires Save or Cancel. Failed researcher-driven departure retains its
+Note and reader. External deletion or a changed binding clears presentation
+while preserving unsaved annotations and recovery.
+Repeated toggles and delayed loads cannot install another Note's PDF. Hidden
+panes lose input and accessibility participation. Reading position and window
+presentation are machine-local; they create no Note, PDF or bibliographic facts.
+Closing releases native resources and observation; reopening resolves current
+saved bytes and restores valid reading context.
 
 ## Appendix A. Authored source properties
 
 YAML frontmatter is the sole authority for user-authored structured properties.
 All three Note roles permit user-defined keys and shapes. Scholium supplies no
 managed field catalog, mandatory bibliography, field lifecycle, role-based
-property restrictions, or separate Metadata record and editing surface.
+property restrictions, or separate Metadata authority. Note Info (§18.4) edits
+only its declared authored fields.
 
 ### Shared authored YAML
 
@@ -344,6 +376,14 @@ owns the Note title; app-owned stable identity remains separate. Authored `title
 `aliases`, `authors`/`author`, and `publication_date` may supply search/navigation
 text without becoming managed bibliographic truth. YAML cannot assign stable
 Note identity, permissions, or research acceptance.
+
+An optional `pdf` string scalar binds one PDF equally for Analysis, Topic and
+Work Notes. Its filesystem path is relative to the Note and resolves only to a
+registered shared copy under `.scholium/attachments/files/<uuid>/<name>.pdf`.
+The existing portable attachment catalog locates the file; only authored YAML
+establishes the relationship. No title matching or inferred binding exists.
+Moves preserve the PDF destination through a targeted path edit. Invalid or
+ambiguous values remain exact source and cannot authorize reading or replacement.
 
 Property Search uses the existing `property:` grammar. It discovers literal
 user keys, supports presence and normalized scalar/direct-list equality, and

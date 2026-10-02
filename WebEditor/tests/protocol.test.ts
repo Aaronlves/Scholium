@@ -32,7 +32,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the exact-insertion byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(42);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(43);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("binds Select All to the current editor generation", () => {

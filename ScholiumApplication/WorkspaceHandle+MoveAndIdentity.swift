@@ -467,7 +467,13 @@ extension WorkspaceHandle {
                 "The exact Metadata-aware Link catalog could not be proven for this folder move.")
         }
         try await validateScopedMoveCohort(context)
-        return plan
+        let rewrites = try await preservingPDFBindings(
+            documents: documents, destinations: Dictionary(uniqueKeysWithValues: noteMoves.map { ($0.source, $0.destination) }),
+            rewrites: plan.rewrites)
+        return FolderIncomingLinkRewritePlan(
+            vaultID: plan.vaultID, sourceFolder: plan.sourceFolder, destinationFolder: plan.destinationFolder,
+            graphGeneration: plan.graphGeneration, noteMoves: plan.noteMoves, rewrites: rewrites,
+            blockedIncomingLinks: plan.blockedIncomingLinks)
     }
 
     func workspaceMovePlan(
@@ -494,7 +500,31 @@ extension WorkspaceHandle {
                 "The exact Metadata-aware Link catalog could not be proven for this Note move.")
         }
         try await validateScopedMoveCohort(context)
-        return plan
+        let rewrites = try await preservingPDFBindings(documents: documents, destinations: [source: destination], rewrites: plan.rewrites)
+        return IncomingLinkRewritePlan(
+            movedNote: plan.movedNote, destination: plan.destination, graphGeneration: plan.graphGeneration,
+            rewrites: rewrites, blockedIncomingLinks: plan.blockedIncomingLinks)
+    }
+
+    private func preservingPDFBindings(
+        documents: [VaultQualifiedNoteID: NoteDocument], destinations: [VaultQualifiedNoteID: VaultQualifiedNoteID],
+        rewrites: [IncomingLinkRewrite]
+    ) async throws -> [IncomingLinkRewrite] {
+        var bySource = Dictionary(uniqueKeysWithValues: rewrites.map { ($0.source, $0) })
+        for source in destinations.keys.sorted() {
+            guard let original = documents[source], let destination = destinations[source],
+                let binding = try PDFNoteBinding.path(in: original)
+            else { continue }
+            let rebased = try await services.pdfReader.rebaseBinding(binding, from: source, to: destination)
+            guard rebased != binding else { continue }
+            let previous = bySource[source]
+            let current = NoteDocument(relativePath: source.relativePath, rawContent: previous?.updatedSource ?? original.rawContent)
+            guard let patch = try NoteInfoMetadataPlanner.plan(document: current, edits: ["pdf": .string(rebased)]) else { continue }
+            bySource[source] = IncomingLinkRewrite(
+                source: source, expectedRevision: original.fingerprint, updatedSource: patch.resultingSource,
+                rewrittenOccurrences: (previous?.rewrittenOccurrences ?? 0) + 1)
+        }
+        return bySource.values.sorted { $0.source < $1.source }
     }
 
     func freshMovePlanningContext() async throws -> (documents: [VaultQualifiedNoteID: NoteDocument], catalog: [LinkCatalogNote], graph: GraphSnapshot) {

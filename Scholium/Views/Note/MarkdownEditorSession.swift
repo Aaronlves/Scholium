@@ -1691,6 +1691,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         _ = try? await send(.blur, in: webView)
     }
 
+    func applySourcePatch(_ patch: NoteInfoSourcePatch) async throws {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        guard !isComposing else {
+            throw SessionError.bridgeRejected(ScholiumL10n.string("Finish composition before changing note information."))
+        }
+        guard checkedSource.utf8.elementsEqual(patch.expectedSource.utf8) else {
+            throw SessionError.bridgeRejected(ScholiumL10n.string("The note changed. Reload Note Info before applying changes."))
+        }
+        _ = try await send(
+            .applySourcePatch(
+                expectedText: patch.expectedSource, fromUTF16: patch.fromUTF16,
+                toUTF16: patch.toUTF16, replacement: patch.replacement), in: webView)
+    }
+
     func perform(_ command: MarkdownEditorCommand, argument: String? = nil) async throws {
         guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
         _ = try await send(.command(command, argument: argument), in: webView)

@@ -22,7 +22,8 @@ Each configured window contains one native split view:
 1. **Sidebar**: one region with **Library** and **Chat** presentations.
    Library contains Search and Analyses–Topics–Works navigation. Chat belongs
    to the Triptych and retains its conversation while the Document changes.
-2. **Document**: the selected Note or the restrained no-document state.
+2. **Document**: the selected Note, its optional adjacent PDF reading pane
+   (§18.4), or the restrained no-document state.
 3. **Apparatus**: the Inspector's Links and Related Material pages.
 
 Native split behavior governs resizing and collapse. Scholium requests the
@@ -37,7 +38,7 @@ and fixed controls retain safe-area positioning. Only the selected Sidebar page
 participates in pointer, tooltip, keyboard and accessibility interaction; retained
 pages cannot intercept another page. A popover remains an auxiliary surface.
 
-New windows show Library, hide Inspector, and begin in Analyses/Links. The toolbar's
+New windows show Library, hide Inspector/PDF Reader, and begin in Analyses/Links. The toolbar's
 leading native icon selector, labelled Library / Chat in Help and accessibility, shows
 the chosen sidebar presentation. Choosing the other item switches content at the same
 width; choosing the visible item again collapses the sidebar, leaving neither item
@@ -71,8 +72,13 @@ and buffer.
 The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
 Document tabs, current-Document mode,
-current-Note Changes, Note Actions, Inspector
-projection, and Inspector visibility. Commands retain their menus. One catalog
+current-Note Changes, Note Actions and Inspector projection, followed by paired
+PDF Reader and Inspector switches. At most one is active; clicking it closes the
+side pane. Both use persistent native Accent, selected state and accessible names.
+Switching preserves PDF position and crosses its draft/save barrier; failure retains
+the prior pane. Restoration normalizes both-open state to PDF. Document actions align right within Markdown;
+PDF controls align left within PDF, across their native tracking divider. Pane
+toggles remain at the trailing edge. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,
 including embedded editors. Native overflow preserves access. Toolbar customization is not required.
 Copy Note Link, Add Note to Chat and Reveal Note in Finder retain current-Note
@@ -83,7 +89,7 @@ its Library/Chat presentation, or open Notifications.
 **Focus Layout** is a temporary, current-window layout, entered and exited from
 the checked View-menu toggle and its configurable shortcut, independently of full
 screen. It hides the native toolbar, including Document tabs, and collapses
-Sidebar and Apparatus without changing Document mode, text appearance, tab membership or active tab,
+Sidebar, Apparatus and PDF Reader without changing Document mode, text appearance, tab membership or active tab,
 source, text selection, Undo, or reading context. It does not enter full screen,
 dim paragraphs, or add typewriter scrolling. The titlebar background becomes
 transparent so the Document surface continues to the top; native window controls remain.
@@ -103,7 +109,7 @@ window-session restoration retains the pre-focus pane visibility.
 
 One native **Note Actions** menu sits immediately after Review/Edit in both
 window types; the separate window reuses its existing More button. It groups
-Note-link copying and Add to Chat; Move, Duplicate and Merge; Find and
+Note-link copying, Add to Chat and Note Info; Move, Duplicate and Merge; Find and
 current-Note Changes; Finder and window actions; then system Trash.
 The filename title is changed in place by editing the inline title control in
 the document. Document Mode retains its direct control. Menu
@@ -152,15 +158,16 @@ menu lists every tab; a collapsed toolbar group provides the same list in native
 overflow. Tab controls hide below two tabs.
 One collection spans roles; Library browsing preserves it and the shared panes. AppKit owns containment;
 Scholium guards selection and close. Library and Chat provide **Open in Separate Window**. Each Note has one location per Triptych; reopening activates it. Ordinary
-opening replaces selection; Open in New Tab appends. Switching preserves state without saving; background close saves only its target; selected close chooses right, otherwise left; last close shows No Document
+opening replaces selection; Open in New Tab appends. Switching preserves editor state; pending PDF saves finish before departure. Background close saves only its target; selected close chooses right, otherwise left; last close shows No Document
 Selected. Failure retains the tab with Retry. Menus provide Close/Next/Previous Tab and Document Tabs for overflow.
 
 Tabs drag with an insertion gap across the complete tab strip, including gaps
 and end space. Dragging outside the source tab strip previews **Move to Separate
 Window** in the native drag image; returning restores the reorder preview.
 Releasing outside that strip, including within the original window's Document,
-or choosing **Move to Separate Window**, moves the same session into one document window. No window is created before release; Escape cancels. It retains Review/Edit, Find, and
-save/conflict/recovery actions; no Library, Chat, Inspector, tabs, or floating
+or choosing **Move to Separate Window**, moves the same session into one document window. No window is created before release; Escape cancels. It retains Review/Edit, Find and
+save/conflict/recovery. The PDF viewer remains window-owned: the destination keeps
+its pane visibility and restores the Note's PDF reading position. No Library, Chat, Inspector, tabs, or floating
 priority. **More** reuses the shared Note Actions menu, with **Move to Main Window** and
 **Close Window** as its window-specific actions. Hover/focus reveals ×; right-click targets its tab. Removal is immediate. Preparation
 precedes removal; source, Undo, selection, scroll, mode, and conflicts travel

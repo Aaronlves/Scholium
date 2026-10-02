@@ -105,16 +105,20 @@ extension WindowModel {
         for reference: VaultNoteReference,
         placement: DocumentTabPlacement = .replaceSelected
     ) -> DocumentTransitionPreparation {
-        .openingDocument(placement: placement, retainedTab: { [weak self] in
-            self?.documentTabController.tab(for: reference)
-        })
+        .openingDocument(
+            placement: placement,
+            retainedTab: { [weak self] in
+                self?.documentTabController.tab(for: reference)
+            })
     }
 
     func openingPreparation(for path: String) -> DocumentTransitionPreparation {
-        .openingDocument(placement: .replaceSelected, retainedTab: { [weak self] in
-            guard let self, let reference = self.documentReference(for: path) else { return nil }
-            return self.documentTabController.tab(for: reference)
-        })
+        .openingDocument(
+            placement: .replaceSelected,
+            retainedTab: { [weak self] in
+                guard let self, let reference = self.documentReference(for: path) else { return nil }
+                return self.documentTabController.tab(for: reference)
+            })
     }
 
     /// Serializes every transition that can replace the active document view.
@@ -135,14 +139,18 @@ extension WindowModel {
         var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
         var resolvedPreparation = preparation
         var retainedOpeningTab: DocumentTabItem?
+        var pdfDeparture: UUID?
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
+                pdfDeparture = self.pdfReaderController.beginDeparture()
+                try await self.pdfReaderController.flushAnnotations()
                 if case .openingDocument(let placement, let retainedTab) = preparation {
                     let effectivePlacement: DocumentTabPlacement = self.isDetachedDocumentWindow ? .replaceSelected : placement
                     retainedOpeningTab = retainedTab()
-                    resolvedPreparation = effectivePlacement == .newTab || retainedOpeningTab != nil
+                    resolvedPreparation =
+                        effectivePlacement == .newTab || retainedOpeningTab != nil
                         ? .preserveSelectedDocument : .saveSelectedDocument
                 }
                 switch resolvedPreparation {
@@ -187,7 +195,7 @@ extension WindowModel {
                 self.activeDocumentTransitionCurrency = isCurrent
                 defer { self.activeDocumentTransitionCurrency = nil }
                 if case .openingDocument(let placement, let retainedTab) = preparation,
-                    (self.isDetachedDocumentWindow || placement == .replaceSelected),
+                    self.isDetachedDocumentWindow || placement == .replaceSelected,
                     let retainedOpeningTab,
                     retainedTab()?.id != retainedOpeningTab.id
                         || retainedTab()?.document.editingTarget != retainedOpeningTab.document.editingTarget
@@ -241,6 +249,8 @@ extension WindowModel {
                         suspensionID: preservedEditor.suspensionID
                     )
                 }
+                self?.refreshPDFReaderContext()
+                if let pdfDeparture { self?.pdfReaderController.endDeparture(pdfDeparture) }
                 didFinish?()
             }
         )
@@ -271,11 +281,14 @@ extension WindowModel {
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
     ) {
+        var pdfDeparture: UUID?
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 try validateBeforePreparation()
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
+                pdfDeparture = self.pdfReaderController.beginDeparture()
+                try await self.pdfReaderController.flushAnnotations()
                 try await self.flushRegisteredEditorIfNeeded(
                     capturingEditorState: preservingCurrentEditorState
                 )
@@ -321,7 +334,11 @@ extension WindowModel {
                 }
                 didSucceed?()
             },
-            didFinish: { didFinish?() }
+            didFinish: { [weak self] in
+                self?.refreshPDFReaderContext()
+                if let pdfDeparture { self?.pdfReaderController.endDeparture(pdfDeparture) }
+                didFinish?()
+            }
         )
     }
 }

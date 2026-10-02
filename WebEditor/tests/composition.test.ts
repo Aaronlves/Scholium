@@ -8,6 +8,7 @@ describe("CompositionRequestGate synthetic bridge policy", () => {
   afterEach(() => vi.useRealTimers());
   it("gates every source, selection, mode, and projection mutation", () => {
     expect(compositionRequestPolicy("initialize")).toBe("reject");
+    expect(compositionRequestPolicy("applySourcePatch")).toBe("reject");
     expect(compositionRequestPolicy("pasteClipboard")).toBe("reject");
     expect(compositionRequestPolicy("selectAll")).toBe("reject");
     for (const operation of [
