@@ -98,6 +98,137 @@ struct NoteExportServiceTests {
         #expect(imported.string.contains("中文 重点"))
     }
 
+    @Test("Editable DOCX preserves repeated bilingual footnote references and link targets")
+    func docxFootnotesAndLinks() async throws {
+        let source = """
+            # Heading
+
+            A **bold** [linked word](https://example.test/source) 中文[^basis][^basis], repeated[^basis] and another[^other].
+
+            Plain repeat. [repeat](https://example.test/one?a=1&b=2) and [repeat](https://example.test/two) and [**bold** *mixed* 中文](https://example.test/rich). Plain repeat.
+
+            [^basis]: 中文 **註釋** and [footnote link](https://example.test/note).
+            [^other]: Another *注释* with [footnote link](https://example.test/other).
+            """
+        let data = try await NoteExportService.render(
+            document: NoteDocument(relativePath: "Footnotes.md", rawContent: source),
+            title: "Footnotes", format: .docx, style: .document, textSize: 13, paperSize: .a4
+        )
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Scholium-DOCX-Test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let archive = root.appendingPathComponent("note.docx")
+        try data.write(to: archive)
+        let unzip = Process()
+        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        unzip.arguments = ["-q", archive.path, "-d", root.path]
+        try unzip.run()
+        unzip.waitUntilExit()
+        #expect(unzip.terminationStatus == 0)
+        let documentXML = try String(contentsOf: root.appendingPathComponent("word/document.xml"), encoding: .utf8)
+        let footnotesXML = try String(contentsOf: root.appendingPathComponent("word/footnotes.xml"), encoding: .utf8)
+        let document = try XMLDocument(xmlString: documentXML, options: .nodePreserveWhitespace)
+        let footnotes = try XMLDocument(xmlString: footnotesXML, options: .nodePreserveWhitespace)
+        let relationships = try XMLDocument(contentsOf: root.appendingPathComponent("word/_rels/document.xml.rels"))
+        let footnoteRelationships = try XMLDocument(contentsOf: root.appendingPathComponent("word/_rels/footnotes.xml.rels"))
+        let types = try XMLDocument(contentsOf: root.appendingPathComponent("[Content_Types].xml"))
+        #expect(try document.nodes(forXPath: "//*[local-name()='footnoteReference' and @*[local-name()='id']='1']").count == 1)
+        #expect(try document.nodes(forXPath: "//*[local-name()='footnoteReference' and @*[local-name()='id']='2']").count == 1)
+        #expect(try document.nodes(forXPath: "//*[local-name()='fldSimple' and contains(@*[local-name()='instr'], 'NOTEREF ScholiumFootnote1')]").count == 2)
+        let bookmark = try #require(
+            document.nodes(forXPath: "//*[local-name()='bookmarkStart' and @*[local-name()='name']='ScholiumFootnote1']").first as? XMLElement)
+        let bookmarkID = try #require(bookmark.attribute(forName: "w:id")?.stringValue)
+        #expect(try document.nodes(forXPath: "//*[local-name()='bookmarkEnd' and @*[local-name()='id']='\(bookmarkID)']").count == 1)
+        #expect(try bookmark.nodes(forXPath: "following-sibling::*[1]/*[local-name()='footnoteReference' and @*[local-name()='id']='1']").count == 1)
+        try expectCompatibleWordFontProperties(in: document)
+        #expect(try footnotes.nodes(forXPath: "//*[local-name()='footnote' and @*[local-name()='id']='1']").count == 1)
+        #expect(try types.nodes(forXPath: "//*[local-name()='Override' and @PartName='/word/footnotes.xml']").count == 1)
+        #expect(documentXML.contains("Heading"))
+        #expect(try !document.nodes(forXPath: "//*[local-name()='b']").isEmpty)
+        #expect(footnotesXML.contains("中文"))
+        #expect(footnotesXML.contains("<w:b/>"))
+        #expect(footnotesXML.contains("footnote link"))
+        #expect(!documentXML.contains("SCHOLIUMFOOTNOTE"))
+        #expect(!documentXML.contains("SCHOLIUMLINK"))
+        #expect(!documentXML.contains("SCHOLIUMHEADING"))
+        #expect(try document.nodes(forXPath: "//*[local-name()='hyperlink']//*[local-name()='hyperlink']").isEmpty)
+        func targets(_ part: XMLDocument, _ rels: XMLDocument) throws -> [(String, String)] {
+            let items = try rels.nodes(forXPath: "//*[local-name()='Relationship']").compactMap { $0 as? XMLElement }
+            let ids = items.compactMap { $0.attribute(forName: "Id")?.stringValue }
+            #expect(Set(ids).count == ids.count)
+            return try part.nodes(forXPath: "//*[local-name()='hyperlink']").map { node in
+                let element = try #require(node as? XMLElement)
+                let id = try #require(element.attribute(forName: "r:id")?.stringValue)
+                let relationship = try #require(items.first(where: { $0.attribute(forName: "Id")?.stringValue == id }))
+                #expect(relationship.attribute(forName: "TargetMode")?.stringValue == "External")
+                return (element.stringValue ?? "", try #require(relationship.attribute(forName: "Target")?.stringValue))
+            }
+        }
+        let bodyLinks = try targets(document, relationships)
+        // XMLNode.stringValue omits whitespace-only w:t nodes. The native
+        // consumer check below verifies the complete visible text separately.
+        #expect(bodyLinks.map(\.0) == ["linked word", "repeat", "repeat", "boldmixed 中文"])
+        #expect(
+            bodyLinks.map(\.1) == ["https://example.test/source", "https://example.test/one?a=1&b=2", "https://example.test/two", "https://example.test/rich"])
+        #expect(try targets(footnotes, footnoteRelationships).map(\.1) == ["https://example.test/note", "https://example.test/other"])
+        let heading = try #require(document.nodes(forXPath: "//*[local-name()='p' and .//*[local-name()='t' and text()='Heading']]").first as? XMLElement)
+        #expect(try !heading.nodes(forXPath: ".//*[local-name()='outlineLvl' and @*[local-name()='val']='0']").isEmpty)
+        #expect(try !heading.nodes(forXPath: ".//*[local-name()='pStyle' and @*[local-name()='val']='Heading1']").isEmpty)
+        let styles = try XMLDocument(contentsOf: root.appendingPathComponent("word/styles.xml"))
+        #expect(try !styles.nodes(forXPath: "//*[local-name()='style' and @*[local-name()='styleId']='Heading1']").isEmpty)
+        let imported = try NSAttributedString(
+            data: data, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil)
+        #expect(imported.string.contains("bold mixed 中文"))
+        #expect(imported.string.contains("Plain repeat."))
+    }
+
+    @Test("Plain DOCX normalizes native font XML while preserving editable emphasis and bilingual text")
+    func plainDocxFontCompatibility() async throws {
+        let data = try await NoteExportService.render(
+            document: NoteDocument(relativePath: "Plain.md", rawContent: "A **bold** *italic* 中文."),
+            title: "Plain", format: .docx, style: .apa7, textSize: 12, paperSize: .letter
+        )
+        let package = try await WorkspaceStore.unpackWordDocument(data)
+        let xml = try #require(package["word/document.xml"])
+        let document = try XMLDocument(data: xml, options: .nodePreserveWhitespace)
+        try expectCompatibleWordFontProperties(in: document)
+        #expect(try !document.nodes(forXPath: "//*[local-name()='szCs']").isEmpty)
+        #expect(
+            try !document.nodes(forXPath: "//*[local-name()='r' and ./*[local-name()='t' and text()='bold']]/*[local-name()='rPr']/*[local-name()='b']").isEmpty
+        )
+        #expect(
+            try !document.nodes(forXPath: "//*[local-name()='r' and ./*[local-name()='t' and text()='italic']]/*[local-name()='rPr']/*[local-name()='i']")
+                .isEmpty)
+        let imported = try NSAttributedString(
+            data: data, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil)
+        #expect(imported.string.contains("A bold italic 中文."))
+    }
+
+    private func expectCompatibleWordFontProperties(in document: XMLDocument) throws {
+        #expect(try document.nodes(forXPath: "//*[local-name()='sz-cs']").isEmpty)
+        // OOXML orders emphasis and character spacing before font sizes, and
+        // underline after them. Check the actual exported runs, including links.
+        let fontOrder = ["rFonts", "b", "i", "spacing", "sz", "szCs", "u"]
+        for node in try document.nodes(forXPath: "//*[local-name()='rPr']") {
+            let names = (node.children ?? []).compactMap(\.localName).filter(fontOrder.contains)
+            #expect(names == fontOrder.filter(names.contains))
+        }
+    }
+
+    @Test("Repeated Word reference displays the owning note number when an earlier Markdown reference is unresolved")
+    func docxRepeatNumberAfterUnresolvedReference() async throws {
+        let data = try await NoteExportService.render(
+            document: NoteDocument(relativePath: "Gap.md", rawContent: "Missing[^missing], source[^actual], again[^actual].\n\n[^actual]: 註釋."),
+            title: "Gap", format: .docx, style: .apa7, textSize: 12, paperSize: .letter
+        )
+        let package = try await WorkspaceStore.unpackWordDocument(data)
+        let document = try XMLDocument(data: #require(package["word/document.xml"]), options: .nodePreserveWhitespace)
+        let field = try #require(document.nodes(forXPath: "//*[local-name()='fldSimple']").first as? XMLElement)
+        #expect(field.attribute(forName: "w:instr")?.stringValue?.contains("NOTEREF ScholiumFootnote2") == true)
+        #expect(field.stringValue == "1")
+        #expect(try document.nodes(forXPath: "//*[local-name()='footnoteReference']").count == 1)
+    }
+
     @Test("Academic Word indentation applies to body paragraphs, not headings or list items")
     func academicWordParagraphRoles() async throws {
         let document = NoteDocument(

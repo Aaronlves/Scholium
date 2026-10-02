@@ -501,6 +501,16 @@ occurrence in the readable context. Ambiguous labels remain unhighlighted.
 Initial loading uses pulsing skeleton cards matching the title, role, excerpt and
 action-area geometry of real results; Reduce Motion keeps them static. Subsequent
 retrieval masks retained cards with the same pulse, without adding loading rows or layout animation.
+Researchers may explicitly choose one of their authored Search term groups as
+additional lexical input for a Related Material search. The selected group name
+and original terms remain inspectable beside the results; matching alternatives
+are shown with the source passage that matched. Each complete alternative is
+literal OR input; translated phrases do not require both languages to match.
+The choice survives automatic searches and Retry within the current Note,
+offers No term group, and clears on Note or Triptych departure. This reuses the existing
+researcher-authored text and lexical retrieval path, creates no hidden term
+mapping, and leaves the captured writing passage and existing source and Chat
+actions intact.
 Loading exposes one accessible search status and no actionable placeholder results.
 Completion, cancellation or failure restores retained same-Note cards.
 Brief opacity transitions accompany action disclosure only. Ellipses identify omitted text; there is no generated summary, standing

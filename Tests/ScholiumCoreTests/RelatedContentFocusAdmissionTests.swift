@@ -6,6 +6,44 @@ import Testing
 
 @Suite("Related content focus admission")
 struct RelatedContentFocusAdmissionTests {
+    @Test("One authored translation admits a paragraph without its other language")
+    func oneLiteralAlternative() async throws {
+        let notes = ["Source.md": "我们在这里讨论自由的限度。"]
+        #expect(try await evaluate(focus: "freedom", notes: notes).paths.isEmpty)
+        let result = try await evaluate(focus: "freedom", alternatives: ["freedom", "自由"], notes: notes)
+        #expect(result.paths == ["Source.md"])
+        #expect(result.passages.first?.matches.filter { $0.seedKind == .researchRequest }.flatMap(\.terms) == ["自由"])
+    }
+
+    @Test("Authored phrases retain exact bilingual alternative provenance and reject partial or metadata-only matches")
+    func literalPhraseProvenance() async throws {
+        let result = try await evaluate(
+            focus: "unrelated selection", alternatives: ["Free Will", "自由意志"],
+            notes: [
+                "Latin.md": "FREE WILL is considered in this invented source passage.",
+                "Chinese.md": "这里讨论自主的自由意志与责任。",
+                "Partial.md": "这里只有自由。另一处出现由意，随后出现意志。",
+                "Separated.md": "Free — will are separated by punctuation in this fixture.",
+                "Metadata.md": "---\nkeywords: [Free Will]\n---\n\nA paragraph about unrelated catering expenses.",
+            ])
+        #expect(result.paths == ["Latin.md", "Chinese.md"])
+        for (path, term) in [("Latin.md", "Free Will"), ("Chinese.md", "自由意志")] {
+            let passage = try #require(result.passages.first { $0.candidate.note.relativePath == path })
+            #expect(passage.matches.filter { $0.seedKind == .researchRequest }.flatMap(\.terms) == [term])
+        }
+    }
+
+    @Test("Literal alternative boundaries do not manufacture a Note identity while ordinary research requests retain prose matching")
+    func literalIdentityBoundaries() {
+        let projection = SearchDocumentProjection(document: .init(relativePath: "Draft.md", rawContent: "unrelated"))
+        let ordinary = RelatedContentSeedMaterial(projection: projection, focuses: [.init(kind: .researchRequest, text: "free will")])
+        #expect(ordinary.termGroups.first?.terms == ["free", "will"])
+        #expect(ordinary.identityMentionReason(title: "Free Will", aliases: [])?.mentions.first?.seedKind == .researchRequest)
+        let alternatives = RelatedContentSeedMaterial(
+            projection: projection, focuses: [.init(kind: .researchRequest, text: "free will", literalAlternatives: ["free", "will"])])
+        #expect(alternatives.identityMentionReason(title: "Free Will", aliases: []) == nil)
+    }
+
     @Test("A locally repeated named concept survives a longer writing request", arguments: [0, 500])
     func namedConcept(distractors: Int) async throws {
         var notes = [
@@ -111,9 +149,10 @@ struct RelatedContentFocusAdmissionTests {
     private struct Result {
         let paths: Set<String>
         let stages: [String: Set<RelatedContentRankingDiagnostic.Stage>]
+        let passages: [RelatedContentPassage]
     }
 
-    private func evaluate(focus: String, surrounding: String = "", notes: [String: String]) async throws -> Result {
+    private func evaluate(focus: String, surrounding: String = "", alternatives: [String] = [], notes: [String: String]) async throws -> Result {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent(".build/related-focus-tests/\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -129,7 +168,9 @@ struct RelatedContentFocusAdmissionTests {
         let request = RelatedContentRequest(
             seed: .init(
                 noteID: .init(vaultID: vault.id, relativePath: "Current.md"), source: surrounding + "\n\n" + focus,
-                focuses: [.init(kind: .selectedPassage, text: focus)]))
+                focuses: [.init(kind: .selectedPassage, text: focus)]
+                    + (alternatives.isEmpty
+                        ? [] : [.init(kind: .researchRequest, text: alternatives.joined(separator: " "), literalAlternatives: alternatives)])))
         let response = try await index.relatedMaterialSourceCandidates(request)
         var seen = Set<VaultQualifiedNoteID>()
         let candidates = (response.identityCandidates + response.lexicalCandidates).filter { seen.insert($0.note).inserted }
@@ -153,6 +194,6 @@ struct RelatedContentFocusAdmissionTests {
             #expect(String(original.document.rawContent[range]) == passage.source)
             #expect(passage.candidate.fingerprint == original.document.fingerprint)
         }
-        return .init(paths: Set(passages.map { $0.candidate.note.relativePath }), stages: stages)
+        return .init(paths: Set(passages.map { $0.candidate.note.relativePath }), stages: stages, passages: passages)
     }
 }

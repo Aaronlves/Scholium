@@ -136,12 +136,15 @@ struct RelatedMaterialsTests {
         let captured = seed
         let response = populatedResponse(seed)
         let model = research.relatedMaterials
+        let group = SearchTermGroup(name: "Freedom", terms: ["freedom", "自由"])
         for session in [model, otherWindow] {
+            session.selectTermGroup(group)
             await session.find(capture: { captured }, retrieve: { _ in response }, references: [reference()]).value
         }
         #expect(!model.cards.isEmpty && model.insertionPoint != nil)
         #expect(documents.selectRetainedDocument(.workspace(first)))
         #expect(!model.cards.isEmpty && model.insertionPoint != nil)
+        #expect(model.selectedTermGroup == group)
         model.report(RelatedMaterialsError.staleIndex)
         #expect(model.issue != nil && model.needsRefresh)
         model.scheduleAutomaticSearch(selection: true, immediate: true) {
@@ -154,11 +157,13 @@ struct RelatedMaterialsTests {
         }
         // No await or view callback between navigation and these expectations.
         #expect(model.cards.isEmpty && model.seed == nil && model.insertionPoint == nil)
+        #expect(model.selectedTermGroup == nil)
         #expect(model.issue == nil && !model.needsRefresh && !model.contextChanged)
         #expect(!model.isLoading && !model.didSearch && model.omittedCount == 0)
         #expect(model.presentation == .waiting)
         #expect(!research.inspector.isVisible)
         #expect(!otherWindow.cards.isEmpty)
+        #expect(otherWindow.selectedTermGroup == group)
         #expect(documents.selectRetainedDocument(.workspace(first)))
         #expect(model.cards.isEmpty && model.seed == nil)
         await Task.yield()
@@ -261,6 +266,72 @@ struct RelatedMaterialsTests {
         #expect(model.seed?.request.id == seed.request.id)
         #expect(model.issue != nil && !model.isLoading)
 
+    }
+
+    @Test("Authored term-group input stays inspectable beside its matched source terms")
+    func authoredTermGroupInput() async {
+        let group = SearchTermGroup(name: "Freedom / 自由", terms: ["freedom", "自由"])
+        let snapshot = RelatedContentSeedSnapshot(
+            noteID: .init(vaultID: vault, relativePath: "Draft.md"), source: "Draft passage",
+            focuses: [
+                .init(kind: .selectedPassage, text: "Draft passage"),
+                .init(kind: .researchRequest, text: group.terms.joined(separator: " "), literalAlternatives: group.terms),
+            ])
+        let seed = RelatedMaterialsSeed(
+            request: .init(seed: snapshot),
+            attachment: .init(
+                noteID: UUID(), vaultID: vault, relativePath: "Draft.md", text: "Draft passage", fingerprint: snapshot.fingerprint, sourceLine: 1),
+            termGroup: group)
+        let model = RelatedMaterialsSession()
+        let sourcePassage = RelatedContentPassage(
+            candidate: candidate("自由"),
+            range: .init(utf16LowerBound: 0, utf16UpperBound: 2, line: 1, column: 1, endLine: 1, endColumn: 3),
+            source: "自由", displayText: "自由", excerpt: "自由", excerptMatches: [0..<2],
+            matches: [
+                .init(seedKind: .selectedPassage, terms: ["自由"]),
+                .init(seedKind: .researchRequest, terms: ["自由"]),
+            ])
+        let result = RelatedContentResponse(
+            requestID: seed.request.id, seedFingerprint: snapshot.fingerprint, freshnessToken: .init("fixture"),
+            availability: .unavailable, state: .current, identityCandidates: [], lexicalCandidates: [sourcePassage.candidate],
+            identityHasMore: false, lexicalHasMore: false, passages: [sourcePassage])
+        let sourceReference = reference()
+        await model.find(capture: { seed }, retrieve: { _ in result }, references: [sourceReference]).value
+        #expect(model.seed?.termGroup == group)
+        #expect(model.seed?.request.seed.focuses.first(where: { $0.kind == .researchRequest })?.text == "freedom 自由")
+        #expect(model.seed?.request.seed.focuses.first(where: { $0.kind == .researchRequest })?.literalAlternatives == group.terms)
+        #expect(model.cards.first?.matchedTermGroupAlternatives == ["自由"])
+    }
+
+    @Test("Opted term groups survive refresh and failure, preserve displayed provenance, and explicitly clear")
+    func termGroupPreferenceLifecycle() async {
+        let model = RelatedMaterialsSession()
+        let firstGroup = SearchTermGroup(name: "Freedom", terms: ["freedom", "自由"])
+        let nextGroup = SearchTermGroup(name: "Agency", terms: ["agency", "能动性"])
+        model.selectTermGroup(firstGroup)
+        var original = seed()
+        original.termGroup = firstGroup
+        let captured = original
+        let response = populatedResponse(captured)
+        await model.find(capture: { captured }, retrieve: { _ in response }, references: [reference()]).value
+        model.invalidateWritingContext()
+        model.stopAutomaticSearch()
+        model.cancel()
+        #expect(model.selectedTermGroup == firstGroup)
+        await model.find(capture: { captured }, retrieve: { _ in response }, references: [reference()], automatic: true).value
+        #expect(model.selectedTermGroup == firstGroup && model.seed?.termGroup == firstGroup)
+
+        model.selectTermGroup(nextGroup)
+        var replacement = seed("changed writing")
+        replacement.termGroup = nextGroup
+        let nextSeed = replacement
+        await model.find(capture: { nextSeed }, retrieve: { _ in throw RelatedMaterialsError.unavailable }, references: []).value
+        #expect(model.selectedTermGroup == nextGroup)
+        #expect(model.seed?.termGroup == firstGroup && !model.cards.isEmpty)
+        model.selectTermGroup(nil)
+        #expect(model.selectedTermGroup == nil && model.seed?.termGroup == firstGroup)
+        model.reset()
+        #expect(model.selectedTermGroup == nil && model.seed == nil && model.cards.isEmpty)
     }
 
     @Test("Works provenance and exact passages survive cards, grouping, link preparation and Chat staging")

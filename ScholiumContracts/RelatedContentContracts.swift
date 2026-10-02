@@ -53,10 +53,14 @@ public enum RelatedContentCandidateRole: String, Codable, CaseIterable, Hashable
 public struct RelatedContentSeedFocus: Codable, Hashable, Sendable {
     public let kind: RelatedContentSeedKind
     public let text: String
+    /// Explicit researcher-authored alternatives retain their complete wording.
+    /// Ordinary focused prose continues to use bounded lexical token extraction.
+    public let literalAlternatives: [String]
 
-    public init(kind: RelatedContentSeedKind, text: String) {
+    public init(kind: RelatedContentSeedKind, text: String, literalAlternatives: [String] = []) {
         self.kind = kind
         self.text = text
+        self.literalAlternatives = literalAlternatives
     }
 }
 

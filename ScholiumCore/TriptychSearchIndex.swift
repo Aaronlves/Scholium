@@ -972,6 +972,12 @@ public actor TriptychSearchIndex {
                         ).isEmpty
                         && focus.text.utf16.count
                             <= RelatedContentContract.maximumFocusUTF16Count
+                        && (focus.literalAlternatives.isEmpty
+                            || (focus.kind == .researchRequest && focus.literalAlternatives.count <= 24
+                                && focus.literalAlternatives.allSatisfy {
+                                    !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        && $0.utf16.count <= 512 && !$0.contains(where: \.isNewline)
+                                }))
                 }),
                 let descriptor = try vaultDescriptor(
                     request.seed.noteID.vaultID
@@ -1409,8 +1415,7 @@ public actor TriptychSearchIndex {
                 preparation: prepareBackgroundPool ? .complete(.init()) : nil)
         }
         let expression = terms.map { term in
-            let escaped = term.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\"\(escaped)\""
+            SearchMatcher.ftsExpression(for: [.init(field: nil, value: .term(term), sourceRange: 0..<0)])
         }.joined(separator: " OR ")
         let rolePlaceholders = candidateRoles.map { _ in "?" }
             .joined(separator: ", ")

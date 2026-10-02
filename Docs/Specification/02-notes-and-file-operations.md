@@ -248,8 +248,11 @@ the unsuccessful destination write.
 The readable export includes the body; an option adds authored YAML. A leading
 authored H1 supplies the title; otherwise the filename does. HTML and PDF
 retain supported structures and visible fallbacks. DOCX keeps editable text,
-font size and emphasis; tables and footnotes flatten, while link destinations,
-images and exact line spacing are omitted. A copy never becomes a second
+headings, font size, emphasis, hyperlinks and real editable Word footnotes,
+including repeated references and bilingual content. Repeated mentions use
+Word cross references to the same footnote and follow renumbering through
+Word's normal field updates. Tables flatten, while images and exact line
+spacing are omitted. A copy never becomes a second
 Markdown authority, an evidence claim, or a linked project archive. §18.4 owns
 the format, style, size, and destination interface.
 

@@ -16,6 +16,7 @@ struct ResearchInspectorView: View {
     @State private var externalProjectionKey: String?
     @State private var externalLinks: [SourceResourceReferences.ExternalLink] = []
     let editor: MarkdownEditorSession?
+    let termGroups: [SearchTermGroup]
     let noteURL: URL?
     let vaultRoots: [URL]
     let openExternalURL: (URL) -> Void
@@ -27,6 +28,7 @@ struct ResearchInspectorView: View {
     let researchInspectorContentContext: ResearchInspectorContentContext
     let openReference: (VaultNoteReference, Int?) -> Void
     let findRelated: @MainActor () -> Void
+    let findRelatedWithTermGroup: @MainActor (SearchTermGroup?) -> Void
     let retryRelated: () -> Void
     let openRelated: (RelatedMaterialCard) -> Void
     let insertRelated: (RelatedMaterialCard) -> Void
@@ -36,6 +38,7 @@ struct ResearchInspectorView: View {
     init(
         research: ResearchController,
         editor: MarkdownEditorSession?,
+        termGroups: [SearchTermGroup],
         noteURL: URL?,
         vaultRoots: [URL],
         openExternalURL: @escaping (URL) -> Void,
@@ -47,6 +50,7 @@ struct ResearchInspectorView: View {
         researchInspectorContentContext: ResearchInspectorContentContext,
         openReference: @escaping (VaultNoteReference, Int?) -> Void,
         findRelated: @escaping @MainActor () -> Void,
+        findRelatedWithTermGroup: @escaping @MainActor (SearchTermGroup?) -> Void,
         retryRelated: @escaping () -> Void,
         openRelated: @escaping (RelatedMaterialCard) -> Void,
         insertRelated: @escaping (RelatedMaterialCard) -> Void,
@@ -54,6 +58,7 @@ struct ResearchInspectorView: View {
         discussRelated: @escaping (RelatedMaterialCard) -> Void
     ) {
         self.editor = editor
+        self.termGroups = termGroups
         self.noteURL = noteURL
         self.vaultRoots = vaultRoots
         self.openExternalURL = openExternalURL
@@ -66,6 +71,7 @@ struct ResearchInspectorView: View {
         self.researchInspectorContentContext = researchInspectorContentContext
         self.openReference = openReference
         self.findRelated = findRelated
+        self.findRelatedWithTermGroup = findRelatedWithTermGroup
         self.retryRelated = retryRelated
         self.openRelated = openRelated
         self.insertRelated = insertRelated
@@ -94,7 +100,8 @@ struct ResearchInspectorView: View {
             RelatedMaterialsView(
                 session: research.relatedMaterials,
                 isVisible: relatedActive,
-                editor: editor, find: findRelated,
+                editor: editor, termGroups: termGroups, find: findRelated,
+                findWithTermGroup: findRelatedWithTermGroup,
                 retry: retryRelated,
                 open: openRelated, addToChat: discussRelated,
                 insert: insertRelated, insertParagraph: insertRelatedParagraph

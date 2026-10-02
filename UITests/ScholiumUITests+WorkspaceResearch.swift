@@ -17,13 +17,22 @@ extension ScholiumUITests {
         let lineWords = "linequartz linezephyr"
         let adjacentWords = "adjacentcobalt adjacenttundra"
         let destinationWords = "newmonsoon newvelvet"
+        let alternative = "词群专用"
+        let termGroupName = "QA bilingual terms"
+        let termGroupsURL = homeDirectory.appendingPathComponent("ApplicationSupport/Workspace/search-term-groups.json")
+        let termGroupsData = try JSONSerialization.data(withJSONObject: [
+            "version": 1,
+            "groups": [["id": UUID().uuidString, "name": termGroupName, "terms": ["unmatchinglexeme", alternative]]],
+        ])
+        try FileManager.default.createDirectory(at: termGroupsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try termGroupsData.write(to: termGroupsURL)
         let mixedLine = lineWords + " " + adjacentWords
         let longPassage =
             "合成界面样本：\(lineWords) 标记这段可回到原文的材料。研究者可以先阅读上下文，再判断它与当前问题的关系；这里不预设支持或反对。The passage remains a source excerpt, with mixed-script wording and enough context to inspect its wrapping in the research pane."
         let additions = [
             (firstURL, "\n\n" + mixedLine + "\n" + lineWords + "\n" + mixedLine),
             (secondURL, "\n\n" + longPassage + "\n\n" + destinationWords),
-            (topicURL, "\n\n" + adjacentWords + "."),
+            (topicURL, "\n\n" + adjacentWords + ".\n\n此处出现" + alternative + "，用于检查研究者选择的双语词群。"),
             (workURL, "\n\n" + lineWords + "：另一篇笔记的合成段落，用于观察分组留白。\n\n" + destinationWords + "."),
         ]
         for (url, suffix) in additions {
@@ -36,6 +45,9 @@ extension ScholiumUITests {
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 45))
         waitForCurrentDocumentSurface()
+        let workspace = app.windows["scholium-main-\(sessionID.uuidString)"].firstMatch
+        XCTAssertTrue(workspace.exists)
+        focusWorkspaceWindow(workspace)
 
         let inspector = app.descendants(matching: .any)["scholium.researchInspector"].firstMatch
         let inspectorMode = app.descendants(matching: .any)["scholium.inspectorMode"].firstMatch
@@ -48,7 +60,7 @@ extension ScholiumUITests {
             clickInspectorVisibilityControl()
             XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
         }
-        selectDocumentMode("Source")
+        selectDocumentMode("Source", in: workspace)
         let editor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == firstSource })
@@ -94,10 +106,35 @@ extension ScholiumUITests {
         find.click()
         waitForMaterial(lineWords, excluding: adjacentWords)
         XCTAssertEqual(editor.value as? String, firstSource)
-        let groupedReferences = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        let groupedReferences = XCTAttachment(screenshot: workspace.screenshot())
         groupedReferences.name = "Research Inspector grouped references"
         groupedReferences.lifetime = .keepAlways
         add(groupedReferences)
+
+        // The collection is loaded before Search is ever opened. Choosing a
+        // group admits one complete authored alternative, then explicitly
+        // clearing it returns to the current writing passage alone.
+        XCTAssertFalse(card(containing: alternative).exists)
+        let termGroupMenu = app.descendants(matching: .any)["scholium.related.termGroup"].firstMatch
+        XCTAssertTrue(termGroupMenu.waitForExistence(timeout: 5))
+        func chooseTermGroup(_ name: String) {
+            termGroupMenu.click()
+            let item = app.menuItems[name].firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 5))
+            item.click()
+        }
+        chooseTermGroup(termGroupName)
+        XCTAssertTrue(waitUntil(timeout: 30) { card(containing: alternative).exists && card(containing: alternative).isEnabled })
+        XCTAssertTrue(card(containing: alternative).label.contains("Matched alternative: " + alternative))
+        let termGroupProvenance = app.descendants(matching: .any)["scholium.related.termGroupProvenance"].firstMatch
+        XCTAssertTrue(termGroupProvenance.exists)
+        let provenanceText = (termGroupProvenance.value as? String) ?? termGroupProvenance.label
+        XCTAssertTrue(provenanceText.contains("Original terms: unmatchinglexeme, " + alternative), "Accessible provenance: \(provenanceText)")
+        chooseTermGroup("No term group")
+        XCTAssertTrue(
+            waitUntil(timeout: 30) { card(containing: lineWords).exists && card(containing: lineWords).isEnabled && !card(containing: alternative).exists })
+        chooseTermGroup(termGroupName)
+        XCTAssertTrue(waitUntil(timeout: 30) { card(containing: alternative).exists && card(containing: alternative).isEnabled })
 
         // The final line contains BOTH vocabularies; select only its last two
         // words. Ignoring that selection would also retrieve the Analysis.
@@ -110,23 +147,25 @@ extension ScholiumUITests {
         editor.typeKey(.leftArrow, modifierFlags: [.option, .shift])
         app.typeKey("j", modifierFlags: [.command, .shift])
         waitForMaterial(adjacentWords, excluding: lineWords)
+        XCTAssertTrue(card(containing: alternative).exists, "The chosen group must survive a same-Note writing refresh.")
         XCTAssertEqual(editor.value as? String, firstSource)
 
         // Request again and leave without waiting for completion. Native timing
         // cannot force an in-flight worker, so this asserts departure isolation,
         // not a deterministic cancellation race or an internal task/cache state.
         app.typeKey("j", modifierFlags: [.command, .shift])
-        openNote("QA Autosave B.md", expectedTitle: "QA Autosave B", in: app.windows.firstMatch)
+        openNote("QA Autosave B.md", expectedTitle: "QA Autosave B", in: workspace)
         XCTAssertFalse(
             card(containing: adjacentWords).exists,
             "Departing the seed Note must clear its previous material.")
-        selectDocumentMode("Source")
+        selectDocumentMode("Source", in: workspace)
         XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == secondSource })
         editor.click()
         editor.typeKey(.end, modifierFlags: .command)
         app.typeKey("j", modifierFlags: [.command, .shift])
         waitForMaterial(destinationWords, excluding: adjacentWords)
         XCTAssertFalse(card(containing: lineWords).exists)
+        XCTAssertFalse(card(containing: alternative).exists, "Note departure must clear the explicit term-group choice.")
 
         // The positive result wait above establishes the new Note's foreground
         // action boundary. Check its visible state directly, without an inverted
@@ -134,6 +173,7 @@ extension ScholiumUITests {
         XCTAssertFalse(card(containing: adjacentWords).exists)
         XCTAssertTrue(card(containing: destinationWords).exists)
         XCTAssertEqual(editor.value as? String, secondSource)
+        XCTAssertEqual(try Data(contentsOf: termGroupsURL), termGroupsData)
         for (url, bytes) in expectedBytes {
             XCTAssertEqual(
                 try Data(contentsOf: url), bytes,

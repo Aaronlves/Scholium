@@ -47,6 +47,7 @@ private enum NoteExportError: LocalizedError {
     case invalidPDF
     case pageLoadTimedOut
     case missingLocalImage(String)
+    case docxPackaging
 
     var errorDescription: String? {
         switch self {
@@ -57,6 +58,8 @@ private enum NoteExportError: LocalizedError {
         case .pageLoadTimedOut: ScholiumL10n.string("The export page did not finish loading.")
         case .missingLocalImage(let destination):
             ScholiumL10n.string("The image at \(destination) could not be included in the export.")
+        case .docxPackaging:
+            ScholiumL10n.string("The Word document could not be prepared for export.")
         }
     }
 }
@@ -113,11 +116,10 @@ struct NoteExportService {
         case .pdf:
             output = try await renderPDF(html: html, paperSize: paperSize, style: style)
         case .docx:
-            // The native writer retains text styling but flattens structures
-            // such as tables and footnotes. Export never becomes source authority.
+            let wordContent = prepareWordContent(html: html, document: document)
             let paragraphMarker = "\u{E000}\(UUID().uuidString)\u{E001}"
-            let wordHTML =
-                style == .document ? html : markBodyParagraphs(in: html, with: paragraphMarker)
+            let styledHTML = style == .document ? wordContent.html : markBodyParagraphs(in: wordContent.html, with: paragraphMarker)
+            let wordHTML = styledHTML
             let imported = try NSAttributedString(
                 data: Data(wordHTML.utf8),
                 options: [
@@ -131,16 +133,416 @@ struct NoteExportService {
                 imported, style: style, textSize: textSize, appearance: appearance,
                 paragraphMarker: style == .document ? nil : paragraphMarker
             )
-            output = try attributed.data(
-                from: NSRange(location: 0, length: attributed.length),
+            let wordLinks = markWordLinks(in: attributed)
+            let nativeDOCX = try wordLinks.content.data(
+                from: NSRange(location: 0, length: wordLinks.content.length),
                 documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML]
             )
+            output = try await addWordFootnotes(
+                wordContent.footnotes, to: nativeDOCX, markers: wordContent.markers,
+                links: wordLinks.links, headings: wordContent.headings)
         }
         guard !output.isEmpty else { throw NoteExportError.emptyOutput }
         if format == .docx, !output.starts(with: [0x50, 0x4B]) {
             throw NoteExportError.emptyOutput
         }
         return output
+    }
+
+    private static func prepareWordContent(
+        html: String, document: NoteDocument
+    ) -> (html: String, footnotes: [(Int, NSAttributedString)], markers: [String: Int], headings: [String: Int]) {
+        var headings: [String: Int] = [:]
+        var prepared = replacingRegex(#"<h([1-6])\b[^>]*>"#, in: html) { match, source in
+            let marker = "SCHOLIUMHEADING\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))END"
+            headings[marker] = Int(source.substring(with: match.range(at: 1)))
+            return source.substring(with: match.range) + marker
+        }
+        let semantic = MarkdownSemanticDocument(parsing: document)
+        let referenced = Set(semantic.footnoteReferences.map(\.ordinal))
+        let footnotes = semantic.footnoteDefinitions.compactMap { definition -> (Int, NSAttributedString)? in
+            guard let ordinal = definition.ordinal, referenced.contains(ordinal) else { return nil }
+            let note = NoteDocument(relativePath: "word-footnote.md", rawContent: definition.content)
+            let rendered = SafeMarkdownRenderer.render(note).htmlBody
+            let source = "<html><body>\(rendered)</body></html>"
+            let content =
+                (try? NSAttributedString(
+                    data: Data(source.utf8),
+                    options: [
+                        .documentType: NSAttributedString.DocumentType.html,
+                        .characterEncoding: String.Encoding.utf8.rawValue,
+                    ],
+                    documentAttributes: nil
+                )) ?? NSAttributedString(string: definition.content)
+            return (ordinal, content)
+        }
+        guard !footnotes.isEmpty else { return (prepared, [], [:], headings) }
+        let ids = Set(footnotes.map(\.0))
+        var markers: [String: Int] = [:]
+        for ordinal in ids.sorted() {
+            let marker = "SCHOLIUMFOOTNOTE\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))END"
+            let pattern = #"<button[^>]*class="footnote-reference"[^>]*data-footnote="\#(ordinal)"[^>]*>[^<]*</button>"#
+            prepared = replacingRegex(pattern, in: prepared) { _, _ in
+                markers[marker] = ordinal
+                return marker
+            }
+        }
+        prepared = replacingRegex(#"<section class="footnotes"[\s\S]*?</section>"#, in: prepared) { _, _ in "" }
+        return (prepared, footnotes, markers, headings)
+    }
+
+    private static func addWordFootnotes(
+        _ footnotes: [(Int, NSAttributedString)], to data: Data, markers: [String: Int], links: [WordLink], headings: [String: Int]
+    ) async throws -> Data {
+        do {
+            var package = try await WorkspaceStore.unpackWordDocument(data)
+            let documentXML = try wordPart("word/document.xml", in: package)
+            var relationships = try wordPart("word/_rels/document.xml.rels", in: package)
+            let preparedXML = try replacingWordMarkers(in: documentXML, footnotes: markers, links: links, headings: headings)
+            package["word/document.xml"] = Data(preparedXML.utf8)
+            for link in links {
+                relationships = relationships.replacingOccurrences(
+                    of: "</Relationships>", with: wordLinkRelationship(id: link.id, target: link.target) + "</Relationships>")
+            }
+            if !footnotes.isEmpty {
+                relationships = relationships.replacingOccurrences(
+                    of: "</Relationships>",
+                    with:
+                        "<Relationship Id=\"rIdScholiumFootnotes\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes\" Target=\"footnotes.xml\"/></Relationships>"
+                )
+            }
+            try addWordStyles(to: &package, headingLevels: Set(headings.values), hasFootnotes: !footnotes.isEmpty, relationships: &relationships)
+            package["word/_rels/document.xml.rels"] = Data(relationships.utf8)
+            if !footnotes.isEmpty {
+                var types = try wordPart("[Content_Types].xml", in: package)
+                types = types.replacingOccurrences(
+                    of: "</Types>",
+                    with:
+                        "<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml\"/></Types>"
+                )
+                package["[Content_Types].xml"] = Data(types.utf8)
+            }
+            var footnoteParts: [String] = []
+            var footnoteRelationships =
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"></Relationships>"
+            var footnoteLinkIndex = 0
+            for (id, content) in footnotes.sorted(by: { $0.0 < $1.0 }) {
+                let runs = wordRuns(for: content, relationships: &footnoteRelationships, linkIndex: &footnoteLinkIndex)
+                footnoteParts.append(
+                    "<w:footnote w:id=\"\(id)\"><w:p><w:pPr><w:pStyle w:val=\"FootnoteText\"/></w:pPr><w:r><w:rPr><w:rStyle w:val=\"FootnoteReference\"/></w:rPr><w:footnoteRef/></w:r>\(runs)</w:p></w:footnote>"
+                )
+            }
+            let body = footnoteParts.joined()
+            let footnoteXML =
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:footnotes xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>\(body)</w:footnotes>"
+            if !footnotes.isEmpty {
+                package["word/footnotes.xml"] = Data(footnoteXML.utf8)
+                if footnoteLinkIndex > 0 {
+                    package["word/_rels/footnotes.xml.rels"] = Data(footnoteRelationships.utf8)
+                }
+            }
+            return try await WorkspaceStore.packWordDocument(package)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw NoteExportError.docxPackaging
+        }
+    }
+
+    private static func wordPart(_ path: String, in package: [String: Data]) throws -> String {
+        guard let data = package[path], let text = String(data: data, encoding: .utf8) else { throw NoteExportError.docxPackaging }
+        return text
+    }
+
+    private struct WordLink {
+        let id: String
+        let target: String
+        let start: String
+        let end: String
+    }
+
+    /// Mark source ranges, rather than searching exported prose for equal labels.
+    /// This keeps repeated labels and links spanning several formatting runs distinct.
+    private static func markWordLinks(in content: NSAttributedString) -> (content: NSAttributedString, links: [WordLink]) {
+        var ranges: [(NSRange, WordLink)] = []
+        content.enumerateAttribute(.link, in: NSRange(location: 0, length: content.length)) { value, range, _ in
+            guard let target = (value as? URL)?.absoluteString ?? (value as? String) else { return }
+            let token = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            ranges.append(
+                (
+                    range,
+                    WordLink(
+                        id: "rIdScholiumHyperlink\(ranges.count + 1)", target: target,
+                        start: "SCHOLIUMLINK\(token)START", end: "SCHOLIUMLINK\(token)END")
+                ))
+        }
+        let marked = NSMutableAttributedString(attributedString: content)
+        marked.removeAttribute(.link, range: NSRange(location: 0, length: marked.length))
+        for (range, link) in ranges.reversed() {
+            let attributes = marked.attributes(at: range.location, effectiveRange: nil)
+            marked.insert(NSAttributedString(string: link.end, attributes: attributes), at: NSMaxRange(range))
+            marked.insert(NSAttributedString(string: link.start, attributes: attributes), at: range.location)
+        }
+        return (marked, ranges.map(\.1))
+    }
+
+    private static func replacingWordMarkers(in xml: String, footnotes: [String: Int], links: [WordLink], headings: [String: Int]) throws -> String {
+        let document = try XMLDocument(xmlString: xml, options: .nodePreserveWhitespace)
+        try normalizeWordRunProperties(in: document)
+        let relationshipNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        if document.rootElement()?.namespace(forPrefix: "r") == nil {
+            document.rootElement()?.addNamespace(XMLNode.namespace(withName: "r", stringValue: relationshipNamespace) as! XMLNode)
+        }
+        let starts = Dictionary(uniqueKeysWithValues: links.map { ($0.start, $0.id) })
+        let ends = Dictionary(uniqueKeysWithValues: links.map { ($0.end, $0.id) })
+        let tokens = Array(footnotes.keys) + Array(starts.keys) + Array(ends.keys) + Array(headings.keys)
+        guard !tokens.isEmpty else { return document.xmlString }
+        let pattern = tokens.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
+        let regex = try NSRegularExpression(pattern: pattern)
+        var startNodes: [String: XMLElement] = [:]
+        var endNodes: [String: XMLElement] = [:]
+        var referencedFootnotes = Set<Int>()
+        var footnoteDisplayNumbers: [Int: Int] = [:]
+        let existingBookmarks = try document.nodes(forXPath: "//*[local-name()='bookmarkStart']").compactMap { $0 as? XMLElement }
+        var bookmarkID = (existingBookmarks.compactMap { Int($0.attribute(forName: "w:id")?.stringValue ?? "") }.max() ?? 0) + 1
+        var bookmarkNames = Set(existingBookmarks.compactMap { $0.attribute(forName: "w:name")?.stringValue })
+        var footnoteBookmarks: [Int: String] = [:]
+        for id in Set(footnotes.values).sorted() {
+            var name = "ScholiumFootnote\(id)"
+            while bookmarkNames.contains(name) { name += "_" }
+            bookmarkNames.insert(name)
+            footnoteBookmarks[id] = name
+        }
+        for node in try document.nodes(forXPath: "//*[local-name()='t']") {
+            guard let text = node as? XMLElement, let value = text.stringValue else { continue }
+            let nsValue = value as NSString
+            let matches = regex.matches(in: value, range: NSRange(location: 0, length: nsValue.length))
+            guard !matches.isEmpty else { continue }
+            guard let run = text.parent as? XMLElement, run.localName == "r",
+                let parent = run.parent as? XMLElement,
+                let runIndex = parent.children?.firstIndex(where: { $0 === run }),
+                run.elements(forName: "w:t").count == 1
+            else { throw NoteExportError.docxPackaging }
+            var replacements: [XMLNode] = []
+            func appendText(_ range: NSRange) {
+                guard range.length > 0 else { return }
+                let fragment = run.copy() as! XMLElement
+                fragment.elements(forName: "w:t").first?.stringValue = nsValue.substring(with: range)
+                fragment.elements(forName: "w:t").first?.addAttribute(XMLNode.attribute(withName: "xml:space", stringValue: "preserve") as! XMLNode)
+                replacements.append(fragment)
+            }
+            var offset = 0
+            for match in matches {
+                appendText(NSRange(location: offset, length: match.range.location - offset))
+                let token = nsValue.substring(with: match.range)
+                if let id = footnotes[token] {
+                    let referenceRun = XMLElement(name: "w:r")
+                    let properties = XMLElement(name: "w:rPr")
+                    let style = XMLElement(name: "w:rStyle")
+                    style.addAttribute(XMLNode.attribute(withName: "w:val", stringValue: "FootnoteReference") as! XMLNode)
+                    properties.addChild(style)
+                    referenceRun.addChild(properties)
+                    let name = footnoteBookmarks[id]!
+                    if referencedFootnotes.insert(id).inserted {
+                        footnoteDisplayNumbers[id] = referencedFootnotes.count
+                        let start = XMLElement(name: "w:bookmarkStart")
+                        start.addAttribute(XMLNode.attribute(withName: "w:id", stringValue: String(bookmarkID)) as! XMLNode)
+                        start.addAttribute(XMLNode.attribute(withName: "w:name", stringValue: name) as! XMLNode)
+                        let reference = XMLElement(name: "w:footnoteReference")
+                        reference.addAttribute(XMLNode.attribute(withName: "w:id", stringValue: String(id)) as! XMLNode)
+                        referenceRun.addChild(reference)
+                        let end = XMLElement(name: "w:bookmarkEnd")
+                        end.addAttribute(XMLNode.attribute(withName: "w:id", stringValue: String(bookmarkID)) as! XMLNode)
+                        bookmarkID += 1
+                        replacements.append(contentsOf: [start, referenceRun, end])
+                    } else {
+                        // Word requires one owning reference per footnote. Later
+                        // mentions use its editable, renumberable cross reference.
+                        let field = XMLElement(name: "w:fldSimple")
+                        field.addAttribute(XMLNode.attribute(withName: "w:instr", stringValue: " NOTEREF \(name) \\h ") as! XMLNode)
+                        let number = XMLElement(name: "w:t", stringValue: String(footnoteDisplayNumbers[id]!))
+                        referenceRun.addChild(number)
+                        field.addChild(referenceRun)
+                        replacements.append(field)
+                    }
+                } else if let id = starts[token] {
+                    let marker = XMLElement(name: "scholiumLinkStart")
+                    startNodes[id] = marker
+                    replacements.append(marker)
+                } else if let id = ends[token] {
+                    let marker = XMLElement(name: "scholiumLinkEnd")
+                    endNodes[id] = marker
+                    replacements.append(marker)
+                } else if let level = headings[token] {
+                    var ancestor: XMLNode? = parent
+                    while ancestor != nil, ancestor?.localName != "p" { ancestor = ancestor?.parent }
+                    guard let paragraph = ancestor as? XMLElement else { throw NoteExportError.docxPackaging }
+                    let properties = paragraph.elements(forName: "w:pPr").first ?? XMLElement(name: "w:pPr")
+                    if properties.parent == nil { paragraph.insertChild(properties, at: 0) }
+                    let style = XMLElement(name: "w:pStyle")
+                    style.addAttribute(XMLNode.attribute(withName: "w:val", stringValue: "Heading\(level)") as! XMLNode)
+                    properties.insertChild(style, at: 0)
+                    let outline = XMLElement(name: "w:outlineLvl")
+                    outline.addAttribute(XMLNode.attribute(withName: "w:val", stringValue: String(level - 1)) as! XMLNode)
+                    properties.addChild(outline)
+                }
+                offset = NSMaxRange(match.range)
+            }
+            appendText(NSRange(location: offset, length: nsValue.length - offset))
+            run.detach()
+            for (index, replacement) in replacements.enumerated() { parent.insertChild(replacement, at: runIndex + index) }
+        }
+        for link in links {
+            guard let start = startNodes[link.id], let end = endNodes[link.id],
+                let parent = start.parent as? XMLElement, end.parent === parent,
+                let children = parent.children,
+                let first = children.firstIndex(where: { $0 === start }),
+                let last = children.firstIndex(where: { $0 === end }), first < last
+            else { throw NoteExportError.docxPackaging }
+            let hyperlink = XMLElement(name: "w:hyperlink")
+            hyperlink.addAttribute(XMLNode.attribute(withName: "r:id", stringValue: link.id) as! XMLNode)
+            for child in children[(first + 1)..<last] {
+                child.detach()
+                hyperlink.addChild(child)
+            }
+            start.detach()
+            end.detach()
+            parent.insertChild(hyperlink, at: first)
+        }
+        let remainingText = document.rootElement()?.stringValue ?? ""
+        guard !tokens.contains(where: { remainingText.contains($0) }) else { throw NoteExportError.docxPackaging }
+        return document.xmlString
+    }
+
+    /// AppKit writes an obsolete complex-script size name and unordered run
+    /// properties. Normalize the OOXML structure without changing text or values.
+    private static func normalizeWordRunProperties(in document: XMLDocument) throws {
+        let namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        guard document.rootElement()?.namespace(forPrefix: "w")?.stringValue == namespace else { throw NoteExportError.docxPackaging }
+        for node in try document.nodes(forXPath: "//*[local-name()='sz-cs']") where node.name == "w:sz-cs" {
+            node.name = "w:szCs"
+        }
+        let order = [
+            "rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike", "outline", "shadow", "emboss", "imprint",
+            "noProof", "snapToGrid", "vanish", "webHidden", "color", "spacing", "w", "kern", "position", "sz", "szCs", "highlight", "u", "effect",
+            "bdr", "shd", "fitText", "vertAlign", "rtl", "cs", "em", "lang", "eastAsianLayout", "specVanish", "oMath", "rPrChange",
+        ]
+        let ranks = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($0.element, $0.offset) })
+        for node in try document.nodes(forXPath: "//*[local-name()='rPr']") where node.name == "w:rPr" {
+            guard let properties = node as? XMLElement, let children = properties.children else { continue }
+            let sorted = children.enumerated().sorted {
+                let lhs = ranks[$0.element.localName ?? ""] ?? Int.max
+                let rhs = ranks[$1.element.localName ?? ""] ?? Int.max
+                return lhs == rhs ? $0.offset < $1.offset : lhs < rhs
+            }.map(\.element)
+            for child in children { child.detach() }
+            for child in sorted { properties.addChild(child) }
+        }
+    }
+
+    private static func wordLinkRelationship(id: String, target: String) -> String {
+        "<Relationship Id=\"\(id)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"\(xmlEscape(target))\" TargetMode=\"External\"/>"
+    }
+
+    private static func addWordStyles(to package: inout [String: Data], headingLevels: Set<Int>, hasFootnotes: Bool, relationships: inout String) throws {
+        guard !headingLevels.isEmpty || hasFootnotes else { return }
+        let existing = package["word/styles.xml"]
+        let styles =
+            existing != nil
+            ? try XMLDocument(data: existing!, options: .nodePreserveWhitespace)
+            : try XMLDocument(xmlString: "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"/>")
+        guard let root = styles.rootElement() else { throw NoteExportError.docxPackaging }
+        var additions: [(String, String)] = headingLevels.sorted().map { level in
+            (
+                "Heading\(level)",
+                "<w:style w:type=\"paragraph\" w:styleId=\"Heading\(level)\"><w:name w:val=\"heading \(level)\"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val=\"\(level - 1)\"/></w:pPr><w:rPr><w:b/></w:rPr></w:style>"
+            )
+        }
+        if hasFootnotes {
+            additions += [
+                (
+                    "FootnoteText",
+                    "<w:style w:type=\"paragraph\" w:styleId=\"FootnoteText\"><w:name w:val=\"footnote text\"/><w:rPr><w:sz w:val=\"20\"/></w:rPr></w:style>"
+                ),
+                (
+                    "FootnoteReference",
+                    "<w:style w:type=\"character\" w:styleId=\"FootnoteReference\"><w:name w:val=\"footnote reference\"/><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr></w:style>"
+                ),
+            ]
+        }
+        for (id, fragment) in additions where !root.elements(forName: "w:style").contains(where: { $0.attribute(forName: "w:styleId")?.stringValue == id }) {
+            let wrapper = try XMLDocument(
+                xmlString: "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\(fragment)</w:styles>")
+            if let style = wrapper.rootElement()?.children?.first { root.addChild(style.copy() as! XMLNode) }
+        }
+        package["word/styles.xml"] = styles.xmlData
+        if existing == nil {
+            relationships = relationships.replacingOccurrences(
+                of: "</Relationships>",
+                with:
+                    "<Relationship Id=\"rIdScholiumStyles\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>"
+            )
+            let types = try wordPart("[Content_Types].xml", in: package).replacingOccurrences(
+                of: "</Types>",
+                with:
+                    "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/></Types>"
+            )
+            package["[Content_Types].xml"] = Data(types.utf8)
+        }
+    }
+
+    private static func wordRuns(for content: NSAttributedString, relationships: inout String, linkIndex: inout Int) -> String {
+        var result = ""
+        content.enumerateAttributes(in: NSRange(location: 0, length: content.length)) { attributes, range, _ in
+            let text = (content.string as NSString).substring(with: range)
+            let font = attributes[.font] as? NSFont
+            let traits = font?.fontDescriptor.symbolicTraits ?? []
+            var properties = ""
+            if traits.contains(.bold) { properties += "<w:b/>" }
+            if traits.contains(.italic) { properties += "<w:i/>" }
+            let runProperties = properties.isEmpty ? "" : "<w:rPr>\(properties)</w:rPr>"
+            let pieces = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            var runs: [String] = []
+            for (index, piece) in pieces.enumerated() {
+                if !piece.isEmpty {
+                    runs.append("<w:r>\(runProperties)<w:t xml:space=\"preserve\">\(xmlEscape(piece))</w:t></w:r>")
+                }
+                if index < pieces.count - 1 { runs.append("<w:r><w:br/></w:r>") }
+            }
+            var fragment = runs.joined()
+            if let value = attributes[.link] {
+                let target = (value as? URL)?.absoluteString ?? (value as? String)
+                if let target {
+                    linkIndex += 1
+                    let relationID = "rIdScholiumFootnoteHyperlink\(linkIndex)"
+                    relationships = relationships.replacingOccurrences(
+                        of: "</Relationships>",
+                        with: wordLinkRelationship(id: relationID, target: target) + "</Relationships>")
+                    fragment = "<w:hyperlink r:id=\"\(relationID)\" w:history=\"1\">\(fragment)</w:hyperlink>"
+                }
+            }
+            result += fragment
+        }
+        return result
+    }
+
+    private static func replacingRegex(
+        _ pattern: String, in source: String, replacement: (NSTextCheckingResult, NSString) -> String
+    ) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return source }
+        let nsSource = source as NSString
+        let matches = regex.matches(in: source, range: NSRange(location: 0, length: nsSource.length))
+        var result = source
+        for match in matches.reversed() {
+            let value = replacement(match, nsSource)
+            if let range = Range(match.range, in: result) { result.replaceSubrange(range, with: value) }
+        }
+        return result
+    }
+
+    private static func xmlEscape(_ value: String) -> String {
+        value.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&apos;")
     }
 
     private static func makeHTML(

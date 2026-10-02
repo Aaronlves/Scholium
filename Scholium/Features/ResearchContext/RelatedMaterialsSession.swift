@@ -5,6 +5,7 @@ import ScholiumContracts
 struct RelatedMaterialsSeed: Sendable {
     let request: RelatedContentRequest
     let attachment: AgentChatAttachment
+    var termGroup: SearchTermGroup? = nil
     var insertionPoint: MarkdownEditorInsertionPoint? = nil
     var usesParagraph = false
 }
@@ -15,6 +16,9 @@ struct RelatedMaterialCard: Identifiable, Equatable, Sendable {
     var linkTarget: String? = nil
     var candidate: RelatedContentCandidate { passage.candidate }
     var text: String { passage.source }
+    var matchedTermGroupAlternatives: [String] {
+        passage.matches.filter { $0.seedKind == .researchRequest }.flatMap(\.terms)
+    }
     var line: Int { passage.range.line }
     var id: String { passage.id }
 
@@ -56,6 +60,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
 /// Window-local discovery for the active Note. Writing retains readable results
 /// until replacement succeeds; document departure resets the complete session.
 @MainActor final class RelatedMaterialsSession: ObservableObject {
+    @Published private(set) var selectedTermGroup: SearchTermGroup?
     @Published private(set) var seed: RelatedMaterialsSeed?
     @Published private(set) var cards: [RelatedMaterialCard] = []
     @Published private(set) var isLoading = false
@@ -205,9 +210,15 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         }
     }
 
+    func selectTermGroup(_ group: SearchTermGroup?) {
+        stopAutomaticSearch()
+        selectedTermGroup = group
+    }
+
     func reset() {
         cancel()
         preparedBackground = nil
+        selectedTermGroup = nil
         seed = nil
         insertionPoint = nil
         contextChanged = false

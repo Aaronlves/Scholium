@@ -3,10 +3,13 @@ import ScholiumContracts
 import SwiftUI
 
 struct RelatedMaterialsView: View {
+    @Environment(\.locale) private var locale
     @ObservedObject var session: RelatedMaterialsSession
     let isVisible: Bool
     let editor: MarkdownEditorSession?
+    let termGroups: [SearchTermGroup]
     let find: @MainActor () -> Void
+    let findWithTermGroup: @MainActor (SearchTermGroup?) -> Void
     let retry: () -> Void
     let open: (RelatedMaterialCard) -> Void
     let addToChat: (RelatedMaterialCard) -> Void
@@ -22,6 +25,46 @@ struct RelatedMaterialsView: View {
             let groups = session.noteGroups
             List {
                 Group {
+                    if !termGroups.isEmpty || session.selectedTermGroup != nil {
+                        Menu {
+                            Picker(
+                                "Find with term group",
+                                selection: Binding(
+                                    get: { session.selectedTermGroup?.id },
+                                    set: { id in findWithTermGroup(termGroups.first { $0.id == id }) }
+                                )
+                            ) {
+                                Text("No term group").tag(nil as UUID?)
+                                ForEach(termGroups) { group in
+                                    Text(group.name).tag(Optional(group.id))
+                                }
+                            }
+                        } label: {
+                            Label("Find with term group", systemImage: "text.magnifyingglass")
+                        }
+                        .accessibilityHint("Uses your authored search terms to find passages you can inspect before adding to Chat.")
+                        .accessibilityIdentifier("scholium.related.termGroup")
+                        .disabled(editor == nil || editor?.isComposing == true || session.isInsertingParagraphLink)
+                        .researchListRow()
+                    }
+                    if let group = session.seed?.termGroup {
+                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                            Text("Term group: \(group.name)").font(.caption.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("Original terms: \(group.terms.joined(separator: ", "))").font(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(
+                            Text(
+                                verbatim:
+                                    ScholiumL10n.string("Term group: \(group.name)", locale: locale) + ". "
+                                    + ScholiumL10n.string("Original terms: \(group.terms.joined(separator: ", "))", locale: locale))
+                        )
+                        .accessibilityIdentifier("scholium.related.termGroupProvenance")
+                        .researchListRow()
+                    }
                     switch session.presentation {
                     case .waiting:
                         ScholiumSidebarState(
@@ -56,6 +99,7 @@ struct RelatedMaterialsView: View {
                     ForEach(groups) { group in
                         RelatedMaterialNoteGroupView(
                             group: group,
+                            termGroup: session.seed?.termGroup,
                             canInsert: editor != nil && session.insertionPoint != nil && !session.isLoading && !session.isInsertingParagraphLink,
                             canInsertParagraph: editor != nil && session.canInsertParagraphLink,
                             isLoading: session.isLoading,

@@ -124,6 +124,7 @@ struct ScholiumLocalizationTests {
     func inspectorInterfaceCopy() {
         let expectations: [(String.LocalizationValue, String)] = [
             ("Related Material", "相关材料"),
+            ("No term group", "不使用术语组"),
             ("Outgoing Links", "传出连接"),
             ("Incoming Links", "传入连接"),
             ("NEEDS ATTENTION", "需要注意"),
@@ -133,6 +134,9 @@ struct ScholiumLocalizationTests {
         for (key, expected) in expectations {
             #expect(ScholiumL10n.string(key, locale: simplifiedChinese) == expected)
         }
+
+        let alternatives = "Free Will, 自由意志"
+        #expect(ScholiumL10n.string("Matched alternative: \(alternatives)", locale: simplifiedChinese) == "匹配替代词：Free Will, 自由意志")
 
         let context = String(
             format: ScholiumL10n.string("Context: %@", locale: simplifiedChinese),

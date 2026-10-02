@@ -71,6 +71,14 @@ struct WindowResearchCapabilities: Sendable {
 
 @MainActor
 final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
+    static func unpackWordDocument(_ data: Data) async throws -> [String: Data] {
+        try await WordDocumentArchiveOperations.unpack(data)
+    }
+
+    static func packWordDocument(_ parts: [String: Data]) async throws -> Data {
+        try await WordDocumentArchiveOperations.pack(parts)
+    }
+
     private static let publicationLogger = Logger(
         subsystem: "com.scholium.app",
         category: "WorkspacePublication"

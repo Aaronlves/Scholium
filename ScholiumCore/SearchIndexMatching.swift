@@ -137,12 +137,14 @@ struct RelatedContentSeedMaterial {
         let sourceFields: Set<SearchMatchedField> = [
             .title, .heading, .summary, .body, .callout, .footnote, .linkAnnotation, .tag,
         ]
-        var segments = focuses.map {
-            RelatedContentSeedSegment(
-                kind: $0.kind,
-                field: nil,
-                normalizedText: SearchTextNormalization.lexicalNormalize($0.text)
-            )
+        var segments = focuses.flatMap { focus in
+            (focus.literalAlternatives.isEmpty ? [focus.text] : focus.literalAlternatives).map {
+                RelatedContentSeedSegment(
+                    kind: focus.kind,
+                    field: nil,
+                    normalizedText: SearchTextNormalization.lexicalNormalize($0)
+                )
+            }
         }
         segments.append(
             contentsOf: projection.segments.compactMap { segment in
@@ -158,10 +160,9 @@ struct RelatedContentSeedMaterial {
         var groups: [RelatedContentSeedTermGroup] = focuses.map {
             RelatedContentSeedTermGroup(
                 kind: $0.kind,
-                terms: RelatedContentSeedTermExtractor.terms(
-                    in: $0.text,
-                    limit: RelatedContentContract.maximumFocusSeedTerms
-                )
+                terms: $0.literalAlternatives.isEmpty
+                    ? RelatedContentSeedTermExtractor.terms(in: $0.text, limit: RelatedContentContract.maximumFocusSeedTerms)
+                    : $0.literalAlternatives
             )
         }
         groups.append(

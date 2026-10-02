@@ -77,6 +77,7 @@ struct ContentView: View {
                 workspaceShell
             }
         }
+        .task { await searchController.loadTermGroups() }
         .environment(
             \.openChatExternalMarkdown,
             { url in
@@ -867,6 +868,7 @@ struct ContentView: View {
             ResearchInspectorView(
                 research: researchController,
                 editor: appState.presentedDocumentMode == .read ? nil : currentNoteDocumentSession?.editorSession,
+                termGroups: searchController.termGroups,
                 noteURL: appState.workspaceAssignment?.vaults.values.first(where: { $0.id == appState.currentDocumentVaultID }).map {
                     URL(fileURLWithPath: $0.canonicalPath).appendingPathComponent(note.id.relativePath)
                 },
@@ -885,6 +887,7 @@ struct ContentView: View {
                     )
                 },
                 findRelated: { appState.findRelatedMaterials(automatic: true) },
+                findRelatedWithTermGroup: { appState.findRelatedMaterials(using: $0) },
                 retryRelated: { appState.retryRelatedMaterials() },
                 openRelated: { card in Task { _ = await appState.useRelatedMaterial(card, inChat: false) }
                 },

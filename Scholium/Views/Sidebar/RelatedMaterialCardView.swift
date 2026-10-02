@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RelatedMaterialNoteGroupView: View {
     let group: RelatedMaterialsSession.NoteGroup
+    var termGroup: SearchTermGroup? = nil
     let canInsert: Bool
     let canInsertParagraph: Bool
     let isLoading: Bool
@@ -71,6 +72,7 @@ struct RelatedMaterialNoteGroupView: View {
                 ForEach(group.passages) { card in
                     RelatedMaterialPassageView(
                         card: card,
+                        termGroup: termGroup,
                         isLoading: isLoading,
                         entranceProgress: entranceProgress,
                         canInsertParagraph: canInsertParagraph && card.linkTarget != nil,
@@ -87,6 +89,7 @@ struct RelatedMaterialNoteGroupView: View {
 private struct RelatedMaterialPassageView: View {
     @Environment(\.locale) private var locale
     let card: RelatedMaterialCard
+    let termGroup: SearchTermGroup?
     let isLoading: Bool
     let entranceProgress: CGFloat
     let canInsertParagraph: Bool
@@ -97,15 +100,19 @@ private struct RelatedMaterialPassageView: View {
     var body: some View {
         Button(action: open) {
             ResearchPassageCard {
-                ResearchPassageExcerpt(
-                    text: ResearchPassageHighlight.matches(
-                        in: card.passage.excerpt, ranges: card.passage.excerptMatches)
-                )
-                .foregroundStyle(ScholiumNativeColorRole.label.color)
-                .scholiumContentControlInk(
-                    resting: .primaryText,
-                    emphasized: .accent
-                )
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    ResearchPassageExcerpt(
+                        text: ResearchPassageHighlight.matches(
+                            in: card.passage.excerpt, ranges: card.passage.excerptMatches)
+                    )
+                    .foregroundStyle(ScholiumNativeColorRole.label.color)
+                    .scholiumContentControlInk(resting: .primaryText, emphasized: .accent)
+                    if termGroup != nil, !card.matchedTermGroupAlternatives.isEmpty {
+                        Text("Matched alternative: \(card.matchedTermGroupAlternatives.joined(separator: ", "))")
+                            .font(.caption)
+                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                    }
+                }
             }
             .researchGroupEntrance(entranceProgress)
         }
@@ -117,7 +124,14 @@ private struct RelatedMaterialPassageView: View {
                 style: .continuous
             )
         )
-        .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(card.sourceIdentity), \(card.passage.excerpt)", locale: locale)))
+        .accessibilityLabel(
+            Text(
+                verbatim:
+                    "\(card.sourceIdentity), \(card.passage.excerpt)"
+                    + (termGroup != nil && !card.matchedTermGroupAlternatives.isEmpty
+                        ? ", " + ScholiumL10n.string("Matched alternative: \(card.matchedTermGroupAlternatives.joined(separator: ", "))", locale: locale)
+                        : ""))
+        )
         .accessibilityHint(Text(verbatim: RelatedMaterialGraphExplanation.passageHint(for: card.candidate, locale: locale)))
         .help(Text(verbatim: RelatedMaterialGraphExplanation.passageHint(for: card.candidate, locale: locale)))
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {

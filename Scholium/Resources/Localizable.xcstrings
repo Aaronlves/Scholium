@@ -1344,6 +1344,55 @@
         }
       }
     },
+    "Find with term group": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Find with term group" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用术语组查找" } }
+      }
+    },
+    "No term group": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "No term group" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "不使用术语组" } }
+      }
+    },
+    "Uses your authored search terms to find passages you can inspect before adding to Chat.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Uses your authored search terms to find passages you can inspect before adding to Chat." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用您撰写的搜索词查找段落，您可先检查来源，再添加到聊天。" } }
+      }
+    },
+    "The Word document could not be prepared for export.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The Word document could not be prepared for export." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法准备此 Word 文档以供导出。" } }
+      }
+    },
+    "Term group: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Term group: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "术语组：%@" } }
+      }
+    },
+    "Original terms: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Original terms: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "原始词项：%@" } }
+      }
+    },
+    "Matched alternative: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Matched alternative: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "匹配替代词：%@" } }
+      }
+    },
     "Insert Term Group": {
       "extractionState": "manual",
       "localizations": {

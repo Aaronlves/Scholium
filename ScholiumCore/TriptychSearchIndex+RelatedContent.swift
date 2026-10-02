@@ -26,7 +26,13 @@ extension TriptychSearchIndex {
         let focusedTerms = material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)
         let distinctFocusTermCount = Set(focusedTerms).count
         let requiredFocusMatches = min(2, distinctFocusTermCount)
-        let phrases = Array(Set(request.seed.focuses.flatMap { RelatedContentQueryTerms.quotedPhrases(in: $0.text) })).sorted()
+        let literalAlternatives = Set(request.seed.focuses.flatMap(\.literalAlternatives))
+        let phrases = Array(
+            Set(
+                request.seed.focuses.flatMap {
+                    $0.literalAlternatives.isEmpty ? RelatedContentQueryTerms.quotedPhrases(in: $0.text) : []
+                })
+        ).sorted()
         let focused = !request.seed.focuses.isEmpty
         var ranked:
             [(
@@ -137,6 +143,11 @@ extension TriptychSearchIndex {
             let rejected =
                 focused && item.focusCoverage < requiredFocusMatches && item.phraseCoverage == 0
                 && !item.localIdentity
+                // An explicitly chosen alternative is an OR input: its complete
+                // local occurrence supplies a witness without requiring a translation too.
+                && !item.passage.matches.contains(where: {
+                    $0.seedKind == .researchRequest && !literalAlternatives.isDisjoint(with: $0.terms)
+                })
                 && !(distinctFocusTermCount >= 3 && evaluation.coverage[item.documentIndex] >= 0.6
                     && evaluation.hasDistinctiveMatch[item.documentIndex]
                     && item.passage.matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms).contains {

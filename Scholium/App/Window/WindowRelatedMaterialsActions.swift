@@ -10,8 +10,15 @@ extension WindowModel {
     }
 
     @MainActor
+    func findRelatedMaterials(using termGroup: SearchTermGroup?) {
+        researchController.relatedMaterials.selectTermGroup(termGroup)
+        findRelatedMaterials()
+    }
+
+    @MainActor
     func findRelatedMaterials(automatic: Bool = false, refreshIndex: Bool = false) {
         let materials = researchController.relatedMaterials
+        let termGroup = materials.selectedTermGroup
         guard let capabilities = windowWorkspaceController.activeCapabilities,
             let descriptor = currentDocumentDescriptor, let note = currentNote
         else {
@@ -32,16 +39,22 @@ extension WindowModel {
                 else {
                     throw CancellationError()
                 }
+                let focuses =
+                    [RelatedContentSeedFocus(kind: .selectedPassage, text: selection.excerpt)]
+                    + (termGroup.map {
+                        [RelatedContentSeedFocus(kind: .researchRequest, text: $0.terms.joined(separator: " "), literalAlternatives: $0.terms)]
+                    } ?? [])
                 let seed = RelatedContentSeedSnapshot(
                     noteID: VaultQualifiedNoteID(vaultID: descriptor.reference.vaultID, relativePath: note.relativePath),
                     source: selection.source,
-                    focuses: [.init(kind: .selectedPassage, text: selection.excerpt)])
+                    focuses: focuses)
                 return RelatedMaterialsSeed(
                     request: .init(seed: seed),
                     attachment: .init(
                         noteID: descriptor.sessionKey.noteID, vaultID: descriptor.reference.vaultID, relativePath: note.relativePath,
                         text: selection.excerpt, fingerprint: seed.fingerprint, sourceLine: selection.line,
                         sourceRange: selection.sourceRange, vaultRole: descriptor.reference.vaultRole),
+                    termGroup: termGroup,
                     insertionPoint: captured.point, usesParagraph: captured.point != nil)
             },
             retrieve: { [discovery = capabilities.discovery] request in
