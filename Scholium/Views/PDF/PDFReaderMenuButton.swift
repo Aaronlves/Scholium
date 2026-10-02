@@ -15,7 +15,7 @@ enum PDFReaderMenuButton {
 
         var symbol: String {
             switch self {
-            case .actions: "ellipsis.circle"
+            case .actions: "ellipsis"
             case .zoom: "plus.magnifyingglass"
             case .annotations: "highlighter"
             }
@@ -74,7 +74,7 @@ final class PDFReaderNativeMenuButton: NSPopUpButton, NSMenuDelegate {
         self.kind = kind
         super.init(frame: NSRect(x: 0, y: 0, width: 28, height: 28), pullsDown: true)
         isBordered = false
-        controlSize = .small
+        controlSize = ScholiumNativeToolbarPresentation.controlSize
         contentTintColor = .labelColor
         imagePosition = .imageOnly
         (cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
@@ -91,7 +91,7 @@ final class PDFReaderNativeMenuButton: NSPopUpButton, NSMenuDelegate {
         // Native pull-down buttons hide their first item as the control title.
         // Retain it across updates so no actual command is consumed as a title.
         let titleItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
-        titleItem.image = NSImage(systemSymbolName: kind.symbol, accessibilityDescription: nil)
+        titleItem.image = ScholiumNativeToolbarPresentation.symbol(named: kind.symbol)
         commands.addItem(titleItem)
         for command in commandList {
             if kind == .annotations, command == .highlight { commands.addItem(.separator()) }

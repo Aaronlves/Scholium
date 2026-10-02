@@ -42,22 +42,22 @@ final class PDFReaderToolbarItem: NSToolbarItem, NSMenuDelegate, NSPopoverDelega
         stack.setAccessibilityLabel(label)
         configure(previous, symbol: "chevron.left", label: "Previous PDF Page", action: #selector(previousPage))
         configure(next, symbol: "chevron.right", label: "Next PDF Page", action: #selector(nextPage))
-        configure(search, symbol: "doc.text.magnifyingglass", label: "Search PDF", action: #selector(openSearch))
+        configure(search, symbol: "magnifyingglass", label: "Search PDF", action: #selector(openSearch))
         search.setAccessibilityIdentifier("scholium.pdf.search.toggle")
-        configure(compact, symbol: "ellipsis.circle", label: "PDF Reader", action: #selector(openCompactMenu))
+        configure(compact, symbol: "slider.horizontal.3", label: "PDF Reader", action: #selector(openCompactMenu))
         compact.setAccessibilityIdentifier("scholium.pdf.compactControls")
         compact.setAccessibilityRole(.menuButton)
         compact.isHidden = true
         page.alignment = .center
-        page.controlSize = .small
-        page.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        page.controlSize = .regular
+        page.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         page.setAccessibilityLabel(ScholiumL10n.string("PDF Page"))
         page.setAccessibilityIdentifier("scholium.pdf.page")
         page.target = self
         page.delegate = self
         page.action = #selector(goToPage)
         page.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        count.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        count.font = page.font
         count.textColor = .secondaryLabelColor
         for control in [previous, page, count, next] { stack.addArrangedSubview(control) }
         for kind in [PDFReaderMenuButton.Kind.zoom, .annotations, .actions] {
@@ -196,10 +196,10 @@ final class PDFReaderToolbarItem: NSToolbarItem, NSMenuDelegate, NSPopoverDelega
     }
 
     private func configure(_ button: NSButton, symbol: String, label: String, action: Selector) {
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        button.image = ScholiumNativeToolbarPresentation.symbol(named: symbol)
         button.imagePosition = .imageOnly
         button.isBordered = false
-        button.controlSize = .small
+        button.controlSize = ScholiumNativeToolbarPresentation.controlSize
         button.setButtonType(.momentaryPushIn)
         button.setAccessibilityLabel(ScholiumL10n.dynamicString(label))
         button.toolTip = ScholiumL10n.dynamicString(label)

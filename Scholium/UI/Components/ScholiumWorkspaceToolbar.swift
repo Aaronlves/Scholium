@@ -661,6 +661,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             )
         }
 
+        toolbarItem(Item.apparatusDivider)?.isHidden = !shellState.inspector.isVisible
         if let item = toolbarItem(Item.inspectorModes),
             let control = item.view as? ScholiumTooltippedSegmentedControl
         {

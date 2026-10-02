@@ -150,6 +150,9 @@ struct DocumentReadingToolbarTests {
             #expect(item(ID.paneVisibility, in: toolbar) === panes)
             #expect(reading.documentController.view === document)
             #expect(panes.isSelected(at: 0) == readerVisible && panes.isSelected(at: 1) == inspectorVisible)
+            let apparatusDivider = try #require(item(ID.apparatusDivider, in: toolbar) as? NSTrackingSeparatorToolbarItem)
+            #expect(apparatusDivider.isHidden == !inspectorVisible)
+            #expect(apparatusDivider.splitView === split.splitView && apparatusDivider.dividerIndex == 1)
             let moreIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ID.noteActions))
             if readerVisible {
                 #expect(toolbar.itemIdentifiers[moreIndex + 1] == ID.readingDivider)

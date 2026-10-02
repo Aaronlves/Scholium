@@ -501,9 +501,7 @@ extension ScholiumUITests {
         app.typeKey("g", modifierFlags: [.command, .shift])
         let path = app.textFields["PathTextField"].firstMatch
         XCTAssertTrue(path.waitForExistence(timeout: 5))
-        path.click()
-        path.typeKey("a", modifierFlags: .command)
-        path.typeText(url.path)
+        typeCommittedText(url.path, into: path, in: app)
         // Native completion changes this sheet's button collection while the
         // path resolves. Return addresses the focused native field directly.
         app.typeKey(.return, modifierFlags: [])
