@@ -7,6 +7,30 @@ import Testing
 @Suite("Zotero PDF picker request lifecycle", .timeLimit(.minutes(1)))
 @MainActor
 struct ZoteroPDFImportPickerTests {
+    @Test(
+        "Search rejects over-limit UTF-8 input with field feedback and preserves the earlier results",
+        arguments: [String(repeating: "a", count: 513), String(repeating: "研", count: 171)])
+    func searchQueryLimit(query: String) async throws {
+        let hit = hit("PARENT01")
+        let model = model(search: { _ in [hit] })
+        model.query = "fixture"
+        model.search()
+        await settle(model)
+        #expect(model.hits == [hit])
+        model.query = query
+        #expect(!model.canSearch && model.queryValidationMessage != nil)
+        model.search()
+        #expect(model.operationForTesting == nil && model.phase == nil)
+        #expect(model.query == query && model.hits == [hit])
+        model.query = String(repeating: "a", count: 512)
+        #expect(model.canSearch && model.queryValidationMessage == nil)
+        model.search()
+        await settle(model)
+        #expect(model.hits == [hit] && model.error == nil)
+        model.query = " \n "
+        #expect(!model.canSearch && model.queryValidationMessage == nil)
+    }
+
     @Test("A delayed search cannot replace a newer completed query")
     func delayedSearch() async throws {
         let gate = DeferredPDFPickerValue<[ZoteroSearchHit]>()
@@ -161,6 +185,28 @@ struct ZoteroPDFImportPickerTests {
         #expect(model.localCopyCandidate == nil && !model.localCopyAcknowledged)
         await settle(model)
         #expect(model.localCopyCandidate?.observation == second && !model.canImport)
+    }
+
+    @Test("Activating the selected local attachment preserves its resolved file and acknowledgment")
+    func repeatedLocalCopySelection() async throws {
+        let hit = hit("PARENT01")
+        let observation = try observation(hit, key: "PDF00001")
+        let candidate = ZoteroPDFLocalCopyCandidate(observation: observation, originalURL: URL(fileURLWithPath: "/fixture/Fixture.pdf"))
+        let model = ZoteroPDFImportPickerModel(
+            search: { _ in [hit] }, attachments: { _ in [.localCopy(observation)] },
+            resolve: { _ in throw ZoteroPDFImportError.originalUnavailable }, importPDF: { _ in },
+            resolveLocalCopy: { _ in candidate }, importLocalCopy: { _ in })
+        model.query = "fixture"
+        model.search()
+        await settle(model)
+        model.selectItem(hit.id)
+        await settle(model)
+        model.localCopyAcknowledged = true
+        let id = try #require(model.selectedAttachmentID)
+        #expect(model.canImport)
+        model.selectAttachment(id)
+        #expect(model.localCopyCandidate == candidate && model.localCopyAcknowledged && model.canImport)
+        #expect(model.operationForTesting == nil && model.phase == nil)
     }
 
     @Test("Final local-copy commit cannot be canceled by a stale Cancel action")

@@ -6,6 +6,289 @@ import PDFKit
 @preconcurrency import XCTest
 
 extension ScholiumUITests {
+    /// Page input, search keyboard/button dispatch and cancellation are one
+    /// native control boundary, independent of annotation save persistence.
+    @MainActor
+    func testPDFReaderSearchAndPageControlStates() throws {
+        let originalURL = testDirectory.appendingPathComponent("Synthetic Search Controls.pdf")
+        try makeSearchableReaderPDF(at: originalURL)
+        let original = try Data(contentsOf: originalURL)
+        let main = app.windows.firstMatch
+        XCTAssertTrue(main.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        app.typeKey("p", modifierFlags: [.control, .command])
+        let pane = main.descendants(matching: .any)["scholium.pdf.pane"]
+        XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        openReaderMenu("PDF Actions")
+        for title in ["Show Annotations", "Reload PDF", "Export PDF…", "Detach PDF"] {
+            XCTAssertFalse(app.menuItems[title].firstMatch.isEnabled, "\(title) needs a PDF or an authored binding.")
+        }
+        app.typeKey(.escape, modifierFlags: [])
+        pane.buttons["scholium.pdf.attach"].click()
+        app.buttons["scholium.pdf.chooseFile"].click()
+        chooseReaderPDFInNativePanel(originalURL)
+        let page = main.textFields["scholium.pdf.page"]
+        XCTAssertTrue(page.waitForExistence(timeout: 15))
+        typeCommittedText("1", into: page, in: app)
+        page.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "1" })
+        XCTAssertFalse(main.buttons["Previous PDF Page"].isEnabled)
+        XCTAssertTrue(main.buttons["Next PDF Page"].isEnabled)
+        main.buttons["Next PDF Page"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" })
+        XCTAssertFalse(main.buttons["Next PDF Page"].isEnabled)
+        for invalid in ["0", "-1", String(Int.min), String(Int.max), "3", "abc", "999999999999999999999"] {
+            typeCommittedText(invalid, into: page, in: app)
+            page.typeKey(.return, modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" }, "Invalid page \(invalid) preserves the current page.")
+        }
+        typeCommittedText(" 1 ", into: page, in: app)
+        page.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "1" })
+        for (label, tool) in [("Highlight", "highlight"), ("Comment", "comment"), ("Select", "select")] {
+            openReaderMenu("PDF Actions")
+            let command = app.menuItems["scholium.pdf.actions." + tool + "Tool"]
+            XCTAssertTrue(command.exists && command.isEnabled, "\(label) must dispatch through the PDF menu owner.")
+            command.click()
+            let selected = pane.descendants(matching: .any)["scholium.pdf.tool." + tool]
+            XCTAssertEqual((selected.value as? NSNumber)?.intValue, 1)
+            selected.click()
+            XCTAssertEqual((selected.value as? NSNumber)?.intValue, 1, "Repeated tool clicks retain one selected tool.")
+        }
+        for _ in 0..<3 { chooseReaderMenuItem("Zoom In", menu: "PDF Zoom", in: pane) }
+
+        main.toolbars.firstMatch.buttons["Search PDF"].click()
+        let search = app.textFields["scholium.pdf.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        let previous = app.buttons["Previous PDF Match"]
+        let next = app.buttons["Next PDF Match"]
+        XCTAssertFalse(previous.isEnabled, "An empty PDF query has no previous match.")
+        XCTAssertFalse(next.isEnabled, "An empty PDF query has no next match.")
+        typeCommittedText("__MissingPDFControlPassage__", into: search, in: app)
+        next.click()
+        let noMatch = app.staticTexts["No matches in this PDF."]
+        XCTAssertTrue(noMatch.waitForExistence(timeout: 3))
+        search.click()
+        search.typeKey("a", modifierFlags: .command)
+        search.typeKey(.delete, modifierFlags: [])
+        XCTAssertEqual(search.value as? String, "")
+        XCTAssertTrue(waitUntil(timeout: 3) { !noMatch.exists && !previous.isEnabled && !next.isEnabled })
+        typeCommittedText("Scholium PDF Lifecycle", into: search, in: app)
+        XCTAssertTrue(previous.isEnabled && next.isEnabled)
+        search.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "1" })
+        next.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" })
+        previous.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "1" })
+        search.click()
+        search.typeKey(.return, modifierFlags: .shift)
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" }, "Shift-Return searches backward and wraps.")
+        search.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "1" }, "Return searches forward and wraps.")
+        attachReaderScreenshot("PDF controls — page bounds and forward/backward search", window: main)
+        search.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })
+        main.toolbars.firstMatch.buttons["Search PDF"].click()
+        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        XCTAssertEqual(search.value as? String, "Scholium PDF Lifecycle")
+        search.typeKey(.escape, modifierFlags: [])
+        chooseReaderMenuItem("Fit PDF", menu: "PDF Zoom", in: pane)
+        main.buttons["Next PDF Page"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" })
+        main.buttons["Previous PDF Page"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "1" })
+        XCTAssertEqual(try Data(contentsOf: originalURL), original)
+    }
+
+    /// Reading a long annotation remains a complete task when the PDF denies
+    /// mutations. Zotero picker cancellation is exercised without API reads.
+    @MainActor
+    func testPDFReaderReadOnlyLongCommentAndChooserCancellation() throws {
+        let originalURL = testDirectory.appendingPathComponent("Synthetic Read Only.pdf")
+        try makeSearchableReaderPDF(at: originalURL)
+        let document = try XCTUnwrap(PDFDocument(url: originalURL))
+        let fullComment = (0..<90).map { "Paragraph \($0 + 1): complete synthetic read-only comment 阅读批注。" }.joined(separator: "\n")
+        let annotation = PDFAnnotation(bounds: CGRect(x: 90, y: 480, width: 24, height: 24), forType: .text, withProperties: nil)
+        annotation.contents = fullComment
+        try XCTUnwrap(document.page(at: 0)).addAnnotation(annotation)
+        let permissions = PDFAccessPermissions.allowsContentCopying.rawValue | PDFAccessPermissions.allowsContentAccessibility.rawValue
+        let encrypted = try XCTUnwrap(
+            document.dataRepresentation(options: [
+                PDFDocumentWriteOption.ownerPasswordOption: "SyntheticOwnerOnly", PDFDocumentWriteOption.accessPermissionsOption: NSNumber(value: permissions),
+            ]))
+        try encrypted.write(to: originalURL)
+        let checked = try XCTUnwrap(PDFDocument(data: encrypted))
+        XCTAssertFalse(checked.isLocked)
+        XCTAssertFalse(checked.allowsCommenting)
+        let main = app.windows.firstMatch
+        XCTAssertTrue(main.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        app.typeKey("p", modifierFlags: [.control, .command])
+        let pane = main.descendants(matching: .any)["scholium.pdf.pane"]
+        XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        pane.buttons["scholium.pdf.attach"].click()
+        app.buttons["scholium.pdf.chooseFile"].click()
+        chooseReaderPDFInNativePanel(originalURL)
+        XCTAssertTrue(main.textFields["scholium.pdf.page"].waitForExistence(timeout: 15))
+        XCTAssertTrue(pane.staticTexts["This PDF permits reading only."].exists)
+        for tool in ["highlight", "comment"] {
+            XCTAssertFalse(pane.descendants(matching: .any)["scholium.pdf.tool." + tool].isEnabled)
+        }
+        let select = pane.descendants(matching: .any)["scholium.pdf.tool.select"]
+        XCTAssertTrue(select.isEnabled)
+        select.click()
+        XCTAssertEqual((select.value as? NSNumber)?.intValue, 1)
+        chooseReaderMenuItem("Show Annotations", menu: "PDF Actions", in: pane)
+        let row = pane.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Paragraph 1:")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.click()
+        let detail = app.descendants(matching: .any)["scholium.pdf.annotation.detail"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 5))
+        let contents = detail.staticTexts["scholium.pdf.annotation.contents"]
+        XCTAssertEqual((contents.value as? String) ?? contents.label, fullComment)
+        XCTAssertFalse(detail.buttons["scholium.pdf.annotation.edit"].isEnabled)
+        let scroll = detail.scrollViews.firstMatch
+        XCTAssertTrue(scroll.exists)
+        let initialFrame = contents.frame
+        scroll.scroll(byDeltaX: 0, deltaY: -2400)
+        XCTAssertTrue(waitUntil(timeout: 5) { contents.frame.minY < initialFrame.minY - 100 })
+        attachReaderScreenshot("PDF controls — long read-only annotation scrolled, editing unavailable", window: main)
+        detail.buttons["scholium.pdf.annotation.close"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !detail.exists })
+
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let sourceBefore = try source(at: noteURL)
+        chooseReaderMenuItem("Attach or Replace PDF…", menu: "PDF Actions", in: pane)
+        let zotero = app.buttons["Import from Zotero…"]
+        XCTAssertTrue(zotero.waitForExistence(timeout: 5))
+        zotero.click()
+        let query = app.textFields["scholium.pdf.zotero.search"]
+        XCTAssertTrue(query.waitForExistence(timeout: 5))
+        let search = app.buttons["Search"].firstMatch
+        XCTAssertFalse(search.isEnabled)
+        typeCommittedText(String(repeating: "阅", count: 171), into: query, in: app)
+        XCTAssertTrue(app.staticTexts["scholium.pdf.zotero.search.validation"].waitForExistence(timeout: 3))
+        XCTAssertFalse(search.isEnabled)
+        main.sheets.firstMatch.buttons["Back"].click()
+        XCTAssertTrue(app.buttons["scholium.pdf.chooseFile"].waitForExistence(timeout: 3))
+        app.buttons["Cancel"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !self.app.buttons["scholium.pdf.chooseFile"].exists })
+        XCTAssertEqual(try source(at: noteURL), sourceBefore)
+        XCTAssertEqual(try Data(contentsOf: originalURL), encrypted)
+    }
+
+    /// Duplicate identity, checked conflict and native export/reload controls
+    /// share one attachment lifetime and preserve every imported original.
+    @MainActor
+    func testPDFReaderDuplicateChooserAndConflictRecoveryControls() throws {
+        let firstURL = testDirectory.appendingPathComponent("original-one/Material.pdf")
+        let secondURL = testDirectory.appendingPathComponent("original-two/Material.pdf")
+        for url in [firstURL, secondURL] {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try makeSearchableReaderPDF(at: url)
+        }
+        let secondDocument = try XCTUnwrap(PDFDocument(url: secondURL))
+        let secondMarker = PDFAnnotation(bounds: CGRect(x: 110, y: 440, width: 24, height: 24), forType: .text, withProperties: nil)
+        secondMarker.contents = "Distinct second original"
+        try XCTUnwrap(secondDocument.page(at: 0)).addAnnotation(secondMarker)
+        XCTAssertTrue(secondDocument.write(to: secondURL))
+        let firstBytes = try Data(contentsOf: firstURL)
+        let secondBytes = try Data(contentsOf: secondURL)
+        let main = app.windows.firstMatch
+        XCTAssertTrue(main.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        app.typeKey("p", modifierFlags: [.control, .command])
+        let pane = main.descendants(matching: .any)["scholium.pdf.pane"]
+        XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        pane.buttons["scholium.pdf.attach"].click()
+        app.buttons["scholium.pdf.chooseFile"].click()
+        chooseReaderPDFInNativePanel(firstURL)
+        XCTAssertTrue(main.textFields["scholium.pdf.page"].waitForExistence(timeout: 15))
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let firstBinding = try readerPDFBinding(in: source(at: noteURL))
+        let firstManaged = noteURL.deletingLastPathComponent().appendingPathComponent(firstBinding).standardizedFileURL
+        chooseReaderMenuItem("Attach or Replace PDF…", menu: "PDF Actions", in: pane)
+        app.buttons["scholium.pdf.chooseFile"].click()
+        chooseReaderPDFInNativePanel(secondURL)
+        XCTAssertTrue(waitUntil(timeout: 15) { main.textFields["scholium.pdf.page"].exists && !self.app.buttons["scholium.pdf.chooseFile"].exists })
+        let secondBinding = try readerPDFBinding(in: source(at: noteURL))
+        XCTAssertNotEqual(firstBinding, secondBinding)
+        chooseReaderMenuItem("Attach or Replace PDF…", menu: "PDF Actions", in: pane)
+        let choices = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.pdf.shared."))
+        XCTAssertTrue(waitUntil(timeout: 5) { choices.count >= 2 })
+        let labels = choices.allElementsBoundByIndex.map { ($0.value as? String) ?? $0.label }
+        XCTAssertTrue(labels.contains { $0.contains("Copy 1") } && labels.contains { $0.contains("Copy 2") })
+        let firstID = firstManaged.deletingLastPathComponent().lastPathComponent.lowercased()
+        let firstChoice = app.descendants(matching: .any)["scholium.pdf.shared." + firstID]
+        XCTAssertTrue(firstChoice.isHittable)
+        firstChoice.click()
+        app.buttons["scholium.pdf.details"].click()
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", firstID, firstID)).firstMatch
+                .waitForExistence(timeout: 3))
+        let closeDetails = app.buttons["scholium.pdf.details.close"]
+        XCTAssertTrue(closeDetails.waitForExistence(timeout: 3))
+        closeDetails.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !closeDetails.exists && self.app.buttons["Attach Selected PDF"].exists })
+        app.buttons["scholium.pdf.details"].click()
+        XCTAssertTrue(closeDetails.waitForExistence(timeout: 3))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(app.buttons["Attach Selected PDF"].waitForExistence(timeout: 3), "Closing PDF Details keeps the attachment chooser open.")
+        app.buttons["Attach Selected PDF"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? self.readerPDFBinding(in: self.source(at: noteURL))) == firstBinding })
+
+        chooseReaderMenuItem("Add PDF Comment…", menu: "PDF Actions", in: pane)
+        let localComment = "Retained local candidate after external PDF change"
+        typeCommittedText(localComment, into: readerCommentEditor(), in: app)
+        let external = try XCTUnwrap(PDFDocument(url: firstManaged))
+        let peerComment = PDFAnnotation(bounds: CGRect(x: 100, y: 460, width: 24, height: 24), forType: .text, withProperties: nil)
+        peerComment.contents = "External winning annotations"
+        try XCTUnwrap(external.page(at: 1)).addAnnotation(peerComment)
+        XCTAssertTrue(external.write(to: firstManaged))
+        let winningBytes = try Data(contentsOf: firstManaged)
+        app.buttons["scholium.pdf.comment.save"].click()
+        let error = pane.staticTexts["scholium.pdf.error"]
+        XCTAssertTrue(error.waitForExistence(timeout: 10))
+        pane.buttons["Retry Save"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { pane.buttons["Retry Save"].isEnabled })
+        XCTAssertEqual(try Data(contentsOf: firstManaged), winningBytes)
+        XCTAssertFalse(pane.buttons["Reload PDF…"].exists)
+        openReaderMenu("PDF Actions")
+        XCTAssertFalse(app.menuItems["scholium.pdf.actions.reload"].isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+        pane.buttons["Export Annotations…"].click()
+        chooseReaderExportDestination(testDirectory.appendingPathComponent("Retained Control Candidate.pdf"))
+        let exported = testDirectory.appendingPathComponent("Retained Control Candidate.pdf")
+        XCTAssertTrue(waitUntil(timeout: 10) { FileManager.default.fileExists(atPath: exported.path) && pane.buttons["Reload PDF…"].exists })
+        XCTAssertTrue(savedReaderAnnotations(at: exported).contains { $0.contents == localComment })
+        XCTAssertFalse(savedReaderAnnotations(at: exported).contains { $0.contents == peerComment.contents })
+        openReaderMenu("PDF Actions")
+        XCTAssertFalse(app.menuItems["scholium.pdf.actions.reload"].isEnabled, "Discarding retained annotations requires the recovery confirmation.")
+        app.typeKey(.escape, modifierFlags: [])
+        let candidate = XCTAttachment(data: try Data(contentsOf: exported), uniformTypeIdentifier: "com.adobe.pdf")
+        candidate.name = "Retained annotations exported without replacing external PDF"
+        candidate.lifetime = .keepAlways
+        add(candidate)
+        pane.buttons["Reload PDF…"].click()
+        let confirmation = main.sheets.firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 3))
+        confirmation.buttons["Cancel"].click()
+        XCTAssertTrue(error.exists)
+        pane.buttons["Reload PDF…"].click()
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 3))
+        confirmation.buttons["Reload PDF"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { !error.exists && main.textFields["scholium.pdf.page"].exists })
+        XCTAssertEqual(try Data(contentsOf: firstManaged), winningBytes)
+        chooseReaderMenuItem("Detach PDF", menu: "PDF Actions", in: pane)
+        XCTAssertTrue(pane.buttons["scholium.pdf.attach"].waitForExistence(timeout: 10))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: firstManaged.path))
+        XCTAssertEqual(try Data(contentsOf: firstManaged), winningBytes)
+        XCTAssertEqual(try Data(contentsOf: firstURL), firstBytes)
+        XCTAssertEqual(try Data(contentsOf: secondURL), secondBytes)
+        attachReaderScreenshot("PDF controls — checked export/reload and detach preserves shared copies", window: main)
+    }
+
     /// A distinct narrow-layout boundary: visible AX names, keyboard focus and
     /// navigation, native menu keyboard dispatch, and PDF zoom without changing
     /// the user's display or accessibility settings.
@@ -500,7 +783,7 @@ extension ScholiumUITests {
         let identifiers = ["PDF Actions": "scholium.pdf.actions", "PDF Zoom": "scholium.pdf.zoom"]
         openReaderMenu(menu)
         let commands = [
-            "Attach or Replace PDF…": "attach", "Reload PDF": "reload",
+            "Attach or Replace PDF…": "attach", "Detach PDF": "detach", "Export PDF…": "export", "Reload PDF": "reload",
             "Zoom In": "zoomIn", "Zoom Out": "zoomOut", "Fit PDF": "fit",
             "Select": "selectTool", "Highlight": "highlightTool", "Comment": "commentTool",
             "Highlight Selection": "highlight", "Add PDF Comment…": "comment", "Show Annotations": "showAnnotations",
@@ -566,12 +849,32 @@ extension ScholiumUITests {
         // Native completion changes this sheet's button collection while the
         // path resolves. Return addresses the focused native field directly.
         app.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 5) { !path.exists })
+        XCTAssertTrue(waitUntil(timeout: 10) { !path.exists || !path.isHittable })
         if panel.exists {
             let open = panel.buttons["OKButton"]
             XCTAssertTrue(open.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitUntil(timeout: 10) { open.isEnabled && open.isHittable })
             open.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         }
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+    }
+
+    @MainActor
+    private func chooseReaderExportDestination(_ url: URL) {
+        let panel = app.descendants(matching: .any)["save-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        let path = app.textFields["PathTextField"].firstMatch
+        XCTAssertTrue(path.waitForExistence(timeout: 5))
+        typeCommittedText(url.deletingLastPathComponent().path, into: path, in: app)
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 10) { !path.exists || !path.isHittable })
+        let name = panel.textFields.firstMatch
+        XCTAssertTrue(name.exists)
+        typeCommittedText(url.lastPathComponent, into: name, in: app)
+        let save = panel.buttons["OKButton"]
+        XCTAssertTrue(save.exists && save.isEnabled)
+        save.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
     }
 

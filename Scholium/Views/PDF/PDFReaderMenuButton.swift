@@ -162,14 +162,16 @@ final class PDFReaderCommandMenu: NSObject, NSMenuDelegate {
         case .attach: controller.canAttach
         case .detach: controller.canAttach && controller.context?.authoredPath != nil
         case .export, .zoomIn, .zoomOut, .fit: controller.canUseReaderCommands && controller.document != nil
-        case .reload: controller.canUseReaderCommands && !controller.isSaving
+        case .reload:
+            !controller.isSaving && !controller.isLoading && !controller.hasUnsavedAnnotations
+                && (controller.document != nil || (controller.operations != nil && controller.context?.authoredPath != nil))
         case .openZotero: controller.canUseReaderCommands && controller.zoteroSource != nil
         case .highlight: controller.canAnnotate && controller.hasSelection
         case .comment: controller.canAnnotate
         case .selectTool: controller.canSelectTool(.select)
         case .highlightTool: controller.canSelectTool(.highlight)
         case .commentTool: controller.canSelectTool(.comment)
-        case .showAnnotations: true
+        case .showAnnotations: controller.document != nil
         }
     }
 

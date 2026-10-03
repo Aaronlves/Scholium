@@ -95,7 +95,9 @@ final class PDFReaderController: ObservableObject {
     @Published private(set) var annotationDetailStatus: String?
     @Published var attachRequested = false
     @Published var showsAnnotations = false
-    @Published var searchQuery = ""
+    @Published var searchQuery = "" {
+        didSet { if searchQuery != oldValue { searchStatus = nil } }
+    }
     @Published private(set) var searchStatus: String?
     @Published private(set) var recoveryCandidates: [PDFReaderRecovery] = []
     @Published private(set) var exportedUnsavedAnnotations = false
@@ -184,7 +186,8 @@ final class PDFReaderController: ObservableObject {
 
     var canAnnotate: Bool {
         guard acceptsInteraction, let session, document === session.document, context == session.context else { return false }
-        return session.document.allowsCommenting && !isSaving && !isImporting && !isLoading && !session.hasChanges && !session.isOutdated
+        return session.document.allowsCommenting && annotationDraft == nil && !isSaving && !isImporting && !isLoading && !session.hasChanges
+            && !session.isOutdated
     }
     var canCommitDraft: Bool {
         guard acceptsInteraction, let session, annotationDraft?.sessionID == session.id else { return false }
@@ -192,6 +195,9 @@ final class PDFReaderController: ObservableObject {
     }
     var canAttach: Bool { acceptsInteraction && context != nil && operations != nil && !isSaving && !isImporting }
     var hasUnsavedAnnotations: Bool { session?.hasChanges == true }
+    var canRetrySave: Bool {
+        acceptsInteraction && !isImporting && !isSaving && session?.hasChanges == true && session?.saveTask == nil
+    }
     var pendingSaveFilename: String? { session?.hasChanges == true ? session?.snapshot.record.filename : nil }
     var zoteroSource: ZoteroPDFSource? { session?.snapshot.record.zoteroSource }
     var currentAttachmentID: UUID? {
@@ -272,7 +278,14 @@ final class PDFReaderController: ObservableObject {
         error = nil
         annotationDraftError = nil
         isLoading = false
+        presentRetainedAnnotationsIfNeeded()
         startLoadIfNeeded()
+    }
+
+    private func presentRetainedAnnotationsIfNeeded() {
+        guard context == nil, let session, session.hasChanges else { return }
+        filename = session.snapshot.record.filename
+        error = ScholiumL10n.string("The note is no longer open. Your unsaved PDF annotations are retained; retry saving or export them before continuing.")
     }
 
     private func startLoadIfNeeded() {
@@ -553,7 +566,7 @@ final class PDFReaderController: ObservableObject {
     }
 
     private func resolveIssues(in session: PDFReadingSession) {
-        guard self.session === session, context == session.context else { return }
+        guard self.session === session, context == session.context || context == nil else { return }
         for id in session.issueIDs { resolveIssue(id) }
         session.issueIDs.removeAll()
         session.conflictReported = false
@@ -632,7 +645,9 @@ final class PDFReaderController: ObservableObject {
     }
 
     func goToPage(_ number: Int) {
-        guard canUseReaderCommands, let document, let page = document.page(at: number - 1) else { return }
+        guard canUseReaderCommands, let document, number >= 1, number <= document.pageCount,
+            let page = document.page(at: number - 1)
+        else { return }
         pdfView?.go(to: page)
         viewPositionDidChange()
     }
@@ -708,7 +723,7 @@ final class PDFReaderController: ObservableObject {
     }
 
     func commitComment(_ draft: PDFReaderAnnotationDraft, text: String) {
-        guard canCommitDraft, let session, session.id == draft.sessionID else { return }
+        guard canCommitDraft, annotationDraft?.id == draft.id, let session, session.id == draft.sessionID else { return }
         do {
             if let annotation = draft.annotation {
                 _ = try PDFReaderAnnotations.requireCurrent(annotation, in: session.document)
@@ -749,7 +764,7 @@ final class PDFReaderController: ObservableObject {
     }
 
     func deleteAnnotation(_ draft: PDFReaderAnnotationDraft) {
-        guard canCommitDraft, let session, session.id == draft.sessionID, let annotation = draft.annotation else { return }
+        guard canCommitDraft, annotationDraft?.id == draft.id, let session, session.id == draft.sessionID, let annotation = draft.annotation else { return }
         do {
             let page = try PDFReaderAnnotations.requireCurrent(annotation, in: session.document)
             page.removeAnnotation(annotation)
@@ -759,11 +774,11 @@ final class PDFReaderController: ObservableObject {
         } catch { annotationDraftError = PDFReaderPresentationError.message(error) }
     }
 
-    private func saveMutation(_ session: PDFReadingSession) {
+    private func saveMutation(_ session: PDFReadingSession, candidate: Data? = nil) {
         session.hasChanges = true
         session.exportedChanges = false
         exportedUnsavedAnnotations = false
-        guard let data = session.serializedData else {
+        guard let data = candidate ?? session.serializedData else {
             error = ScholiumL10n.string("The PDF annotations could not be prepared for saving. Keep this reader open.")
             return
         }
@@ -813,8 +828,8 @@ final class PDFReaderController: ObservableObject {
     }
 
     func retrySave() {
-        guard let session, session.hasChanges, session.saveTask == nil else { return }
-        saveMutation(session)
+        guard canRetrySave, let session else { return }
+        saveMutation(session, candidate: session.unsavedData)
     }
 
     func reload(discardExportedChanges: Bool = false) async {
@@ -832,6 +847,7 @@ final class PDFReaderController: ObservableObject {
             error = ScholiumL10n.string("Export your unsaved annotations before reloading this PDF.")
             return
         }
+        if context == nil { resolveIssues(in: session) }
         generation &+= 1
         invalidateSharedRefresh()
         loadTask?.cancel()
@@ -846,16 +862,23 @@ final class PDFReaderController: ObservableObject {
         annotationDetail = nil
         annotationDetailStatus = nil
         exportedUnsavedAnnotations = false
+        error = nil
         startLoadIfNeeded()
     }
 
     func exportAnnotations(to destination: URL) async throws {
         guard let session, let data = session.unsavedData ?? session.serializedData else { throw PDFReaderError.missing }
+        let exportGeneration = generation
         try await session.operations.exportPDF(candidate: data, to: destination)
-        if session.hasChanges {
-            session.exportedChanges = true
-            if self.session === session { exportedUnsavedAnnotations = true }
-        }
+        markExportedCandidate(data, session: session, generation: exportGeneration)
+    }
+
+    private func markExportedCandidate(_ data: Data, session: PDFReadingSession, generation exportGeneration: UInt64) {
+        guard !isClosed, generation == exportGeneration, self.session === session,
+            session.hasChanges, session.unsavedData == data
+        else { return }
+        session.exportedChanges = true
+        exportedUnsavedAnnotations = true
     }
 
     func flushAnnotations() async throws {
@@ -941,6 +964,7 @@ final class PDFReaderController: ObservableObject {
         pendingIssueResolution = nil
         pendingReloadPosition = nil
         error = nil
+        presentRetainedAnnotationsIfNeeded()
         startLoadIfNeeded()
     }
 
@@ -986,9 +1010,8 @@ final class PDFReaderController: ObservableObject {
                         throw PDFReaderError.malformed
                     }
                     try await operations.exportPDF(candidate: data, to: destination)
-                    if recovery == nil, let exportingSession, exportingSession.hasChanges {
-                        exportingSession.exportedChanges = true
-                        if self?.session === exportingSession { self?.exportedUnsavedAnnotations = true }
+                    if recovery == nil, let exportingSession {
+                        self?.markExportedCandidate(data, session: exportingSession, generation: exportGeneration)
                     }
                 } catch {
                     if let self, self.generation == exportGeneration, !self.isClosed {

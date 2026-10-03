@@ -160,6 +160,167 @@ struct PDFReaderLifecycleTests {
         #expect(reader.document === page.document)
     }
 
+    @Test("External Note deletion retains exact failed annotations with Retry or exported discard", arguments: [false, true])
+    func deletedNoteRetainsRecovery(retrySave: Bool) async throws {
+        let fixture = try Fixture()
+        var reportedIssues: [UUID] = []
+        var resolvedIssues: [UUID] = []
+        let reader = PDFReaderController(
+            windowID: UUID(), setBinding: { _, _, _ in },
+            reportIssue: { _ in
+                let id = UUID()
+                reportedIssues.append(id)
+                return id
+            },
+            resolveIssue: { resolvedIssues.append($0) })
+        defer { cleanup(reader, operations: fixture.operations) }
+        reader.setVisible(true)
+        reader.follow(fixture.first, operations: fixture.operations)
+        try await loaded(reader)
+        await fixture.operations.failNextSave(with: .io("Controlled write failure"))
+        try addComment("Retain after external Note deletion 注释", to: reader)
+        try await eventually { !reader.isSaving && reader.hasUnsavedAnnotations }
+        let candidate = try #require(await fixture.operations.lastSaveCandidate)
+        #expect(reportedIssues.count == 1 && resolvedIssues.isEmpty)
+
+        reader.follow(nil, operations: nil)
+        #expect(reader.context == nil && reader.document == nil && !reader.isLoading)
+        #expect(reader.hasUnsavedAnnotations && reader.pendingSaveFilename == "first.pdf")
+        #expect(reader.error != nil)
+        #expect(!reader.setVisible(false))
+        await #expect(throws: PDFReaderError.changed) { try await reader.flushPersistence() }
+
+        if retrySave {
+            reader.retrySave()
+            try await eventually { !reader.isSaving && !reader.hasUnsavedAnnotations }
+            #expect(await fixture.operations.savedPDF(for: fixture.first.target.noteID)?.data == candidate)
+        } else {
+            let destination = fixtureExportURL()
+            try await reader.exportAnnotations(to: destination)
+            #expect(await fixture.operations.exportedData(at: destination) == candidate)
+            #expect(reader.exportedUnsavedAnnotations)
+            await reader.reload()
+            #expect(reader.hasUnsavedAnnotations)
+            await reader.reload(discardExportedChanges: true)
+            #expect(!reader.hasUnsavedAnnotations && !reader.exportedUnsavedAnnotations)
+            #expect(await fixture.operations.savedPDF(for: fixture.first.target.noteID)?.data == fixture.firstSnapshot.data)
+        }
+        #expect(reader.context == nil && reader.document == nil)
+        #expect(reader.error == nil && resolvedIssues == reportedIssues)
+        try await reader.flushPersistence()
+        #expect(reader.setVisible(false))
+    }
+
+    @Test("An older export cannot authorize discarding annotations created while export is pending")
+    func exportIsBoundToExactCandidate() async throws {
+        let fixture = try Fixture()
+        let reader = makeReader()
+        defer { cleanup(reader, operations: fixture.operations) }
+        reader.setVisible(true)
+        reader.follow(fixture.first, operations: fixture.operations)
+        try await loaded(reader)
+        let originalDocument = reader.document
+        let firstDestination = fixtureExportURL()
+        await fixture.operations.holdNextExport()
+        let earlierExport = Task { @MainActor in try await reader.exportAnnotations(to: firstDestination) }
+        try await eventually { await fixture.operations.hasHeldExport }
+
+        await fixture.operations.failNextSave(with: .io("Controlled newer-save failure"))
+        try addComment("Written after export began", to: reader)
+        try await eventually { !reader.isSaving && reader.hasUnsavedAnnotations }
+        let newestCandidate = try #require(await fixture.operations.lastSaveCandidate)
+        await fixture.operations.releaseExport()
+        try await earlierExport.value
+        let earlierData = try #require(await fixture.operations.exportedData(at: firstDestination))
+        #expect(PDFDocument(data: earlierData)?.page(at: 0)?.annotations.isEmpty == true)
+        #expect(earlierData != newestCandidate && !reader.exportedUnsavedAnnotations)
+        await reader.reload(discardExportedChanges: true)
+        #expect(reader.document === originalDocument && reader.hasUnsavedAnnotations)
+
+        let currentDestination = fixtureExportURL()
+        try await reader.exportAnnotations(to: currentDestination)
+        #expect(await fixture.operations.exportedData(at: currentDestination) == newestCandidate)
+        #expect(reader.exportedUnsavedAnnotations)
+        await reader.reload(discardExportedChanges: true)
+        try await loaded(reader)
+        #expect(!reader.hasUnsavedAnnotations && reader.document?.page(at: 0)?.annotations.isEmpty == true)
+    }
+
+    @Test("Retry Save refuses departure and close currency, then resumes the exact retained candidate")
+    func retrySaveRespectsInteractionBarrier() async throws {
+        let fixture = try Fixture()
+        let barrier = InteractionBarrier()
+        let reader = PDFReaderController(
+            windowID: UUID(), setBinding: { _, _, _ in }, reportIssue: { _ in nil }, allowsInteraction: { !barrier.isClosing })
+        defer { cleanup(reader, operations: fixture.operations) }
+        reader.setVisible(true)
+        reader.follow(fixture.first, operations: fixture.operations)
+        try await loaded(reader)
+        await fixture.operations.failNextSave(with: .io("Controlled write failure"))
+        try addComment("Retry retains these exact annotations", to: reader)
+        try await eventually { !reader.isSaving && reader.hasUnsavedAnnotations }
+        let candidate = try #require(await fixture.operations.lastSaveCandidate)
+        #expect(reader.canRetrySave)
+
+        let firstDeparture = reader.beginDeparture()
+        let secondDeparture = reader.beginDeparture()
+        #expect(!reader.canRetrySave)
+        reader.retrySave()
+        await Task.yield()
+        #expect(await fixture.operations.saveCount == 1 && reader.hasUnsavedAnnotations && !reader.isSaving)
+        reader.endDeparture(firstDeparture)
+        #expect(!reader.canRetrySave)
+        reader.retrySave()
+        await Task.yield()
+        #expect(await fixture.operations.saveCount == 1)
+        reader.endDeparture(secondDeparture)
+        barrier.isClosing = true
+        #expect(!reader.canRetrySave)
+        reader.retrySave()
+        await Task.yield()
+        #expect(await fixture.operations.saveCount == 1 && reader.hasUnsavedAnnotations)
+        barrier.isClosing = false
+        #expect(reader.canRetrySave)
+        reader.retrySave()
+        try await eventually { !reader.isSaving && !reader.hasUnsavedAnnotations }
+        #expect(await fixture.operations.saveCount == 2)
+        #expect(await fixture.operations.savedPDF(for: fixture.first.target.noteID)?.data == candidate)
+    }
+
+    @Test("Active comment drafts resist replacement and superseded Save or Delete actions")
+    func draftIdentityGuardsMutation() async throws {
+        let fixture = try Fixture()
+        let reader = makeReader()
+        defer { cleanup(reader, operations: fixture.operations) }
+        reader.setVisible(true)
+        reader.follow(fixture.first, operations: fixture.operations)
+        try await loaded(reader)
+        try addComment("Saved original", to: reader)
+        try await reader.flushAnnotations()
+        let page = try #require(reader.document?.page(at: 0))
+        let annotation = try #require(page.annotations.first { PDFReaderAnnotations.hasType($0, .text) })
+        reader.editAnnotation(annotation)
+        let superseded = try #require(reader.annotationDraft)
+        reader.annotationText = "Unfinished exact draft 注释"
+        reader.requestComment(on: annotation.page, at: NSPoint(x: 100, y: 100))
+        reader.editAnnotation(annotation)
+        #expect(reader.annotationDraft?.id == superseded.id)
+        #expect(reader.annotationText == "Unfinished exact draft 注释" && !reader.canAnnotate)
+
+        reader.cancelComment()
+        reader.editAnnotation(annotation)
+        let current = try #require(reader.annotationDraft)
+        #expect(current.id != superseded.id)
+        reader.commitComment(superseded, text: "A stale Save must not replace the current draft")
+        reader.deleteAnnotation(superseded)
+        #expect(reader.annotationDraft?.id == current.id && reader.canCommitDraft)
+        #expect(annotation.contents == "Saved original" && page.annotations.filter(PDFReaderAnnotations.isEditable).count == 1)
+        #expect(await fixture.operations.saveCount == 1)
+        reader.commitComment(current, text: "Current draft saved")
+        try await reader.flushAnnotations()
+        #expect(annotation.contents == "Current draft saved" && reader.annotationDraft == nil)
+    }
+
     @Test("Comment creation, editing and deletion persist across document reloads")
     func commentRoundTrip() async throws {
         let fixture = try Fixture()
@@ -361,6 +522,10 @@ struct PDFReaderLifecycleTests {
         reader.viewPositionDidChange()
         #expect(view.currentPage === reader.document?.page(at: 1))
         #expect(reader.pageNumber == 2)
+        for invalidPage in [Int.min, -1, 0, 3, Int.max] {
+            reader.goToPage(invalidPage)
+            #expect(view.currentPage === reader.document?.page(at: 1) && reader.pageNumber == 2)
+        }
         try await reader.flushPersistence()
         let saved = try #require(try await fixture.operations.readingState(noteID: fixture.first.target.noteID, attachmentID: fixture.firstSnapshot.record.id))
         #expect(saved.pageIndex == 1)
@@ -490,6 +655,11 @@ struct PDFReaderLifecycleTests {
         #expect(!reader.isImporting && !reader.isDeparting)
     }
 
+    @MainActor
+    private final class InteractionBarrier {
+        var isClosing = false
+    }
+
     private func makeReader(windowID: UUID = UUID(), reportIssue: @escaping @MainActor (String) -> Void = { _ in }) -> PDFReaderController {
         PDFReaderController(
             windowID: windowID, setBinding: { _, _, _ in },
@@ -595,10 +765,13 @@ actor ControlledPDFReaderOperations: PDFReaderUseCases {
     private var heldRecoveryLookup: CheckedContinuation<[PDFReaderRecovery], any Error>?
     private var holdImport = false
     private var heldImport: (PDFReaderImport, CheckedContinuation<PDFReaderImport, any Error>)?
+    private var holdExport = false
+    private var heldExport: (Data, URL, CheckedContinuation<Void, any Error>)?
     private var exports: [URL: Data] = [:]
     private(set) var loadCount = 0
     private(set) var returnedLoadCount = 0
     private(set) var saveCount = 0
+    private(set) var lastSaveCandidate: Data?
     private(set) var returnedRecoveryCount = 0
 
     init(notes: [UUID: PDFReaderSnapshot]) { self.notes = notes }
@@ -612,6 +785,14 @@ actor ControlledPDFReaderOperations: PDFReaderUseCases {
     var hasHeldSave: Bool { pendingSave != nil }
     func savedPDF(for noteID: UUID) -> PDFReaderSnapshot? { notes[noteID] }
     func exportedData(at url: URL) -> Data? { exports[url] }
+    func holdNextExport() { holdExport = true }
+    var hasHeldExport: Bool { heldExport != nil }
+    func releaseExport() {
+        guard let (candidate, destination, continuation) = heldExport else { return }
+        heldExport = nil
+        exports[destination] = candidate
+        continuation.resume()
+    }
     func seedPosition(_ position: PDFReaderReadingState, noteID: UUID, attachmentID: UUID) {
         positions[PositionKey(noteID: noteID, attachmentID: attachmentID)] = position
     }
@@ -659,6 +840,8 @@ actor ControlledPDFReaderOperations: PDFReaderUseCases {
         heldWindowState = nil
         heldRecoveryLookup?.resume(throwing: CancellationError())
         heldRecoveryLookup = nil
+        heldExport?.2.resume(throwing: CancellationError())
+        heldExport = nil
         cancelImport()
     }
 
@@ -677,6 +860,7 @@ actor ControlledPDFReaderOperations: PDFReaderUseCases {
 
     func savePDF(candidate: Data, expected: PDFReaderSnapshot) async throws -> PDFReaderSnapshot {
         saveCount += 1
+        lastSaveCandidate = candidate
         if let error = nextSaveError {
             nextSaveError = nil
             throw error
@@ -729,7 +913,14 @@ actor ControlledPDFReaderOperations: PDFReaderUseCases {
         guard let snapshot = notes.values.first(where: { $0.record.id == attachmentID }) else { throw PDFReaderError.missing }
         return snapshot
     }
-    func exportPDF(candidate: Data, to destination: URL) async throws { exports[destination] = candidate }
+    func exportPDF(candidate: Data, to destination: URL) async throws {
+        if holdExport {
+            holdExport = false
+            try await withCheckedThrowingContinuation { heldExport = (candidate, destination, $0) }
+            return
+        }
+        exports[destination] = candidate
+    }
     func recoveryData(_ recovery: PDFReaderRecovery) async throws -> Data { throw PDFReaderError.missing }
     func recoveries(attachmentID: UUID) async throws -> [PDFReaderRecovery] { [] }
     func readingState(noteID: UUID, attachmentID: UUID) async throws -> PDFReaderReadingState? {

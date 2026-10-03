@@ -39,10 +39,16 @@ struct ZoteroPDFImportView: View {
                             .textFieldStyle(.roundedBorder)
                             .accessibilityLabel("Search Zotero Library")
                             .accessibilityIdentifier("scholium.pdf.zotero.search")
+                            .accessibilityHint(model.queryValidationMessage ?? "")
                             .onSubmit { model.search() }
                         Button("Search") { model.search() }
-                            .disabled(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.phase == .importing)
+                            .disabled(!model.canSearch)
                     }.disabled(model.phase == .importing)
+                    if let validation = model.queryValidationMessage {
+                        Text(verbatim: validation).font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("scholium.pdf.zotero.search.validation")
+                    }
 
                     List(selection: Binding(get: { model.selectedHitID }, set: { model.selectItem($0) })) {
                         ForEach(model.hits) { hit in
@@ -226,6 +232,13 @@ final class ZoteroPDFImportPickerModel: ObservableObject {
     @Published private(set) var completed = false
     @Published private(set) var error: String?
 
+    private var searchNeedle: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var queryValidationMessage: String? {
+        searchNeedle.utf8.count > 512 ? ScholiumL10n.string("The search query is too long. Shorten it and try again.") : nil
+    }
+    var canSearch: Bool {
+        isPresented && !completed && phase != .importing && !searchNeedle.isEmpty && queryValidationMessage == nil
+    }
     var selectedSource: ZoteroPDFImportOption? { sources.first { $0.id == selectedAttachmentID } }
     var isLocalCopySelected: Bool {
         if let selectedSource, case .localCopy = selectedSource { return true }
@@ -268,9 +281,8 @@ final class ZoteroPDFImportPickerModel: ObservableObject {
     }
 
     func search() {
-        guard isPresented, !completed, phase != .importing else { return }
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty, needle.utf8.count <= 512 else { return }
+        guard canSearch else { return }
+        let needle = searchNeedle
         let ticket = start(.searching)
         hits = []
         selectedHitID = nil
@@ -318,7 +330,11 @@ final class ZoteroPDFImportPickerModel: ObservableObject {
     }
 
     func selectAttachment(_ id: String?) {
-        guard isPresented, !completed, phase != .importing else { return }
+        guard isPresented, !completed, phase != .importing, selectedAttachmentID != id else { return }
+        updateAttachmentSelection(id)
+    }
+
+    private func updateAttachmentSelection(_ id: String?) {
         cancelOperation()
         selectedAttachmentID = id
         clearLocalCopyConfirmation()
@@ -341,7 +357,7 @@ final class ZoteroPDFImportPickerModel: ObservableObject {
 
     func retryLocalCopy() {
         guard canRetryLocalCopy else { return }
-        selectAttachment(selectedAttachmentID)
+        updateAttachmentSelection(selectedAttachmentID)
     }
 
     func importSelection() {

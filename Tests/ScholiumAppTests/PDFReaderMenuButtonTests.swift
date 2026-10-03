@@ -1,4 +1,5 @@
 import AppKit
+import ScholiumContracts
 import Testing
 
 @testable import ScholiumApp
@@ -51,7 +52,7 @@ struct PDFReaderMenuButtonTests {
     }
 
     @Test("Opening refreshes capability and toggle states while native target dispatch reaches the current owner")
-    func commandDispatch() throws {
+    func commandDispatch() async throws {
         let app = NSApplication.shared
         let first = reader()
         let second = reader()
@@ -59,13 +60,15 @@ struct PDFReaderMenuButtonTests {
             first.shutdown()
             second.shutdown()
         }
+        try await load(first)
+        try await load(second)
         let owner = PDFReaderCommandMenu(controller: first, kind: .actions)
         defer { owner.invalidate() }
         let menu = owner.menu
         let highlight = try #require(menu.items.first { $0.representedObject as? String == "highlight" })
         let comment = try #require(menu.items.first { $0.representedObject as? String == "comment" })
         let toggle = try #require(menu.items.first { $0.representedObject as? String == "showAnnotations" })
-        #expect(!highlight.isEnabled && !comment.isEnabled)
+        #expect(!highlight.isEnabled && comment.isEnabled)
         #expect(toggle.isEnabled && toggle.state == .off)
         #expect(app.sendAction(try #require(toggle.action), to: toggle.target, from: toggle))
         #expect(first.showsAnnotations)
@@ -111,9 +114,10 @@ struct PDFReaderMenuButtonTests {
     }
 
     @Test("Toolbar overflow uses the same live command owner and invalidation revokes retained entries")
-    func overflowCommands() throws {
+    func overflowCommands() async throws {
         let controller = reader()
         defer { controller.shutdown() }
+        try await load(controller)
         let owner = PDFReaderCommandMenu(controller: controller, kind: .actions, includesControlTitle: true)
         let overflow = owner.makeOverflowMenu()
         #expect(owner.makeOverflowMenu() === overflow)
@@ -133,9 +137,10 @@ struct PDFReaderMenuButtonTests {
     }
 
     @Test("A retained menu rechecks presentation admission at dispatch and a dismantled pull-down stays inert")
-    func presentationAdmission() throws {
+    func presentationAdmission() async throws {
         let controller = reader()
         defer { controller.shutdown() }
+        try await load(controller)
         var canPresent = true
         let owner = PDFReaderCommandMenu(controller: controller, kind: .actions, canPresent: { canPresent })
         defer { owner.invalidate() }
@@ -156,6 +161,105 @@ struct PDFReaderMenuButtonTests {
         #expect(!button.isEnabled && button.isAccessibilityHidden())
         #expect(menu.items.isEmpty && menu.delegate == nil)
         #expect(retained.target == nil && retained.action == nil)
+    }
+
+    @Test("Empty and loading readers disable unavailable commands while an unavailable binding retains Reload")
+    func documentCommandAvailability() async throws {
+        let controller = reader()
+        let operations = ControlledPDFReaderOperations(notes: [:])
+        defer {
+            controller.shutdown()
+            Task { await operations.cancelPending() }
+        }
+        let owner = PDFReaderCommandMenu(controller: controller, kind: .actions)
+        defer { owner.invalidate() }
+        let overflow = owner.makeOverflowMenu()
+        let annotations = try #require(owner.menu.items.first { $0.representedObject as? String == "showAnnotations" })
+        let reload = try #require(owner.menu.items.first { $0.representedObject as? String == "reload" })
+        #expect(!annotations.isEnabled && !reload.isEnabled)
+        #expect(NSApplication.shared.sendAction(try #require(annotations.action), to: annotations.target, from: annotations))
+        #expect(!controller.showsAnnotations)
+        let context = PDFReaderNoteContext(
+            triptychID: UUID(), target: SourceAttachmentTarget(noteID: UUID(), vaultID: UUID(), relativePath: "synthetic-menu.md"),
+            authoredPath: "../.scholium/attachments/files/missing.pdf")
+        await operations.holdLoad(for: context.target.noteID)
+        await operations.failNextLoad(with: .missing)
+        controller.follow(context, operations: operations)
+        #expect(controller.setVisible(true))
+        owner.menuNeedsUpdate(owner.menu)
+        #expect(controller.isLoading && !reload.isEnabled && !annotations.isEnabled)
+        try await eventually { !controller.isLoading && controller.error != nil }
+        owner.menuNeedsUpdate(overflow)
+        #expect(reload.isEnabled && !annotations.isEnabled)
+        #expect(overflow.items.first { $0.representedObject as? String == "reload" }?.isEnabled == true)
+        #expect(overflow.items.first { $0.representedObject as? String == "showAnnotations" }?.isEnabled == false)
+        #expect(NSApplication.shared.sendAction(try #require(reload.action), to: reload.target, from: reload))
+        try await eventually { await operations.hasHeldLoad(for: context.target.noteID) }
+        owner.menuNeedsUpdate(owner.menu)
+        #expect(controller.isLoading && !reload.isEnabled)
+        await operations.releaseLoad(for: context.target.noteID)
+        try await eventually { !controller.isLoading }
+    }
+
+    @Test("Ordinary Reload stays unavailable after a failed annotation save and its recovery export")
+    func unsavedReloadAvailability() async throws {
+        let controller = reader()
+        defer { controller.shutdown() }
+        try await load(controller)
+        let operations = try #require(controller.operations as? ControlledPDFReaderOperations)
+        let owner = PDFReaderCommandMenu(controller: controller, kind: .actions)
+        defer { owner.invalidate() }
+        let overflow = owner.makeOverflowMenu()
+        let reload = try #require(owner.menu.items.first { $0.representedObject as? String == "reload" })
+        let overflowReload = try #require(overflow.items.first { $0.representedObject as? String == "reload" })
+        #expect(reload.isEnabled && overflowReload.isEnabled)
+        await operations.failNextSave(with: .io("Controlled annotation-save failure"))
+        controller.requestComment(on: try #require(controller.document?.page(at: 0)), at: NSPoint(x: 40, y: 40))
+        controller.commitComment(try #require(controller.annotationDraft), text: "Retain this annotation until recovery")
+        try await eventually { !controller.isSaving && controller.hasUnsavedAnnotations && controller.error != nil }
+        let retainedError = controller.error
+        owner.menuNeedsUpdate(owner.menu)
+        #expect(!reload.isEnabled && !overflowReload.isEnabled && !controller.exportedUnsavedAnnotations)
+        #expect(NSApplication.shared.sendAction(try #require(reload.action), to: reload.target, from: reload))
+        #expect(controller.error == retainedError && controller.hasUnsavedAnnotations)
+
+        let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/pdf-reader-menu-fixtures/\(UUID())/export.pdf")
+        try await controller.exportAnnotations(to: destination)
+        #expect(controller.exportedUnsavedAnnotations)
+        owner.menuNeedsUpdate(overflow)
+        #expect(!reload.isEnabled && !overflowReload.isEnabled)
+        #expect(NSApplication.shared.sendAction(try #require(overflowReload.action), to: overflowReload.target, from: overflowReload))
+        #expect(controller.error == retainedError && controller.hasUnsavedAnnotations && controller.exportedUnsavedAnnotations)
+    }
+
+    private func load(_ controller: PDFReaderController) async throws {
+        let bytes = NSMutableData()
+        let consumer = try #require(CGDataConsumer(data: bytes as CFMutableData))
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let graphics = try #require(CGContext(consumer: consumer, mediaBox: &box, nil))
+        graphics.beginPDFPage(nil)
+        graphics.endPDFPage()
+        graphics.closePDF()
+        let data = bytes as Data
+        let id = UUID()
+        let record = PortableAttachmentRecord(
+            id: id, vaultID: nil, location: .triptychRelative(try AttachmentRelativePath("attachments/files/\(id.uuidString)/menu.pdf")))
+        let snapshot = PDFReaderSnapshot(
+            record: record, data: data,
+            revision: PDFReaderRevision(fingerprint: DocumentFingerprint(data: data), device: 1, inode: 1, parentDevice: 1, parentInode: 1))
+        let context = PDFReaderNoteContext(
+            triptychID: UUID(), target: SourceAttachmentTarget(noteID: UUID(), vaultID: UUID(), relativePath: "synthetic-menu.md"),
+            authoredPath: "../.scholium/attachments/files/menu.pdf")
+        controller.follow(context, operations: ControlledPDFReaderOperations(notes: [context.target.noteID: snapshot]))
+        #expect(controller.setVisible(true))
+        try await eventually { controller.document != nil && !controller.isLoading }
+    }
+
+    private func eventually(_ condition: @escaping @MainActor () async -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !(await condition()), ContinuousClock.now < deadline { await Task.yield() }
+        try #require(await condition(), "The controlled PDF menu did not reach its expected boundary.")
     }
 
     private func reader() -> PDFReaderController {

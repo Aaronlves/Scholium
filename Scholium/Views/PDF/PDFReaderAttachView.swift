@@ -61,7 +61,7 @@ struct PDFReaderAttachView: View {
             }
         }
         .frame(width: choosesZotero ? 560 : 500, height: choosesZotero ? 600 : 480)
-        .interactiveDismissDisabled(isWorking || choosesZotero)
+        .interactiveDismissDisabled(isWorking || choosesZotero || showsDetails)
         .task {
             do {
                 try requirePresentationContext()
@@ -120,11 +120,13 @@ struct PDFReaderAttachView: View {
             }.overlay {
                 if records.isEmpty { Text("No Shared PDFs").foregroundStyle(.secondary) }
             }.disabled(isWorking).accessibilityLabel("Shared PDFs")
-            Button("PDF Details") { showsDetails = true }
+            Button("PDF Details") { showsDetails.toggle() }
                 .disabled(isWorking || (selectedChoice == nil && controller.context?.authoredPath == nil))
                 .accessibilityIdentifier("scholium.pdf.details")
                 .popover(isPresented: $showsDetails) {
-                    PDFReaderAttachmentDetails(choice: selectedChoice, authoredPath: controller.context?.authoredPath)
+                    PDFReaderAttachmentDetails(
+                        choice: selectedChoice, authoredPath: controller.context?.authoredPath,
+                        close: { showsDetails = false })
                 }
             Toggle("Create a new PDF copy", isOn: $importsNewVersion)
                 .help("A new version preserves the existing copy and its annotations.").disabled(isWorking)
@@ -137,6 +139,10 @@ struct PDFReaderAttachView: View {
                 Spacer()
                 Button("Cancel") {
                     guard !isWorking else { return }
+                    if showsDetails {
+                        showsDetails = false
+                        return
+                    }
                     isPresented = false
                     task?.cancel()
                     dismiss()
@@ -229,37 +235,49 @@ struct PDFReaderAttachmentChoice: Identifiable {
 private struct PDFReaderAttachmentDetails: View {
     let choice: PDFReaderAttachmentChoice?
     let authoredPath: String?
+    let close: () -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                if let choice {
-                    Text(verbatim: choice.record.filename).font(.headline)
-                    if let label = choice.copyLabel { Text(verbatim: label).foregroundStyle(.secondary) }
-                    LabeledContent("Source", value: choice.sourceLabel)
-                    if let size = choice.originalSize { LabeledContent("Original size", value: size) }
-                    LabeledContent("Storage path") { Text(verbatim: choice.storedPath) }
-                    if let fingerprint = choice.record.importedSourceFingerprint {
-                        LabeledContent("Original SHA-256") { Text(verbatim: fingerprint.sha256).font(.caption.monospaced()) }
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let choice {
+                        Text(verbatim: choice.record.filename).font(.headline)
+                        if let label = choice.copyLabel { Text(verbatim: label).foregroundStyle(.secondary) }
+                        LabeledContent("Source", value: choice.sourceLabel)
+                        if let size = choice.originalSize { LabeledContent("Original size", value: size) }
+                        LabeledContent("Storage path") { Text(verbatim: choice.storedPath) }
+                        if let fingerprint = choice.record.importedSourceFingerprint {
+                            LabeledContent("Original SHA-256") { Text(verbatim: fingerprint.sha256).font(.caption.monospaced()) }
+                        }
+                        if let source = choice.record.zoteroSource {
+                            LabeledContent("Zotero Item") { Text(verbatim: source.item.title) }
+                            LabeledContent("Zotero Item Link") { Text(verbatim: source.itemReference.url.absoluteString) }
+                            LabeledContent("Zotero Attachment Link") { Text(verbatim: source.pdfReference.url.absoluteString) }
+                            LabeledContent("Zotero Database") { Text(verbatim: source.serverID) }
+                        }
                     }
-                    if let source = choice.record.zoteroSource {
-                        LabeledContent("Zotero Item") { Text(verbatim: source.item.title) }
-                        LabeledContent("Zotero Item Link") { Text(verbatim: source.itemReference.url.absoluteString) }
-                        LabeledContent("Zotero Attachment Link") { Text(verbatim: source.pdfReference.url.absoluteString) }
-                        LabeledContent("Zotero Database") { Text(verbatim: source.serverID) }
+                    if let authoredPath {
+                        if choice != nil { Divider() }
+                        Text("Current binding").font(.headline)
+                        Text(verbatim: authoredPath)
                     }
                 }
-                if let authoredPath {
-                    if choice != nil { Divider() }
-                    Text("Current binding").font(.headline)
-                    Text(verbatim: authoredPath)
-                }
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(16)
             }
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(16)
+            HStack {
+                Spacer()
+                Button("Close", action: close)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("scholium.pdf.details.close")
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
         .frame(width: 380, height: 300)
         .accessibilityLabel("PDF Details")
+        .onExitCommand(perform: close)
     }
 }

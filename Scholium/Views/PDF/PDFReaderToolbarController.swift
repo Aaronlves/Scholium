@@ -44,6 +44,7 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
     private var measuredPageCount: Int?
     private var projectedContext: PDFReaderNoteContext?
     private var projectedDocument: ObjectIdentifier?
+    private var projectedPageNumber: Int?
     private var actionMenu: PDFReaderCommandMenu!
     private let overflow = NSMenu()
     private let searchPopover = NSPopover()
@@ -154,7 +155,8 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         let available = allowsCommands
         let loaded = controller.document != nil
         let documentID = controller.document.map(ObjectIdentifier.init)
-        if !available || projectedContext != controller.context || projectedDocument != documentID {
+        let changedDocument = projectedContext != controller.context || projectedDocument != documentID
+        if !available || changedDocument {
             actionMenu.cancelTracking()
             overflow.cancelTracking()
         }
@@ -163,9 +165,14 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         previous.isEnabled = validateToolbarItem(previous)
         next.isEnabled = validateToolbarItem(next)
         page.isEnabled = available && loaded
-        if page.currentEditor() == nil || window?.firstResponder !== page.currentEditor() {
+        // Preserve an unsubmitted field draft through unrelated projections,
+        // but actual navigation or document replacement must display its page.
+        if changedDocument || projectedPageNumber != controller.pageNumber
+            || page.currentEditor() == nil || window?.firstResponder !== page.currentEditor()
+        {
             page.stringValue = String(controller.pageNumber)
         }
+        projectedPageNumber = controller.pageNumber
         count.stringValue = "/ \(controller.pageCount)"
         if measuredPageCount != controller.pageCount {
             measuredPageCount = controller.pageCount
@@ -273,7 +280,7 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
 
     @objc private func goToPage() {
         guard allowsCommands, let controller, controller.document != nil else { return }
-        if let number = Int(page.stringValue) { controller.goToPage(number) }
+        if let number = Int(page.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) { controller.goToPage(number) }
         page.stringValue = String(controller.pageNumber)
     }
 
@@ -285,7 +292,8 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
             closeSearch(restoringFocus: true)
             return
         }
-        responderBeforeSearch = (window.firstResponder as? NSTextView)?.delegate as? NSView
+        responderBeforeSearch =
+            (window.firstResponder as? NSTextView)?.delegate as? NSView
             ?? window.firstResponder
         let content = PDFReaderSearchViewController(controller: controller) { [weak self] in self?.closeSearch(restoringFocus: true) }
         searchController = content
@@ -327,6 +335,8 @@ private final class PDFReaderSearchViewController: NSViewController, NSTextField
     private let close: () -> Void
     private let field = NSTextField(string: "")
     private let status = NSTextField(labelWithString: "")
+    private var previous: NSButton!
+    private var next: NSButton!
 
     init(controller: PDFReaderController, close: @escaping () -> Void) {
         self.controller = controller
@@ -345,10 +355,9 @@ private final class PDFReaderSearchViewController: NSViewController, NSTextField
         field.action = #selector(nextMatch)
         field.delegate = self
         field.widthAnchor.constraint(equalToConstant: 220).isActive = true
-        let row = NSStackView(views: [
-            field, button("chevron.up", label: "Previous PDF Match", action: #selector(previousMatch)),
-            button("chevron.down", label: "Next PDF Match", action: #selector(nextMatch)),
-        ])
+        previous = button("chevron.up", label: "Previous PDF Match", action: #selector(previousMatch))
+        next = button("chevron.down", label: "Next PDF Match", action: #selector(nextMatch))
+        let row = NSStackView(views: [field, previous, next])
         row.spacing = 6
         row.alignment = .centerY
         let stack = NSStackView(views: [row, status])
@@ -371,12 +380,23 @@ private final class PDFReaderSearchViewController: NSViewController, NSTextField
     func refresh() {
         status.stringValue = controller?.searchStatus ?? ""
         status.isHidden = status.stringValue.isEmpty
+        let canFind = controller?.canUseReaderCommands == true && !field.stringValue.isEmpty
+        previous?.isEnabled = canFind
+        next?.isEnabled = canFind
     }
 
-    func controlTextDidChange(_ notification: Notification) { controller?.searchQuery = field.stringValue }
+    func controlTextDidChange(_ notification: Notification) {
+        controller?.searchQuery = field.stringValue
+        refresh()
+    }
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard !textView.hasMarkedText() else { return false }
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
             close()
+            return true
+        }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) || commandSelector == #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)) {
+            if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { previousMatch() } else { nextMatch() }
             return true
         }
         return false

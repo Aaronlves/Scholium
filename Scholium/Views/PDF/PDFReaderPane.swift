@@ -59,10 +59,10 @@ struct PDFReaderPane: View {
                         .accessibilityIdentifier("scholium.pdf.error")
                     VStack(alignment: .leading, spacing: 6) {
                         if controller.hasUnsavedAnnotations {
-                            Button("Retry Save") { controller.retrySave() }.disabled(controller.isSaving)
-                            Button("Export Annotations…") { controller.requestExport() }
+                            Button("Retry Save") { controller.retrySave() }.disabled(!controller.canRetrySave)
+                            Button("Export Annotations…") { controller.requestExport() }.disabled(!controller.canUseReaderCommands)
                             if controller.exportedUnsavedAnnotations {
-                                Button("Reload PDF…") { confirmsReload = true }
+                                Button("Reload PDF…") { confirmsReload = true }.disabled(!controller.canUseReaderCommands || controller.isSaving)
                             }
                         } else {
                             Button("Retry PDF") { Task { await controller.reload() } }
@@ -83,7 +83,7 @@ struct PDFReaderPane: View {
                                 controller.requestExport(recovery: recovery)
                             }
                         }
-                    }
+                    }.disabled(!controller.canUseReaderCommands)
                 }.padding(10)
                 Divider()
             }

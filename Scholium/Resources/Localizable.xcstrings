@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The note is no longer open. Your unsaved PDF annotations are retained; retry saving or export them before continuing.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The note is no longer open. Your unsaved PDF annotations are retained; retry saving or export them before continuing."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此笔记已关闭。未保存的 PDF 批注仍被保留；请重试保存或导出后再继续。"}}}},
+    "The search query is too long. Shorten it and try again.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The search query is too long. Shorten it and try again."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "搜索内容过长。请缩短后重试。"}}}},
     "A file already exists at the export destination. Choose a new filename.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "A file already exists at the export destination. Choose a new filename."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "导出位置已存在同名文件。请使用新的文件名。"}}}},
     "A new version preserves the existing copy and its annotations.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "A new version preserves the existing copy and its annotations."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "新版本会保留现有副本及其批注。"}}}},
     "Add Comment…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Add Comment…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "添加评论…"}}}},
