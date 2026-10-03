@@ -32,7 +32,7 @@ struct AgentChatRecoveryTests {
             try await controller.flushPersistence()
             #expect(try Data(contentsOf: history) == original)
             controller.retryLocalHistory()
-            controller.retryLocalHistory() // A second click cannot start another concurrent load.
+            controller.retryLocalHistory()  // A second click cannot start another concurrent load.
             #expect(!(await controller.waitUntilLoaded()))
             #expect(controller.localHistoryError != nil && controller.conversations.isEmpty)
             #expect(try Data(contentsOf: history) == original)
@@ -58,7 +58,7 @@ struct AgentChatRecoveryTests {
             repaired.draft = "恢复后的草稿 😀"
             repaired.queuedMessages = [.init(role: .user, text: "Retained queued request")]
             repaired.pendingMessageID = "retained-uncertain-input"
-            try await storage.save([repaired]) // Test-owned external repair, never an app fallback.
+            try await storage.save([repaired])  // Test-owned external repair, never an app fallback.
             let repairedBytes = try Data(contentsOf: history)
             controller.retryLocalHistory()
             #expect(await controller.waitUntilLoaded())
@@ -66,7 +66,7 @@ struct AgentChatRecoveryTests {
             #expect(controller.conversations == [repaired] && controller.selectedID == repaired.id)
             #expect(controller.selected?.pendingMessageID == repaired.pendingMessageID)
             #expect(try Data(contentsOf: history) == repairedBytes)
-            controller.retryLocalHistory() // Already loaded state cannot discard the retained session.
+            controller.retryLocalHistory()  // Already loaded state cannot discard the retained session.
             #expect(controller.conversations == [repaired])
         }
     }
@@ -84,8 +84,10 @@ struct AgentChatRecoveryTests {
             controller.update { $0.queuedMessages = [blocked, later] }
             let owner = try #require(controller.selected)
             #expect(!controller.canSendQueuedMessage(blocked.id))
-            #expect(controller.queuedMessageBlockReason(blocked.id) == ScholiumL10n.string(
-                "A requested Skill is unavailable. Refresh Skills or remove this queued message."))
+            #expect(
+                controller.queuedMessageBlockReason(blocked.id)
+                    == ScholiumL10n.string(
+                        "A requested Skill is unavailable. Refresh Skills or remove this queued message."))
             let action = AgentChatQueueAction(isWorking: controller.state == .working)
             #expect(action == .sendNext && !action.isEnabled(canSend: false, canSteer: false))
             #expect(!controller.sendQueuedMessage(blocked.id))

@@ -26,20 +26,21 @@ struct AgentChatMutationAdmissionTests {
                 runtime: fixture.runtime, flushEditors: { _ in flushes += 1 }, openTriptychs: { [fixture.assignment] })
             let checker: AgentMutationAdmission = { admissionChecks += 1 }
             let admission: AgentMutationAdmission? = missingRuntimeContext ? checker : nil
-            let response = await router.handle(.init(
-                tool: .updateNote,
-                arguments: [
-                    "triptych_id": .string(fixture.assignment.id.uuidString),
-                    "note_id": .string(fixture.analysisNoteID.uuidString),
-                    "expected_fingerprint": .object([
-                        "sha256": .string(fixture.analysisFingerprint.sha256),
-                        "byte_count": .integer(fixture.analysisFingerprint.byteCount),
-                    ]),
-                    "mode": .string("source"), "content": .string("# Missing admission cannot authorize this source.\n"),
-                ],
-                conversationToken: UUID(),
-                runtimeContext: missingRuntimeContext ? nil : .init(threadID: "fixture-thread", turnID: "fixture-turn")
-            ), mutationAdmission: admission)
+            let response = await router.handle(
+                .init(
+                    tool: .updateNote,
+                    arguments: [
+                        "triptych_id": .string(fixture.assignment.id.uuidString),
+                        "note_id": .string(fixture.analysisNoteID.uuidString),
+                        "expected_fingerprint": .object([
+                            "sha256": .string(fixture.analysisFingerprint.sha256),
+                            "byte_count": .integer(fixture.analysisFingerprint.byteCount),
+                        ]),
+                        "mode": .string("source"), "content": .string("# Missing admission cannot authorize this source.\n"),
+                    ],
+                    conversationToken: UUID(),
+                    runtimeContext: missingRuntimeContext ? nil : .init(threadID: "fixture-thread", turnID: "fixture-turn")
+                ), mutationAdmission: admission)
             #expect(response.error?.code == .invalidRequest && response.result == nil)
             #expect(flushes == 0 && admissionChecks == 0)
             #expect(try Data(contentsOf: file) == before)
@@ -76,10 +77,12 @@ struct AgentChatMutationAdmissionTests {
                     // completion; no controller execution state is fabricated.
                     try Data().write(to: context.controller.runtimeHome.appendingPathComponent("complete-on-interrupt"))
                     let runtime = try #require(context.controller.runtime)
-                    _ = try await runtime.request("turn/interrupt", params: [
-                        "threadId": .string(context.runtimeContext.threadID),
-                        "turnId": .string(context.runtimeContext.turnID),
-                    ])
+                    _ = try await runtime.request(
+                        "turn/interrupt",
+                        params: [
+                            "threadId": .string(context.runtimeContext.threadID),
+                            "turnId": .string(context.runtimeContext.turnID),
+                        ])
                     try await wait(for: context.controller.objectWillChange) { context.controller.state == .ready }
                 case .replacementTurnUpdate:
                     context.controller.stop()
@@ -161,15 +164,17 @@ struct AgentChatMutationAdmissionTests {
                 let update = try await context.handle.agentCollaboration.updateNote(
                     noteID: context.fixture.analysisNoteID, expectedFingerprint: context.fixture.analysisFingerprint,
                     update: .source("# Exact ending before a revoked Undo\n"))
-                request = .init(tool: .undoChange, arguments: [
-                    "triptych_id": .string(context.fixture.assignment.id.uuidString),
-                    "note_id": .string(context.fixture.analysisNoteID.uuidString),
-                    "change_id": .string(update.change.id.uuidString),
-                    "expected_fingerprint": .object([
-                        "sha256": .string(update.afterFingerprint.sha256),
-                        "byte_count": .integer(update.afterFingerprint.byteCount),
-                    ]),
-                ], conversationToken: context.token, runtimeContext: context.runtimeContext)
+                request = .init(
+                    tool: .undoChange,
+                    arguments: [
+                        "triptych_id": .string(context.fixture.assignment.id.uuidString),
+                        "note_id": .string(context.fixture.analysisNoteID.uuidString),
+                        "change_id": .string(update.change.id.uuidString),
+                        "expected_fingerprint": .object([
+                            "sha256": .string(update.afterFingerprint.sha256),
+                            "byte_count": .integer(update.afterFingerprint.byteCount),
+                        ]),
+                    ], conversationToken: context.token, runtimeContext: context.runtimeContext)
             } else {
                 request = context.request(.updateNote)
             }

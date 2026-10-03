@@ -24,7 +24,10 @@ struct AgentChatComposerSessionTests {
         }
         let host = NSHostingView(rootView: AnyView(input()))
         let window = mount(host)
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         try await settle(host) { session.host.window === window && session.host.editor.isEditable }
         let editor = session.host.editor
         let undo = try #require(editor.undoManager)
@@ -62,7 +65,10 @@ struct AgentChatComposerSessionTests {
         }
         let host = NSHostingView(rootView: AnyView(input()))
         let window = mount(host)
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         try await settle(host) { session.host.window === window && session.host.editor.isEditable }
         let editor = session.host.editor
         let undo = try #require(editor.undoManager)
@@ -137,7 +143,10 @@ struct AgentChatComposerSessionTests {
         }
         let host = NSHostingView(rootView: AnyView(input()))
         let window = mount(host)
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         try await settle(host) { session.host.window === window && session.host.editor.isEditable }
         let editor = session.host.editor
         editor.setMarkedText(
@@ -176,7 +185,10 @@ struct AgentChatComposerSessionTests {
         }
         let host = NSHostingView(rootView: AnyView(input()))
         let window = mount(host)
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         try await settle(host) { session.host.window === window && session.host.editor.isEditable }
         let editor = session.host.editor
         var snapshots: [String] = []
@@ -251,7 +263,11 @@ struct AgentChatComposerSessionTests {
         content.addSubview(second)
         let window = mount(content)
         let another = mount(NSView())
-        defer { window.contentView = nil; window.close(); another.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+            another.close()
+        }
         try #require(window.makeFirstResponder(first))
         let origin = AgentChatFindReturnFocus(window: window)
         try #require(window.makeFirstResponder(second))
@@ -281,7 +297,10 @@ struct AgentChatComposerSessionTests {
         #expect(minimum >= line + 2 * host.editor.textContainerInset.height)
         host.frame = NSRect(x: 0, y: 0, width: 300, height: constrained)
         let window = mount(host)
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         host.layoutSubtreeIfNeeded()
         #expect(host.editor.frame.height > host.contentSize.height)
         #expect(host.editor.selectedRange() == selection)

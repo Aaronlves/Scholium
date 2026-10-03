@@ -164,7 +164,10 @@ struct SidebarTreeTests {
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
         coordinator.apply(configuration: configuration)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         let outline = fixture.outlineView
         #expect(outline.chatAccessibilityAction?() == nil)
         outline.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
@@ -206,7 +209,10 @@ struct SidebarTreeTests {
             onBatchMove: { moved.append($0) }, onBatchTrash: { trashed.append($0) })
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         let outline = fixture.outlineView
         coordinator.apply(configuration: configuration)
         #expect(outline.selectedRowIndexes.count == 2)
@@ -258,12 +264,16 @@ struct SidebarTreeTests {
         )
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         coordinator.apply(configuration: configuration)
         let outline = fixture.outlineView
-        let secondRow = try #require((0..<outline.numberOfRows).first {
-            (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
-        })
+        let secondRow = try #require(
+            (0..<outline.numberOfRows).first {
+                (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
+            })
         let menu = try #require(outline.contextMenu(forRow: secondRow))
         #expect(outline.selectedRowIndexes == IndexSet(integer: secondRow))
         #expect(selected.last == ["Second.md"])
@@ -313,12 +323,16 @@ struct SidebarTreeTests {
         )
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         coordinator.apply(configuration: configuration)
         let outline = fixture.outlineView
-        let secondRow = try #require((0..<outline.numberOfRows).first {
-            (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
-        })
+        let secondRow = try #require(
+            (0..<outline.numberOfRows).first {
+                (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
+            })
         #expect(outline.contextMenu(forRow: secondRow) != nil)
         #expect(opened.isEmpty)
         let primaryClick = try #require(outline.primaryClickHandler)
@@ -362,12 +376,16 @@ struct SidebarTreeTests {
         )
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         coordinator.apply(configuration: configuration)
         let outline = fixture.outlineView
-        let secondRow = try #require((0..<outline.numberOfRows).first {
-            (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
-        })
+        let secondRow = try #require(
+            (0..<outline.numberOfRows).first {
+                (outline.item(atRow: $0) as? SidebarOutlineItem)?.id == "Second.md"
+            })
         #expect(outline.contextMenu(forRow: secondRow) != nil)
         let primaryClick = try #require(outline.primaryClickHandler)
         #expect(primaryClick(secondRow, [.option, .command]) == false)
@@ -412,9 +430,11 @@ struct SidebarTreeTests {
                 cell.backgroundStyle = style
                 let title = try #require(cell.titleLabel.textColor)
                 let icon = try #require(cell.imageView?.contentTintColor)
-                let expectedTitle: NSColor = style == .emphasized
+                let expectedTitle: NSColor =
+                    style == .emphasized
                     ? .alternateSelectedControlTextColor : ScholiumColorRole.primaryText.nsColor
-                let expectedIcon: NSColor = style == .emphasized
+                let expectedIcon: NSColor =
+                    style == .emphasized
                     ? .alternateSelectedControlTextColor : ScholiumColorRole.secondaryText.nsColor
                 #expect(try channels(title, appearance: appearance) == channels(expectedTitle, appearance: appearance))
                 #expect(try channels(icon, appearance: appearance) == channels(expectedIcon, appearance: appearance))
@@ -457,7 +477,10 @@ struct SidebarTreeTests {
         }
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration(roots: projection.roots))
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         coordinator.apply(configuration: configuration(roots: projection.roots))
         let outline = fixture.outlineView
         let menu = try #require(outline.contextMenu(forRow: 0))
@@ -503,13 +526,17 @@ struct SidebarTreeTests {
         )
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         coordinator.apply(configuration: configuration)
         let outline = fixture.outlineView
         func item(_ id: String) throws -> SidebarOutlineItem {
-            try #require((0..<outline.numberOfRows).compactMap {
-                outline.item(atRow: $0) as? SidebarOutlineItem
-            }.first { $0.id == id })
+            try #require(
+                (0..<outline.numberOfRows).compactMap {
+                    outline.item(atRow: $0) as? SidebarOutlineItem
+                }.first { $0.id == id })
         }
         let first = try item("First.md")
         let second = try item("Second.md")
@@ -522,9 +549,10 @@ struct SidebarTreeTests {
         #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.noteRow.First.md")
         #expect(cell.titleLabel.toolTip == notes[0].title)
         #expect(cell.imageView?.isAccessibilityElement() == false)
-        let action = try #require(cell.titleLabel.accessibilityCustomActions()?.first {
-            $0.name == "Copy Relative Path"
-        })
+        let action = try #require(
+            cell.titleLabel.accessibilityCustomActions()?.first {
+                $0.name == "Copy Relative Path"
+            })
         #expect(action.handler?() == true)
         #expect(copied == ["First.md"])
         cell.prepareForReuse()
@@ -567,7 +595,10 @@ struct SidebarTreeTests {
         let initial = configuration(notes: [first, second], revision: 1)
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: initial)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         coordinator.apply(configuration: initial)
         let menu = try #require(fixture.outlineView.contextMenu(forRow: 0))
         let copyIndex = try #require(menu.items.firstIndex { $0.title == "Copy Relative Path" })
@@ -605,7 +636,10 @@ struct SidebarTreeTests {
         )
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         coordinator.apply(configuration: configuration)
         fixture.outlineView.isHidden = true
         try await Task.sleep(for: .milliseconds(25))
@@ -636,7 +670,10 @@ struct SidebarTreeTests {
         let initial = configuration(roots: projection.roots, revision: 1, generation: 1)
         let coordinator = SidebarOutlineSourceList.Coordinator(configuration: initial)
         let fixture = makeSidebarCoordinatorOutline(coordinator)
-        defer { coordinator.detach(from: fixture.scrollView); fixture.window.close() }
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
         coordinator.apply(configuration: initial)
         try await Task.sleep(for: .milliseconds(25))
         #expect(focuses == 1)

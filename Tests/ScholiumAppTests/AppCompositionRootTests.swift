@@ -666,13 +666,15 @@ struct AppCompositionRootTests {
         #expect(captureCount == 0)
     }
 
-    @Test("Replacing the current note flushes exact text once without serializing discarded editor state")
-    func replacementNavigationSkipsReconstructionCapture() async throws {
+    @Test("A missing replacement retains the unavailable document and its window flush ownership")
+    func missingReplacementRetainsDocumentAndFlushOwnership() async throws {
         let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
         window.documentController.selectUnavailableDocument(
             vaultID: UUID(),
             relativePath: "Active.md"
         )
+        let original = try #require(window.documentController.selectedDocument)
+        let originalSession = window.documentController.session(for: original.editingTarget)
         var flushCount = 0
         var captureCount = 0
         window.registerEditorFlush(
@@ -685,6 +687,15 @@ struct AppCompositionRootTests {
         window.requestOpenNote("Missing fixture note.md")
         await window.waitForPendingDocumentTransitionsForTesting()
 
+        #expect(window.documentController.selectedDocument == original)
+        #expect(window.documentController.session(for: original.editingTarget) === originalSession)
+        #expect(originalSession.presentationMode == .read)
+        #expect(!originalSession.isEditing)
+        #expect(window.lastSaveError == nil)
+        #expect(flushCount == 0)
+        #expect(captureCount == 0)
+
+        try await window.flushRegisteredEditorIfNeeded(capturingEditorState: false)
         #expect(flushCount == 1)
         #expect(captureCount == 0)
     }

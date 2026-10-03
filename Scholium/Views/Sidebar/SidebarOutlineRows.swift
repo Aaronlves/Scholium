@@ -153,7 +153,8 @@ final class SidebarOutlineCell: NSTableCellView {
         titleLabel.setAccessibilityIdentifier(
             item.node.isFolder ? "scholium.folderRow.\(item.id)" : "scholium.noteRow.\(item.id)"
         )
-        titleLabel.folderState = item.node.isFolder
+        titleLabel.folderState =
+            item.node.isFolder
             ? nativeStrings.folderAccessibilityValue(isEmpty: item.children.isEmpty, isExpanded: isExpanded)
             : nil
         titleLabel.toolTip = label
@@ -166,9 +167,11 @@ final class SidebarOutlineCell: NSTableCellView {
     }
 
     private func updateForeground() {
-        titleLabel.textColor = backgroundStyle == .emphasized
+        titleLabel.textColor =
+            backgroundStyle == .emphasized
             ? .alternateSelectedControlTextColor : ScholiumColorRole.primaryText.nsColor
-        itemImageView.contentTintColor = backgroundStyle == .emphasized
+        itemImageView.contentTintColor =
+            backgroundStyle == .emphasized
             ? .alternateSelectedControlTextColor : ScholiumColorRole.secondaryText.nsColor
     }
 

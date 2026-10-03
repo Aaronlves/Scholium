@@ -643,21 +643,25 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         guard capabilities.workspaceReady else { return ScholiumL10n.string("Refresh Skills before sending.") }
         guard !capabilities.isChanging else { return ScholiumL10n.string("Wait for Skills and tools to finish updating.") }
         guard (message.methods ?? []).allSatisfy(capabilities.contains) else {
-            return ScholiumL10n.string(queued
-                ? "A requested Skill is unavailable. Refresh Skills or remove this queued message."
-                : "A selected Skill is unavailable. Refresh Skills or remove it to continue.")
+            return ScholiumL10n.string(
+                queued
+                    ? "A requested Skill is unavailable. Refresh Skills or remove this queued message."
+                    : "A selected Skill is unavailable. Refresh Skills or remove it to continue.")
         }
         guard !message.localMaterials.contains(where: { $0.issue != nil }) else {
-            return ScholiumL10n.string(queued
-                ? "An attached material is unavailable. Remove this queued message or prepare a new request."
-                : "Replace or remove the unavailable material before sending.")
+            return ScholiumL10n.string(
+                queued
+                    ? "An attached material is unavailable. Remove this queued message or prepare a new request."
+                    : "Replace or remove the unavailable material before sending.")
         }
-        guard !message.localMaterials.contains(where: \.requiresImageInput)
-            || model(for: conversation.preferences)?.inputModalities.contains("image") == true
+        guard
+            !message.localMaterials.contains(where: \.requiresImageInput)
+                || model(for: conversation.preferences)?.inputModalities.contains("image") == true
         else {
-            return ScholiumL10n.string(queued
-                ? "Choose a model with image input before sending this queued message."
-                : "Choose a model with image input or remove the image.")
+            return ScholiumL10n.string(
+                queued
+                    ? "Choose a model with image input before sending this queued message."
+                    : "Choose a model with image input or remove the image.")
         }
         guard let execution else { return ScholiumL10n.string("Open an available conversation before sending.") }
         guard !execution.historyUnavailable else { return ScholiumL10n.string("Retry loading this conversation or start a new one.") }
@@ -671,9 +675,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         guard conversation.pendingMessageID == nil else { return ScholiumL10n.string("Review the unconfirmed delivery before continuing.") }
         guard !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return ScholiumL10n.string("Enter a message before sending.") }
         guard message.coordinationTarget == nil || message.coordinationTarget?.parentThreadID == conversation.threadID else {
-            return ScholiumL10n.string(queued
-                ? "This Agent belongs to the original conversation. Remove this queued message or return to its original conversation."
-                : "This Agent belongs to the original conversation.")
+            return ScholiumL10n.string(
+                queued
+                    ? "This Agent belongs to the original conversation. Remove this queued message or return to its original conversation."
+                    : "This Agent belongs to the original conversation.")
         }
         return nil
     }

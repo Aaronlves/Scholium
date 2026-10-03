@@ -78,14 +78,18 @@ struct AgentChatConversationListView: View {
 
     private var archiveMenu: some View {
         Menu {
-            Toggle("Conversations", isOn: Binding(
-                get: { !state.showsArchived },
-                set: { if $0 { state.showsArchived = false } }
-            ))
-            Toggle("Archived Chats", isOn: Binding(
-                get: { state.showsArchived },
-                set: { if $0 { state.showsArchived = true } }
-            ))
+            Toggle(
+                "Conversations",
+                isOn: Binding(
+                    get: { !state.showsArchived },
+                    set: { if $0 { state.showsArchived = false } }
+                ))
+            Toggle(
+                "Archived Chats",
+                isOn: Binding(
+                    get: { state.showsArchived },
+                    set: { if $0 { state.showsArchived = true } }
+                ))
             Divider()
             Button("Account Usage") { showAccountUsage() }
         } label: {

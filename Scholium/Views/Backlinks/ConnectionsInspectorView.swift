@@ -293,10 +293,12 @@ struct ConnectionsInspectorView: View {
             current: context.current, direction: direction
         ).items.filter { $0.matches(term) }
         let groups = InspectorLinkGroup.make(items)
-        let external = direction == .external ? context.externalLinks.filter {
-            term.isEmpty || $0.label.localizedStandardContains(term)
-                || $0.destination.localizedStandardContains(term)
-        } : []
+        let external =
+            direction == .external
+            ? context.externalLinks.filter {
+                term.isEmpty || $0.label.localizedStandardContains(term)
+                    || $0.destination.localizedStandardContains(term)
+            } : []
         let rows = InspectorLinkRow.make(
             groups: groups, external: external,
             collapsedGroups: location.collapsedGroups, freshness: context.freshness,
@@ -364,7 +366,8 @@ struct ConnectionsInspectorView: View {
                     .buttonStyle(.borderless)
                     .scholiumActivationPointer()
                     .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(cornerRadius: ScholiumShape.editorialControlCornerRadius, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: ScholiumShape.editorialControlCornerRadius, style: .continuous)
+                    )
                     .disabled(!link.canOpen)
                     .help(link.destination)
                     .contextMenu {

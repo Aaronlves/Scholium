@@ -19,9 +19,11 @@ struct ScholiumAppBridgeTests {
         let noteURL = topics.appendingPathComponent("Note.md")
         try Data("# Before\n".utf8).write(to: noteURL)
         let committedBytes = Data("# After\nExact committed source.\n".utf8)
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: root.appendingPathComponent("Support"),
-            workspaceRegistryStorageURL: root.appendingPathComponent("Registry"))))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: root.appendingPathComponent("Support"),
+                    workspaceRegistryStorageURL: root.appendingPathComponent("Registry"))))
         defer { Task { await runtime.shutdown() } }
         let handle = try await runtime.configureTriptych(
             paperAnalysisURL: analyses, topicKnowledgeURL: topics, outputURL: works,
@@ -55,8 +57,9 @@ struct ScholiumAppBridgeTests {
                     fields["result"] = .object(["status": .string("ok")])
                     fields["error"] = try JSONDecoder().decode(
                         MCPJSONValue.self,
-                        from: JSONEncoder().encode(ScholiumMCPFailure(
-                            code: .staleRevision, message: "An invalid simultaneous refusal.", recovery: "Read the Note.")))
+                        from: JSONEncoder().encode(
+                            ScholiumMCPFailure(
+                                code: .staleRevision, message: "An invalid simultaneous refusal.", recovery: "Read the Note.")))
                 } else if scenario == .unsupportedVersion {
                     fields["schemaVersion"] = .integer(ScholiumMCPBridgeResponse.currentSchemaVersion + 1)
                     fields["result"] = .object(["status": .string("ok")])

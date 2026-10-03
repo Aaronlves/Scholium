@@ -106,7 +106,10 @@ struct ScholiumSettingsSearchField: NSViewRepresentable {
         fileprivate func showResults() {
             guard let field, let window = field.window,
                 !field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else { closeResults(); return }
+            else {
+                closeResults()
+                return
+            }
             let editor = field.currentEditor() as? NSTextView
             guard editor?.hasMarkedText() != true else { return }
             results.update(SettingsSearchTarget.matches(field.stringValue))
@@ -114,7 +117,8 @@ struct ScholiumSettingsSearchField: NSViewRepresentable {
             if !popover.isShown {
                 let responder: NSResponder = editor ?? field
                 let selection = editor?.selectedRange()
-                popover.show(relativeTo: field.bounds, of: field,
+                popover.show(
+                    relativeTo: field.bounds, of: field,
                     preferredEdge: field.isFlipped ? .maxY : .minY)
                 // Preserve the actual field editor, including its insertion point.
                 window.makeKey()
@@ -178,9 +182,10 @@ struct ScholiumSettingsSearchField: NSViewRepresentable {
         table.intercellSpacing = NSSize(width: 0, height: 0)
         let titleFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
         let detailFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        table.rowHeight = ceil(titleFont.ascender - titleFont.descender + titleFont.leading
-            + detailFont.ascender - detailFont.descender + detailFont.leading
-            + ScholiumMetrics.Settings.rowDetailSpacing + ScholiumGrid.Spacing.inlineControlGap * 2)
+        table.rowHeight = ceil(
+            titleFont.ascender - titleFont.descender + titleFont.leading
+                + detailFont.ascender - detailFont.descender + detailFont.leading
+                + ScholiumMetrics.Settings.rowDetailSpacing + ScholiumGrid.Spacing.inlineControlGap * 2)
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.addTableColumn(NSTableColumn(identifier: .init("setting")))
         table.dataSource = self
@@ -219,7 +224,9 @@ struct ScholiumSettingsSearchField: NSViewRepresentable {
     func moveSelection(by offset: Int) {
         guard !targets.isEmpty else { return }
         let current = table.selectedRow
-        let row = current < 0 ? (offset > 0 ? 0 : targets.count - 1)
+        let row =
+            current < 0
+            ? (offset > 0 ? 0 : targets.count - 1)
             : min(max(current + offset, 0), targets.count - 1)
         table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         table.scrollRowToVisible(row)
@@ -261,9 +268,7 @@ struct ScholiumSettingsSearchField: NSViewRepresentable {
     var cancel: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 36 || event.keyCode == 76 { activate?() }
-        else if event.keyCode == 53 { cancel?() }
-        else { super.keyDown(with: event) }
+        if event.keyCode == 36 || event.keyCode == 76 { activate?() } else if event.keyCode == 53 { cancel?() } else { super.keyDown(with: event) }
     }
 
     override func accessibilityPerformConfirm() -> Bool {

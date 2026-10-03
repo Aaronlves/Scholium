@@ -131,7 +131,10 @@ struct AgentChatSidebarLifecycleTests {
         }
         let host = NSHostingView(rootView: AnyView(detail(visible: true)))
         let window = mount(host)
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         try await settle(host) { nativeSession.host.window === window && nativeSession.host.editor.isEditable }
         let editor = nativeSession.host.editor
         let undo = try #require(editor.undoManager)
@@ -204,14 +207,21 @@ struct AgentChatSidebarLifecycleTests {
                 openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }, presentation: presentation,
                 readingSession: readingSession, nativeSession: nativeSession,
-                focusRequest: pendingFocus, consumeFocusRequest: { id in
-                    if pendingFocus == id { pendingFocus = nil; consumed += 1 }
+                focusRequest: pendingFocus,
+                consumeFocusRequest: { id in
+                    if pendingFocus == id {
+                        pendingFocus = nil
+                        consumed += 1
+                    }
                 }, replyNavigation: nil, openReply: { _ in }, showList: {}, newConversation: {},
                 didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
         }
         let host = NSHostingView(rootView: AnyView(detail(visible: false)))
         let window = mount(host)
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         try await settle(host) { nativeSession.host.window === window }
         #expect(consumed == 0 && pendingFocus != nil && !presentation.messageIsFocused)
         host.rootView = AnyView(detail(visible: true))

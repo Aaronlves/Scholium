@@ -159,8 +159,10 @@ extension AgentChatController {
         else { return }
         if !dispatchQueuedMessage(message.id, in: conversationID) {
             executions[conversationID]?.automaticallyAdvancesQueue = false
-            executions[conversationID]?.report(.queuedInputBlocked, detail: ScholiumL10n.string(
-                "The next queued message needs attention before it can be sent."))
+            executions[conversationID]?.report(
+                .queuedInputBlocked,
+                detail: ScholiumL10n.string(
+                    "The next queued message needs attention before it can be sent."))
         }
     }
 
@@ -268,9 +270,11 @@ extension AgentChatController {
                 if let expectedTurnID,
                     self.executions[conversationID]?.state != .working || self.executions[conversationID]?.turnID != expectedTurnID
                 {
-                    self.executions[conversationID]?.report(.turnEnded, detail: String(
-                        localized:
-                            "The previous turn has ended. Your input is preserved; send it as a new request.", bundle: .module))
+                    self.executions[conversationID]?.report(
+                        .turnEnded,
+                        detail: String(
+                            localized:
+                                "The previous turn has ended. Your input is preserved; send it as a new request.", bundle: .module))
                     return
                 }
                 if expectedTurnID == nil { self.configureTools(in: conversationID) }
@@ -373,15 +377,19 @@ extension AgentChatController {
                 guard self.connectionID == connectionID else { return }
                 guard receipt == .unconfirmed else {
                     if !Task.isCancelled {
-                        self.executions[conversationID]?.report(.messageNotSent, detail: String(
-                            localized: "The message was not sent. Your input is preserved. \(error.localizedDescription)", bundle: .module))
+                        self.executions[conversationID]?.report(
+                            .messageNotSent,
+                            detail: String(
+                                localized: "The message was not sent. Your input is preserved. \(error.localizedDescription)", bundle: .module))
                     }
                     return
                 }
-                self.executions[conversationID]?.report(.deliveryUnconfirmed, detail: String(
-                    localized:
-                        "Delivery not confirmed. Review the conversation before continuing. \(error.localizedDescription)"
-                ))
+                self.executions[conversationID]?.report(
+                    .deliveryUnconfirmed,
+                    detail: String(
+                        localized:
+                            "Delivery not confirmed. Review the conversation before continuing. \(error.localizedDescription)"
+                    ))
                 self.update(in: conversationID) { $0.lastRunStatus = .uncertain }
                 if self.executions[conversationID]?.turnID == nil { self.executions[conversationID]?.state = self.runtime == nil ? .disconnected : .ready }
                 self.persist()
@@ -459,8 +467,10 @@ extension AgentChatController {
                     self.executions[conversationID]?.error = nil
                     return
                 }
-                self.executions[conversationID]?.report(.historyRefreshFailed, detail: String(
-                    localized: "Conversation history could not be refreshed. \(error.localizedDescription)"))
+                self.executions[conversationID]?.report(
+                    .historyRefreshFailed,
+                    detail: String(
+                        localized: "Conversation history could not be refreshed. \(error.localizedDescription)"))
             }
         }
     }

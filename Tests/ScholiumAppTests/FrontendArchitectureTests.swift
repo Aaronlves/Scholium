@@ -990,7 +990,6 @@ struct FrontendArchitectureTests {
                 ScholiumWorkspaceToolbarController.Item.noteActions,
                 ScholiumWorkspaceToolbarController.Item.apparatusDivider,
                 ScholiumWorkspaceToolbarController.Item.inspectorModes,
-                .flexibleSpace,
                 .space,
                 ScholiumWorkspaceToolbarController.Item.paneVisibility,
             ])

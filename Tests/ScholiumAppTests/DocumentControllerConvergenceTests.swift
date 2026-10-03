@@ -14,10 +14,12 @@ struct DocumentControllerConvergenceTests {
     func retainedPresentationDuringHydration(enterSource: Bool) async throws {
         _ = NSApplication.shared
         let vaultID = UUID()
-        let base = note(vaultID: vaultID, noteID: UUID(), path: "Retained.md",
+        let base = note(
+            vaultID: vaultID, noteID: UUID(), path: "Retained.md",
             source: "\u{FEFF}---\r\ntitle: Retained\r\n---\r\n\r\nSaved BACKGROUND paragraph 🦉.\r\n")
         let other = note(vaultID: vaultID, noteID: UUID(), path: "Other.md", source: "Other body.\n")
-        let external = note(vaultID: vaultID, noteID: base.stableIdentity.resolvedID!, path: base.id.relativePath,
+        let external = note(
+            vaultID: vaultID, noteID: base.stableIdentity.resolvedID!, path: base.id.relativePath,
             source: base.document.rawContent + "\r\nExternal revision.\r\n")
         let gate = HydrationGate()
         let controller = DocumentController(hydrationLoader: { expected in
@@ -38,7 +40,8 @@ struct DocumentControllerConvergenceTests {
         let projection = RetainedPresentationProjection(notes: [external, other])
         let host = NSHostingView(rootView: RetainedPresentationFixture(controller: controller, projection: projection))
         host.sizingOptions = []
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host

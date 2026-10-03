@@ -124,10 +124,14 @@ struct WindowDocumentOpeningPreparationTests {
         }
         var reachedDestination = false
         var beganPreparation = false
-        model.enqueueDocumentTransition(preparation: .openingDocument(placement: .replaceSelected, retainedTab: {
-            beganPreparation = true
-            return model.documentTabController.tab(for: reference)
-        })) {
+        model.enqueueDocumentTransition(
+            preparation: .openingDocument(
+                placement: .replaceSelected,
+                retainedTab: {
+                    beganPreparation = true
+                    return model.documentTabController.tab(for: reference)
+                })
+        ) {
             reachedDestination = true
         }
         try await waitUntil { release != nil && beganPreparation }
@@ -199,8 +203,9 @@ struct WindowDocumentOpeningPreparationTests {
             background.activeSaveTask = nil
             #expect(Data(background.editingSource.utf8) == Data(exactDraft.utf8))
         }
-        print("TAB_BACKGROUND_SAVE_SCENARIO substituted_save_ms=250 warmups=2 retained=5 "
-            + "milliseconds=\(milliseconds.map { String(format: "%.3f", $0) }.joined(separator: ","))")
+        print(
+            "TAB_BACKGROUND_SAVE_SCENARIO substituted_save_ms=250 warmups=2 retained=5 "
+                + "milliseconds=\(milliseconds.map { String(format: "%.3f", $0) }.joined(separator: ","))")
         #expect(milliseconds.count == 5)
     }
 

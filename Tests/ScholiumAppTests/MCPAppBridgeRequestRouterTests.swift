@@ -8,7 +8,9 @@ import Testing
 @Suite("Running App MCP router", .serialized)
 @MainActor
 struct MCPAppBridgeRequestRouterTests {
-    @Test("Closing a Triptych during editor reconciliation blocks new MCP access and mutations", arguments: [ScholiumMCPToolName.workspaceStatus, .updateNote, .createNote])
+    @Test(
+        "Closing a Triptych during editor reconciliation blocks new MCP access and mutations",
+        arguments: [ScholiumMCPToolName.workspaceStatus, .updateNote, .createNote])
     func closingScopeDuringReconciliation(tool: ScholiumMCPToolName) async throws {
         let fixture = try await Fixture.make()
         defer { fixture.dispose() }

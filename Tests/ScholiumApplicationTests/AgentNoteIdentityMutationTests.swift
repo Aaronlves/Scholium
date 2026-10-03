@@ -42,8 +42,9 @@ struct AgentNoteIdentityMutationTests {
         #expect(update.afterFingerprint == ending.fingerprint)
 
         if undo {
-            let otherID = try #require(snapshot.vaults.flatMap(\.documents)
-                .compactMap(\.stableIdentity.resolvedID).first { $0 != originalID })
+            let otherID = try #require(
+                snapshot.vaults.flatMap(\.documents)
+                    .compactMap(\.stableIdentity.resolvedID).first { $0 != originalID })
             do {
                 _ = try await handle.saveDocument(
                     fixture.analysisNoteID, changeSet: .exactContent(original.rawContent),
@@ -92,9 +93,10 @@ struct AgentNoteIdentityMutationTests {
                 id: originalID, to: movedPath, fingerprint: ending.fingerprint)
             _ = try await repository.create(
                 relativePath: fixture.analysisNoteID.relativePath, content: ending.rawContent)
-            let replacement = try #require(try await control.identity(
-                forVaultID: fixture.analysisNoteID.vaultID,
-                relativePath: fixture.analysisNoteID.relativePath, fingerprint: ending.fingerprint))
+            let replacement = try #require(
+                try await control.identity(
+                    forVaultID: fixture.analysisNoteID.vaultID,
+                    relativePath: fixture.analysisNoteID.relativePath, fingerprint: ending.fingerprint))
             #expect(replacement.id != originalID)
         } catch {
             pending.cancel()

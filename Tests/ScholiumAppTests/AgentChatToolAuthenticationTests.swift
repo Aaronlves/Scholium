@@ -81,8 +81,10 @@ struct AgentChatToolAuthenticationTests {
             #expect(repeated.error?.code == .conflict)
 
             caps.authenticationCompleted(
-                ["name": .string("fixture-library"), "threadId": .string(context.threadID), "success": .bool(false),
-                    "error": .string("Fixture authorization declined")],
+                [
+                    "name": .string("fixture-library"), "threadId": .string(context.threadID), "success": .bool(false),
+                    "error": .string("Fixture authorization declined"),
+                ],
                 visibleThreadID: context.threadID)
             try await wait(for: caps.objectWillChange) { caps.hasTools && !caps.isRefreshing }
             #expect(caps.authenticationNotice == nil && caps.authenticationError == "Fixture authorization declined")

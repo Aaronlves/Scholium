@@ -78,10 +78,12 @@ struct AgentChatConnectionStatus: View {
     private var statuses: [Status] {
         if !controller.isLoaded {
             guard let error = controller.localHistoryError else { return [] }
-            return [Status(
-                id: "localHistory", title: ScholiumL10n.string("Chat History Could Not Be Loaded"),
-                explanation: ScholiumL10n.string("Saved history has not been replaced. Retry loading it."),
-                error: error, actions: [.retryLocalHistory])]
+            return [
+                Status(
+                    id: "localHistory", title: ScholiumL10n.string("Chat History Could Not Be Loaded"),
+                    explanation: ScholiumL10n.string("Saved history has not been replaced. Retry loading it."),
+                    error: error, actions: [.retryLocalHistory])
+            ]
         }
         var result: [Status] = []
         if let recovery = executionRecovery {
@@ -89,27 +91,31 @@ struct AgentChatConnectionStatus: View {
             if controller.selected?.pendingMessageID != nil, !controller.isBusy { actions.append(.continueWithoutResending) }
             result.append(Status(id: "execution", title: recovery.title, explanation: recovery.explanation, error: executionError, actions: actions))
         } else if let error = executionError {
-            result.append(Status(
-                id: "execution", title: ScholiumL10n.string("Conversation Needs Attention"), error: error,
-                actions: controller.connectionState == .disconnected ? [.settings] : []))
+            result.append(
+                Status(
+                    id: "execution", title: ScholiumL10n.string("Conversation Needs Attention"), error: error,
+                    actions: controller.connectionState == .disconnected ? [.settings] : []))
         }
         if controller.isRenewingSettings {
-            result.append(Status(
-                id: "settings", title: ScholiumL10n.string(controller.settingsRenewalError == nil ? "Applying Settings…" : "Settings Could Not Be Applied"),
-                isProgress: controller.settingsRenewalError == nil,
-                error: controller.settingsRenewalError, actions: controller.settingsRenewalError == nil ? [] : [.retrySettings]))
+            result.append(
+                Status(
+                    id: "settings", title: ScholiumL10n.string(controller.settingsRenewalError == nil ? "Applying Settings…" : "Settings Could Not Be Applied"),
+                    isProgress: controller.settingsRenewalError == nil,
+                    error: controller.settingsRenewalError, actions: controller.settingsRenewalError == nil ? [] : [.retrySettings]))
         }
         if let connectionStatus { result.append(connectionStatus) }
         if controller.historyUnavailable {
-            result.append(Status(
-                id: "history", title: ScholiumL10n.string("Conversation Unavailable"),
-                explanation: ScholiumL10n.string("This conversation is saved here, but unavailable in the connected runtime."),
-                actions: [.retryHistory, .newConversation]))
+            result.append(
+                Status(
+                    id: "history", title: ScholiumL10n.string("Conversation Unavailable"),
+                    explanation: ScholiumL10n.string("This conversation is saved here, but unavailable in the connected runtime."),
+                    actions: [.retryHistory, .newConversation]))
         }
         if let error = controller.capabilities.workspaceError {
-            result.append(Status(
-                id: "skills", title: ScholiumL10n.string("Skills Could Not Be Loaded"),
-                error: error, actions: [.refreshSkills]))
+            result.append(
+                Status(
+                    id: "skills", title: ScholiumL10n.string("Skills Could Not Be Loaded"),
+                    error: error, actions: [.refreshSkills]))
         }
         return result
     }
@@ -133,12 +139,16 @@ struct AgentChatConnectionStatus: View {
                         statusTitle(primary)
                         Spacer(minLength: ScholiumSidebarLayout.textSpacing)
                         actionButtons(connectionActions).fixedSize(horizontal: true, vertical: false)
-                        Button { showsDetails.toggle() } label: {
+                        Button {
+                            showsDetails.toggle()
+                        } label: {
                             Image(systemName: "info.circle")
                                 .frame(width: ScholiumGrid.Dimension.preferredCustomTarget, height: ScholiumGrid.Dimension.preferredCustomTarget)
                         }
                         .help("Details").accessibilityLabel("Details")
-                        .accessibilityValue(Text(verbatim: statuses.map { [$0.title, $0.explanation].compactMap { $0 }.joined(separator: ". ") }.joined(separator: "\n")))
+                        .accessibilityValue(
+                            Text(verbatim: statuses.map { [$0.title, $0.explanation].compactMap { $0 }.joined(separator: ". ") }.joined(separator: "\n"))
+                        )
                         .popover(isPresented: $showsDetails) { statusDetails(statuses, directActions: visibleActions) }
                     }
                     if !actions.isEmpty {
@@ -155,7 +165,10 @@ struct AgentChatConnectionStatus: View {
             .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
             .padding(.top, ScholiumSidebarLayout.textSpacing)
             .accessibilityElement(children: .contain)
-            .accessibilityIdentifier(primary.id == "localHistory" ? "scholium.chat.localHistoryFailure" : primary.id == "execution" ? "scholium.chat.executionRecovery" : "scholium.chat.connectionStatus")
+            .accessibilityIdentifier(
+                primary.id == "localHistory"
+                    ? "scholium.chat.localHistoryFailure" : primary.id == "execution" ? "scholium.chat.executionRecovery" : "scholium.chat.connectionStatus"
+            )
             .onChange(of: statuses.first?.id) { old, new in if old != new { showsDetails = false } }
             .onChange(of: controller.selectedID) { _, _ in showsDetails = false }
         }
@@ -172,8 +185,11 @@ struct AgentChatConnectionStatus: View {
 
     private func statusTitle(_ status: Status) -> some View {
         HStack(spacing: ScholiumSidebarLayout.textSpacing) {
-            if status.isProgress { ProgressView().controlSize(.mini).accessibilityHidden(true) }
-            else { Image(systemName: status.symbol).font(.caption).foregroundStyle(.secondary).accessibilityHidden(true) }
+            if status.isProgress {
+                ProgressView().controlSize(.mini).accessibilityHidden(true)
+            } else {
+                Image(systemName: status.symbol).font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+            }
             Text(verbatim: status.title).font(.callout.weight(.medium))
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
@@ -209,7 +225,8 @@ struct AgentChatConnectionStatus: View {
             Button(action.title) { perform(action) }
                 .disabled(!isEnabled(action))
                 .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
-                .accessibilityIdentifier(action == .continueWithoutResending ? "scholium.chat.continueAfterUncertainDelivery" : "scholium.chat.status.\(action)")
+                .accessibilityIdentifier(
+                    action == .continueWithoutResending ? "scholium.chat.continueAfterUncertainDelivery" : "scholium.chat.status.\(action)")
         }
     }
 

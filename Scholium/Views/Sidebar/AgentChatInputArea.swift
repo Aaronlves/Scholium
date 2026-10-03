@@ -26,7 +26,8 @@ struct AgentChatInputAreaLimits: Equatable {
         let minimumPreparation = hasPreparedContent ? max(target, lineHeight) + scrollPadding : 0
         // The measured safe-area inset still owns the actual result. Reserve
         // the existing padding and control rows before proposing scroll sizes.
-        let chrome = 2 * ScholiumSidebarLayout.edgeInset + 2 * ScholiumSidebarLayout.rowInset
+        let chrome =
+            2 * ScholiumSidebarLayout.edgeInset + 2 * ScholiumSidebarLayout.rowInset
             + target + 2 * gap + (hasFooterStatus ? lineHeight + gap : 0)
         let queueChrome = hasQueue ? target + 12 + gap : 0
         let minimumQueue = hasQueue ? target + scrollPadding : 0

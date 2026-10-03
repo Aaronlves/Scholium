@@ -353,9 +353,10 @@ final class AgentChatCapabilitiesController: ObservableObject {
             name == authenticatingTool
             && params["threadId"]?.stringValue == authenticationThreadID
         let agentThread = agentAuthenticationThreadIDs[name]
-        let agentAuthentication = agentThread.map { thread in
-            params["threadId"]?.stringValue == (thread.isEmpty ? nil : thread)
-        } ?? false
+        let agentAuthentication =
+            agentThread.map { thread in
+                params["threadId"]?.stringValue == (thread.isEmpty ? nil : thread)
+            } ?? false
         guard uiAuthentication || agentAuthentication else { return }
         authenticationFeedbackTool = name
         if agentAuthentication, let agentThread {

@@ -199,10 +199,14 @@ extension WindowModel {
         {
             return
         }
-        enqueueDocumentTransition(preparation: .openingDocument(placement: .replaceSelected, retainedTab: { [weak self] in
-            guard let self, let target = self.documentNavigationHistoryController.target(for: direction) else { return nil }
-            return self.documentTabController.tab(for: target)
-        })) { [weak self] in
+        enqueueDocumentTransition(
+            preparation: .openingDocument(
+                placement: .replaceSelected,
+                retainedTab: { [weak self] in
+                    guard let self, let target = self.documentNavigationHistoryController.target(for: direction) else { return nil }
+                    return self.documentTabController.tab(for: target)
+                })
+        ) { [weak self] in
             guard let self,
                 let target = self.documentNavigationHistoryController.target(
                     for: direction

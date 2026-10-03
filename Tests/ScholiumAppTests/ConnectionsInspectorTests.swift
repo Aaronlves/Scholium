@@ -13,7 +13,8 @@ struct ConnectionsInspectorTests {
         let links = SourceResourceReferences.externalLinks(in: "[First](https://example.invalid/source) [Second](https://example.invalid/source)\n")
         try #require(links.count == 2)
         let reason = "Fixture graph refresh failed"
-        let rows = InspectorLinkRow.make(groups: [], external: links, collapsedGroups: [],
+        let rows = InspectorLinkRow.make(
+            groups: [], external: links, collapsedGroups: [],
             freshness: .failed(reason), emptyAnnouncement: "No External Links")
         #expect(Set(rows.map(\.id)).count == rows.count)
         try #require(rows.count == 2)
@@ -26,7 +27,8 @@ struct ConnectionsInspectorTests {
         #expect(captured.map(\.label) == ["First", "Second"])
         #expect(Set(captured.map(\.id)).count == 2)
 
-        let empty = InspectorLinkRow.make(groups: [], external: [], collapsedGroups: [],
+        let empty = InspectorLinkRow.make(
+            groups: [], external: [], collapsedGroups: [],
             freshness: .current, emptyAnnouncement: "No External Links")
         try #require(empty.count == 1)
         guard case .empty = empty[0] else {
@@ -40,15 +42,18 @@ struct ConnectionsInspectorTests {
     func nativeLinksCollectionLifecycle() async throws {
         _ = NSApplication.shared
         let vault = RegisteredVault(name: "Synthetic", role: .topicKnowledge, canonicalPath: "/unused/links-fixture")
-        let documents = [
-            NoteDocument(relativePath: "Many.md", rawContent: (0..<4).map { "[[Target\($0)]] [[Target\($0)|Again]]\n" }.joined()),
-            NoteDocument(relativePath: "Few.md", rawContent: "[[Target0]]\n"),
-            NoteDocument(relativePath: "Empty.md", rawContent: "No links\n"),
-        ] + (0..<4).map { NoteDocument(relativePath: "Target\($0).md", rawContent: "Target \($0)\n") }
-        let semantics = Dictionary(uniqueKeysWithValues: documents.map {
-            (VaultQualifiedNoteID(vaultID: vault.id, relativePath: $0.relativePath), MarkdownSemanticDocument(parsing: $0))
-        })
-        let graph = LinkGraphBuilder.build(generation: 1, catalog: documents.map { LinkCatalogNote(vaultID: vault.id, document: $0) },
+        let documents =
+            [
+                NoteDocument(relativePath: "Many.md", rawContent: (0..<4).map { "[[Target\($0)]] [[Target\($0)|Again]]\n" }.joined()),
+                NoteDocument(relativePath: "Few.md", rawContent: "[[Target0]]\n"),
+                NoteDocument(relativePath: "Empty.md", rawContent: "No links\n"),
+            ] + (0..<4).map { NoteDocument(relativePath: "Target\($0).md", rawContent: "Target \($0)\n") }
+        let semantics = Dictionary(
+            uniqueKeysWithValues: documents.map {
+                (VaultQualifiedNoteID(vaultID: vault.id, relativePath: $0.relativePath), MarkdownSemanticDocument(parsing: $0))
+            })
+        let graph = LinkGraphBuilder.build(
+            generation: 1, catalog: documents.map { LinkCatalogNote(vaultID: vault.id, document: $0) },
             documents: semantics, resolutionScope: .sourceVault)
         let catalog = WorkspaceCatalogBuilder.build(vaults: [vault], documents: [vault.id: documents], graph: graph)
         let many = VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Many.md")
@@ -59,7 +64,8 @@ struct ConnectionsInspectorTests {
         session.direction = .outgoing
         let host = NSHostingView(rootView: LinksLifecycleView(state: state, graph: graph, catalog: catalog, session: session))
         host.sizingOptions = []
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 600),
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 600),
             styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
@@ -72,8 +78,10 @@ struct ConnectionsInspectorTests {
             for current in [many, few, empty, few, many] {
                 state.current = current
                 let key = "\(current.vaultID.uuidString):\(current.relativePath):outgoing"
-                let groups = InspectorLinkGroup.make(ConnectionsProjection.make(
-                    graph: graph, catalogNotes: catalog.notes, current: current, direction: .outgoing).items)
+                let groups = InspectorLinkGroup.make(
+                    ConnectionsProjection.make(
+                        graph: graph, catalogNotes: catalog.notes, current: current, direction: .outgoing
+                    ).items)
                 let collapsed = iteration.isMultiple(of: 2) ? Set(groups.prefix(1).map(\.id)) : []
                 session.update(key) { $0.collapsedGroups = collapsed }
                 let expected = groups.isEmpty ? 1 : groups.reduce(0) { $0 + 1 + (collapsed.contains($1.id) ? 0 : $1.items.count) }
@@ -190,10 +198,12 @@ struct ConnectionsInspectorTests {
         #expect(groups.compactMap(\.relativePath).sorted() == ["One/Target.md", "Two/Target.md"])
         #expect(groups.compactMap(\.directoryContext).sorted() == ["Topics / One", "Topics / Two"])
 
-        let expandedRows = InspectorLinkRow.make(groups: groups, external: [], collapsedGroups: [],
+        let expandedRows = InspectorLinkRow.make(
+            groups: groups, external: [], collapsedGroups: [],
             freshness: .current, emptyAnnouncement: "No Outgoing Links")
         let firstGroup = try #require(groups.first)
-        let collapsedRows = InspectorLinkRow.make(groups: groups, external: [], collapsedGroups: [firstGroup.id],
+        let collapsedRows = InspectorLinkRow.make(
+            groups: groups, external: [], collapsedGroups: [firstGroup.id],
             freshness: .current, emptyAnnouncement: "No Outgoing Links")
         #expect(expandedRows.count == 4)
         try #require(expandedRows.count == 4)
@@ -221,7 +231,9 @@ private struct LinksLifecycleView: View {
     let session: LinksInspectorSession
 
     var body: some View {
-        ConnectionsInspectorView(context: .init(graph: graph, catalog: catalog, current: state.current,
-            freshness: .current, retryRefresh: {}, openReference: { _, _ in }), session: session)
+        ConnectionsInspectorView(
+            context: .init(
+                graph: graph, catalog: catalog, current: state.current,
+                freshness: .current, retryRefresh: {}, openReference: { _, _ in }), session: session)
     }
 }

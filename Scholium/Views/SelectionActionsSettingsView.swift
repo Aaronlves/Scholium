@@ -89,7 +89,11 @@ struct SelectionActionsSettingsContent: View {
     @Environment(\.scholiumSettingsPaneIsActive) private var isPaneActive
     @ObservedObject var state: SelectionActionsSettingsDraft
     @ObservedObject private var preferences: SelectionActionPreferences
-    private enum FocusTarget: Hashable { case name, edit(UUID), add, reload }
+    private enum FocusTarget: Hashable {
+        case name
+        case edit(UUID)
+        case add, reload
+    }
     @FocusState private var focusedTarget: FocusTarget?
 
     init(state: SelectionActionsSettingsDraft) {
@@ -205,7 +209,9 @@ struct SelectionActionsSettingsContent: View {
                 }
                 .focused($focusedTarget, equals: .reload)
             }
-            if let message = state.error ?? preferences.loadError ?? (state.editingActionID == nil ? SelectionActionPreferences.validationError(state.actions) : nil) {
+            if let message = state.error ?? preferences.loadError
+                ?? (state.editingActionID == nil ? SelectionActionPreferences.validationError(state.actions) : nil)
+            {
                 Text(message)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -220,7 +226,10 @@ struct SelectionActionsSettingsContent: View {
                     }
                 }
                 .scholiumSettingsDefaultAction()
-                .disabled(state.editingActionID != nil || state.hasExternalChange || SelectionActionPreferences.validationError(state.actions) != nil || state.actions == preferences.actions)
+                .disabled(
+                    state.editingActionID != nil || state.hasExternalChange || SelectionActionPreferences.validationError(state.actions) != nil
+                        || state.actions == preferences.actions
+                )
                 .accessibilityIdentifier("scholium.selectionActions.save")
             }
         } header: {

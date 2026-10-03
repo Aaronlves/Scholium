@@ -13,7 +13,8 @@ struct SettingsSearchRoutingTests {
         let parent = ScholiumSettingsSearchField(text: .constant(""), reveal: { _ in })
         let coordinator = parent.makeCoordinator()
         let field = ScholiumSettingsSearchField.makeSearchField(coordinator: coordinator)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 60),
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 60),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = field

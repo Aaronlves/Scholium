@@ -1023,18 +1023,22 @@ extension ScholiumUITests {
         let noteList = app.outlines["scholium.noteList"].firstMatch
         let contextTarget = noteList.descendants(matching: .outlineRow)
             .containing(.any, identifier: "scholium.noteRow.\(secondPath)").firstMatch
-        XCTAssertTrue(contextTarget.isSelected,
+        XCTAssertTrue(
+            contextTarget.isSelected,
             "A contextual action must visibly select its Library target.")
-        XCTAssertEqual(documentTitle(), "QA Autosave A",
+        XCTAssertEqual(
+            documentTitle(), "QA Autosave A",
             "Selecting a contextual target must preserve the active Document.")
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !noteContextMenu.exists })
         XCTAssertTrue(contextTarget.isSelected)
         XCTAssertEqual(documentTitle(), "QA Autosave A")
-        XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: noteList),
+        XCTAssertTrue(
+            NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: noteList),
             "Dismissing the context menu must return keyboard focus to the Library.")
         _ = clickLibraryRow(secondPath)
-        XCTAssertTrue(waitForDocumentTitle("QA Autosave B"),
+        XCTAssertTrue(
+            waitForDocumentTitle("QA Autosave B"),
             "An ordinary click on the contextual selection must still open it.")
         _ = clickLibraryRow("QA Autosave A.md")
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
@@ -1183,26 +1187,31 @@ extension ScholiumUITests {
         XCTAssertTrue(thirdNoteMenu.waitForExistence(timeout: 3))
         let openingStart = ContinuousClock.now
         thirdNoteMenu.menuItems["Open in New Tab"].click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            self.documentTitle() == "示例材料" && self.documentSurfaceIsUsable()
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                self.documentTitle() == "示例材料" && self.documentSurfaceIsUsable()
+            })
         let openingDuration = openingStart.duration(to: .now).components
-        let openingMilliseconds = Double(openingDuration.seconds) * 1_000
+        let openingMilliseconds =
+            Double(openingDuration.seconds) * 1_000
             + Double(openingDuration.attoseconds) / 1e15
         print("TAB_UI_FRESH_OPEN_EXISTING_TABS_MS=\(String(format: "%.3f", openingMilliseconds))")
         app.menuBars.menuBarItems["File"].click()
         app.menuItems["Close Tab"].firstMatch.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            self.documentTitle() == "QA Autosave B" && self.documentSurfaceIsUsable()
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                self.documentTitle() == "QA Autosave B" && self.documentSurfaceIsUsable()
+            })
 
         let retainedStart = ContinuousClock.now
         firstTab.click()
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            self.documentTitle() == "QA Autosave A" && self.documentSurfaceIsUsable()
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                self.documentTitle() == "QA Autosave A" && self.documentSurfaceIsUsable()
+            })
         let retainedDuration = retainedStart.duration(to: .now).components
-        let retainedMilliseconds = Double(retainedDuration.seconds) * 1_000
+        let retainedMilliseconds =
+            Double(retainedDuration.seconds) * 1_000
             + Double(retainedDuration.attoseconds) / 1e15
         print("TAB_UI_RETAINED_SELECTION_MS=\(String(format: "%.3f", retainedMilliseconds))")
         selectDocumentMode("Review")

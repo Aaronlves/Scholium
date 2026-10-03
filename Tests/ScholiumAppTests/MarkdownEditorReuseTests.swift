@@ -602,9 +602,10 @@ struct MarkdownEditorReuseTests {
         let original = "\u{FEFF}# Frozen\r\n\r\n中文 😀 e\u{301}。\r\n"
         let edited = original + "Unsaved draft。\r\n"
         try await harness.show(editor, source: original, title: "Frozen", mode: .livePreview)
-        _ = try await editor.send(.replacePassage(
-            expectedText: original, fromUTF16: 0, toUTF16: original.utf16.count,
-            replacement: edited, preserveSelection: false), in: try #require(editor.webView))
+        _ = try await editor.send(
+            .replacePassage(
+                expectedText: original, fromUTF16: 0, toUTF16: original.utf16.count,
+                replacement: edited, preserveSelection: false), in: try #require(editor.webView))
         let selection = try #require(editor.context?.selections)
         let undo = try #require(editor.context?.undoLabel)
         try await editor.captureStateForViewReconstruction(suspendForDetachment: true)

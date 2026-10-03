@@ -67,7 +67,8 @@ struct AgentChatShortViewportTests {
             didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {},
             diagnosticsPresentation: .constant(nil))
         let host = NSHostingView(
-            rootView: detail
+            rootView:
+                detail
                 .environment(\.locale, Locale(identifier: adapted ? "zh-Hans" : "en"))
                 .environment(\.colorScheme, adapted ? .dark : .light))
         host.sizingOptions = []
@@ -78,7 +79,11 @@ struct AgentChatShortViewportTests {
         window.appearance = NSAppearance(named: adapted ? .accessibilityHighContrastDarkAqua : .aqua)
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
-        defer { window.orderOut(nil); window.contentView = nil; window.close() }
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
         try await settle(host) {
             guard reading.isInitialTranscriptReady, native.host.window === window,
                 let scroll = reading.markers["reply"]?.view?.enclosingScrollView
@@ -87,7 +92,8 @@ struct AgentChatShortViewportTests {
         }
         let marker = try #require(reading.markers["reply"]?.view)
         let scroll = try #require(marker.enclosingScrollView)
-        let minimumReadingHeight = ScholiumChatAppearance.messageNSFont.pointSize
+        let minimumReadingHeight =
+            ScholiumChatAppearance.messageNSFont.pointSize
             * ScholiumChatAppearance.messageLineHeight * 6 - 2
         do {
             try await settle(host) {
@@ -99,7 +105,9 @@ struct AgentChatShortViewportTests {
             throw error
         }
         let readableHeight = scroll.contentView.bounds.height - scroll.contentInsets.top - scroll.contentInsets.bottom
-        print("CHAT_SHORT_INPUT adapted=\(adapted) readable_height=\(readableHeight) editor_height=\(native.host.bounds.height) viewport=\(scroll.contentView.bounds.height) insets=\(scroll.contentInsets)")
+        print(
+            "CHAT_SHORT_INPUT adapted=\(adapted) readable_height=\(readableHeight) editor_height=\(native.host.bounds.height) viewport=\(scroll.contentView.bounds.height) insets=\(scroll.contentInsets)"
+        )
         #expect(readableHeight >= minimumReadingHeight)
         #expect(native.host.bounds.height >= ScholiumChatAppearance.messageNSFont.pointSize + 12)
         #expect(native.host.bounds.height < native.host.fittingHeight(width: native.host.bounds.width))

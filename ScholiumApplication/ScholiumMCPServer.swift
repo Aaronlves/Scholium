@@ -1170,7 +1170,7 @@ public actor ScholiumMCPServer {
             }
         return .object([
             "type": .string("object"),
-            "oneOf": .array(successes + [failureSchema])
+            "oneOf": .array(successes + [failureSchema]),
         ])
     }
 
