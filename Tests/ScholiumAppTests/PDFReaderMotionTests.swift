@@ -30,7 +30,13 @@ struct PDFReaderMotionTests {
         #expect(abs(view.scaleFactor - 1.4) < 0.001)
         #expect(view.alphaValue == 1)
         #expect(reader.canUseReaderCommands)
-        #expect((view.layer?.animation(forKey: PDFReaderNativePDFView.contentRevealAnimationKey) == nil) == reduceMotion)
+        // Native presentation also respects the live system preference.
+        let systemReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let effectiveReduceMotion = reduceMotion || systemReduceMotion
+        #expect(
+            (view.layer?.animation(forKey: PDFReaderNativePDFView.contentRevealAnimationKey) == nil) == effectiveReduceMotion,
+            "Requested Reduce Motion: \(reduceMotion), system: \(systemReduceMotion), layer present: \(view.layer != nil)"
+        )
 
         // Ordinary SwiftUI updates and native layout must not replay arrival
         // or move a restored reading position.
@@ -71,7 +77,12 @@ struct PDFReaderMotionTests {
         view.isHidden = false
         view.layout()
         #expect(view.document === second.reader.document)
-        #expect(view.layer?.animation(forKey: PDFReaderNativePDFView.contentRevealAnimationKey) != nil)
+        let systemReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #expect(
+            (view.layer?.animation(forKey: PDFReaderNativePDFView.contentRevealAnimationKey) == nil)
+                == systemReduceMotion,
+            "System Reduce Motion: \(systemReduceMotion), layer present: \(view.layer != nil)"
+        )
         view.updatePresentation(reduceMotion: true)
         view.apply(second.reader)
         #expect(view.layer?.animation(forKey: PDFReaderNativePDFView.contentRevealAnimationKey) == nil)

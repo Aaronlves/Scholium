@@ -683,8 +683,8 @@ struct WorkspaceToolbarTests {
         projection.invalidate()
     }
 
-    @Test("The shared tab well divides available space equally, then favors a crowded selection")
-    func toolbarTabStripCompressionAndScroll() throws {
+    @Test("The shared tab well divides available space equally, then favors a crowded selection", arguments: [CGFloat(1), CGFloat(2)])
+    func toolbarTabStripCompressionAndScroll(backingScale: CGFloat) throws {
         let tabs = (0..<5).map { index in
             DocumentTabItem(
                 document: .unavailable(vaultID: UUID(), relativePath: "\(index).md"),
@@ -693,7 +693,7 @@ struct WorkspaceToolbarTests {
         }
         let projection = DocumentToolbarTabs()
         let group = try #require(projection.item(for: DocumentToolbarTabItem.identifier))
-        let window = testWindow()
+        let window = ToolbarTabBackingScaleWindow(backingScale: backingScale)
         window.contentView?.addSubview(group.control)
         group.control.frame = NSRect(x: 20, y: 20, width: 520, height: DocumentToolbarTabStrip.height)
         defer {
@@ -701,6 +701,16 @@ struct WorkspaceToolbarTests {
             window.close()
         }
         let scrollView = try #require(group.control.subviews.first { $0 is NSScrollView } as? NSScrollView)
+
+        func expectEqualPixelWidths(_ controls: [DocumentToolbarTabControl]) {
+            let pixelWidths = controls.map { $0.frame.width * backingScale }
+            // AppKit aligns frame edges to backing pixels even when the
+            // required equal-width constraints divide the span fractionally.
+            let share = pixelWidths.reduce(0, +) / CGFloat(pixelWidths.count)
+            let lower = share.rounded(.down)
+            let upper = share.rounded(.up)
+            #expect(pixelWidths.allSatisfy { $0 == lower || $0 == upper })
+        }
 
         projection.update(tabs: Array(tabs.prefix(3)), selectedID: tabs[2].id)
         group.control.layoutSubtreeIfNeeded()
@@ -710,8 +720,7 @@ struct WorkspaceToolbarTests {
         let visibleThree = scrollView.contentView.documentVisibleRect
         #expect(threeControls.allSatisfy { $0.frame.width >= DocumentToolbarTabControl.minimumWidth })
         #expect(threeControls.allSatisfy { $0.frame.minX >= visibleThree.minX && $0.frame.maxX <= visibleThree.maxX })
-        #expect(abs(threeControls[2].frame.width - threeControls[0].frame.width) < 1)
-        #expect(abs(threeControls[2].frame.width - threeControls[1].frame.width) < 1)
+        expectEqualPixelWidths(threeControls)
 
         let fourTabs = Array(tabs.prefix(4))
         group.control.frame.size.width = 900
@@ -719,7 +728,7 @@ struct WorkspaceToolbarTests {
         group.control.layoutSubtreeIfNeeded()
         let active = try #require(projection.control(for: tabs[3].id))
         let inactive = try fourTabs.prefix(3).map { try #require(projection.control(for: $0.id)) }
-        #expect(inactive.allSatisfy { abs($0.frame.width - active.frame.width) < 1 })
+        expectEqualPixelWidths(inactive + [active])
 
         func widths(at stripWidth: CGFloat, selectedID: UUID) -> [CGFloat] {
             group.control.frame.size.width = stripWidth
@@ -760,13 +769,13 @@ struct WorkspaceToolbarTests {
         group.control.frame.size.width = 600
         projection.update(tabs: fourTabs, selectedID: tabs[3].id)
         group.control.layoutSubtreeIfNeeded()
-        #expect(inactive.allSatisfy { abs($0.frame.width - inactive[0].frame.width) < 1 })
+        expectEqualPixelWidths(inactive)
         #expect(active.frame.width > inactive[0].frame.width)
         let reorderedFour = [fourTabs[3]] + Array(fourTabs.prefix(3))
         projection.update(tabs: reorderedFour, selectedID: tabs[3].id)
         group.control.layoutSubtreeIfNeeded()
         #expect(group.control.orderedTabIDs == reorderedFour.map(\.id))
-        #expect(inactive.allSatisfy { abs($0.frame.width - inactive[0].frame.width) < 1 })
+        expectEqualPixelWidths(inactive)
         #expect(active.frame.width > inactive[0].frame.width)
 
         group.control.frame.size.width = 280
@@ -911,5 +920,21 @@ struct WorkspaceToolbarTests {
         )
         window.isReleasedWhenClosed = false
         return window
+    }
+}
+
+@MainActor
+private final class ToolbarTabBackingScaleWindow: NSWindow {
+    private let layoutBackingScale: CGFloat
+    override var backingScaleFactor: CGFloat { layoutBackingScale }
+
+    init(backingScale: CGFloat) {
+        layoutBackingScale = backingScale
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 640),
+            styleMask: [.titled, .resizable, .closable],
+            backing: .buffered,
+            defer: false)
+        isReleasedWhenClosed = false
     }
 }
