@@ -930,7 +930,9 @@ struct TriptychSearchIndexTests {
             databaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
-        let documents = (0..<5_000).map { number in
+        // The gate pauses before the second batch, so two batches suffice
+        // to observe real progress and cancel before a generation commits.
+        let documents = (0..<64).map { number in
             fixture.item(
                 vault: fixture.analyses,
                 path: "Initial/\(number).md",
