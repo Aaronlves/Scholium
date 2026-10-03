@@ -371,9 +371,9 @@ run_swift_test_product() {
     parallelism_arguments=(--no-parallel)
   fi
   if [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
-    # The canonical RDF-1 refresh measurement needs its own quiet process
-    # boundary so graph/Search timings are not scheduler-contention artifacts.
-    selection_arguments+=(--skip 'ArchitectureStabilityMeasurementTests')
+    # Timed bridge lifecycles and the RDF-1 refresh measurement own quiet
+    # processes below, independent of other suites' refresh/I/O contention.
+    selection_arguments+=(--skip 'ArchitectureStabilityMeasurementTests|ScholiumAppBridgeTests')
   fi
   mkdir -p "${SCRATCH}"
   for attempt in 1 2 3; do
@@ -422,6 +422,11 @@ for test_product in \
     run_swift_test_product "${test_product}"
   fi
   if [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
+    run_swift_test_once \
+      "ScholiumApplicationTests bridge lifecycle" \
+      "ScholiumApplicationTests-bridge" \
+      --no-parallel \
+      --filter 'ScholiumApplicationTests.ScholiumAppBridgeTests'
     run_measurement_test \
       "ScholiumApplicationTests architecture measurement" \
       "ScholiumApplicationTests-architecture" \
