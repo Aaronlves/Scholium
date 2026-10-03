@@ -149,10 +149,9 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
             pageFocusRevoked = hasPageFocus
             pageFocusObservation = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: window, queue: .main
-            ) { [weak self] notification in
+            ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self, self.window === notification.object as? NSWindow else { return }
-                    self.synchronizePageFocus()
+                    self?.synchronizePageFocus()
                 }
             }
         }
@@ -205,8 +204,24 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         return window.firstResponder === editor
     }
 
+    private var canKeepPageEditor: Bool {
+        guard let controller, !isInvalidated, hasToolbarBinding, controller.isVisible,
+            controller.document != nil, hasPageFocus, !pageFocusRevoked
+        else { return false }
+        return projectedContext == controller.context && projectedDocument == controller.document.map(ObjectIdentifier.init)
+    }
+
+    private func updatePageAdmission() {
+        // Disabling a focused NSTextField destroys its field editor. Keep only
+        // that existing draft through a temporary freeze; actions stay guarded.
+        let enabled = controller?.document != nil && (allowsCommands || canKeepPageEditor)
+        page.isEnabled = enabled
+        navigation.isEnabled = enabled
+    }
+
     private func synchronizePageFocus() {
         guard !isInvalidated, let controller else { return }
+        updatePageAdmission()
         guard hasPageFocus else {
             pageFocusRevoked = false
             endPageFocus()
@@ -260,7 +275,7 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         projectedDocument = documentID
         previous.isEnabled = validateToolbarItem(previous)
         next.isEnabled = validateToolbarItem(next)
-        page.isEnabled = available && loaded
+        updatePageAdmission()
         // Preserve an unsubmitted field draft through unrelated projections,
         // but actual navigation or document replacement must display its page.
         if changedDocument || projectedPageNumber != controller.pageNumber
@@ -279,7 +294,6 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
                 digits.fittingSize.width + ScholiumGrid.Spacing.inlineControlGap)
         }
         search.isEnabled = validateToolbarItem(search)
-        navigation.isEnabled = available && loaded
         compact.isEnabled = available && loaded
         actionMenu.update(controller: controller)
         actions.isEnabled = actionMenu.isEnabled
@@ -351,6 +365,7 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
     }
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        if item === navigation || item === pageItem, canKeepPageEditor { return true }
         guard allowsCommands, let controller else { return false }
         if item === actions { return actionMenu.isEnabled }
         guard controller.document != nil else { return false }

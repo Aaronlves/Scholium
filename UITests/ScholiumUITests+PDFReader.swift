@@ -6,6 +6,184 @@ import PDFKit
 @preconcurrency import XCTest
 
 extension ScholiumUITests {
+    /// All enabled inactive tools share one native neutral foreground; state
+    /// and accessibility remain distinct from hover, focus and window activity.
+    @MainActor
+    func testPDFReaderNativeToolForegroundConsistency() throws {
+        let originalURL = testDirectory.appendingPathComponent("Synthetic Native Tool Foreground.pdf")
+        try makeSearchableReaderPDF(at: originalURL)
+        let original = try Data(contentsOf: originalURL)
+        waitForCurrentDocumentSurface()
+        app.typeKey("p", modifierFlags: [.control, .command])
+        var main = app.windows.firstMatch
+        var pane = main.descendants(matching: .any)["scholium.pdf.pane"]
+        XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        pane.buttons["scholium.pdf.attach"].click()
+        app.buttons["scholium.pdf.chooseFile"].click()
+        chooseReaderPDFInNativePanel(originalURL)
+        XCTAssertTrue(main.textFields["scholium.pdf.page"].waitForExistence(timeout: 15))
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let boundSource = try source(at: noteURL)
+        let managed = noteURL.deletingLastPathComponent().appendingPathComponent(try readerPDFBinding(in: boundSource))
+        for dark in [false, true] {
+            if dark {
+                app.typeKey("q", modifierFlags: .command)
+                XCTAssertTrue(waitUntil(timeout: 20) { self.app.state == .notRunning })
+                app = configuredApplication(sessionID: sessionID, appearance: .dark, openNote: nil)
+                app.launch()
+                main = app.windows.firstMatch
+                XCTAssertTrue(main.waitForExistence(timeout: 15))
+                waitForCurrentDocumentSurface()
+                pane = main.descendants(matching: .any)["scholium.pdf.pane"]
+            }
+            let page = main.textFields["scholium.pdf.page"]
+            XCTAssertTrue(page.waitForExistence(timeout: 10))
+            for (title, selected) in [("Select", "select"), ("Highlight", "highlight"), ("Comment", "comment")] {
+                chooseReaderMenuItem(title, menu: "PDF Actions", in: pane)
+                page.click()
+                for tool in ["select", "highlight", "comment"] {
+                    let button = pane.descendants(matching: .any)["scholium.pdf.tool." + tool]
+                    XCTAssertTrue(button.isEnabled)
+                    XCTAssertEqual((button.value as? NSNumber)?.intValue, tool == selected ? 1 : 0)
+                }
+                attachReaderScreenshot("PDF native foreground — \(dark ? "dark" : "light"), \(title) selected with pointer outside tools", window: main)
+            }
+            chooseReaderMenuItem("Select", menu: "PDF Actions", in: pane)
+            pdfToolbarButton("Note Actions", in: main).click()
+            app.menuItems["Note Info…"].firstMatch.click()
+            let info = app.windows["scholium.noteInfo"]
+            XCTAssertTrue(info.waitForExistence(timeout: 5))
+            let summary = info.textFields["scholium.noteInfo.summary"]
+            summary.click()
+            XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: summary))
+            attachReaderScreenshot("PDF native foreground — \(dark ? "dark" : "light"), main window while Note Info owns focus", window: main)
+            info.buttons["Close"].click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !info.exists })
+            resizeProofWindow(main, toWidth: 900)
+            let divider = main.splitGroups["scholium.documentReadingSplit"].splitters.firstMatch
+                .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            divider.click(forDuration: 0.15, thenDragTo: divider.withOffset(CGVector(dx: 80, dy: 0)))
+            XCTAssertGreaterThanOrEqual(pane.frame.width, 279)
+            openReaderMenu("PDF Actions")
+            let selectedItem = app.menuItems["scholium.pdf.actions.selectTool"]
+            XCTAssertTrue(selectedItem.waitForExistence(timeout: 3) && selectedItem.isEnabled)
+            attachReaderScreenshot("PDF native foreground — \(dark ? "dark" : "light"), compact native action menu", window: main)
+            app.typeKey(.escape, modifierFlags: [])
+            resizeProofWindow(main, toWidth: 1380)
+            XCTAssertEqual(try source(at: noteURL), boundSource)
+            XCTAssertEqual(try Data(contentsOf: managed), original)
+            XCTAssertEqual(try Data(contentsOf: originalURL), original)
+        }
+    }
+
+    /// The real PDF plane continues under native toolbar chrome, while tool
+    /// selection, pointer annotation and keyboard commands retain their routes.
+    @MainActor
+    func testPDFReaderNativeToolbarUnderlapAndSelectedTools() throws {
+        let originalURL = testDirectory.appendingPathComponent("Synthetic Toolbar Underlap.pdf")
+        try makeSearchableReaderPDF(at: originalURL)
+        let original = try Data(contentsOf: originalURL)
+        waitForCurrentDocumentSurface()
+        app.typeKey("p", modifierFlags: [.control, .command])
+        var main = app.windows.firstMatch
+        var pane = main.descendants(matching: .any)["scholium.pdf.pane"]
+        XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        pane.buttons["scholium.pdf.attach"].click()
+        app.buttons["scholium.pdf.chooseFile"].click()
+        chooseReaderPDFInNativePanel(originalURL)
+        XCTAssertTrue(main.textFields["scholium.pdf.page"].waitForExistence(timeout: 15))
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let managed = noteURL.deletingLastPathComponent().appendingPathComponent(try readerPDFBinding(in: source(at: noteURL)))
+        for dark in [false, true] {
+            if dark {
+                app.typeKey("q", modifierFlags: .command)
+                XCTAssertTrue(waitUntil(timeout: 20) { self.app.state == .notRunning })
+                app = configuredApplication(sessionID: sessionID, appearance: .dark, openNote: nil)
+                app.launch()
+                main = app.windows.firstMatch
+                XCTAssertTrue(main.waitForExistence(timeout: 15))
+                waitForCurrentDocumentSurface()
+                pane = main.descendants(matching: .any)["scholium.pdf.pane"]
+            }
+            let page = main.textFields["scholium.pdf.page"]
+            XCTAssertTrue(page.waitForExistence(timeout: 10))
+            typeCommittedText("1", into: page, in: app)
+            page.typeKey(.return, modifierFlags: [])
+            chooseReaderMenuItem("Fit PDF", menu: "PDF Zoom", in: pane)
+            let paper = pane.scrollViews.firstMatch
+            XCTAssertTrue(paper.waitForExistence(timeout: 5))
+            let searchButton = main.toolbars.firstMatch.buttons["Search PDF"]
+            let viewport = pane.descendants(matching: .any)["PDFReader.View"]
+            // NSScrollView's AX frame excludes the top/bottom reserved insets.
+            // Actual native scroll/clip geometry is proved by the hosting test.
+            XCTAssertLessThan(viewport.frame.minY, searchButton.frame.maxY - 10)
+            let title = paper.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Lifecycle Quartz", "Lifecycle Quartz")
+            ).firstMatch
+            XCTAssertTrue(title.waitForExistence(timeout: 5))
+            let titleTop = title.frame.minY
+            paper.scroll(byDeltaX: 0, deltaY: -max(titleTop - searchButton.frame.midY, 20))
+            XCTAssertTrue(waitUntil(timeout: 5) { title.frame.minY < searchButton.frame.maxY })
+            XCTAssertGreaterThan(title.frame.maxY, viewport.frame.minY, "Scrolled page text remains inside the extended PDF plane.")
+            chooseReaderMenuItem("Highlight", menu: "PDF Actions", in: pane)
+            let highlight = pane.descendants(matching: .any)["scholium.pdf.tool.highlight"]
+            let select = pane.descendants(matching: .any)["scholium.pdf.tool.select"]
+            XCTAssertEqual((highlight.value as? NSNumber)?.intValue, 1)
+            XCTAssertEqual((select.value as? NSNumber)?.intValue, 0)
+            attachReaderScreenshot("PDF under toolbar — \(dark ? "dark" : "light"), native Highlight selected", window: main)
+            let retainedTitleY = title.frame.minY
+            app.typeKey("p", modifierFlags: [.control, .command])
+            XCTAssertTrue(waitUntil(timeout: 5) { !pane.exists })
+            app.typeKey("p", modifierFlags: [.control, .command])
+            XCTAssertTrue(pane.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitUntil(timeout: 5) { abs(title.frame.minY - retainedTitleY) < 2 })
+            chooseReaderMenuItem("Comment", menu: "PDF Actions", in: pane)
+            XCTAssertEqual((pane.descendants(matching: .any)["scholium.pdf.tool.comment"].value as? NSNumber)?.intValue, 1)
+            XCTAssertEqual((highlight.value as? NSNumber)?.intValue, 0)
+            searchButton.click()
+            let search = app.textFields["scholium.pdf.search"]
+            XCTAssertTrue(search.waitForExistence(timeout: 3))
+            attachReaderScreenshot("PDF native search — \(dark ? "dark" : "light"), popup over paper with Comment armed", window: main)
+            typeCommittedText("Pointer Highlight Marker", into: search, in: app, clickWithinVisibleFrame: true)
+            search.typeKey(.return, modifierFlags: [])
+            app.typeKey(.escape, modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })
+            XCTAssertFalse(app.descendants(matching: .any)["scholium.pdf.comment"].exists, "Toolbar clicks cannot dispatch the armed Comment tool into paper.")
+            chooseReaderMenuItem("Select", menu: "PDF Actions", in: pane)
+            let marker = paper.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Pointer Highlight Marker", "Pointer Highlight Marker")
+            ).firstMatch
+            XCTAssertTrue(marker.waitForExistence(timeout: 5))
+            let oldHeight = marker.frame.height
+            chooseReaderMenuItem("Zoom In", menu: "PDF Zoom", in: pane)
+            XCTAssertTrue(waitUntil(timeout: 5) { marker.frame.height > oldHeight * 1.1 })
+            chooseReaderMenuItem("Fit PDF", menu: "PDF Zoom", in: pane)
+            if !dark { exerciseBoundedReaderHighlightDrag(in: pane, managedURL: managed) }
+            let divider = main.splitGroups["scholium.documentReadingSplit"].splitters.firstMatch
+                .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let oldWidth = pane.frame.width
+            divider.click(forDuration: 0.15, thenDragTo: divider.withOffset(CGVector(dx: -45, dy: 0)))
+            XCTAssertTrue(waitUntil(timeout: 5) { pane.frame.width > oldWidth + 20 })
+            XCTAssertLessThan(viewport.frame.minY, searchButton.frame.maxY - 10)
+            paper.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).click()
+            pdfToolbarButton("Note Actions", in: main).hover()
+            let tools = pane.descendants(matching: .any)["scholium.pdf.tools"]
+            XCTAssertTrue(waitUntil(timeout: 8) { !tools.exists })
+            attachReaderScreenshot("PDF under toolbar — \(dark ? "dark" : "light"), quiet tools after resize", window: main)
+            page.click()
+            XCTAssertTrue(waitUntil(timeout: 5) { tools.exists })
+            typeCommittedText("2", into: page, in: app)
+            page.typeKey(.return, modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "2" })
+            XCTAssertEqual(try Data(contentsOf: originalURL), original)
+        }
+        XCTAssertTrue(
+            savedReaderAnnotations(at: managed).contains {
+                $0.value(forAnnotationKey: .subtype) as? String == PDFAnnotationSubtype.highlight.rawValue
+            })
+        try assertReaderWidgetPreserved(at: managed)
+    }
+
     /// Quiet reading, native tracking and field/draft focus share one visible
     /// tools lifetime without changing the paper's geometry or saved bytes.
     @MainActor
@@ -263,7 +441,7 @@ extension ScholiumUITests {
         let next = app.buttons["Next PDF Match"]
         XCTAssertFalse(previous.isEnabled, "An empty PDF query has no previous match.")
         XCTAssertFalse(next.isEnabled, "An empty PDF query has no next match.")
-        typeCommittedText("__MissingPDFControlPassage__", into: search, in: app)
+        typeCommittedText("__MissingPDFControlPassage__", into: search, in: app, clickWithinVisibleFrame: true)
         next.click()
         let noMatch = app.staticTexts["No matches in this PDF."]
         XCTAssertTrue(noMatch.waitForExistence(timeout: 3))
@@ -272,7 +450,7 @@ extension ScholiumUITests {
         search.typeKey(.delete, modifierFlags: [])
         XCTAssertEqual(search.value as? String, "")
         XCTAssertTrue(waitUntil(timeout: 3) { !noMatch.exists && !previous.isEnabled && !next.isEnabled })
-        typeCommittedText("Scholium PDF Lifecycle", into: search, in: app)
+        typeCommittedText("Scholium PDF Lifecycle", into: search, in: app, clickWithinVisibleFrame: true)
         XCTAssertTrue(previous.isEnabled && next.isEnabled)
         search.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "1" })
@@ -552,11 +730,11 @@ extension ScholiumUITests {
         for label in ["Previous PDF Match", "Next PDF Match"] {
             XCTAssertTrue(app.buttons[label].isHittable)
         }
-        typeCommittedText("NoSuchPDFPassage synthetic __", into: search, in: app)
+        typeCommittedText("NoSuchPDFPassage synthetic __", into: search, in: app, clickWithinVisibleFrame: true)
         search.typeKey(.return, modifierFlags: [])
         let noMatch = app.staticTexts["No matches in this PDF."]
         XCTAssertTrue(noMatch.waitForExistence(timeout: 3), "Return submits the PDF search.")
-        typeCommittedText("Lifecycle Quartz", into: search, in: app)
+        typeCommittedText("Lifecycle Quartz", into: search, in: app, clickWithinVisibleFrame: true)
         search.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !noMatch.exists })
         app.typeKey(.escape, modifierFlags: [])
@@ -736,7 +914,7 @@ extension ScholiumUITests {
         main.toolbars.firstMatch.buttons["Search PDF"].click()
         let search = app.textFields["scholium.pdf.search"]
         XCTAssertTrue(search.waitForExistence(timeout: 3))
-        typeCommittedText("Lifecycle Quartz", into: search, in: app)
+        typeCommittedText("Lifecycle Quartz", into: search, in: app, clickWithinVisibleFrame: true)
         search.typeKey(.return, modifierFlags: [])
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })

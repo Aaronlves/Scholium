@@ -12,6 +12,7 @@ struct PDFReaderPane: View {
                 if controller.document != nil {
                     PDFReaderNativeView(controller: controller)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .ignoresSafeArea(.container, edges: .top)
                 } else {
                     VStack(spacing: 12) {
                         if controller.isLoading {

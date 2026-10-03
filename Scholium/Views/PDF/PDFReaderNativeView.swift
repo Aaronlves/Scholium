@@ -263,8 +263,13 @@ final class PDFReaderNativePDFView: PDFView {
         let bottom =
             originalScrollInsets.bottom + tools.intrinsicContentSize.height
             + ScholiumMetrics.PDFReader.toolsBottomInset + (tools.superview?.safeAreaInsets.bottom ?? 0)
-        guard abs(scroll.contentInsets.bottom - bottom) > 0.5 else { return }
+        // The clip plane continues under native window chrome. Insets keep a
+        // fresh page readable below it without clipping later scrolling there.
+        let scrollFrame = scroll.convert(scroll.bounds, to: nil)
+        let top = max(originalScrollInsets.top, scrollFrame.maxY - (window?.contentLayoutRect.maxY ?? scrollFrame.maxY))
+        guard abs(scroll.contentInsets.top - top) > 0.5 || abs(scroll.contentInsets.bottom - bottom) > 0.5 else { return }
         var insets = scroll.contentInsets
+        insets.top = top
         insets.bottom = bottom
         scroll.contentInsets = insets
     }
@@ -400,6 +405,19 @@ final class PDFReaderNativePDFView: PDFView {
         }
         guard window.contentLayoutRect.contains(event.locationInWindow), bounds.contains(point) else {
             if event.type == .leftMouseUp { gestureDocument = nil }
+            return event
+        }
+        // Native popovers can forward a parent-window event while covering
+        // paper. Bounds alone must never authorize an annotation behind them.
+        let screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+        let coveredByChild =
+            window.childWindows?.contains {
+                $0.isVisible && !$0.ignoresMouseEvents && $0.frame.contains(screenPoint)
+            } == true
+        let content = window.contentView
+        let target = content?.hitTest(convert(point, to: content?.superview))
+        guard !coveredByChild, let target, target === self || target.isDescendant(of: self) else {
+            gestureDocument = nil
             return event
         }
         if event.type == .leftMouseUp {

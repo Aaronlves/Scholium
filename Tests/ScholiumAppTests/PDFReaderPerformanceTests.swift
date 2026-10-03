@@ -13,12 +13,50 @@ import Testing
 @Suite("PDF reader performance proxies", .serialized)
 @MainActor
 struct PDFReaderPerformanceTests {
+    @Test("Native teardown releases a synchronously owned PDF view and document")
+    func nativeResourceRelease() async throws {
+        let fixture = try Fixture(data: fixtureData(pageCount: 12))
+        let reader = fixture.reader
+        defer { reader.shutdown() }
+        reader.follow(fixture.context, operations: fixture.operations)
+        #expect(reader.setVisible(true))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+        while reader.document == nil || reader.isLoading, reader.error == nil, ContinuousClock.now < deadline { await Task.yield() }
+        guard reader.document != nil, reader.error == nil else { throw CocoaError(.fileReadCorruptFile) }
+        let references = ReleasedReferences()
+        autoreleasepool {
+            let view = PDFReaderNativePDFView(frame: NSRect(x: 0, y: 0, width: 500, height: 650))
+            let host = PDFReaderNativeHostView(pdfView: view)
+            let window = NSWindow(contentRect: view.bounds, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = host
+            view.updatePresentation(reduceMotion: true)
+            view.apply(reader)
+            view.layout()
+            if let selection = reader.document?.findString("scholium-early-needle", fromSelection: nil, withOptions: []) {
+                view.setCurrentSelection(selection, animate: false)
+                view.go(to: selection)
+            }
+            references.view = view
+            references.tools = view.floatingTools
+            references.document = reader.document
+            references.window = window
+            view.invalidate()
+            reader.shutdown()
+            window.contentView = nil
+            window.close()
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        let released = references.view == nil && references.tools == nil && references.document == nil && references.window == nil
+        #expect(released)
+    }
+
     @Test("Synthetic reader readiness, callback cost, pane retention and release", arguments: [12, 800])
     func readerProxies(pageCount: Int) async throws {
         let data = try fixtureData(pageCount: pageCount)
         let (metrics, references) = try await measureReader(data: data, pageCount: pageCount)
         let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-        while !references.areReleased, ContinuousClock.now < deadline {
+        while !references.appOwnersAreReleased, ContinuousClock.now < deadline {
             drainNativeCallbacks()
             await Task.yield()
         }
@@ -33,7 +71,9 @@ struct PDFReaderPerformanceTests {
         result["sourceLabel"] = ProcessInfo.processInfo.environment["SCHOLIUM_PDF_PERFORMANCE_LABEL"] ?? "current"
         let json = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
         print("PDF_READER_PERFORMANCE " + String(decoding: json, as: UTF8.self))
-        #expect(references.areReleased, "Reader teardown must release the task-owned native resources.")
+        // Async PDFKit proxy/evaluation lifetimes are diagnostic only. The
+        // synchronous test above owns the complete native deallocation claim.
+        #expect(references.appOwnersAreReleased, "Reader teardown must release its app and window owners.")
     }
 
     private func measureReader(data: Data, pageCount: Int) async throws -> ([String: Any], ReleasedReferences) {
@@ -49,7 +89,7 @@ struct PDFReaderPerformanceTests {
         while reader.document == nil || reader.isLoading, reader.error == nil, ContinuousClock.now < deadline {
             await Task.yield()
         }
-        try #require(reader.document != nil && !reader.isLoading && reader.error == nil)
+        guard reader.document != nil, !reader.isLoading, reader.error == nil else { throw CocoaError(.fileReadCorruptFile) }
         let modelReadyMS = milliseconds(since: modelStart)
         references.document = reader.document
 
@@ -92,7 +132,7 @@ struct PDFReaderPerformanceTests {
         }
         let applyLayoutMS = milliseconds(since: applyStart)
         references.tools = view.floatingTools
-        try #require(view.document === reader.document && reader.pageCount == pageCount)
+        guard view.document === reader.document, reader.pageCount == pageCount else { throw CocoaError(.fileReadCorruptFile) }
         // Freeze PDFKit's auto-fit after the initial layout proxy. Repeated
         // callbacks compare a stable viewport rather than deferred auto-fit.
         autoreleasepool {
@@ -100,12 +140,17 @@ struct PDFReaderPerformanceTests {
             reader.zoom(1)
         }
         try await reader.flushPersistence()
-        let clip = try #require(view.documentView?.enclosingScrollView?.contentView)
+        guard let clip = view.documentView?.enclosingScrollView?.contentView else { throw CocoaError(.fileReadCorruptFile) }
         let initialPage = reader.pageNumber
         let initialOrigin = clip.bounds.origin
         let initialScale = view.scaleFactor
-        let selection = try #require(
-            autoreleasepool { reader.document?.findString("scholium-early-needle", fromSelection: nil, withOptions: [.caseInsensitive]) })
+        guard
+            let selection = autoreleasepool(invoking: {
+                reader.document?.findString("scholium-early-needle", fromSelection: nil, withOptions: [.caseInsensitive])
+            })
+        else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
         autoreleasepool {
             view.setCurrentSelection(selection, animate: false)
             reader.selectionDidChange()
@@ -180,7 +225,8 @@ struct PDFReaderPerformanceTests {
         let paneOriginDeltaY = clip.bounds.origin.y - retainedOrigin.y
         #expect(await fixture.operations.loadCount == 1)
         #expect(reader.pageNumber == 3)
-        #expect(view.document === reader.document)
+        let retainsDocument = view.document === reader.document
+        #expect(retainsDocument)
         #expect(abs(clip.bounds.origin.x - retainedOrigin.x) < 0.5)
         #expect(abs(clip.bounds.origin.y - retainedOrigin.y) < 0.5)
         #expect(view.currentSelection?.string == selection.string)
@@ -217,19 +263,22 @@ struct PDFReaderPerformanceTests {
                 searches.append([
                     "case": backwards ? "missing-backward-nil-selection" : "missing-forward-nil-selection", "ms": milliseconds(since: searchStart),
                 ])
-                #expect(reader.searchStatus != nil && view.currentSelection == nil)
+                let hasNoSelection = view.currentSelection == nil
+                #expect(reader.searchStatus != nil && hasNoSelection)
             }
             for backwards in [false, true] {
                 let startQuery = backwards ? "scholium-early-needle" : "scholium-late-needle"
                 let query = backwards ? "scholium-late-needle" : "scholium-early-needle"
-                let startingSelection = try #require(reader.document?.findString(startQuery, fromSelection: nil, withOptions: [.caseInsensitive]))
+                guard let startingSelection = reader.document?.findString(startQuery, fromSelection: nil, withOptions: [.caseInsensitive]) else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
                 view.setCurrentSelection(startingSelection, animate: false)
                 reader.searchQuery = query
                 let searchStart = ContinuousClock.now
                 reader.find(backwards: backwards)
                 searches.append(["case": backwards ? "backward-wrap" : "forward-wrap", "ms": milliseconds(since: searchStart)])
                 #expect(view.currentSelection?.string == query && reader.searchStatus == nil)
-                let resultPage = try #require(view.currentSelection?.pages.first)
+                guard let resultPage = view.currentSelection?.pages.first else { throw CocoaError(.fileReadCorruptFile) }
                 #expect(reader.document?.index(for: resultPage) == (backwards ? pageCount - 1 : 0))
             }
         }
@@ -317,8 +366,8 @@ struct PDFReaderPerformanceTests {
         weak var tools: PDFReaderFloatingToolsView?
         weak var toolbar: PDFReaderToolbarController?
         weak var window: NSWindow?
-        var areReleased: Bool {
-            reader == nil && document == nil && view == nil && host == nil && tools == nil && toolbar == nil && window == nil
+        var appOwnersAreReleased: Bool {
+            reader == nil && host == nil && toolbar == nil && window == nil
         }
     }
 

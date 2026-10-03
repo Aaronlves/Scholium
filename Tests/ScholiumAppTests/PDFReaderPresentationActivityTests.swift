@@ -259,9 +259,12 @@ struct PDFReaderPresentationActivityTests {
                 let record = PortableAttachmentRecord(
                     id: id, vaultID: nil,
                     location: .triptychRelative(try AttachmentRelativePath("attachments/files/\(id.uuidString)/page-focus.pdf")))
-                return (context.target.noteID, PDFReaderSnapshot(
-                    record: record, data: data,
-                    revision: PDFReaderRevision(fingerprint: DocumentFingerprint(data: data), device: 1, inode: 1, parentDevice: 1, parentInode: 1)))
+                return (
+                    context.target.noteID,
+                    PDFReaderSnapshot(
+                        record: record, data: data,
+                        revision: PDFReaderRevision(fingerprint: DocumentFingerprint(data: data), device: 1, inode: 1, parentDevice: 1, parentInode: 1))
+                )
             }
             operations = ControlledPDFReaderOperations(notes: Dictionary(uniqueKeysWithValues: snapshots))
             reader = PDFReaderController(windowID: UUID(), setBinding: { _, _, _ in }, reportIssue: { _ in nil })

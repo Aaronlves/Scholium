@@ -636,13 +636,15 @@ final class PDFReaderController: ObservableObject {
         session.position = PDFReaderReadingState(
             pageIndex: pageIndex, pointX: min(max(point.x, box.minX), box.maxX), pointY: min(max(point.y, box.minY), box.maxY),
             scaleFactor: view.scaleFactor, autoScales: view.autoScales)
-        pageNumber = pageIndex + 1
+        let number = pageIndex + 1
+        if pageNumber != number { pageNumber = number }
     }
 
     func selectionDidChange() {
-        hasSelection =
+        let selected =
             pdfView?.document === document
             && pdfView?.currentSelection?.string?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        if hasSelection != selected { hasSelection = selected }
     }
 
     func goToPage(_ number: Int) {
@@ -673,9 +675,11 @@ final class PDFReaderController: ObservableObject {
             return
         }
         let options: NSString.CompareOptions = backwards ? [.caseInsensitive, .backwards] : [.caseInsensitive]
-        let result =
-            document.findString(searchQuery, fromSelection: view.currentSelection, withOptions: options)
-            ?? document.findString(searchQuery, fromSelection: nil, withOptions: options)
+        let startingSelection = view.currentSelection
+        let first = document.findString(searchQuery, fromSelection: startingSelection, withOptions: options)
+        // A nil selection already searches from the document's beginning/end.
+        // Only an existing selection can leave an unsearched range to wrap.
+        let result = first ?? (startingSelection == nil ? nil : document.findString(searchQuery, fromSelection: nil, withOptions: options))
         if let result {
             view.setCurrentSelection(result, animate: false)
             view.go(to: result)

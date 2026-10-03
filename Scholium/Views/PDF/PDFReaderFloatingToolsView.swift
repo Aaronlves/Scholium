@@ -13,8 +13,6 @@ final class PDFReaderFloatingToolsView: NSGlassEffectView {
     private let choices: [(tool: PDFReaderController.Tool, button: NSButton)]
     private let zoom: PDFReaderNativeMenuButton
     private let symbols = NSImage.SymbolConfiguration(textStyle: .title3, scale: .medium)
-    private let selectedSymbols = NSImage.SymbolConfiguration(
-        pointSize: NSFont.preferredFont(forTextStyle: .title3).pointSize, weight: .semibold, scale: .medium)
     private var isInvalidated = false
     private let idleDelay: Duration
     private var idleTask: Task<Void, Never>?
@@ -62,6 +60,11 @@ final class PDFReaderFloatingToolsView: NSGlassEffectView {
             button.tag = index
             button.setButtonType(.pushOnPushOff)
             button.isBordered = false
+            // Suppress persistent state drawing while retaining native transient
+            // highlights. The toggle's accessibility value is projected below.
+            (button.cell as? NSButtonCell)?.showsStateBy = []
+            button.setAccessibilityRole(.button)
+            button.setAccessibilitySubrole(.toggle)
             button.image = ScholiumNativeToolbarPresentation.symbol(named: symbol)
             button.symbolConfiguration = symbols
             button.imagePosition = .imageOnly
@@ -179,10 +182,11 @@ final class PDFReaderFloatingToolsView: NSGlassEffectView {
             setControlsVisible(true, animated: false)
         }
         for choice in choices {
+            let selected = controller.tool == choice.tool
             choice.button.isEnabled = canPresent() && controller.canSelectTool(choice.tool)
-            choice.button.state = controller.tool == choice.tool ? .on : .off
-            choice.button.contentTintColor = choice.button.state == .on ? .controlAccentColor : .labelColor
-            choice.button.symbolConfiguration = choice.button.state == .on ? selectedSymbols : symbols
+            choice.button.state = selected ? .on : .off
+            choice.button.contentTintColor = selected ? .controlAccentColor : .labelColor
+            choice.button.setAccessibilityValue(NSNumber(value: selected))
         }
         zoom.update(controller: controller)
         refreshVisibility()

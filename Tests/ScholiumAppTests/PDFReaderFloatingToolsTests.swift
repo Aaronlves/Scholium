@@ -256,11 +256,26 @@ struct PDFReaderFloatingToolsTests {
         let select = try button("select", in: tools)
         let highlight = try button("highlight", in: tools)
         let comment = try button("comment", in: tools)
+        let sharedSymbols = try #require(select.symbolConfiguration)
+        let nativeToggle = NSButton()
+        nativeToggle.setButtonType(.pushOnPushOff)
+        let nativeToggleCell = try #require(nativeToggle.cell as? NSButtonCell)
         for button in [select, highlight, comment] {
             #expect(button.image != nil && button.symbolConfiguration != nil)
-            #expect(!button.isBordered)
+            #expect(!button.isBordered && button.bezelColor == nil && button.alternateImage == nil)
+            #expect(button.symbolConfiguration == sharedSymbols)
+            let cell = try #require(button.cell as? NSButtonCell)
+            #expect(cell.showsStateBy.isEmpty)
+            #expect(cell.highlightsBy == nativeToggleCell.highlightsBy)
         }
+        #expect(select.state == .on && highlight.state == .off && comment.state == .off)
+        #expect(select.contentTintColor == .controlAccentColor && highlight.contentTintColor == .labelColor && comment.contentTintColor == .labelColor)
+        try assertAccessibleToolSelection(select, selected: true)
+        try assertAccessibleToolSelection(highlight, selected: false)
+        try assertAccessibleToolSelection(comment, selected: false)
         let zoom = try #require(findButton("scholium.pdf.zoom", in: tools))
+        #expect(!zoom.isBordered && zoom.bezelColor == nil)
+        #expect(zoom.contentTintColor == highlight.contentTintColor && zoom.contentTintColor == comment.contentTintColor)
         for button in [select, highlight, comment, zoom] {
             let host = try #require(window.contentView)
             let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: host.superview)
@@ -272,6 +287,15 @@ struct PDFReaderFloatingToolsTests {
         let position = view.currentDestination
         highlight.performClick(nil)
         #expect(fixture.reader.tool == .highlight && highlight.state == .on && select.state == .off)
+        #expect(highlight.contentTintColor == .controlAccentColor && select.contentTintColor == .labelColor && comment.contentTintColor == .labelColor)
+        #expect(highlight.symbolConfiguration == sharedSymbols && select.symbolConfiguration == sharedSymbols)
+        try assertAccessibleToolSelection(highlight, selected: true)
+        try assertAccessibleToolSelection(select, selected: false)
+        try assertAccessibleToolSelection(comment, selected: false)
+        highlight.performClick(nil)
+        #expect(fixture.reader.tool == .highlight && highlight.state == .on)
+        #expect(highlight.contentTintColor == .controlAccentColor)
+        try assertAccessibleToolSelection(highlight, selected: true)
         #expect(view.document === document)
         try assertSelection(view.currentSelection, matches: selection)
         #expect(view.currentDestination?.page === position?.page)
@@ -279,9 +303,12 @@ struct PDFReaderFloatingToolsTests {
         let departure = fixture.reader.beginDeparture()
         view.apply(fixture.reader)
         #expect(!highlight.isEnabled && !comment.isEnabled && !select.isEnabled)
+        #expect(highlight.state == .on && highlight.contentTintColor == .controlAccentColor)
+        try assertAccessibleToolSelection(highlight, selected: true)
         let staleAction = try #require(comment.action)
         #expect(NSApplication.shared.sendAction(staleAction, to: comment.target, from: comment))
         #expect(fixture.reader.tool == .highlight)
+        try assertAccessibleToolSelection(comment, selected: false)
         fixture.reader.endDeparture(departure)
         view.isHidden = true
         #expect(NSApplication.shared.sendAction(staleAction, to: comment.target, from: comment))
@@ -290,6 +317,12 @@ struct PDFReaderFloatingToolsTests {
         view.apply(fixture.reader)
         comment.performClick(nil)
         #expect(fixture.reader.tool == .comment && fixture.reader.annotationDraft == nil)
+        #expect(comment.state == .on && highlight.state == .off && select.state == .off)
+        #expect(comment.contentTintColor == .controlAccentColor && highlight.contentTintColor == .labelColor && select.contentTintColor == .labelColor)
+        #expect(comment.symbolConfiguration == sharedSymbols)
+        try assertAccessibleToolSelection(comment, selected: true)
+        try assertAccessibleToolSelection(highlight, selected: false)
+        try assertAccessibleToolSelection(select, selected: false)
         view.invalidate()
         #expect(comment.target == nil && comment.action == nil)
         #expect(NSApplication.shared.sendAction(staleAction, to: tools, from: comment))
@@ -298,6 +331,13 @@ struct PDFReaderFloatingToolsTests {
 
     private func button(_ tool: String, in view: NSView) throws -> NSButton {
         try #require(findButton("scholium.pdf.tool.\(tool)", in: view), "Missing native tool \(tool)")
+    }
+
+    private func assertAccessibleToolSelection(_ button: NSButton, selected: Bool) throws {
+        #expect(button.accessibilityRole() == .button)
+        #expect(button.accessibilitySubrole() == .toggle)
+        let value = try #require(button.accessibilityValue() as? NSNumber)
+        #expect(value.boolValue == selected)
     }
 
     private func assertAccessibilityProjection(_ tools: PDFReaderFloatingToolsView, hidden: Bool) throws {
