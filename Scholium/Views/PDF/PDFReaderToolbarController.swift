@@ -4,7 +4,7 @@ import Combine
 /// Projects one reader session into actual native toolbar items. AppKit owns
 /// their measuring, grouping and interaction; the controller admits commands.
 @MainActor
-final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMenuDelegate, NSPopoverDelegate {
+final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMenuDelegate, NSPopoverDelegate, NSTextFieldDelegate {
     enum Presentation { case actions, expanded, compact }
     static let navigationID = ScholiumWorkspaceToolbarController.Item.readerControls
     static let searchID = NSToolbarItem.Identifier("scholium.pdf.search.toggle")
@@ -25,6 +25,7 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
     private weak var toolbar: NSToolbar?
     private weak var readerView: NSView?
     private var observation: AnyCancellable?
+    private var pageFocusObservation: NSObjectProtocol?
     private var isInvalidated = false
     private let presentationDidChange: @MainActor () -> Void
     private(set) var presentation = Presentation.actions
@@ -53,11 +54,17 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
     private var searchDocument: ObjectIdentifier?
     private weak var responderBeforeSearch: NSResponder?
     private var restoresSearchFocus = false
+    private let presentationActivity: PDFReaderPresentationActivity
+    private var overflowToken: PDFReaderPresentationActivity.Token?
+    private var searchToken: PDFReaderPresentationActivity.Token?
+    private var pageFocusToken: PDFReaderPresentationActivity.Token?
+    private var pageFocusRevoked = false
 
     var itemIdentifiers: [NSToolbarItem.Identifier] { Self.itemIdentifiers(for: presentation) }
 
     init(controller: PDFReaderController, presentationDidChange: @escaping @MainActor () -> Void) {
         self.controller = controller
+        presentationActivity = controller.presentationActivity
         self.presentationDidChange = presentationDidChange
         super.init()
         configure(previous, symbol: "chevron.left", label: "Previous PDF Page", action: #selector(previousPage))
@@ -82,6 +89,7 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         page.setAccessibilityIdentifier("scholium.pdf.page")
         page.target = self
         page.action = #selector(goToPage)
+        page.delegate = self
         pageWidth = page.widthAnchor.constraint(equalToConstant: ScholiumMetrics.PDFReader.toolsControlSize)
         pageWidth.isActive = true
         count.font = page.font
@@ -135,6 +143,19 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
 
     func install(in window: NSWindow, toolbar: NSToolbar, readerView: NSView?) {
         guard !isInvalidated else { return }
+        if self.window !== window || self.toolbar !== toolbar {
+            removePageFocusObservation()
+            endPageFocus()
+            pageFocusRevoked = hasPageFocus
+            pageFocusObservation = NotificationCenter.default.addObserver(
+                forName: NSWindow.didUpdateNotification, object: window, queue: .main
+            ) { [weak self] notification in
+                MainActor.assumeIsolated {
+                    guard let self, self.window === notification.object as? NSWindow else { return }
+                    self.synchronizePageFocus()
+                }
+            }
+        }
         self.window = window
         self.toolbar = toolbar
         self.readerView = readerView
@@ -150,6 +171,78 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
 
     func menuNeedsUpdate(_ menu: NSMenu) { refresh() }
 
+    func menuWillOpen(_ menu: NSMenu) {
+        guard !isInvalidated, menu === overflow, overflowToken == nil else { return }
+        overflowToken = presentationActivity.begin()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        guard menu === overflow else { return }
+        endOverflowPresentation()
+    }
+
+    private func endOverflowPresentation() {
+        if let token = overflowToken {
+            overflowToken = nil
+            presentationActivity.end(token)
+        }
+    }
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        guard notification.object as? NSTextField === page else { return }
+        synchronizePageFocus()
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard notification.object as? NSTextField === page else { return }
+        endPageFocus()
+    }
+
+    private var hasPageFocus: Bool {
+        guard let window, page.window === window, !page.isHiddenOrHasHiddenAncestor,
+            let editor = page.currentEditor()
+        else { return false }
+        return window.firstResponder === editor
+    }
+
+    private func synchronizePageFocus() {
+        guard !isInvalidated, let controller else { return }
+        guard hasPageFocus else {
+            pageFocusRevoked = false
+            endPageFocus()
+            return
+        }
+        if !controller.isVisible || !hasToolbarBinding || projectedContext != controller.context
+            || projectedDocument != controller.document.map(ObjectIdentifier.init)
+        {
+            // A surviving field editor belongs to the previous presentation
+            // after hide/replacement. It must leave before a fresh focus pins
+            // the new reader; a late window update cannot revive that lifetime.
+            pageFocusRevoked = true
+            endPageFocus()
+            return
+        }
+        // Temporary command admission barriers pause this pin without revoking
+        // the same native editor's presentation lifetime when they are lifted.
+        guard allowsCommands, controller.document != nil, !pageFocusRevoked else {
+            endPageFocus()
+            return
+        }
+        if pageFocusToken == nil { pageFocusToken = presentationActivity.begin() }
+    }
+
+    private func endPageFocus() {
+        if let token = pageFocusToken {
+            pageFocusToken = nil
+            presentationActivity.end(token)
+        }
+    }
+
+    private func removePageFocusObservation() {
+        if let pageFocusObservation { NotificationCenter.default.removeObserver(pageFocusObservation) }
+        pageFocusObservation = nil
+    }
+
     func refresh() {
         guard !isInvalidated, let controller else { return }
         let available = allowsCommands
@@ -159,6 +252,9 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         if !available || changedDocument {
             actionMenu.cancelTracking()
             overflow.cancelTracking()
+            endOverflowPresentation()
+            if hasPageFocus, changedDocument || !controller.isVisible || !hasToolbarBinding { pageFocusRevoked = true }
+            endPageFocus()
         }
         projectedContext = controller.context
         projectedDocument = documentID
@@ -209,6 +305,7 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
             }
         }
         if changed { presentationDidChange() }
+        synchronizePageFocus()
     }
 
     func invalidate() {
@@ -216,10 +313,13 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         isInvalidated = true
         observation?.cancel()
         observation = nil
+        removePageFocusObservation()
         closeSearch()
         searchPopover.delegate = nil
         actionMenu.invalidate()
         overflow.cancelTracking()
+        endOverflowPresentation()
+        endPageFocus()
         overflow.delegate = nil
         for item in overflow.items {
             item.target = nil
@@ -235,6 +335,7 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         }
         page.target = nil
         page.action = nil
+        page.delegate = nil
         page.isEnabled = false
         controller = nil
         window = nil
@@ -242,8 +343,10 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
         readerView = nil
     }
 
+    private var hasToolbarBinding: Bool { toolbar != nil && window?.toolbar === toolbar }
+
     private var allowsCommands: Bool {
-        !isInvalidated && toolbar != nil && window?.toolbar === toolbar
+        !isInvalidated && hasToolbarBinding
             && controller?.isVisible == true && controller?.canUseReaderCommands == true
     }
 
@@ -308,13 +411,27 @@ final class PDFReaderToolbarController: NSObject, NSToolbarItemValidation, NSMen
     private func closeSearch(restoringFocus: Bool = false) {
         restoresSearchFocus = restoringFocus
         searchPopover.close()
+        endSearchPresentation()
         searchPopover.contentViewController = nil
         searchController = nil
         searchContext = nil
         searchDocument = nil
     }
 
+    func popoverWillShow(_ notification: Notification) {
+        guard !isInvalidated, notification.object as? NSPopover === searchPopover, searchToken == nil else { return }
+        searchToken = presentationActivity.begin()
+    }
+
+    private func endSearchPresentation() {
+        if let token = searchToken {
+            searchToken = nil
+            presentationActivity.end(token)
+        }
+    }
+
     func popoverDidClose(_ notification: Notification) {
+        endSearchPresentation()
         if restoresSearchFocus, !isInvalidated, let responder = responderBeforeSearch as? NSView,
             responder.window === window, !responder.isHiddenOrHasHiddenAncestor
         {
@@ -430,6 +547,20 @@ private final class PDFReaderSearchViewController: NSViewController, NSTextField
 /// sequence even when the system limits ordinary decorative toolbar buttons.
 @MainActor
 final class PDFReaderToolbarButton: NSButton {
+    var focusDidChange: (@MainActor (Bool) -> Void)?
     override var acceptsFirstResponder: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
     override var canBecomeKeyView: Bool { acceptsFirstResponder }
+
+    override func becomeFirstResponder() -> Bool {
+        focusDidChange?(true)
+        let accepted = super.becomeFirstResponder()
+        if !accepted { focusDidChange?(false) }
+        return accepted
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { focusDidChange?(false) }
+        return resigned
+    }
 }

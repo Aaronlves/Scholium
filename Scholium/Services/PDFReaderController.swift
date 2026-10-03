@@ -106,6 +106,7 @@ final class PDFReaderController: ObservableObject {
 
     let zotero: ZoteroBridge?
     let windowID: UUID
+    let presentationActivity = PDFReaderPresentationActivity()
     private(set) var context: PDFReaderNoteContext?
     private(set) var operations: (any PDFReaderUseCases)?
     private var session: PDFReadingSession?
@@ -1025,6 +1026,7 @@ final class PDFReaderController: ObservableObject {
     func shutdown() {
         guard !isClosed else { return }
         isClosed = true
+        presentationActivity.invalidate()
         generation &+= 1
         loadTask?.cancel()
         loadTask = nil

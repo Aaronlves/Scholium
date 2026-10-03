@@ -9,6 +9,182 @@ import Testing
 @Suite("PDF floating tools", .serialized)
 @MainActor
 struct PDFReaderFloatingToolsTests {
+    @Test("Quiet controls leave pointer and accessibility reading clear while native keyboard focus reveals them")
+    func idlePreservesKeyboardReachability() async throws {
+        let fixture = try Fixture()
+        defer { fixture.reader.shutdown() }
+        try await fixture.load()
+        let (tools, window) = makeQuietTools(fixture.reader)
+        defer {
+            tools.invalidate()
+            window.close()
+        }
+        let document = fixture.reader.document
+        let select = try button("select", in: tools)
+        let highlight = try button("highlight", in: tools)
+        try await waitForIdle(tools)
+        #expect(!tools.isHidden && tools.alphaValue == 0 && tools.isAccessibilityHidden())
+        try assertAccessibilityProjection(tools, hidden: true)
+        #expect(select.canBecomeKeyView)
+        let host = try #require(window.contentView)
+        let point = select.convert(NSPoint(x: select.bounds.midX, y: select.bounds.midY), to: host)
+        #expect(host.hitTest(point) !== select)
+        window.recalculateKeyViewLoop()
+        #expect(window.makeFirstResponder(select))
+        #expect(!tools.isIdleHidden && tools.alphaValue == 1 && !tools.isAccessibilityHidden())
+        try assertAccessibilityProjection(tools, hidden: false)
+        window.selectNextKeyView(select)
+        #expect(window.firstResponder === highlight)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(!tools.isIdleHidden)
+        window.selectPreviousKeyView(highlight)
+        #expect(window.firstResponder === select)
+        #expect(window.makeFirstResponder(nil))
+        try await waitForIdle(tools)
+        try assertAccessibilityProjection(tools, hidden: true)
+        #expect(fixture.reader.document === document && fixture.reader.tool == .select)
+        #expect(await fixture.operations.saveCount == 0)
+    }
+
+    @Test("Native presentation pins reveal synchronously and the final release resumes quiet reading")
+    func presentationPinsRevealImmediately() async throws {
+        let fixture = try Fixture()
+        defer { fixture.reader.shutdown() }
+        try await fixture.load()
+        let (tools, window) = makeQuietTools(fixture.reader)
+        defer {
+            tools.invalidate()
+            window.close()
+        }
+        try await waitForIdle(tools)
+        let first = try #require(fixture.reader.presentationActivity.begin())
+        #expect(!tools.isIdleHidden && tools.alphaValue == 1 && !tools.isAccessibilityHidden())
+        try assertAccessibilityProjection(tools, hidden: false)
+        let second = try #require(fixture.reader.presentationActivity.begin())
+        fixture.reader.presentationActivity.end(first)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(!tools.isIdleHidden)
+        fixture.reader.presentationActivity.end(second)
+        try await waitForIdle(tools)
+        #expect(tools.isAccessibilityHidden())
+        try assertAccessibilityProjection(tools, hidden: true)
+    }
+
+    @Test("A stationary click through quiet controls remains addressed to paper until pointer movement")
+    func idleClickCannotActivateCoveredTool() async throws {
+        let fixture = try Fixture()
+        defer { fixture.reader.shutdown() }
+        try await fixture.load()
+        let view = PDFReaderNativePDFView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))
+        let window = makeWindow(view)
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        let acceptsMovement = window.acceptsMouseMovedEvents
+        defer {
+            view.invalidate()
+            window.close()
+        }
+        view.apply(fixture.reader)
+        window.contentView?.layoutSubtreeIfNeeded()
+        let tools = try #require(view.floatingTools)
+        let comment = try button("comment", in: tools)
+        let host = try #require(window.contentView)
+        let local = NSPoint(x: comment.bounds.midX, y: comment.bounds.midY)
+        let point = comment.convert(local, to: nil)
+        let hostPoint = comment.convert(local, to: host)
+        let document = view.document
+        #expect(
+            view.trackingAreas.contains {
+                ($0.owner as? PDFReaderNativePDFView) === view && $0.options.contains([.mouseMoved, .inVisibleRect, .activeInKeyWindow])
+            })
+        try await waitForIdle(tools)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try #require(
+                NSEvent.mouseEvent(
+                    with: type, location: point, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+            #expect(view.route(event) === event)
+            #expect(tools.isIdleHidden && tools.isAccessibilityHidden())
+            #expect(host.hitTest(hostPoint) !== comment)
+        }
+        let movement = try #require(
+            NSEvent.mouseEvent(
+                with: .mouseMoved, location: point, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 0, pressure: 0))
+        view.mouseMoved(with: movement)
+        #expect(!tools.isIdleHidden && !tools.isAccessibilityHidden())
+        #expect(window.acceptsMouseMovedEvents == acceptsMovement)
+        #expect(host.hitTest(hostPoint) === comment)
+        #expect(view.document === document && fixture.reader.tool == .select && fixture.reader.annotationDraft == nil)
+        #expect(await fixture.operations.saveCount == 0)
+    }
+
+    @Test("Comment drafts and persistent failure retain controls until the existing state owner clears them")
+    func draftsAndFailurePinControls() async throws {
+        let fixture = try Fixture()
+        defer { fixture.reader.shutdown() }
+        try await fixture.load()
+        let (tools, window) = makeQuietTools(fixture.reader)
+        defer {
+            tools.invalidate()
+            window.close()
+        }
+        fixture.reader.annotationDraft = PDFReaderAnnotationDraft(
+            sessionID: UUID(), annotation: nil, pageIndex: 0, point: .zero, text: "Synthetic draft")
+        tools.update(fixture.reader)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(!tools.isIdleHidden)
+        fixture.reader.annotationDraft = nil
+        tools.update(fixture.reader)
+        try await waitForIdle(tools)
+        fixture.reader.presentFailure(PDFReaderError.changed)
+        tools.update(fixture.reader)
+        #expect(!tools.isIdleHidden)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(!tools.isIdleHidden && fixture.reader.error != nil)
+    }
+
+    @Test("Retargeting, Reduce Motion and teardown revoke old presentation and animation lifetimes")
+    func visibilityInterruptionAndRetargeting() async throws {
+        let first = try Fixture()
+        let second = try Fixture()
+        defer {
+            first.reader.shutdown()
+            second.reader.shutdown()
+        }
+        try await first.load()
+        try await second.load()
+        let (tools, window) = makeQuietTools(first.reader)
+        defer {
+            tools.invalidate()
+            window.close()
+        }
+        tools.updatePresentation(reduceMotion: false)
+        tools.update(second.reader)
+        try await waitForIdle(tools)
+        let oldPin = try #require(first.reader.presentationActivity.begin())
+        #expect(tools.isIdleHidden)
+        let currentPin = try #require(second.reader.presentationActivity.begin())
+        #expect(!tools.isIdleHidden)
+        tools.updatePresentation(reduceMotion: true)
+        #expect(tools.layer?.animation(forKey: PDFReaderFloatingToolsView.visibilityAnimationKey) == nil)
+        #expect(tools.alphaValue == 1)
+        second.reader.presentationActivity.end(currentPin)
+        try await waitForIdle(tools)
+        #expect(tools.layer?.animation(forKey: PDFReaderFloatingToolsView.visibilityAnimationKey) == nil)
+        tools.noteActivity()
+        #expect(!tools.isIdleHidden && tools.alphaValue == 1)
+        tools.invalidate()
+        first.reader.presentationActivity.end(oldPin)
+        let latePin = try #require(second.reader.presentationActivity.begin())
+        tools.noteActivity()
+        tools.update(second.reader)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(tools.isHidden && tools.isAccessibilityHidden())
+        try assertAccessibilityProjection(tools, hidden: true)
+        #expect(tools.layer?.animation(forKey: PDFReaderFloatingToolsView.visibilityAnimationKey) == nil)
+        second.reader.presentationActivity.end(latePin)
+    }
+
     @Test("The native capsule fits the pane and final-page text clears it without changing page spacing", arguments: [280.0, 500.0])
     func pageEndClearance(width: Double) async throws {
         let fixture = try Fixture()
@@ -124,6 +300,47 @@ struct PDFReaderFloatingToolsTests {
         try #require(findButton("scholium.pdf.tool.\(tool)", in: view), "Missing native tool \(tool)")
     }
 
+    private func assertAccessibilityProjection(_ tools: PDFReaderFloatingToolsView, hidden: Bool) throws {
+        let group = try #require(tools.contentView as? NSStackView)
+        #expect(group.accessibilityIdentifier() == "scholium.pdf.tools")
+        #expect(group.isAccessibilityHidden() == hidden)
+        let controls = group.views.compactMap { $0 as? NSButton }
+        #expect(controls.count == 4)
+        for control in controls {
+            #expect(control.isAccessibilityHidden() == hidden)
+            #expect(!control.isHidden)
+        }
+        let projection = tools.accessibilityChildren() ?? []
+        if hidden {
+            #expect(projection.isEmpty)
+        } else {
+            #expect(projection.count == 1 && projection.first as? NSStackView === group)
+        }
+    }
+
+    private func makeQuietTools(_ reader: PDFReaderController) -> (PDFReaderFloatingToolsView, NSWindow) {
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))
+        let tools = PDFReaderFloatingToolsView(controller: reader, idleDelay: .milliseconds(40), canPresent: { true })
+        let size = tools.intrinsicContentSize
+        tools.frame = NSRect(x: 80, y: 12, width: size.width, height: size.height)
+        host.addSubview(tools)
+        let window = makeWindow(host)
+        // An unshown native window keeps the physical pointer outside this
+        // synthetic control, without moving the user's pointer or focus.
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        host.layoutSubtreeIfNeeded()
+        tools.update(reader)
+        return (tools, window)
+    }
+
+    private func waitForIdle(_ tools: PDFReaderFloatingToolsView) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+        while !tools.isIdleHidden, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require(tools.isIdleHidden)
+    }
+
     @Test("Zero-sized insertion, native resizing, hiding and window removal refresh tool admission")
     func presentationLifecycle() async throws {
         let fixture = try Fixture()
@@ -133,6 +350,7 @@ struct PDFReaderFloatingToolsTests {
         let host = PDFReaderNativeHostView(pdfView: view)
         view.apply(fixture.reader)
         let tools = try #require(view.floatingTools)
+        try assertAccessibilityProjection(tools, hidden: true)
         let highlight = try button("highlight", in: tools)
         let action = try #require(highlight.action)
         #expect(!highlight.isEnabled)
@@ -144,19 +362,24 @@ struct PDFReaderFloatingToolsTests {
         }
         view.setFrameSize(host.bounds.size)
         #expect(highlight.isEnabled)
+        try assertAccessibilityProjection(tools, hidden: false)
         view.isHidden = true
         #expect(!highlight.isEnabled)
+        try assertAccessibilityProjection(tools, hidden: true)
         #expect(NSApplication.shared.sendAction(action, to: tools, from: highlight))
         #expect(fixture.reader.tool == .select)
         view.isHidden = false
         #expect(highlight.isEnabled)
+        try assertAccessibilityProjection(tools, hidden: false)
         view.removeFromSuperview()
         #expect(!highlight.isEnabled)
         #expect(tools.isHidden)
+        try assertAccessibilityProjection(tools, hidden: true)
         #expect(NSApplication.shared.sendAction(action, to: tools, from: highlight))
         #expect(fixture.reader.tool == .select)
         host.addSubview(view)
         #expect(highlight.isEnabled)
+        try assertAccessibilityProjection(tools, hidden: false)
         highlight.performClick(nil)
         #expect(fixture.reader.tool == .highlight && highlight.state == .on)
     }

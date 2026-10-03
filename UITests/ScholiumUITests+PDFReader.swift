@@ -6,6 +6,205 @@ import PDFKit
 @preconcurrency import XCTest
 
 extension ScholiumUITests {
+    /// Quiet reading, native tracking and field/draft focus share one visible
+    /// tools lifetime without changing the paper's geometry or saved bytes.
+    @MainActor
+    func testPDFReaderFloatingToolsReadingActivityAndInterruption() throws {
+        let originalURL = testDirectory.appendingPathComponent("Synthetic Reading Activity.pdf")
+        try makeSearchableReaderPDF(at: originalURL)
+        let original = try Data(contentsOf: originalURL)
+        let main = app.windows.firstMatch
+        waitForCurrentDocumentSurface()
+        app.typeKey("p", modifierFlags: [.control, .command])
+        let pane = main.descendants(matching: .any)["scholium.pdf.pane"]
+        XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        pane.buttons["scholium.pdf.attach"].click()
+        app.buttons["scholium.pdf.chooseFile"].click()
+        chooseReaderPDFInNativePanel(originalURL)
+        let page = main.textFields["scholium.pdf.page"]
+        XCTAssertTrue(page.waitForExistence(timeout: 15))
+        let tools = pane.descendants(matching: .any)["scholium.pdf.tools"]
+        let select = pane.descendants(matching: .any)["scholium.pdf.tool.select"]
+        let paper = pane.scrollViews.firstMatch
+        XCTAssertTrue(paper.waitForExistence(timeout: 5))
+        let paperFrame = paper.frame
+        let noteActions = pdfToolbarButton("Note Actions", in: main)
+
+        // A paper click gives the PDF native focus; that alone must not pin
+        // the tools forever. Moving outside leaves a genuinely quiet reader.
+        paper.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).click()
+        noteActions.hover()
+        XCTAssertTrue(waitUntil(timeout: 8) { !tools.exists })
+        app.typeKey(.tab, modifierFlags: [])
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                select.exists && NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: select)
+            }, "Tab from quiet paper reveals and reaches the native Select control.")
+        paper.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).click()
+        noteActions.hover()
+        XCTAssertTrue(waitUntil(timeout: 8) { !tools.exists })
+        XCTAssertEqual(paper.frame, paperFrame, "Idle tools preserve their scroll clearance.")
+        XCTAssertTrue(main.toolbars.firstMatch.buttons["Search PDF"].isHittable)
+        attachReaderScreenshot("PDF motion — quiet paper with persistent native upper controls", window: main)
+        pane.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.25)).hover()
+        XCTAssertTrue(select.waitForExistence(timeout: 5) && select.isEnabled)
+        select.hover()
+        let highlight = pane.descendants(matching: .any)["scholium.pdf.tool.highlight"]
+        highlight.click()
+        XCTAssertEqual((highlight.value as? NSNumber)?.intValue, 1, "Pointer reveal reaches a working native tool.")
+        select.click()
+        XCTAssertEqual((select.value as? NSNumber)?.intValue, 1)
+        XCTAssertFalse(waitUntil(timeout: 3.3) { !tools.exists }, "Hover retains visible tools past their idle deadline.")
+
+        // The native field editor retains an unsubmitted page draft while
+        // focus keeps the tools visible even with the pointer elsewhere.
+        typeCommittedText("Unsubmitted page draft", into: page, in: app)
+        noteActions.hover()
+        XCTAssertFalse(waitUntil(timeout: 3.3) { !tools.exists }, "Focused page input pins the tools.")
+        XCTAssertEqual(page.value as? String, "Unsubmitted page draft")
+        page.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { page.value as? String == "1" })
+
+        pane.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.25)).hover()
+        openReaderMenu("PDF Zoom")
+        noteActions.hover()
+        XCTAssertFalse(waitUntil(timeout: 3.3) { !tools.exists }, "Native menu tracking pins tools, including outside hover.")
+        app.typeKey(.escape, modifierFlags: [])
+        chooseReaderMenuItem("Add PDF Comment…", menu: "PDF Actions", in: pane)
+        let draft = readerCommentEditor()
+        XCTAssertTrue(draft.waitForExistence(timeout: 5))
+        typeCommittedText("Unapplied activity draft 阅读", into: draft, in: app)
+        noteActions.hover()
+        XCTAssertFalse(waitUntil(timeout: 3.3) { !tools.exists }, "An annotation draft pins the controls.")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !draft.exists })
+
+        // Repeated native command toggles cancel old idle work and reconnect
+        // only to the current pane, rather than letting a late hide win.
+        for _ in 0..<3 {
+            app.typeKey("p", modifierFlags: [.control, .command])
+            XCTAssertTrue(waitUntil(timeout: 5) { !pane.exists })
+            app.typeKey("p", modifierFlags: [.control, .command])
+            XCTAssertTrue(pane.waitForExistence(timeout: 5))
+            pane.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.25)).hover()
+            XCTAssertTrue(select.waitForExistence(timeout: 5) && select.isEnabled)
+            select.hover()
+        }
+        noteActions.hover()
+        XCTAssertTrue(waitUntil(timeout: 8) { !tools.exists })
+        page.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { tools.exists }, "Keyboard focus reveals controls after quiet reading.")
+        XCTAssertEqual(page.value as? String, "1")
+        XCTAssertEqual(paper.frame, paperFrame)
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let managed = noteURL.deletingLastPathComponent().appendingPathComponent(try readerPDFBinding(in: source(at: noteURL)))
+        XCTAssertEqual(try Data(contentsOf: managed), original, "Presentation creates no annotation or PDF write.")
+        XCTAssertEqual(try Data(contentsOf: originalURL), original)
+        attachReaderScreenshot("PDF motion — focus reveal after interrupted repeated toggles", window: main)
+
+        // The pane follows the selected Note equally in each Triptych slot.
+        // Cancelling a chooser on an empty peer Note changes neither its
+        // source nor the first Note's reading session/binding.
+        let navigator = main.descendants(matching: .any)["scholium.workspaceNavigator"]
+        for (slot, directory, title) in [("Topics", "02-topics", "QA Topic"), ("Works", "03-works", "QA Work")] {
+            let peerURL = triptychDirectory.appendingPathComponent("\(directory)/\(title).md")
+            let peerBytes = try Data(contentsOf: peerURL)
+            navigator.descendants(matching: .any)[slot].firstMatch.click()
+            XCTAssertTrue(main.descendants(matching: .any)["scholium.noteRow.\(title).md"].waitForExistence(timeout: 8))
+            openNote(title + ".md", expectedTitle: title, in: main)
+            XCTAssertTrue(pane.buttons["scholium.pdf.attach"].waitForExistence(timeout: 8))
+            XCTAssertFalse(page.exists)
+            pane.buttons["scholium.pdf.attach"].click()
+            XCTAssertTrue(app.buttons["scholium.pdf.chooseFile"].waitForExistence(timeout: 3))
+            main.sheets.firstMatch.buttons["Cancel"].click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !self.app.buttons["scholium.pdf.chooseFile"].exists })
+            XCTAssertEqual(try Data(contentsOf: peerURL), peerBytes)
+        }
+        navigator.descendants(matching: .any)["Analyses"].firstMatch.click()
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: main)
+        XCTAssertTrue(page.waitForExistence(timeout: 10))
+        XCTAssertEqual(page.value as? String, "1")
+        XCTAssertEqual(try Data(contentsOf: managed), original)
+        attachReaderScreenshot("PDF motion — restored bound Note after all three Triptych slots", window: main)
+    }
+
+    /// Long native form fields and a dirty footer remain usable in the compact
+    /// panel's two localizations, while closing never changes Markdown.
+    @MainActor
+    func testNoteInfoCompactLongFieldsAndDraftFooter() throws {
+        let title = "Synthetic Compact Note Information Reading Lifecycle and Long Fields 研究笔记信息完整保真"
+        let relativeDirectory = String(repeating: "Long synthetic research directory 研究/", count: 5)
+        let directory = triptychDirectory.appendingPathComponent(
+            "01-analyses/" + relativeDirectory
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let noteURL = directory.appendingPathComponent(title + ".md")
+        let summary = String(repeating: "Long authored summary with Unicode 阅读摘要 👩‍🔬 e\u{301}. ", count: 22)
+        let tags = (1...18).map { "synthetic-research-tag-\($0)-研究" }
+        let sourceText =
+            "---\nsummary: '\(summary)'\ntags: [\(tags.map { "'\($0)'" }.joined(separator: ", "))]\n"
+            + "unknown: 'preserved' # exact\n---\n\n# \(title)\n\nSynthetic body remains unchanged.\n"
+        try sourceText.write(to: noteURL, atomically: true, encoding: .utf8)
+        let original = try Data(contentsOf: noteURL)
+        for chinese in [false, true] {
+            app.terminate()
+            sessionID = UUID()
+            app = configuredApplication(
+                sessionID: sessionID, appearance: chinese ? .dark : .light, openNote: relativeDirectory + title + ".md"
+            )
+            if chinese { app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"] }
+            app.launch()
+            let main = app.windows.firstMatch
+            XCTAssertTrue(main.waitForExistence(timeout: 15))
+            XCTAssertTrue(waitForDocumentTitle(title, in: main, timeout: 20))
+            pdfToolbarButton(chinese ? "笔记操作" : "Note Actions", in: main).click()
+            let action = app.menuItems[chinese ? "笔记信息…" : "Note Info…"].firstMatch
+            XCTAssertTrue(action.waitForExistence(timeout: 3))
+            action.click()
+            let info = app.windows["scholium.noteInfo"]
+            XCTAssertTrue(info.waitForExistence(timeout: 5))
+            XCTAssertEqual(info.frame.width, 360, accuracy: 3)
+            let displayedTitle = info.staticTexts["scholium.noteInfo.title"]
+            XCTAssertEqual((displayedTitle.value as? String) ?? displayedTitle.label, title)
+            let field = info.textFields["scholium.noteInfo.summary"]
+            XCTAssertTrue(field.waitForExistence(timeout: 3))
+            XCTAssertEqual(field.value as? String, summary)
+            let tagField = info.textFields["scholium.noteInfo.tags"]
+            XCTAssertEqual(tagField.value as? String, tags.joined(separator: "\n"))
+            XCTAssertGreaterThan(field.frame.width, info.frame.width * 0.7, "Long values use the compact panel's available width.")
+            XCTAssertGreaterThan(tagField.frame.width, info.frame.width * 0.7)
+            let whereText = info.staticTexts["scholium.noteInfo.location"]
+            XCTAssertEqual((whereText.value as? String) ?? whereText.label, noteURL.path)
+            let draft = summary + "\nUnapplied final paragraph 未应用末尾。"
+            typeCommittedText(draft, into: field, in: app)
+            XCTAssertEqual(try Data(contentsOf: noteURL), original)
+            resizeProofWindow(info, toWidth: 340, height: 400)
+            XCTAssertGreaterThan(field.frame.width, info.frame.width * 0.7)
+            let reload = info.buttons[chinese ? "重新载入" : "Reload"]
+            let discard = info.buttons[chinese ? "放弃更改" : "Discard Changes"]
+            let apply = info.buttons["scholium.noteInfo.apply"]
+            let close = info.buttons[chinese ? "关闭" : "Close"]
+            for button in [reload, discard, apply, close] {
+                XCTAssertTrue(button.exists && button.isHittable, "Compact dirty footer keeps every action visible.")
+                XCTAssertTrue(info.frame.contains(button.frame), "Footer buttons remain inside the native panel.")
+            }
+            XCTAssertFalse(reload.isEnabled)
+            XCTAssertTrue(discard.isEnabled && apply.isEnabled && close.isEnabled)
+            attachReaderScreenshot("Note Info — compact long values and dirty footer, \(chinese ? "Chinese dark" : "English light")", window: info)
+            close.click()
+            let keep = info.sheets.firstMatch.buttons[chinese ? "继续编辑" : "Keep Editing"]
+            XCTAssertTrue(keep.waitForExistence(timeout: 3))
+            keep.click()
+            XCTAssertTrue(info.exists)
+            XCTAssertEqual(field.value as? String, draft)
+            discard.click()
+            XCTAssertTrue(waitUntil(timeout: 5) { field.value as? String == summary })
+            close.click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !info.exists })
+            XCTAssertEqual(try Data(contentsOf: noteURL), original)
+        }
+    }
+
     /// Page input, search keyboard/button dispatch and cancellation are one
     /// native control boundary, independent of annotation save persistence.
     @MainActor
@@ -131,6 +330,7 @@ extension ScholiumUITests {
         app.buttons["scholium.pdf.chooseFile"].click()
         chooseReaderPDFInNativePanel(originalURL)
         XCTAssertTrue(main.textFields["scholium.pdf.page"].waitForExistence(timeout: 15))
+        pane.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.25)).hover()
         XCTAssertTrue(pane.staticTexts["This PDF permits reading only."].exists)
         for tool in ["highlight", "comment"] {
             XCTAssertFalse(pane.descendants(matching: .any)["scholium.pdf.tool." + tool].isEnabled)
@@ -481,8 +681,10 @@ extension ScholiumUITests {
         XCTAssertEqual(try sourceWithoutPDFBinding(boundSource), initialSource)
         let nativePDF = pane.scrollViews.firstMatch
         XCTAssertTrue(nativePDF.waitForExistence(timeout: 5))
+        pane.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.25)).hover()
         let tools = pane.descendants(matching: .any)["scholium.pdf.tools"]
         XCTAssertTrue(tools.waitForExistence(timeout: 5))
+        tools.hover()
         XCTAssertEqual(tools.frame.midX, pane.frame.midX, accuracy: 3)
         XCTAssertLessThan(tools.frame.width, pane.frame.width)
         XCTAssertGreaterThan(tools.frame.minY, pane.frame.midY)
@@ -755,6 +957,8 @@ extension ScholiumUITests {
             ? pdfToolbarButton("PDF Actions", in: app.windows.firstMatch)
             : app.windows.firstMatch.descendants(matching: .any)[identifiers[menu]!]
         if menu == "PDF Zoom" {
+            let pane = app.windows.firstMatch.descendants(matching: .any)["scholium.pdf.pane"]
+            pane.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.25)).hover()
             XCTAssertTrue(control.waitForExistence(timeout: 5) && control.isEnabled)
             control.click()
             return
@@ -774,6 +978,7 @@ extension ScholiumUITests {
     @MainActor
     private func chooseReaderMenuItem(_ title: String, menu: String, in pane: XCUIElement) {
         if menu == "PDF Actions", let tool = ["Select": "select", "Highlight": "highlight", "Comment": "comment"][title] {
+            pane.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.25)).hover()
             let button = pane.descendants(matching: .any)["scholium.pdf.tool." + tool]
             XCTAssertTrue(button.waitForExistence(timeout: 5) && button.isEnabled)
             button.click()

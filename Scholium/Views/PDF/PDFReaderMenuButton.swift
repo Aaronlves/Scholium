@@ -63,6 +63,8 @@ final class PDFReaderCommandMenu: NSObject, NSMenuDelegate {
     private var isInvalidated = false
     private var overflowMenu: NSMenu?
     private let canPresent: @MainActor () -> Bool
+    private var presentationActivity: PDFReaderPresentationActivity
+    private var trackingTokens: [ObjectIdentifier: PDFReaderPresentationActivity.Token] = [:]
 
     init(
         controller: PDFReaderController,
@@ -72,6 +74,7 @@ final class PDFReaderCommandMenu: NSObject, NSMenuDelegate {
     ) {
         self.canPresent = canPresent
         self.controller = controller
+        presentationActivity = controller.presentationActivity
         self.kind = kind
         self.includesControlTitle = includesControlTitle
         let label = ScholiumL10n.dynamicString(kind.title)
@@ -104,11 +107,28 @@ final class PDFReaderCommandMenu: NSObject, NSMenuDelegate {
 
     func update(controller: PDFReaderController) {
         guard !isInvalidated else { return }
+        if self.controller !== controller {
+            cancelTracking()
+            presentationActivity = controller.presentationActivity
+        }
         self.controller = controller
         refresh()
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) { refresh() }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        guard !isInvalidated, menu === self.menu || menu === overflowMenu else { return }
+        let identity = ObjectIdentifier(menu)
+        guard trackingTokens[identity] == nil else { return }
+        trackingTokens[identity] = presentationActivity.begin()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        if let token = trackingTokens.removeValue(forKey: ObjectIdentifier(menu)) {
+            presentationActivity.end(token)
+        }
+    }
 
     func makeOverflowMenu() -> NSMenu {
         if let overflowMenu { return overflowMenu }
@@ -127,11 +147,19 @@ final class PDFReaderCommandMenu: NSObject, NSMenuDelegate {
     func cancelTracking() {
         menu.cancelTracking()
         overflowMenu?.cancelTracking()
+        releaseTrackingTokens()
+    }
+
+    private func releaseTrackingTokens() {
+        let tokens = Array(trackingTokens.values)
+        trackingTokens.removeAll()
+        for token in tokens { presentationActivity.end(token) }
     }
 
     func invalidate() {
         guard !isInvalidated else { return }
         isInvalidated = true
+        cancelTracking()
         controller = nil
         for commands in [menu, overflowMenu].compactMap({ $0 }) {
             commands.cancelTracking()
@@ -223,9 +251,23 @@ final class PDFReaderCommandMenu: NSObject, NSMenuDelegate {
 @MainActor
 final class PDFReaderNativeMenuButton: NSPopUpButton {
     private let commands: PDFReaderCommandMenu
+    var focusDidChange: (@MainActor (Bool) -> Void)?
 
     override var acceptsFirstResponder: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
     override var canBecomeKeyView: Bool { acceptsFirstResponder }
+
+    override func becomeFirstResponder() -> Bool {
+        focusDidChange?(true)
+        let accepted = super.becomeFirstResponder()
+        if !accepted { focusDidChange?(false) }
+        return accepted
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { focusDidChange?(false) }
+        return resigned
+    }
 
     init(controller: PDFReaderController, kind: PDFReaderMenuButton.Kind, canPresent: @escaping @MainActor () -> Bool = { true }) {
         commands = PDFReaderCommandMenu(controller: controller, kind: kind, includesControlTitle: true, canPresent: canPresent)
@@ -253,7 +295,10 @@ final class PDFReaderNativeMenuButton: NSPopUpButton {
         isEnabled = commands.isEnabled
     }
 
+    func cancelTracking() { commands.cancelTracking() }
+
     func invalidate() {
+        focusDidChange = nil
         commands.invalidate()
         isEnabled = false
         setAccessibilityHidden(true)

@@ -20,6 +20,46 @@ struct NoteInfoPresentationTests {
         #expect(model.hasChanges && model.error != nil)
     }
 
+    @Test("Long mixed-script values reach Apply exactly and survive rejection or discard")
+    func longContentDraft() async {
+        let title = String(repeating: "Long Note title 研究笔记 🧪 e\u{301} / ", count: 16)
+        let summary = String(repeating: "Source summary 摘要 👩‍🔬 e\u{301} / ", count: 24)
+        let tag = String(repeating: "research研究", count: 20)
+        let pdfPath = String(repeating: "nested研究/", count: 16) + "Original paper.pdf"
+        let fileURL = URL(
+            fileURLWithPath: "/nonexistent-synthetic-fixture/" + String(repeating: "directory研究/", count: 16) + "Note.md")
+        let source =
+            "\u{FEFF}---\r\nsummary: '\(summary)'\r\ntags: ['\(tag)']\r\npdf: '\(pdfPath)'\r\n"
+            + "unknown: 'retained' # exact\r\n---\r\nBody bytes   \r\n"
+        let context = makeContext(source, title: title, fileURL: fileURL)
+        var submittedEdits: [String: FrontmatterEditValue] = [:]
+        let model = makeModel(context) { _, edits in
+            submittedEdits = edits
+            throw CancellationErrorForTest.stale
+        }
+        #expect(model.canEditSummary && model.canEditTags)
+        #expect(model.summary.utf8.elementsEqual(summary.utf8) && model.tags.utf8.elementsEqual(tag.utf8))
+        #expect(model.context.title == title && model.context.fileURL.path == fileURL.path)
+        #expect(model.pdfPath == pdfPath)
+
+        let draftSummary = summary + "\nQuoted \"value\", literal \\ path\n末尾\t "
+        let draftTags = [tag, String(repeating: "超长标签", count: 24), "ending space "]
+        model.summary = draftSummary
+        model.tags = draftTags.joined(separator: "\n")
+        model.apply()
+        await waitForCompletion(model)
+
+        #expect(submittedEdits == ["summary": .string(draftSummary), "tags": .array(draftTags)])
+        #expect(model.summary.utf8.elementsEqual(draftSummary.utf8))
+        #expect(model.tags.utf8.elementsEqual(draftTags.joined(separator: "\n").utf8))
+        #expect(model.context.document.rawContent.utf8.elementsEqual(source.utf8))
+        #expect(model.hasChanges && model.error != nil)
+        model.discardDraft()
+        #expect(model.summary.utf8.elementsEqual(summary.utf8) && model.tags.utf8.elementsEqual(tag.utf8))
+        #expect(model.context.document.rawContent.utf8.elementsEqual(source.utf8))
+        #expect(!model.hasChanges && model.error == nil)
+    }
+
     @Test("Unsupported authored tags remain unchanged and unavailable in the convenience editor")
     func unsupportedTags() {
         for tags in ["scalar", "[one, 2]", "{nested: true}", "[\"line\\npart\"]"] {
@@ -75,11 +115,13 @@ struct NoteInfoPresentationTests {
             context: context,
             reload: { _ in context }, apply: { _, _ in context }, attachPDF: { _ in }, openSource: { _ in })
         let panel = try #require(controller.window as? NSPanel)
+        defer { controller.close() }
         #expect(panel.styleMask.contains(.resizable) && panel.styleMask.contains(.utilityWindow))
-        #expect(panel.isFloatingPanel && panel.contentMinSize.width >= 340)
+        #expect(panel.isFloatingPanel)
+        #expect(panel.contentRect(forFrameRect: panel.frame).size == NSSize(width: 360, height: 550))
+        #expect(panel.contentMinSize == NSSize(width: 340, height: 360))
         #expect(DocumentNoteAction.groups.flatMap { $0 }.contains(.noteInfo))
         #expect(DocumentNoteAction.noteInfo.title(detached: true) == "Note Info…")
-        controller.close()
     }
 
     @Test("Origin close respects Keep Editing and explicit draft discard")
@@ -113,11 +155,14 @@ struct NoteInfoPresentationTests {
         controller.close()
     }
 
-    private func makeContext(_ source: String, target: SourceAttachmentTarget? = nil) -> NoteInfoContext {
+    private func makeContext(
+        _ source: String, target: SourceAttachmentTarget? = nil, title: String = "Synthetic Note",
+        fileURL: URL = URL(fileURLWithPath: "/nonexistent-synthetic-fixture/Note.md")
+    ) -> NoteInfoContext {
         let target = target ?? .init(noteID: UUID(), vaultID: UUID(), relativePath: "Note.md")
         return .init(
-            target: target, title: "Synthetic Note", document: .init(relativePath: target.relativePath, rawContent: source),
-            fileURL: URL(fileURLWithPath: "/nonexistent-synthetic-fixture/Note.md"), canEdit: true,
+            target: target, title: title, document: .init(relativePath: target.relativePath, rawContent: source),
+            fileURL: fileURL, canEdit: true,
             fileMetadata: .init(byteCount: source.utf8.count, creationDate: nil, modificationDate: nil))
     }
 

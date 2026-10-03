@@ -47,7 +47,7 @@ final class NoteInfoWindowController: NSWindowController, NSWindowDelegate {
     ) {
         model = NoteInfoPresentationModel(context: context, reload: reload, apply: apply, attachPDF: attachPDF, openSource: openSource)
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 550),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 550),
             styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = "\(context.title) — \(ScholiumL10n.string("Note Info"))"
         panel.isFloatingPanel = true
@@ -69,6 +69,7 @@ final class NoteInfoWindowController: NSWindowController, NSWindowDelegate {
         origin = window
         originResponder = window?.firstResponder
         if let window, let panel = self.window {
+            panel.appearanceSource = window
             window.addChildWindow(panel, ordered: .above)
             var frame = panel.frame
             frame.origin = NSPoint(x: window.frame.maxX - frame.width, y: window.frame.maxY - frame.height - 45)
@@ -77,6 +78,7 @@ final class NoteInfoWindowController: NSWindowController, NSWindowDelegate {
             frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
             panel.setFrame(frame, display: false)
         } else {
+            self.window?.appearanceSource = nil
             self.window?.center()
         }
         showWindow(nil)
@@ -297,24 +299,53 @@ private struct NoteInfoView: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    LabeledContent("Note") { Text(model.context.title).textSelection(.enabled) }
-                    LabeledContent("Summary") {
-                        TextField("Summary", text: $model.summary, axis: .vertical)
-                            .lineLimit(2...6).disabled(!model.canEditSummary || model.isWorking)
-                            .accessibilityIdentifier("scholium.noteInfo.summary")
+                    VStack(alignment: .leading) {
+                        Text("Note")
+                        Text(verbatim: model.context.title)
+                            .lineLimit(nil).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("scholium.noteInfo.title")
                     }
-                    LabeledContent("Tags") {
-                        TextField("One tag per line", text: $model.tags, axis: .vertical)
-                            .lineLimit(2...5).disabled(!model.canEditTags || model.isWorking)
-                            .accessibilityIdentifier("scholium.noteInfo.tags")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading) {
+                        Text("Summary")
+                        if model.canEditSummary {
+                            TextField("Summary", text: $model.summary, axis: .vertical)
+                                .lineLimit(2...6).disabled(model.isWorking)
+                                .labelsHidden().multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityLabel("Summary")
+                                .accessibilityIdentifier("scholium.noteInfo.summary")
+                        } else {
+                            Text(verbatim: model.summary)
+                                .lineLimit(nil).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("scholium.noteInfo.summary.readOnly")
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading) {
+                        Text("Tags")
+                        if model.canEditTags {
+                            TextField("One tag per line", text: $model.tags, axis: .vertical)
+                                .lineLimit(2...5).disabled(model.isWorking)
+                                .labelsHidden().multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityLabel("Tags")
+                                .accessibilityIdentifier("scholium.noteInfo.tags")
+                        } else {
+                            Text(verbatim: model.tags)
+                                .lineLimit(nil).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("scholium.noteInfo.tags.readOnly")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Fields edit authored YAML. Other properties remain editable in Source.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Open Source", action: model.openSource)
                 }
                 Section("PDF") {
                     if let path = model.pdfPath {
-                        Text(path).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        Text(verbatim: path).lineLimit(nil).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("scholium.noteInfo.pdfPath")
                         HStack {
                             Button("Replace PDF…", action: model.attachPDF)
                             Button("Detach PDF", action: model.detachPDF)
@@ -331,7 +362,13 @@ private struct NoteInfoView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("File Information") {
-                    LabeledContent("Where") { Text(model.context.fileURL.path).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
+                    VStack(alignment: .leading) {
+                        Text("Where")
+                        Text(verbatim: model.context.fileURL.path)
+                            .lineLimit(nil).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("scholium.noteInfo.location")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     if let bytes = model.context.fileSize {
                         LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
                     }
@@ -344,15 +381,42 @@ private struct NoteInfoView: View {
                     .frame(maxWidth: .infinity, alignment: .leading).padding()
                     .accessibilityIdentifier("scholium.noteInfo.error")
             }
-            HStack {
-                Button("Reload", action: model.reload).disabled(model.isWorking || model.hasChanges)
-                if model.hasChanges { Button("Discard Changes", action: model.discardDraft).disabled(model.isWorking) }
-                Spacer()
-                if model.isWorking { ProgressView().controlSize(.small).accessibilityLabel("Applying Note Info") }
-                Button("Apply", action: model.apply).disabled(!model.hasChanges || model.isWorking)
-                    .accessibilityIdentifier("scholium.noteInfo.apply")
-                Button("Close") { model.close?() }.keyboardShortcut(.cancelAction).disabled(model.isWorking)
-            }.padding()
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    draftActions
+                    Spacer()
+                    completionActions
+                }
+                VStack {
+                    HStack {
+                        draftActions
+                        Spacer()
+                    }
+                    HStack {
+                        Spacer()
+                        completionActions
+                    }
+                }
+            }
+            .padding()
         }
+    }
+
+    private var draftActions: some View {
+        HStack {
+            Button("Reload", action: model.reload).disabled(model.isWorking || model.hasChanges)
+            if model.hasChanges { Button("Discard Changes", action: model.discardDraft).disabled(model.isWorking) }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var completionActions: some View {
+        HStack {
+            if model.isWorking { ProgressView().controlSize(.small).accessibilityLabel("Applying Note Info") }
+            Button("Apply", action: model.apply).disabled(!model.hasChanges || model.isWorking)
+                .accessibilityIdentifier("scholium.noteInfo.apply")
+            Button("Close") { model.close?() }.keyboardShortcut(.cancelAction).disabled(model.isWorking)
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }

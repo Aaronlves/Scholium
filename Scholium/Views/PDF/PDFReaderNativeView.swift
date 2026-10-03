@@ -30,6 +30,7 @@ final class PDFReaderNativePDFView: PDFView {
     weak var controller: PDFReaderController?
     private var observers: [NSObjectProtocol] = []
     private var eventMonitor: Any?
+    private var activityTrackingArea: NSTrackingArea?
     private var clipObserver: NSObjectProtocol?
     private weak var observedClip: NSClipView?
     private var previousBoundsNotifications = false
@@ -70,6 +71,7 @@ final class PDFReaderNativePDFView: PDFView {
     func updatePresentation(reduceMotion: Bool) {
         guard !isInvalidated else { return }
         self.reduceMotion = reduceMotion
+        floatingTools?.updatePresentation(reduceMotion: reduceMotion)
         if reduceMotion { stopContentReveal() }
     }
 
@@ -119,6 +121,7 @@ final class PDFReaderNativePDFView: PDFView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         removeEventMonitor()
+        removeActivityTrackingArea()
         interactionGeneration &+= 1
         gestureDocument = nil
         floatingTools?.cancelTracking()
@@ -130,17 +133,42 @@ final class PDFReaderNativePDFView: PDFView {
         }
         // PDFKit's document subview may handle pointer events before PDFView.
         // Observe only this view's exact window and visible content boundary.
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown, .keyDown]) { [weak self] event in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown, .keyDown, .leftMouseDragged, .rightMouseDragged, .scrollWheel]
+        ) { [weak self] event in
             let shouldDeliver = MainActor.assumeIsolated {
                 guard let self else { return true }
                 return self.route(event) != nil
             }
             return shouldDeliver ? event : nil
         }
+        updateTrackingAreas()
         attachWhenReady()
         if let controller { floatingTools?.update(controller) }
         synchronizeScrollInsets()
         revealContentWhenReady()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        removeActivityTrackingArea()
+        guard !isInvalidated, window != nil else { return }
+        // Tracking requests movement for this reader viewport directly, without
+        // changing the window's acceptsMouseMovedEvents or PDFKit cursor areas.
+        let area = NSTrackingArea(
+            rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        activityTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        _ = route(event)
+        super.mouseMoved(with: event)
+    }
+
+    private func removeActivityTrackingArea() {
+        if let activityTrackingArea { removeTrackingArea(activityTrackingArea) }
+        activityTrackingArea = nil
     }
 
     override func viewDidHide() {
@@ -175,6 +203,7 @@ final class PDFReaderNativePDFView: PDFView {
         }
         displayOptionsObserver = nil
         removeEventMonitor()
+        removeActivityTrackingArea()
         removeClipObserver()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
@@ -206,6 +235,7 @@ final class PDFReaderNativePDFView: PDFView {
             self?.canReport == true && self?.isHiddenOrHasHiddenAncestor == false && self?.controller?.isVisible == true
         }
         floatingTools = tools
+        tools.updatePresentation(reduceMotion: reduceMotion)
         tools.translatesAutoresizingMaskIntoConstraints = false
         host.addSubview(tools)
         NSLayoutConstraint.activate([
@@ -323,7 +353,7 @@ final class PDFReaderNativePDFView: PDFView {
         eventMonitor = nil
     }
 
-    private func route(_ event: NSEvent) -> NSEvent? {
+    func route(_ event: NSEvent) -> NSEvent? {
         guard !isInvalidated, !isHiddenOrHasHiddenAncestor,
             let window, event.window === window,
             let controller, let document, document === controller.document
@@ -334,6 +364,12 @@ final class PDFReaderNativePDFView: PDFView {
             let responder =
                 (window.firstResponder as? NSTextView)?.delegate as? NSView
                 ?? window.firstResponder as? NSView
+            if let responder,
+                responder === self || responder.isDescendant(of: self)
+                    || floatingTools.map({ responder === $0 || responder.isDescendant(of: $0) }) == true
+            {
+                floatingTools?.noteActivity()
+            }
             let modifiers = event.modifierFlags.intersection([.command, .option, .control])
             if event.keyCode == 48, modifiers.isEmpty,
                 let responder, responder === self || responder.isDescendant(of: self)
@@ -344,6 +380,16 @@ final class PDFReaderNativePDFView: PDFView {
             return event
         }
         let point = convert(event.locationInWindow, from: nil)
+        // Activity is a presentation hint only. Preserve PDFKit's native
+        // scrolling, dragging and cursor routing without entering tool dispatch.
+        // A stationary click must not reveal the sibling before AppKit chooses
+        // its target: quiet controls leave that click addressed to paper.
+        if [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .scrollWheel].contains(event.type) {
+            if window.contentLayoutRect.contains(event.locationInWindow), bounds.contains(point) {
+                floatingTools?.noteActivity()
+            }
+            return event
+        }
         // The native sibling capsule owns its input even while a PDF tool is
         // armed; surrounding paper retains highlighting and commenting.
         if let floatingTools, let host = floatingTools.superview,
@@ -404,6 +450,9 @@ final class PDFReaderNativePDFView: PDFView {
     }
 
     private func showReaderMenu(_ event: NSEvent, page: PDFPage, point: NSPoint) {
+        guard let activity = controller?.presentationActivity else { return }
+        let presentation = activity.begin()
+        defer { if let presentation { activity.end(presentation) } }
         let menu = NSMenu()
         let copy = NSMenuItem(title: ScholiumL10n.string("Copy"), action: #selector(copy(_:)), keyEquivalent: "")
         copy.target = self
