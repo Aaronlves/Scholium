@@ -34,9 +34,15 @@ actor DocumentReadProjectionCache {
         }
     #endif
 
+    private struct ImageRevision: Equatable, Sendable {
+        let mimeType: String
+        let fingerprint: DocumentFingerprint
+    }
+
     private struct Entry: Sendable {
         let html: String
         let byteCount: Int
+        let imageRevisions: [String: ImageRevision]
         var access: UInt64
     }
 
@@ -56,7 +62,8 @@ actor DocumentReadProjectionCache {
     func html(
         for key: DocumentReadProjectionKey,
         source: String,
-        semantic: MarkdownSemanticDocument? = nil
+        semantic: MarkdownSemanticDocument? = nil,
+        embeddedImages: [String: RenderedMarkdownImage] = [:]
     ) -> String {
         guard DocumentFingerprint(content: source) == key.fingerprint else {
             return ""
@@ -72,12 +79,16 @@ actor DocumentReadProjectionCache {
         }) {
             entries.removeValue(forKey: previous)
         }
+        let imageRevisions = embeddedImages.mapValues {
+            ImageRevision(mimeType: $0.mimeType, fingerprint: DocumentFingerprint(data: $0.data))
+        }
         nextAccess &+= 1
-        if var cached = entries[key] {
+        if var cached = entries[key], cached.imageRevisions == imageRevisions {
             cached.access = nextAccess
             entries[key] = cached
             return cached.html
         }
+        entries.removeValue(forKey: key)
 
         let document = NoteDocument(
             relativePath: key.relativePath,
@@ -85,13 +96,13 @@ actor DocumentReadProjectionCache {
         )
         let html =
             if let semantic {
-                SafeMarkdownRenderer.render(document, semantic: semantic).htmlBody
+                SafeMarkdownRenderer.render(document, semantic: semantic, embeddedImages: embeddedImages).htmlBody
             } else {
-                SafeMarkdownRenderer.render(document).htmlBody
+                SafeMarkdownRenderer.render(document, embeddedImages: embeddedImages).htmlBody
             }
         let byteCount = html.utf8.count
         guard byteCount <= maximumBytesPerWorkspace else { return html }
-        entries[key] = Entry(html: html, byteCount: byteCount, access: nextAccess)
+        entries[key] = Entry(html: html, byteCount: byteCount, imageRevisions: imageRevisions, access: nextAccess)
         evictIfNeeded(workspaceID: key.workspaceID)
         return html
     }

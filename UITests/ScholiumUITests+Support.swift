@@ -615,11 +615,12 @@ extension ScholiumUITests {
             }
             app.typeKey("r", modifierFlags: [.command])
         case "Source":
-            app.menuBars.menuBarItems["View"].click()
-            let documentModeMenu = app.menuItems["Document Mode"].firstMatch
+            let viewMenu = app.menuBars.menuBarItems["View"].firstMatch
+            viewMenu.click()
+            let documentModeMenu = viewMenu.menuItems["Document Mode"].firstMatch
             XCTAssertTrue(documentModeMenu.waitForExistence(timeout: 3))
             documentModeMenu.hover()
-            let source = app.menuItems["Source"].firstMatch
+            let source = documentModeMenu.menuItems["Source"].firstMatch
             XCTAssertTrue(source.waitForExistence(timeout: 3))
             source.click()
         default:

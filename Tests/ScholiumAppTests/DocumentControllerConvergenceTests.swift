@@ -30,6 +30,7 @@ struct DocumentControllerConvergenceTests {
         controller.installOpenedDocument(base, vaultName: "Analyses", vaultRole: .sourceCorpus)
         let first = try #require(controller.selectedDocument)
         let session = controller.session(for: first.editingTarget)
+        controller.rememberPresentationMode(.read)
         session.preparePresentationMode(.read)
         controller.installOpenedDocument(other, vaultName: "Analyses", vaultRole: .sourceCorpus)
         let second = try #require(controller.selectedDocument)
@@ -126,7 +127,7 @@ struct DocumentControllerConvergenceTests {
                 requestIdentityResolution: {}, retryIdentityRecovery: {}, beginSearch: { _ in },
                 clearRequestedPresentationMode: { projection.requestedMode = nil }, consumeSourceLocation: { _ in },
                 navigateToSourceLine: { _, _ in }, rememberScrollPosition: { _ in }, openInternalLink: { _ in },
-                openExternalURL: { _ in }, enterCSSSafeMode: { _ in }, rememberPresentationMode: { _ in },
+                openExternalURL: { _ in }, enterCSSSafeMode: { _ in }, rememberPresentationMode: { controller.rememberPresentationMode($0) },
                 setSidebarVisible: { _ in }, setResearchInspectorVisible: { _ in }, openingDocumentPresentationDidComplete: {},
                 renameNote: { _, _, title in title }, notify: { _, _ in }
             )

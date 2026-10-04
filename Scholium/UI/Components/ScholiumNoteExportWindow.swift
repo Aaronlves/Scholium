@@ -23,7 +23,7 @@ final class ScholiumNoteExportWindowController: NSWindowController, NSWindowDele
     init(
         document: NoteDocument, title: String,
         embeddedImages: [String: RenderedMarkdownImage], excludedRoots: [URL],
-        appearance: DocumentAppearanceSettings
+        appearance: DocumentAppearanceSettings, colorScheme: WindowColorSchemeChoice
     ) {
         let model = NoteExportPreviewModel(
             document: document, title: title, embeddedImages: embeddedImages,
@@ -42,6 +42,7 @@ final class ScholiumNoteExportWindowController: NSWindowController, NSWindowDele
         window.titlebarAppearsTransparent = false
         window.toolbarStyle = .unified
         window.backgroundColor = .windowBackgroundColor
+        ScholiumWindowAppearance.apply(colorScheme, to: window)
         window.minSize = NSSize(width: 640, height: 480)
         window.contentView = NSHostingView(rootView: NoteExportPreviewView(model: model))
         chrome.install(in: window)
@@ -524,7 +525,7 @@ private struct NoteExportPreviewView: View {
                 if model.format == .docx {
                     Text(
                         ScholiumL10n.string(
-                            "Word keeps text, font size and indentation; tables and footnotes flatten, while links, images and exact line spacing are not preserved."
+                            "Word keeps editable text, headings, hyperlinks and footnotes; tables flatten, while images and exact line spacing are omitted."
                         )
                     )
                     .font(.caption)

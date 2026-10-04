@@ -201,8 +201,6 @@ final class DocumentController: ObservableObject {
     private var hydrationEpoch: UInt64 = 0
     private var restoredPresentationsByVault: [UUID: [String: WindowDocumentPresentationSnapshot]] = [:]
     private var restoredUnqualifiedPresentations: [String: WindowDocumentPresentationSnapshot] = [:]
-    private var activeWorkspace: WorkspaceVaultSlot = .paperAnalysis
-    private var presentationModesByWorkspace: [WorkspaceVaultSlot: NotePresentationMode]
     private let intentHandler: IntentHandler
     private var operations: (any DocumentUseCases)?
     private var sessionCancellables: [ObjectIdentifier: AnyCancellable] = [:]
@@ -263,11 +261,6 @@ final class DocumentController: ObservableObject {
         intentHandler: @escaping IntentHandler = { _ in },
         hydrationLoader: HydrationLoader? = nil
     ) {
-        var initialPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
-        for workspace in WorkspaceVaultSlot.allCases {
-            initialPresentationModes[workspace] = .livePreview
-        }
-        presentationModesByWorkspace = initialPresentationModes
         self.intentHandler = intentHandler
         self.hydrationLoader = hydrationLoader
     }
@@ -343,6 +336,23 @@ final class DocumentController: ObservableObject {
         workspaceID: UUID?,
         semantic: MarkdownSemanticDocument? = nil
     ) async -> String {
+        guard !Task.isCancelled, DocumentFingerprint(content: source) == fingerprint else { return "" }
+        let epoch = hydrationEpoch
+        var embeddedImages: [String: RenderedMarkdownImage] = [:]
+        if source.contains("![") {
+            do {
+                embeddedImages = try await requireOperations().exportImages(
+                    for: VaultQualifiedNoteID(vaultID: target.vaultID, relativePath: relativePath),
+                    markdownSource: source
+                )
+            } catch is CancellationError {
+                return ""
+            } catch {
+                // Unavailable images keep the renderer's safe authored-link
+                // fallback; preparing one asset never replaces Note source.
+            }
+        }
+        guard !Task.isCancelled, hydrationEpoch == epoch else { return "" }
         let stableTarget: String
         switch target {
         case .workspace(let key):
@@ -350,7 +360,7 @@ final class DocumentController: ObservableObject {
         case .unavailable(let vaultID, let path):
             stableTarget = "unavailable:\(vaultID.uuidString.lowercased()):\(path)"
         }
-        return await readProjectionCache.html(
+        let html = await readProjectionCache.html(
             for: DocumentReadProjectionKey(
                 workspaceID: workspaceID,
                 stableTarget: stableTarget,
@@ -358,8 +368,11 @@ final class DocumentController: ObservableObject {
                 fingerprint: fingerprint
             ),
             source: source,
-            semantic: semantic
+            semantic: semantic,
+            embeddedImages: embeddedImages
         )
+        guard !Task.isCancelled, hydrationEpoch == epoch else { return "" }
+        return html
     }
 
     func editorLinkCompletions(
@@ -648,13 +661,17 @@ final class DocumentController: ObservableObject {
     }
 
     /// Tab activation reuses a leased presentation instead of reopening it.
-    /// In particular, it must not reset scroll or replace a retained Source mode.
+    /// It retains source and position while applying this window's current mode.
     func selectRetainedDocument(_ document: WindowSelectedDocument) -> Bool {
         guard canSelectRetainedDocument(document),
             let session = sessions.retainedSession(for: document.editingTarget)
         else { return false }
         selectedDocument = document
-        currentPresentationMode = session.pendingEditorMode?.presentationMode ?? session.presentationMode
+        if case .workspace = document {
+            applyCurrentPresentationMode(to: session, target: document.editingTarget)
+        } else {
+            session.preparePresentationMode(.read)
+        }
         refreshChromeProjection()
         // A departing tab may keep its WebView attached while SwiftUI changes
         // the selected page. The departure cannot resume it while another
@@ -681,11 +698,10 @@ final class DocumentController: ObservableObject {
             snapshot.id.relativePath == path,
             unavailableSnapshot?.id != snapshot.id
                 || unavailableSnapshot?.fingerprint == snapshot.fingerprint,
-            let session = sessions.retainedSession(for: document.editingTarget)
+            sessions.retainedSession(for: document.editingTarget) != nil
         else { return false }
         unavailableSnapshot = snapshot
         selectedDocument = document
-        currentPresentationMode = session.pendingEditorMode?.presentationMode ?? session.presentationMode
         refreshChromeProjection()
         return true
     }
@@ -977,7 +993,7 @@ final class DocumentController: ObservableObject {
             snapshot: document.sessionKey.flatMap { snapshots[$0] }
                 ?? (document.editingTarget == selectedDocument?.editingTarget
                     ? unavailableSnapshot : nil),
-            mode: session.presentationMode
+            mode: currentPresentationMode
         )
         if selectedDocument?.editingTarget == document.editingTarget { selectedDocument = nil }
         if case .unavailable = document { unavailableSnapshot = nil }
@@ -1003,8 +1019,11 @@ final class DocumentController: ObservableObject {
         observe(transfer.session)
         if selecting {
             selectedDocument = document
-            currentPresentationMode = transfer.mode
-            presentationModesByWorkspace[activeWorkspace] = transfer.mode
+            if case .workspace = document {
+                applyCurrentPresentationMode(to: transfer.session, target: document.editingTarget)
+            } else {
+                transfer.session.preparePresentationMode(.read)
+            }
         }
         refreshChromeProjection()
         scheduleAutosave(session: transfer.session, target: document.editingTarget)
@@ -1128,7 +1147,6 @@ final class DocumentController: ObservableObject {
             retainedReferences[key] = descriptor.reference
             let selectedSession = session(for: key)
             reconcile(session: selectedSession, with: snapshot)
-            presentationModesByWorkspace[activeWorkspace] = .livePreview
             currentPresentationMode = .livePreview
             selectedSession.beginManagedCreationEntry(
                 bodyStartUTF16: bodyStart
@@ -1272,33 +1290,7 @@ final class DocumentController: ObservableObject {
 
     func rememberPresentationMode(_ mode: NotePresentationMode) {
         guard currentPresentationMode != mode else { return }
-        presentationModesByWorkspace[activeWorkspace] = mode
         currentPresentationMode = mode
-        refreshChromeProjection()
-    }
-
-    func presentationMode(for workspace: WorkspaceVaultSlot) -> NotePresentationMode {
-        presentationModesByWorkspace[workspace] ?? .livePreview
-    }
-
-    func selectWorkspace(_ workspace: WorkspaceVaultSlot) {
-        activeWorkspace = workspace
-        let mode = presentationMode(for: workspace)
-        if currentPresentationMode != mode {
-            currentPresentationMode = mode
-        }
-        refreshChromeProjection()
-    }
-
-    func restorePresentationModes(
-        _ modesByWorkspace: [WorkspaceVaultSlot: NotePresentationMode]
-    ) {
-        var restoredPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
-        for workspace in WorkspaceVaultSlot.allCases {
-            restoredPresentationModes[workspace] = modesByWorkspace[workspace] ?? .livePreview
-        }
-        presentationModesByWorkspace = restoredPresentationModes
-        currentPresentationMode = presentationMode(for: activeWorkspace)
         refreshChromeProjection()
     }
 
@@ -1415,13 +1407,6 @@ final class DocumentController: ObservableObject {
     func resetPresentationState() {
         restoredPresentationsByVault = [:]
         restoredUnqualifiedPresentations = [:]
-        activeWorkspace = .paperAnalysis
-        var resetPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
-        for workspace in WorkspaceVaultSlot.allCases {
-            resetPresentationModes[workspace] = .livePreview
-        }
-        presentationModesByWorkspace = resetPresentationModes
-        currentPresentationMode = .livePreview
         for session in sessions.retainedSessions.values {
             session.resetPresentation()
             session.resetScrollPosition()
@@ -1447,13 +1432,6 @@ final class DocumentController: ObservableObject {
             sessionCancellables.removeAll()
             pendingChromeRefreshes.removeAll()
         }
-        activeWorkspace = .paperAnalysis
-        var resetPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
-        for workspace in WorkspaceVaultSlot.allCases {
-            resetPresentationModes[workspace] = .livePreview
-        }
-        presentationModesByWorkspace = resetPresentationModes
-        currentPresentationMode = .livePreview
         selectedDocument = nil
         chromeProjection = .empty
         snapshots = [:]
@@ -1580,7 +1558,7 @@ final class DocumentController: ObservableObject {
         }
     }
 
-    /// Applies the active workspace's one live Document-mode selection to the
+    /// Applies the window's one live Document-mode selection to the
     /// newly active session. Hidden sessions may retain their editor surface
     /// and last acknowledged configuration, but Notes and tabs do not own a
     /// mode history.

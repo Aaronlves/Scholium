@@ -2012,7 +2012,7 @@ const allCommands = [
   "bulletList", "numberedList", "taskList", "blockQuotation", "markdownComment",
   "thematicBreak",
   "calloutOrient", "calloutCite", "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",
-  "insertFootnote", "insertInlineFootnote", "insertTable", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
+  "insertFootnote", "insertInlineFootnote", "insertTable", "insertImage", "insertAttachment", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
   "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
   "tableAlignLeft", "tableAlignCenter", "tableAlignRight", "pastePlain", "pasteMarkdown", "linkSelectedText",
 ] as const;

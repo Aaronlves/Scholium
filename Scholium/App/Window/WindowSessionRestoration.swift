@@ -9,10 +9,10 @@ extension WindowModel {
         documentController.currentPresentationMode
     }
 
-    /// The workspace retains its desired mode across Notes, while chrome must
+    /// The window retains its desired mode across Notes and vault roles, while chrome must
     /// report the mode the selected session is actually presenting. This keeps
     /// unavailable documents truthfully in Review
-    /// without changing the workspace's retained Edit selection.
+    /// without changing the window's retained Edit selection.
     var presentedDocumentMode: NotePresentationMode {
         guard currentNote != nil else { return currentPresentationMode }
         return documentController.chromeProjection.mode
@@ -160,20 +160,10 @@ extension WindowModel {
                     )
                 }
         )
-        let documentModes = Dictionary(
-            uniqueKeysWithValues:
-                WorkspaceVaultSlot.allCases.map { workspace in
-                    (
-                        workspace,
-                        restoredPresentation.workspaceSession(for: workspace)
-                            .flatMap { NotePresentationMode(rawValue: $0.documentMode) }
-                            ?? .read
-                    )
-                }
-        )
         shellState.selectWorkspace(selectedWorkspace)
-        documentController.selectWorkspace(selectedWorkspace)
-        documentController.restorePresentationModes(documentModes)
+        documentController.rememberPresentationMode(
+            NotePresentationMode(rawValue: restoredPresentation.documentMode) ?? .livePreview
+        )
         researchController.restoreInspector(
             modesByWorkspace: inspectorModes,
             isVisible: restoredPresentation.inspectorVisible
@@ -246,8 +236,7 @@ extension WindowModel {
                 workspace: workspace,
                 vaultID: vaultID,
                 documentPresentations: documentPresentations,
-                inspectorMode: shellState.inspectorMode(for: workspace).rawValue,
-                documentMode: documentController.presentationMode(for: workspace).rawValue
+                inspectorMode: shellState.inspectorMode(for: workspace).rawValue
             )
         }
         return WindowSessionSnapshot(
@@ -257,6 +246,7 @@ extension WindowModel {
             openDocuments: documentTabController.tabs.compactMap { vaultQualifiedID(for: $0.document) },
             selectedDocument: documentTabController.selectedTab.flatMap { vaultQualifiedID(for: $0.document) },
             workspaceSessions: workspaceSessions,
+            documentMode: currentPresentationMode.rawValue,
             libraryVisible: nativeWindowCoordinator?.restoredLibraryVisibility ?? sidebarVisible,
             inspectorVisible: nativeWindowCoordinator?.restoredInspectorVisibility ?? researchInspectorVisible,
             searchState: SearchWorkspaceState(scope: searchController.ordinaryScope),

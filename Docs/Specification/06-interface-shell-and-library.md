@@ -163,8 +163,8 @@ or choosing **Move to Separate Window**, moves the same session into one documen
 save/conflict/recovery actions; no Library, Chat, Inspector, tabs, or floating
 priority. **More** reuses the shared Note Actions menu, with **Move to Main Window** and
 **Close Window** as its window-specific actions. Hover/focus reveals ×; right-click targets its tab. Removal is immediate. Preparation
-precedes removal; source, Undo, selection, scroll, mode, and conflicts travel
-without forced save. Saving finishes first; composition or failure keeps
+precedes removal; source, Undo, selection, scroll, and conflicts travel
+without forced save; §18.4 owns window mode. Saving finishes first; composition or failure keeps
 its location. **Move to Main Window** appends and selects, reusing the
 origin, another same-Triptych main window, or creating one. Closing separately
 closes the document through save guards; it never returns automatically. Main closure or navigation preserves separate windows. Scholium owns session

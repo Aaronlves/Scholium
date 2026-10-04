@@ -68,6 +68,101 @@ struct DocumentReadProjectionCacheTests {
         #expect(reused == SafeMarkdownRenderer.render(document).htmlBody)
     }
 
+    @Test("Authorized image availability and content participate in cache validity", arguments: [false, true])
+    func imageRevisionControlsReuse(reuseSemantic: Bool) async throws {
+        let cache = DocumentReadProjectionCache()
+        let source = "\u{FEFF}---\r\ncustom: preserved\r\n---\r\n\r\n![Figure & Sample](Attachments/fixture/Figure%20Sample.png)\r\n"
+        let document = NoteDocument(relativePath: "Image.md", rawContent: source)
+        let semantic = reuseSemantic ? MarkdownSemanticDocument(parsing: document) : nil
+        let key = key(workspaceID: UUID(), target: "image-note", path: document.relativePath, source: source)
+        let destination = "Attachments/fixture/Figure Sample.png"
+        let pngHeader: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        let firstImage = try RenderedMarkdownImage(data: Data(pngHeader + [0]), mimeType: "image/png")
+        let changedImage = try RenderedMarkdownImage(data: Data(pngHeader + [1]), mimeType: "image/png")
+        let unavailable = await cache.html(for: key, source: source, semantic: semantic)
+        #expect(!unavailable.contains("<img "))
+
+        let available = await cache.html(
+            for: key, source: source, semantic: semantic, embeddedImages: [destination: firstImage])
+        #expect(available.contains("alt=\"Figure &amp; Sample\""))
+        #expect(available.contains("src=\"data:image/png;base64,\(firstImage.data.base64EncodedString())\""))
+        #expect(
+            await cache.html(
+                for: key, source: source, semantic: semantic, embeddedImages: [destination: firstImage]) == available)
+
+        let changed = await cache.html(
+            for: key, source: source, semantic: semantic, embeddedImages: [destination: changedImage])
+        #expect(changed != available)
+        #expect(changed.contains("src=\"data:image/png;base64,\(changedImage.data.base64EncodedString())\""))
+        #expect(!changed.contains(firstImage.data.base64EncodedString()))
+        #expect(
+            await cache.html(
+                for: key, source: source + "Changed", semantic: semantic, embeddedImages: [destination: firstImage]
+            ).isEmpty)
+        #expect(await cache.html(for: key, source: source, semantic: semantic).contains("<img ") == false)
+        #expect(await cache.entryCount(workspaceID: key.workspaceID) == 1)
+        #expect(document.rawContent == source)
+    }
+
+    @MainActor
+    @Test("Review resolves vault-owned images through the authorized capability without rewriting source")
+    func controllerResolvesAuthorizedImages() async throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = repositoryRoot.appendingPathComponent(".build/review-image-fixtures/\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent($0, isDirectory: true) }
+        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let source =
+            "\u{FEFF}---\r\ncustom: preserved\r\n---\r\n\r\n![Figure Sample](Attachments/fixture/Figure%20Sample.png)\r\n\r\n![Remote](https://example.invalid/private.png)\r\n"
+        let noteURL = vaults[0].appendingPathComponent("Image.md")
+        try Data(source.utf8).write(to: noteURL)
+        let imageURL = vaults[0].appendingPathComponent("Attachments/fixture/Figure Sample.png")
+        try FileManager.default.createDirectory(at: imageURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let png = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="))
+        try png.write(to: imageURL)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root, triptychName: "Review image fixture")
+            let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .sourceCorpus })
+            let summary = try #require(vault.documents.first { $0.id.relativePath == "Image.md" })
+            let snapshot = try await capabilities.documents.hydrate(summary)
+            let controller = DocumentController()
+            controller.bind(to: capabilities.documents)
+            controller.installOpenedDocument(snapshot, vaultName: "Analyses", vaultRole: .sourceCorpus)
+            let descriptor = try #require(controller.activeDocument)
+            let target = DocumentEditingTarget.workspace(descriptor.sessionKey)
+            func render() async -> String {
+                await controller.readProjectionHTML(
+                    target: target, relativePath: "Image.md", source: source,
+                    fingerprint: snapshot.fingerprint, workspaceID: capabilities.id,
+                    semantic: snapshot.cachedSemanticDocument)
+            }
+            let available = await render()
+            #expect(available.contains("alt=\"Figure Sample\""))
+            #expect(available.contains("src=\"data:image/png;base64,\(png.base64EncodedString())\""))
+            #expect(!available.contains("src=\"https://"))
+            try FileManager.default.removeItem(at: imageURL)
+            #expect(await render().contains("<img ") == false)
+            try png.write(to: imageURL)
+            #expect(await render().contains("alt=\"Figure Sample\""))
+            #expect(
+                await controller.readProjectionHTML(
+                    target: target, relativePath: "Image.md", source: source + "Changed",
+                    fingerprint: snapshot.fingerprint, workspaceID: capabilities.id
+                ).isEmpty)
+            #expect(try Data(contentsOf: noteURL) == Data(source.utf8))
+            #expect(try Data(contentsOf: imageURL) == png)
+            controller.unbind()
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
     @Test("Empty Markdown is retained as a valid read projection")
     func emptyMarkdownProjection() async {
         let cache = DocumentReadProjectionCache()

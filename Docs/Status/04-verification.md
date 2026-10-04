@@ -38,10 +38,10 @@ remain absent; Links and Related Material remain available. Xcode 27.0
 Analyses/Topics/Works registrations from disposable standard 500-Note copies.
 
 The checklist distinguishes source inspection, deterministic behavior and native
-journeys. Twenty-six distinct native journeys pass across the initial matrix and
-targeted rechecks; the complete repository gate passes.
-An existing test name alone supplies no fresh passing evidence. The detailed
-scenario/assertion map and logs are in `.build/feature-review/RESULTS.md`.
+journeys. Thirty-three distinct native journeys pass across baseline and extension; two
+organization/passage journeys remain qualified by system-Trash privacy denial.
+An existing test name alone supplies no fresh passing evidence. Scenario/assertion maps and logs are in `.build/feature-review/RESULTS.md` and
+`.build/feature-review-extension/RESULTS.md`.
 
 | Feature/workflow | Normal use | Keyboard/accessibility | Empty, error, interrupted or repeated flow | Verification/findings |
 | --- | --- | --- | --- | --- |
@@ -49,50 +49,49 @@ scenario/assertion map and logs are in `.build/feature-review/RESULTS.md`.
 | Library navigation | Roles, tree, disclosure, filters/sort | Native rows/arrows, multi-selection | Filtered empty, unavailable, retained Document | Sidebar/Discovery; native navigation/organization |
 | New Note/Folder and title | Immediate creation, inline rename | File/Add, body focus, title field | Collision, repeated creation, stale selection | Fixed selected-folder routing; three owning regressions |
 | Opening, tabs and history | Repeat/open/new tab, Back/Forward | Menus, tab/window routes | Failed hydration, retained session, close failure | Fixed cross-role origin preservation; opening regressions |
-| Review/Edit/Source | Exact source, YAML, semantic Markdown | Mode/Format/Insert, task/footnote actions | Malformed/protected syntax, Undo, composition | Editor/Contracts; native modes/Callouts/clipboard |
+| Review/Edit/Source | Exact source, YAML, semantic Markdown | Mode/Format/Insert, task/footnote actions | Malformed/protected syntax, Undo, composition | Window-owned mode; native roles/tabs/caret/viewport/Undo; editor/Callouts/clipboard |
 | Find and completion | Find/Replace, slash/Wikilink/Analysis candidates | Return/Tab/Escape, named fields | No match, cancellation, Undo, marked text | Editor Find/completion; native journeys |
 | Save/conflict/recovery | Autosave/manual save, external refresh | Shared Save, comparison/repair controls | External conflict, interrupted editor, late input | Fixed close input suspension; WebKit failure/resumption regressions |
 | Quick/Advanced Search | Lexical/property/Boolean/direct-link queries | Native field/results and keyboard opening | Invalid/empty/limited/stale, cancellation | Search suites; native result opening |
-| Search helpers | Saved Searches, term groups, paragraph locations | Explicit insertion/explanation/destination names | Invalid store, changed drafts, bounded pagination | Fixed paragraph control names; native locator regression |
+| Search helpers | Saved Searches, term groups, paragraph locations | Explicit insertion/explanation/destination names | Invalid store, changed drafts, bounded pagination | Named fields/Escape/geometry fixed; native locators and saved/group management |
 | Links | Incoming/Outgoing/External, annotations | Named selector/filter/disclosure/source actions | Missing/ambiguous/repeated links, retained context | Connections/parser suites; native direction checks; formatted annotations readable in exploratory fixture |
 | Related Material/Writing References | Current line/selection, source, links, Chat staging | Research shortcut, named cards/actions | Loading/empty/failure, departure/cancellation, stale source | Related Material/paragraph-link suites; native lifecycle; usefulness remains human |
-| Note/Folder organization | Duplicate/move, drag, batch operations | Menus, destination sheets, redundant drag routes | Collision, partial/retry/cancel, uncertain Trash | Library batch/file tests; native filtered-empty/cancel |
-| Passage reorganization | Copy/extract/move/merge, exact preview | Research/menu destinations and property choices | Partial/protected selection, stale revisions, rollback | NoteRestructure/dependency/frontmatter tests; no fresh native commit journey |
-| Attachments/images | Copy/reference/import/index/paste, Quick Look | File/Insert and named preview routes | Missing original, unsafe path, insertion rollback | Attachment/image/Quick Look suites; no fresh cross-app transfer |
+| Note/Folder organization | Duplicate/move, drag, batch operations | Menus, destination sheets, redundant drag routes | Collision, partial/retry/cancel, uncertain Trash | Native Duplicate/Move/collision retry/Trash cancel; committed Trash privacy-blocked |
+| Passage reorganization | Copy/extract/move/merge, exact preview | Research/menu destinations and property choices | Partial/protected selection, stale revisions, rollback | Native Copy/Extract/Move commits and Merge preview/cancel; Trash verification blocked |
+| Attachments/images | Copy/reference/import/index/paste, Quick Look | File/Insert and named preview routes | Missing original, unsafe path, insertion rollback | Fixed command reachability/Review images; native copy/reference/import/Undo/Quick Look; cross-app untested |
 | External Markdown/import | Open/reopen, captured unsaved import | Toolbar/File/Finder routes | Conflict/reload, collision, uncertain import | External lifecycle/import tests and native journey |
-| Export | HTML/PDF/DOCX snapshot/presets | Format/style/Save panel | Cancel, destination failure, long tails/footnotes | Export suites; exploratory native PDF created under `.build/` |
-| Changes/Agent receipts | Pending/History, review, exact Undo | Difference/review/receipt controls | Newer revision, unknown baseline, ineligible Undo | Change/Agent suites; native update/restore |
-| Offline Chat | Conversation/draft/Find/material/queue/archive | Page/composer/selection routes | Retained drafts, sharing, failed deletion save | Fixed unreferenced material cleanup; five regressions; native offline journey |
+| Export | HTML/PDF/DOCX snapshot/presets | Format/style/Save panel | Cancel, destination failure, long tails/footnotes | Native unsaved HTML/DOCX readback/Save cancel; prior disposable PDF export |
+| Changes/Agent receipts | Pending/History, review, exact Undo | Difference/review/receipt controls | Newer revision, unknown baseline, ineligible Undo | Change/Agent suites; native update/restore/History delete/cancel |
+| Offline Chat | Conversation/draft/Find/material/queue/archive | Page/composer/selection routes | Retained drafts, sharing, failed deletion save | Fixed cleanup/native Undo lookup; native archive/restore/delete/shared copies/relaunch |
 | Runtime Chat | Models/Skills/tools/context/quota, questions/approvals/branches/Agents | Named capability/process/source controls | Unsupported/disconnect/Stop/uncertain delivery | Deterministic runtime fixtures; real provider/account breadth untested |
 | Settings | Six panes, appearance/CSS, writing, shortcuts | Toolbar/search, scoped drafts | Invalid reload, repair, cancellation | Settings suites; native navigation/recovery |
-| Windows/layout | Independent/detached/external, Focus/full screen | Native menus/tabs/transfer | Close guards, transfer failure, focus restoration | Lifecycle suites; native transfer/focus |
+| Windows/layout | Independent/detached/external, Focus/full screen | Native menus/tabs/transfer | Close guards, transfer failure, focus restoration | Lifecycle suites; native inherited/destination mode, transfer/caret/Undo/focus |
 | Notifications/Zotero | Local queue/exact link display | Named bell/actions/references | Empty/stale, missing target, unavailable integration | Deterministic routes; actual banners/clicks and Zotero untested |
 
-Focused new checks pass for opening/close, creation selection and Chat deletion;
-the optional synthetic performance probe is skipped. The deletion checks protect
-shared branch/message files, original files, failed persistence and PDF/image
-representations; abrupt termination between saved deletion and cleanup is outside
-that proof. No performance improvement is claimed.
+Owning checks cover opening/close, creation, mode/restoration/transfer, authorized
+image rendering/cache invalidation and Chat deletion preservation/failure. No
+performance improvement is claimed. The initial 21/25 native matrix and rechecks
+retain failures, corrected harness assumptions and final passing routes in the
+reports; failures are not relabelled as passes.
 
-Exploratory QA already checked creation/typing/save-on-departure, Find/Replace,
-role browsing, quick Search normal/invalid/empty, paragraph Search and offline
-Agent setup. It reproduced selected-folder creation at root and confirmed readable
-formatted link annotations. Native PDF export completed to a disposable destination.
-These observations do not establish full GUI or human acceptance.
+Fresh extension journeys cover unsaved export, History deletion, attachments/
+images/Quick Look, window modes/transfer, saved/group Search management and offline
+Chat deletion/Undo/relaunch. Duplicate/Move/collision retry and passage Copy/Extract/Move passed
+feasible commits; committed Trash/Merge acceptance and cleanup remain blocked by
+macOS privacy. One exact synthetic Merge file in system Trash needs manual cleanup;
+its path and denied exact-path attempts are recorded in the extension report.
+Review refresh re-resolves local images; unchanged Markdown/lifecycle does not
+continuously watch image files. Captures are inspected; real providers/Zotero,
+VoiceOver, physical IME and complete adaptations remain unverified.
 
-The initial native matrix passed 21/25; retained failures exposed QA fixture
-inheritance, locale-sensitive test paste, stale Debug fault-command state and
-Settings-pane/hit-property assumptions. Corrected rechecks prove first-account
-create/connect/restoration, exact bilingual creation/save in the selected folder,
-repeated creation, Light/Dark at 780-point minimum width, editor fault recovery,
-Settings-owned picker rejection/retry and named Search paragraph navigation.
-Captures were inspected; real provider/Zotero, VoiceOver, physical IME and full
-system adaptations remain unverified. This is bounded feature coverage.
-
-`verify.sh` passes WebEditor 500, Core 581, performance 3, Contracts 107,
-Application 246 plus bridge 6/architecture 1, and App 1,354 reported tests
-(31 conditional render/runtime/timing skips), Release and helper isolation.
-Full logs: `.build/feature-review/gate.log`, `.build/verification/`,
+Complete repository gate stages pass: WebEditor 500, Core 582, performance 3,
+Contracts 107, Application 246 plus bridge 6/architecture 1, and App 1,360
+reported tests (31 conditional render/runtime/timing skips), localization,
+public API boundaries, Release and helper isolation. The initial run exposed
+obsolete mode-fixture ownership and an asynchronous readiness predicate; after
+correction, App and remaining stages passed separately, carrying forward unchanged
+products. Logs: `.build/feature-review-extension/gate.log`, `gate-app-final.log`
+and `gate-continuation.log`, plus `.build/verification/` and
 `.build/verification-release/`. QA runtime state is removed and all 506 standard
 fixture manifest files retain their hashes. No publishing or real-service proof.
 

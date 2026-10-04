@@ -2842,6 +2842,57 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test(
+        "Image and attachment availability follows the ordinary, protected and composing editor context",
+        arguments: [MarkdownEditorMode.livePreview, .source])
+    func attachmentInsertionAvailabilityHonorsProtectedContexts(mode: MarkdownEditorMode) async throws {
+        let source = "---\ncustom: preserved\n---\nBody 中文 😀.\n\n```text\nprotected\n```\n"
+        let harness = EditorHarness(source: source, initialMode: mode)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+
+        func expectInsertionAvailability(_ available: Bool) async throws {
+            let result = try await harness.session.send(.queryContext, in: webView)
+            let context = try #require(result.context)
+            for command in [MarkdownEditorCommand.insertImage, .insertAttachment] {
+                #expect(context.availableCommands.contains(command) == available)
+                #expect(harness.session.context?.availableCommands.contains(command) == available)
+            }
+        }
+
+        func moveCaret(into text: String) async throws {
+            let range = try #require(source.range(of: text))
+            let offset = range.lowerBound.utf16Offset(in: source) + 1
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset, stage: text)
+        }
+
+        try await moveCaret(into: "Body")
+        try await expectInsertionAvailability(true)
+        try await moveCaret(into: "custom")
+        try await expectInsertionAvailability(false)
+        try await moveCaret(into: "protected")
+        try await expectInsertionAvailability(false)
+        try await moveCaret(into: "Body")
+        try await harness.session.testingDispatchCompositionEvent("compositionstart")
+        try await expectInsertionAvailability(false)
+        try await harness.session.testingDispatchCompositionEvent("compositionend")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.isComposing {
+            guard clock.now < deadline else {
+                Issue.record("The editor did not publish the completed composition context.")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await expectInsertionAvailability(true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        await harness.closeAndDrain()
+    }
+
     @Test("Edit and Source derive bidi direction without executing raw HTML")
     func bidiDirectionUsesTheVisibleLineAndKeepsRawHTMLInert() async throws {
         let source = """

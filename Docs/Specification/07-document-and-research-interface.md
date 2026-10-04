@@ -6,10 +6,13 @@ to [Scholium Design](../../Design.md).
 
 ## 18.4 Document modes, context, and source properties
 
-Review, Edit, and Source are modes over one Document, not tabs. Each live
-Triptych workspace session owns one current mode, starting in Edit and retained
-across its Note/tab changes. Activating a Note applies its role's mode; merely
-browsing another Library role does not change the active Document mode. Mode state never becomes a Note, vault, or Markdown fact.
+Review, Edit, and Source are modes over one Document, not tabs. Each Triptych window
+owns one current mode, starting in Edit and retained across Note/tab changes and
+Analyses, Topics, and Works. Switching or browsing Notes and vault roles does not
+change it. An explicit mode choice changes only that window. A newly separated
+Document window starts in the originating window's current mode; subsequent
+choices remain independent. Moving a Document into an existing window applies
+that window's current mode. Mode state never becomes a Note, vault, or Markdown fact.
 
 Review owns read selection; Edit owns formatting. Selection remains source-local without creating a separate annotation or
 collaboration object.

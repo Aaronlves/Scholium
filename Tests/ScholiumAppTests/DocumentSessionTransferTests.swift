@@ -7,13 +7,13 @@ import Testing
 @MainActor
 @Suite("Document session transfer")
 struct DocumentSessionTransferTests {
-    private func document(_ path: String) -> WindowSelectedDocument {
+    private func document(_ path: String, role: VaultRole = .topicKnowledge) -> WindowSelectedDocument {
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
         return .workspace(
             WindowDocumentDescriptor(
                 sessionKey: key,
                 reference: VaultNoteReference(
-                    vaultID: key.vaultID, vaultName: "Fixture", vaultRole: .topicKnowledge,
+                    vaultID: key.vaultID, vaultName: "Fixture", vaultRole: role,
                     relativePath: path, stableNoteID: key.noteID.uuidString
                 )))
     }
@@ -38,29 +38,68 @@ struct DocumentSessionTransferTests {
         )
     }
 
-    @Test("Switching retained tabs preserves dirty source, mode, and scroll without saving")
-    func retainedTabSelection() throws {
+    @Test("Retained tabs across roles apply the window mode and preserve draft context", arguments: [NotePresentationMode.livePreview, .source, .read])
+    func retainedTabSelection(mode: NotePresentationMode) throws {
         let controller = DocumentController()
         let first = document("First.md")
-        let second = document("Second.md")
+        let second = document("Second.md", role: .sourceCorpus)
+        let initialMode: MarkdownEditorMode = mode == .source ? .livePreview : .source
+        controller.installOpenedDocument(
+            snapshot(for: first, source: "Saved"), vaultName: "Fixture", vaultRole: .topicKnowledge)
+        let session = controller.session(for: first.editingTarget)
+        session.beginEditing(in: initialMode)
+        controller.rememberPresentationMode(initialMode.presentationMode)
+        session.originalEditingSource = "Saved"
+        session.editingSource = "\u{FEFF}Unsaved 中文 😀 e\u{301} draft\r\n"
+        session.scrollFraction = 0.62
+        session.editError = "Retained save failure"
+        session.suppressAutosave = true
+        session.editorSession.loadDocument(session.editingSource, documentID: "First.md", mode: initialMode)
+        session.editorSession.updateInteraction(
+            selections: [.init(anchor: 8, head: 13)], line: 1, column: 9, lineCount: 2,
+            documentVersion: 0, focusTarget: .editor, context: nil
+        )
+        let presentation = session.windowPresentationSnapshot
+        controller.installOpenedDocument(
+            snapshot(for: second, source: "Other"), vaultName: "Fixture", vaultRole: .sourceCorpus)
+        let secondSession = controller.session(for: second.editingTarget)
+        secondSession.preparePresentationMode(mode)
+        controller.rememberPresentationMode(mode)
+        #expect(controller.selectRetainedDocument(first))
+        #expect(controller.selectRetainedDocument(first))
+        #expect(controller.session(for: first.editingTarget) === session)
+        #expect(controller.currentPresentationMode == mode)
+        #expect(session.activeEditorMode == (mode.editorMode ?? initialMode))
+        #expect(controller.chromeProjection.mode == (mode == .read ? initialMode.presentationMode : mode))
+        #expect(session.editingSource == "\u{FEFF}Unsaved 中文 😀 e\u{301} draft\r\n")
+        #expect(session.scrollFraction == 0.62)
+        #expect(session.windowPresentationSnapshot == presentation)
+        #expect(session.editError == "Retained save failure")
+        #expect(session.hasUnsavedChanges)
+    }
+
+    @Test("A clean retained editor adopts the window Review choice without losing its position")
+    func retainedCleanReview() throws {
+        let controller = DocumentController()
+        let first = document("First.md")
+        let second = document("Second.md", role: .draftProject)
         controller.installOpenedDocument(
             snapshot(for: first, source: "Saved"), vaultName: "Fixture", vaultRole: .topicKnowledge)
         let session = controller.session(for: first.editingTarget)
         session.beginEditing(in: .source)
         session.originalEditingSource = "Saved"
-        session.editingSource = "Unsaved draft"
+        session.editingSource = "Saved"
         session.scrollFraction = 0.62
-        session.editError = "Retained save failure"
-        session.suppressAutosave = true
         controller.installOpenedDocument(
-            snapshot(for: second, source: "Other"), vaultName: "Fixture", vaultRole: .topicKnowledge)
+            snapshot(for: second, source: "Other"), vaultName: "Fixture", vaultRole: .draftProject)
+        controller.rememberPresentationMode(.read)
         #expect(controller.selectRetainedDocument(first))
-        #expect(controller.session(for: first.editingTarget) === session)
-        #expect(controller.currentPresentationMode == .source)
-        #expect(session.editingSource == "Unsaved draft")
+        #expect(controller.currentPresentationMode == .read)
+        #expect(session.presentationMode == .read)
+        #expect(controller.chromeProjection.mode == .read)
         #expect(session.scrollFraction == 0.62)
-        #expect(session.editError == "Retained save failure")
-        #expect(session.hasUnsavedChanges)
+        #expect(session.editingSource == "Saved")
+        #expect(!session.hasUnsavedChanges)
     }
 
     @Test("Reordering tabs preserves the selected identity and closing-neighbor policy")
@@ -84,6 +123,7 @@ struct DocumentSessionTransferTests {
         source.selectDocument(note)
         let original = source.session(for: note.editingTarget)
         original.beginEditing(in: .source)
+        source.rememberPresentationMode(.source)
         original.originalEditingSource = "\u{FEFF}# A\r\n"
         original.editingSource = "\u{FEFF}# A\r\n\r\n论点 🦉 e\u{301}"
         original.editError = "Fixture save failure"
@@ -97,6 +137,7 @@ struct DocumentSessionTransferTests {
         let presentation = original.windowPresentationSnapshot
         try await source.prepareSessionTransfer(note)
         let transfer = try #require(source.takeSessionForTransfer(note))
+        #expect(transfer.mode == .source)
         #expect(source.selectedDocument == nil)
         #expect(source.retainedSessionCount == 0)
         destination.receiveSessionTransfer(transfer)
@@ -107,10 +148,40 @@ struct DocumentSessionTransferTests {
         #expect(received.originalEditingSource == "\u{FEFF}# A\r\n")
         #expect(received.editError == "Fixture save failure")
         #expect(received.canRetrySave)
-        #expect(received.presentationMode == .source)
+        #expect(received.presentationMode == .livePreview)
+        #expect(destination.currentPresentationMode == .livePreview)
         #expect(received.windowPresentationSnapshot == presentation)
         #expect(destination.selectedDocument == note)
         #expect(source.retainedSessionCount == 0)
+    }
+
+    @Test("A new detached window inherits the originating window mode while main return keeps its own choice")
+    func transferModeIsWindowOwned() throws {
+        let store = makeTestWorkspaceStore()
+        let main = WindowModel(workspaceStore: store)
+        let detached = WindowModel(workspaceStore: store)
+        detached.isDetachedDocumentWindow = true
+        let note = document("Transferred.md")
+        main.documentController.installOpenedDocument(
+            snapshot(for: note, source: "Saved"), vaultName: "Fixture", vaultRole: .topicKnowledge)
+        let session = main.documentController.session(for: note.editingTarget)
+        session.beginEditing(in: .source)
+        main.documentController.rememberPresentationMode(.source)
+        main.documentTabController.activate(document: note, title: "Transferred", toolTip: "Transferred", placement: .newTab)
+        let tab = try #require(main.documentTabController.selectedTab)
+        let outgoing = try #require(main.documentController.takeSessionForTransfer(note))
+        main.documentTabController.removeAll()
+        detached.finishIncomingTransfer(outgoing, tab: tab)
+        #expect(detached.currentPresentationMode == .source)
+        #expect(detached.documentController.session(for: note.editingTarget) === session)
+        main.documentController.rememberPresentationMode(.livePreview)
+        #expect(detached.currentPresentationMode == .source)
+        let returning = try #require(detached.documentController.takeSessionForTransfer(note))
+        main.finishIncomingTransfer(returning, tab: tab)
+        #expect(main.currentPresentationMode == .livePreview)
+        #expect(session.activeEditorMode == .livePreview)
+        #expect(main.documentController.session(for: note.editingTarget) === session)
+        #expect(detached.currentPresentationMode == .source)
     }
 
     @Test(

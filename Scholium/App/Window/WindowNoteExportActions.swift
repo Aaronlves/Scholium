@@ -60,7 +60,8 @@ extension WindowModel {
                     embeddedImages: embeddedImages,
                     excludedRoots: excludedRoots,
                     appearance: workspaceStore.cssSnippetStore.selectedAppearanceProfile?.settings
-                        ?? .defaultSettings
+                        ?? .defaultSettings,
+                    colorScheme: shellState.colorScheme
                 )
                 controller.onClose = { [weak self, weak controller] in
                     guard let self, self.noteExportWindowController === controller else { return }

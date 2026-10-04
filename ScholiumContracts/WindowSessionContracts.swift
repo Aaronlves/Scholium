@@ -47,20 +47,17 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
     public var vaultID: UUID?
     public var documentPresentations: [String: WindowDocumentPresentationSnapshot]
     public var inspectorMode: String
-    public var documentMode: String
 
     public init(
         workspace: WorkspaceVaultSlot,
         vaultID: UUID? = nil,
         documentPresentations: [String: WindowDocumentPresentationSnapshot] = [:],
-        inspectorMode: String = "links",
-        documentMode: String = "read"
+        inspectorMode: String = "links"
     ) {
         self.workspace = workspace
         self.vaultID = vaultID
         self.documentPresentations = documentPresentations
         self.inspectorMode = inspectorMode
-        self.documentMode = documentMode
     }
 
     public func normalized(availablePaths: Set<String>) -> Self {
@@ -88,7 +85,7 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
     }
 }
 
-/// Committed window-wide tab order and selection, with role-local presentation.
+/// Committed window-wide tab order, selection and Document mode, with role-local Inspector state.
 /// Editor bytes and Undo remain in the live document sessions.
 public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
     public let id: UUID
@@ -97,6 +94,7 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
     public var openDocuments: [VaultQualifiedNoteID]
     public var selectedDocument: VaultQualifiedNoteID?
     public var workspaceSessions: [WindowWorkspaceSessionSnapshot]
+    public var documentMode: String
     public var libraryVisible: Bool?
     public var inspectorVisible: Bool?
     public var searchState: SearchWorkspaceState
@@ -109,6 +107,7 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         openDocuments: [VaultQualifiedNoteID] = [],
         selectedDocument: VaultQualifiedNoteID? = nil,
         workspaceSessions: [WindowWorkspaceSessionSnapshot] = [],
+        documentMode: String = "livePreview",
         libraryVisible: Bool? = nil,
         inspectorVisible: Bool? = nil,
         searchState: SearchWorkspaceState = SearchWorkspaceState(),
@@ -120,6 +119,7 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         self.openDocuments = openDocuments
         self.selectedDocument = selectedDocument
         self.workspaceSessions = workspaceSessions
+        self.documentMode = documentMode
         self.libraryVisible = libraryVisible
         self.inspectorVisible = inspectorVisible
         self.searchState = searchState

@@ -213,7 +213,6 @@ extension WindowModel {
                     sourceScope: .library
                 )
                 shellState.selectWorkspace(slot)
-                documentController.selectWorkspace(slot)
                 attentionPresentationState.selectWorkspaceSlot(slot)
             }
             currentRegisteredVault = registered

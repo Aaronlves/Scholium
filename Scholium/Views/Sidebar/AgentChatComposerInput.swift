@@ -247,6 +247,11 @@ struct AgentChatComposerInput: NSViewRepresentable {
     func textDidEndEditing(_ notification: Notification) {
         commitCurrentDraft()
     }
+
+    func undoManager(for view: NSTextView) -> UndoManager? {
+        // Native text actions use the retained conversation's typing history.
+        view === editor ? editor.undoManager : nil
+    }
 }
 
 @MainActor final class AgentChatComposerTextView: NSTextView {

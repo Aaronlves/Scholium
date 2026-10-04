@@ -11,9 +11,10 @@ struct WindowSessionStateTests {
         let snapshot = WindowSessionSnapshot()
         #expect(snapshot.selectedWorkspace == .paperAnalysis)
         #expect(snapshot.workspaceSessions.isEmpty)
+        #expect(snapshot.documentMode == "livePreview")
     }
 
-    @Test("Window-wide tabs and role-local modes round-trip outside research vaults")
+    @Test("Window-wide tabs and Document mode round-trip outside research vaults")
     func roundTrip() async throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -49,17 +50,16 @@ struct WindowSessionStateTests {
                             focusTarget: .editor
                         )
                     ],
-                    inspectorMode: "links",
-                    documentMode: "source"
+                    inspectorMode: "links"
                 ),
                 WindowWorkspaceSessionSnapshot(
                     workspace: .topicKnowledge,
                     vaultID: topicsVaultID,
 
-                    inspectorMode: "related",
-                    documentMode: "livePreview"
+                    inspectorMode: "related"
                 ),
             ],
+            documentMode: "source",
             libraryVisible: false,
             inspectorVisible: true,
             searchState: SearchWorkspaceState(scope: .triptych),
@@ -68,6 +68,36 @@ struct WindowSessionStateTests {
 
         try await store.save(snapshot)
         #expect(try await store.load(id: id) == snapshot)
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any]
+        #expect(encoded?["documentMode"] as? String == "source")
+        let workspaces = try #require(encoded?["workspaceSessions"] as? [[String: Any]])
+        #expect(workspaces.allSatisfy { $0["documentMode"] == nil })
+    }
+
+    @Test("Unsupported window layouts neither authorize restoration nor get replaced")
+    func unsupportedLayoutIsPreserved() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WindowSessionSnapshotStore(applicationSupportURL: root)
+        let snapshot = WindowSessionSnapshot()
+        let directory = root.appendingPathComponent("Window Sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(snapshot.id.uuidString + ".json")
+        var unsupported = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any]
+        )
+        unsupported.removeValue(forKey: "documentMode")
+        let bytes = try JSONSerialization.data(withJSONObject: unsupported, options: [.prettyPrinted, .sortedKeys])
+        try bytes.write(to: url)
+        do {
+            _ = try await store.load(id: snapshot.id)
+            Issue.record("An unsupported layout cannot restore the window.")
+        } catch is DecodingError {}
+        do {
+            try await store.save(snapshot)
+            Issue.record("An unsupported layout cannot be replaced by a new snapshot.")
+        } catch is DecodingError {}
+        #expect(try Data(contentsOf: url) == bytes)
     }
 
     @Test("Normalization never invents replacement tabs or selections")

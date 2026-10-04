@@ -414,9 +414,7 @@ struct AppCompositionRootTests {
         #expect(window.documentController.selectedDocument == b)
 
         window.documentTabController.selectTab(withID: aTabID)
-        window.documentController.selectWorkspace(.paperAnalysis)
         window.documentController.rememberPresentationMode(.read)
-        window.documentController.selectWorkspace(.topicKnowledge)
         window.documentController.rememberPresentationMode(.source)
         window.shellState.selectDocumentWorkspace(.topicKnowledge)
         window.shellState.selectInspectorMode(.related)
@@ -425,24 +423,30 @@ struct AppCompositionRootTests {
         #expect(window.documentController.selectedDocument == a)
         #expect(window.documentController.unavailableSnapshot?.fingerprint == aSnapshot.fingerprint)
         #expect(window.documentController.session(for: a.editingTarget) === originalSession)
-        #expect(window.documentController.currentPresentationMode == .read)
+        #expect(window.documentController.currentPresentationMode == .source)
+        #expect(window.documentController.chromeProjection.mode == .read)
         #expect(window.shellState.inspector.mode == .links)
 
         try "# A changed externally\n".write(
             to: analyses.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
         await window.refreshWindowProjection()
         try await waitUntil("the changed rollback source is indexed") {
-            window.workspaceProjectionController.cachedNote(
-                vaultID: analysisVault.id, stableNoteID: nil, relativePath: "A.md"
-            )?.fingerprint != aSnapshot.fingerprint
+            guard
+                let current = window.workspaceProjectionController.cachedNote(
+                    vaultID: analysisVault.id, stableNoteID: nil, relativePath: "A.md"
+                )
+            else { return false }
+            return current.fingerprint != aSnapshot.fingerprint
         }
         window.documentController.selectUnavailableDocument(bSnapshot)
         #expect(!window.restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: aSnapshot))
         #expect(window.documentController.selectedDocument == nil)
         window.selectDocumentTab(withID: aTabID)
         try await waitUntil("the selected tab can be retried against current source") {
-            window.documentController.selectedDocument == a
-                && window.documentController.unavailableSnapshot?.fingerprint != aSnapshot.fingerprint
+            guard window.documentController.selectedDocument == a,
+                let current = window.documentController.unavailableSnapshot
+            else { return false }
+            return current.fingerprint != aSnapshot.fingerprint
         }
     }
 

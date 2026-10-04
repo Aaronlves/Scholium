@@ -40309,6 +40309,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     "insertFootnote",
     "insertInlineFootnote",
     "insertTable",
+    "insertImage",
+    "insertAttachment",
     "toggleTask",
     "tableInsertRowBefore",
     "tableInsertRowAfter",

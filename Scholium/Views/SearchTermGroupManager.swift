@@ -37,7 +37,9 @@ struct SearchTermGroupManager: View {
                 .frame(minWidth: 150)
                 .disabled(isSaving || isDirty)
                 Form {
-                    TextField("Group Name", text: $name).disabled(isSaving)
+                    TextField("Group Name", text: $name)
+                        .accessibilityLabel("Group Name")
+                        .disabled(isSaving)
                     VStack(alignment: .leading) {
                         Text("Terms, one per line")
                         TextEditor(text: $terms).frame(minHeight: 160).disabled(isSaving)

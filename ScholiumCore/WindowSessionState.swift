@@ -41,6 +41,9 @@ public actor WindowSessionSnapshotStore {
     }
 
     private func write(_ snapshot: WindowSessionSnapshot) throws {
+        // Unsupported or corrupt stored layouts remain byte-unchanged. A
+        // failed restore cannot authorize replacing them with a clean window.
+        _ = try load(id: snapshot.id)
         try FileManager.default.createDirectory(
             at: directoryURL,
             withIntermediateDirectories: true

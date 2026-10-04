@@ -583,8 +583,8 @@ struct WindowControllerArchitectureTests {
         #expect(session.scrollAnchor == nil)
     }
 
-    @Test("Document and Inspector modes are retained independently by workspace")
-    func workspaceModesAreIndependent() {
+    @Test("Document mode stays window-wide while Inspector modes remain role-local")
+    func documentModeIsWindowWideAndInspectorModesAreRoleLocal() {
         let document = DocumentController()
         let shell = WindowShellState()
 
@@ -592,19 +592,30 @@ struct WindowControllerArchitectureTests {
         shell.selectInspectorMode(.links)
 
         shell.selectWorkspace(.topicKnowledge)
-        document.selectWorkspace(.topicKnowledge)
         #expect(document.currentPresentationMode == .livePreview)
         #expect(shell.inspector.mode == .links)
 
         document.rememberPresentationMode(.source)
         shell.selectInspectorMode(.related)
         shell.selectWorkspace(.paperAnalysis)
-        document.selectWorkspace(.paperAnalysis)
 
-        #expect(document.currentPresentationMode == .livePreview)
+        #expect(document.currentPresentationMode == .source)
         #expect(shell.inspector.mode == .links)
-        #expect(document.presentationMode(for: .topicKnowledge) == .source)
         #expect(shell.inspectorMode(for: .topicKnowledge) == .related)
+        shell.selectWorkspace(.output)
+        #expect(document.currentPresentationMode == .source)
+    }
+
+    @Test("Projection cleanup preserves the current window mode", arguments: [NotePresentationMode.source, .read])
+    func projectionCleanupPreservesWindowMode(mode: NotePresentationMode) {
+        let controller = DocumentController()
+        controller.rememberPresentationMode(mode)
+        controller.resetPresentationState()
+        #expect(controller.currentPresentationMode == mode)
+        controller.removeAll(retainingSessions: true)
+        #expect(controller.currentPresentationMode == mode)
+        controller.removeAll()
+        #expect(controller.currentPresentationMode == mode)
     }
 
     @Test("The current Document mode carries across selected Notes")

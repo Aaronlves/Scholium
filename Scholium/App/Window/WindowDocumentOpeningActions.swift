@@ -91,7 +91,6 @@ extension WindowModel {
                     let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
                     let workspace = workspaceSlot(for: vault)
                 {
-                    documentController.selectWorkspace(workspace)
                     shellState.selectDocumentWorkspace(workspace)
                 }
                 synchronizeDocumentTabs(after: tabActivation, recordsNavigationHistory: recordsNavigationHistory)
@@ -121,7 +120,6 @@ extension WindowModel {
             if let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
                 let workspace = workspaceSlot(for: vault)
             {
-                documentController.selectWorkspace(workspace)
                 shellState.selectDocumentWorkspace(workspace)
             }
             documentController.selectUnavailableDocument(hydrated)
@@ -207,7 +205,6 @@ extension WindowModel {
                 try commitDocumentLibrarySelection(stagedLibrary, opening: snapshot)
                 _ = documentController.selectRetainedDocument(retainedTab.document)
                 if let workspace = workspaceSlot(for: vault) {
-                    documentController.selectWorkspace(workspace)
                     shellState.selectDocumentWorkspace(workspace)
                 }
                 synchronizeDocumentTabs(after: tabActivation, recordsNavigationHistory: recordsNavigationHistory)
@@ -254,7 +251,6 @@ extension WindowModel {
         )
         try commitDocumentLibrarySelection(stagedLibrary, opening: current.summary)
         if let workspace = workspaceSlot(for: vault) {
-            documentController.selectWorkspace(workspace)
             shellState.selectDocumentWorkspace(workspace)
         }
         if managedCreationBodyStartUTF16 == nil {

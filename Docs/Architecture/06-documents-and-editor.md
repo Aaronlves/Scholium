@@ -13,13 +13,13 @@ source, Undo, rendered content and previews without a closed-Note presentation
 cache. Window navigation visits own revision-bound return positions separately
 from open document sessions. Equal paths across vaults remain distinct.
 
-Each document session owns a persistent editor/flush identity, checked exact
-mirror and committed revision, presentation phase, pending intent,
-allocation/configuration, source-bound scroll anchor, save tasks and conflict/
-retry/comparison state. The editor host retains identity across mode/layout/theme
-changes; hidden hosts cannot receive input or accessibility focus. Mount the
-committed Review projection only in Review or read recovery; reconstruct it when
-returning from Edit or Source. Requested mode is not presented until acknowledged.
+`DocumentController` owns one persisted window-wide mode. Sessions retain
+editor/flush identity, checked exact mirror, committed revision, presentation/
+pending intent, allocation/configuration, source-bound scroll, save and conflict/
+retry/comparison state across mode/layout/theme changes. Hidden hosts cannot
+receive input/accessibility focus. Mount committed Review only for Review/read
+recovery; reconstruct after Edit/Source. Mode presentation awaits acknowledgment;
+unsafe Review retains editor/recovery.
 
 The document host owns one visible native surface. Review and editor keep
 separate viewport observations; mode handoff alone copies anchors or fallback
@@ -38,7 +38,7 @@ Managed creation installs exact committed source and initial intent together.
 Initialization/focus acknowledgments and mapped selection must match before
 readiness; failure preserves source behind retry/Source. Clean external publication
 replaces pending source/boundary together. Revision changes invalidate stale
-readiness; Review HTML is generated only for Review or required read recovery.
+readiness; Review/recovery HTML caches source and authorized local-image revisions.
 Document owns lightweight position/focus,
 not another writable path-mapped presentation record.
 

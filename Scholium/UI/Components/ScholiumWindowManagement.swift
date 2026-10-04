@@ -537,6 +537,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if let searchWindow = advancedSearchWindow?.window {
             ScholiumWindowAppearance.apply(colorScheme, to: searchWindow)
         }
+        if let exportWindow = appState.noteExportWindowController?.window {
+            ScholiumWindowAppearance.apply(colorScheme, to: exportWindow)
+        }
     }
 
     private func observeSystemAppearanceIfNeeded() {

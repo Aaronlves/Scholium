@@ -50,7 +50,6 @@ extension WindowModel {
             let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
             let workspace = workspaceSlot(for: vault)
         {
-            documentController.selectWorkspace(workspace)
             shellState.selectDocumentWorkspace(workspace)
         }
         reconcileDocumentSessionLeases()
@@ -119,8 +118,10 @@ extension WindowModel {
             let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == descriptor.reference.vaultID }),
             let workspace = workspaceSlot(for: vault)
         {
-            documentController.selectWorkspace(workspace)
             shellState.selectDocumentWorkspace(workspace)
+        }
+        if isDetachedDocumentWindow, documentTabController.tabs.isEmpty {
+            documentController.rememberPresentationMode(transfer.mode)
         }
         documentController.receiveSessionTransfer(transfer)
         documentTabController.insertTransferredTab(tab)

@@ -337,13 +337,7 @@ struct ResearchSearchView<Library: View>: View {
         }
         .onExitCommand {
             guard isActive else { return }
-            if !visibleCompletions.isEmpty {
-                suppressedCompletionQuery = queryDraft
-                completionSelection = nil
-                searchFocused = true
-            } else {
-                context.dismiss()
-            }
+            dismissSearchPresentation()
         }
         .alert("Save Search", isPresented: $showSaveSearch) {
             TextField("Search name", text: $savedSearchName)
@@ -431,14 +425,22 @@ struct ResearchSearchView<Library: View>: View {
                 openSelectedResult()
             }
         case .cancel:
-            if !visibleCompletions.isEmpty {
-                suppressedCompletionQuery = queryDraft
-                completionSelection = nil
-            } else {
-                context.dismiss()
-            }
+            dismissSearchPresentation()
         }
         return true
+    }
+
+    private func dismissSearchPresentation() {
+        if showsQueryExplanation {
+            showsQueryExplanation = false
+            searchFocused = true
+        } else if !visibleCompletions.isEmpty {
+            suppressedCompletionQuery = queryDraft
+            completionSelection = nil
+            searchFocused = true
+        } else {
+            context.dismiss()
+        }
     }
 
     private var searchScopeBar: some View {
@@ -486,6 +488,10 @@ struct ResearchSearchView<Library: View>: View {
                     .padding(20)
                     .frame(width: 360)
                     .accessibilityIdentifier("scholium.searchExplanation")
+                    .onExitCommand {
+                        showsQueryExplanation = false
+                        searchFocused = true
+                    }
                 }
             }
         }

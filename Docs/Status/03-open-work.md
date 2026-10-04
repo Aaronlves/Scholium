@@ -4,10 +4,6 @@
 
 ## Native design, accessibility and human acceptance
 
-- Resolve the mode-policy divergence before changing established behavior:
-  §18.4 specifies role/workspace mode retention, while retained tabs currently
-  restore their session mode. Existing tests explicitly preserve retained Source;
-  the feature review leaves that material choice open.
 - Complete the Core human baseline: genuine VoiceOver, physical Full
   Keyboard Access, installed Simplified Chinese IME exact-source editing, and
   visual adaptations at supported window sizes. Include §20
