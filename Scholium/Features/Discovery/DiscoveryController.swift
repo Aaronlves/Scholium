@@ -174,6 +174,17 @@ final class DiscoveryController: ObservableObject {
         return library.selectedRowIDs
     }
 
+    func libraryCreationFolder(
+        in scope: LibraryDisclosureScope?,
+        availableFolders: [String]
+    ) -> String? {
+        let selection = librarySelection(in: scope)
+        guard selection.count == 1, let path = selection.first,
+            WorkspaceLibraryVisibility.includes(path), availableFolders.contains(path)
+        else { return nil }
+        return path
+    }
+
     func setLibrarySelection(_ ids: Set<String>, in scope: LibraryDisclosureScope?) {
         guard let scope else { return }
         guard library.selectionScope != scope || library.selectedRowIDs != ids else { return }

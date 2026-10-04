@@ -4,6 +4,14 @@ import ScholiumContracts
 /// The library's visible ordering: which documents the researcher's active
 /// filters admit, and the order they read in.
 extension WindowModel {
+    var selectedLibraryCreationFolder: String? {
+        guard noteSourceScope == .library, let vault = currentRegisteredVault else { return nil }
+        return discoveryController.libraryCreationFolder(
+            in: LibraryDisclosureScope(vaultID: vault.id, sourceScope: .library),
+            availableFolders: currentLibraryFolders
+        )
+    }
+
     var filteredNotes: [WindowDocumentLocation] {
         var result = notes
         if isNeedsAttentionFilter, let paths = currentAttentionPaths {

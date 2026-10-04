@@ -4,6 +4,68 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    @MainActor
+    func testCreationMenusUseTheSelectedFolderAndKeepNewWriting() throws {
+        waitForCurrentDocumentSurface()
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Light"].click()
+        let navigator = app.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+        navigator.descendants(matching: .any)["Topics"].firstMatch.click()
+        let folder = app.descendants(matching: .any)["scholium.folderRow.文件夹甲"].firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
+        folder.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)).click()
+        app.typeKey("n", modifierFlags: [.command, .shift])
+        XCTAssertTrue(waitForDocumentTitle("Untitled", timeout: 10))
+        let vault = triptychDirectory.appendingPathComponent("02-topics")
+        let created = vault.appendingPathComponent("文件夹甲/Untitled.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: created.path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: vault.appendingPathComponent("Untitled.md").path))
+        XCTAssertEqual(try Data(contentsOf: created), Data())
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        let body = "New writing in the selected folder. 中文。"
+        try setPasteboardText(body)
+        app.typeKey("v", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "") == body })
+        app.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { (try? String(contentsOf: created, encoding: .utf8)) == body })
+        let light = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        light.name = "selected-folder-new-note-keyboard"
+        light.lifetime = .keepAlways
+        add(light)
+
+        folder.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)).click()
+        app.menuBars.menuBarItems["File"].click()
+        app.menuItems["New Note"].click()
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                let paths =
+                    (try? FileManager.default.contentsOfDirectory(
+                        atPath: vault.appendingPathComponent("文件夹甲").path)) ?? []
+                return paths.filter { $0.hasPrefix("Untitled") && $0.hasSuffix(".md") }.count == 2
+            })
+        XCTAssertEqual(try String(contentsOf: created, encoding: .utf8), body)
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Dark"].click()
+        resizeProofWindow(app.windows.firstMatch, toWidth: 780)
+        XCTAssertEqual(app.windows.firstMatch.frame.width, 780, accuracy: 18)
+        folder.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)).click()
+        app.descendants(matching: .any)["scholium.libraryCreate"].firstMatch.click()
+        app.menuItems["New Folder"].click()
+        let nested = vault.appendingPathComponent("文件夹甲/Untitled Folder")
+        XCTAssertTrue(waitUntil(timeout: 8) { FileManager.default.fileExists(atPath: nested.path) })
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: vault.appendingPathComponent("Untitled Folder").path))
+        let narrow = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        narrow.name = "selected-folder-add-menu-dark-minimum-width"
+        narrow.lifetime = .keepAlways
+        add(narrow)
+    }
+
     /// One menu journey verifies live mode, scale, tab and empty-state routes,
     /// preserving source and retaining native-menu screenshots for visual review.
     @MainActor

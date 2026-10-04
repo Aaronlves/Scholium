@@ -231,6 +231,18 @@ extension WindowModel {
                     $0.id == id
                 })?.document
             else { return }
+            let closingSession = self.documentController.session(for: closingDocument.editingTarget)
+            try await self.documentController.prepareSessionTransfer(closingDocument)
+            let closingSuspensionID = closingSession.editorSession.detachmentSuspensionID
+            var closeCommitted = false
+            defer {
+                if !closeCommitted {
+                    self.documentController.resumeAutosave(
+                        afterTransferOf: closingDocument,
+                        suspensionID: closingSuspensionID
+                    )
+                }
+            }
             try await self.documentController.flushDocumentBeforeDeparture(closingDocument)
             self.documentNavigationHistoryController.captureCurrent(
                 document: closingDocument,
@@ -259,6 +271,7 @@ extension WindowModel {
             }
             self.documentController.endClosedPresentation(of: closingDocument)
             self.reconcileDocumentSessionLeases()
+            closeCommitted = true
             Task { @MainActor [weak self] in
                 await Task.yield()
                 self?.documentController.reapDetachedSessions()

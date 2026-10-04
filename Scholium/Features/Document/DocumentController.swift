@@ -635,9 +635,7 @@ final class DocumentController: ObservableObject {
         refreshChromeProjection()
     }
 
-    /// Tab activation reuses a leased presentation instead of reopening it.
-    /// In particular, it must not reset scroll or replace a retained Source mode.
-    func selectRetainedDocument(_ document: WindowSelectedDocument) -> Bool {
+    func canSelectRetainedDocument(_ document: WindowSelectedDocument) -> Bool {
         switch document {
         case .workspace(let descriptor):
             guard snapshots[descriptor.sessionKey] != nil else { return false }
@@ -646,7 +644,15 @@ final class DocumentController: ObservableObject {
                 unavailableSnapshot?.id.relativePath == path
             else { return false }
         }
-        guard let session = sessions.retainedSession(for: document.editingTarget) else { return false }
+        return sessions.retainedSession(for: document.editingTarget) != nil
+    }
+
+    /// Tab activation reuses a leased presentation instead of reopening it.
+    /// In particular, it must not reset scroll or replace a retained Source mode.
+    func selectRetainedDocument(_ document: WindowSelectedDocument) -> Bool {
+        guard canSelectRetainedDocument(document),
+            let session = sessions.retainedSession(for: document.editingTarget)
+        else { return false }
         selectedDocument = document
         currentPresentationMode = session.pendingEditorMode?.presentationMode ?? session.presentationMode
         refreshChromeProjection()

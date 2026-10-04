@@ -54,18 +54,9 @@ extension WindowModel {
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == vaultID
             }),
-            let workspace = workspaceSlot(for: vault)
+            workspaceSlot(for: vault) != nil
         else {
             throw WindowNavigationError.noteUnavailable(document.relativePath)
-        }
-        if shellState.selectedWorkspace != workspace {
-            try await prepareWorkspaceSelection(
-                workspace,
-                sourceScope: .library,
-                validateDestination: {
-                    try self.validateDocumentIsAvailable(document)
-                }
-            )
         }
         try await activateResolvedDocument(
             document,
@@ -81,7 +72,21 @@ extension WindowModel {
     ) async throws {
         if case .preserveTabMembership = tabActivation {
             try validateDocumentIsAvailable(document)
-            if documentController.selectRetainedDocument(document) {
+            if documentController.canSelectRetainedDocument(document),
+                let vaultID = document.vaultID
+            {
+                let stagedLibrary = try await stageDocumentLibrarySelection(vaultID: vaultID)
+                try validateDocumentIsAvailable(document)
+                guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
+                guard documentController.canSelectRetainedDocument(document),
+                    let summary = workspaceProjectionController.cachedNote(
+                        vaultID: vaultID,
+                        stableNoteID: document.sessionKey?.noteID,
+                        relativePath: document.relativePath
+                    )
+                else { throw WindowNavigationError.noteUnavailable(document.relativePath) }
+                try commitDocumentLibrarySelection(stagedLibrary, opening: summary)
+                _ = documentController.selectRetainedDocument(document)
                 if let vaultID = document.vaultID,
                     let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
                     let workspace = workspaceSlot(for: vault)
@@ -109,6 +114,10 @@ extension WindowModel {
                 )
             else { throw WindowNavigationError.noteUnavailable(relativePath) }
             let hydrated = try await hydrateForOpening(summary)
+            let stagedLibrary = try await stageDocumentLibrarySelection(vaultID: vaultID)
+            try validateDocumentIsAvailable(document)
+            guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
+            try commitDocumentLibrarySelection(stagedLibrary, opening: hydrated.summary)
             if let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
                 let workspace = workspaceSlot(for: vault)
             {
@@ -137,7 +146,7 @@ extension WindowModel {
         guard
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == reference.vaultID
-            }), let workspace = workspaceSlot(for: vault)
+            }), workspaceSlot(for: vault) != nil
         else {
             throw WindowNavigationError.vaultUnavailable(reference.vaultName)
         }
@@ -150,26 +159,6 @@ extension WindowModel {
             ) != nil
         else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
-        }
-        if shellState.selectedWorkspace != workspace {
-            try await prepareWorkspaceSelection(
-                workspace,
-                sourceScope: .library,
-                validateDestination: {
-                    try validateDisplay()
-                    guard
-                        self.workspaceProjectionController.cachedNote(
-                            vaultID: reference.vaultID,
-                            stableNoteID: requestedStableID,
-                            relativePath: reference.relativePath
-                        ) != nil
-                    else {
-                        throw WindowNavigationError.noteUnavailable(
-                            reference.relativePath
-                        )
-                    }
-                }
-            )
         }
         try await activateResolvedWorkspaceReference(
             reference,
@@ -207,13 +196,16 @@ extension WindowModel {
         else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
         }
+        let stagedLibrary = try await stageDocumentLibrarySelection(vaultID: vault.id)
         if managedCreationBodyStartUTF16 == nil,
             let retainedTab = documentTabController.tab(for: reference)
         {
             try validateDisplay()
             guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
             try validateDocumentIsAvailable(retainedTab.document)
-            if documentController.selectRetainedDocument(retainedTab.document) {
+            if documentController.canSelectRetainedDocument(retainedTab.document) {
+                try commitDocumentLibrarySelection(stagedLibrary, opening: snapshot)
+                _ = documentController.selectRetainedDocument(retainedTab.document)
                 if let workspace = workspaceSlot(for: vault) {
                     documentController.selectWorkspace(workspace)
                     shellState.selectDocumentWorkspace(workspace)
@@ -260,6 +252,7 @@ extension WindowModel {
             summary: currentSummary, document: hydrated.document,
             cachedSemanticDocument: hydrated.cachedSemanticDocument
         )
+        try commitDocumentLibrarySelection(stagedLibrary, opening: current.summary)
         if let workspace = workspaceSlot(for: vault) {
             documentController.selectWorkspace(workspace)
             shellState.selectDocumentWorkspace(workspace)
@@ -281,6 +274,40 @@ extension WindowModel {
             after: tabActivation,
             recordsNavigationHistory: recordsNavigationHistory
         )
+    }
+
+    /// A document opening may change the browsed Library only after its exact
+    /// destination is ready. Staging owns no visible selection, so hydration
+    /// failure leaves the origin workspace and editor intact.
+    private func stageDocumentLibrarySelection(
+        vaultID: UUID
+    ) async throws -> StagedWorkspaceLibrarySelection? {
+        guard let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
+            let workspace = workspaceSlot(for: vault)
+        else { throw WorkspaceRegistryError.incompleteWorkspace }
+        guard shellState.selectedWorkspace != workspace else { return nil }
+        return try await stageRegisteredVault(vault, slot: workspace, sourceScope: .library)
+    }
+
+    private func commitDocumentLibrarySelection(
+        _ staged: StagedWorkspaceLibrarySelection?,
+        opening summary: WorkspaceNoteSummary
+    ) throws {
+        guard let staged else { return }
+        guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
+        guard
+            staged.vaultSnapshot.documents.first(where: { $0.id == summary.id })?
+                .hasSameSourceBinding(as: summary) == true,
+            workspaceProjectionController.cachedNote(
+                vaultID: summary.id.vaultID,
+                stableNoteID: summary.stableIdentity.resolvedID,
+                relativePath: summary.id.relativePath
+            )?.hasSameSourceBinding(as: summary) == true
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        try commitStagedWorkspaceLibrarySelection(staged)
+        shellState.selectLibraryWorkspace(staged.workspace)
+        refreshIdentityState(from: staged.vaultSnapshot)
+        scheduleWorkspaceCatalogRefresh()
     }
 
     private func hydrateForOpening(_ summary: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot {

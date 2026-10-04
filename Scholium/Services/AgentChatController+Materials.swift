@@ -131,14 +131,23 @@ extension AgentChatController {
     }
 
     func releaseMaterialIfUnreferenced(_ material: AgentChatLocalMaterial) async throws {
-        guard
-            !conversations.contains(where: { conversation in
-                conversation.localMaterials.contains { $0.id == material.id }
-                    || conversation.queuedMessages.contains { $0.localMaterials.contains { $0.id == material.id } }
-                    || conversation.messages.contains { $0.localMaterials.contains { $0.id == material.id } }
-            })
-        else { return }
+        guard !isMaterialReferenced(material) else { return }
         try await materialStore.discard(material)
+    }
+
+    func unreferencedMaterials(in conversation: AgentChatConversation) -> [AgentChatLocalMaterial] {
+        (conversation.localMaterials
+            + conversation.queuedMessages.flatMap(\.localMaterials)
+            + conversation.messages.flatMap(\.localMaterials))
+            .filter { !isMaterialReferenced($0) }
+    }
+
+    private func isMaterialReferenced(_ material: AgentChatLocalMaterial) -> Bool {
+        conversations.contains { conversation in
+            conversation.localMaterials.contains { $0.id == material.id }
+                || conversation.queuedMessages.contains { $0.localMaterials.contains { $0.id == material.id } }
+                || conversation.messages.contains { $0.localMaterials.contains { $0.id == material.id } }
+        }
     }
 
     func previewLocalMaterial(_ material: AgentChatLocalMaterial) async throws -> URL {

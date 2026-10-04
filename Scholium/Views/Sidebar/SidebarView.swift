@@ -213,7 +213,7 @@ struct SidebarView: View {
             }
             .scrollContentBackground(.hidden)
             .contentShape(Rectangle())
-            .contextMenu { rootCreationActions }
+            .contextMenu { creationActions(in: nil) }
             .accessibilityIdentifier("scholium.noteList")
         }
     }
@@ -238,7 +238,8 @@ struct SidebarView: View {
                 libraryFilterMenu
 
                 Menu {
-                    rootCreationActions
+                    creationActions(
+                        in: controller.libraryCreationFolder(in: context.disclosureScope, availableFolders: context.folders))
                 } label: {
                     ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.add.symbol)
                 }
@@ -284,9 +285,9 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
-    private var rootCreationActions: some View {
+    private func creationActions(in folderRelativePath: String?) -> some View {
         Button {
-            context.createUntitledNote(nil)
+            context.createUntitledNote(folderRelativePath)
         } label: {
             Label("New Note", systemImage: ScholiumSidebarAction.newNote.symbol)
         }
@@ -294,7 +295,7 @@ struct SidebarView: View {
         .accessibilityIdentifier("scholium.newNote")
 
         Button {
-            context.createUntitledFolder(nil)
+            context.createUntitledFolder(folderRelativePath)
         } label: {
             Label("New Folder", systemImage: ScholiumSidebarAction.newFolder.symbol)
         }

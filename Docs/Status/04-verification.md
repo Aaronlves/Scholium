@@ -29,167 +29,102 @@ evidence remain incomplete.
 Logs: `.build/verification/` and `.build/verification-release/`; local candidate:
 `~/Applications/Scholium Builds/v0.3.2-beta/`.
 
-## Current source and native development proof
+## Current feature coverage
 
-The following are scoped source/fixture results, not fresh verification of the
-documentation simplification. Xcode 27.0 (27A5218g), Swift 6.4 and macOS 27.0 SDK
-are recorded for the 2026-09-16 editor/Settings development runs. QA used
-disposable standard 500-Note Triptych copies and isolated state; recorded QA
-processes, bundles and temporary state were removed.
+**2026-10-04 — Current-source review:** Inventory follows reachable App commands,
+construction and the current specification. Built-in PDF reading and Note Info
+remain absent; Links and Related Material remain available. Xcode 27.0
+(27A5218g), Swift 6.4, SDK 27.0 and macOS 27.2; Debug QA uses independent
+Analyses/Topics/Works registrations from disposable standard 500-Note copies.
 
-**2026-09-28 — Changes:** Original `verify.sh` passed all modules (1,195 App
-tests/155 suites), localization, lint, RDF determinism, symbol, Release and
-bundled-helper checks. Disposable standard 500-Note Triptych English/light Debug QA
-covered cumulative English/Chinese source edits, difference navigation, close
-without review, explicit review/history, newer pending after history delete/clear,
-and This Mac Settings scope, 90-day default, counts and confirmation. Clearing
-history left the Note hash unchanged; the test App, fixture copies and isolated
-state were removed. Supplementary dark/narrow QA covered comparison, Settings
-and keyboard routes. Human VoiceOver, physical input, full adaptation, packaging
-and release acceptance remain open. Evidence:
-`.build/changes-complete-gate-green-candidate.log`,
-`.build/changes-qa-before-clear.sha256`, `.build/changes-qa-after-clear.sha256`.
+The checklist distinguishes source inspection, deterministic behavior and native
+journeys. Twenty-six distinct native journeys pass across the initial matrix and
+targeted rechecks; the complete repository gate passes.
+An existing test name alone supplies no fresh passing evidence. The detailed
+scenario/assertion map and logs are in `.build/feature-review/RESULTS.md`.
 
-**2026-09-17 — Inline writing assistance:** Owning mocked-runtime checks cover
-independent model/low effort, isolated ephemeral execution, cancellation, cleanup
-and bounded literal output. Editor typechecking and 364 tests cover AI-first
-preview, unavailable/empty/timeout fallback, late-result rejection, IME suppression
-and exact Undo. Eight native/context checks cover unfocused suppression,
-source-neutral configuration and revision-bound background. A disposable 500-Note
-QA journey verifies Settings search, default off/Luna, retained offline choice and
-disable.
-No provider generation or private vault was used. SwiftPM's inactive
-WebKit host cannot establish native AI acceptance/Undo; real-runtime quality,
-quota, IME, VoiceOver and full adaptations remain open.
-Evidence: `.build/continuation/`.
+| Feature/workflow | Normal use | Keyboard/accessibility | Empty, error, interrupted or repeated flow | Verification/findings |
+| --- | --- | --- | --- | --- |
+| Triptych setup/access | Create/connect three roles | Native File/pickers | Wrong folder, cancellation, restore/relaunch | Bootstrap lifecycle; native setup/access |
+| Library navigation | Roles, tree, disclosure, filters/sort | Native rows/arrows, multi-selection | Filtered empty, unavailable, retained Document | Sidebar/Discovery; native navigation/organization |
+| New Note/Folder and title | Immediate creation, inline rename | File/Add, body focus, title field | Collision, repeated creation, stale selection | Fixed selected-folder routing; three owning regressions |
+| Opening, tabs and history | Repeat/open/new tab, Back/Forward | Menus, tab/window routes | Failed hydration, retained session, close failure | Fixed cross-role origin preservation; opening regressions |
+| Review/Edit/Source | Exact source, YAML, semantic Markdown | Mode/Format/Insert, task/footnote actions | Malformed/protected syntax, Undo, composition | Editor/Contracts; native modes/Callouts/clipboard |
+| Find and completion | Find/Replace, slash/Wikilink/Analysis candidates | Return/Tab/Escape, named fields | No match, cancellation, Undo, marked text | Editor Find/completion; native journeys |
+| Save/conflict/recovery | Autosave/manual save, external refresh | Shared Save, comparison/repair controls | External conflict, interrupted editor, late input | Fixed close input suspension; WebKit failure/resumption regressions |
+| Quick/Advanced Search | Lexical/property/Boolean/direct-link queries | Native field/results and keyboard opening | Invalid/empty/limited/stale, cancellation | Search suites; native result opening |
+| Search helpers | Saved Searches, term groups, paragraph locations | Explicit insertion/explanation/destination names | Invalid store, changed drafts, bounded pagination | Fixed paragraph control names; native locator regression |
+| Links | Incoming/Outgoing/External, annotations | Named selector/filter/disclosure/source actions | Missing/ambiguous/repeated links, retained context | Connections/parser suites; native direction checks; formatted annotations readable in exploratory fixture |
+| Related Material/Writing References | Current line/selection, source, links, Chat staging | Research shortcut, named cards/actions | Loading/empty/failure, departure/cancellation, stale source | Related Material/paragraph-link suites; native lifecycle; usefulness remains human |
+| Note/Folder organization | Duplicate/move, drag, batch operations | Menus, destination sheets, redundant drag routes | Collision, partial/retry/cancel, uncertain Trash | Library batch/file tests; native filtered-empty/cancel |
+| Passage reorganization | Copy/extract/move/merge, exact preview | Research/menu destinations and property choices | Partial/protected selection, stale revisions, rollback | NoteRestructure/dependency/frontmatter tests; no fresh native commit journey |
+| Attachments/images | Copy/reference/import/index/paste, Quick Look | File/Insert and named preview routes | Missing original, unsafe path, insertion rollback | Attachment/image/Quick Look suites; no fresh cross-app transfer |
+| External Markdown/import | Open/reopen, captured unsaved import | Toolbar/File/Finder routes | Conflict/reload, collision, uncertain import | External lifecycle/import tests and native journey |
+| Export | HTML/PDF/DOCX snapshot/presets | Format/style/Save panel | Cancel, destination failure, long tails/footnotes | Export suites; exploratory native PDF created under `.build/` |
+| Changes/Agent receipts | Pending/History, review, exact Undo | Difference/review/receipt controls | Newer revision, unknown baseline, ineligible Undo | Change/Agent suites; native update/restore |
+| Offline Chat | Conversation/draft/Find/material/queue/archive | Page/composer/selection routes | Retained drafts, sharing, failed deletion save | Fixed unreferenced material cleanup; five regressions; native offline journey |
+| Runtime Chat | Models/Skills/tools/context/quota, questions/approvals/branches/Agents | Named capability/process/source controls | Unsupported/disconnect/Stop/uncertain delivery | Deterministic runtime fixtures; real provider/account breadth untested |
+| Settings | Six panes, appearance/CSS, writing, shortcuts | Toolbar/search, scoped drafts | Invalid reload, repair, cancellation | Settings suites; native navigation/recovery |
+| Windows/layout | Independent/detached/external, Focus/full screen | Native menus/tabs/transfer | Close guards, transfer failure, focus restoration | Lifecycle suites; native transfer/focus |
+| Notifications/Zotero | Local queue/exact link display | Named bell/actions/references | Empty/stale, missing target, unavailable integration | Deterministic routes; actual banners/clicks and Zotero untested |
 
-**2026-09-17 — Writing References identity/navigation:** Seventeen owning tests
-cover BOM/CRLF, exact revision-bound source opening, changed/unreadable/dirty
-sources, duplicate titles and all three roles. Seventy-three adjacent navigation/
-composition tests pass on recheck; the initial multiwindow external-deletion
-timeout also passed isolated recheck. Debug QA verifies normal Source arrival,
-visible mismatch feedback/dismissal, same-title directory distinction in
-960-pixel Light/Dark windows and role/path AX identity. An earlier scoped journey
-also covered Inspector switching, loading/results/empty states, Insert-menu/
-Shift-Command-J entry, selection updates, group disclosure, pane/document departure,
-Review command availability and unsent Chat staging; 13 state tests cover
-late-response cancellation, provenance and complete-result insertion admission.
-No private vault or Chat service was used. This does not establish VoiceOver,
-physical input, full adaptations or native usable-card latency.
-Evidence: `.build/reference-interface-fix-acceptance.md`,
-`.build/reference-interface-fix-tests.log`,
-`.build/reference-interface-fix-navigation-integration-recheck.log`,
-`.build/retrieval-ui-acceptance.md`, `.build/retrieval-ui-state-tests.log`.
+Focused new checks pass for opening/close, creation selection and Chat deletion;
+the optional synthetic performance probe is skipped. The deletion checks protect
+shared branch/message files, original files, failed persistence and PDF/image
+representations; abrupt termination between saved deletion and cleanup is outside
+that proof. No performance improvement is claimed.
 
-**2026-09-16 — Editor authority/recovery:** Deterministic coverage retains detached
-exact-source persistence, background Review revision adoption including NFC/NFD,
-conflict fidelity, suspension/resume ordering, lost commit-reply replay, composition
-expiry and UTF-8 capacity admission. Two native 500-Note QA journeys retain
-background saves/external revisions through further editing and dirty external
-conflict/Recovery. Earlier scoped checks retain newline Undo/Redo/reconstruction,
-half-open/CRLF selection, rename autosave, inactive-tab publication, replacement-size
-rejection and newer-input preservation during Conflict Reload; native journeys
-covered dirty Review handoff and continued autosave after external rename.
-Evidence: `.build/editor-boundary-evidence/`, `.build/note-editing-fix/`.
-Syntax-continuity fixture QA (2026-09-07) covers Callouts, Chinese paste/Undo,
-disclosure, Light/Dark and mode switching with byte-identical Undo; it does not
-establish installed IME, minimum width, full adaptation or human perception.
-Evidence: `.build/editor-presentation-*.log`.
+Exploratory QA already checked creation/typing/save-on-departure, Find/Replace,
+role browsing, quick Search normal/invalid/empty, paragraph Search and offline
+Agent setup. It reproduced selected-folder creation at root and confirmed readable
+formatted link annotations. Native PDF export completed to a disposable destination.
+These observations do not establish full GUI or human acceptance.
 
-**2026-09-16 — Bootstrap:** Bootstrap's 102 scoped lifecycle tests
-and two QA journeys cover connect/restore/create, non-replacing destination
-conflict, picker cancellation, retained Back input, parent authorization,
-480-point width, immediate handoff, relaunch and registration editing.
-Evidence: `.build/bootstrap-verification/RESULTS.md`.
+The initial native matrix passed 21/25; retained failures exposed QA fixture
+inheritance, locale-sensitive test paste, stale Debug fault-command state and
+Settings-pane/hit-property assumptions. Corrected rechecks prove first-account
+create/connect/restoration, exact bilingual creation/save in the selected folder,
+repeated creation, Light/Dark at 780-point minimum width, editor fault recovery,
+Settings-owned picker rejection/retry and named Search paragraph navigation.
+Captures were inspected; real provider/Zotero, VoiceOver, physical IME and full
+system adaptations remain unverified. This is bounded feature coverage.
 
-**2026-10-01 — Settings:** 103 scoped checks cover native preferences-toolbar
-projection, retained page state, bilingual search routing, native editable input,
-explicit result activation, stale result rejection, scoped drafts, recovery and
-shortcut preferences; changed groups were rerun after repairs. Five distinct
-native journeys pass: portable recovery, scoped profile repair, disconnected
-continuation/model retention, inline Selection Actions transactions and category
-navigation. They cover retained drafts, rename/cancel, hidden default actions/AX,
-repeated Agent results, explicit links, empty search, H6 reveal, keyboard choice,
-780-point resizing and all six toolbar items in English/Dark and Chinese/Light.
-Computer Use separately verifies Command-Comma opening and removal of the fixed
-search-row color band. Idempotent native property writes repair an observed idle
-main-thread feedback loop; the final 40.8-second Debug Time Profiler capture has
-zero detected Hangs. CPU samples are not click-to-paint or release evidence.
-Current proof, screenshots and limits: `.build/settings-native-optimization/RESULTS.md`.
-Earlier unchanged application recovery baseline:
-`.build/settings-recovery-evidence/RESULTS.md`. Chinese IME, VoiceOver and system
-accessibility adaptations still require human acceptance.
+`verify.sh` passes WebEditor 500, Core 581, performance 3, Contracts 107,
+Application 246 plus bridge 6/architecture 1, and App 1,354 reported tests
+(31 conditional render/runtime/timing skips), Release and helper isolation.
+Full logs: `.build/feature-review/gate.log`, `.build/verification/`,
+`.build/verification-release/`. QA runtime state is removed and all 506 standard
+fixture manifest files retain their hashes. No publishing or real-service proof.
 
-**2026-10-02 — Chat reading/sidebar:** 107 scoped tests cover history recovery,
-queue blockers, draft/Find/selection/Undo continuity and short-window prepared
-input. One offline 500-Note native journey verifies page returns, retained Find
-focus, Note preparation and source preservation. Narrow Light/Dark composition
-was inspected. Synthetic 4,000-message hydration: 10.7s→22–42ms; 200 unchanged-draft
-sizing probes: 1.027s→13ms. These are microbenchmarks, not provider latency.
-Evidence: `.build/chat-optimization/`, `.build/chat-viewport-final.log`,
-`.build/chat-reader-dark-scheme-check.log`. Earlier delivery/material proof remains
-in `.build/chat-fixes/verification.md`, `.build/chat-layering/verification.md`.
-Installed IME, VoiceOver, real inference, full adaptations and researcher visual
-acceptance remain open.
+Retained prior native baselines remain bounded: 2026-09-16 Bootstrap/editor
+conflict and recovery (`.build/bootstrap-verification/RESULTS.md`,
+`.build/editor-boundary-evidence/`); 2026-09-28 Changes/history/source preservation
+(`.build/changes-complete-gate-green-candidate.log`); 2026-09-30 toolbar/transfer
+(`.build/tab-native-optimized-acceptance.log`); 2026-10-01 Settings five journeys
+(`.build/settings-native-optimization/RESULTS.md`); and 2026-10-02 offline Chat
+(`.build/chat-optimization/`). They are not relabelled as current execution.
 
-**Retained Chat component boundaries:** Deterministic fixtures and inspected
-Light/Dark offscreen native renders cover Note/file/image/PDF materials and
-selected-page-only delivery, retained draft failure, native clipboard/drop
-callbacks, text Undo, questions/secret exclusion, exact Note-update previews,
-runtime approvals, branching/retry, concurrent conversation states, Find and
-archive actions, plans/context/quota, ancestry-verified Agent history/Stop and
-generic notification routing. These inherited component results do not establish
-live picker/paste/drop, actual system notifications, provider interpretation,
-browser authentication, provider forks/questions/approvals, physical IME or
-assistive technology. Installed official-runtime Skill discovery/disable/enable
-has isolated local evidence, not inference acceptance.
-The 2026-09-15 presentation QA covers English/Light and Chinese/Dark composer,
-candidates, questions, queue, Stop, Context, Changes and Agent monitoring;
-some Context inspections closed `SkyComputerUseService`. Native disclosure was
-corrected, not the automation service's internals.
-Evidence: `.build/chat-sidebar-audit/`, `.build/agent-roster/`.
-
-**2026-09-08 — Bounded signed-in Chat loop:** Official-runtime QA completed one
-multi-turn read, native approval, exact Note update, comparison, eligible Undo,
-restart restoration and Stop; source returned to its starting bytes.
-CHAT-LIVE-01/02 close only for this route. Managed Zotero breadth, write-path
-acceptance, packaging, prolonged offline/material recovery and human accessibility remain open.
-Evidence: `.build/agent-chat-evolution/real-loop-retest-*.json`.
-
-**2026-09-13–15 — Files, reorganization and source safety:** Late-writer
-reproductions retain exact external bytes and Recovery Required; 111 selected
-tests cover interruption, retention/cleanup failure, revision-checked restoration,
-move and Agent Undo. App-only delivery has bounded helper/symbol/Release evidence.
-Reorganization fixtures cover anchors, footnotes, YAML choices, reference scope,
-resource relocation, dirty conflicts/readback and detached saves; native QA covers
-paragraph insertion, Undo/Redo, cancellation, merge, incoming references and
-system-Trash routing. Library batch checks (38 App/28 Core) plus 22 native renders
-cover narrow/partial/unavailable/recovery states and mixed-script paths; QA covers
-selection, Move, cancellation/collision, remaining-only retry, retained documents
-and resize. Automation connection loss limits final sheet/Trash/physical-input proof.
-Background-tab insertion, post-Trash cleanup, live sync/File Provider/Finder and
-human Recovery remain open.
-Evidence: `.build/note-safety-fix/`, `.build/source-cutover/`,
+Distinct safety baselines also remain effective: 2026-09-13–15 late-writer,
+reorganization and Library batch checks protect exact external bytes,
+revision-checked restoration, partial retry and source/resource relocation
+(`.build/note-safety-fix/`, `.build/source-cutover/`,
 `.build/knowledge-reuse-fixes-tests.log`,
 `.build/library-file-operation-final-tests.log`,
-`.build/file-operation-final-layout-tests.log`, `.build/file-operation-review/`.
+`.build/file-operation-final-layout-tests.log`, `.build/file-operation-review/`).
+The 2026-09-17 Writing References identity/locator checks cover exact revisions,
+duplicate titles, source mismatch and cancellation
+(`.build/reference-interface-fix-acceptance.md`,
+`.build/reference-interface-fix-tests.log`,
+`.build/reference-interface-fix-navigation-integration-recheck.log`,
+`.build/retrieval-ui-acceptance.md`, `.build/retrieval-ui-state-tests.log`).
+Live sync/File Provider, post-Trash cleanup, physical input and human Recovery
+remain outside those baselines.
 
-**2026-09-30 — Window/Document lifecycle and toolbar tabs:** Earlier 67 lifecycle
-tests and four native journeys establish retained pages/shared panes,
-background save/external refresh, transfer/return, Find, formatting/Undo, Advanced
-Search, exact-source save, close and Focus/full-screen restoration. Shared-base
-layout passed 119 toolbar/window/architecture tests. Current 11 toolbar checks
-cover continuous compression, unchanged-projection reuse, pointer-menu scope and
-listener teardown. One native journey passes on macOS 27.2: right/Control-click
-menus without switching selection, targeted background close, native Close,
-available-interval centering, English/Chinese titles, Light/Dark, narrow overflow,
-horizontal wheel input, core commands, reorder/drag-out, source-window tabs and
-Focus. Frame timing, installed IME, human AX, conflict/recovery, full adaptation
-and macOS 26 runtime remain unverified by this journey.
-Evidence: `.build/tab-editor-port-final-tests.log`,
-`.build/toolbar-tabs-native-fixed.log`, `.build/toolbar-tabs-visual-final.log`,
-`.build/tab-available-space-tests.log`, `.build/tab-local-monitor-restored-tests.log`,
-`.build/tab-native-optimized-acceptance.log`, `.build/tab-native-optimized-preview/`.
+**2026-09-08 — Retained signed-in Chat loop:** Official-runtime QA completed
+multi-turn read, native approval, exact Note update, comparison, eligible Undo,
+restart restoration and Stop, returning source to its starting bytes. This is
+only that route, not fresh account/provider or Zotero breadth.
+Evidence: `.build/agent-chat-evolution/real-loop-retest-*.json`.
 
 ## Retrieval quality and useful measurement comparisons
 

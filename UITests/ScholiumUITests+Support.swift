@@ -205,9 +205,10 @@ extension ScholiumUITests {
         }
         application.launchEnvironment["SCHOLIUM_HOME"] = homeDirectory.path
         application.launchEnvironment["CFFIXED_USER_HOME"] = homeDirectory.path
-        if usesFixtureWorkspace {
-            application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = triptychDirectory.path
-        }
+        // An empty override suppresses the generated QA bundle's default
+        // fixture registration when a journey needs a clean account.
+        application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] =
+            usesFixtureWorkspace ? triptychDirectory.path : ""
         if name.contains("testRestoreAccess") {
             application.launchEnvironment[
                 "SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY"
@@ -801,13 +802,20 @@ extension ScholiumUITests {
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         if let owner {
             XCTAssertTrue(owner.exists)
-            XCTAssertFalse(authorizeButton.isHittable)
+            XCTAssertTrue(
+                owner.sheets["open-panel"].waitForExistence(timeout: 5),
+                "Portable authorization must attach its Open panel to the originating Settings window."
+            )
             XCTAssertEqual(
                 app.descendants(matching: .any)
                     .matching(identifier: "open-panel").count,
                 1,
                 "The originating window must present one standard Open panel."
             )
+            let attachment = XCTAttachment(screenshot: owner.screenshot())
+            attachment.name = "portable-folder-panel-owning-window"
+            attachment.lifetime = .keepAlways
+            add(attachment)
         }
         if owner != nil {
             // The panel's folder list can be laid out outside the active
@@ -861,32 +869,11 @@ extension ScholiumUITests {
         try String(contentsOf: url, encoding: .utf8)
     }
 
-    func pasteboardText() throws -> String {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pbpaste")
-        process.standardOutput = output
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw CocoaError(.fileReadUnknown)
-        }
-        return String(
-            decoding: output.fileHandleForReading.readDataToEndOfFile(),
-            as: UTF8.self
-        )
-    }
-
+    @MainActor
     func setPasteboardText(_ text: String) throws {
-        let process = Process()
-        let input = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
-        process.standardInput = input
-        try process.run()
-        input.fileHandleForWriting.write(Data(text.utf8))
-        try input.fileHandleForWriting.close()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setString(text, forType: .string) else {
             throw CocoaError(.fileWriteUnknown)
         }
     }

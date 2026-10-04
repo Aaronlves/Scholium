@@ -66,10 +66,29 @@ extension AgentChatController {
             conversations[index].archivedAt != nil
         else { return }
         executions[id]?.admissionID = nil
+        let removed = conversations[index]
         conversations.remove(at: index)
         executions.removeValue(forKey: id)
         if selectedID == id { selectedID = nil }
-        persist()
+        // Copies shared when deletion begins stay with their remaining owner.
+        // A later in-memory removal must not erase bytes still referenced by
+        // the deletion's saved snapshot before that owner's save succeeds.
+        let materials = unreferencedMaterials(in: removed)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await saveNow()
+            } catch {
+                connectionError = String(localized: "Conversation not saved: \(error.localizedDescription)")
+                return
+            }
+            do {
+                for material in materials { try await releaseMaterialIfUnreferenced(material) }
+            } catch {
+                connectionError = String(
+                    localized: "Conversation deleted, but its retained material could not be removed: \(error.localizedDescription)")
+            }
+        }
     }
 
     func setUnread(_ id: UUID, unread: Bool) {

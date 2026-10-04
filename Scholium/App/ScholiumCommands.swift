@@ -11,7 +11,8 @@ private struct ScholiumFileCreationCommandContent: View {
 
     var body: some View {
         Button("New Note") {
-            appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
+            guard let appState else { return }
+            appState.libraryMutationController.requestUntitledNoteCreation(in: appState.selectedLibraryCreationFolder)
         }
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.newNote)
@@ -759,6 +760,7 @@ private struct ScholiumAttentionCommandContent: View {
 
 #if DEBUG
     private struct ScholiumQACommandContent: View {
+        let commandRevision: UInt64
         @FocusedObject private var appState: WindowModel?
         @FocusedObject private var external: ExternalMarkdownWindowModel?
         private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
@@ -831,7 +833,7 @@ struct ScholiumCommands: Commands {
         let viewCommand = ScholiumViewCommandContent(commandRevision: commandRevision)
         let attentionCommand = ScholiumAttentionCommandContent(commandRevision: commandRevision)
         #if DEBUG
-            let qaCommand = ScholiumQACommandContent()
+            let qaCommand = ScholiumQACommandContent(commandRevision: commandRevision)
         #endif
         CommandGroup(replacing: .newItem) {
             fileCreationCommand

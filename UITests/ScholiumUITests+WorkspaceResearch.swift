@@ -5,6 +5,37 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testSearchParagraphLocationHasAccessibleNameAndOpensItsNote() throws {
+        waitForCurrentDocumentSurface()
+        selectDocumentMode("Source")
+        let sourceURL = triptychDirectory.appendingPathComponent("02-topics/QA Topic.md")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let line =
+            try XCTUnwrap(source.components(separatedBy: "\n").firstIndex { $0.contains("中文检索标记") }) + 1
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        let advanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        selectResearchSearchScope("Triptych", in: app)
+        let field = advanced.searchFields["scholium.searchField"]
+        typeCommittedText("paragraph:(晨光样本 OR aurora-fixture)", into: field, in: app)
+        XCTAssertTrue(searchResult(named: "QA Topic").waitForExistence(timeout: 15))
+        advanced.buttons["Matching Paragraphs"].click()
+        let paragraph = app.buttons["Paragraph at line \(line)"].firstMatch
+        XCTAssertTrue(
+            paragraph.waitForExistence(timeout: 5),
+            "Every paragraph destination must name its source line.")
+        let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        capture.name = "named-search-paragraph-location"
+        capture.lifetime = .keepAlways
+        add(capture)
+        paragraph.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Topic", timeout: 10))
+        XCTAssertEqual(documentModeState(documentModeControl()), "Source")
+        XCTAssertEqual(try String(contentsOf: sourceURL, encoding: .utf8), source)
+        XCTAssertTrue(advanced.exists)
+    }
+
+    @MainActor
     func testRelatedMaterialCurrentLineSelectionAndNoteDeparture() throws {
         // setUp clones the staged standard 500-Note Triptych into this journey's
         // UUID directory. Modify existing anchors only, while its QA app is down;
@@ -674,6 +705,7 @@ extension ScholiumUITests {
             identifier: "com_apple_SwiftUI_Settings_window"
         ).firstMatch
         XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
+        selectSettingsCategory("workspace", in: settingsWindow)
         XCTAssertTrue(
             settingsWindow.descendants(matching: .any)[
                 "scholium.portableControlAccess"
@@ -739,6 +771,7 @@ extension ScholiumUITests {
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         app.launchEnvironment["SCHOLIUM_HOME"] = cleanHome.path
         app.launchEnvironment["CFFIXED_USER_HOME"] = cleanHome.path
+        app.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = ""
         app.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = UUID().uuidString
         app.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"] = parent.path
         app.launch()
@@ -838,6 +871,7 @@ extension ScholiumUITests {
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         app.launchEnvironment["SCHOLIUM_HOME"] = cleanHome.path
         app.launchEnvironment["CFFIXED_USER_HOME"] = cleanHome.path
+        app.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = ""
         app.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = UUID().uuidString
         app.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"] = triptychDirectory.path
         app.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = String(
@@ -968,6 +1002,7 @@ extension ScholiumUITests {
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         app.launchEnvironment["SCHOLIUM_HOME"] = cleanHome.path
         app.launchEnvironment["CFFIXED_USER_HOME"] = cleanHome.path
+        app.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = ""
         app.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = UUID().uuidString
         app.launch()
 

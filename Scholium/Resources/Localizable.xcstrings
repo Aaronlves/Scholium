@@ -10429,6 +10429,22 @@
         }
       }
     },
+    "Conversation deleted, but its retained material could not be removed: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversation deleted, but its retained material could not be removed: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会话已删除，但无法移除其保留的材料：%@"
+          }
+        }
+      }
+    },
     "Conversation history could not be opened: %@" : {
       "localizations" : {
         "en" : {

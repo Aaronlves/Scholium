@@ -80,9 +80,10 @@ extension WindowModel {
         scheduleWorkspaceCatalogRefresh()
     }
 
-    private func stageRegisteredVault(
+    func stageRegisteredVault(
         _ registered: RegisteredVault,
         slot: WorkspaceVaultSlot? = nil,
+        sourceScope: LibrarySourceScope? = nil,
         libraryRequest: DiscoveryLibraryRequest? = nil
     ) async throws -> StagedWorkspaceLibrarySelection {
         let vaultSnapshot = try await currentWorkspaceVaultSnapshot(
@@ -104,7 +105,8 @@ extension WindowModel {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         let targetSourceScope =
-            libraryRequest?.sourceScope
+            sourceScope
+            ?? libraryRequest?.sourceScope
             ?? discoveryController.libraryState(for: resolvedSlot).sourceScope
         let targetNotes = vaultSnapshot.documents
             .map(WindowDocumentLocation.workspace)
@@ -126,7 +128,7 @@ extension WindowModel {
         )
     }
 
-    private func commitStagedWorkspaceLibrarySelection(
+    func commitStagedWorkspaceLibrarySelection(
         _ staged: StagedWorkspaceLibrarySelection
     ) throws {
         if let request = staged.request,
