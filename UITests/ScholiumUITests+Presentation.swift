@@ -666,6 +666,63 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testSidebarTransientSizingPreservesDraftAcrossRepeatedPresentation() throws {
+        let draft = "Unsent sizing fixture — 尚未发送的研究问题"
+        let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalBytes = try Data(contentsOf: sourceURL)
+        for appearance in QAAppearance.allCases {
+            app.terminate()
+            app = configuredApplication(sessionID: UUID(), initialWorkspaceWidth: 900, appearance: appearance)
+            app.launch()
+            XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+            waitForCurrentDocumentSurface()
+            resizeProofWindow(app.windows.firstMatch, toWidth: 780, height: 640)
+            XCTAssertEqual(app.windows.firstMatch.frame.width, 780, accuracy: 18)
+            sidebarModeControl("Chat").click()
+            let newConversation = app.buttons["scholium.chat.newConversation"].firstMatch
+            XCTAssertTrue(newConversation.waitForExistence(timeout: 5))
+            newConversation.click()
+            let composer = app.textViews["scholium.chat.message"].firstMatch
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            typeCommittedText(draft, into: composer, in: app, clickWithinVisibleFrame: true)
+            let options = app.descendants(matching: .any)["scholium.chat.options"].firstMatch
+            for _ in 0..<2 {
+                options.click()
+                app.menuItems["Account Usage"].firstMatch.click()
+                let sheet = app.sheets.firstMatch
+                XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+                XCTAssertTrue(sheet.staticTexts["Not Available"].firstMatch.exists)
+                XCTAssertLessThan(sheet.frame.height, 180, "A one-line account state must fit its content.")
+                XCTAssertTrue(sheet.buttons["Done"].firstMatch.isHittable)
+                let accountImage = XCTAttachment(screenshot: sheet.screenshot())
+                accountImage.name = "Content-sized Account Usage — \(appearance.displayName)"
+                accountImage.lifetime = .keepAlways
+                add(accountImage)
+                app.typeKey(.escape, modifierFlags: [])
+                XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
+                XCTAssertEqual(composer.value as? String, draft)
+
+                options.click()
+                app.menuItems["Diagnostics…"].firstMatch.click()
+                let popover = app.popovers.firstMatch
+                XCTAssertTrue(popover.waitForExistence(timeout: 5))
+                XCTAssertTrue(popover.staticTexts["No diagnostic records"].firstMatch.exists)
+                XCTAssertLessThan(popover.frame.height, 160, "An empty diagnostic overview must fit its message.")
+                XCTAssertTrue(popover.buttons["Close"].firstMatch.isHittable)
+                let diagnosticImage = XCTAttachment(screenshot: popover.screenshot())
+                diagnosticImage.name = "Content-sized Diagnostics — \(appearance.displayName)"
+                diagnosticImage.lifetime = .keepAlways
+                add(diagnosticImage)
+                app.typeKey(.escape, modifierFlags: [])
+                XCTAssertTrue(waitUntil(timeout: 5) { !popover.exists })
+                XCTAssertEqual(composer.value as? String, draft)
+            }
+            XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
+            XCTAssertEqual(try Data(contentsOf: sourceURL), originalBytes)
+        }
+    }
+
+    @MainActor
     func testLibraryOrganizationPreservesDocumentAndCancelsMove() throws {
         waitForCurrentDocumentSurface()
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
@@ -727,11 +784,14 @@ extension ScholiumUITests {
         let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let movedURL = triptychDirectory.appendingPathComponent("01-analyses/QA Button Move.md")
         let originalBytes = try Data(contentsOf: sourceURL)
-        let row = clickLibraryRow("QA Autosave A.md", rightMouseButton: true)
-        app.menuItems["Move Note…"].firstMatch.click()
+        _ = clickLibraryRow("QA Autosave A.md", rightMouseButton: true)
+        let contextMenu = app.menus["scholium.noteRow.QA Autosave A.md"].firstMatch
+        XCTAssertTrue(contextMenu.waitForExistence(timeout: 5))
+        contextMenu.menuItems["Move Note…"].firstMatch.click()
         let sheet = app.sheets.firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 5))
-        let field = sheet.textFields.firstMatch
+        let field = sheet.textFields["scholium.noteFile.destination"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.click()
         app.typeKey("a", modifierFlags: [.command])
         app.typeKey(.delete, modifierFlags: [])
@@ -752,8 +812,10 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { FileManager.default.fileExists(atPath: movedURL.path) })
         XCTAssertEqual(try Data(contentsOf: movedURL), originalBytes)
         XCTAssertFalse(FileManager.default.fileExists(atPath: sourceURL.path))
-        let movedRow = clickLibraryRow("QA Button Move.md", rightMouseButton: true)
-        app.menuItems["Move to Trash…"].firstMatch.click()
+        _ = clickLibraryRow("QA Button Move.md", rightMouseButton: true)
+        let movedMenu = app.menus["scholium.noteRow.QA Button Move.md"].firstMatch
+        XCTAssertTrue(movedMenu.waitForExistence(timeout: 5))
+        movedMenu.menuItems["Move to Trash…"].firstMatch.click()
         let confirmation = app.sheets.firstMatch
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         XCTAssertTrue(confirmation.buttons["Move to Trash"].exists)

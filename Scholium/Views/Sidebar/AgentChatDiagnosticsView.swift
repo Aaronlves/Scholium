@@ -81,7 +81,10 @@ struct AgentChatDiagnosticsView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        if let error { Text(verbatim: error).textSelection(.enabled) }
+                        if let error {
+                            Text(verbatim: error).textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         if error == nil && !messages.contains(where: { $0.activity != nil }) {
                             Text("No diagnostic records").foregroundStyle(.secondary)
                         }
@@ -103,6 +106,9 @@ struct AgentChatDiagnosticsView: View {
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxHeight: 348)
+                .fixedSize(horizontal: false, vertical: true)
+                .scrollBounceBehavior(.basedOnSize)
                 .onAppear {
                     if let selectedID {
                         expanded.insert(selectedID)
@@ -111,7 +117,7 @@ struct AgentChatDiagnosticsView: View {
                 }
             }
         }
-        .padding(16).frame(width: 440, height: 420)
+        .padding(16).frame(width: 440)
         .font(.callout).tint(nil as Color?)
     }
 

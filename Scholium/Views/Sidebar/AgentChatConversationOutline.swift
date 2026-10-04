@@ -52,9 +52,12 @@ struct AgentChatConversationOutline: View {
                     if requests.isEmpty { Text("No Matches").foregroundStyle(.secondary) }
                 }
             }
+            .frame(maxHeight: 280)
+            .fixedSize(horizontal: false, vertical: true)
+            .scrollBounceBehavior(.basedOnSize)
         }
         .padding(ScholiumSidebarLayout.textInset)
-        .frame(width: 300, height: 360)
+        .frame(width: 300)
         .accessibilityIdentifier("scholium.chat.outline")
     }
 }

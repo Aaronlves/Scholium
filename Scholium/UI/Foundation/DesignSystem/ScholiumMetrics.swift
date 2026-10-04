@@ -108,7 +108,7 @@ enum ScholiumMetrics {
 
         enum FileOperation {
             static let minimumWidth: CGFloat = 320
-            static let idealWidth: CGFloat = 520
+            static let maximumWidth: CGFloat = 520
             static let listMaximumHeight: CGFloat = 300
         }
 

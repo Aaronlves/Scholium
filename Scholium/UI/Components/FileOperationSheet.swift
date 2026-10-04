@@ -23,10 +23,7 @@ struct FileOperationSheet<Content: View, Actions: View>: View {
             }
         }
         .padding(ScholiumMetrics.ResearchSheet.contentInset)
-        .frame(
-            minWidth: ScholiumMetrics.ResearchSheet.FileOperation.minimumWidth,
-            idealWidth: ScholiumMetrics.ResearchSheet.FileOperation.idealWidth
-        )
+        .frame(minWidth: ScholiumMetrics.ResearchSheet.FileOperation.minimumWidth)
         .presentationSizing(FileOperationSheetSizing())
         .background(ScholiumNativeColorRole.windowBackground.color)
         .tint(ScholiumNativeColorRole.controlAccent.color)
@@ -35,11 +32,11 @@ struct FileOperationSheet<Content: View, Actions: View>: View {
     }
 }
 
-/// Refit at the established width when loading or wrapping changes the body.
+/// Fit short forms naturally, bounding long paths before measuring their height.
 /// The presentation remains the sole owner of the sheet's content size.
 private struct FileOperationSheetSizing: PresentationSizing {
     func proposedSize(for root: PresentationSizingRoot, context: PresentationSizingContext) -> ProposedViewSize {
-        let width = root.sizeThatFits(.unspecified).width
+        let width = min(root.sizeThatFits(.unspecified).width, ScholiumMetrics.ResearchSheet.FileOperation.maximumWidth)
         return ProposedViewSize(root.sizeThatFits(ProposedViewSize(width: width, height: nil)))
     }
 }
@@ -60,27 +57,16 @@ struct FileOperationPath: View {
     }
 }
 
-/// The measured content has an unconstrained vertical proposal. Only the native
-/// scroll viewport is capped, so short lists fit and long paths remain readable.
+/// Short lists fit on first layout; long lists keep a bounded native viewport.
 struct FileOperationList<Content: View>: View {
     @ViewBuilder let content: Content
-    @State private var contentHeight: CGFloat?
-
     var body: some View {
         ScrollView {
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .onGeometryChange(for: CGFloat.self) {
-                    $0.size.height
-                } action: {
-                    contentHeight = $0
-                }
         }
-        .frame(
-            height: min(
-                contentHeight ?? ScholiumMetrics.ResearchSheet.FileOperation.listMaximumHeight,
-                ScholiumMetrics.ResearchSheet.FileOperation.listMaximumHeight)
-        )
+        .frame(maxHeight: ScholiumMetrics.ResearchSheet.FileOperation.listMaximumHeight)
+        .fixedSize(horizontal: false, vertical: true)
         .scrollBounceBehavior(.basedOnSize)
     }
 }

@@ -136,17 +136,6 @@ struct AgentChatSourcesView: View {
             + ScholiumGrid.Spacing.labelAccessoryGap
     }
 
-    private var contentHeight: CGFloat {
-        let expandedHeight = sources.filter { expandedSources.contains($0.id) }.reduce(CGFloat.zero) { height, source in
-            switch context?.evidence(for: source.url) {
-            case .note: return height + 200
-            case .web(let access): return height + 48 + CGFloat(access.count) * 24
-            default: return height
-            }
-        }
-        return min(380, max(180, 64 + CGFloat(sources.count) * 68 + expandedHeight))
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -228,9 +217,12 @@ struct AgentChatSourcesView: View {
                     }
                 }
             }
+            .frame(maxHeight: 316)
+            .fixedSize(horizontal: false, vertical: true)
+            .scrollBounceBehavior(.basedOnSize)
         }
         .task { await faviconStore.load(sources) }
-        .padding().frame(width: 340, height: contentHeight)
+        .padding().frame(width: 340)
         .font(.body).foregroundStyle(.primary)
         .tint(nil as Color?)
     }
@@ -244,9 +236,6 @@ struct AgentChatMaterialsView: View {
     let openAttachment: (AgentChatAttachment) -> Void
     let previewMaterial: (AgentChatLocalMaterial) async throws -> URL
     let close: () -> Void
-
-    private var count: Int { context.attachments.count + context.localMaterials.count }
-    private var contentHeight: CGFloat { min(360, max(180, 92 + CGFloat(count) * 76)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -273,9 +262,12 @@ struct AgentChatMaterialsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxHeight: 268)
+            .fixedSize(horizontal: false, vertical: true)
+            .scrollBounceBehavior(.basedOnSize)
         }
         .padding()
-        .frame(width: 340, height: contentHeight)
+        .frame(width: 340)
         .font(.body).foregroundStyle(.primary)
         .tint(nil as Color?)
         .accessibilityIdentifier("scholium.chat.materialsView")
