@@ -55,7 +55,8 @@ extension WindowModel {
                         text: selection.excerpt, fingerprint: seed.fingerprint, sourceLine: selection.line,
                         sourceRange: selection.sourceRange, vaultRole: descriptor.reference.vaultRole),
                     termGroup: termGroup,
-                    insertionPoint: captured.point, usesParagraph: captured.point != nil)
+                    insertionPoint: captured.point, usesParagraph: captured.point != nil,
+                    searchGeneration: self.workspaceProjectionController.searchGeneration)
             },
             retrieve: { [discovery = capabilities.discovery] request in
                 if refreshIndex { _ = try await discovery.refresh() }

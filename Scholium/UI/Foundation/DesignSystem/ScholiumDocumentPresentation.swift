@@ -107,7 +107,21 @@ struct ScholiumVisualEnvironmentOverride: Equatable, Sendable {
 }
 
 private struct ScholiumVisualEnvironmentOverrideKey: EnvironmentKey {
-    static let defaultValue = ScholiumVisualEnvironmentOverride()
+    static let defaultValue: ScholiumVisualEnvironmentOverride = {
+        #if DEBUG
+            let environment = ProcessInfo.processInfo.environment
+            if Bundle.main.bundleIdentifier == "com.scholium.qa",
+                environment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] != nil
+            {
+                return ScholiumVisualEnvironmentOverride(
+                    increasedContrast: environment["SCHOLIUM_UI_TEST_INCREASE_CONTRAST"] == "1" ? true : nil,
+                    reduceTransparency: environment["SCHOLIUM_UI_TEST_REDUCE_TRANSPARENCY"] == "1" ? true : nil,
+                    reduceMotion: environment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] == "1" ? true : nil
+                )
+            }
+        #endif
+        return ScholiumVisualEnvironmentOverride()
+    }()
 }
 
 extension EnvironmentValues {

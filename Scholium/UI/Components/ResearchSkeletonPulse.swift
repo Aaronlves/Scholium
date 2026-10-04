@@ -3,7 +3,7 @@ import SwiftUI
 /// Shared loading treatment for initial placeholders and retained result rows.
 struct ResearchSkeletonPulse: ViewModifier {
     let isActive: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content.phaseAnimator(isActive && !reduceMotion ? [false, true] : [false]) { content, phase in

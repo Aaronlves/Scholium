@@ -178,9 +178,10 @@ final class WindowSearchController: ObservableObject {
         executionTask?.cancel()
         let requestID = UUID()
         executionID = requestID
+        let state = criteria
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.performSearch(executionID: requestID)
+            await self.performSearch(state, executionID: requestID)
         }
         executionTask = task
         await withTaskCancellationHandler {
@@ -340,16 +341,18 @@ final class WindowSearchController: ObservableObject {
         }
     }
 
-    private func performSearch(executionID: UUID) async {
-        let state = criteria
+    private func performSearch(_ state: SearchWorkspaceState, executionID: UUID) async {
+        guard !Task.isCancelled, self.executionID == executionID, criteria == state else { return }
         do {
             let context = try await dependencies.executionContext(state)
+            guard !Task.isCancelled, self.executionID == executionID, criteria == state else { return }
             try await discoveryController.executeSearch(state, context: context)
+            guard !Task.isCancelled, self.executionID == executionID, criteria == state else { return }
             dependencies.setAvailabilityStatus(nil)
         } catch is CancellationError {
             return
         } catch {
-            guard self.executionID == executionID else { return }
+            guard !Task.isCancelled, self.executionID == executionID, criteria == state else { return }
             let issue = Self.executionIssue(for: error)
             switch issue {
             case .unavailable:

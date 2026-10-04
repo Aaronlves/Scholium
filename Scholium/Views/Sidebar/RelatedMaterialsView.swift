@@ -18,7 +18,7 @@ struct RelatedMaterialsView: View {
     @State private var pointerInReferences = false
     @State private var entrance = ResearchGroupEntrance()
     @State private var hasMountedResults = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
 
     var body: some View {
         TimelineView(.animation(paused: entrance.deadline == nil || reduceMotion)) { timeline in

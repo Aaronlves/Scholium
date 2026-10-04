@@ -683,7 +683,8 @@ struct FrontendArchitectureTests {
                 "ScholiumColorRole.raisedSurfaceBackground.color"
             )
         )
-        #expect(recoveryComponent.contains("ScholiumStructuralRule()"))
+        #expect(recoveryComponent.contains(".scholiumEditorialSurface("))
+        #expect(recoveryComponent.contains(".boundedPanel"))
         #expect(recoveryComponent.contains("ViewThatFits(in: .horizontal)"))
         #expect(recoveryComponent.contains(".accessibilityElement(children: .combine)"))
         #expect(recoveryComponent.contains(".accessibilityElement(children: .contain)"))

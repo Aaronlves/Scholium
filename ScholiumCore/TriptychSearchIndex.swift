@@ -53,6 +53,8 @@ struct SearchIndexDelta: Sendable {
 
 public actor TriptychSearchIndex {
     #if DEBUG
+        private(set) var rankedSearchExecutionCountsForTesting = (rankingPasses: 0, candidateScans: 0)
+
         enum RelatedLexicalPoolPhase: Sendable { case begin, row, end }
 
         struct RelatedLexicalPoolObservation: Sendable {
@@ -1140,26 +1142,11 @@ public actor TriptychSearchIndex {
             )
         }
         let required = Self.requiredResultCount(offset: request.resultOffset, limit: limit)
-        let ranks = try lexicalRanks(for: ast)
-        let normalizedNeedles = SearchMatcher.normalizedNeedles(for: ast.expression)
-        let admission = Self.candidateAdmission(ast.expression)
-        var sql = "SELECT d.id FROM search_documents d WHERE " + admission.sql
-        var bindings = admission.bindings
-        if let vaultID {
-            sql += " AND d.vault_id = ?"
-            bindings.append(.text(vaultID.uuidString.lowercased()))
+        if request.includedVaultIDs?.isEmpty == true {
+            return SearchResponse(
+                requestID: request.id, scope: request.presentationScope, explanation: ast.explanation(scope: request.presentationScope),
+                freshnessToken: freshness, availability: availability, results: [], hasMore: false)
         }
-        if let included = request.includedVaultIDs {
-            guard !included.isEmpty else {
-                return SearchResponse(
-                    requestID: request.id, scope: request.presentationScope, explanation: ast.explanation(scope: request.presentationScope),
-                    freshnessToken: freshness, availability: availability, results: [], hasMore: false)
-            }
-            sql += " AND d.vault_id IN (" + Array(repeating: "?", count: included.count).joined(separator: ",") + ")"
-            bindings.append(contentsOf: included.sorted { $0.uuidString < $1.uuidString }.map { .text($0.uuidString.lowercased()) })
-        }
-        var rowIDs: [Int] = []
-        try database.query(sql, bindings: bindings) { rowIDs.append($0.int(at: 0)) }
         let includesParagraphs = ast.clauses.contains {
             if case .paragraph = $0 { true } else { false }
         }
@@ -1183,7 +1170,11 @@ public actor TriptychSearchIndex {
         let rankedItems: [RankedSearchItem]
         let total: Int
         let indeterminate: Int
-        if let cacheKey, var cached = rankedSearchCache[cacheKey], required <= cached.items.count {
+        // A complete result set also satisfies requests beyond its final row,
+        // including empty results, without another corpus scan.
+        if let cacheKey, var cached = rankedSearchCache[cacheKey],
+            required <= cached.items.count || cached.total <= cached.items.count
+        {
             rankedSearchAccessClock &+= 1
             cached.lastAccess = rankedSearchAccessClock
             rankedSearchCache[cacheKey] = cached
@@ -1191,6 +1182,24 @@ public actor TriptychSearchIndex {
             total = cached.total
             indeterminate = cached.indeterminate
         } else {
+            #if DEBUG
+                rankedSearchExecutionCountsForTesting.candidateScans += 1
+            #endif
+            let ranks = try lexicalRanks(for: ast)
+            let normalizedNeedles = SearchMatcher.normalizedNeedles(for: ast.expression)
+            let admission = Self.candidateAdmission(ast.expression)
+            var sql = "SELECT d.id FROM search_documents d WHERE " + admission.sql
+            var bindings = admission.bindings
+            if let vaultID {
+                sql += " AND d.vault_id = ?"
+                bindings.append(.text(vaultID.uuidString.lowercased()))
+            }
+            if let included = request.includedVaultIDs {
+                sql += " AND d.vault_id IN (" + Array(repeating: "?", count: included.count).joined(separator: ",") + ")"
+                bindings.append(contentsOf: included.sorted { $0.uuidString < $1.uuidString }.map { .text($0.uuidString.lowercased()) })
+            }
+            var rowIDs: [Int] = []
+            try database.query(sql, bindings: bindings) { rowIDs.append($0.int(at: 0)) }
             let rankingLimit = cacheKey == nil ? required : Self.maximumCachedRankedResults
             var accepted: [(candidate: SearchCandidate, evaluation: SearchEvaluation)] = []
             var evaluatedTotal = 0
@@ -1637,6 +1646,9 @@ public actor TriptychSearchIndex {
     }
 
     private func lexicalRanks(for ast: SearchQueryAST) throws -> [SearchLexicalClause: [Int: Double]] {
+        #if DEBUG
+            rankedSearchExecutionCountsForTesting.rankingPasses += 1
+        #endif
         var ranks: [SearchLexicalClause: [Int: Double]] = [:]
         for clause in ast.rankingLexicalClauses {
             try Task.checkCancellation()

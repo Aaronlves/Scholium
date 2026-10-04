@@ -571,6 +571,18 @@ struct ResearchSearchView<Library: View>: View {
     private func moveCompletion(_ direction: MoveCommandDirection) -> Bool {
         let completions = visibleCompletions
         guard !completions.isEmpty else { return false }
+        if let selected = controller.search.selectedResultID {
+            guard direction == .up, selected == allResultIDs.first else { return false }
+            completionSelection = completions.count - 1
+            controller.selectSearchResult(nil)
+            return true
+        }
+        if direction == .down, completionSelection == completions.count - 1,
+            !allResultIDs.isEmpty
+        {
+            completionSelection = nil
+            return false
+        }
         let current =
             completionSelection
             ?? (direction == .down ? -1 : completions.count)

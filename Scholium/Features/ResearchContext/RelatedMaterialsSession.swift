@@ -8,6 +8,7 @@ struct RelatedMaterialsSeed: Sendable {
     var termGroup: SearchTermGroup? = nil
     var insertionPoint: MarkdownEditorInsertionPoint? = nil
     var usesParagraph = false
+    var searchGeneration: SearchGenerationID? = nil
 }
 
 struct RelatedMaterialCard: Identifiable, Equatable, Sendable {
@@ -295,7 +296,10 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                     isLoading = false
                     return
                 }
-                if automatic, self.seed?.request.seed == seed.request.seed, canReuseResults {
+                if automatic, let generation = seed.searchGeneration,
+                    self.seed?.searchGeneration == generation,
+                    self.seed?.request.seed == seed.request.seed, canReuseResults
+                {
                     self.seed = seed
                     insertionPoint = seed.insertionPoint
                     contextChanged = false
@@ -343,7 +347,16 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                     isLoading = false
                     return
                 }
-                self.seed = seed
+                // A refresh during retrieval may publish a newer generation
+                // than capture observed. Reuse only the response's complete
+                // generation; absent freshness never authorizes reuse.
+                var publishedSeed = seed
+                if case .current(let generation) = response.availability {
+                    publishedSeed.searchGeneration = generation
+                } else {
+                    publishedSeed.searchGeneration = nil
+                }
+                self.seed = publishedSeed
                 insertionPoint = seed.insertionPoint
                 contextChanged = false
                 if cards != loaded { cards = loaded }

@@ -1,13 +1,12 @@
 import AppKit
+import ApplicationServices
 import CryptoKit
 @preconcurrency import XCTest
 import notify
 
-/// Enters an exact query without changing the user's active input source.
-/// XCTest typing can leave Latin text marked under a CJK input source and can
-/// route quotes or spaces through its candidate window. A short-lived paste is
-/// deterministic; the prior clipboard is restored unless somebody else changes
-/// it while the test owns the temporary value.
+/// Sets up exact text only in the isolated QA native field. A trailing space
+/// and ordinary Delete commit through AppKit's text-change route without the
+/// system clipboard or an input-source change. Subsequent keys remain native.
 @MainActor
 func typeCommittedText(
     _ text: String,
@@ -15,48 +14,62 @@ func typeCommittedText(
     in application: XCUIApplication,
     clickWithinVisibleFrame: Bool = false
 ) {
-    let pasteboard = NSPasteboard.general
-    let savedItems = pasteboard.pasteboardItems?.map { source in
-        source.types.reduce(into: [NSPasteboard.PasteboardType: Data]()) { item, type in
-            item[type] = source.data(forType: type)
-        }
+    let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
+    guard processes.count == 1, let process = processes.first,
+        process.executableURL?.path.contains("/.build/qa-runtime/") == true
+    else {
+        XCTFail("Exact input requires one isolated repository QA process.")
+        return
     }
-
-    pasteboard.clearContents()
-    XCTAssertTrue(pasteboard.setString(text, forType: .string))
-    let temporaryChangeCount = pasteboard.changeCount
-    defer {
-        if pasteboard.changeCount == temporaryChangeCount {
-            pasteboard.clearContents()
-            if let savedItems {
-                let restoredItems = savedItems.map { representations in
-                    let item = NSPasteboardItem()
-                    for (type, data) in representations {
-                        item.setData(data, forType: type)
-                    }
-                    return item
-                }
-                pasteboard.writeObjects(restoredItems)
-            }
-        }
-    }
-
     if clickWithinVisibleFrame {
-        // XCTest's automatic scroll-to-visible path cannot locate a floating
-        // safe-area input. A frame-relative click still exercises native hit testing.
         field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-        application.typeKey("a", modifierFlags: .command)
-        application.typeKey("v", modifierFlags: .command)
     } else {
         field.click()
-        field.typeKey("a", modifierFlags: .command)
-        field.typeKey("v", modifierFlags: .command)
     }
-    XCTAssertEqual(
-        field.value as? String,
-        text,
-        "The Search query was not committed exactly under the active input source."
-    )
+    let targetFrame = field.frame
+    var remainingNodes = 2_048
+    func nativeField(in node: AXUIElement, depth: Int = 0) -> AXUIElement? {
+        guard depth < 30, remainingNodes > 0 else { return nil }
+        remainingNodes -= 1
+        func attribute(_ name: String) -> CFTypeRef? {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(node, name as CFString, &value) == .success else { return nil }
+            return value
+        }
+        let role = attribute(kAXRoleAttribute) as? String
+        let matchesIdentity =
+            attribute(kAXIdentifierAttribute) as? String == field.identifier
+            || (field.identifier.isEmpty && (role == "AXTextField" || role == "AXTextArea"))
+        if matchesIdentity,
+            let positionValue = attribute(kAXPositionAttribute),
+            CFGetTypeID(positionValue) == AXValueGetTypeID()
+        {
+            var position = CGPoint.zero
+            if AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
+                abs(position.x - targetFrame.minX) < 2,
+                abs(position.y - targetFrame.minY) < 2
+            {
+                return node
+            }
+        }
+        let children = attribute(kAXChildrenAttribute) as? [AXUIElement] ?? []
+        return children.lazy.compactMap { nativeField(in: $0, depth: depth + 1) }.first
+    }
+    guard let native = nativeField(in: AXUIElementCreateApplication(process.processIdentifier)) else {
+        XCTFail("The focused QA input was not found in accessibility.")
+        return
+    }
+    var settable: DarwinBoolean = false
+    guard AXUIElementIsAttributeSettable(native, kAXValueAttribute as CFString, &settable) == .success,
+        settable.boolValue,
+        AXUIElementSetAttributeValue(native, kAXValueAttribute as CFString, (text + " ") as CFString) == .success
+    else {
+        XCTFail("The QA native input does not accept an accessibility value.")
+        return
+    }
+    field.typeKey(field.elementType == .textView ? .downArrow : .rightArrow, modifierFlags: .command)
+    field.typeKey(.delete, modifierFlags: [])
+    XCTAssertEqual(field.value as? String, text, "The QA input did not commit its exact setup text.")
 }
 
 final class ScholiumUITests: XCTestCase {

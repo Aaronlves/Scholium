@@ -341,7 +341,7 @@ struct ScholiumRecoveryNoticePresentation {
     }
 }
 
-enum ScholiumRecoveryNoticeRegion {
+enum ScholiumRecoveryNoticeRegion: Equatable {
     case documentInline
     case workspaceBanner
 }
@@ -385,19 +385,23 @@ struct ScholiumRecoveryNotice<Action: View>: View {
                 )
         case .workspaceBanner:
             noticeContent
-                .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
-                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(ScholiumColorRole.raisedSurfaceBackground.color)
-                .overlay(alignment: .bottom) {
-                    ScholiumStructuralRule()
-                }
+                .controlSize(.small)
+                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
+                .frame(maxWidth: ScholiumMetrics.Notice.readableWidth, alignment: .leading)
+                .scholiumEditorialSurface(
+                    .boundedPanel,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                        style: .continuous
+                    )
+                )
         }
     }
 
     private var noticeContent: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            HStack(alignment: region == .workspaceBanner ? .center : .top, spacing: ScholiumMetrics.Notice.contentSpacing) {
                 noticeDescription
                 Spacer(minLength: ScholiumGrid.Spacing.nestedContentInset)
                 action()
@@ -406,22 +410,24 @@ struct ScholiumRecoveryNotice<Action: View>: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 noticeDescription
                 action()
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.leading, region == .workspaceBanner ? ScholiumGrid.Dimension.iconTrackWidth + ScholiumGrid.Spacing.inlineControlGap : 0)
+                    .frame(maxWidth: .infinity, alignment: region == .workspaceBanner ? .leading : .trailing)
             }
         }
         .accessibilityElement(children: .contain)
     }
 
     private var noticeDescription: some View {
-        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Image(systemName: presentation.systemImage)
+                .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
                 .scholiumForeground(.attention)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
                 Text(presentation.title)
                     .font(ScholiumTypography.interface(.sectionTitle))
                 presentation.message
-                    .font(ScholiumTypography.interface(.body))
+                    .font(ScholiumTypography.interface(region == .workspaceBanner ? .small : .body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 if let detail = presentation.detail {
@@ -444,7 +450,7 @@ enum ScholiumDocumentStatusKind: Sendable {
 
     var colorRole: ScholiumColorRole {
         switch self {
-        case .information: .information
+        case .information: .accent
         case .attention: .attention
         case .destructive: .destructive
         }

@@ -8,6 +8,75 @@ import Testing
 @Suite("Document notice layout", .serialized)
 @MainActor
 struct DocumentNoticeLayoutTests {
+    @Test("Notice actions remain visible with mixed-script messages and visual adaptations", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
+    func noticeAdaptation() async throws {
+        _ = NSApplication.shared
+        for dark in [false, true] {
+            for width: CGFloat in [300, 520] {
+                var actionFrames: [String: CGRect] = [:]
+                func action(_ title: String) -> some View {
+                    Button(title) {}
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("noticeFixture")) }) {
+                            actionFrames[title] = $0
+                        }
+                }
+                let host = NSHostingView(
+                    rootView:
+                        VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                            ScholiumDocumentStatusNotice(
+                                "Reference Unavailable", detail: "This source could not be opened. 原文未改变，请重新查找写作参考。", kind: .information
+                            ) { action("Dismiss") }
+                            ScholiumDocumentStatusNotice(
+                                "Autosave Paused", detail: "Your edits remain available. 未保存的编辑仍然保留。", kind: .attention
+                            ) { action("Compare Changes") }
+                            ScholiumRecoveryNotice(
+                                .init(
+                                    "Transaction Recovery Required",
+                                    message: Text("2 interrupted operations need file-by-file inspection."),
+                                    systemImage: "exclamationmark.arrow.triangle.2.circlepath"),
+                                region: .workspaceBanner
+                            ) { action("Inspect Recovery…") }
+                        }
+                        .frame(width: width)
+                        .padding(8)
+                        .coordinateSpace(name: "noticeFixture")
+                        .environment(\.colorScheme, dark ? .dark : .light)
+                        .environment(
+                            \.scholiumVisualEnvironmentOverride,
+                            .init(increasedContrast: dark, reduceTransparency: dark, reduceMotion: true))
+                )
+                let window = NSWindow(
+                    contentRect: .init(x: 0, y: 0, width: width + 16, height: 600),
+                    styleMask: [.titled], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.contentView = host
+                window.orderFront(nil)
+                defer {
+                    window.contentView = nil
+                    window.close()
+                }
+                for _ in 0..<8 {
+                    host.layoutSubtreeIfNeeded()
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                #expect(actionFrames.count == 3)
+                let visibleFrame = CGRect(origin: .zero, size: host.bounds.size)
+                for frame in actionFrames.values {
+                    #expect(frame.width > 0 && frame.height >= 20)
+                    #expect(visibleFrame.insetBy(dx: -1, dy: -1).contains(frame))
+                }
+                if let output = ProcessInfo.processInfo.environment["SCHOLIUM_NOTICE_SNAPSHOTS"] {
+                    let directory = URL(fileURLWithPath: output)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
+                    try #require(bitmap.representation(using: .png, properties: [:]))
+                        .write(to: directory.appendingPathComponent("notices-\(Int(width))-\(dark ? "dark-adapted" : "light").png"))
+                }
+            }
+        }
+    }
+
     @Test("Notice arrival, growth, and dismissal preserve the retained Document viewport")
     func noticeLifecycleKeepsViewportStable() async throws {
         _ = NSApplication.shared
@@ -107,8 +176,14 @@ private struct NoticeFixture: View {
                             if state.count > 0 {
                                 ScholiumDocumentNoticeStack(availableSize: remaining.size) {
                                     ForEach(0..<state.count, id: \.self) { index in
-                                        Text("Synthetic notice \(index)")
-                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        ScholiumDocumentStatusNotice(
+                                            "Synthetic notice \(index)",
+                                            detail: "The source remains available. 原文与未保存的编辑仍然保留。",
+                                            kind: index == 0 ? .information : .attention
+                                        ) {
+                                            Button("Retry Refresh") {}
+                                            Button("Dismiss") {}
+                                        }
                                     }
                                 }
                                 .frame(maxWidth: .infinity)

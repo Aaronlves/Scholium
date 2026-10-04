@@ -72,6 +72,9 @@ extension ScholiumUITests {
         let firstSource = try source(at: firstURL)
         let secondSource = try source(at: secondURL)
         let expectedBytes = try additions.map { ($0.0, try Data(contentsOf: $0.0)) }
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_INCREASE_CONTRAST"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_TRANSPARENCY"] = "1"
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 45))
@@ -1111,12 +1114,20 @@ extension ScholiumUITests {
         let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         selectResearchSearchScope("This Vault", in: app)
-        typeCommittedText("body:Synthetic title:\"QA Autosave A\"", into: field, in: app)
+        typeCommittedText("title:\"QA Autosave A\" body:synthetic", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         field.click()
+        let completion = advanced.buttons["body:synthetic, Search term"].firstMatch
+        XCTAssertTrue(completion.waitForExistence(timeout: 8))
+        field.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(completion.isSelected)
+        field.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertFalse(completion.isSelected)
+        field.typeKey(.upArrow, modifierFlags: [])
+        XCTAssertTrue(completion.isSelected, "Up from the first result returns to query suggestions.")
         field.typeKey(.downArrow, modifierFlags: [])
 
-        let selectionAttachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        let selectionAttachment = XCTAttachment(screenshot: advanced.screenshot())
         selectionAttachment.name = "Search editorial selection"
         selectionAttachment.lifetime = .keepAlways
         add(selectionAttachment)

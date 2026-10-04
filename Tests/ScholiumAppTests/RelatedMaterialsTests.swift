@@ -15,7 +15,8 @@ struct RelatedMaterialsTests {
             request: .init(seed: snapshot),
             attachment: .init(
                 noteID: UUID(), vaultID: vault,
-                relativePath: "Draft.md", text: text, fingerprint: snapshot.fingerprint, sourceLine: 3))
+                relativePath: "Draft.md", text: text, fingerprint: snapshot.fingerprint, sourceLine: 3),
+            searchGeneration: .init(triptychID: vault, sequence: 1, sourceManifestHash: "fixture"))
     }
     private func candidate(_ source: String) -> RelatedContentCandidate {
         .init(
@@ -26,10 +27,13 @@ struct RelatedMaterialsTests {
     private func reference() -> VaultNoteReference {
         .init(vaultID: vault, vaultName: "Analyses", vaultRole: .sourceCorpus, relativePath: "Source.md", stableNoteID: UUID().uuidString)
     }
-    private func response(_ request: RelatedContentRequest, candidates: [RelatedContentCandidate] = []) -> RelatedContentResponse {
+    private func response(
+        _ request: RelatedContentRequest, candidates: [RelatedContentCandidate] = [],
+        generation: SearchGenerationID? = nil
+    ) -> RelatedContentResponse {
         .init(
             requestID: request.id, seedFingerprint: request.seed.fingerprint, freshnessToken: .init("fixture"),
-            availability: .current(.init(triptychID: UUID(), sequence: 1, sourceManifestHash: "fixture")),
+            availability: .current(generation ?? .init(triptychID: vault, sequence: 1, sourceManifestHash: "fixture")),
             state: candidates.isEmpty ? .empty : .current,
             identityCandidates: candidates, lexicalCandidates: candidates, identityHasMore: false, lexicalHasMore: false)
     }
@@ -43,7 +47,9 @@ struct RelatedMaterialsTests {
             matches: [.init(seedKind: .selectedPassage, terms: ["自由"])])
         return .init(
             requestID: seed.request.id, seedFingerprint: seed.request.seed.fingerprint,
-            freshnessToken: .init("fixture"), availability: .unavailable, state: .current,
+            freshnessToken: .init("fixture"),
+            availability: .current(seed.searchGeneration ?? .init(triptychID: vault, sequence: 1, sourceManifestHash: "fixture")),
+            state: .current,
             identityCandidates: [], lexicalCandidates: [candidate], identityHasMore: false,
             lexicalHasMore: false, passages: [passage])
     }
@@ -514,6 +520,87 @@ struct RelatedMaterialsTests {
         ).value
         #expect(model.didSearch && !model.isLoading && model.issue == nil)
         #expect(model.insertionPoint == moved.insertionPoint && !model.contextChanged)
+    }
+
+    @Test("Unchanged writing retrieves current recommendations after an index generation changes")
+    func changedSearchGeneration() async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let originalResponse = populatedResponse(original)
+        await model.find(
+            capture: { original }, retrieve: { _ in originalResponse },
+            references: [reference()], automatic: true
+        ).value
+        let originalCard = model.cards.first
+        var current = seed()
+        current.searchGeneration = .init(triptychID: vault, sequence: 2, sourceManifestHash: "changed")
+        let captured = current
+        let currentResponse = response(captured.request, generation: captured.searchGeneration)
+        var retrieved = false
+        await model.find(
+            capture: { captured },
+            retrieve: { _ in
+                await MainActor.run {
+                    retrieved = true
+                    #expect(model.cards.first == originalCard)
+                    #expect(model.isLoading)
+                }
+                return currentResponse
+            }, references: [], automatic: true
+        ).value
+        #expect(retrieved)
+        #expect(model.cards.isEmpty)
+        #expect(model.presentation == .empty)
+        #expect(model.seed?.searchGeneration == captured.searchGeneration)
+    }
+
+    @Test("A retrieval refresh binds reuse to its returned generation instead of the earlier capture")
+    func responseSearchGeneration() async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let refreshed = SearchGenerationID(triptychID: vault, sequence: 2, sourceManifestHash: "refreshed")
+        let refreshedResponse = response(original.request, generation: refreshed)
+        await model.find(
+            capture: { original }, retrieve: { _ in refreshedResponse }, references: [], automatic: true
+        ).value
+        #expect(model.seed?.searchGeneration == refreshed)
+        var current = seed()
+        current.searchGeneration = refreshed
+        let captured = current
+        await model.find(
+            capture: { captured },
+            retrieve: { _ in
+                Issue.record("Current-generation automatic context unexpectedly repeated retrieval")
+                return refreshedResponse
+            }, references: [], automatic: true
+        ).value
+        #expect(model.seed?.request.id == captured.request.id)
+    }
+
+    @Test("Unknown result generation cannot authorize unchanged automatic reuse", arguments: [false, true])
+    func unknownSearchGeneration(unknownCapture: Bool) async {
+        let model = RelatedMaterialsSession()
+        var original = seed()
+        if unknownCapture { original.searchGeneration = nil }
+        let captured = original
+        let result = RelatedContentResponse(
+            requestID: captured.request.id, seedFingerprint: captured.request.seed.fingerprint,
+            freshnessToken: .init("fixture"), availability: .unavailable, state: .empty,
+            identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        await model.find(
+            capture: { captured }, retrieve: { _ in result }, references: [], automatic: true
+        ).value
+        #expect(model.seed?.searchGeneration == nil)
+        var retrieved = false
+        await model.find(
+            capture: { captured },
+            retrieve: { _ in
+                await MainActor.run { retrieved = true }
+                return result
+            }, references: [], automatic: true
+        ).value
+        #expect(retrieved)
+        #expect(model.presentation == .empty)
     }
 
     @Test("Automatic reading pause does not publish or retrieve replacement results")

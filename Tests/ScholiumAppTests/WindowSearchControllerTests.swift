@@ -17,6 +17,48 @@ private final class WindowSearchPresentationProbe {
 @Suite("Window Search controller")
 @MainActor
 struct WindowSearchControllerTests {
+    @Test("Late Search context cannot replace a newer query or revive dismissed Search", arguments: [false, true])
+    func supersededContextIsDiscarded(dismissed: Bool) async {
+        let discovery = DiscoveryController()
+        let started = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        var availability: [String?] = []
+        let controller = WindowSearchController(
+            discoveryController: discovery,
+            dependencies: dependencies(
+                executionContext: { state in
+                    if state.query == "earlier" {
+                        await withCheckedContinuation { continuation in
+                            release = continuation
+                            started.continuation.yield(())
+                        }
+                    }
+                    return DiscoverySearchExecutionContext(
+                        workspaceIsAvailable: false, currentNoteSnapshot: nil, currentVaultID: nil)
+                },
+                setAvailabilityStatus: { availability.append($0) }
+            )
+        )
+        controller.begin(.general)
+        controller.replaceQuery("earlier")
+        let earlier = Task { await controller.refresh() }
+        for await _ in started.stream { break }
+        if dismissed {
+            controller.dismiss()
+        } else {
+            controller.replaceQuery("current")
+            await controller.refresh()
+        }
+        let expectedProjection = discovery.search
+        let expectedAvailability = availability
+        release?.resume()
+        await earlier.value
+        started.continuation.finish()
+        #expect(discovery.search == expectedProjection)
+        #expect(availability == expectedAvailability)
+        #expect(controller.presentation == (dismissed ? .inactive : .sidebar))
+    }
+
     @Test("Search request and response publish only changed coherent projections")
     func coherentProjectionPublication() {
         let discovery = DiscoveryController()
@@ -455,7 +497,8 @@ struct WindowSearchControllerTests {
                 WindowOpenDisposition
             ) async -> Void = { _, _ in },
         hasCurrentNote: @escaping @MainActor () -> Bool = { true },
-        reportInformation: @escaping @MainActor (String) -> Void = { _ in }
+        reportInformation: @escaping @MainActor (String) -> Void = { _ in },
+        setAvailabilityStatus: @escaping @MainActor (String?) -> Void = { _ in }
     ) -> WindowSearchController.Dependencies {
         WindowSearchController.Dependencies(
             loadSavedSearches: loadSavedSearches,
@@ -469,7 +512,7 @@ struct WindowSearchControllerTests {
             reportInformation: reportInformation,
             reportLoadFailure: { _ in },
             reportSaveFailure: { _ in },
-            setAvailabilityStatus: { _ in },
+            setAvailabilityStatus: setAvailabilityStatus,
             reportCatalogFailure: { _ in }
         )
     }

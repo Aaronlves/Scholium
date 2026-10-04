@@ -15,7 +15,7 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
     @State private var hovered = false
     @FocusState private var keyboardFocused: Bool
     @AccessibilityFocusState private var accessibilityFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
 
     private var showsActions: Bool { hovered || keyboardFocused || accessibilityFocused }
 

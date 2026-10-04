@@ -57,3 +57,87 @@ struct RankedSearchCacheTests {
         #expect(revised.noteResults.map(\.relativePath) == (1..<6).map { String(format: "Note %03d.md", $0) })
     }
 }
+
+#if DEBUG
+    extension RankedSearchCacheTests {
+        @Test("Completed short and empty searches reuse rank and predicate work without losing counts or pages")
+        func completedResultsReuseWork() async throws {
+            let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+                .appendingPathComponent(".build/ranked-search-cache-tests/\(UUID().uuidString)", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let vault = RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: "/fixtures/topics")
+            let index = try TriptychSearchIndex(
+                databaseURL: root.appendingPathComponent("search.sqlite"), triptychID: UUID(), vaults: [vault])
+            func document(_ path: String, _ source: String) -> SearchIndexDocument {
+                SearchIndexDocument(
+                    vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
+                    document: NoteDocument(relativePath: path, rawContent: source))
+            }
+            var documents = [
+                document("Hit.md", "# Example\n\nNeedle café 行动.\n"),
+                document("Other.md", "A different discussion.\n"),
+                document("Unknown.md", "---\nstate: [unterminated\n---\n\nUnrelated.\n"),
+            ]
+            _ = try await index.synchronize(documents)
+            func request(_ query: String, limit: Int = 5, offset: Int = 0) -> SearchRequest {
+                SearchRequest(
+                    query: query, presentationScope: .triptych, executionScope: .triptych,
+                    limit: limit, offset: offset)
+            }
+            for (query, total, unknown) in [
+                ("needle", 1, 0), ("café OR 行动", 1, 0), ("missing", 0, 0),
+                ("property:state=absent", 0, 1),
+            ] {
+                let first = try await index.testSearch(request(query))
+                #expect(first.totalResultCount == total)
+                #expect(first.indeterminateDocumentCount == unknown)
+                #expect(!first.hasMore)
+                let work = await index.rankedSearchExecutionCountsForTesting
+                let replay = try await index.testSearch(request(query, limit: 100))
+                #expect(replay.noteResults == first.noteResults)
+                #expect(replay.totalResultCount == total)
+                #expect(replay.indeterminateDocumentCount == unknown)
+                #expect(!replay.hasMore)
+                let pastEnd = try await index.testSearch(request(query, offset: 20))
+                #expect(pastEnd.results.isEmpty && !pastEnd.hasMore)
+                #expect(pastEnd.totalResultCount == total)
+                #expect(pastEnd.indeterminateDocumentCount == unknown)
+                let replayWork = await index.rankedSearchExecutionCountsForTesting
+                #expect(replayWork.candidateScans == work.candidateScans)
+                #expect(replayWork.rankingPasses == work.rankingPasses)
+            }
+            let work = await index.rankedSearchExecutionCountsForTesting
+            let cancelled = Task {
+                withUnsafeCurrentTask { $0?.cancel() }
+                return try await index.testSearch(request("needle"))
+            }
+            await #expect(throws: CancellationError.self) { _ = try await cancelled.value }
+            #expect(await index.rankedSearchExecutionCountsForTesting.candidateScans == work.candidateScans)
+
+            // Opening eligibility never inherits a complete-generation cache entry.
+            let ineligible = try await index.testSearch(request("needle"), eligibleDocuments: [:])
+            #expect(ineligible.results.isEmpty && ineligible.totalResultCount == 0)
+            #expect(await index.rankedSearchExecutionCountsForTesting.candidateScans == work.candidateScans + 1)
+
+            // Previously empty and sparse queries must observe the newly published exact revision.
+            documents[0] = document("Hit.md", "Revised unrelated source.\n")
+            documents.append(document("Replacement.md", "Needle café 行动 and missing marker.\n"))
+            _ = try await index.synchronize(documents)
+            #expect(await index.rankedSearchCacheRetention.queries == 0)
+            let rebuilt = try TriptychSearchIndex(
+                databaseURL: root.appendingPathComponent("rebuilt.sqlite"), triptychID: UUID(), vaults: [vault])
+            _ = try await rebuilt.synchronize(documents)
+            for query in ["needle", "missing", "café OR 行动"] {
+                let updated = try await index.testSearch(request(query))
+                let clean = try await rebuilt.testSearch(request(query))
+                #expect(updated.noteResults.map(\.relativePath) == ["Replacement.md"])
+                #expect(updated.noteResults.map(\.relativePath) == clean.noteResults.map(\.relativePath))
+                #expect(updated.noteResults.map(\.fingerprint) == clean.noteResults.map(\.fingerprint))
+                #expect(updated.noteResults.map(\.sourceRange) == clean.noteResults.map(\.sourceRange))
+                #expect(updated.noteResults.map(\.snippet) == clean.noteResults.map(\.snippet))
+                #expect(updated.noteResults.map(\.matchedFields) == clean.noteResults.map(\.matchedFields))
+                #expect(updated.noteResults.map(\.rankReason) == clean.noteResults.map(\.rankReason))
+            }
+        }
+    }
+#endif
