@@ -87,6 +87,58 @@ struct DocumentDetachedPersistenceTests {
         try await fixture.editor.resumeAfterDetachment(suspensionID: second)
     }
 
+    @Test("Retained selection and transition completion share one pending suspension resumption")
+    func sameNoteReturnCoalescesResume() async throws {
+        let source = "\u{FEFF}Researcher's cafe\u{301} 🦉\r\n"
+        let fixture = try await makeEditor(source: source)
+        defer { fixture.editor.detach(fixture.webView) }
+        let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let document = WindowSelectedDocument.workspace(
+            .init(
+                sessionKey: key,
+                reference: .init(
+                    vaultID: key.vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                    relativePath: "Source.md", stableNoteID: key.noteID.uuidString)))
+        let session = DocumentSessionModel(key: key, editorSession: fixture.editor)
+        session.beginEditing(in: .source)
+        session.editingSource = source
+        session.originalEditingSource = source
+        session.editingRevision = fixture.revision
+        let controller = DocumentController()
+        controller.receiveSessionTransfer(.init(document: document, session: session, snapshot: nil, mode: .source))
+        defer { session.cancelScheduledWork() }
+        try await controller.prepareSessionTransfer(document)
+        let suspensionID = try #require(fixture.editor.detachmentSuspensionID)
+        let started = AsyncStream<Void>.makeStream()
+        fixture.dispatcher.holdNextResumeReply = true
+        fixture.dispatcher.resumeDidStart = { started.continuation.yield(()) }
+        defer { fixture.dispatcher.releaseResumeReply() }
+
+        // Retained activation starts resumption. WebKit has already unfrozen
+        // input, but its asynchronous acknowledgement has not reached Swift.
+        controller.resumeAutosave(afterTransferOf: document, suspensionID: suspensionID)
+        let activationResume = try #require(session.detachmentResumeTask)
+        var events = started.stream.makeAsyncIterator()
+        _ = await events.next()
+        #expect(fixture.dispatcher.suspensionID == nil)
+        #expect(fixture.editor.detachmentSuspensionID == suspensionID)
+
+        // The same transition's completion must not send another resume to
+        // the now-unfrozen page while that first reply remains outstanding.
+        controller.resumeAutosave(afterTransferOf: document, suspensionID: suspensionID)
+        let completionResume = try #require(session.detachmentResumeTask)
+        fixture.dispatcher.releaseResumeReply()
+        await activationResume.value
+        await completionResume.value
+        #expect(fixture.dispatcher.resumeDispatchCount == 1)
+        #expect(session.detachmentResumeTask == nil)
+        #expect(fixture.editor.detachmentSuspensionID == nil)
+        #expect(session.editError == nil)
+        #expect(!session.canRetrySave)
+        #expect(Data(fixture.editor.checkedSource.utf8) == Data(source.utf8))
+        #expect(Data(fixture.dispatcher.source.utf8) == Data(source.utf8))
+    }
+
     enum SaveScenario: CaseIterable {
         case ordinary, externalConflict, failedAcknowledgement, failedFrozenAcknowledgement
     }
@@ -228,7 +280,17 @@ struct DocumentDetachedPersistenceTests {
         var generation = 0
         var suspensionID: String?
         var failNextAcknowledgement = false
+        var holdNextResumeReply = false
+        var resumeDidStart: (() -> Void)?
+        private(set) var resumeDispatchCount = 0
+        private var resumeReply: CheckedContinuation<Void, Never>?
         private var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
+
+        func releaseResumeReply() {
+            let reply = resumeReply
+            resumeReply = nil
+            reply?.resume()
+        }
 
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
@@ -245,8 +307,16 @@ struct DocumentDetachedPersistenceTests {
                 suspensionID = id
                 recovery = snapshot(request)
             case .resumeAfterDetachment(let id):
+                resumeDispatchCount += 1
                 guard suspensionID == id else { throw MarkdownEditorSession.SessionError.staleRequest }
                 suspensionID = nil
+                if holdNextResumeReply {
+                    holdNextResumeReply = false
+                    await withCheckedContinuation { reply in
+                        resumeReply = reply
+                        resumeDidStart?()
+                    }
+                }
             case .captureRecovery:
                 recovery = snapshot(request)
             case .queryText:

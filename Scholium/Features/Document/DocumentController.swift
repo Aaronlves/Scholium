@@ -924,6 +924,10 @@ final class DocumentController: ObservableObject {
             session.editorSession.hasAttachedWebView,
             let suspensionID
         {
+            // Retained activation and transition completion may both resume
+            // this session before WebKit acknowledges the first request.
+            // One task owns that outstanding resumption and autosave restart.
+            guard session.detachmentResumeTask == nil else { return }
             let token = UUID()
             session.detachmentResumeToken = token
             session.detachmentResumeTask = Task { @MainActor [weak self, weak session] in
