@@ -171,7 +171,7 @@ struct RelatedMaterialSkeleton: View {
                 separatesFromPreviousGroup: separatesFromPreviousGroup
             ) {}
             ResearchPassageCard {
-                // Redacted text uses the same wrapping and line cap as a result,
+                // Redacted text uses the same natural wrapping as a result,
                 // rather than three short fixed-width bars unrelated to the pane.
                 ResearchPassageExcerpt(
                     text: Text(

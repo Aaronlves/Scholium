@@ -179,6 +179,44 @@ extension ScholiumUITests {
                 try Data(contentsOf: url), bytes,
                 "Retrieval and silent preparation must not rewrite any fixture source.")
         }
+
+        // A retained result can outlive its source. Opening it must explain
+        // the failure without claiming navigation or replacing the draft.
+        let workBytes = try Data(contentsOf: workURL)
+        try FileManager.default.removeItem(at: workURL)
+        defer { try? workBytes.write(to: workURL) }
+        let unavailableMessage = "This source could not be opened. Use Find Writing References again to refresh the results."
+        let unavailableCard = card(containing: destinationWords)
+        XCTAssertTrue(unavailableCard.exists && unavailableCard.isEnabled)
+        XCTAssertTrue(workspace.frame.contains(unavailableCard.frame))
+        // XCTest's automatic scroll-to-visible path cannot find this visible
+        // SwiftUI List card after Source focus. Exercise its native hit area.
+        unavailableCard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let issue = app.descendants(matching: .any)["scholium.operationIssue"].firstMatch
+        XCTAssertTrue(issue.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts[unavailableMessage].exists)
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 5))
+        XCTAssertEqual(editor.value as? String, secondSource)
+        XCTAssertEqual(try Data(contentsOf: secondURL), Data(secondSource.utf8))
+        app.buttons["Dismiss"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !issue.exists })
+        unavailableCard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(issue.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts[unavailableMessage].exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "scholium.operationIssue").count, 1)
+        let unavailableReference = XCTAttachment(screenshot: workspace.screenshot())
+        unavailableReference.name = "Unavailable reference retains the writing document"
+        unavailableReference.lifetime = .keepAlways
+        add(unavailableReference)
+        app.buttons["Dismiss"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !issue.exists })
+        try workBytes.write(to: workURL)
+        editor.click()
+        editor.typeKey(.end, modifierFlags: .command)
+        app.typeKey("j", modifierFlags: [.command, .shift])
+        waitForMaterial(destinationWords, excluding: adjacentWords)
+        XCTAssertEqual(editor.value as? String, secondSource)
+        XCTAssertEqual(try Data(contentsOf: workURL), workBytes)
         // The suite's existing tearDown terminates the one QA process and removes
         // only this journey-owned directory, retaining normal failure artifacts.
     }
@@ -431,7 +469,9 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testInspectorLinksSelectIncomingAndOutgoingDirections() {
+    func testInspectorLinksSelectIncomingAndOutgoingDirections() throws {
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalBytes = try Data(contentsOf: noteURL)
         _ = selectResearchInspectorDirection("outgoing")
         let outgoing = app.buttons.matching(
             NSPredicate(
@@ -455,6 +495,25 @@ extension ScholiumUITests {
             )
         ).firstMatch
         XCTAssertTrue(incoming.waitForExistence(timeout: 8))
+        let group = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.links.group.")
+        ).firstMatch
+        XCTAssertTrue(group.waitForExistence(timeout: 5))
+        group.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !incoming.exists })
+        group.click()
+        XCTAssertTrue(incoming.waitForExistence(timeout: 5))
+        let field = app.searchFields["scholium.links.search"].firstMatch
+        XCTAssertTrue(field.exists)
+        typeCommittedText("no-such-fixture-link", into: field, in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.connections.empty"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(incoming.exists)
+        field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
+        XCTAssertEqual(field.value as? String, "")
+        XCTAssertTrue(incoming.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
         let links = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         links.name = "Research Inspector incoming links"
         links.lifetime = .keepAlways

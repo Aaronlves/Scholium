@@ -201,7 +201,7 @@ final class WindowSearchController: ObservableObject {
     ) async -> Bool {
         guard case .result(let searchResult) = result else { return false }
         guard discoveryController.search.freshnessToken == searchResult.freshnessToken else {
-            await refreshAfterStaleResult(searchResult)
+            await refreshAfterStaleResult()
             return false
         }
         let evidence = await dependencies.resultEvidence(
@@ -211,7 +211,7 @@ final class WindowSearchController: ObservableObject {
         guard evidence.freshness == searchResult.freshnessToken,
             evidence.fingerprint == searchResult.fingerprint
         else {
-            await refreshAfterStaleResult(searchResult)
+            await refreshAfterStaleResult()
             return false
         }
         await dependencies.open(.result(searchResult), disposition)
@@ -382,9 +382,9 @@ final class WindowSearchController: ObservableObject {
         return .failed(error.localizedDescription)
     }
 
-    private func refreshAfterStaleResult(_ result: SearchResult) async {
+    private func refreshAfterStaleResult() async {
         let message = String(
-            localized: "The note changed. Search results were refreshed.",
+            localized: "This search result is out of date. Select a current result to open the Note.",
             table: "Localizable",
             bundle: .module
         )

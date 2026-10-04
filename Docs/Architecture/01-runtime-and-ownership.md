@@ -264,8 +264,9 @@ Settings field, never notification delivery.
 
 Research retains Links query/direction/group/position and one disposable Related
 Material session per window. They consume source-bound immutable projections,
-not another graph, writable metadata store or runtime. Recommendation requests
-bind context, document/runtime identity and revocable insertion receipts. Document
+not another graph, writable metadata store or runtime. Location updates publish only
+changed context. Recommendation requests bind context, document/runtime identity
+and revocable insertion receipts. Document
 departure resets them even while hidden; hiding cancels work. Publication rechecks
 identity and automatic follow also checks editor focus/mode. Stale responses may
 refresh/retry once; insertion rechecks current generation/caret in the Editor.

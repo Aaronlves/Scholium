@@ -4,7 +4,7 @@ import SwiftUI
 /// Window-local navigation context; it never owns graph or source data.
 @MainActor
 final class LinksInspectorSession: ObservableObject {
-    struct Location {
+    struct Location: Equatable {
         var query = ""
         var scrollID: String?
         var collapsedGroups: Set<String> = []
@@ -14,8 +14,10 @@ final class LinksInspectorSession: ObservableObject {
 
     func location(for key: String) -> Location { locations[key] ?? Location() }
     func update(_ key: String, _ change: (inout Location) -> Void) {
-        var location = location(for: key)
+        let previous = location(for: key)
+        var location = previous
         change(&location)
+        guard location != previous else { return }
         locations[key] = location
     }
     func reset() {
@@ -193,22 +195,23 @@ struct ConnectionsProjection {
 struct InspectorLinkGroup: Identifiable {
     let id: String
     let title: String
-    let items: [InspectorLinkItem]
+    private(set) var items: [InspectorLinkItem]
     var directoryContext: String? = nil
 
     var relativePath: String? { items.first?.peer?.reference.relativePath }
 
     static func make(_ items: [InspectorLinkItem]) -> [Self] {
         var groups: [Self] = []
+        var indices: [String: Int] = [:]
         for item in items {
             let peer = item.peer?.reference
             let key =
                 peer.map { "\($0.vaultID):\($0.relativePath)" }
                 ?? "unresolved:" + item.edge.occurrence.target
-            if let index = groups.firstIndex(where: { $0.id == key }) {
-                let previous = groups[index]
-                groups[index] = Self(id: key, title: previous.title, items: previous.items + [item])
+            if let index = indices[key] {
+                groups[index].items.append(item)
             } else {
+                indices[key] = groups.count
                 groups.append(Self(id: key, title: item.displayTitle, items: [item]))
             }
         }

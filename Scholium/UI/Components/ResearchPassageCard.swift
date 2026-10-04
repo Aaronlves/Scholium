@@ -21,11 +21,11 @@ struct ResearchPassageCard<Content: View>: View {
     }
 }
 
-/// Real excerpts and their initial placeholders share one bounded reading measure.
+/// Search bounds the excerpt; real text and placeholders share its natural wrapping.
 struct ResearchPassageExcerpt: View {
     let text: Text
 
     var body: some View {
-        ResearchText(text: text).lineLimit(5)
+        ResearchText(text: text)
     }
 }

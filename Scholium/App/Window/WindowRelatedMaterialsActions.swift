@@ -260,7 +260,7 @@ extension WindowModel {
                     else { return false }
                     reportOperationIssue(
                         String(
-                            localized: "This reference location could not be verified. The Note was opened without selecting a passage.",
+                            localized: "This source could not be opened. Use Find Writing References again to refresh the results.",
                             bundle: .module
                         ),
                         kind: .information

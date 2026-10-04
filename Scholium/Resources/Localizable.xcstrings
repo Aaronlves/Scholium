@@ -3008,18 +3008,18 @@
     }
   }
 },
-    "Confirm the current cursor before inserting a link.": {
+    "The writing context changed. Use Find Writing References again before inserting a link.": {
   "localizations": {
     "en": {
       "stringUnit": {
         "state": "translated",
-        "value": "Confirm the current cursor before inserting a link."
+        "value": "The writing context changed. Use Find Writing References again before inserting a link."
       }
     },
     "zh-Hans": {
       "stringUnit": {
         "state": "translated",
-        "value": "插入双链前，请先确认当前光标位置。"
+        "value": "写作上下文已变化。请再次使用“查找写作参考”，然后插入双链。"
       }
     }
   }
@@ -28336,18 +28336,18 @@
         }
       }
     },
-    "The note changed. Search results were refreshed." : {
+    "This search result is out of date. Select a current result to open the Note." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "The note changed. Search results were refreshed."
+            "value" : "This search result is out of date. Select a current result to open the Note."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "笔记已变化，搜索结果已刷新。"
+            "value" : "此搜索结果已过期。请选择当前结果来打开笔记。"
           }
         }
       }
@@ -29408,6 +29408,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "原文版本已变化。已打开笔记，未定位段落。"
+          }
+        }
+      }
+    },
+    "This source could not be opened. Use Find Writing References again to refresh the results." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This source could not be opened. Use Find Writing References again to refresh the results."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开此来源。请再次使用“查找写作参考”来刷新结果。"
           }
         }
       }

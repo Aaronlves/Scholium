@@ -30,7 +30,7 @@ struct ResearchInspectorPresentationTests {
         }
     }
 
-    @Test("Excerpt height follows its text and width, up to five lines")
+    @Test("Excerpt height follows its complete supplied text and available width")
     func excerptNaturalSize() async throws {
         let short = try await rowSizes(width: 220) { passage("A brief passage.") }
         let medium = "A research note preserves the distinction between a source claim and an interpretation. 原文与解释需要区分。"
@@ -48,7 +48,7 @@ struct ResearchInspectorPresentationTests {
         #expect(shortSize.height < ordinarySize.height)
         #expect(ordinarySize.height < narrowSize.height)
         #expect(threeSize.height < fiveSize.height)
-        #expect(abs(fiveSize.height - tenSize.height) < 0.5)
+        #expect(fiveSize.height < tenSize.height)
         #expect(narrowSize.width <= 220 && ordinarySize.width <= 320)
     }
 

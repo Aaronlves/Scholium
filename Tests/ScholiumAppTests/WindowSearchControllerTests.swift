@@ -9,6 +9,8 @@ import Testing
 private final class WindowSearchPresentationProbe {
     var hasCurrentNote = false
     var informationMessages: [String] = []
+    var availabilityStatuses: [String?] = []
+    var catalogFailureMessages: [String] = []
     var openCount = 0
 }
 
@@ -205,8 +207,8 @@ struct WindowSearchControllerTests {
         #expect(controller.savedSearches.map(\.id) == [recovered.id])
     }
 
-    @Test("A stale Note result is never routed and refreshes the active query")
-    func staleNoteResult() async {
+    @Test("A stale Note result preserves truthful recovery when refresh is unavailable or fails", arguments: [false, true])
+    func staleNoteResult(refreshFails: Bool) async {
         let discovery = DiscoveryController()
         let generation = SearchGenerationID(
             triptychID: UUID(),
@@ -249,14 +251,21 @@ struct WindowSearchControllerTests {
             ), for: request)
 
         let probe = WindowSearchPresentationProbe()
+        let refreshFailure = CocoaError(.fileReadUnknown)
         let controller = WindowSearchController(
             discoveryController: discovery,
             dependencies: WindowSearchController.Dependencies(
                 loadSavedSearches: { [] },
                 saveSavedSearches: { _ in },
                 recoverSavedSearches: { nil },
-                executionContext: { _ in
-                    DiscoverySearchExecutionContext(
+                executionContext: { state in
+                    #expect(state.query == "current")
+                    #expect(state.scope == .triptych)
+                    #expect(probe.informationMessages.count == 1)
+                    #expect(probe.informationMessages.first?.contains("out of date") == true)
+                    #expect(probe.informationMessages.first?.contains("were refreshed") == false)
+                    if refreshFails { throw refreshFailure }
+                    return DiscoverySearchExecutionContext(
                         workspaceIsAvailable: false,
                         currentNoteSnapshot: nil,
                         currentVaultID: nil
@@ -273,19 +282,32 @@ struct WindowSearchControllerTests {
                 reportInformation: { probe.informationMessages.append($0) },
                 reportLoadFailure: { _ in },
                 reportSaveFailure: { _ in },
-                setAvailabilityStatus: { _ in },
-                reportCatalogFailure: { _ in }
+                setAvailabilityStatus: { probe.availabilityStatuses.append($0) },
+                reportCatalogFailure: { probe.catalogFailureMessages.append($0) }
             )
         )
 
         controller.beginAdvanced()
-        await controller.open(.result(.note(hit)), disposition: .replaceCurrent)
+        #expect(await controller.open(.result(.note(hit)), disposition: .replaceCurrent) == false)
 
         #expect(probe.openCount == 0)
         #expect(probe.informationMessages.count == 1)
-        #expect(probe.informationMessages[0].contains("note changed"))
-        #expect(controller.presentation != .inactive)
-        #expect(discovery.search.executionIssue != nil)
+        #expect(probe.informationMessages[0].contains("Select a current result"))
+        #expect(!probe.informationMessages[0].contains("were refreshed"))
+        #expect(controller.presentation == .advanced)
+        #expect(controller.criteria.query == "current")
+        #expect(controller.criteria.scope == .triptych)
+        #expect(!discovery.search.isRunning)
+        if refreshFails {
+            #expect(discovery.search.executionIssue == .failed(refreshFailure.localizedDescription))
+            #expect(probe.availabilityStatuses.last == "Search failed")
+            #expect(probe.catalogFailureMessages.count == 1)
+            #expect(probe.catalogFailureMessages.first?.contains(refreshFailure.localizedDescription) == true)
+        } else {
+            #expect(discovery.search.executionIssue == DiscoverySearchExecutionError.workspaceUnavailable.searchIssue)
+            #expect(probe.availabilityStatuses.last == "Search unavailable")
+            #expect(probe.catalogFailureMessages.isEmpty)
+        }
     }
 
     @Test("Current Saved Search runs through ordinary Search without a review step")

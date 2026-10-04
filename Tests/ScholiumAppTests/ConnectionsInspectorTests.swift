@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import ScholiumContracts
 import SwiftUI
@@ -8,6 +9,42 @@ import Testing
 
 @Suite("Links Inspector projection", .serialized)
 struct ConnectionsInspectorTests {
+    @Test("Links publishes only changed navigation context and preserves independent locations")
+    @MainActor
+    func navigationContextPublications() {
+        let session = LinksInspectorSession()
+        var publications = 0
+        let observation = session.objectWillChange.sink { publications += 1 }
+        defer { observation.cancel() }
+        let key = "note:incoming"
+        session.update(key) { $0.query = "" }
+        #expect(publications == 0)
+        session.update(key) {
+            $0.query = "source"
+            $0.scrollID = "first"
+            $0.collapsedGroups = ["second"]
+        }
+        #expect(publications == 1)
+        for _ in 0..<10 {
+            session.update(key) { $0.query = "source" }
+            session.update(key) { $0.scrollID = "first" }
+            session.update(key) { $0.collapsedGroups = ["second"] }
+        }
+        #expect(publications == 1)
+        session.update("note:outgoing") { $0.query = "other" }
+        #expect(publications == 2)
+        #expect(session.location(for: key).query == "source")
+        #expect(session.location(for: key).scrollID == "first")
+        #expect(session.location(for: key).collapsedGroups == ["second"])
+        #expect(session.location(for: "note:outgoing").query == "other")
+        session.update(key) { $0.scrollID = nil }
+        #expect(publications == 3)
+        #expect(session.location(for: key).scrollID == nil)
+        session.reset()
+        #expect(session.location(for: key) == LinksInspectorSession.Location())
+        #expect(session.location(for: "note:outgoing") == LinksInspectorSession.Location())
+    }
+
     @Test("Flat Links rows retain error meaning and distinct authored external occurrences")
     func flatRowsRetainStatesAndExternalLinks() throws {
         let links = SourceResourceReferences.externalLinks(in: "[First](https://example.invalid/source) [Second](https://example.invalid/source)\n")
@@ -145,6 +182,12 @@ struct ConnectionsInspectorTests {
         #expect(byTarget["folder/Target"]?.allSatisfy { $0.diagnostic == nil } == true)
         #expect(byTarget["folder/Target"]?.first?.matches("folder") == true)
         #expect(InspectorLinkGroup.make(items).first { $0.title == "Target" }?.items.count == 2)
+        let repeated = try #require(byTarget["folder/Target"])
+        let missing = try #require(byTarget["Missing"]?.first)
+        let interleaved = InspectorLinkGroup.make([repeated[0], missing, repeated[1]])
+        #expect(interleaved.map(\.title) == ["Target", "Missing"])
+        #expect(interleaved[0].items.map(\.id) == repeated.map(\.id))
+        #expect(interleaved[1].items.map(\.id) == [missing.id])
     }
 
     @Test("Same-title link groups expose exact identities and quiet directory context")
