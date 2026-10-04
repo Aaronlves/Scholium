@@ -1,4 +1,4 @@
-import type {EditorState, Extension} from "@codemirror/state";
+import {EditorSelection, findClusterBreak, type EditorState, type Extension, type SelectionRange} from "@codemirror/state";
 import {EditorView, keymap} from "@codemirror/view";
 import type {EditorMode} from "./protocol";
 import {
@@ -69,15 +69,11 @@ export function createLiveProjectionNavigation(options: {
 
   /**
    * A projected list marker is an atomic replacement while the line is
-   * inactive. Once the caret enters its source prefix, however, the prefix
-   * becomes ordinary editable text. Do not hand those two states to
-   * CodeMirror's default cursor command at the same time: the atomic range
-   * can otherwise consume one character or re-enter the projected marker
-   * while the decoration transaction is still settling.
-   *
-   * The source prefix is traversed one UTF-16 position at a time. At its
-   * trailing edge the normal command may leave the prefix toward prose; at
-   * its leading edge the normal command may leave toward the previous line.
+   * inactive. Once the caret enters its source prefix, the prefix becomes
+   * ordinary editable text. CodeMirror owns character movement and its
+   * selection metadata through that transition. At the trailing edge the
+   * normal command may leave toward prose; at the
+   * leading edge it may leave toward the previous line.
    */
   function stepInsideListPrefix(
     view: EditorView,
@@ -96,19 +92,31 @@ export function createLiveProjectionNavigation(options: {
       selection.head >= range.from && selection.head <= range.to);
     if (!prefix) return null;
 
-    const next = forward
-      ? selection.head < prefix.to ? selection.head + 1 : null
-      : selection.head > prefix.from ? selection.head - 1 : null;
-    if (next === null) return null;
+    if (forward ? selection.head >= prefix.to : selection.head <= prefix.from) return null;
+    const moved = view.moveByChar(selection, forward);
 
     view.dispatch({
-      selection: {
-        anchor: extend ? selection.anchor : next,
-        head: next,
-      },
+      selection: selectionForMove(selection, moved, extend),
       scrollIntoView: true,
+      userEvent: "select",
     });
     return true;
+  }
+
+  function selectionForMove(start: SelectionRange, moved: SelectionRange, extend: boolean) {
+    return EditorSelection.create([extend
+      ? EditorSelection.range(start.anchor, moved.head, moved.goalColumn,
+        moved.bidiLevel ?? undefined, moved.assoc)
+      : moved]);
+  }
+
+  function sourceEntryHead(state: EditorState, projection: ProjectionSourceRange, forward: boolean) {
+    if (forward) return projection.from;
+    const line = state.doc.lineAt(projection.to);
+    const previous = projection.to === line.from
+      ? projection.to - 1
+      : line.from + findClusterBreak(line.text, projection.to - line.from, false);
+    return Math.max(projection.from, previous);
   }
 
   function revealForVerticalMove(
@@ -116,50 +124,73 @@ export function createLiveProjectionNavigation(options: {
     forward: boolean,
     extend: boolean,
   ) {
-    if (options.mode(view.state) !== "livePreview" || view.composing) return false;
+    if (options.mode(view.state) !== "livePreview" || view.composing
+        || view.state.selection.ranges.length !== 1) return false;
     const selection = view.state.selection.main;
+    // Plain movement collapses an existing selection through CodeMirror's
+    // normal commands rather than entering a neighboring projection.
+    if (!extend && !selection.empty) return false;
     const moved = view.moveVertically(selection, forward);
+    // A projected move may land on the incoming boundary instead of skipping
+    // the whole source range. Include that endpoint in either direction.
     const crossed = projectionRangesIntersecting(
       blockRanges(view.state),
-      Math.min(selection.head, moved.head),
+      Math.max(0, Math.min(selection.head, moved.head) - 1),
       Math.max(selection.head, moved.head) + 1,
     ).filter((candidate) => {
       const alreadyActive = view.state.selection.ranges.some((range) =>
         selectionActivatesSyntax(range, candidate));
       if (alreadyActive) return false;
       return forward
-        ? selection.head <= candidate.from && moved.head >= candidate.to
-        : selection.head >= candidate.to && moved.head <= candidate.from;
+        ? selection.head <= candidate.from && moved.head >= candidate.from
+        : selection.head >= candidate.to && moved.head <= candidate.to;
     });
     const projection = forward ? crossed[0] : crossed.at(-1);
     if (!projection) return false;
 
-    const sourceHead = forward
-      ? projection.from
-      : Math.max(projection.from, projection.to - 1);
-    const originalCoords = view.coordsAtPos(selection.head);
-    const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
-    const anchor = extend ? selection.anchor : sourceHead;
+    const sourceHead = sourceEntryHead(view.state, projection, forward);
+    const originalCoords = view.coordsAtPos(selection.head, selection.assoc || 1);
+    const contentLeft = view.contentDOM.getBoundingClientRect().left;
+    const goalColumn = selection.goalColumn ?? moved.goalColumn
+      ?? (originalCoords?.left ?? contentLeft) - contentLeft;
+    const sourceCursor = EditorSelection.cursor(sourceHead, forward ? 1 : -1,
+      moved.bidiLevel ?? undefined, goalColumn);
     view.dispatch({
-      selection: {anchor, head: sourceHead},
+      selection: selectionForMove(selection, sourceCursor, extend),
       scrollIntoView: true,
+      userEvent: "select",
     });
+    const expectedDocument = view.state.doc;
+    const expectedSelection = view.state.selection;
+    const current = () => !view.composing
+      && options.mode(view.state) === "livePreview"
+      && view.state.doc === expectedDocument
+      && view.state.selection.eq(expectedSelection, true);
     view.requestMeasure({
       read: () => {
+        if (!current()) return null;
         const line = view.state.doc.lineAt(sourceHead);
         const lineEdge = forward ? line.from : line.to;
         const coords = view.coordsAtPos(lineEdge);
-        if (!coords) return sourceHead;
-        return view.posAtCoords({
-          x: desiredX,
+        if (!coords) return sourceCursor;
+        const measuredHead = view.posAtCoords({
+          x: view.contentDOM.getBoundingClientRect().left + goalColumn,
           y: (coords.top + coords.bottom) / 2,
         }) ?? sourceHead;
+        return EditorSelection.cursor(measuredHead, measuredHead === line.to ? -1 : 1,
+          moved.bidiLevel ?? undefined, goalColumn);
       },
-      write: (measuredHead) => {
-        if (view.state.selection.main.head !== sourceHead) return;
-        view.dispatch({
-          selection: {anchor, head: measuredHead},
-          scrollIntoView: true,
+      write: (measuredCursor) => {
+        if (!measuredCursor) return;
+        // CodeMirror forbids transactions during a measure write. Commit
+        // after that cycle, rechecking authority after any intervening input.
+        queueMicrotask(() => {
+          if (!current()) return;
+          view.dispatch({
+            selection: selectionForMove(selection, measuredCursor, extend),
+            scrollIntoView: true,
+            userEvent: "select",
+          });
         });
       },
     });
@@ -171,26 +202,27 @@ export function createLiveProjectionNavigation(options: {
     forward: boolean,
     extend: boolean,
   ) {
-    if (options.mode(view.state) !== "livePreview" || view.composing) return false;
+    if (options.mode(view.state) !== "livePreview" || view.composing
+        || view.state.selection.ranges.length !== 1) return false;
+    const selection = view.state.selection.main;
+    if (!extend && !selection.empty) return false;
     const listStep = stepInsideListPrefix(view, forward, extend);
     if (listStep !== null) return listStep;
-    const selection = view.state.selection.main;
     const projection = horizontalRangeAt(view.state, selection.head, forward);
     if (!projection) return false;
     const alreadyActive = selectionActivatesSyntax(selection, projection);
     const isProjectedLink = projection.kind === "wikilink";
-    // Forward traversal treats a projected Wikilink as one object. Backward
-    // traversal from its end still exposes the authored closing delimiter.
-    if (alreadyActive
-        && !(isProjectedLink && forward && selection.head === projection.from)) {
-      return false;
-    }
+    if (alreadyActive) return false;
     const head = forward
       ? isProjectedLink ? projection.to : projection.from
-      : Math.max(projection.from, projection.to - 1);
+      : sourceEntryHead(view.state, projection, false);
+    // A Shift selection ending at the incoming edge has not activated the
+    // source yet. Let CodeMirror extend it rather than consuming a no-op.
+    if (head === selection.head) return false;
     view.dispatch({
       selection: {anchor: extend ? selection.anchor : head, head},
       scrollIntoView: true,
+      userEvent: "select",
     });
     return true;
   }

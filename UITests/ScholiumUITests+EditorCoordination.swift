@@ -6,6 +6,172 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testWrappedEditorKeyboardSelectionRetainsVisualLineAndUnicode() throws {
+        let source =
+            String(repeating: "Writing 中文 keeps **meaning** beside e\u{301} and 👩🏽‍🔬. ", count: 16)
+            + "FINAL_VISUAL_ROW"
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        try write(source, to: noteURL)
+
+        for appearance in QAAppearance.allCases {
+            app.terminate()
+            app = configuredApplication(sessionID: sessionID, initialWorkspaceWidth: 900, appearance: appearance)
+            app.launch()
+            XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+            resizeProofWindow(app.windows.firstMatch, toWidth: 900, height: 640)
+            for mode in ["Source", "Edit"] {
+                selectDocumentMode(mode)
+                let editor = app.descendants(matching: .any)[
+                    mode == "Source" ? "Markdown source editor" : "Markdown editor, Edit mode"
+                ].firstMatch
+                XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == source })
+                editor.click()
+                app.typeKey(.downArrow, modifierFlags: .command)
+                app.typeKey(.leftArrow, modifierFlags: [.command, .shift])
+                let selection = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+                selection.name = "Wrapped Command-Shift-Left — \(mode) — \(appearance.displayName)"
+                selection.lifetime = .keepAlways
+                add(selection)
+                app.typeKey(.delete, modifierFlags: [])
+                XCTAssertTrue(
+                    waitUntil(timeout: 5) {
+                        guard let remaining = editor.value as? String else { return false }
+                        return remaining.utf16.count > 100 && remaining.utf16.count < source.utf16.count
+                            && source.hasPrefix(remaining)
+                    }, "Command-Shift-Left must select the final visual row, preserving preceding wrapped rows.")
+                app.typeKey("z", modifierFlags: .command)
+                XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == source })
+                app.typeKey("s", modifierFlags: .command)
+                XCTAssertTrue(waitUntil(timeout: 8) { (try? Data(contentsOf: noteURL)) == Data(source.utf8) })
+            }
+        }
+    }
+
+    @MainActor
+    func testProjectedEditorArrowEntryPreservesInsertionAndGraphemes() throws {
+        let lead = "0123456789012345678901234567890123456789"
+        let table = "| First column | Second column |\n| --- | --- |\n| row A | row B |"
+        let source = lead + "\n\n" + table + "\n\n- Before [[Target|label]] 中文 👩🏽‍🔬e\u{301}"
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        try write(source, to: noteURL)
+        selectDocumentMode("Edit")
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 10) { (editor.value as? String)?.contains(lead) == true })
+        func saveAndCheck(_ expected: String) {
+            app.typeKey("s", modifierFlags: .command)
+            XCTAssertTrue(
+                waitUntil(timeout: 8) { (try? Data(contentsOf: noteURL)) == Data(expected.utf8) },
+                "The checked editor source must save exactly, including projected syntax and Unicode.")
+        }
+        editor.click()
+        app.typeKey(.upArrow, modifierFlags: .command)
+        for _ in 0..<20 { app.typeKey(.rightArrow, modifierFlags: []) }
+        app.typeKey(.downArrow, modifierFlags: [])
+        app.typeKey(.downArrow, modifierFlags: [])
+        let enteredTable = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        enteredTable.name = "Projected table keyboard entry — collapsed caret"
+        enteredTable.lifetime = .keepAlways
+        add(enteredTable)
+        app.typeKey(.delete, modifierFlags: [])
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                guard let bytes = try? Data(contentsOf: noteURL), let current = String(data: bytes, encoding: .utf8) else { return false }
+                return current.utf16.count == source.utf16.count - 1 && current.hasPrefix(lead + "\n\n|")
+            }, "Ordinary Down must enter table source at its retained column; Backspace must delete one character.")
+        app.typeKey("z", modifierFlags: .command)
+        saveAndCheck(source)
+
+        for mode in ["Edit", "Source"] {
+            selectDocumentMode(mode)
+            let currentEditor = app.descendants(matching: .any)[
+                mode == "Source" ? "Markdown source editor" : "Markdown editor, Edit mode"
+            ].firstMatch
+            currentEditor.click()
+            app.typeKey(.downArrow, modifierFlags: .command)
+            app.typeKey(.leftArrow, modifierFlags: .shift)
+            app.typeKey(.delete, modifierFlags: [])
+            saveAndCheck(String(source.dropLast()))
+            app.typeKey("z", modifierFlags: .command)
+            saveAndCheck(source)
+            app.typeKey(.downArrow, modifierFlags: .command)
+            app.typeKey(.leftArrow, modifierFlags: [])
+            app.typeKey(.leftArrow, modifierFlags: .shift)
+            app.typeKey(.delete, modifierFlags: [])
+            let withoutEmoji = String(source.dropLast(2)) + "e\u{301}"
+            saveAndCheck(withoutEmoji)
+            app.typeKey("z", modifierFlags: .command)
+            saveAndCheck(source)
+        }
+        selectDocumentMode("Edit")
+        editor.click()
+        app.typeKey(.downArrow, modifierFlags: .command)
+        app.typeKey(.leftArrow, modifierFlags: .command)
+        for _ in 0..<9 { app.typeKey(.rightArrow, modifierFlags: []) }
+        app.typeKey(.rightArrow, modifierFlags: .shift)
+        app.typeKey(.delete, modifierFlags: [])
+        let withoutOpeningBracket = source.replacingOccurrences(of: "[[Target", with: "[Target")
+        saveAndCheck(withoutOpeningBracket)
+        app.typeKey("z", modifierFlags: .command)
+        saveAndCheck(source)
+        app.typeKey(.downArrow, modifierFlags: .command)
+        app.typeKey(.leftArrow, modifierFlags: .command)
+        for _ in 0..<9 { app.typeKey(.rightArrow, modifierFlags: .shift) }
+        app.typeKey(.rightArrow, modifierFlags: [])
+        app.typeKey(.delete, modifierFlags: [])
+        let withoutPrecedingSpace = source.replacingOccurrences(of: "Before [[", with: "Before[[")
+        saveAndCheck(withoutPrecedingSpace)
+        app.typeKey("z", modifierFlags: .command)
+        saveAndCheck(source)
+
+        selectDocumentMode("Source")
+        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
+        sourceEditor.click()
+        app.typeKey(.downArrow, modifierFlags: .command)
+        app.typeKey(.home, modifierFlags: [])
+        app.typeKey(.end, modifierFlags: .shift)
+        app.typeKey(.delete, modifierFlags: [])
+        saveAndCheck(lead + "\n\n" + table + "\n\n")
+        app.typeKey("z", modifierFlags: .command)
+        saveAndCheck(source)
+        app.typeKey(.upArrow, modifierFlags: .command)
+        app.typeKey(.rightArrow, modifierFlags: [.option, .shift])
+        app.typeKey(.delete, modifierFlags: [])
+        saveAndCheck(String(source.dropFirst(lead.count)))
+        app.typeKey("z", modifierFlags: .command)
+        saveAndCheck(source)
+    }
+
+    @MainActor
+    func testEditorShiftSelectionCrossesInactiveListPrefix() throws {
+        let source = "before\n- item"
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        try write(source, to: noteURL)
+        selectDocumentMode("Edit")
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 10) { (editor.value as? String)?.contains("before") == true })
+        editor.click()
+        app.typeKey(.upArrow, modifierFlags: .command)
+        for _ in 0..<8 { app.typeKey(.rightArrow, modifierFlags: .shift) }
+        let selection = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        selection.name = "Shift selection crosses an inactive list prefix"
+        selection.lifetime = .keepAlways
+        add(selection)
+        app.typeKey(.delete, modifierFlags: [])
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                guard let bytes = try? Data(contentsOf: noteURL), let current = String(data: bytes, encoding: .utf8) else { return false }
+                // CodeMirror may traverse the inactive replacement as one atom.
+                // Either source entry must advance past the marker's leading edge.
+                return current == " item" || current == "item"
+            }, "Shift-Right at an inactive prefix must advance the selection.")
+        app.typeKey("z", modifierFlags: .command)
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 8) { (try? Data(contentsOf: noteURL)) == Data(source.utf8) })
+    }
+
+    @MainActor
     func testEditorClipboardShortcutsAndContextMenuPreserveText() throws {
         let pasteboard = NSPasteboard.general
         let savedItems = pasteboard.pasteboardItems?.map { item in

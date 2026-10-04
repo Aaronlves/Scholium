@@ -14484,24 +14484,8 @@
   function readLiveCursorGeometry(view) {
     const selection = view.state.selection.main;
     if (!selection.empty) return null;
-    const assoc = selection.assoc || 1;
-    let rect = null;
-    try {
-      const line = view.state.doc.lineAt(selection.head);
-      const side = selection.head === line.to ? -1 : selection.head === line.from ? 1 : assoc;
-      const point = view.domAtPos(selection.head, side);
-      const range = view.dom.ownerDocument.createRange();
-      range.setStart(point.node, point.offset);
-      range.collapse(true);
-      rect = range.getBoundingClientRect();
-    } catch {
-      rect = null;
-    }
-    if (!rect || rect.height < 1 || !Number.isFinite(rect.left)) {
-      const fallback = view.coordsAtPos(selection.head, assoc);
-      if (!fallback) return null;
-      return { left: fallback.left, top: fallback.top, bottom: fallback.bottom };
-    }
+    const rect = view.coordsAtPos(selection.head, selection.assoc || 1);
+    if (!rect) return null;
     return { left: rect.left, top: rect.top, bottom: rect.bottom };
   }
   function readLiveCursorSurfaceGeometry(view) {
@@ -37444,77 +37428,113 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       );
       const prefix = nearby.find((range) => selection.head >= range.from && selection.head <= range.to);
       if (!prefix) return null;
-      const next = forward ? selection.head < prefix.to ? selection.head + 1 : null : selection.head > prefix.from ? selection.head - 1 : null;
-      if (next === null) return null;
+      if (forward ? selection.head >= prefix.to : selection.head <= prefix.from) return null;
+      const moved = view.moveByChar(selection, forward);
       view.dispatch({
-        selection: {
-          anchor: extend ? selection.anchor : next,
-          head: next
-        },
-        scrollIntoView: true
+        selection: selectionForMove(selection, moved, extend),
+        scrollIntoView: true,
+        userEvent: "select"
       });
       return true;
     }
+    function selectionForMove(start, moved, extend) {
+      return EditorSelection.create([extend ? EditorSelection.range(
+        start.anchor,
+        moved.head,
+        moved.goalColumn,
+        moved.bidiLevel ?? void 0,
+        moved.assoc
+      ) : moved]);
+    }
+    function sourceEntryHead(state, projection, forward) {
+      if (forward) return projection.from;
+      const line = state.doc.lineAt(projection.to);
+      const previous = projection.to === line.from ? projection.to - 1 : line.from + findClusterBreak2(line.text, projection.to - line.from, false);
+      return Math.max(projection.from, previous);
+    }
     function revealForVerticalMove(view, forward, extend) {
-      if (options.mode(view.state) !== "livePreview" || view.composing) return false;
+      if (options.mode(view.state) !== "livePreview" || view.composing || view.state.selection.ranges.length !== 1) return false;
       const selection = view.state.selection.main;
+      if (!extend && !selection.empty) return false;
       const moved = view.moveVertically(selection, forward);
       const crossed = projectionRangesIntersecting(
         blockRanges(view.state),
-        Math.min(selection.head, moved.head),
+        Math.max(0, Math.min(selection.head, moved.head) - 1),
         Math.max(selection.head, moved.head) + 1
       ).filter((candidate) => {
         const alreadyActive = view.state.selection.ranges.some((range) => selectionActivatesSyntax(range, candidate));
         if (alreadyActive) return false;
-        return forward ? selection.head <= candidate.from && moved.head >= candidate.to : selection.head >= candidate.to && moved.head <= candidate.from;
+        return forward ? selection.head <= candidate.from && moved.head >= candidate.from : selection.head >= candidate.to && moved.head <= candidate.to;
       });
       const projection = forward ? crossed[0] : crossed.at(-1);
       if (!projection) return false;
-      const sourceHead = forward ? projection.from : Math.max(projection.from, projection.to - 1);
-      const originalCoords = view.coordsAtPos(selection.head);
-      const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
-      const anchor = extend ? selection.anchor : sourceHead;
+      const sourceHead = sourceEntryHead(view.state, projection, forward);
+      const originalCoords = view.coordsAtPos(selection.head, selection.assoc || 1);
+      const contentLeft = view.contentDOM.getBoundingClientRect().left;
+      const goalColumn = selection.goalColumn ?? moved.goalColumn ?? (originalCoords?.left ?? contentLeft) - contentLeft;
+      const sourceCursor = EditorSelection.cursor(
+        sourceHead,
+        forward ? 1 : -1,
+        moved.bidiLevel ?? void 0,
+        goalColumn
+      );
       view.dispatch({
-        selection: { anchor, head: sourceHead },
-        scrollIntoView: true
+        selection: selectionForMove(selection, sourceCursor, extend),
+        scrollIntoView: true,
+        userEvent: "select"
       });
+      const expectedDocument = view.state.doc;
+      const expectedSelection = view.state.selection;
+      const current = () => !view.composing && options.mode(view.state) === "livePreview" && view.state.doc === expectedDocument && view.state.selection.eq(expectedSelection, true);
       view.requestMeasure({
         read: () => {
+          if (!current()) return null;
           const line = view.state.doc.lineAt(sourceHead);
           const lineEdge = forward ? line.from : line.to;
           const coords = view.coordsAtPos(lineEdge);
-          if (!coords) return sourceHead;
-          return view.posAtCoords({
-            x: desiredX,
+          if (!coords) return sourceCursor;
+          const measuredHead = view.posAtCoords({
+            x: view.contentDOM.getBoundingClientRect().left + goalColumn,
             y: (coords.top + coords.bottom) / 2
           }) ?? sourceHead;
+          return EditorSelection.cursor(
+            measuredHead,
+            measuredHead === line.to ? -1 : 1,
+            moved.bidiLevel ?? void 0,
+            goalColumn
+          );
         },
-        write: (measuredHead) => {
-          if (view.state.selection.main.head !== sourceHead) return;
-          view.dispatch({
-            selection: { anchor, head: measuredHead },
-            scrollIntoView: true
+        write: (measuredCursor) => {
+          if (!measuredCursor) return;
+          queueMicrotask(() => {
+            if (!current()) return;
+            view.dispatch({
+              selection: selectionForMove(selection, measuredCursor, extend),
+              scrollIntoView: true,
+              userEvent: "select"
+            });
           });
         }
       });
       return true;
     }
     function revealForHorizontalMove(view, forward, extend) {
-      if (options.mode(view.state) !== "livePreview" || view.composing) return false;
+      if (options.mode(view.state) !== "livePreview" || view.composing || view.state.selection.ranges.length !== 1) return false;
+      const selection = view.state.selection.main;
+      if (!extend && !selection.empty) return false;
       const listStep = stepInsideListPrefix(view, forward, extend);
       if (listStep !== null) return listStep;
-      const selection = view.state.selection.main;
       const projection = horizontalRangeAt(view.state, selection.head, forward);
       if (!projection) return false;
       const alreadyActive = selectionActivatesSyntax(selection, projection);
       const isProjectedLink = projection.kind === "wikilink";
-      if (alreadyActive && !(isProjectedLink && forward && selection.head === projection.from)) {
-        return false;
-      }
-      const head = forward ? isProjectedLink ? projection.to : projection.from : Math.max(projection.from, projection.to - 1);
+      if (alreadyActive) return false;
+      const head = forward ? isProjectedLink ? projection.to : projection.from : sourceEntryHead(view.state, projection, false);
+      if (head === selection.head) return false;
       view.dispatch({
         selection: { anchor: extend ? selection.anchor : head, head },
-        scrollIntoView: true
+        scrollIntoView: true,
+        userEvent: "select"
       });
       return true;
     }
@@ -40012,30 +40032,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     }
   ]);
-  function moveToSourceLineBoundary(view, forward, extend) {
-    const selection = view.state.selection;
-    const ranges = selection.ranges.map((range) => {
-      const line = view.state.doc.lineAt(range.head);
-      const head = forward ? line.to : line.from;
-      return extend ? EditorSelection.range(range.anchor, head) : EditorSelection.cursor(head);
-    });
-    view.dispatch({
-      selection: EditorSelection.create(ranges, selection.mainIndex),
-      scrollIntoView: true
-    });
-    return true;
-  }
   var lineBoundaryKeymap = keymap.of([
     {
       key: "Meta-ArrowLeft",
-      run: (view) => moveToSourceLineBoundary(view, false, false),
-      shift: (view) => moveToSourceLineBoundary(view, false, true),
+      run: cursorLineBoundaryBackward,
+      shift: selectLineBoundaryBackward,
       preventDefault: true
     },
     {
       key: "Meta-ArrowRight",
-      run: (view) => moveToSourceLineBoundary(view, true, false),
-      shift: (view) => moveToSourceLineBoundary(view, true, true),
+      run: cursorLineBoundaryForward,
+      shift: selectLineBoundaryForward,
       preventDefault: true
     },
     {

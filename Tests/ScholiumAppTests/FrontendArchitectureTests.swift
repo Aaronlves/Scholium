@@ -3009,7 +3009,7 @@ struct FrontendArchitectureTests {
         #expect(!syntaxPresentationSource.contains("scholium-syntax-motion"))
         #expect(syntaxPresentationSource.contains("readLiveCursorGeometry"))
         #expect(syntaxPresentationSource.contains("writeLiveCursorGeometry"))
-        #expect(cursorGeometrySource.contains("domAtPos"))
+        #expect(cursorGeometrySource.contains("coordsAtPos(selection.head, selection.assoc"))
         #expect(cursorGeometrySource.contains("cm-cursor-primary"))
         #expect(syntaxPresentationSource.contains("getComputedTiming"))
         #expect(syntaxPresentationSource.contains("{opacity: previous.opacity, color: previous.color}"))

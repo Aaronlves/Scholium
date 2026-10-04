@@ -29,30 +29,11 @@ export function readLiveCursorGeometry(view: EditorView): LiveCursorGeometry | n
   const selection = view.state.selection.main;
   if (!selection.empty) return null;
 
-  const assoc = selection.assoc || 1;
-  let rect: DOMRect | null = null;
-  try {
-    const line = view.state.doc.lineAt(selection.head);
-    // At a line end, CodeMirror can expose the parent boundary after the
-    // line's DOM node. A collapsed Range at that boundary reports the line
-    // start in WebKit, so read the text-side DOM point instead.
-    const side = selection.head === line.to
-      ? -1
-      : selection.head === line.from ? 1 : assoc;
-    const point = view.domAtPos(selection.head, side);
-    const range = view.dom.ownerDocument.createRange();
-    range.setStart(point.node, point.offset);
-    range.collapse(true);
-    rect = range.getBoundingClientRect();
-  } catch {
-    rect = null;
-  }
-
-  if (!rect || rect.height < 1 || !Number.isFinite(rect.left)) {
-    const fallback = view.coordsAtPos(selection.head, assoc);
-    if (!fallback) return null;
-    return {left: fallback.left, top: fallback.top, bottom: fallback.bottom};
-  }
+  // A collapsed DOM Range loses the approached side of a soft wrap in
+  // WebKit, placing an end-of-row caret at the next row's start. CodeMirror
+  // owns wrap affinity, grapheme and bidi geometry through SelectionRange.
+  const rect = view.coordsAtPos(selection.head, selection.assoc || 1);
+  if (!rect) return null;
   return {left: rect.left, top: rect.top, bottom: rect.bottom};
 }
 

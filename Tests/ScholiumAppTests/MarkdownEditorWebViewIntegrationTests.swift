@@ -10,6 +10,91 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Edit caret remains on the approached side of a soft-wrap boundary")
+    func editCaretRetainsSoftWrapAffinity() async throws {
+        let source = String(repeating: "中文文字甲乙丙丁", count: 30)
+        let harness = EditorHarness(source: source, initialWindowSize: NSSize(width: 540, height: 520), laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.focus()
+        try await harness.waitUntilFocused()
+        harness.session.revealSourceRange(fromUTF16: 10, toUTF16: 10)
+        try await harness.waitUntilSelection(head: 10)
+        _ = try await harness.callPageJavaScript(
+            """
+            const content = document.querySelector('.cm-content');
+            content.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'ArrowRight', code: 'ArrowRight', keyCode: 39,
+                metaKey: true, bubbles: true, cancelable: true
+            }));
+            await new Promise(resolve => {
+                requestAnimationFrame(() => requestAnimationFrame(resolve));
+                setTimeout(resolve, 200);
+            });
+            """)
+        let head = try await harness.waitUntilSelection(in: 11..<source.utf16.count)
+        _ = try await harness.session.currentScrollAnchor()
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const line = document.querySelector('.cm-line');
+                const cursor = document.querySelector('.cm-cursor-primary');
+                if (!line || !cursor) return null;
+                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                let node, remaining = head;
+                while ((node = walker.nextNode())) {
+                    if (remaining > node.length) { remaining -= node.length; continue; }
+                    const range = document.createRange();
+                    range.setStart(node, remaining - 1);
+                    range.setEnd(node, remaining);
+                    const glyph = range.getBoundingClientRect();
+                    const scroller = document.querySelector('.cm-scroller');
+                    const surface = scroller.getBoundingClientRect();
+                    const markerLeft = parseFloat(cursor.style.left) + surface.left - scroller.scrollLeft;
+                    const markerTop = parseFloat(cursor.style.top) + surface.top - scroller.scrollTop;
+                    const markerBottom = markerTop + parseFloat(cursor.style.height);
+                    return {head, glyphLeft: glyph.left, glyphRight: glyph.right, glyphTop: glyph.top,
+                        cursorLeft: markerLeft, cursorTop: markerTop,
+                        horizontal: Math.abs(markerLeft - glyph.right),
+                        vertical: Math.abs((markerTop + markerBottom - glyph.top - glyph.bottom) / 2)};
+                }
+                return null;
+                """, arguments: ["head": head]) as? [String: Double])
+        #expect(try #require(geometry["horizontal"]) < 4, "Caret geometry: \(geometry)")
+        #expect(try #require(geometry["vertical"]) < 4, "Caret geometry: \(geometry)")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Projected vertical entry preserves a collapsed caret and its column through blank rows")
+    func projectedVerticalEntryRetainsCaretAndColumn() async throws {
+        let lead = "0123456789012345678901234567890123456789"
+        let table = "| First column | Second column |\n| --- | --- |\n| row A | row B |"
+        let source = lead + "\n\n" + table + "\n\n" + lead
+        let tableFrom = lead.utf16.count + 2
+        let firstRowTo = tableFrom + (table.firstIndex(of: "\n")?.utf16Offset(in: table) ?? 0)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 20, toUTF16: 20)
+        try await harness.waitUntilSelection(head: 20)
+        try await harness.session.testingPressArrow("ArrowDown")
+        try await harness.waitUntilSelection(head: lead.utf16.count + 1, stage: "blank row with retained column")
+        try await harness.session.testingPressArrow("ArrowDown")
+        // Background WKWebViews may suspend animation frames. The existing
+        // measured scroll query flushes CodeMirror's pending layout cycle.
+        _ = try await harness.session.currentScrollAnchor()
+        // The boundary activation is provisional. Await the measured column's
+        // bridge publication before checking the completed insertion point.
+        let head = try await harness.waitUntilSelection(in: (tableFrom + 3)..<(firstRowTo + 1))
+        let selection = try #require(harness.session.context?.selections.first)
+        #expect(selection.anchor == selection.head)
+        #expect(selection.head > tableFrom + 2, "The preceding blank row must not reset the visual goal column: \(head).")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
     @Test("Inline writing badges clear mid-line source and preview inherits the editor font", arguments: [MarkdownEditorMode.livePreview, .source])
     func inlineWritingPresentationGeometry(mode: MarkdownEditorMode) async throws {
         let source = "A claim about res, although"
@@ -3691,7 +3776,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.revealSourceRange(fromUTF16: linkFrom, toUTF16: linkFrom)
         try await harness.waitUntilSelection(head: linkFrom, stage: "Wikilink keyboard start boundary")
         try await harness.session.testingPressArrow("ArrowRight")
-        try await harness.waitUntilSelection(head: linkTo, stage: "Wikilink keyboard end boundary")
+        try await harness.waitUntilSelection(head: linkFrom + 1, stage: "Wikilink keyboard opening syntax entry")
         let keyboardProjectedLink = try await harness.session.testingInlineProjectionSnapshot(
             containing: "linked note"
         )
@@ -5972,7 +6057,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
         try await harness.waitUntilSelection(head: end, stage: "heading keyboard initial selection")
         try await harness.session.testingPressArrow("ArrowUp")
-        try await harness.waitUntilSelection(head: 15, stage: "heading keyboard entry")
+        // The trailing empty line has column zero. Revealing the heading
+        // keeps that goal at the source start rather than its final character.
+        try await harness.waitUntilSelection(head: 2, stage: "heading keyboard entry")
+        let enteredSelection = try #require(harness.session.context?.selections.first)
+        #expect(enteredSelection.anchor == enteredSelection.head)
         _ = try await harness.callPageJavaScript(
             """
             const content = document.querySelector('.cm-content');

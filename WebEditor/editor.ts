@@ -1711,37 +1711,20 @@ const structuralInteractionKeymap = keymap.of([
   },
 ]);
 
-// WKWebView's platform keymap can expose the macOS line-boundary command as
-// either the platform-specific binding or the portable Mod binding. Own both
-// explicit Meta and Mod variants so Command-Left/Right reliably enters the
-// exact source boundary of a projected construct before the next edit.
-function moveToSourceLineBoundary(view: EditorView, forward: boolean, extend: boolean) {
-  const selection = view.state.selection;
-  const ranges = selection.ranges.map(range => {
-    const line = view.state.doc.lineAt(range.head);
-    const head = forward ? line.to : line.from;
-    return extend
-      ? EditorSelection.range(range.anchor, head)
-      : EditorSelection.cursor(head);
-  });
-  view.dispatch({
-    selection: EditorSelection.create(ranges, selection.mainIndex),
-    scrollIntoView: true,
-  });
-  return true;
-}
-
+// Keep the explicit WKWebView Meta aliases, with CodeMirror owning visual-row
+// boundaries, indentation, selection extension and wrapped-line association.
+// Logical source-line navigation here would skip every intervening soft wrap.
 const lineBoundaryKeymap = keymap.of([
   {
     key: "Meta-ArrowLeft",
-    run: view => moveToSourceLineBoundary(view, false, false),
-    shift: view => moveToSourceLineBoundary(view, false, true),
+    run: cursorLineBoundaryBackward,
+    shift: selectLineBoundaryBackward,
     preventDefault: true,
   },
   {
     key: "Meta-ArrowRight",
-    run: view => moveToSourceLineBoundary(view, true, false),
-    shift: view => moveToSourceLineBoundary(view, true, true),
+    run: cursorLineBoundaryForward,
+    shift: selectLineBoundaryForward,
     preventDefault: true,
   },
   {
