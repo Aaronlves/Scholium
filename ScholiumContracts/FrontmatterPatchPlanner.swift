@@ -410,8 +410,7 @@ public enum FrontmatterPatchPlanner {
                 in: frontmatter,
                 key: key,
                 entry: entry,
-                with: replacement,
-                allowingEmptyPDFBinding: key == "pdf" && (semanticValue == nil || semanticValue is NSNull)
+                with: replacement
             )
         }
         if let mapping = semanticValue as? [String: Any],
@@ -446,25 +445,22 @@ public enum FrontmatterPatchPlanner {
         in frontmatter: String,
         key: String,
         entry: Entry,
-        with replacement: String,
-        allowingEmptyPDFBinding: Bool = false
+        with replacement: String
     ) throws -> String {
         let tokenRange = try scalarTokenRange(
             in: frontmatter,
             key: key,
-            entry: entry,
-            allowingEmptyPDFBinding: allowingEmptyPDFBinding
+            entry: entry
         )
         var result = frontmatter
-        result.replaceSubrange(tokenRange, with: tokenRange.isEmpty ? " " + replacement : replacement)
+        result.replaceSubrange(tokenRange, with: replacement)
         return result
     }
 
     private static func scalarTokenRange(
         in frontmatter: String,
         key: String,
-        entry: Entry,
-        allowingEmptyPDFBinding: Bool = false
+        entry: Entry
     ) throws -> Range<String.Index> {
         guard !hasStructuredContinuation(in: frontmatter, entry: entry) else {
             throw FrontmatterPatchRefusal.unsupportedExistingValue(key)
@@ -472,13 +468,6 @@ public enum FrontmatterPatchPlanner {
         let afterColon = frontmatter.index(after: entry.colon)
         let lineEnd = entry.line.contentRange.upperBound
         let rawValue = String(frontmatter[afterColon..<lineEnd])
-        // An optional root PDF binding may be an empty YAML null. Insert at
-        // its exact colon boundary, leaving all authored spacing and comments
-        // after the new token. Complete parse and semantic proof still apply.
-        if allowingEmptyPDFBinding, key == "pdf", entry.indentation.isEmpty {
-            let value = rawValue.trimmingCharacters(in: .whitespaces)
-            if value.isEmpty || value.hasPrefix("#") { return afterColon..<afterColon }
-        }
         let valueOffset = rawValue.distance(
             from: rawValue.startIndex,
             to: rawValue.firstIndex(where: { !$0.isWhitespace }) ?? rawValue.endIndex

@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 43
+let markdownEditorProtocolVersion = 42
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 // Two exact-source strings may each require six JSON bytes per source byte.
@@ -238,7 +238,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case resumeAfterDetachment(suspensionID: String)
     case restoreRecovery(MarkdownEditorRecoverySnapshot)
     case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
-    case applySourcePatch(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String)
     case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String, preserveSelection: Bool)
     case insertReference(selection: MarkdownEditorSelectionRange, generation: Int, target: String)
     case command(MarkdownEditorCommand, argument: String?)
@@ -250,7 +249,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     /// queue behind one another or behind an obsolete content generation.
     var serializesSourceMutation: Bool {
         switch self {
-        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .applySourcePatch, .replacePassage, .insertReference, .command, .pasteClipboard,
+        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .command, .pasteClipboard,
             .suspendForDetachment, .resumeAfterDetachment:
             true
         case .documentFind(let query):
@@ -272,8 +271,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             announceStatus
         case goToLine, revealSourceRange, selectAll, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor,
             queryPerformance
-        case captureRecovery, suspendForDetachment, resumeAfterDetachment, restoreRecovery, acknowledgeCommittedSnapshot, applySourcePatch, replacePassage,
-            insertReference,
+        case captureRecovery, suspendForDetachment, resumeAfterDetachment, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, insertReference,
             command, pasteClipboard, documentFind, clearDocumentFind,
             markClean, focus,
             focusTitle, blur
@@ -340,19 +338,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 committed: container.decode(String.self, forKey: .committedText),
                 fingerprint: container.decode(String.self, forKey: .committedFingerprint)
             )
-        case .applySourcePatch:
-            let expected = try container.decode(String.self, forKey: .expectedText)
-            let from = try container.decode(Int.self, forKey: .fromUTF16)
-            let to = try container.decode(Int.self, forKey: .toUTF16)
-            let replacement = try container.decode(String.self, forKey: .replacement)
-            guard expected.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes,
-                replacement.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes,
-                from >= 0, to >= from, to <= expected.utf16.count
-            else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .replacement, in: container, debugDescription: "Source patch exceeds the exact editor bounds")
-            }
-            self = .applySourcePatch(expectedText: expected, fromUTF16: from, toUTF16: to, replacement: replacement)
         case .replacePassage:
             self = try .replacePassage(
                 expectedText: container.decode(String.self, forKey: .expectedText),
@@ -448,19 +433,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(expected, forKey: .expectedText)
             try container.encode(committed, forKey: .committedText)
             try container.encode(fingerprint, forKey: .committedFingerprint)
-        case .applySourcePatch(let expectedText, let fromUTF16, let toUTF16, let replacement):
-            guard expectedText.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes,
-                replacement.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes,
-                fromUTF16 >= 0, toUTF16 >= fromUTF16, toUTF16 <= expectedText.utf16.count
-            else {
-                throw EncodingError.invalidValue(
-                    self, .init(codingPath: encoder.codingPath, debugDescription: "Source patch exceeds the exact editor bounds"))
-            }
-            try container.encode(Kind.applySourcePatch, forKey: .type)
-            try container.encode(expectedText, forKey: .expectedText)
-            try container.encode(fromUTF16, forKey: .fromUTF16)
-            try container.encode(toUTF16, forKey: .toUTF16)
-            try container.encode(replacement, forKey: .replacement)
         case .replacePassage(let expectedText, let fromUTF16, let toUTF16, let replacement, let preserveSelection):
             try container.encode(Kind.replacePassage, forKey: .type)
             try container.encode(expectedText, forKey: .expectedText)

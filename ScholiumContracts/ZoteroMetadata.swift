@@ -46,7 +46,7 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
 /// The complete network boundary for Zotero reads. The generated request is
 /// always a bodyless GET to Zotero Desktop's loopback API and can address only
 /// the current user's group list, library-qualified item searches, or one
-/// exact library-qualified item, its children, or its local attachment URL.
+/// exact library-qualified item.
 public enum ZoteroLocalRequestPolicy {
     public static func makeReadRequest(
         library: ZoteroLibraryIdentity = .user,
@@ -76,7 +76,7 @@ public enum ZoteroLocalRequestPolicy {
         request.httpMethod = "GET"
         request.httpBody = nil
         request.setValue(
-            path.hasSuffix("/file/view/url") ? "text/plain" : "application/json",
+            "application/json",
             forHTTPHeaderField: "Accept"
         )
         request.setValue("3", forHTTPHeaderField: "Zotero-API-Version")
@@ -104,17 +104,16 @@ public enum ZoteroLocalRequestPolicy {
         }
         if path == "items" { return true }
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
-        guard components.count >= 2, components[0] == "items",
-            validObjectKey(String(components[1]))
-        else { return false }
-        if components.count == 2 { return true }
-        if components.count == 3 { return components[2] == "children" }
-        return components.count == 5 && components[2] == "file"
-            && components[3] == "view" && components[4] == "url"
+        if components.count == 2,
+            components[0] == "items"
+        {
+            return validObjectKey(String(components[1]))
+        }
+        return false
     }
 
     private static func validObjectKey(_ key: String) -> Bool {
-        return !key.isEmpty && key.utf8.count <= 128
+        return !key.isEmpty
             && key.unicodeScalars.allSatisfy {
                 CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"
             }

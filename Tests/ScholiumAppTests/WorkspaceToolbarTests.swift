@@ -8,83 +8,6 @@ import Testing
 @Suite("Workspace toolbar", .serialized)
 @MainActor
 struct WorkspaceToolbarTests {
-    @Test("PDF reader toolbar, overflow and fullscreen guards share live window state")
-    func pdfReaderCommandStateAndTeardown() async throws {
-        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
-        let split = testSplitViewController()
-        let window = testWindow()
-        window.contentViewController = split
-        window.layoutIfNeeded()
-        let controller = ScholiumWorkspaceToolbarController(
-            appState: model, windowActions: inertWindowActions, splitViewController: split
-        )
-        defer {
-            controller.invalidate()
-            window.toolbar = nil
-            window.close()
-        }
-        controller.install(in: window)
-        let toolbar = try #require(window.toolbar)
-        let reader = try #require(item(ScholiumWorkspaceToolbarController.Item.pdfReader, in: toolbar))
-        let overflow = try #require(reader.menuFormRepresentation)
-        #expect(reader.label == "Show PDF Reader")
-        #expect(!controller.validateToolbarItem(reader))
-        #expect(!controller.validateMenuItem(overflow))
-        let panes = try #require(toolbar.items.last as? NSToolbarItemGroup)
-        #expect(panes.itemIdentifier == ScholiumWorkspaceToolbarController.Item.paneVisibility)
-        #expect(panes.subitems.map(\.itemIdentifier) == [reader.itemIdentifier, ScholiumWorkspaceToolbarController.Item.inspector])
-
-        // An open reader remains hideable after its Note closes.
-        model.pdfReaderController.setVisible(true)
-        await drainCommandPresentation()
-        #expect(reader.label == "Hide PDF Reader")
-        #expect(controller.validateToolbarItem(reader))
-        #expect(controller.validateMenuItem(overflow))
-        #expect(NSApp.sendAction(try #require(reader.action), to: reader.target, from: reader))
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-        while model.sidePaneCoordinator.isTransitioning, ContinuousClock.now < deadline { await Task.yield() }
-        try #require(!model.sidePaneCoordinator.isTransitioning)
-        #expect(!model.pdfReaderController.isVisible)
-
-        model.pdfReaderController.setVisible(true)
-        model.shellState.recordFocusLayout(true, lockedByFullScreen: true)
-        await drainCommandPresentation()
-        #expect(reader.label == "Show PDF Reader")
-        #expect(!controller.validateToolbarItem(reader))
-        PDFReaderWindowCommand.toggle(in: model)
-        #expect(model.pdfReaderController.isVisible)
-        controller.invalidate()
-        #expect(!controller.validateToolbarItem(reader))
-        #expect(!controller.validateMenuItem(overflow))
-        #expect(reader.target == nil && reader.action == nil)
-        #expect(reader.menuFormRepresentation == nil)
-    }
-
-    @Test("Separate Notes retain a trailing reader button with invalidation guards")
-    func detachedReaderToolbarState() throws {
-        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
-        model.isDetachedDocumentWindow = true
-        let controller = DetachedDocumentToolbar(model: model)
-        let id = ScholiumWorkspaceToolbarController.Item.pdfReader
-        #expect(controller.toolbarDefaultItemIdentifiers(controller.toolbar).last == id)
-        let reader = try #require(controller.toolbar(controller.toolbar, itemForItemIdentifier: id, willBeInsertedIntoToolbar: true))
-        let overflow = try #require(reader.menuFormRepresentation)
-        #expect(!controller.validateToolbarItem(reader))
-        model.pdfReaderController.setVisible(true)
-        #expect(controller.validateToolbarItem(reader))
-        #expect(controller.validateMenuItem(overflow))
-        controller.invalidate()
-        #expect(!controller.validateToolbarItem(reader))
-        #expect(!controller.validateMenuItem(overflow))
-        #expect(controller.toolbar(controller.toolbar, itemForItemIdentifier: id, willBeInsertedIntoToolbar: true) == nil)
-    }
-
-    private func drainCommandPresentation() async {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.main.async { continuation.resume() }
-        }
-    }
-
     @Test("Notifications retain their native popover when Focus Layout hides the toolbar")
     func notificationsWithHiddenToolbar() async throws {
         let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
@@ -288,11 +211,7 @@ struct WorkspaceToolbarTests {
             #expect(command.isBordered)
             #expect(command.style == .plain)
             #expect(command.view == nil)
-            if identifier == ScholiumWorkspaceToolbarController.Item.inspector {
-                #expect(command.image?.accessibilityDescription == command.label)
-            } else {
-                #expect(command.image?.accessibilityDescription != command.label)
-            }
+            #expect(command.image?.accessibilityDescription != command.label)
             let overflowCommand = try #require(command.menuFormRepresentation)
             #expect(overflowCommand.target === expectedTarget)
             #expect(overflowCommand.action == command.action)
@@ -393,10 +312,6 @@ struct WorkspaceToolbarTests {
                 let overflow = try #require(noteActions.menuFormRepresentation)
                 #expect(overflow.submenu === noteActions.menu)
                 #expect(overflow.submenu?.items.isEmpty == true)
-            } else if let panes = command as? NSToolbarItemGroup {
-                #expect(panes.subitems.isEmpty)
-                #expect(panes.menuFormRepresentation?.action == nil && panes.menuFormRepresentation?.target == nil)
-                #expect(panes.menuFormRepresentation?.isEnabled != true)
             } else {
                 #expect(command.menuFormRepresentation == nil)
             }
@@ -476,8 +391,7 @@ struct WorkspaceToolbarTests {
         #expect(group.menuFormRepresentation?.submenu?.items.map(\.state) == [.off, .on])
         let forwardIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.forward))
         #expect(toolbar.itemIdentifiers[forwardIndex + 1] == group.itemIdentifier)
-        #expect(toolbar.itemIdentifiers[forwardIndex + 2] == .flexibleSpace)
-        #expect(toolbar.itemIdentifiers[forwardIndex + 3] == ScholiumWorkspaceToolbarController.Item.viewChanges)
+        #expect(toolbar.itemIdentifiers[forwardIndex + 2] == ScholiumWorkspaceToolbarController.Item.viewChanges)
 
         let originalPreferredWidth = first.intrinsicContentSize.width
         let originalGroupWidth = group.control.frame.width
@@ -683,8 +597,8 @@ struct WorkspaceToolbarTests {
         projection.invalidate()
     }
 
-    @Test("The shared tab well divides available space equally, then favors a crowded selection", arguments: [CGFloat(1), CGFloat(2)])
-    func toolbarTabStripCompressionAndScroll(backingScale: CGFloat) throws {
+    @Test("The shared tab well divides available space equally, then favors a crowded selection")
+    func toolbarTabStripCompressionAndScroll() throws {
         let tabs = (0..<5).map { index in
             DocumentTabItem(
                 document: .unavailable(vaultID: UUID(), relativePath: "\(index).md"),
@@ -693,7 +607,7 @@ struct WorkspaceToolbarTests {
         }
         let projection = DocumentToolbarTabs()
         let group = try #require(projection.item(for: DocumentToolbarTabItem.identifier))
-        let window = ToolbarTabBackingScaleWindow(backingScale: backingScale)
+        let window = testWindow()
         window.contentView?.addSubview(group.control)
         group.control.frame = NSRect(x: 20, y: 20, width: 520, height: DocumentToolbarTabStrip.height)
         defer {
@@ -701,16 +615,6 @@ struct WorkspaceToolbarTests {
             window.close()
         }
         let scrollView = try #require(group.control.subviews.first { $0 is NSScrollView } as? NSScrollView)
-
-        func expectEqualPixelWidths(_ controls: [DocumentToolbarTabControl]) {
-            let pixelWidths = controls.map { $0.frame.width * backingScale }
-            // AppKit aligns frame edges to backing pixels even when the
-            // required equal-width constraints divide the span fractionally.
-            let share = pixelWidths.reduce(0, +) / CGFloat(pixelWidths.count)
-            let lower = share.rounded(.down)
-            let upper = share.rounded(.up)
-            #expect(pixelWidths.allSatisfy { $0 == lower || $0 == upper })
-        }
 
         projection.update(tabs: Array(tabs.prefix(3)), selectedID: tabs[2].id)
         group.control.layoutSubtreeIfNeeded()
@@ -720,7 +624,8 @@ struct WorkspaceToolbarTests {
         let visibleThree = scrollView.contentView.documentVisibleRect
         #expect(threeControls.allSatisfy { $0.frame.width >= DocumentToolbarTabControl.minimumWidth })
         #expect(threeControls.allSatisfy { $0.frame.minX >= visibleThree.minX && $0.frame.maxX <= visibleThree.maxX })
-        expectEqualPixelWidths(threeControls)
+        #expect(abs(threeControls[2].frame.width - threeControls[0].frame.width) < 1)
+        #expect(abs(threeControls[2].frame.width - threeControls[1].frame.width) < 1)
 
         let fourTabs = Array(tabs.prefix(4))
         group.control.frame.size.width = 900
@@ -728,7 +633,7 @@ struct WorkspaceToolbarTests {
         group.control.layoutSubtreeIfNeeded()
         let active = try #require(projection.control(for: tabs[3].id))
         let inactive = try fourTabs.prefix(3).map { try #require(projection.control(for: $0.id)) }
-        expectEqualPixelWidths(inactive + [active])
+        #expect(inactive.allSatisfy { abs($0.frame.width - active.frame.width) < 1 })
 
         func widths(at stripWidth: CGFloat, selectedID: UUID) -> [CGFloat] {
             group.control.frame.size.width = stripWidth
@@ -769,13 +674,13 @@ struct WorkspaceToolbarTests {
         group.control.frame.size.width = 600
         projection.update(tabs: fourTabs, selectedID: tabs[3].id)
         group.control.layoutSubtreeIfNeeded()
-        expectEqualPixelWidths(inactive)
+        #expect(inactive.allSatisfy { abs($0.frame.width - inactive[0].frame.width) < 1 })
         #expect(active.frame.width > inactive[0].frame.width)
         let reorderedFour = [fourTabs[3]] + Array(fourTabs.prefix(3))
         projection.update(tabs: reorderedFour, selectedID: tabs[3].id)
         group.control.layoutSubtreeIfNeeded()
         #expect(group.control.orderedTabIDs == reorderedFour.map(\.id))
-        expectEqualPixelWidths(inactive)
+        #expect(inactive.allSatisfy { abs($0.frame.width - inactive[0].frame.width) < 1 })
         #expect(active.frame.width > inactive[0].frame.width)
 
         group.control.frame.size.width = 280
@@ -890,8 +795,7 @@ struct WorkspaceToolbarTests {
         _ identifier: NSToolbarItem.Identifier,
         in toolbar: NSToolbar
     ) -> NSToolbarItem? {
-        toolbar.items.flatMap { [$0] + (($0 as? NSToolbarItemGroup)?.subitems ?? []) }
-            .first { $0.itemIdentifier == identifier }
+        toolbar.items.first { $0.itemIdentifier == identifier }
     }
 
     private func testSplitViewController() -> NSSplitViewController {
@@ -920,21 +824,5 @@ struct WorkspaceToolbarTests {
         )
         window.isReleasedWhenClosed = false
         return window
-    }
-}
-
-@MainActor
-private final class ToolbarTabBackingScaleWindow: NSWindow {
-    private let layoutBackingScale: CGFloat
-    override var backingScaleFactor: CGFloat { layoutBackingScale }
-
-    init(backingScale: CGFloat) {
-        layoutBackingScale = backingScale
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 640),
-            styleMask: [.titled, .resizable, .closable],
-            backing: .buffered,
-            defer: false)
-        isReleasedWhenClosed = false
     }
 }

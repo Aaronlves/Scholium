@@ -6,8 +6,8 @@ public enum ExactFileReplacementError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .revisionConflict: "The file or its directory changed. Reload before trying again."
-        case .commitUncertain(let reason): "The file replacement could not be proven: \(reason)"
+        case .revisionConflict: "The configuration file or its directory changed. Reload before trying again."
+        case .commitUncertain(let reason): "The configuration replacement could not be proven: \(reason)"
         }
     }
 }

@@ -516,18 +516,6 @@ private struct ScholiumViewCommandContent: View {
             workspaceWindowActions == nil || appState?.canToggleResearchInspector != true
                 || appState?.shellState.isFocusLayoutLockedByFullScreen == true
         )
-        Button(
-            ScholiumL10n.dynamicString(
-                appState.map { PDFReaderWindowCommand.isVisible(in: $0) } == true
-                    ? "Hide PDF Reader" : "Show PDF Reader"
-            )
-        ) {
-            guard let appState else { return }
-            PDFReaderWindowCommand.toggle(in: appState)
-        }
-        .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(.togglePDFReader)
-        .disabled(appState.map { PDFReaderWindowCommand.isAvailable(in: $0) } != true)
         Divider()
         Button(
             ScholiumL10n.dynamicString(

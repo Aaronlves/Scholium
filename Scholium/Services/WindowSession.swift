@@ -57,7 +57,6 @@ struct WindowWorkspaceCapabilities: Sendable {
     let research: WindowResearchCapabilities
     let agentCollaboration: any AgentCollaborationUseCases
     let changes: any DocumentChangeUseCases
-    let pdfReader: any PDFReaderUseCases
     let openingPresentationDidComplete: @Sendable () async -> Void
 }
 
@@ -949,7 +948,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             ),
             agentCollaboration: handle.agentCollaboration,
             changes: handle.changes,
-            pdfReader: handle.pdfReader,
             openingPresentationDidComplete: {
                 await handle.openingPresentationDidComplete()
             }

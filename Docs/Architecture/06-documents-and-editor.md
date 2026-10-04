@@ -149,14 +149,9 @@ it is neither another index nor query history. Returned text and status stay req
 through inline preview; identity guards clear both. Machine-local Writing Assistance preferences share the model with explicit
 selection actions and remain independent of conversation settings.
 
-Attachment I/O belongs to [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties);
-Quick Look owns its lease. `PDFReaderController` owns PDFKit sessions; `PDFReaderNativeHostView` owns overlays;
-`WindowSidePaneCoordinator` owns exclusive pane transitions; `ScholiumDocumentReadingSplitView` owns split geometry. `PDFReaderOperations` shares
-`SharedPDFStore` and `PDFReaderStateStore` across Triptych windows. Runtime/file
-hints prompt checked clean-peer refresh, never carry source.
-Portable records locate copies; authored `pdf` alone binds Notes. Immutable
-PDFKit bytes use guarded save/recovery. Note Info uses `NoteInfoMetadataPlanner`
-and the checked source transaction.
+Attachment preparation joins the existing editor insertion and scoped rollback
+in [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).
+Quick Look retains only its scoped URL lease until dismissal/replacement/teardown.
 
 ### Shared document rendering
 
@@ -166,17 +161,19 @@ incrementally parse uncommitted source for immediate projection/transformation
 only. Shared fixtures require agreeing spans/meanings; unsupported dialects fail
 closed. Source syntax remains owned by the Specification, not adapter heuristics.
 
-One frontmatter-aware Markdown language keeps YAML in the editor/history;
-unclosed frontmatter suppresses projections while preserving exact text. Typed
-nodes alone locate constructs. Normalized parser views map to original half-open
-UTF-16 ranges, preserving BOM, CRLF, Unicode and final newlines;
-marker/visible/parent ranges separate source from layout.
+One frontmatter-aware Markdown language owns complete source. Valid YAML remains
+in the same editor/history; unclosed frontmatter suppresses semantic projections
+without hiding exact text. Typed extension nodes locate constructs; no consumer
+infers them outside proved syntax ranges. Normalized parser views map every node
+back to exact original half-open UTF-16 coordinates, preserving BOM, CRLF, Unicode
+and final newlines. Marker/visible/parent ranges distinguish source from layout.
 
-Review/Edit share YAML roles and CSS classes through the frontmatter parity fixture.
-Review's `FrontmatterPresentation` and CodeMirror's bounded lexical projection
-agree on key admission; Edit rejects implicit bare keys that Review does not
-present as keys. `NoteDocument`/Yams owns
-semantic parsing; neither presentation adapter may parse, repair, authorize or edit
+Review and Edit use one YAML presentation contract, with representative roles and
+CSS classes pinned by the shared frontmatter parity fixture. `FrontmatterPresentation`
+is Review's bounded lexical projection for already bounded authored YAML lines; Edit
+uses the equivalent CodeMirror projection and rejects implicit bare keys that Review
+does not present as keys. `NoteDocument`/Yams remains the sole semantic parser and
+source authority; neither presentation adapter can parse, repair, authorize or edit
 metadata.
 Graph publishes directed authored occurrences; incoming/outgoing are projections
 of the same exact occurrence, not deduplicated philosophical meaning.

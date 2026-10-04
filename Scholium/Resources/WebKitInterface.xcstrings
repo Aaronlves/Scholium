@@ -213,40 +213,6 @@
         }
       }
     },
-    "Finish composition before changing note information." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finish composition before changing note information."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请先完成输入法组字，再修改笔记信息。"
-          }
-        }
-      }
-    },
-    "The note changed. Reload Note Info before applying changes." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The note changed. Reload Note Info before applying changes."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "笔记已改变。请重新载入笔记信息，再应用更改。"
-          }
-        }
-      }
-    },
     "The passage changed. Request a new suggestion." : {
       "extractionState" : "manual",
       "localizations" : {

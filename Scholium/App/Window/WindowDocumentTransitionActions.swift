@@ -139,13 +139,10 @@ extension WindowModel {
         var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
         var resolvedPreparation = preparation
         var retainedOpeningTab: DocumentTabItem?
-        var pdfDeparture: UUID?
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
-                pdfDeparture = self.pdfReaderController.beginDeparture()
-                try await self.pdfReaderController.flushAnnotations()
                 if case .openingDocument(let placement, let retainedTab) = preparation {
                     let effectivePlacement: DocumentTabPlacement = self.isDetachedDocumentWindow ? .replaceSelected : placement
                     retainedOpeningTab = retainedTab()
@@ -249,8 +246,6 @@ extension WindowModel {
                         suspensionID: preservedEditor.suspensionID
                     )
                 }
-                self?.refreshPDFReaderContext()
-                if let pdfDeparture { self?.pdfReaderController.endDeparture(pdfDeparture) }
                 didFinish?()
             }
         )
@@ -281,14 +276,11 @@ extension WindowModel {
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
     ) {
-        var pdfDeparture: UUID?
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 try validateBeforePreparation()
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
-                pdfDeparture = self.pdfReaderController.beginDeparture()
-                try await self.pdfReaderController.flushAnnotations()
                 try await self.flushRegisteredEditorIfNeeded(
                     capturingEditorState: preservingCurrentEditorState
                 )
@@ -334,11 +326,7 @@ extension WindowModel {
                 }
                 didSucceed?()
             },
-            didFinish: { [weak self] in
-                self?.refreshPDFReaderContext()
-                if let pdfDeparture { self?.pdfReaderController.endDeparture(pdfDeparture) }
-                didFinish?()
-            }
+            didFinish: { didFinish?() }
         )
     }
 }

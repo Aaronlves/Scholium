@@ -120,8 +120,7 @@ import {
   normalizedDocumentText,
   replacementChange,
 } from "./state";
-import {sourcePatch} from "./source-patch";
-import {exactInsertionEffects, captureExactHistory, exactSourceFits, exactSourceFitsChanges, sourceCapacityExceeded, sourceCapacityMessage, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "./exact-source-history";
+import {captureExactHistory, exactSourceFits, exactSourceFitsChanges, sourceCapacityExceeded, sourceCapacityMessage, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "./exact-source-history";
 import {
   announceEditorMessage,
   cancelEditorAnnouncement,
@@ -2350,21 +2349,6 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     editor.focus();
     lastUndoLabel = lastRedoLabel = "Insert Wikilink";
     return successfulResult(request.requestID, true, "Insert Wikilink");
-  }
-  case "applySourcePatch": {
-    if (editor.composing || compositionGate.active) {
-      return rejected(request.requestID, documentVersion, localized("Finish composition before changing note information."));
-    }
-    const change = sourcePatch(exactEditorSource(), operation.expectedText,
-      operation.fromUTF16, operation.toUTF16, operation.replacement);
-    if (!change) return rejected(request.requestID, documentVersion, localized("The note changed. Reload Note Info before applying changes."));
-    if (!exactSourceFitsChanges(editor.state, [change])) {
-      return rejected(request.requestID, documentVersion, sourceCapacityMessage);
-    }
-    editor.dispatch({changes: change, effects: exactInsertionEffects(change.exactInsert, change.from),
-      annotations: [Transaction.userEvent.of("input.scholium.noteInfo"), isolateHistory.of("full")]});
-    lastUndoLabel = lastRedoLabel = "Edit Note Info";
-    return successfulResult(request.requestID, true, "Edit Note Info");
   }
   case "replacePassage": {
     if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, localized("Finish composition before adopting a suggestion."));

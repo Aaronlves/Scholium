@@ -349,8 +349,7 @@ extension WorkspaceHandle {
                     preparation.record.location.filename
                 )
             }
-            guard let vaultID = preparation.record.vaultID else { throw PDFReaderError.unsafePath }
-            let repository = try repository(vaultID: vaultID)
+            let repository = try repository(vaultID: preparation.record.vaultID)
             let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
             try await fileStore.removeCopiedImageIfExact(
                 relativePath: relativePath,
@@ -406,12 +405,10 @@ extension WorkspaceHandle {
     func documentAttachments(for target: SourceAttachmentTarget) async throws -> [DocumentAttachmentSnapshot] {
         let listing = try await agentAttachments(noteID: target.noteID)
         _ = try await verifiedDocumentAttachmentTarget(target)
-        let records = try await services.controlStore.attachmentRecords()
-        return listing.attachments.map { attachment in
+        return listing.attachments.map {
             DocumentAttachmentSnapshot(
-                record: records.first(where: { $0.id == attachment.id })
-                    ?? PortableAttachmentRecord(id: attachment.id, vaultID: target.vaultID, location: attachment.location),
-                availability: attachment.available ? .available : .unavailable)
+                record: PortableAttachmentRecord(id: $0.id, vaultID: target.vaultID, location: $0.location),
+                availability: $0.available ? .available : .unavailable)
         }
     }
 
@@ -432,8 +429,6 @@ extension WorkspaceHandle {
         switch file.location {
         case .vaultRelative(let path):
             destination = VaultAttachmentStore.markdownDestination(from: target.relativePath, to: path)
-        case .triptychRelative:
-            throw PDFReaderError.unsafePath
         case .external:
             destination = VaultAttachmentStore.absoluteMarkdownDestination(sourceURL.resolvingSymlinksInPath().standardizedFileURL.path)
         }
@@ -459,8 +454,7 @@ extension WorkspaceHandle {
         }
         switch record.location {
         case .vaultRelative(let path):
-            guard let vaultID = record.vaultID else { throw PDFReaderError.unsafePath }
-            let repository = try repository(vaultID: vaultID)
+            let repository = try repository(vaultID: record.vaultID)
             let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
             guard
                 let url = try await store.documentURLIfAvailable(
@@ -475,10 +469,6 @@ extension WorkspaceHandle {
                 filename: record.filename,
                 fileURL: url
             )
-        case .triptychRelative(let path):
-            let store = VaultAttachmentStore(vaultURL: await services.controlStore.controlURL)
-            guard let url = try await store.documentURLIfAvailable(relativePath: path) else { throw PDFReaderError.missing }
-            return DocumentAttachmentPreviewLease(accessToken: UUID(), attachmentID: record.id, filename: record.filename, fileURL: url)
         case .external(let reference):
             let access = try await services.indexedAttachmentAccessStore.beginAccess(
                 attachmentID: record.id,

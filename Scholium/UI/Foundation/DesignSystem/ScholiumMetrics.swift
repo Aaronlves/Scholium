@@ -69,14 +69,6 @@ enum ScholiumGrid {
 }
 
 enum ScholiumMetrics {
-    enum PDFReader {
-        static let toolbarItemAllowance: CGFloat = 44
-        static let toolsControlSize = ScholiumGrid.Dimension.preferredCustomTarget
-        static let toolsGap = ScholiumGrid.Spacing.labelAccessoryGap
-        static let toolsContentInset = ScholiumGrid.Spacing.inlineControlGap
-        static let toolsBottomInset = ScholiumGrid.Spacing.nestedContentInset
-    }
-
     enum Accessibility {
         static let preferredCustomTarget = ScholiumGrid.Dimension.preferredCustomTarget
         static let minimumCustomTarget = ScholiumGrid.Dimension.minimumCustomTarget

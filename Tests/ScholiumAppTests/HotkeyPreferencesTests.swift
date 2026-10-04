@@ -26,10 +26,6 @@ struct HotkeyPreferencesTests {
                 == ScholiumHotkeyBinding(key: "s", modifiers: [.control, .command])
         )
         #expect(
-            ScholiumHotkeyPreferences.binding(for: .togglePDFReader, data: data)
-                == ScholiumHotkeyBinding(key: "p", modifiers: [.control, .command])
-        )
-        #expect(
             ScholiumHotkeyPreferences.binding(for: .insertFootnote, data: data)
                 == ScholiumHotkeyBinding(key: "n", modifiers: [.option, .command])
         )

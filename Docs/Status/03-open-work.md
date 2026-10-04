@@ -32,9 +32,6 @@
   Backend timings do not establish native 3–5-second acceptance. Evaluate
   paraphrases, cross-language recall and same-word ambiguity; synthetic cases
   and agent-judged pools do not establish philosophical usefulness.
-- PDF Reader hide/reopen retains sessions and misses external replacements (§7).
-  Measure annotation projection/serialization; controller timings are not
-  packaged performance evidence.
 - Native Apple sentence models have not established a shared multilingual retrieval
   space. The ignored multilingual prototype is not an App dependency or shipping
   backend; model integration is deferred while native retrieval is optimized.

@@ -18,9 +18,7 @@ final class WindowCommandObservation: ObservableObject {
         documentController: DocumentController,
         documentTabController: DocumentTabController,
         documentNavigationHistoryController: DocumentNavigationHistoryController,
-        workspaceProjectionController: WindowWorkspaceProjectionController,
-        pdfReaderController: PDFReaderController,
-        sidePaneCoordinator: WindowSidePaneCoordinator
+        workspaceProjectionController: WindowWorkspaceProjectionController
     ) {
         func changes<Value>(
             _ publisher: Published<Value>.Publisher
@@ -43,8 +41,6 @@ final class WindowCommandObservation: ObservableObject {
             changes(shellState.$selectedWorkspace),
             changes(shellState.$documentTextScale),
             changes(shellState.$colorScheme),
-            changes(shellState.$isFocusLayoutActive),
-            changes(shellState.$isFocusLayoutLockedByFullScreen),
             workspaceController.$state
                 .dropFirst()
                 .map { ($0.assignment, $0.registeredTriptychs) }
@@ -65,9 +61,6 @@ final class WindowCommandObservation: ObservableObject {
             changes(documentController.$chromeProjection),
             changes(documentController.$noteIdentityByPath),
             changes(workspaceProjectionController.$state),
-            changes(pdfReaderController.$isVisible),
-            changes(pdfReaderController.$isDeparting),
-            changes(sidePaneCoordinator.$isTransitioning),
         ]
 
         // `@Published` sends before storing its new value. Deliver command

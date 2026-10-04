@@ -4,13 +4,6 @@ import SwiftUI
 enum ScholiumMotion {
     static let sidebarPageDuration: TimeInterval = 0.16
     static let libraryWorkspaceDuration: TimeInterval = 0.14
-    static let pdfContentRevealDuration: TimeInterval = 0.16
-    private static let disclosureDuration: TimeInterval = 0.12
-
-    /// App-owned control disclosure; native buttons and menus keep system motion.
-    static func floatingControlsDuration(reduceMotion: Bool) -> TimeInterval {
-        reduceMotion ? 0 : disclosureDuration
-    }
 
     /// Native preview window motion; reduced motion uses only a short fade.
     static func contentPreviewDuration(closing: Bool, reduceMotion: Bool) -> TimeInterval {
@@ -32,7 +25,7 @@ enum ScholiumMotion {
     }
 
     static func disclosure(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .easeOut(duration: disclosureDuration)
+        reduceMotion ? nil : .easeOut(duration: 0.12)
     }
 
     static func chatMessageArrival(reduceMotion: Bool) -> Animation? {

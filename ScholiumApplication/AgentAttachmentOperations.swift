@@ -65,16 +65,6 @@ extension WorkspaceHandle {
             }
             byID[id] = AgentAttachment(id: id, relationship: reference.isImage ? .authoredImage : .document, location: location, available: available)
         }
-        if let binding = try? PDFNoteBinding.path(in: source) {
-            let target = SourceAttachmentTarget(noteID: noteID, vaultID: note.id.vaultID, relativePath: note.id.relativePath)
-            if let record = try? await services.pdfReader.boundAttachmentRecord(for: target, authoredPath: binding),
-                case .triptychRelative(let path) = record.location
-            {
-                let shared = VaultAttachmentStore(vaultURL: await services.controlStore.controlURL)
-                let available = (try? await shared.documentURLIfAvailable(relativePath: path)) != nil
-                byID[record.id] = AgentAttachment(id: record.id, relationship: .document, location: record.location, available: available)
-            }
-        }
         let attachments = Array(byID.values)
         guard Set(attachments.map(\.id)).count == attachments.count else {
             throw AgentCollaborationError.invalidRequest("Attachment identities are ambiguous in the current catalog.")
@@ -101,9 +91,6 @@ extension WorkspaceHandle {
         case .vaultRelative(let path):
             let repository = try repository(vaultID: note.id.vaultID)
             bytes = try await VaultAttachmentStore(vaultURL: await repository.vaultURL).readContent(relativePath: path, maximumByteCount: 20 * 1_024 * 1_024)
-        case .triptychRelative(let path):
-            bytes = try await VaultAttachmentStore(vaultURL: await services.controlStore.controlURL).readContent(
-                relativePath: path, maximumByteCount: 20 * 1_024 * 1_024)
         case .external(let reference):
             let access = try await services.indexedAttachmentAccessStore.beginAccess(
                 attachmentID: attachmentID,

@@ -102,13 +102,11 @@ public struct ExternalAttachmentReference: Codable, Hashable, Sendable {
 /// and security-scoped bookmarks never cross this boundary.
 public enum AttachmentLocation: Codable, Hashable, Sendable {
     case vaultRelative(AttachmentRelativePath)
-    /// Shared portable bytes relative to the registered `.scholium` owner.
-    case triptychRelative(AttachmentRelativePath)
     case external(ExternalAttachmentReference)
 
     public var filename: String {
         switch self {
-        case .vaultRelative(let path), .triptychRelative(let path):
+        case .vaultRelative(let path):
             URL(fileURLWithPath: path.rawValue).lastPathComponent
         case .external(let reference):
             reference.filename
@@ -128,7 +126,6 @@ public enum AttachmentLocation: Codable, Hashable, Sendable {
 
     private enum Kind: String, Codable {
         case vaultRelative
-        case triptychRelative
         case external
     }
 
@@ -140,8 +137,6 @@ public enum AttachmentLocation: Codable, Hashable, Sendable {
                 try AttachmentRelativePath(
                     container.decode(String.self, forKey: .path)
                 ))
-        case .triptychRelative:
-            self = .triptychRelative(try AttachmentRelativePath(container.decode(String.self, forKey: .path)))
         case .external:
             self = .external(
                 try ExternalAttachmentReference(
@@ -155,9 +150,6 @@ public enum AttachmentLocation: Codable, Hashable, Sendable {
         switch self {
         case .vaultRelative(let path):
             try container.encode(Kind.vaultRelative, forKey: .kind)
-            try container.encode(path.rawValue, forKey: .path)
-        case .triptychRelative(let path):
-            try container.encode(Kind.triptychRelative, forKey: .kind)
             try container.encode(path.rawValue, forKey: .path)
         case .external(let reference):
             try container.encode(Kind.external, forKey: .kind)
@@ -174,24 +166,18 @@ public struct PortableAttachmentRecord: Codable, Hashable, Sendable {
 
     public let schemaVersion: Int
     public let id: UUID
-    public let vaultID: UUID?
+    public let vaultID: UUID
     public let location: AttachmentLocation
-    public let importedSourceFingerprint: DocumentFingerprint?
-    public let zoteroSource: ZoteroPDFSource?
 
     public init(
         id: UUID,
-        vaultID: UUID?,
-        location: AttachmentLocation,
-        importedSourceFingerprint: DocumentFingerprint? = nil,
-        zoteroSource: ZoteroPDFSource? = nil
+        vaultID: UUID,
+        location: AttachmentLocation
     ) {
         schemaVersion = Self.currentSchemaVersion
         self.id = id
         self.vaultID = vaultID
         self.location = location
-        self.importedSourceFingerprint = importedSourceFingerprint
-        self.zoteroSource = zoteroSource
     }
 
     public var filename: String { location.filename }
@@ -201,8 +187,6 @@ public struct PortableAttachmentRecord: Codable, Hashable, Sendable {
         case id
         case vaultID
         case location
-        case importedSourceFingerprint
-        case zoteroSource
     }
 
     public init(from decoder: Decoder) throws {
@@ -217,19 +201,8 @@ public struct PortableAttachmentRecord: Codable, Hashable, Sendable {
         }
         self.schemaVersion = schemaVersion
         id = try container.decode(UUID.self, forKey: .id)
-        vaultID = try container.decodeIfPresent(UUID.self, forKey: .vaultID)
+        vaultID = try container.decode(UUID.self, forKey: .vaultID)
         location = try container.decode(AttachmentLocation.self, forKey: .location)
-        importedSourceFingerprint = try container.decodeIfPresent(DocumentFingerprint.self, forKey: .importedSourceFingerprint)
-        zoteroSource = try container.decodeIfPresent(ZoteroPDFSource.self, forKey: .zoteroSource)
-        if case .triptychRelative(let path) = location {
-            guard vaultID == nil, path.components.count == 4,
-                path.components[0] == "attachments", path.components[1] == "files",
-                path.components[2] == Substring(id.uuidString.lowercased()),
-                importedSourceFingerprint != nil
-            else { throw DecodingError.dataCorruptedError(forKey: .location, in: container, debugDescription: "Invalid shared attachment ownership.") }
-        } else if vaultID == nil || importedSourceFingerprint != nil || zoteroSource != nil {
-            throw DecodingError.dataCorruptedError(forKey: .location, in: container, debugDescription: "Invalid vault attachment ownership.")
-        }
     }
 }
 

@@ -27,9 +27,8 @@ The Links Inspector derives these occurrences from committed Markdown, alongside
 outgoing Note links, using the existing toolbar-selected Links surface. Each
 occurrence retains its authored label and exact library-qualified reference,
 including page and annotation when present. Repeated occurrences remain visible.
-A PDF binding does not bind the Note's bibliography or create title matching,
-Link-and-Fill, or whole-Note Refresh Metadata. Deleting a source link removes
-that relation.
+There is no Note-to-item binding, title matching, Link-and-Fill, or whole-Note
+Refresh Metadata operation. Deleting a source link removes that relation.
 
 Opening a link requests Zotero navigation; it proves neither reading nor
 philosophical support. Scholium does not fetch bibliography while projecting
@@ -70,20 +69,6 @@ Native link navigation and tool results use the same `zotero://select` or
 the physical page; a reference proves neither successful arrival nor reading.
 Unsupported routes, malformed keys, duplicate parameters, and nonpositive
 pages or group IDs are rejected rather than guessed or downgraded.
-
-**Import from Zotero…** searches the local library and explicitly selects an
-item and PDF attachment for the current Note. With verified database identity,
-it copies local bytes to Appendix A's shared storage, retaining bibliography,
-exact item/PDF links, attachment identity and original fingerprint. Database and
-library identity partition deduplication. Without that identity, **Import Local
-Copy** previews and requires explicit confirmation of the selected local file;
-it retains only ordinary local-copy state, with no Zotero bibliography, links,
-source mapping or sync relationship. Observed metadata, path and original bytes
-are rechecked before commit; an observed change refuses the copy without claiming
-database identity. Unavailable files offer opening/downloading in Zotero, Retry
-or local-file selection. No new credential is required. Copy annotations never
-modify Zotero originals or its database; Zotero annotation import and sync remain
-deferred. PDF provenance is a locator, not source evidence.
 
 Zotero results may retain locators and coverage claims, but Scholium does not
 manufacture an App-side read report or promote them to source evidence. Indexed
@@ -157,7 +142,7 @@ Scholium does not become:
   scheduler, cloud orchestrator, or second proposal/approval lifecycle;
 - an automatic judge of philosophical support, truth, sufficiency,
   prose authorization, quality, or researcher competence;
-- a Zotero replacement, reference-management system, proprietary backup format, or
+- a Zotero replacement, embedded PDF reader, proprietary backup format, or
   arbitrary Obsidian-theme host; or
 - a source of generic instructions purporting to teach philosophy.
 
@@ -165,14 +150,14 @@ The target keeps one protected Core Protocol, one bounded local MCP tool surface
 optional researcher-owned Skills, and bounded Zotero/local Agent
 transports. Finder remains authoritative for Markdown and attachment bytes;
 the selected runtime owns its Skills and tools, with in-app management under §8.7;
-Zotero remains authoritative for its library and original PDFs; shared annotated
-copies follow §7. External Agents remain authoritative for optional open-ended work.
+Zotero remains authoritative for its library
+and PDFs; external Agents remain authoritative for optional open-ended work.
 
 Outside Beta/1.0 are multi-Note/project export, executable
 extensions and Skill marketplace/evolution/sharing, Work finding overlays,
-and active-table-cell hybrid editing. Ordinary attachments retain Quick Look
-and external opening; §18.4 owns the bounded PDF reading pane. Broad library
-matching and Zotero annotation import/sync remain deferred.
+and active-table-cell hybrid editing. Note attachments already have the target
+Quick Look and external-opening routes in §18.4; a persistent embedded PDF
+reader remains excluded.
 
 §18.7 owns the localization scope. Additional translations, right-to-left
 chrome/navigation, and complete RTL input acceptance remain deferred; exact

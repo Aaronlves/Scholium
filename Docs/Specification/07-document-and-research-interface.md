@@ -269,22 +269,11 @@ navigation uses a short smooth reveal and the existing transient arrival marker.
 Reduce Motion uses immediate positioning and static feedback. The rail hides
 before it would compress or cover readable Document content.
 
-Attachments retain authored links/embeds with quiet type symbols in Review/inactive
-Edit; insertion uses selection and Quick Look previews remain.
-**PDF Reader** shares Inspector's resizable right-side slot, preserving Markdown
-and mode. The opaque viewport follows Note `pdf` (§5.2), with empty/loading/unavailable
-states. Upper native controls offer page navigation, on-demand search and More,
-omitting tool/zoom selectors.
-Loaded PDFs' bottom-centered native strip offers Select, Highlight, Comment and
-zoom. It fades during quiet reading; pointer activity or keyboard focus reveals
-it. Hover/focus, menus/popovers, annotation drafts and save/recovery
-retain visibility. Hidden controls cannot intercept input; keyboard routes
-persist. Reduce Motion is immediate. Reserved clearance and reading
-position/selection remain stable.
-More retains attachment identities/actions, tools and annotations.
-Annotations locate passages and support comment creation/edit/deletion; full
-comments remain readable without editing permission. Unavailable bindings retain
-locator, Retry, Replace and guarded Detach. §7 owns save/conflict/recovery.
+Attachments remain file links or image embeds. Review and inactive Edit
+add quiet file-type symbols beside authored link labels without changing source
+or activation. File-menu insertion uses the editor selection; system Quick Look
+owns file opening/dismissal. No attachment sidebar, global manager or persistent
+reader is added.
 
 Edit entry restores fingerprint-valid title/body focus and selection; otherwise
 it maps an exact Review selection or places the caret at the first body position
@@ -366,13 +355,10 @@ statistics have no interface entry in Inspector, toolbar, menus or popovers.
 Toolbar placement and available commands belong to §18.2. Document Text Size
 is per-window and source-neutral.
 
-Properties remain source-located YAML. **Note Info…**, under Note Actions/More,
-opens a compact, resizable native panel for `summary`, `tags`, PDF binding and
-read-only file location/size/dates. Values wrap/scroll; actions stay reachable.
-Apply edits source ranges with Undo and revision guards; unsupported
-shapes remain editable in Source. Rejection retains drafts/failures without
-Metadata records. Command-I retains Italic; no attachment
-Inspector/global manager is added. Design and §20 govern presentation.
+Properties remain in the document's source-located YAML. There is no About,
+Overview, Metadata form, or dedicated attachment Inspector. Native controls,
+quiet hierarchy and system semantic colors follow Design; reference images do
+not prescribe copied card geometry or decorative glass.
 
 ### 18.4.1 Advanced CSS boundary
 

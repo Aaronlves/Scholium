@@ -11,10 +11,8 @@ public actor ZoteroOperations: ZoteroUseCases {
     private let mcpServer: ZoteroMCPServer
     private var lastSuccessfulConnection: Date?
 
-    struct LocalReadResponse: Sendable {
+    private struct LocalReadResponse: Sendable {
         let data: Data
-        let serverID: String?
-        let totalResults: Int?
     }
 
     private struct GroupEnvelope: Decodable {
@@ -236,14 +234,13 @@ public actor ZoteroOperations: ZoteroUseCases {
         ).data
     }
 
-    func requestResponse(
+    private func requestResponse(
         library: ZoteroLibraryIdentity = .user,
         path: String,
-        query: [URLQueryItem],
-        serverID: String? = nil
+        query: [URLQueryItem]
     ) async throws -> LocalReadResponse {
         guard
-            var request = ZoteroLocalRequestPolicy.makeReadRequest(
+            let request = ZoteroLocalRequestPolicy.makeReadRequest(
                 library: library,
                 path: path,
                 query: query
@@ -251,40 +248,28 @@ public actor ZoteroOperations: ZoteroUseCases {
         else {
             throw ZoteroUseCaseError.invalidResponse
         }
-        if let serverID { request.setValue(serverID, forHTTPHeaderField: "Zotero-Server-ID") }
-        try Task.checkCancellation()
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await loadRequest(request)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch let error as URLError where error.code == .cancelled {
-            throw CancellationError()
         } catch {
             throw ZoteroUseCaseError.appUnavailable
         }
-        try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse,
-            http.url == request.url, data.count <= 4 * 1_024 * 1_024
+            http.url == request.url
         else {
             throw ZoteroUseCaseError.invalidResponse
         }
         switch http.statusCode {
         case 200..<300:
-            let currentServerID = http.value(forHTTPHeaderField: "Zotero-Server-ID")
-            guard serverID == nil || currentServerID == serverID else { throw ZoteroPDFImportError.sourceChanged }
             lastSuccessfulConnection = Date()
             return LocalReadResponse(
-                data: data, serverID: currentServerID,
-                totalResults: http.value(forHTTPHeaderField: "Total-Results").flatMap(Int.init)
+                data: data
             )
         case 401, 403:
             throw ZoteroUseCaseError.apiDisabled
         case 404:
             throw ZoteroUseCaseError.itemMissing(path)
-        case 412:
-            throw ZoteroPDFImportError.sourceChanged
         default:
             throw ZoteroUseCaseError.invalidResponse
         }

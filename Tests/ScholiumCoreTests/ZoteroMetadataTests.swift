@@ -136,8 +136,8 @@ struct ZoteroMetadataTests {
                 path: "items/FXS00026"
             ) == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "collections/COLL0001") == nil)
-        #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "items/ATTACH02/file/view/url") != nil)
-        #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "items/FXS00026/children") != nil)
+        #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "items/ATTACH02/file/view/url") == nil)
+        #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "items/FXS00026/children") == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "attachments/FXS00026") == nil)
         #expect(
             ZoteroLocalRequestPolicy.makeReadRequest(
