@@ -44,27 +44,44 @@ extension WindowModel {
     /// Restores only committed presentation state. Editor buffers are absent
     /// from `WindowSessionSnapshot` and therefore cannot override disk bytes.
     func restoreWindowSession(id: UUID) async {
-        guard !didRestoreWindowSession || windowSessionID != id else { return }
+        guard !isRestoringWindowSession,
+            !windowCloseCoordinator.isFinalized,
+            !Task.isCancelled,
+            !didRestoreWindowSession || windowSessionID != id
+        else { return }
         windowSessionID = id
         editorFlushCoordinator.updateWindowID(id)
         isRestoringWindowSession = true
+        var restoredSuccessfully = false
         defer {
             isRestoringWindowSession = false
-            didRestoreWindowSession = true
-            shellState.completeInitialRestore()
+            didRestoreWindowSession = restoredSuccessfully
+            if !Task.isCancelled, !windowCloseCoordinator.isFinalized {
+                shellState.completeInitialRestore()
+            }
             persistWindowSessionNow()
+        }
+
+        do {
+            try await workspaceStore.waitForWorkspaceRestoreReleaseIfRequested()
+        } catch {
+            guard !Task.isCancelled else { return }
+            vaultError = error.localizedDescription
+            return
         }
 
         let stored: WindowSessionSnapshot?
         do {
             stored = try await windowSessionPersistenceCoordinator.load(id: id)
         } catch {
+            guard !Task.isCancelled else { return }
             reportOperationIssue(
                 String(
                     localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module),
                 kind: .warning)
             stored = nil
         }
+        guard !Task.isCancelled, !windowCloseCoordinator.isFinalized else { return }
         guard let stored else {
             // New configured windows keep the stable three-region shell.
             // Visibility changes only after a direct researcher action.
@@ -73,7 +90,8 @@ extension WindowModel {
                 modesByWorkspace: [:],
                 isVisible: nil
             )
-            await restoreWorkspaceIfNeeded()
+            await restoreWorkspaceIfNeeded(openingVault: requestedInitialWorkspaceSlot)
+            restoredSuccessfully = vaultConfig != nil && !Task.isCancelled
             return
         }
 
@@ -83,15 +101,19 @@ extension WindowModel {
             // real, but it cannot authorize restoration before that isolated
             // workspace has installed its current capabilities and document
             // projection in this process.
-            await restoreWorkspaceIfNeeded()
+            await restoreWorkspaceIfNeeded(openingVault: stored.selectedWorkspace)
         } else {
             await windowWorkspaceController.refreshRegistrations()
-            await refreshWorkspaceAssignment(
-                preferredTriptychID: requestedTriptychID ?? stored.triptychID
+            guard !Task.isCancelled, !windowCloseCoordinator.isFinalized else { return }
+            let outcome = await refreshWorkspaceAssignment(
+                preferredTriptychID: requestedTriptychID ?? stored.triptychID,
+                openingVault: stored.selectedWorkspace,
+                openingVaultID: requestedInitialDocument?.vaultID
             )
+            guard case .activated = outcome else { return }
         }
+        guard !Task.isCancelled, !windowCloseCoordinator.isFinalized else { return }
         guard let restoredAssignment = workspaceAssignment else {
-            windowWorkspaceController.markInitialRestoreAttempted()
             return
         }
         let requestedWorkspace = requestedInitialDocument.flatMap { requested in
@@ -104,12 +126,15 @@ extension WindowModel {
             guard let vault = restoredAssignment.vault(for: selectedWorkspace) else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
-            windowWorkspaceController.markInitialRestoreAttempted()
             try await openRegisteredVault(vault)
         } catch {
-            vaultError = error.localizedDescription
+            guard !Task.isCancelled else { return }
+            if !windowWorkspaceController.recordRecovery(for: error) {
+                vaultError = error.localizedDescription
+            }
             return
         }
+        guard !Task.isCancelled, !windowCloseCoordinator.isFinalized else { return }
 
         let availablePathsByVault = Dictionary(
             uniqueKeysWithValues:
@@ -196,6 +221,7 @@ extension WindowModel {
                 openRequestedTestNoteIfNeeded()
             }
         }
+        restoredSuccessfully = true
     }
 
     func persistWindowSessionNow() {

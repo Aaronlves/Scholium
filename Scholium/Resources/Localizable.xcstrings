@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Could Not Open Workspace": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Could Not Open Workspace"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法打开工作区"}}}},
     "Earlier Input Retained": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Earlier Input Retained"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "较早的输入已保留"}}}},
     "The draft changed elsewhere. Copy this earlier input before discarding it.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The draft changed elsewhere. Copy this earlier input before discarding it."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "草稿已在其他位置更改。可先复制这段较早的输入，再丢弃它。"}}}},
     "Copy Earlier Input": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Copy Earlier Input"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "复制较早的输入"}}}},

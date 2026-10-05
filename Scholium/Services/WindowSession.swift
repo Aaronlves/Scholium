@@ -261,6 +261,30 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         }
     }
 
+    /// A file barrier lets native QA hold restoration across the routing
+    /// deadline without tying the regression to machine speed. Both signals
+    /// stay inside the explicit test home; ordinary launches never enter it.
+    func waitForWorkspaceRestoreReleaseIfRequested() async throws {
+        #if DEBUG
+            guard Bundle.main.bundleIdentifier == ScholiumRuntimeIsolation.qaBundleIdentifier,
+                ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_HOLD_WORKSPACE_RESTORE"] == "1",
+                let home = ScholiumRuntimeIsolation.homeURL()
+            else { return }
+            let waiting = home.appendingPathComponent("WorkspaceRestore.waiting")
+            let release = home.appendingPathComponent("WorkspaceRestore.release")
+            try Data().write(to: waiting, options: .atomic)
+            defer { try? FileManager.default.removeItem(at: waiting) }
+            let deadline = ContinuousClock.now.advanced(by: .seconds(30))
+            while !FileManager.default.fileExists(atPath: release.path) {
+                try Task.checkCancellation()
+                guard ContinuousClock.now < deadline else {
+                    throw ScholiumWindowLifecycleError.timedOut(.routeReadiness)
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        #endif
+    }
+
     func shutdownApplicationRuntime() async {
         noteDisplayWindows.removeAll()
         await chatRegistry.shutdown()

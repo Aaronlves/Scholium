@@ -76,6 +76,7 @@ final class ResearchController: ObservableObject {
     private var pendingChangesRefreshTask: Task<Void, Never>?
     private var pendingChangesRefreshGeneration: UInt64 = 0
     private var observedDocumentChangesGeneration: UInt64?
+    private var hasCompleteWorkspaceSnapshot = false
     private var documentSelectionObservation: AnyCancellable?
     private struct RetainedRecovery {
         let record: TriptychMutationRecoveryRecord
@@ -116,6 +117,7 @@ final class ResearchController: ObservableObject {
         agentChangesRefreshGeneration &+= 1
         pendingChangesRefreshGeneration &+= 1
         observedDocumentChangesGeneration = snapshot?.documentChangesGeneration
+        hasCompleteWorkspaceSnapshot = false
         recoveryRefreshGeneration &+= 1
         if self.capabilities?.triptychID != capabilities.triptychID {
             linksInspector.reset()
@@ -132,7 +134,6 @@ final class ResearchController: ObservableObject {
         errorMessage = nil
         if let snapshot { receive(snapshot) }
         scheduleAgentChangesRefresh()
-        scheduleDocumentChangesRefresh()
     }
 
     func unbind() {
@@ -144,6 +145,7 @@ final class ResearchController: ObservableObject {
         agentChangesRefreshGeneration &+= 1
         pendingChangesRefreshGeneration &+= 1
         observedDocumentChangesGeneration = nil
+        hasCompleteWorkspaceSnapshot = false
         capabilities = nil
         researchSnapshot = nil
         agentChanges = nil
@@ -177,6 +179,10 @@ final class ResearchController: ObservableObject {
     }
 
     func scheduleDocumentChangesRefresh() {
+        // Pending Changes spans the Triptych. Automatic loading follows its
+        // complete publication instead of forcing a full source refresh while
+        // startup safety and the first usable Library are still opening.
+        guard hasCompleteWorkspaceSnapshot else { return }
         pendingChangesRefreshTask?.cancel()
         pendingChangesRefreshTask = Task { [weak self] in
             guard let self else { return }
@@ -400,8 +406,11 @@ final class ResearchController: ObservableObject {
     }
 
     func receive(_ snapshot: WorkspaceSnapshot) {
+        let becameComplete = !hasCompleteWorkspaceSnapshot && snapshot.phase.isComplete
+        hasCompleteWorkspaceSnapshot = snapshot.phase.isComplete
         researchSnapshot = snapshot.research
         errorMessage = nil
+        if becameComplete { scheduleDocumentChangesRefresh() }
     }
 
     private func requireResearch() throws -> any ResearchUseCases {

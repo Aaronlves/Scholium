@@ -149,12 +149,29 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         case failed(ScholiumWindowLifecycleError)
     }
 
+    private enum Milestone: Sendable {
+        case attachment
+        case content
+    }
+
+    private final class ReadinessMilestone {
+        var readiness: Readiness = .pending
+        var waiters: [UUID: CheckedContinuation<Result<Void, ScholiumWindowLifecycleError>, Never>] = [:]
+    }
+
     private final class Entry {
         var isRegistered = false
         var triptychID: UUID?
-        var readiness: Readiness = .pending
+        let attachment = ReadinessMilestone()
+        let content = ReadinessMilestone()
         var flusher: Flusher?
-        var waiters: [UUID: CheckedContinuation<Result<Void, ScholiumWindowLifecycleError>, Never>] = [:]
+
+        func state(for milestone: Milestone) -> ReadinessMilestone {
+            switch milestone {
+            case .attachment: attachment
+            case .content: content
+            }
+        }
     }
 
     private var entries: [UUID: Entry] = [:]
@@ -203,10 +220,12 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         let entry = entry(for: id)
         let publishesExistingWorkspaceContext =
             !entry.isRegistered && entry.triptychID != nil
-        if !entry.isRegistered,
-            case .failed(.unregisteredBeforeReady) = entry.readiness
-        {
-            entry.readiness = .pending
+        if !entry.isRegistered {
+            for milestone in [entry.attachment, entry.content] {
+                if case .failed(.unregisteredBeforeReady) = milestone.readiness {
+                    milestone.readiness = .pending
+                }
+            }
         }
         entry.isRegistered = true
         entry.flusher = flusher
@@ -216,31 +235,49 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
     }
 
     func markReady(id: UUID) {
-        let entry = entry(for: id)
-        guard case .pending = entry.readiness else { return }
-        entry.readiness = .ready
-        resumeWaiters(in: entry, with: .success(()))
+        markReady(entry(for: id).content)
+    }
+
+    /// Setup hands off once the native destination exists. Workspace opening,
+    /// access recovery and indexing belong to that window and may take longer
+    /// than scene attachment. Document transfers still require ready content.
+    func markAttached(id: UUID) {
+        markReady(entry(for: id).attachment)
+    }
+
+    private func markReady(_ milestone: ReadinessMilestone) {
+        guard case .pending = milestone.readiness else { return }
+        milestone.readiness = .ready
+        resumeWaiters(in: milestone, with: .success(()))
     }
 
     func markFailed(id: UUID, error: any Error) {
-        let entry = entry(for: id)
-        guard case .pending = entry.readiness else { return }
+        let milestone = entry(for: id).content
+        guard case .pending = milestone.readiness else { return }
         let lifecycleError = ScholiumWindowLifecycleError.failed(ScholiumErrorLocalization.message(error))
-        entry.readiness = .failed(lifecycleError)
-        resumeWaiters(in: entry, with: .failure(lifecycleError))
+        milestone.readiness = .failed(lifecycleError)
+        resumeWaiters(in: milestone, with: .failure(lifecycleError))
     }
 
     func waitUntilReady(id: UUID) async throws {
+        try await waitUntil(id: id, milestone: .content)
+    }
+
+    func waitUntilAttached(id: UUID) async throws {
+        try await waitUntil(id: id, milestone: .attachment)
+    }
+
+    private func waitUntil(id: UUID, milestone: Milestone) async throws {
         try await withScholiumLifecycleDeadline(
             phase: .routeReadiness,
             timeout: policy.routeReadiness
         ) { [weak self] in
             guard let self else { throw ScholiumWindowLifecycleError.cancelled }
-            try await self.waitUntilReadyWithoutDeadline(id: id)
+            try await self.waitUntilWithoutDeadline(id: id, milestone: milestone)
         }
     }
 
-    private func waitUntilReadyWithoutDeadline(id: UUID) async throws {
+    private func waitUntilWithoutDeadline(id: UUID, milestone: Milestone) async throws {
         try Task.checkCancellation()
         let waiterID = UUID()
         let result = await withTaskCancellationHandler {
@@ -251,14 +288,14 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
                         Never
                     >
                 ) in
-                let entry = entry(for: id)
+                let state = entry(for: id).state(for: milestone)
                 if Task.isCancelled {
                     continuation.resume(returning: .failure(.cancelled))
                     return
                 }
-                switch entry.readiness {
+                switch state.readiness {
                 case .pending:
-                    entry.waiters[waiterID] = continuation
+                    state.waiters[waiterID] = continuation
                 case .ready:
                     continuation.resume(returning: .success(()))
                 case .failed(let error):
@@ -267,7 +304,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
             }
         } onCancel: {
             Task { @MainActor [weak self] in
-                self?.cancelWaiter(waiterID, for: id)
+                self?.cancelWaiter(waiterID, for: id, milestone: milestone)
             }
         }
         switch result {
@@ -289,13 +326,15 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         if publishedWorkspaceContext {
             advanceWorkspaceContextRevision()
         }
-        switch entry.readiness {
-        case .failed:
-            return
-        case .pending, .ready:
-            let error = ScholiumWindowLifecycleError.unregisteredBeforeReady
-            entry.readiness = .failed(error)
-            resumeWaiters(in: entry, with: .failure(error))
+        for milestone in [entry.attachment, entry.content] {
+            switch milestone.readiness {
+            case .failed:
+                continue
+            case .pending, .ready:
+                let error = ScholiumWindowLifecycleError.unregisteredBeforeReady
+                milestone.readiness = .failed(error)
+                resumeWaiters(in: milestone, with: .failure(error))
+            }
         }
     }
 
@@ -354,24 +393,25 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         return entry
     }
 
-    private func cancelWaiter(_ waiterID: UUID, for id: UUID) {
+    private func cancelWaiter(_ waiterID: UUID, for id: UUID, milestone: Milestone) {
         guard let entry = entries[id],
-            let continuation = entry.waiters.removeValue(forKey: waiterID)
+            let continuation = entry.state(for: milestone).waiters.removeValue(forKey: waiterID)
         else { return }
         continuation.resume(returning: .failure(.cancelled))
-        if !entry.isRegistered, entry.waiters.isEmpty,
-            case .pending = entry.readiness
+        if !entry.isRegistered, entry.content.waiters.isEmpty, entry.attachment.waiters.isEmpty,
+            case .pending = entry.content.readiness,
+            case .pending = entry.attachment.readiness
         {
             entries.removeValue(forKey: id)
         }
     }
 
     private func resumeWaiters(
-        in entry: Entry,
+        in milestone: ReadinessMilestone,
         with result: Result<Void, ScholiumWindowLifecycleError>
     ) {
-        let waiters = entry.waiters.values
-        entry.waiters.removeAll()
+        let waiters = milestone.waiters.values
+        milestone.waiters.removeAll()
         for waiter in waiters {
             switch result {
             case .success:
@@ -634,6 +674,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         window.delegate = self
         observeSystemAppearanceIfNeeded()
         installToolbarIfPossible()
+        lifecycleRegistry.markAttached(id: windowID)
         markReadyIfPossible()
     }
 

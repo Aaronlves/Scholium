@@ -70,10 +70,11 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let source = try WindowCompositionSource.text(at: repository)
-        let restore = try #require(source.range(of: "func restoreWorkspaceIfNeeded() async"))
+        let restore = try #require(source.range(of: "func restoreWorkspaceIfNeeded("))
         let fixtureEnd = try #require(
             source.range(
-                of: "await windowWorkspaceController.refreshRegistrations()\n        await refreshWorkspaceAssignment()",
+                of:
+                    "await windowWorkspaceController.refreshRegistrations()\n        guard !Task.isCancelled, !windowCloseCoordinator.isFinalized else { return }\n        let outcome = await refreshWorkspaceAssignment(openingVault:",
                 range: restore.upperBound..<source.endIndex
             ))
         let fixtureBranch = source[restore.lowerBound..<fixtureEnd.lowerBound]
@@ -83,8 +84,8 @@ struct FrontendArchitectureTests {
             fixtureBranch.contains(
                 "await windowWorkspaceController.refreshRegistrations()"
             ))
-        #expect(fixtureBranch.contains("shellState.selectWorkspace(requestedInitialWorkspaceSlot)"))
-        #expect(fixtureBranch.contains("try await openRegisteredVault(openingVault)"))
+        #expect(fixtureBranch.contains("openingVault: openingVault"))
+        #expect(fixtureBranch.contains("try await openRegisteredVault(registeredOpeningVault)"))
         #expect(fixtureBranch.contains("openRequestedTestNoteIfNeeded()"))
         #expect(!fixtureBranch.contains("try await openWorkspaceVault("))
     }
@@ -99,7 +100,7 @@ struct FrontendArchitectureTests {
         let loadVault = try #require(source.range(of: "private func loadVault("))
         let restore = try #require(
             source.range(
-                of: "func restoreWorkspaceIfNeeded() async",
+                of: "func restoreWorkspaceIfNeeded(",
                 range: loadVault.upperBound..<source.endIndex
             ))
         let initialPublication = source[loadVault.lowerBound..<restore.lowerBound]

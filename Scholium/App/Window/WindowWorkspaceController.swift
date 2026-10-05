@@ -5,10 +5,10 @@ import ScholiumContracts
 
 private enum WindowWorkspaceResolution {
     case unavailable(assignments: [TriptychAssignment], message: String?)
-    case unavailablePreserving(
+    case failed(
         assignments: [TriptychAssignment],
-        assignment: TriptychAssignment,
-        message: String?
+        assignment: TriptychAssignment?,
+        message: String
     )
     case selected(
         assignments: [TriptychAssignment],
@@ -40,6 +40,7 @@ struct WindowWorkspaceSessionState {
     var recoveryMessage: String?
     var accessRecovery: WorkspaceAccessRecovery?
     var activeServicesID: UUID?
+    var needsRegistration = false
 }
 
 @MainActor
@@ -65,7 +66,6 @@ final class WindowWorkspaceController: ObservableObject {
     let requestedTriptychID: UUID?
     private(set) var activeCapabilities: WindowWorkspaceCapabilities?
     private var dependencies: WindowWorkspaceDependencies?
-    private var attemptedInitialRestore = false
     private var preferredOpeningVault: WorkspaceVaultSlot = .paperAnalysis
     private var recoveryGeneration: UInt64 = 0
     private var recoveryTaskCancellation: (@MainActor () -> Void)?
@@ -82,16 +82,6 @@ final class WindowWorkspaceController: ObservableObject {
     func bindDependencies(_ dependencies: WindowWorkspaceDependencies) {
         precondition(self.dependencies == nil)
         self.dependencies = dependencies
-    }
-
-    func beginInitialRestoreIfNeeded(isConfigured: Bool) -> Bool {
-        guard !attemptedInitialRestore, !isConfigured else { return false }
-        attemptedInitialRestore = true
-        return true
-    }
-
-    func markInitialRestoreAttempted() {
-        attemptedInitialRestore = true
     }
 
     func cancelAll() {
@@ -112,27 +102,37 @@ final class WindowWorkspaceController: ObservableObject {
 
     func refreshWorkspaceAssignment(
         preferredTriptychID: UUID?,
-        openingVault: WorkspaceVaultSlot
+        openingVault: WorkspaceVaultSlot,
+        openingVaultID: UUID? = nil
     ) async -> WindowWorkspaceActivationOutcome {
         preferredOpeningVault = openingVault
         let resolution = await resolveAssignment(
             preferredTriptychID: preferredTriptychID,
             currentTriptychID: state.assignment?.id
         )
+        guard !Task.isCancelled else { return .failed("Workspace opening was cancelled.") }
         switch resolution {
         case .unavailable(let assignments, let message):
+            state.needsRegistration = true
             state.registeredTriptychs = assignments
             state.assignment = nil
             state.recoveryMessage = message
             activeCapabilities = nil
             state.activeServicesID = nil
             return .unavailable
-        case .unavailablePreserving(let assignments, let assignment, let message):
+        case .failed(let assignments, let assignment, let message):
+            state.needsRegistration = false
             state.registeredTriptychs = assignments
             state.assignment = assignment
             state.recoveryMessage = message
-            return .unavailable
+            return .failed(message)
         case .selected(let assignments, let assignment, let repairFailure):
+            let resolvedOpeningVault =
+                openingVaultID.flatMap { id in
+                    WorkspaceVaultSlot.allCases.first { assignment.vault(for: $0)?.id == id }
+                } ?? openingVault
+            preferredOpeningVault = resolvedOpeningVault
+            state.needsRegistration = false
             state.registeredTriptychs = assignments
             state.assignment = assignment
             if activeCapabilities?.assignment.id != assignment.id {
@@ -140,7 +140,7 @@ final class WindowWorkspaceController: ObservableObject {
                 state.activeServicesID = nil
             }
             do {
-                try await activate(assignment: assignment, openingVault: openingVault)
+                try await activate(assignment: assignment, openingVault: resolvedOpeningVault)
                 if let repairFailure {
                     appendRecoveryMessage(
                         "Scholium opened the registered Triptych, but could not repair its stored vault identities. \(repairFailure)"
@@ -232,6 +232,7 @@ final class WindowWorkspaceController: ObservableObject {
             return nil
         }
         let previousAssignment = state.assignment
+        state.needsRegistration = false
         state.assignment = activation.capabilities.assignment
         replaceRegisteredAssignment(
             activation.capabilities.assignment,
@@ -267,6 +268,7 @@ final class WindowWorkspaceController: ObservableObject {
         )
         try Task.checkCancellation()
         activeCapabilities = capabilities
+        state.needsRegistration = false
         state.assignment = capabilities.assignment
         state.activeServicesID = capabilities.assignment.id
         state.accessRecovery = nil
@@ -524,15 +526,9 @@ final class WindowWorkspaceController: ObservableObject {
         do {
             assignments = try await workspaceStore.registeredTriptychs()
         } catch {
-            if let assignment = state.assignment {
-                return .unavailablePreserving(
-                    assignments: state.registeredTriptychs,
-                    assignment: assignment,
-                    message: error.localizedDescription
-                )
-            }
-            return .unavailable(
+            return .failed(
                 assignments: state.registeredTriptychs,
+                assignment: state.assignment,
                 message: error.localizedDescription
             )
         }
@@ -548,7 +544,17 @@ final class WindowWorkspaceController: ObservableObject {
                 )
             }
         } else {
-            stored = try? await workspaceStore.defaultTriptych()
+            do {
+                stored = try await workspaceStore.defaultTriptych()
+            } catch ScholiumApplicationError.noWorkspaceConfigured {
+                stored = nil
+            } catch {
+                return .failed(
+                    assignments: assignments,
+                    assignment: state.assignment,
+                    message: error.localizedDescription
+                )
+            }
         }
         guard let stored else {
             return .unavailable(assignments: assignments, message: nil)

@@ -72,7 +72,7 @@ struct ScholiumApp: App {
         )
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.automatic)
-        .defaultLaunchBehavior(.presented)
+        .defaultLaunchBehavior(.automatic)
         .restorationBehavior(.disabled)
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
@@ -275,6 +275,14 @@ private struct ScholiumBootstrapRoot: View {
     @State private var didRouteToWorkspace = false
     @State private var destinationWindowID: UUID?
     @State private var routingErrorMessage: String?
+    @State private var routingRetry = 0
+    @State private var openingRetry = 0
+    @State private var isRetryingOpening = false
+
+    private struct HandoffAttempt: Hashable {
+        let windowID: UUID?
+        let retry: Int
+    }
 
     init(
         workspaceStore: WorkspaceStore,
@@ -292,7 +300,13 @@ private struct ScholiumBootstrapRoot: View {
 
     var body: some View {
         Group {
-            if shouldPresentSetup {
+            if let failure = routingErrorMessage ?? model.launchFailureMessage {
+                ScholiumWorkspaceOpeningFailureView(
+                    message: failure,
+                    isRetrying: isRetryingOpening,
+                    retry: { openingRetry += 1 }
+                )
+            } else if shouldPresentSetup {
                 WorkspaceSetupView(context: workspaceSetupContext)
             } else {
                 ScholiumLaunchPlaceholderView()
@@ -303,18 +317,19 @@ private struct ScholiumBootstrapRoot: View {
             BootstrapWindowAttachment(
                 windowID: route.windowID,
                 lifecycleRegistry: lifecycleRegistry,
-                isVisible: shouldPresentSetup
+                isVisible: shouldPresentSetup || routingErrorMessage != nil || model.launchFailureMessage != nil
             )
         )
         .task {
+            guard !Task.isCancelled else { return }
             if suppressBootstrapForLaunchDocuments() { return }
             guard !didRouteToWorkspace else { return }
             if openFixtureWorkspaceIfRequested() {
                 return
             }
             await model.refresh()
-            guard !suppressBootstrapForLaunchDocuments(), !didRouteToWorkspace else { return }
-            shouldPresentSetup = !model.isReadyToOpenWorkspace && !didRouteToWorkspace
+            guard !Task.isCancelled, !suppressBootstrapForLaunchDocuments(), !didRouteToWorkspace else { return }
+            shouldPresentSetup = model.requiresSetup && !didRouteToWorkspace
             openConfiguredWorkspaceIfAvailable()
         }
         .onReceive(applicationDelegate.markdownFiles.$handlesLaunchDocuments) { handlesDocuments in
@@ -329,21 +344,47 @@ private struct ScholiumBootstrapRoot: View {
         .onChange(of: model.workspaceAssignment?.id) { _, _ in
             openConfiguredWorkspaceIfAvailable()
         }
-        .task(id: destinationWindowID) {
+        .task(id: HandoffAttempt(windowID: destinationWindowID, retry: routingRetry)) {
             guard let destinationWindowID else { return }
             do {
-                try await lifecycleRegistry.waitUntilReady(id: destinationWindowID)
+                try await lifecycleRegistry.waitUntilAttached(id: destinationWindowID)
                 dismissWindow()
             } catch is CancellationError {
                 return
             } catch {
-                didRouteToWorkspace = false
-                self.destinationWindowID = nil
-                shouldPresentSetup = true
+                if error as? ScholiumWindowLifecycleError == .unregisteredBeforeReady {
+                    didRouteToWorkspace = false
+                    self.destinationWindowID = nil
+                }
+                shouldPresentSetup = false
                 routingErrorMessage = error.localizedDescription
             }
         }
+        .task(id: openingRetry) {
+            guard openingRetry > 0 else { return }
+            isRetryingOpening = true
+            defer { isRetryingOpening = false }
+            await retryOpening()
+        }
         .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
+    }
+
+    private func retryOpening() async {
+        guard !Task.isCancelled else { return }
+        routingErrorMessage = nil
+        if let destinationWindowID {
+            // A delayed scene keeps its exact route identity. Retrying its
+            // attachment must not open a second workspace for the same launch.
+            if let triptychID = model.workspaceAssignment?.id {
+                openWindow(id: "scholium-main", value: TriptychWindowRoute(windowID: destinationWindowID, triptychID: triptychID))
+            }
+            routingRetry += 1
+        } else {
+            await model.refresh()
+            guard !Task.isCancelled else { return }
+            shouldPresentSetup = model.requiresSetup
+            openConfiguredWorkspaceIfAvailable()
+        }
     }
 
     private func suppressBootstrapForLaunchDocuments() -> Bool {
@@ -435,10 +476,11 @@ private struct ScholiumBootstrapRoot: View {
 /// state; the configured workspace creates those owners after this window
 /// completes.
 @MainActor
-private final class ScholiumBootstrapModel: ObservableObject {
+final class ScholiumBootstrapModel: ObservableObject {
     @Published private(set) var workspaceAssignment: TriptychAssignment?
     @Published private(set) var registeredTriptychs: [TriptychAssignment] = []
     @Published private(set) var recoveryMessage: String?
+    @Published private(set) var launchFailureMessage: String?
     @Published private(set) var isReadyToOpenWorkspace = false
 
     private let workspaceStore: WorkspaceStore
@@ -461,16 +503,20 @@ private final class ScholiumBootstrapModel: ObservableObject {
         }
     }
 
+    var requiresSetup: Bool {
+        !isReadyToOpenWorkspace && launchFailureMessage == nil
+    }
+
     func refresh() async {
+        launchFailureMessage = nil
+        recoveryMessage = nil
         do {
             registeredTriptychs = try await workspaceStore.registeredTriptychs()
             switch route.purpose {
             case .firstConfiguration:
                 do {
                     workspaceAssignment = try await workspaceStore.defaultTriptych()
-                } catch let error as WorkspaceRegistryError {
-                    throw error
-                } catch {
+                } catch ScholiumApplicationError.noWorkspaceConfigured {
                     workspaceAssignment = nil
                 }
                 isReadyToOpenWorkspace = workspaceAssignment != nil
@@ -489,7 +535,7 @@ private final class ScholiumBootstrapModel: ObservableObject {
         } catch {
             workspaceAssignment = nil
             isReadyToOpenWorkspace = false
-            recoveryMessage = error.localizedDescription
+            launchFailureMessage = error.localizedDescription
         }
     }
 
@@ -644,6 +690,8 @@ struct ScholiumWindowObservedRoot: View {
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
     @State private var destinationBootstrapWindowID: UUID?
     @State private var accessRecovery: WorkspaceAccessRecovery?
+    @State private var openingRetry = 0
+    @State private var isRetryingOpening = false
 
     init(
         appState: WindowModel,
@@ -676,7 +724,9 @@ struct ScholiumWindowObservedRoot: View {
         ScholiumWindowObservedContent(
             isReady: hasReadyWorkspace,
             appState: appState,
-            windowCoordinator: windowCoordinator
+            windowCoordinator: windowCoordinator,
+            isRetryingOpening: isRetryingOpening,
+            retryOpening: { openingRetry += 1 }
         )
         .navigationTitle(workspaceWindowTitle)
         .navigationSubtitle(workspaceWindowSubtitle)
@@ -706,9 +756,14 @@ struct ScholiumWindowObservedRoot: View {
                 recovery: recovery,
                 restore: {
                     try await windowWorkspaceController.restoreWorkspaceAccess(using: $0)
+                    await appState.restoreWindowSession(id: route.windowID)
+                    finishWorkspaceOpening()
                 },
                 rebuildPortableControl: {
-                    try await windowWorkspaceController.rebuildUnsupportedPortableControl()
+                    let archived = try await windowWorkspaceController.rebuildUnsupportedPortableControl()
+                    await appState.restoreWindowSession(id: route.windowID)
+                    finishWorkspaceOpening()
+                    return archived
                 },
                 canRemoveRegistration:
                     windowWorkspaceController.canRemoveUnavailableTriptychRegistration,
@@ -749,14 +804,19 @@ struct ScholiumWindowObservedRoot: View {
         .task(id: route.windowID) {
             windowCoordinator.update(reduceMotion: reduceMotion)
             await appState.restoreWindowSession(id: route.windowID)
+            guard !Task.isCancelled, !appState.windowCloseCoordinator.isFinalized else { return }
             if let proofURL = ScholiumRuntimeIsolation.fileSelectionRecoveryProofURL() {
                 _ = windowWorkspaceController.recordRecovery(
                     for: WorkspaceRegistryError.vaultAccessUnavailable(proofURL.path)
                 )
             }
-            redirectUnconfiguredWindowToBootstrapIfNeeded()
-            appState.openRequestedInitialDocumentIfNeeded()
-
+            finishWorkspaceOpening()
+        }
+        .task(id: openingRetry) {
+            guard openingRetry > 0 else { return }
+            isRetryingOpening = true
+            defer { isRetryingOpening = false }
+            await retryWorkspaceOpening()
         }
         .task(id: destinationBootstrapWindowID) {
             guard let destinationBootstrapWindowID else { return }
@@ -878,8 +938,10 @@ struct ScholiumWindowObservedRoot: View {
     }
 
     private func redirectUnconfiguredWindowToBootstrapIfNeeded() {
-        guard shellState.hasCompletedInitialRestore,
-            appState.vaultConfig == nil,
+        guard !Task.isCancelled,
+            !appState.windowCloseCoordinator.isFinalized,
+            shellState.hasCompletedInitialRestore,
+            windowWorkspaceController.state.needsRegistration,
             windowWorkspaceController.state.accessRecovery == nil,
             destinationBootstrapWindowID == nil
         else { return }
@@ -896,6 +958,19 @@ struct ScholiumWindowObservedRoot: View {
         )
         openWindow(id: "scholium-bootstrap", value: destination)
         destinationBootstrapWindowID = destination.windowID
+    }
+
+    private func retryWorkspaceOpening() async {
+        guard !Task.isCancelled, !appState.windowCloseCoordinator.isFinalized else { return }
+        appState.vaultError = nil
+        await appState.restoreWindowSession(id: route.windowID)
+        finishWorkspaceOpening()
+    }
+
+    private func finishWorkspaceOpening() {
+        guard !Task.isCancelled, !appState.windowCloseCoordinator.isFinalized else { return }
+        redirectUnconfiguredWindowToBootstrapIfNeeded()
+        if appState.didRestoreWindowSession { appState.openRequestedInitialDocumentIfNeeded() }
     }
 
     private func openOrdinaryBootstrapAfterRegistrationRemoval() {
@@ -916,6 +991,8 @@ private struct ScholiumWindowObservedContent: View {
     let isReady: Bool
     let appState: WindowModel
     let windowCoordinator: WorkspaceWindowCoordinator
+    let isRetryingOpening: Bool
+    let retryOpening: @MainActor () -> Void
 
     var body: some View {
         if isReady {
@@ -923,9 +1000,35 @@ private struct ScholiumWindowObservedContent: View {
                 appState: appState,
                 windowCoordinator: windowCoordinator
             )
+        } else if appState.shellState.hasCompletedInitialRestore,
+            appState.windowWorkspaceController.state.accessRecovery == nil,
+            let failure = appState.vaultError ?? appState.windowWorkspaceController.state.recoveryMessage
+        {
+            ScholiumWorkspaceOpeningFailureView(message: failure, isRetrying: isRetryingOpening, retry: retryOpening)
         } else {
             ScholiumLaunchPlaceholderView()
         }
+    }
+}
+
+private struct ScholiumWorkspaceOpeningFailureView: View {
+    let message: String
+    let isRetrying: Bool
+    let retry: @MainActor () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Could Not Open Workspace", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message).textSelection(.enabled)
+        } actions: {
+            Button("Retry") {
+                retry()
+            }
+            .disabled(isRetrying)
+            Button("Quit Scholium") { NSApp.terminate(nil) }
+        }
+        .accessibilityIdentifier("scholium.workspaceOpeningFailure")
     }
 }
 

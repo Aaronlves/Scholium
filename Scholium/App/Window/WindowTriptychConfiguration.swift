@@ -32,11 +32,18 @@ extension WindowModel {
         observeWindowSessionChanges()
     }
 
-    func refreshWorkspaceAssignment(preferredTriptychID: UUID? = nil) async {
+    @discardableResult
+    func refreshWorkspaceAssignment(
+        preferredTriptychID: UUID? = nil,
+        openingVault: WorkspaceVaultSlot? = nil,
+        openingVaultID: UUID? = nil
+    ) async -> WindowWorkspaceActivationOutcome {
         let outcome = await windowWorkspaceController.refreshWorkspaceAssignment(
             preferredTriptychID: preferredTriptychID,
-            openingVault: shellState.selectedWorkspace
+            openingVault: openingVault ?? shellState.selectedWorkspace,
+            openingVaultID: openingVaultID
         )
+        guard !Task.isCancelled else { return outcome }
         switch outcome {
         case .unavailable, .activated:
             break
@@ -45,6 +52,7 @@ extension WindowModel {
         case .failed(let message):
             vaultError = message
         }
+        return outcome
     }
 
     func configureTriptych(
@@ -84,6 +92,8 @@ extension WindowModel {
         capabilities: WindowWorkspaceCapabilities,
         snapshot: WorkspaceSnapshot
     ) async throws -> [String] {
+        try Task.checkCancellation()
+        guard !windowCloseCoordinator.isFinalized else { throw CancellationError() }
         bindApplicationCapabilities(
             to: capabilities,
             snapshot: snapshot
@@ -100,6 +110,8 @@ extension WindowModel {
         }
         let recoveryIssues = try await libraryMutationController.recoverInterruptedTransactions()
         await refreshTransactionRecoveryRecords()
+        try Task.checkCancellation()
+        guard !windowCloseCoordinator.isFinalized else { throw CancellationError() }
         PerformanceProbe.shared.markStartupSafetyReady()
         return recoveryIssues
     }
@@ -152,6 +164,7 @@ extension WindowModel {
     }
 
     func adoptWorkspaceActivation(_ activation: WorkspaceActivation) {
+        guard !windowCloseCoordinator.isFinalized else { return }
         guard let replacement = windowWorkspaceController.adopt(activation) else { return }
         PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
         // A restored Triptych may bypass installWindowWorkspaceSession; at

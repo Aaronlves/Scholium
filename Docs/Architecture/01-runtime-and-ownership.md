@@ -328,13 +328,13 @@ tab groups; native document infrastructure is not a second persistence writer.
 
 ### Bootstrap scene
 
-Bootstrap is a separate routed scene without workspace split or document owner.
-It retains create/connect drafts and delegates exclusive structure preparation
-and registration to Application. Successful registration waits for native
-workspace readiness before dismissal; failures preserve the populated form.
-Route identity belongs to the Codable window route. Cold launch restores only
-workspace/peripheral presentation unless an explicit document route names a Note.
-Access restoration renews exact registry authorization without early vault reads.
+Bootstrap is a routed scene without workspace split or document ownership.
+It retains create/connect drafts and delegates structure preparation and
+registration to Application. Handoff requires native attachment; document
+transfers require ready content. Missing registration or explicit creation opens setup; access
+and opening errors retain recovery. Route identity is Codable. Cold launch
+restores presentation unless an explicit route names a Note. Access restoration
+renews exact registry authorization before vault reads.
 
 App and bundled helper share provenance/update lifetime. Helper entry points are
 delivery only, with no independent runtime, installer or research-file access.

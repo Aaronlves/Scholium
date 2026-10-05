@@ -241,12 +241,8 @@ extension WindowModel {
         }
     }
 
-    func restoreWorkspaceIfNeeded() async {
-        guard
-            windowWorkspaceController.beginInitialRestoreIfNeeded(
-                isConfigured: vaultConfig != nil
-            )
-        else { return }
+    func restoreWorkspaceIfNeeded(openingVault: WorkspaceVaultSlot) async {
+        guard vaultConfig == nil, !Task.isCancelled else { return }
         if requestedTriptychID == nil, let root = ScholiumRuntimeIsolation.fixtureRootURL() {
             do {
                 let analysesURL = root.appendingPathComponent(
@@ -277,15 +273,19 @@ extension WindowModel {
                             .standardizedFileURL.path
                     }
                 }
+                guard !Task.isCancelled, !windowCloseCoordinator.isFinalized else { return }
                 if let registered,
-                    let openingVault = registered.vault(for: requestedInitialWorkspaceSlot)
+                    let registeredOpeningVault = registered.vault(for: openingVault)
                 {
-                    shellState.selectWorkspace(requestedInitialWorkspaceSlot)
-                    await refreshWorkspaceAssignment(preferredTriptychID: registered.id)
-                    guard workspaceAssignment?.id == registered.id else {
-                        throw WorkspaceRegistryError.incompleteWorkspace
-                    }
-                    try await openRegisteredVault(openingVault)
+                    let outcome = await refreshWorkspaceAssignment(
+                        preferredTriptychID: registered.id,
+                        openingVault: openingVault
+                    )
+                    guard case .activated = outcome,
+                        !Task.isCancelled, !windowCloseCoordinator.isFinalized,
+                        workspaceAssignment?.id == registered.id
+                    else { return }
+                    try await openRegisteredVault(registeredOpeningVault)
                 } else {
                     try await configureTriptych(
                         paperAnalysisURL: analysesURL,
@@ -304,13 +304,21 @@ extension WindowModel {
             return
         }
         await windowWorkspaceController.refreshRegistrations()
-        await refreshWorkspaceAssignment()
-        guard workspaceAssignment != nil else {
+        guard !Task.isCancelled, !windowCloseCoordinator.isFinalized else { return }
+        let outcome = await refreshWorkspaceAssignment(openingVault: openingVault, openingVaultID: requestedInitialDocument?.vaultID)
+        guard case .activated = outcome,
+            !Task.isCancelled, !windowCloseCoordinator.isFinalized,
+            workspaceAssignment != nil
+        else {
             return
         }
 
         do {
-            try await openWorkspaceVault(.paperAnalysis)
+            let selectedWorkspace =
+                requestedInitialDocument.flatMap { requested in
+                    WorkspaceVaultSlot.allCases.first { workspaceAssignment?.vault(for: $0)?.id == requested.vaultID }
+                } ?? openingVault
+            try await openWorkspaceVault(selectedWorkspace)
             openRequestedTestNoteIfNeeded()
         } catch {
             if windowWorkspaceController.recordRecovery(for: error) {
