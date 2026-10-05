@@ -3,6 +3,7 @@ import ScholiumApplication
 import ScholiumContracts
 import SwiftUI
 import Testing
+import WebKit
 
 @testable import ScholiumApp
 
@@ -14,8 +15,8 @@ struct AgentChatSidebarLifecycleTests {
             .deletingLastPathComponent().deletingLastPathComponent()
     }
 
-    @Test("The mounted Chat shell changes native draft ownership and clears the previous conversation's Find")
-    func conversationSwitchKeepsDraftsAndResetsFind() async throws {
+    @Test("The mounted Chat shell changes native draft ownership and clears the previous conversation's Find", arguments: [false, true])
+    func conversationSwitchKeepsDraftsAndResetsFind(reduceMotion: Bool) async throws {
         _ = NSApplication.shared
         let root = repository.appendingPathComponent(".build/agent-chat-tests/sidebar-switch-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -36,7 +37,9 @@ struct AgentChatSidebarLifecycleTests {
                 controller: controller, transcriptReaderID: readerID, isVisible: true, addSelection: { _ in false },
                 noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
                 openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
-                showConversationChanges: { _ in }))
+                showConversationChanges: { _ in }
+            )
+            .environment(\.scholiumVisualEnvironmentOverride, .init(reduceMotion: reduceMotion)))
         let window = mount(host)
         defer {
             window.contentView = nil
@@ -181,6 +184,7 @@ struct AgentChatSidebarLifecycleTests {
         #expect(controller.conversations.first { $0.id == secondID }?.draft == "Second independent draft")
         host.rootView = AnyView(detail(visible: true))
         try await settle(host) { editor.isEditable && find.isEnabled }
+        #expect(window.firstResponder === find.currentEditor())
         undo.undo()
         #expect(editor.string == "First native draft" && controller.selected?.draft == "First native draft")
         try await controller.flushPersistence()
@@ -333,6 +337,96 @@ struct AgentChatSidebarLifecycleTests {
             throw error
         }
         await controller.disconnect()
+    }
+
+    @Test("Retained readers keep their native identity and reading anchor through hidden resizing")
+    func retainedTranscriptSurvivesHiddenResize() async throws {
+        _ = NSApplication.shared
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/retained-resize-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptychID = UUID()
+        var conversation = AgentChatConversation(triptychID: triptychID)
+        conversation.messages = (0..<2).flatMap { index in
+            [
+                AgentChatMessage(id: "question-\(index)", role: .user, text: "Synthetic question \(index). 中文。"),
+                AgentChatMessage(
+                    id: "reply-\(index)", role: .assistant,
+                    text: String(repeating: "A retained synthetic passage with **中文 and English**.\n\n", count: 12),
+                    phase: .finalAnswer),
+            ]
+        }
+        try await AgentChatStorage(root: root.appendingPathComponent(triptychID.uuidString)).save([conversation])
+        let controller = fixtureChatController(triptychID: triptychID, root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await settle { controller.isLoaded }
+        let presentation = AgentChatDetailPresentation()
+        let session = AgentChatReadingSession()
+        let native = AgentChatComposerSession(conversationID: conversation.id)
+        func detail(visible: Bool) -> some View {
+            AgentChatConversationDetailView(
+                controller: controller, isVisible: visible, addSelection: { _ in false }, noteChoices: [], addNote: { _, _ in },
+                openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: native,
+                focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
+                newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {},
+                diagnosticsPresentation: .constant(nil)
+            )
+            .environment(\.scholiumDocumentSurfaceVisibility, visible ? .active : .retained)
+        }
+        func readers(_ view: NSView) -> [WKWebView] {
+            (view as? WKWebView).map { [$0] } ?? view.subviews.flatMap(readers)
+        }
+        let host = NSHostingView(rootView: AnyView(detail(visible: true)))
+        let window = mount(host)
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        window.makeKeyAndOrderFront(nil)
+        func verify(_ phase: String, _ predicate: () -> Bool) async throws {
+            do { try await settle(host, until: predicate) } catch {
+                print(
+                    "CHAT_RETAINED_RESIZE phase=\(phase) readers=\(readers(host).count) initial=\(session.initialTranscriptPhase) request=\(session.viewportRequest != nil) input=\(native.host.editor.isEditable)"
+                )
+                throw error
+            }
+        }
+        try await verify("initial") { session.initialTranscriptPhase == .visible && session.viewportRequest == nil && readers(host).count == 4 }
+        let identities = Set(readers(host).map(ObjectIdentifier.init))
+        let anchor = AgentChatReadingSession.Anchor(id: "reply-1", offset: -80)
+        session.pause()
+        session.anchor = anchor
+        func anchorIsPositioned() -> Bool {
+            guard let marker = session.markers[anchor.id]?.view, let scroll = marker.enclosingScrollView, let document = scroll.documentView else {
+                return false
+            }
+            session.viewport?.reconcile()
+            let offset = marker.convert(marker.bounds, to: document).minY - scroll.contentView.bounds.minY - scroll.contentInsets.top
+            return abs(offset - anchor.offset) < 2
+        }
+        try await verify("anchor", anchorIsPositioned)
+        host.rootView = AnyView(detail(visible: false))
+        try await verify("hidden") { readers(host).allSatisfy(\.isHiddenOrHasHiddenAncestor) && native.host.isHidden }
+        window.setContentSize(NSSize(width: 280, height: 640))
+        host.layoutSubtreeIfNeeded()
+        #expect(Set(readers(host).map(ObjectIdentifier.init)) == identities)
+        host.rootView = AnyView(detail(visible: true))
+        try await verify("resumed") { readers(host).allSatisfy { !$0.isHiddenOrHasHiddenAncestor } && anchorIsPositioned() }
+        #expect(Set(readers(host).map(ObjectIdentifier.init)) == identities)
+        #expect(session.anchor == anchor && session.viewportRequest == nil)
+        #expect(controller.selected?.messages == conversation.messages)
+        // Selection can change before the outgoing detail is dismantled. Its
+        // transcript must never rebuild readers for the next conversation.
+        controller.newConversation()
+        let nextID = try #require(controller.selectedID)
+        try await verify("outgoing") { !native.host.editor.isEditable }
+        #expect(Set(readers(host).map(ObjectIdentifier.init)) == identities)
+        controller.select(conversation.id)
+        controller.select(nextID)
+        controller.select(conversation.id)
+        try await verify("rapid-return") { native.host.editor.isEditable && anchorIsPositioned() }
+        #expect(Set(readers(host).map(ObjectIdentifier.init)) == identities)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_CHAT_LONG_FIXTURE"] == "1"))

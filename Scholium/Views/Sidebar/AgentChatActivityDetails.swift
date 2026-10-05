@@ -49,16 +49,7 @@ struct AgentChatActivityDetails: View {
                 } label: {
                     ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.expand.symbol, placement: .action)
                 }
-                .buttonStyle(
-                    ScholiumContentControlButtonStyle(
-                        isHovering: isHovered,
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
-                    )
-                )
-                .scholiumActivationPointer()
+                .buttonStyle(ScholiumContentActionButtonStyle())
                 .background(ScholiumPreviewAttachment { originView = $0 })
                 .help(Text("Open Output", bundle: .module))
                 .accessibilityLabel(Text("Open Output", bundle: .module))
@@ -66,17 +57,7 @@ struct AgentChatActivityDetails: View {
                     ScholiumSidebarCopyIcon(copied: copied)
                         .opacity(isInline || isHovered || copyIsFocused || copied ? 1 : 0)
                 }
-                .buttonStyle(
-                    ScholiumContentControlButtonStyle(
-                        isFocused: copyIsFocused,
-                        isHovering: isHovered,
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
-                    )
-                )
-                .scholiumActivationPointer()
+                .buttonStyle(ScholiumContentActionButtonStyle())
                 .focused($copyIsFocused)
                 .accessibilityLabel(copied ? "Copied" : "Copy Details")
                 .help(copied ? String(localized: "Copied") : String(localized: "Copy Details"))
@@ -123,20 +104,10 @@ struct AgentChatActivityDetails: View {
                         openNote(AgentChatReference.url(noteID: id))
                     } label: {
                         Label(file.path, systemImage: ScholiumSidebarItem.note.symbol)
-                            .scholiumContentControlInk(
-                                resting: .primaryText,
-                                emphasized: .accent
-                            )
+                            .foregroundStyle(.tint)
                             .underline()
                     }
                     .buttonStyle(.link)
-                    .scholiumActivationPointer()
-                    .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
-                    )
                     .help("Open Note")
                     .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: id)) }
                 } else {

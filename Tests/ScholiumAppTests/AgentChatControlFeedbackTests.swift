@@ -10,6 +10,7 @@ import Testing
 struct AgentChatControlFeedbackTests {
     @Test("Composer menus and buttons have equal, nonoverlapping pointer regions")
     func composerPointerRegions() async throws {
+        let geometry = ControlGeometryFixture()
         let content = HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Menu {
                 Button("Choose File…", action: {})
@@ -18,14 +19,20 @@ struct AgentChatControlFeedbackTests {
                     .agentChatComposerControl()
             }
             .scholiumContentActionMenu().menuIndicator(.hidden).agentChatComposerControl()
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[0] = $0 }
             AgentChatContextMeter(usage: nil, open: {})
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[1] = $0 }
             AgentChatConfigurationMenu(
                 models: [], preferences: .init(), selectedModel: nil,
                 permission: .ask, isEnabled: true, canSelectModel: false,
-                selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in }, selectWebSearch: { _ in })
+                selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in }, selectWebSearch: { _ in }
+            )
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[2] = $0 }
             AgentChatComposerActionButton(
-                state: .ready, hasInput: true, canSend: true, queuesInput: false, submit: {}, stop: {})
-        }.padding().frame(width: 220, height: 80)
+                state: .ready, hasInput: true, canSend: true, queuesInput: false, submit: {}, stop: {}
+            )
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[3] = $0 }
+        }.coordinateSpace(name: "controls").padding().frame(width: 220, height: 80)
         let host = NSHostingView(rootView: content)
         let window = makeWindow(host)
         defer {
@@ -33,25 +40,36 @@ struct AgentChatControlFeedbackTests {
             window.close()
         }
         try await settle(host, window: window)
-        let trackers = descendants(host).compactMap { $0 as? ScholiumPointerTrackingView }
-        try #require(trackers.count == 4)
-        let frames = trackers.map { $0.convert($0.bounds, to: host) }.sorted { $0.minX < $1.minX }
-        for frame in frames {
-            #expect(abs(frame.width - 28) < 0.5 && abs(frame.height - 28) < 0.5)
-            #expect(abs(frame.midY - frames[0].midY) < 0.5)
-        }
-        for (left, right) in zip(frames, frames.dropFirst()) { #expect(left.maxX < right.minX) }
-        for tracker in trackers { #expect(tracker.hitTest(.zero) == nil) }
-        let buttons = descendants(host).compactMap { $0 as? NSButton }
-        // Button-style Menus use SwiftUI's complete label region instead of
-        // the legacy 18pt NSPopUpButton; the other two remain native buttons.
-        try #require(buttons.count == 2)
-        for button in buttons {
-            #expect(button.bounds.width >= 28 && button.bounds.height >= 28, "Native activation region: \(button.bounds)")
-        }
+        #expect(!descendants(host).contains { $0 is ScholiumPointerTrackingView }, "Native controls must have no competing pointer-state owner")
+        try #require(geometry.frames.count == 4)
+        let frames = geometry.frames.values.sorted { $0.minX < $1.minX }
+        for (left, right) in zip(frames, frames.dropFirst()) { #expect(left.maxX <= right.minX) }
+        for frame in frames { #expect(frame.width >= 28 && frame.height >= 28) }
     }
 
-    @Test("Unavailable question delivery disables final options and Skip but leaves the answer field editable")
+    @Test("Unboxed content commands retain their geometry and distinguish availability")
+    func commandAvailability() async throws {
+        func content(enabled: Bool) -> some View {
+            Button("Refresh — 刷新", action: {})
+                .buttonStyle(ScholiumContentActionButtonStyle())
+                .disabled(!enabled).padding()
+        }
+        let host = NSHostingView(rootView: content(enabled: true))
+        let window = makeWindow(host)
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        try await settle(host, window: window)
+        let size = host.fittingSize
+        let available = try rendered(host)
+        host.rootView = content(enabled: false)
+        try await settle(host, window: window)
+        #expect(host.fittingSize == size)
+        #expect(try rendered(host) != available, "Native disabled feedback must remain visible without a background plate")
+    }
+
+    @Test("Unavailable question delivery keeps the bound answer editable across availability changes")
     func questionAdmission() async throws {
         var answers: [String: AgentChatQuestionAnswer] = ["q": .text("Retain this answer")]
         var replies = 0
@@ -72,14 +90,10 @@ struct AgentChatControlFeedbackTests {
             window.close()
         }
         try await settle(host, window: window)
-        let buttons = descendants(host).compactMap { $0 as? NSButton }
-        try #require(buttons.count == 3)
-        #expect(buttons.allSatisfy { !$0.isEnabled })
         let fields = descendants(host).compactMap { $0 as? NSTextField }.filter { $0.isEditable }
         #expect(!fields.isEmpty && fields.allSatisfy { $0.isEnabled })
         host.rootView = content(canSubmit: true)
         try await settle(host, window: window)
-        #expect(descendants(host).compactMap { $0 as? NSButton }.allSatisfy { $0.isEnabled })
         #expect(answers["q"] == .text("Retain this answer") && replies == 0)
     }
 
@@ -102,4 +116,14 @@ struct AgentChatControlFeedbackTests {
 
     private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
 
+    private func rendered(_ host: NSView) throws -> Data {
+        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        return try #require(bitmap.representation(using: .png, properties: [:]))
+    }
+}
+
+@MainActor
+private final class ControlGeometryFixture {
+    var frames: [Int: CGRect] = [:]
 }

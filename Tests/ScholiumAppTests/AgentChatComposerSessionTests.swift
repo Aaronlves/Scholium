@@ -40,6 +40,21 @@ struct AgentChatComposerSessionTests {
         let selection = editor.selectedRange()
         try #require(undo.canUndo && draft == original + " Added 😀")
 
+        // A retained detail stays allocated behind the list, but has no native
+        // first responder or delivery route. Reopening restores the same input.
+        #expect(window.makeFirstResponder(editor))
+        host.rootView = AnyView(input().environment(\.scholiumDocumentSurfaceVisibility, .retained))
+        try await settle(host) { !editor.isEditable && editor.onSubmit == nil }
+        #expect(session.host.window === window && window.firstResponder !== editor)
+        #expect(editor.isHiddenOrHasHiddenAncestor)
+        #expect(editor.onTransferMaterials == nil && editor.onCompletionKey == nil)
+        #expect(editor.string == draft && editor.selectedRange() == selection)
+        #expect(editor.undoManager === undo && undo.canUndo)
+        host.rootView = AnyView(input())
+        try await settle(host) { editor.isEditable && editor.onSubmit != nil }
+        #expect(!editor.isHiddenOrHasHiddenAncestor)
+        #expect(editor.selectedRange() == selection && editor.undoManager === undo)
+
         host.rootView = AnyView(Color.clear)
         try await settle(host) { session.host.window == nil }
         #expect(editor.onSubmit == nil && editor.onTransferMaterials == nil)

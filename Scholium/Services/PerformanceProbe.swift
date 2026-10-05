@@ -19,6 +19,7 @@ final class PerformanceProbe {
         case editorVisibleProjection = "editor_visible_projection"
         case editorRetainedMemory = "editor_retained_memory"
         case editorLargeCJKCorrectness = "editor_large_cjk_correctness"
+        case chatEntry = "chat_entry"
     }
 
     static let shared = PerformanceProbe()
@@ -77,6 +78,17 @@ final class PerformanceProbe {
     private var searchIsArmed = true
     private var readIsArmed = true
     private var recordedSampleCount = 0
+    private struct ChatEntry {
+        let id = UUID()
+        let conversationID: UUID
+        let messageCount: Int
+        let started: UInt64
+        var mounted: UInt64?
+        var hydrated: UInt64?
+        var readerCount = 0
+    }
+    private var chatEntry: ChatEntry?
+    private var chatEntryTask: Task<Void, Never>?
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -100,6 +112,7 @@ final class PerformanceProbe {
         guard let rawURL = environment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"],
             let rawMetric = environment["SCHOLIUM_PERFORMANCE_METRIC"],
             let metric = Metric(rawValue: rawMetric),
+            metric != .chatEntry || bundleID == ScholiumRuntimeIsolation.qaBundleIdentifier,
             let rawRunID = environment["SCHOLIUM_PERFORMANCE_RUN_ID"],
             Self.isSafeRunID(rawRunID),
             let bundleID,
@@ -138,6 +151,60 @@ final class PerformanceProbe {
     }
 
     var isEnabled: Bool { configuration != nil }
+    var measuresChatEntry: Bool { configuration?.metric == .chatEntry }
+
+    /// Diagnostic-only QA timing. Each activation owns a token, so an outgoing
+    /// page cannot complete a later visit to the same conversation.
+    func beginChatEntry(in conversationID: UUID, messageCount: Int) {
+        guard measuresChatEntry else { return }
+        cancelChatEntry()
+        chatEntry = ChatEntry(conversationID: conversationID, messageCount: messageCount, started: now())
+    }
+
+    func chatEntryID(in conversationID: UUID?) -> UUID? {
+        guard chatEntry?.conversationID == conversationID else { return nil }
+        return chatEntry?.id
+    }
+
+    func markChatDetailMounted(_ id: UUID, readerCount: Int) {
+        guard chatEntry?.id == id, chatEntry?.mounted == nil else { return }
+        chatEntry?.mounted = now()
+        chatEntry?.readerCount = readerCount
+    }
+
+    func markChatReadersHydrated(_ id: UUID, viewportIsReady: @escaping @MainActor () -> Bool) {
+        guard chatEntry?.id == id, chatEntry?.mounted != nil, chatEntry?.hydrated == nil else { return }
+        chatEntry?.hydrated = now()
+        chatEntryTask = Task { @MainActor [weak self] in
+            let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while !Task.isCancelled, ContinuousClock.now < deadline {
+                guard let self, let entry = self.chatEntry, entry.id == id else { return }
+                if viewportIsReady(), let mounted = entry.mounted, let hydrated = entry.hydrated {
+                    let completed = self.now()
+                    guard mounted >= entry.started, hydrated >= mounted, completed >= hydrated else { return }
+                    self.record(
+                        startNanoseconds: entry.started, observedCount: entry.messageCount,
+                        completedNanoseconds: completed,
+                        phaseDurations: [
+                            "detail_mount_ms": self.milliseconds(mounted - entry.started),
+                            "reply_hydration_ms": self.milliseconds(hydrated - mounted),
+                            "viewport_position_ms": self.milliseconds(completed - hydrated),
+                            "mounted_reader_count": Double(entry.readerCount),
+                        ])
+                    self.chatEntry = nil
+                    self.chatEntryTask = nil
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+        }
+    }
+
+    func cancelChatEntry() {
+        chatEntryTask?.cancel()
+        chatEntryTask = nil
+        chatEntry = nil
+    }
     #if DEBUG
         var measuresQAMemoryOwners: Bool { qaMemoryOwnerResultURL != nil }
 

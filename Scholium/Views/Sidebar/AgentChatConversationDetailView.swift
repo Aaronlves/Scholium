@@ -31,11 +31,16 @@ struct AgentChatConversationDetailView: View {
     @State private var fileSelectionTask: Task<Void, Never>?
     @State private var topBarHeight: CGFloat = 0
     @State private var accessoryHeight: CGFloat = 0
+    @State private var entryMeasurementID: UUID?
+    @State private var entryReadersAreHydrated = false
 
     @Bindable var presentation: AgentChatDetailPresentation
     let readingSession: AgentChatReadingSession
     let nativeSession: AgentChatComposerSession
     private var isCurrentConversation: Bool { nativeSession.conversationID == controller.selectedID }
+    private var displayedConversation: AgentChatConversation? {
+        controller.conversations.first { $0.id == nativeSession.conversationID }
+    }
     let focusRequest: UUID?
     let consumeFocusRequest: (UUID) -> Void
     let replyNavigation: AgentChatReplyNavigation?
@@ -51,9 +56,10 @@ struct AgentChatConversationDetailView: View {
         GeometryReader { geometry in
             conversationDetail(viewportHeight: geometry.size.height)
         }
-        .disabled(!isCurrentConversation)
-        .allowsHitTesting(isCurrentConversation)
-        .accessibilityHidden(!isCurrentConversation)
+        .disabled(!isVisible || !isCurrentConversation)
+        .allowsHitTesting(isVisible && isCurrentConversation)
+        .accessibilityElement(children: .contain)
+        .accessibilityHidden(!isVisible || !isCurrentConversation)
         .sheet(item: $presentation.queueEditTarget) { target in
             AgentChatQueuedMessageEditor(
                 message: target.message,
@@ -85,8 +91,13 @@ struct AgentChatConversationDetailView: View {
             if visible, isCurrentConversation, let focusRequest {
                 presentation.messageIsFocused = true
                 consumeFocusRequest(focusRequest)
+            } else if visible, isCurrentConversation, presentation.showsFind {
+                // A retained native field has already consumed its first focus
+                // request. Preserve the active Find context on ordinary return.
+                presentation.findFocusRequest = UUID()
             }
             if !visible {
+                fileSelectionTask?.cancel()
                 presentation.completion.dismiss()
                 presentation.messageIsFocused = false
                 presentation.showsFiles = false
@@ -95,14 +106,14 @@ struct AgentChatConversationDetailView: View {
             }
         }
         .onChange(of: presentation.find.query) { _, _ in refreshFind(reset: true) }
-        .onChange(of: controller.selected?.messages) { _, _ in
+        .onChange(of: displayedConversation?.messages) { _, _ in
             if presentation.showsFind { refreshFind() }
         }
     }
 
     private var header: some View {
         AgentChatHeader(
-            title: controller.selected?.title.isEmpty == false ? controller.selected!.title : String(localized: "New Conversation"),
+            title: displayedConversation?.title.isEmpty == false ? displayedConversation!.title : String(localized: "New Conversation"),
             back: showList, canCreate: controller.isLoaded, newConversation: newConversation
         ) {
             Menu {
@@ -134,7 +145,7 @@ struct AgentChatConversationDetailView: View {
             } label: {
                 ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.more.symbol)
             }
-            .scholiumContentActionMenu().menuIndicator(.hidden)
+            .scholiumSidebarHeaderControl()
             .accessibilityLabel("Chat Options")
             .accessibilityIdentifier("scholium.chat.options")
             .popover(isPresented: contextIsPresented(at: .conversation), arrowEdge: .leading) {
@@ -187,7 +198,7 @@ struct AgentChatConversationDetailView: View {
     }
 
     private func refreshFind(reset: Bool = false) {
-        presentation.find.refresh(messages: controller.selected?.messages ?? [], reset: reset)
+        presentation.find.refresh(messages: displayedConversation?.messages ?? [], reset: reset)
     }
 
     private func dismissFind() {
@@ -209,14 +220,14 @@ struct AgentChatConversationDetailView: View {
                 if let item = approval.runtimeItemID { ids.append("runtime:\(item)") }
                 return ids
             })
-        return (controller.selected?.messages ?? []).filter {
+        return (displayedConversation?.messages ?? []).filter {
             !active.contains($0.id) || (presentation.showsFind && presentation.find.selectedID == $0.id)
         }
     }
 
     private var timelineItems: [AgentChatTimelineItem] { AgentChatTimelineItem.group(timelineMessages) }
     private var isHydratingHistory: Bool {
-        controller.isRefreshingHistory && controller.selected?.threadID != nil
+        isCurrentConversation && controller.isRefreshingHistory && displayedConversation?.threadID != nil
     }
     private var visibleTimelineItems: [AgentChatTimelineItem] {
         let items = timelineItems
@@ -299,14 +310,14 @@ struct AgentChatConversationDetailView: View {
             // Transcript geometry must describe the loaded messages, rather than
             // LazyVStack's changing estimates as long replies enter the viewport.
             VStack(alignment: .leading, spacing: ScholiumChatAppearance.messageSpacing) {
-                if isHydratingHistory, controller.selected?.messages.isEmpty != false {
+                if isHydratingHistory, displayedConversation?.messages.isEmpty != false {
                     ScholiumContentStateView(
                         title: Text("Loading Conversation…", bundle: .module),
                         indicator: .progress,
                         placement: .leading, density: .compact
                     )
                     .accessibilityIdentifier("scholium.chat.historyLoading")
-                } else if controller.selected?.messages.isEmpty != false {
+                } else if displayedConversation?.messages.isEmpty != false {
                     ScholiumContentStateView(
                         title: Text("New Conversation"),
                         detail: Text("Discuss your research here. Add a passage or name a note to begin."),
@@ -394,6 +405,10 @@ struct AgentChatConversationDetailView: View {
         }
         .onPreferenceChange(AgentChatReplyHydrationPreference.self) { states in
             readingSession.observeReplyHydration(states)
+            if PerformanceProbe.shared.measuresChatEntry {
+                entryReadersAreHydrated = visibleReplyReaderIDs.allSatisfy { states[$0] == true }
+                recordEntryHydrationIfReady()
+            }
         }
         .task(id: replyNavigation) {
             guard let target = replyNavigation, target.conversationID == controller.selectedID else { return }
@@ -454,13 +469,37 @@ struct AgentChatConversationDetailView: View {
             if presentation.showsFind { refreshFind() }
             presentation.arrivalBaseline = Set(projection.messages.map(\.id))
             readingSession.mount(in: projection.ids, readerIDs: visibleReplyReaderIDs)
+            recordEntryMountIfNeeded()
         }
+        .onChange(of: isVisible) { _, visible in if visible { recordEntryMountIfNeeded() } }
         .onChange(of: projection.ids) { _, ids in
             readingSession.contentDidChange(in: ids, readerIDs: visibleReplyReaderIDs)
         }
         .onDisappear { presentation.arrivalBaseline = nil }
         .onChange(of: hasConversationAccessories) { _, hasAccessories in
             if !hasAccessories { accessoryHeight = 0 }
+        }
+    }
+
+    private func recordEntryMountIfNeeded() {
+        guard isVisible, PerformanceProbe.shared.measuresChatEntry,
+            let id = PerformanceProbe.shared.chatEntryID(in: nativeSession.conversationID)
+        else { return }
+        entryMeasurementID = id
+        PerformanceProbe.shared.markChatDetailMounted(id, readerCount: visibleReplyReaderIDs.count)
+        if visibleReplyReaderIDs.isEmpty { entryReadersAreHydrated = true }
+        recordEntryHydrationIfReady()
+    }
+
+    private func recordEntryHydrationIfReady() {
+        guard entryReadersAreHydrated, let entryMeasurementID else { return }
+        let conversationID = nativeSession.conversationID
+        PerformanceProbe.shared.markChatReadersHydrated(entryMeasurementID) { [weak readingSession, weak controller] in
+            guard let readingSession else { return false }
+            return controller?.selectedID == conversationID
+                && readingSession.viewport?.window != nil
+                && readingSession.isInitialTranscriptReady
+                && readingSession.viewportRequest == nil
         }
     }
 
@@ -1262,7 +1301,7 @@ struct AgentChatConversationDetailView: View {
         } controls: {
             composerControls
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
     }
 
     private var preparedComposerContent: some View {

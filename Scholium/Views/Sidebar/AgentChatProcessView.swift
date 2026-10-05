@@ -89,7 +89,7 @@ struct AgentChatProcessView<Row: View>: View {
                     } label: {
                         Label("Load Earlier Activity", systemImage: ScholiumSidebarAction.earlier.symbol)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(ScholiumContentActionButtonStyle())
                     .font(.callout)
                     .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
                     .accessibilityIdentifier("scholium.chat.process.earlier.\(messages.first?.id ?? "")")

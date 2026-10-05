@@ -67,6 +67,7 @@ struct AgentChatConversationListView: View {
                     Text(ScholiumL10n.dynamicString(state.filter.title)).foregroundStyle(.secondary)
                     Spacer(minLength: 4)
                     Button("Clear") { state.filter = .all }
+                        .buttonStyle(ScholiumContentActionButtonStyle())
                 }
                 .font(.caption)
                 .padding(.horizontal, ScholiumSidebarLayout.textInset)
@@ -95,7 +96,7 @@ struct AgentChatConversationListView: View {
         } label: {
             ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.more.symbol)
         }
-        .scholiumContentActionMenu().menuIndicator(.hidden)
+        .scholiumSidebarHeaderControl()
         .help("Chat Options").accessibilityLabel("Chat Options")
         .accessibilityIdentifier("scholium.chat.archived")
     }
@@ -116,6 +117,7 @@ struct AgentChatConversationListView: View {
     }
 
     private func openConversation(_ conversation: AgentChatConversation) {
+        PerformanceProbe.shared.beginChatEntry(in: conversation.id, messageCount: conversation.messages.count)
         controller.setUnread(conversation.id, unread: false)
         if controller.selectedID != conversation.id { controller.select(conversation.id) }
         showConversation()
@@ -159,14 +161,7 @@ struct AgentChatConversationListView: View {
         } label: {
             row.contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .scholiumActivationPointer()
-        .scholiumContentControlPointerFeedback(
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                style: .continuous
-            )
-        )
+        .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
         .accessibilityIdentifier("scholium.chat.conversation.\(conversation.id)")
         .contextMenu { conversationActions(conversation) }
         .accessibilityActions { conversationActions(conversation) }

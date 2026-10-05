@@ -261,8 +261,19 @@ Library provides:
 
 Library is a muted section label rather than a competing page title. Organize
 and Add remain separate native menus and focus targets with familiar symbols;
-macOS owns their resting, hover, press, focus, disabled, menu, and accessibility
-presentation. Folder-local Expand/Collapse remains in each Folder's contextual
+macOS owns activation, focus, availability, menu and accessibility behavior.
+Sidebar controls share treatment by meaning: native selectors
+identify the current destination; source lists identify selected objects;
+checked menu choices retain settings; disclosures expose expansion. Momentary
+commands and menu or popover triggers use transient press feedback and return to rest after release
+or dismissal. Keyboard focus is distinct from selection. Secondary content
+icon actions share an unboxed label treatment with stable targets: no resting
+or hover background plates, transient pressed-ink feedback, and dimmed disabled
+labels. SwiftUI owns the interaction state; the shared style maps it to ink.
+Primary delivery and destructive
+actions retain their native roles. Hover, press and focus never change geometry
+or manufacture persistent selection. Folder-local Expand/Collapse remains in each
+Folder's contextual
 and accessibility actions.
 
 Library and Chat share semantic action and object symbols. Repeated actions use

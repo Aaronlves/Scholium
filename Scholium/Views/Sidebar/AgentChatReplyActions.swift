@@ -173,20 +173,10 @@ struct AgentChatSourcesView: View {
                                         open(source)
                                     } label: {
                                         Text(source.title)
-                                            .scholiumContentControlInk(
-                                                resting: .primaryText,
-                                                emphasized: .accent
-                                            )
+                                            .foregroundStyle(.tint)
                                             .underline()
                                     }
                                     .buttonStyle(.link)
-                                    .scholiumActivationPointer()
-                                    .scholiumContentControlPointerFeedback(
-                                        in: RoundedRectangle(
-                                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                            style: .continuous
-                                        )
-                                    )
                                     .accessibilityLabel(Text(source.title))
                                     .accessibilityValue(Text(source.destination))
                                     .contextMenu { AgentChatNoteMenu(url: source.url) }

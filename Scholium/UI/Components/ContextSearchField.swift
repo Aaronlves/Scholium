@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ContextSearchField: NSViewRepresentable {
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     @Binding var text: String
     let prompt: String
     let identifier: String
@@ -30,7 +31,8 @@ struct ContextSearchField: NSViewRepresentable {
         searchField.setAccessibilityLabel(ScholiumL10n.dynamicString(prompt))
         searchField.setAccessibilityIdentifier(identifier)
         searchField.maximumRecents = 0
-        searchField.isEnabled = isActive
+        searchField.isEnabled = isActive && surfaceVisibility.isActive
+        searchField.isHidden = !surfaceVisibility.isActive
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         if !options.isEmpty { searchField.searchMenuTemplate = context.coordinator.scopeMenu() }
@@ -45,13 +47,14 @@ struct ContextSearchField: NSViewRepresentable {
 
     func updateNSView(_ searchField: Field, context: Context) {
         context.coordinator.parent = self
-        if !isActive,
+        searchField.isHidden = !surfaceVisibility.isActive
+        if !(isActive && surfaceVisibility.isActive),
             let editor = searchField.currentEditor(),
             searchField.window?.firstResponder === editor
         {
             searchField.window?.makeFirstResponder(nil)
         }
-        searchField.isEnabled = isActive
+        searchField.isEnabled = isActive && surfaceVisibility.isActive
         if (searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true, searchField.stringValue != text {
             searchField.stringValue = text
         }
@@ -68,6 +71,7 @@ struct ContextSearchField: NSViewRepresentable {
         private func applyFocus() {
             guard let focusRequest, focusRequest != appliedFocus,
                 isEnabled,
+                !isHiddenOrHasHiddenAncestor,
                 (currentEditor() as? NSTextView)?.hasMarkedText() != true,
                 let window, window.makeFirstResponder(self)
             else { return }

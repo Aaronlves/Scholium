@@ -5,6 +5,152 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testSidebarSemanticControlsRemainStableThroughNativeInteraction() throws {
+        waitForCurrentDocumentSurface()
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Light"].click()
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalBytes = try Data(contentsOf: noteURL)
+        let window = app.windows.firstMatch
+        let organize = app.descendants(matching: .any)["scholium.libraryFilters"].firstMatch
+        let create = app.descendants(matching: .any)["scholium.libraryCreate"].firstMatch
+        let organizeFrame = organize.frame
+        let createFrame = create.frame
+        for iteration in 0..<2 {
+            organize.hover()
+            XCTAssertEqual(organize.frame, organizeFrame)
+            organize.click()
+            XCTAssertTrue(app.menuItems["Expand All Folders"].exists || app.menuItems["Collapse All Folders"].exists)
+            XCTAssertTrue(app.menuItems["Move Selected Notes…"].exists)
+            if iteration == 0 {
+                let active = XCTAttachment(screenshot: window.screenshot())
+                active.name = "Library plain menu active"
+                active.lifetime = .keepAlways
+                add(active)
+            }
+            app.typeKey(.escape, modifierFlags: [])
+            XCTAssertEqual(organize.frame, organizeFrame)
+            create.click()
+            XCTAssertTrue(app.menuItems["New Note"].exists)
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.95)).click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !self.app.menuItems["New Note"].isHittable })
+            XCTAssertEqual(create.frame, createFrame)
+        }
+        let released = XCTAttachment(screenshot: window.screenshot())
+        released.name = "Library plain controls released"
+        released.lifetime = .keepAlways
+        add(released)
+        sidebarModeControl("Chat").click()
+        let newConversation = app.buttons["scholium.chat.newConversation"].firstMatch
+        XCTAssertTrue(newConversation.waitForExistence(timeout: 5))
+        let frame = newConversation.frame
+        newConversation.hover()
+        XCTAssertEqual(newConversation.frame, frame)
+        let idleScreenshot = window.screenshot()
+        let hovered = XCTAttachment(screenshot: idleScreenshot)
+        hovered.name = "Native sidebar command hover"
+        hovered.lifetime = .keepAlways
+        add(hovered)
+        let press = newConversation.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        press.click(forDuration: 0.2, thenDragTo: press.withOffset(CGVector(dx: 100, dy: 60)))
+        XCTAssertFalse(app.textViews["scholium.chat.message"].exists, "Releasing outside a momentary command cancels activation.")
+        XCTAssertLessThanOrEqual(
+            try sidebarControlInkDifference(window.screenshot(), idleScreenshot, control: frame, window: window.frame), 8,
+            "Release must restore the unboxed resting appearance.")
+        newConversation.click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        let send = app.buttons["scholium.chat.primaryAction"].firstMatch
+        XCTAssertFalse(send.isEnabled)
+        let controlFrames = ["scholium.chat.addMaterial", "scholium.chat.contextMeter", "scholium.chat.configuration", "scholium.chat.primaryAction"].map {
+            app.descendants(matching: .any)[$0].firstMatch.frame
+        }.sorted { $0.minX < $1.minX }
+        for frame in controlFrames { XCTAssertTrue(frame.width >= 28 && frame.height >= 28) }
+        for (left, right) in zip(controlFrames, controlFrames.dropFirst()) { XCTAssertLessThanOrEqual(left.maxX, right.minX) }
+        composer.typeKey(.return, modifierFlags: .command)
+        XCTAssertEqual(composer.value as? String, "")
+        let draft = "Unsent question with a long English label — 尚未发送的长中文研究问题"
+        typeCommittedText(draft, into: composer, in: app)
+        let context = app.buttons["scholium.chat.contextMeter"].firstMatch
+        let contextFrame = context.frame
+        for _ in 0..<2 {
+            context.hover()
+            context.click()
+            XCTAssertTrue(app.popovers.firstMatch.waitForExistence(timeout: 5))
+            app.typeKey(.escape, modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 5) { !self.app.popovers.firstMatch.exists })
+            XCTAssertEqual(context.frame, contextFrame)
+            XCTAssertFalse(context.isSelected)
+            XCTAssertEqual(composer.value as? String, draft)
+        }
+        let options = app.descendants(matching: .any)["scholium.chat.options"].firstMatch
+        options.click()
+        app.typeKey(.escape, modifierFlags: [])
+        app.buttons["scholium.chat.back"].click()
+        let conversation = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation.")).firstMatch
+        XCTAssertTrue(conversation.waitForExistence(timeout: 5))
+        conversation.click()
+        XCTAssertEqual(composer.value as? String, draft)
+        composer.click()
+        options.click()
+        app.menuItems["Find in Conversation"].hover()
+        app.typeKey(.return, modifierFlags: [])
+        let find = app.descendants(matching: .any)["scholium.chat.find.query"].firstMatch
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitUntil(timeout: 3) { NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: find) },
+            "Keyboard menu activation must focus the native Find field.")
+        let focused = XCTAttachment(screenshot: window.screenshot())
+        focused.name = "Native sidebar keyboard focus"
+        focused.lifetime = .keepAlways
+        add(focused)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !find.exists })
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Dark"].click()
+        resizeProofWindow(window, toWidth: 780, height: 640)
+        let darkNarrow = XCTAttachment(screenshot: window.screenshot())
+        darkNarrow.name = "Unboxed sidebar controls — Dark narrow English Chinese draft"
+        darkNarrow.lifetime = .keepAlways
+        add(darkNarrow)
+        XCTAssertEqual(composer.value as? String, draft)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+    }
+
+    private func sidebarControlInkDifference(_ first: XCUIScreenshot, _ second: XCUIScreenshot, control: CGRect, window: CGRect) throws -> CGFloat {
+        func glyph(_ screenshot: XCUIScreenshot) throws -> NSBitmapImageRep {
+            let image = try XCTUnwrap(NSBitmapImageRep(data: screenshot.pngRepresentation)?.cgImage)
+            let scale = CGFloat(image.width) / window.width
+            // Compare the central glyph, leaving native focus effects distinct.
+            let ink = control.insetBy(dx: control.width / 4, dy: control.height / 4)
+            let region = CGRect(
+                x: (ink.minX - window.minX) * scale, y: (ink.minY - window.minY) * scale,
+                width: ink.width * scale, height: ink.height * scale
+            ).integral
+            return NSBitmapImageRep(cgImage: try XCTUnwrap(image.cropping(to: region)))
+        }
+        let a = try glyph(first)
+        let b = try glyph(second)
+        var difference: CGFloat = 0
+        for y in 0..<a.pixelsHigh {
+            for x in 0..<a.pixelsWide {
+                let left = try XCTUnwrap(a.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+                let right = try XCTUnwrap(b.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+                difference = max(
+                    difference,
+                    [
+                        abs(left.redComponent - right.redComponent), abs(left.greenComponent - right.greenComponent),
+                        abs(left.blueComponent - right.blueComponent),
+                    ].max() ?? 0)
+            }
+        }
+        // Native vibrancy can vary by a few channel levels between snapshots.
+        return difference * 255
+    }
+
+    @MainActor
     func testCreationMenusUseTheSelectedFolderAndKeepNewWriting() throws {
         waitForCurrentDocumentSurface()
         app.menuBars.menuBarItems["View"].click()

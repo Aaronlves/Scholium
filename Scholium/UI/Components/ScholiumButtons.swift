@@ -1,39 +1,21 @@
 import SwiftUI
 
 /// Quiet actions embedded in content (message footers, composer accessories,
-/// and attachment actions). Native Button retains activation, keyboard focus,
-/// disabled presentation and accessibility; the shared content feedback owns
-/// only the pointer treatment.
-struct ScholiumContentActionButtonStyle: PrimitiveButtonStyle {
+/// and attachment actions). SwiftUI owns standard activation, focus and
+/// accessibility; this style changes only label ink, never its geometry.
+struct ScholiumContentActionButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
     var restingRole: ScholiumColorRole = .secondaryText
 
     func makeBody(configuration: Configuration) -> some View {
-        Button(role: configuration.role, action: configuration.trigger) {
-            configuration.label
-                .frame(
-                    minWidth: ScholiumGrid.Dimension.preferredCustomTarget,
-                    minHeight: ScholiumGrid.Dimension.preferredCustomTarget
-                )
-                .contentShape(.rect)
-        }
-        .buttonStyle(.borderless)
-        .modifier(ScholiumContentActionFeedback(restingRole: restingRole))
-    }
-}
-
-private struct ScholiumContentActionFeedback: ViewModifier {
-    var restingRole: ScholiumColorRole = .secondaryText
-
-    func body(content: Content) -> some View {
-        content
-            .scholiumContentControlInk(resting: restingRole)
-            .scholiumActivationPointer()
-            .scholiumContentControlPointerFeedback(
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
+        configuration.label
+            .frame(
+                minWidth: ScholiumGrid.Dimension.preferredCustomTarget,
+                minHeight: ScholiumGrid.Dimension.preferredCustomTarget
             )
+            .contentShape(.rect)
+            .foregroundStyle(configuration.role == .destructive ? .red : restingRole.color)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.6 : 1) : 0.5)
     }
 }
 
@@ -56,17 +38,18 @@ private struct ScholiumIconControlModifier: ViewModifier {
 }
 
 extension View {
-    /// A button-backed native menu shares the action's complete activation and
-    /// feedback region, not the smaller borderless pop-up button's image rect.
+    /// Native Menus retain their own activation and accessibility host. Labels
+    /// include the complete target; never wrap a Menu in a primitive Button.
     /// Menu items keep their system-owned style.
     func scholiumContentActionMenu() -> some View {
         menuStyle(.button)
-            .buttonStyle(.plain)
+            .buttonStyle(ScholiumContentActionButtonStyle())
+            .foregroundStyle(.secondary)
+            .tint(nil as Color?)
             .frame(
                 minWidth: ScholiumGrid.Dimension.preferredCustomTarget,
                 minHeight: ScholiumGrid.Dimension.preferredCustomTarget
             )
-            .modifier(ScholiumContentActionFeedback())
     }
 
     func scholiumIconControl() -> some View {

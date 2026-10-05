@@ -102,6 +102,59 @@ struct PerformanceProbeTests {
         }
     #endif
 
+    @Test("Chat entry timing rejects a cancelled visit and records only its replacement's ready viewport")
+    func chatEntryBindsItsMountedLifetime() async throws {
+        let runID = "chat_entry_\(UUID().uuidString)"
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/performance-\(runID)/app-state/raw")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent().deletingLastPathComponent()) }
+        let result = directory.appendingPathComponent("chat.jsonl")
+        var timestamp: UInt64 = 100_000_000
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "chat_entry",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "2",
+            ], bundleID: "com.scholium.qa", now: { timestamp })
+        #expect(probe.measuresChatEntry)
+        let conversationID = UUID()
+        probe.beginChatEntry(in: conversationID, messageCount: 72)
+        let cancelled = try #require(probe.chatEntryID(in: conversationID))
+        timestamp = 110_000_000
+        probe.markChatDetailMounted(cancelled, readerCount: 4)
+        timestamp = 120_000_000
+        probe.markChatReadersHydrated(cancelled) { false }
+        probe.cancelChatEntry()
+
+        timestamp = 1_000_000_000
+        probe.beginChatEntry(in: conversationID, messageCount: 72)
+        let replacement = try #require(probe.chatEntryID(in: conversationID))
+        #expect(replacement != cancelled)
+        timestamp = 1_010_000_000
+        probe.markChatDetailMounted(replacement, readerCount: 4)
+        probe.markChatReadersHydrated(cancelled) { true }
+        timestamp = 1_020_000_000
+        probe.markChatReadersHydrated(replacement) { true }
+        timestamp = 1_050_000_000
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !FileManager.default.fileExists(atPath: result.path), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let lines = try String(contentsOf: result, encoding: .utf8).split(separator: "\n")
+        #expect(lines.count == 1)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(lines[0].utf8)) as? [String: Any])
+        #expect(object["duration_ms"] as? Double == 50)
+        #expect(object["detail_mount_ms"] as? Double == 10)
+        #expect(object["reply_hydration_ms"] as? Double == 10)
+        #expect(object["viewport_position_ms"] as? Double == 30)
+        #expect(object["observed_count"] as? Int == 72)
+        #expect(object["mounted_reader_count"] as? Double == 4)
+        #expect(!lines[0].contains(conversationID.uuidString))
+    }
+
     @Test("Search phases preserve the committed-input and visible-result boundary")
     func searchRecordsDispatchPhase() throws {
         let runID = "search_phase_\(UUID().uuidString)"

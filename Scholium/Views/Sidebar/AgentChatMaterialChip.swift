@@ -102,8 +102,7 @@ struct AgentChatMaterialChip: View {
                         ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.remove.symbol, placement: .action)
                             .foregroundStyle(ScholiumColorRole.primaryText.color)
                     }
-                    .buttonStyle(.borderless)
-                    .scholiumActivationPointer()
+                    .buttonStyle(ScholiumContentActionButtonStyle())
                     .help("Remove Material").accessibilityLabel(Text("Remove material: \(title)"))
                     .focused($removeIsFocused)
                     .opacity(revealsRemove ? 1 : 0)

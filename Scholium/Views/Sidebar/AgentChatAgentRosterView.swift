@@ -128,7 +128,7 @@ struct AgentChatAgentRosterView: View {
             .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
         .help(Text(verbatim: row.name))
         .accessibilityLabel(Text(ScholiumL10n.string("Open Agent: \(row.name)", locale: locale)))
         .accessibilityValue([row.status(locale: locale), row.retainedStatus(locale: locale)].compactMap { $0 }.joined(separator: ". "))

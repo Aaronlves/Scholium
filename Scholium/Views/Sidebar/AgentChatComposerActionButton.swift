@@ -65,6 +65,7 @@ struct AgentChatComposerActionButton: View {
         Button(action: { perform(action) }) {
             AgentChatComposerIcon(content: .action(action.symbol))
                 .contentTransition(ScholiumMotion.symbolReplacementContentTransition(reduceMotion: reduceMotion))
+                .agentChatComposerControl()
         }
         .buttonStyle(ScholiumContentActionButtonStyle())
         .agentChatComposerControl()

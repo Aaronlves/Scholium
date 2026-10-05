@@ -342,9 +342,7 @@ struct ResearchSearchView<Library: View>: View {
         .alert("Save Search", isPresented: $showSaveSearch) {
             TextField("Search name", text: $savedSearchName)
             Button("Cancel", role: .cancel) {}
-                .scholiumActivationPointer()
             Button("Save") { context.save(savedSearchName) }
-                .scholiumActivationPointer()
         } message: {
             Text("Saved searches remain in Scholium’s Application Support folder and never modify a vault.")
         }
@@ -357,14 +355,12 @@ struct ResearchSearchView<Library: View>: View {
         ) {
             TextField("Search name", text: $renamedSearchName)
             Button("Cancel", role: .cancel) { renamingSearch = nil }
-                .scholiumActivationPointer()
             Button("Rename") {
                 if let renamingSearch {
                     context.rename(renamingSearch.id, renamedSearchName)
                 }
                 renamingSearch = nil
             }
-            .scholiumActivationPointer()
             .disabled(renamedSearchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .confirmationDialog(
@@ -375,9 +371,7 @@ struct ResearchSearchView<Library: View>: View {
             Button("Archive and Reset", role: .destructive) {
                 Task { await context.recoverSavedSearches() }
             }
-            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-                .scholiumActivationPointer()
         } message: {
             Text(
                 "Scholium will preserve the unreadable Saved Search file under a unique recovery name, then start with an empty Saved Searches list. No vault files will be changed."
@@ -461,7 +455,7 @@ struct ResearchSearchView<Library: View>: View {
                 } label: {
                     Image(systemName: "paragraphsign")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(ScholiumContentActionButtonStyle())
                 .accessibilityLabel("Matching Paragraphs")
                 .help("Matching Paragraphs")
                 .disabled(selectedParagraphResult == nil)
@@ -470,7 +464,7 @@ struct ResearchSearchView<Library: View>: View {
                 } label: {
                     Image(systemName: "info.circle")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(ScholiumContentActionButtonStyle())
                 .help("Explain Query")
                 .accessibilityLabel("Explain Query")
                 .disabled(explanationText == nil)
@@ -523,45 +517,42 @@ struct ResearchSearchView<Library: View>: View {
     }
 
     private var completionList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(visibleCompletions.enumerated()), id: \.element.id) {
-                index, completion in
-                Button {
-                    apply(completion)
-                } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Search.resultContentSpacing) {
-                        Text(completion.displayText)
-                            .font(ScholiumTypography.exact(.body))
-                            .scholiumContentControlInk(
-                                resting: .primaryText,
-                                emphasized: .accent
-                            )
-                        Text(ScholiumL10n.dynamicString(completion.detail))
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
-                        Spacer(minLength: 0)
+        ScrollViewReader { proxy in
+            List(selection: $completionSelection) {
+                ForEach(Array(visibleCompletions.enumerated()), id: \.element.id) {
+                    index, completion in
+                    Button {
+                        apply(completion)
+                    } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Search.resultContentSpacing) {
+                            Text(completion.displayText)
+                                .font(ScholiumTypography.exact(.body))
+                            Text(ScholiumL10n.dynamicString(completion.detail))
+                                .font(ScholiumTypography.interface(.small))
+                                .scholiumForeground(.secondaryText)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
+                        .frame(minHeight: 32)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-                    .frame(minHeight: 32)
-                    .background(
-                        completionSelection == index
-                            ? ScholiumColorRole.raisedSurfaceBackground.color
-                            : Color.clear
+                    .buttonStyle(.plain)
+                    .tag(index).id(index)
+                    .help(completion.displayText + " · " + completion.detail)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .accessibilityLabel("\(completion.displayText), \(completion.detail)")
+                    .accessibilityAddTraits(
+                        completionSelection == index ? .isSelected : []
                     )
-                    .contentShape(Rectangle())
                 }
-                .scholiumActivationPointer()
-                .buttonStyle(.plain)
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
-                .accessibilityLabel("\(completion.displayText), \(completion.detail)")
-                .accessibilityAddTraits(
-                    completionSelection == index ? .isSelected : []
-                )
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 32)
+            .frame(height: CGFloat(min(6, visibleCompletions.count)) * 44)
+            .onChange(of: completionSelection) { _, index in
+                if let index { proxy.scrollTo(index) }
             }
         }
         .accessibilityElement(children: .contain)
@@ -668,7 +659,6 @@ struct ResearchSearchView<Library: View>: View {
                 Spacer()
                 if let action = presentation.action {
                     Button(action.title) { Task { await context.refresh() } }
-                        .scholiumActivationPointer()
                         .controlSize(.small)
                 }
             }
@@ -806,35 +796,28 @@ struct ResearchSearchView<Library: View>: View {
                 savedSearchName = controller.search.criteria.query
                 showSaveSearch = true
             }
-            .scholiumActivationPointer()
             .disabled(controller.search.criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             if !context.savedSearches.isEmpty {
                 Divider()
                 ForEach(Array(context.savedSearches.enumerated()), id: \.element.id) { index, search in
                     Menu {
                         Button("Run Search") { context.run(search) }
-                            .scholiumActivationPointer()
                         Button("Rename…") {
                             renamedSearchName = search.name
                             renamingSearch = search
                         }
-                        .scholiumActivationPointer()
                         Divider()
                         Button("Move Up") { context.move(search.id, -1) }
-                            .scholiumActivationPointer()
                             .disabled(index == 0)
                         Button("Move Down") { context.move(search.id, 1) }
-                            .scholiumActivationPointer()
                             .disabled(index == context.savedSearches.count - 1)
                         Divider()
                         Button("Delete", role: .destructive) {
                             context.delete(search.id)
                         }
-                        .scholiumActivationPointer()
                     } label: {
                         Text(search.name)
                     }
-                    .scholiumActivationPointer()
                 }
             }
             if context.savedSearchLoadFailure != nil {
@@ -842,7 +825,6 @@ struct ResearchSearchView<Library: View>: View {
                 Button("Archive Unreadable Saved Searches…", role: .destructive) {
                     confirmsSavedSearchRecovery = true
                 }
-                .scholiumActivationPointer()
             }
         } label: {
             Text("Saved Searches")
@@ -917,13 +899,6 @@ struct ResearchSearchView<Library: View>: View {
             controller.selectSearchResult(resultID)
             open(.result(result))
         }
-        .scholiumActivationPointer()
-        .scholiumContentControlPointerFeedback(
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                style: .continuous
-            )
-        )
         .accessibilityAction {
             controller.selectSearchResult(resultID)
             open(.result(result))
@@ -940,7 +915,7 @@ struct ResearchSearchView<Library: View>: View {
                 Button("Show \(note.paragraphRanges.count) Matching Paragraphs") {
                     controller.selectSearchResult(resultID)
                     paragraphNote = note
-                }.buttonStyle(.borderless)
+                }.buttonStyle(.plain)
             }.tag(resultID)
         } else {
             card.tag(resultID)

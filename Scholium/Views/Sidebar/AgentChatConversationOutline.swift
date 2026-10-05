@@ -45,7 +45,7 @@ struct AgentChatConversationOutline: View {
                             .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget, alignment: .leading)
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
                         .accessibilityIdentifier("scholium.chat.outline.\(message.id)")
                         Divider()
                     }

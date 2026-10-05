@@ -115,6 +115,7 @@ struct AgentChatQuestionForm: View {
                 if !isSubmitting, let question = currentQuestion, question.options.isEmpty || question.allowsOther {
                     Button(action: advance) {
                         AgentChatComposerIcon(content: .action(questionIndex == questions.count - 1 ? "arrow.up.circle.fill" : "arrow.right.circle.fill"))
+                            .agentChatComposerControl()
                     }
                     .buttonStyle(ScholiumContentActionButtonStyle())
                     .agentChatComposerControl()
@@ -125,7 +126,7 @@ struct AgentChatQuestionForm: View {
             }.buttonStyle(ScholiumContentActionButtonStyle()).controlSize(.regular)
 
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .textFieldStyle(.roundedBorder)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.chat.questions")

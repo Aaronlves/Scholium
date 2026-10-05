@@ -7,18 +7,28 @@ import WebKit
 /// Route transcript gestures before dispatch; native details and popovers
 /// retain their own normal scrolling. This view owns no offset or geometry.
 struct AgentChatScrollBoundary: NSViewRepresentable {
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     func makeNSView(context: Context) -> BoundaryView { BoundaryView() }
-    func updateNSView(_ view: BoundaryView, context: Context) {}
+    func updateNSView(_ view: BoundaryView, context: Context) { view.setActive(surfaceVisibility.isActive) }
     static func dismantleNSView(_ view: BoundaryView, coordinator: ()) { view.invalidate() }
 
     final class BoundaryView: NSView {
         private var monitor: Any?
         private var route = AgentChatWheelRoute()
+        private(set) var isActive = true
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            updateMonitor()
+        }
+        func setActive(_ active: Bool) {
+            guard isActive != active else { return }
+            isActive = active
+            updateMonitor()
+        }
+        private func updateMonitor() {
             invalidate()
-            guard window != nil else { return }
+            guard isActive, window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDown]) { [weak self] event in
                 guard let self else { return event }
                 return self.routeEvent(event)

@@ -218,7 +218,7 @@ struct AgentChatComposerCandidates: View {
                                     Spacer(minLength: 0)
                                 }.frame(height: 34).contentShape(Rectangle())
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.plain)
                             .help([candidate.title, candidate.detail].filter { !$0.isEmpty }.joined(separator: "\n"))
                             .listRowSeparator(.hidden)
                             .tag(index).id(candidate.id)

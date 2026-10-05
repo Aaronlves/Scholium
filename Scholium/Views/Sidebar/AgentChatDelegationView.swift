@@ -59,7 +59,7 @@ struct AgentChatDelegationView: View {
                             }
                             .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget, alignment: .leading)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
                         .disabled(!canOpenAgent)
                         .help(Text(verbatim: name))
                         .accessibilityLabel(Text(ScholiumL10n.string("Open Agent: \(name)", locale: locale)))

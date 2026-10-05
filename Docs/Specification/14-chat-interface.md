@@ -202,10 +202,10 @@ never removes native controls from keyboard traversal or accessibility, changes
 layout, or moves the reading position. Full Help and accessible names identify
 each action; no More menu replaces these direct actions. Inapplicable actions
 stay absent; temporarily unavailable branch actions retain disabled state.
-The action row shares one compact content-control treatment with composer
-accessories, attachment removal and queue actions: equal activation targets and
-consistent pointer feedback, while native controls retain focus and disabled
-behavior. Revealing the row and highlighting one action are separate states.
+The action row follows the [Sidebar semantic control conventions](06-interface-shell-and-library.md#183-library-and-search)
+with composer accessories, attachment removal and queue actions: equal stable
+targets and the shared unboxed pressed-ink treatment. Revealing the row and interacting with
+one action are separate states.
 Floating Changes/Agents controls use native button chrome; menu items, primary
 delivery controls, disclosures and navigation rows retain their own categories.
 Native text selection retains Copy and Ask About Selection in its context menu;
@@ -487,9 +487,9 @@ a tool-input request instead stops its turn and explains this consequence. There
 no duplicate Stop action in the request header.
 They do not show Allow Once or an expanded protocol payload. Choices begin
 unselected; the selected option remains apparent. Operation approvals retain
-their own operation, scope and allow/decline presentation. Secondary actions use native borderless controls; primary delivery and
-authorization actions use native emphasized controls. Permissions retain explicit
-action labels, while message delivery uses circular symbols. The approval card
+their own operation, scope and allow/decline presentation. Secondary actions use
+the shared unboxed treatment; message delivery uses circular system-accent symbols;
+authorization actions use native emphasized controls and explicit action labels. The approval card
 leads with the requested action and a readable overview of affected files or
 network access, retaining exact targets and restrictions in that overview. It
 shows no Access Details or Technical Details controls and does not repeat internal

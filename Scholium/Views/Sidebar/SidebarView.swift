@@ -315,19 +315,8 @@ struct SidebarView: View {
             Spacer(minLength: 0)
             Button(action: clearAllFilters) {
                 Text("Clear")
-                    .scholiumContentControlInk(
-                        resting: .secondaryText,
-                        emphasized: .accent
-                    )
             }
-            .buttonStyle(.borderless)
-            .scholiumActivationPointer()
-            .scholiumContentControlPointerFeedback(
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
+            .buttonStyle(ScholiumContentActionButtonStyle())
         }
         .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
         .accessibilityElement(children: .contain)
@@ -348,19 +337,8 @@ struct SidebarView: View {
                     context.selectTriptychWorkspace(controller.library.workspaceSlot)
                 } label: {
                     Text("Retry")
-                        .scholiumContentControlInk(
-                            resting: .secondaryText,
-                            emphasized: .accent
-                        )
                 }
-                .buttonStyle(.borderless)
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
+                .buttonStyle(ScholiumContentActionButtonStyle())
             }
             .accessibilityIdentifier("scholium.libraryError")
         } else if folderTree.isEmpty {

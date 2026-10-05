@@ -91,10 +91,7 @@ struct AgentChatConversationRow: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(title)
                         .font(.body.weight(conversation.unreadAt != nil ? .semibold : .medium))
-                        .scholiumContentControlInk(
-                            resting: .primaryText,
-                            emphasized: .accent
-                        )
+                        .foregroundStyle(.primary)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                         .layoutPriority(1)
                     Spacer(minLength: ScholiumSidebarLayout.textSpacing)

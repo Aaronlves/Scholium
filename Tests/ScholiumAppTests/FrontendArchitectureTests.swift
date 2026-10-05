@@ -1565,7 +1565,8 @@ struct FrontendArchitectureTests {
         #expect(headerControlSource.contains(".menuStyle(.button)"))
         #expect(headerControlSource.contains(".menuIndicator(.hidden)"))
         #expect(headerControlSource.contains(".foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)"))
-        #expect(headerControlSource.contains(".buttonStyle(.plain)"))
+        #expect(headerControlSource.contains(".buttonStyle(ScholiumContentActionButtonStyle())"))
+        #expect(buttonStylesSource.contains("struct ScholiumContentActionButtonStyle: ButtonStyle"))
         #expect(!headerControlSource.contains(".scholiumContentControlPointerFeedback("))
         #expect(!headerControlSource.contains("ScholiumGrid.Apparatus"))
         #expect(!headerControlSource.contains("ScholiumGrid.Document"))
@@ -1613,10 +1614,7 @@ struct FrontendArchitectureTests {
         #expect(notificationsSource.contains("%lld notifications"))
         #expect(notificationsSource.contains("notificationsPopover.show(relativeTo: item)"))
         #expect(!notificationsSource.contains("item.view = NSHostingView"))
-        #expect(
-            buttonStylesSource.components(separatedBy: ".tint(nil as Color?)").count
-                == 2
-        )
+        #expect(buttonStylesSource.contains(".tint(nil as Color?)"))
         #expect(!notificationsSource.contains("SidebarAttentionAlertSurface"))
         #expect(buttonStylesSource.contains(".buttonStyle(.glass)"))
         #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)

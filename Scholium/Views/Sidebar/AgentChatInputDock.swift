@@ -77,7 +77,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
                 .focusEffectDisabled()
                 .focused($requestHasFocus)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(ScholiumContentActionButtonStyle())
         .padding(ScholiumSidebarLayout.rowInset)
         .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
         .tint(nil as Color?)

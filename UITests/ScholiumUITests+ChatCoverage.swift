@@ -2,6 +2,192 @@ import AppKit
 @preconcurrency import XCTest
 
 extension ScholiumUITests {
+    @MainActor
+    func testChatEntryWithReducedMotionKeepsHiddenDetailInert() throws {
+        waitForCurrentDocumentSurface()
+        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let original = try Data(contentsOf: note)
+        app.terminate()
+        let fixture = try seedChatEntryFixture()
+        app = configuredApplication(sessionID: UUID(), appearance: .light)
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        sidebarModeControl("Chat").click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        for item in [fixture.short, fixture.long, fixture.short] {
+            chatDeletionRow(item.id).click()
+            XCTAssertTrue(composer.waitForExistence(timeout: 10))
+            XCTAssertEqual(composer.value as? String, item.draft)
+            returnToChatDeletionList()
+            XCTAssertTrue(waitUntil(timeout: 3) { !composer.exists })
+            XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.conversations"].firstMatch.exists)
+        }
+        chatDeletionRow(fixture.short.id).click()
+        XCTAssertEqual(composer.value as? String, fixture.short.draft)
+        app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
+        app.menuItems["Find in Conversation"].hover()
+        app.typeKey(.return, modifierFlags: [])
+        let find = app.descendants(matching: .any)["scholium.chat.find.query"].firstMatch
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: find) })
+        returnToChatDeletionList()
+        XCTAssertTrue(waitUntil(timeout: 3) { !find.exists && !composer.exists })
+        chatDeletionRow(fixture.short.id).click()
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: find) })
+        app.typeKey(.escape, modifierFlags: [])
+        let image = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        image.name = "Reduced Motion Chat entry — same retained native draft"
+        image.lifetime = .keepAlways
+        add(image)
+        XCTAssertEqual(try Data(contentsOf: note), original)
+        let archive = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.archive)) as? [String: Any])
+        let conversations = try XCTUnwrap(archive["conversations"] as? [[String: Any]])
+        XCTAssertEqual(conversations.compactMap { ($0["messages"] as? [Any])?.count }.sorted(), [2, 72])
+    }
+
+    /// App-owned timings exclude XCTest's click/idle wait. The archive has no
+    /// provider threads and keeps the standard disposable Triptych unchanged.
+    @MainActor
+    func testChatEntryMeasuresShortLongAndRepeatedNativeNavigation() throws {
+        waitForCurrentDocumentSurface()
+        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let original = try Data(contentsOf: note)
+        app.terminate()
+        let fixture = try seedChatEntryFixture()
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let runID = "chat-entry-\(UUID().uuidString)"
+        let raw = repository.appendingPathComponent(".build/performance-\(runID)/app-state/raw")
+        try FileManager.default.createDirectory(at: raw, withIntermediateDirectories: true)
+        let results = raw.appendingPathComponent("chat-entry.jsonl")
+        app = configuredApplication(sessionID: UUID(), appearance: .light)
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = results.path
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_METRIC"] = "chat_entry"
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_RUN_ID"] = runID
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE"] = "0"
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"] = "8"
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        sidebarModeControl("Chat").click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        var expectedSamples = 0
+        func records() -> [[String: Any]] {
+            guard let text = try? String(contentsOf: results, encoding: .utf8) else { return [] }
+            return text.split(separator: "\n").compactMap {
+                (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? [String: Any]
+            }
+        }
+        func awaitEntry(_ item: (id: UUID, turns: Int, draft: String)) throws {
+            expectedSamples += 1
+            XCTAssertTrue(waitUntil(timeout: 15) { records().count == expectedSamples }, "The native Chat entry did not reach hydrated, positioned readiness.")
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            XCTAssertEqual(composer.value as? String, item.draft)
+            let record = try XCTUnwrap(records().last)
+            XCTAssertEqual(record["observed_count"] as? Int, item.turns * 2)
+            XCTAssertEqual(record["mounted_reader_count"] as? Double, Double(min(4, item.turns * 2)))
+            print("CHAT_ENTRY sample=\(expectedSamples - 1) record=\(record)")
+        }
+        for item in [fixture.short, fixture.long] {
+            for visit in 0..<3 {
+                let row = chatDeletionRow(item.id)
+                XCTAssertTrue(row.waitForExistence(timeout: 10))
+                row.click()
+                try awaitEntry(item)
+                if visit == 0 {
+                    let image = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+                    image.name = "Native Chat entry settled — \(item.turns) exchanges"
+                    image.lifetime = .keepAlways
+                    add(image)
+                }
+                returnToChatDeletionList()
+                XCTAssertTrue(waitUntil(timeout: 3) { !composer.exists }, "The retained detail is inaccessible from the list")
+            }
+        }
+        // Keyboard activation follows the same native menu route as pointer entry.
+        let shortRow = chatDeletionRow(fixture.short.id)
+        shortRow.rightClick()
+        let open = app.menuItems["Open Conversation"].firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.hover()
+        app.typeKey(.return, modifierFlags: [])
+        try awaitEntry(fixture.short)
+        returnToChatDeletionList()
+        chatDeletionRow(fixture.long.id).click()
+        try awaitEntry(fixture.long)
+        composer.click()
+        let editedDraft = fixture.long.draft + " — retained native edit"
+        typeCommittedText(editedDraft, into: composer, in: app)
+        app.typeKey("z", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) { composer.value as? String == fixture.long.draft })
+        app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
+        app.menuItems["Find in Conversation"].hover()
+        app.typeKey(.return, modifierFlags: [])
+        let find = app.descendants(matching: .any)["scholium.chat.find.query"].firstMatch
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: find) })
+        app.typeKey(.escape, modifierFlags: [])
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Dark"].click()
+        resizeProofWindow(app.windows.firstMatch, toWidth: 780, height: 640)
+        let finalImage = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        finalImage.name = "Chat entry retained draft and history — Dark narrow"
+        finalImage.lifetime = .keepAlways
+        add(finalImage)
+        XCTAssertEqual(composer.value as? String, fixture.long.draft)
+        XCTAssertEqual(records().count, 8)
+        XCTAssertEqual(try Data(contentsOf: note), original)
+        let archive = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.archive)) as? [String: Any])
+        let conversations = try XCTUnwrap(archive["conversations"] as? [[String: Any]])
+        XCTAssertEqual(conversations.compactMap { ($0["messages"] as? [[String: Any]])?.count }.sorted(), [2, 72])
+        print("CHAT_ENTRY_RESULTS \(results.path)")
+    }
+
+    @MainActor
+    private func seedChatEntryFixture() throws -> (
+        short: (id: UUID, turns: Int, draft: String), long: (id: UUID, turns: Int, draft: String), archive: URL
+    ) {
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: triptychDirectory.appendingPathComponent(".scholium/manifest.json"))) as? [String: Any])
+        let triptychID = try XCTUnwrap(manifest["id"] as? String)
+        let root = homeDirectory.appendingPathComponent("ApplicationSupport/Chat/\(triptychID)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let short = (id: UUID(), turns: 1, draft: "Short unsent draft — 尚未发送。")
+        let long = (id: UUID(), turns: 36, draft: "Long unsent draft — 保留输入、历史和选择。")
+        let conversations = [short, long].map { item -> [String: Any] in
+            let messages = (0..<item.turns).flatMap { index -> [[String: Any]] in
+                let turn = "synthetic-turn-\(index)"
+                return [
+                    [
+                        "id": "question-\(index)", "role": "user", "turnID": turn,
+                        "text": "Synthetic question \(index + 1). 请核对来源和解释边界。", "attachments": [], "localMaterials": [],
+                    ],
+                    [
+                        "id": "reply-\(index)", "role": "assistant", "phase": "final_answer", "turnID": turn,
+                        "text": "## Synthetic reply \(index + 1)\n\n"
+                            + String(repeating: "A disposable source-faithful paragraph. 中文与 English 合成材料，保留研究者控制。\n\n", count: 4)
+                            + "| Claim | Status |\n|---|---|\n| Synthetic | Reported |\n\nFinal retained passage \(index + 1).",
+                        "attachments": [], "localMaterials": [],
+                    ],
+                ]
+            }
+            return [
+                "id": item.id.uuidString, "triptychID": triptychID,
+                "title": "QA \(item.turns)-exchange conversation", "permission": "ask",
+                "preferences": ["webSearch": "runtimeDefault"], "turns": [:], "childDrafts": [:],
+                "draft": item.draft, "attachments": [], "localMaterials": [], "messages": messages,
+                "queuedMessages": [], "updatedAt": Date().timeIntervalSinceReferenceDate,
+            ]
+        }
+        let archive = root.appendingPathComponent("conversations.json")
+        try JSONSerialization.data(withJSONObject: ["version": 12, "conversations": conversations]).write(to: archive, options: .atomic)
+        return (short, long, archive)
+    }
+
     /// The shared setup transport must preserve a draft's newlines without
     /// accidentally dispatching Return to the composer's submit action.
     @MainActor

@@ -30,17 +30,10 @@ struct AgentChatActivitySummary: View {
                             .multilineTextAlignment(.leading)
                             .lineLimit(2)
                             .underline()
-                            .scholiumContentControlInk(resting: .primaryText, emphasized: .accent)
+                            .foregroundStyle(.tint)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.link)
-                    .scholiumActivationPointer()
-                    .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
-                    )
                     .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget, alignment: .leading)
                     .help(Text("Open Note", bundle: .module))
                     .accessibilityLabel(

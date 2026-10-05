@@ -19,7 +19,7 @@ private struct AgentChatOutgoingPageInteraction: ViewModifier {
 
 /// Window-local routing and retained page presentation; runtime state stays in the controller.
 struct AgentChatView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.controlActiveState) private var activeState
     @ObservedObject var controller: AgentChatController
     let transcriptReaderID: UUID
@@ -36,6 +36,8 @@ struct AgentChatView: View {
     var pendingDocuments: [DocumentChangeSummary]? = nil
     var changesError: String? = nil
     @State private var showsConversationList = true
+    @State private var hasPresentedDetail = false
+    @State private var presentedConversationID: UUID?
     @State private var listState = AgentChatConversationListState()
     @State private var detailStore = AgentChatDetailPresentationStore()
     private var detailPresentation: AgentChatDetailPresentation {
@@ -65,11 +67,20 @@ struct AgentChatView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            if showsConversationList {
-                listPage
-            } else {
-                detailPage
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                if showsConversationList { listPage }
+                // Retain one visited page, rather than recreating its readers
+                // on Back/reopen. A different selection replaces that lifetime.
+                if hasPresentedDetail && (!showsConversationList || presentedConversationID == controller.selectedID) {
+                    detailPage
+                        .offset(x: showsConversationList ? geometry.size.width : 0)
+                        .opacity(showsConversationList ? 0 : 1)
+                        .environment(\.scholiumDocumentSurfaceVisibility, isVisible && !showsConversationList ? .active : .retained)
+                        .id(controller.selectedID)
+                        // An already hidden page has no outgoing transition.
+                        .transition(showsConversationList ? .identity : pageTransition(from: .trailing))
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -102,6 +113,7 @@ struct AgentChatView: View {
             markVisibleConversationRead()
         }
         .onChange(of: controller.selectedID) { _, id in
+            if showsConversationList { hasPresentedDetail = false } else { presentedConversationID = id }
             _ = detailStore.presentation(for: id)
             diagnosticsPresentation = nil
             renameID = nil
@@ -115,12 +127,16 @@ struct AgentChatView: View {
         .onChange(of: controller.selected?.unreadAt) { _, _ in markVisibleConversationRead() }
         .onChange(of: isVisible) { _, visible in
             if !visible {
+                PerformanceProbe.shared.cancelChatEntry()
                 diagnosticsPresentation = nil
             }
             markVisibleConversationRead()
         }
         .onAppear { markVisibleConversationRead() }
-        .onDisappear { controller.displayTranscript(nil, readerID: transcriptReaderID) }
+        .onDisappear {
+            PerformanceProbe.shared.cancelChatEntry()
+            controller.displayTranscript(nil, readerID: transcriptReaderID)
+        }
         .onChange(of: controller.contextPresentationID, initial: true) { _, request in
             guard request != nil else { return }
             showDetail(animated: false)
@@ -177,9 +193,7 @@ struct AgentChatView: View {
             showAccountUsage: { showsAccountUsage = true },
             diagnosticsPresentation: $diagnosticsPresentation
         )
-        .id(controller.selectedID)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .transition(pageTransition(from: .trailing))
     }
 
     private func newConversation() {
@@ -200,12 +214,17 @@ struct AgentChatView: View {
     }
 
     private func showList() {
+        PerformanceProbe.shared.cancelChatEntry()
         detailPresentation.messageIsFocused = false
         withAnimation(navigationAnimation) { showsConversationList = true }
     }
 
     private func showDetail(animated: Bool = true) {
-        withAnimation(animated ? navigationAnimation : nil) { showsConversationList = false }
+        withAnimation(animated ? navigationAnimation : nil) {
+            presentedConversationID = controller.selectedID
+            hasPresentedDetail = true
+            showsConversationList = false
+        }
     }
 
     private func renameConversation(_ conversation: AgentChatConversation) {

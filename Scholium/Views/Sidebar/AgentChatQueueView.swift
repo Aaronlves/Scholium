@@ -50,7 +50,7 @@ struct AgentChatQueueView: View {
             }
         }
         .font(.callout)
-        .buttonStyle(.borderless)
+        .buttonStyle(ScholiumContentActionButtonStyle())
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .tint(nil as Color?)

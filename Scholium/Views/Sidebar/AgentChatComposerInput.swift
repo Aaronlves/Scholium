@@ -6,6 +6,7 @@ import SwiftUI
 /// whitespace, selection, Undo, marked text and Return commands.
 struct AgentChatComposerInput: NSViewRepresentable {
     @Environment(\.isEnabled) private var environmentIsEnabled
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     @Binding var text: String
     @Binding var isFocused: Bool
     let nativeSession: AgentChatComposerSession
@@ -29,6 +30,12 @@ struct AgentChatComposerInput: NSViewRepresentable {
         guard !mount.isRetired else { return }
         mount.install(nativeSession)
         let host = nativeSession.host
+        guard surfaceVisibility.isActive else {
+            host.suspend()
+            host.isHidden = true
+            return
+        }
+        host.isHidden = false
         // An outgoing representable can still carry a Binding render snapshot.
         // Only the captured conversation's live owner may replace native input.
         let modelText = readCurrentDraft()

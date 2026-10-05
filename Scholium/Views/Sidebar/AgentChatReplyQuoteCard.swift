@@ -27,10 +27,7 @@ struct AgentChatReplyQuoteCard: View {
                 if let remove {
                     Button(action: remove) {
                         ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.remove.symbol, placement: .action)
-                            .scholiumContentControlInk(
-                                resting: .secondaryText,
-                                emphasized: .primaryText
-                            )
+                            .foregroundStyle(.secondary)
                     }
                     .buttonStyle(ScholiumContentActionButtonStyle())
                     .accessibilityLabel("Remove Quote")

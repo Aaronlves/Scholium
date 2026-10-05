@@ -69,7 +69,7 @@ struct ScholiumSidebarHeaderIcon: View {
 extension View {
     func scholiumSidebarHeaderControl() -> some View {
         self.menuStyle(.button)
-            .buttonStyle(.plain)
+            .buttonStyle(ScholiumContentActionButtonStyle())
             .menuIndicator(.hidden)
             .tint(nil as Color?)
     }

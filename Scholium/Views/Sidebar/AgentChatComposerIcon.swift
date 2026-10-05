@@ -7,7 +7,6 @@ struct AgentChatComposerIcon: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.scholiumContentControlIsEmphasized) private var isEmphasized
 
     enum Content {
         case add
@@ -44,7 +43,7 @@ struct AgentChatComposerIcon: View {
         if case .action = content {
             return Color(nsColor: isEnabled ? .controlAccentColor : .disabledControlTextColor)
         }
-        return Color(nsColor: isEnabled && isEmphasized ? .labelColor : .secondaryLabelColor)
+        return Color(nsColor: isEnabled ? .secondaryLabelColor : .disabledControlTextColor)
     }
 
     private var addImage: NSImage {

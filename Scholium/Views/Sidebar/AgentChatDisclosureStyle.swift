@@ -62,10 +62,9 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
             } label: {
                 indicator
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(ScholiumContentActionButtonStyle())
             .foregroundStyle(.secondary)
             .tint(.primary)
-            .scholiumActivationPointer()
             .focused($isFocused)
             .frame(width: indicatorWidth)
             .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
@@ -97,10 +96,9 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
                     .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget, alignment: .leading)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(ScholiumContentActionButtonStyle())
                 .foregroundStyle(.secondary)
                 .tint(.primary)
-                .scholiumActivationPointer()
                 .focused($isFocused)
                 .scholiumHoverState { isHovered = $0 }
                 .accessibilityValue(configuration.isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
