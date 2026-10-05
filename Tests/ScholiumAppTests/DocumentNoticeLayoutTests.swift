@@ -33,9 +33,29 @@ struct DocumentNoticeLayoutTests {
                                 .init(
                                     "Transaction Recovery Required",
                                     message: Text("2 interrupted operations need file-by-file inspection."),
-                                    systemImage: "exclamationmark.arrow.triangle.2.circlepath"),
-                                region: .workspaceBanner
+                                    systemImage: "exclamationmark.arrow.triangle.2.circlepath")
                             ) { action("Inspect Recovery…") }
+                            ScholiumRecoveryNotice(
+                                .init(
+                                    "Identity Recovery Required",
+                                    message: Text(
+                                        "This note remains readable, but identity-dependent restore and file changes are unavailable until its portable records finish moving from Archive/哲学与语言/source-note.md to Drafts/Identity and Interpretation/身份与解释/research-note.md."
+                                    ),
+                                    detail: Text("Portable records could not finish moving. 原文与未保存的编辑仍然保留，请重试身份记录恢复。"),
+                                    systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                            ) {
+                                action("Retry Identity Recovery")
+                                    .accessibilityHint("Retries migration of app-owned records without changing the Markdown note.")
+                            }
+                            ScholiumRecoveryNotice(
+                                .init(
+                                    "Confirm Note Identity",
+                                    message: Text(verbatim: IdentityResolutionPresentation.ambiguity(candidateCount: 2, locale: Locale(identifier: "en"))),
+                                    systemImage: "questionmark.folder")
+                            ) {
+                                action("Choose Identity…")
+                                    .accessibilityHint("Shows the previous note locations without changing the Markdown file.")
+                            }
                         }
                         .frame(width: width)
                         .padding(8)
@@ -46,7 +66,7 @@ struct DocumentNoticeLayoutTests {
                             .init(increasedContrast: dark, reduceTransparency: dark, reduceMotion: true))
                 )
                 let window = NSWindow(
-                    contentRect: .init(x: 0, y: 0, width: width + 16, height: 600),
+                    contentRect: .init(x: 0, y: 0, width: width + 16, height: 900),
                     styleMask: [.titled], backing: .buffered, defer: false)
                 window.isReleasedWhenClosed = false
                 window.contentView = host
@@ -59,7 +79,11 @@ struct DocumentNoticeLayoutTests {
                     host.layoutSubtreeIfNeeded()
                     try await Task.sleep(for: .milliseconds(20))
                 }
-                #expect(actionFrames.count == 3)
+                #expect(
+                    Set(actionFrames.keys) == [
+                        "Dismiss", "Compare Changes", "Inspect Recovery…",
+                        "Retry Identity Recovery", "Choose Identity…",
+                    ])
                 let visibleFrame = CGRect(origin: .zero, size: host.bounds.size)
                 for frame in actionFrames.values {
                     #expect(frame.width > 0 && frame.height >= 20)

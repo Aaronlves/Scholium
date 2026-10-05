@@ -253,17 +253,15 @@ public enum SafeMarkdownRenderer {
                 ))
         }
 
-        let mappedLinkSpans = Set(
-            semantic.links.compactMap { link -> SourceSpan? in
-                guard link.syntax == .embed, !link.isExternal,
-                    link.fragment == nil,
-                    embeddedImages[link.target] != nil
-                else { return nil }
-                return link.span
-            })
-        let mappedImageSpans = Set(
-            semantic.inlines.filter { $0.kind == .image }.map(\.span)
-        ).intersection(mappedLinkSpans)
+        var imageSpans = AdmittedImageSpanWalker(
+            bodyMapper: SemanticSourceMapper(document.body),
+            sourceMapper: SemanticSourceMapper(document.rawContent),
+            bodyStart: bodyStart,
+            embeddedImages: embeddedImages)
+        if !embeddedImages.isEmpty {
+            imageSpans.visit(Document(parsing: document.body, options: [.parseBlockDirectives]))
+        }
+        let mappedImageSpans = imageSpans.spans
         for (index, link) in semantic.links.enumerated() where link.syntax != .markdown {
             // Only a matched Markdown Image may reach visitImage. Other embeds
             // keep their established navigation-only presentation.
@@ -908,12 +906,45 @@ public enum SafeMarkdownRenderer {
             .replacingOccurrences(of: "'", with: "&#39;")
     }
 
+    fileprivate static func admittedImage(
+        source: String?,
+        embeddedImages: [String: RenderedMarkdownImage]
+    ) -> RenderedMarkdownImage? {
+        guard let source,
+            !source.contains("?"), !source.contains("#"),
+            !source.hasPrefix("//"),
+            URLComponents(string: source)?.scheme == nil
+        else { return nil }
+        return embeddedImages[source.removingPercentEncoding ?? source]
+    }
+
     fileprivate static func escapeAttribute(_ value: String) -> String {
         escapeHTML(value).replacingOccurrences(of: "`", with: "&#96;")
     }
 
     fileprivate static func sourceAttributes(_ span: SourceSpan) -> String {
         "data-source-line=\"\(span.start.line)\" data-source-end-line=\"\(span.end.line)\" data-source-utf16-start=\"\(span.utf16LowerBound)\" data-source-utf16-end=\"\(span.utf16UpperBound)\" data-source-utf8-start=\"\(span.utf8LowerBound)\" data-source-utf8-end=\"\(span.utf8UpperBound)\""
+    }
+}
+
+private struct AdmittedImageSpanWalker: MarkupWalker {
+    let bodyMapper: SemanticSourceMapper
+    let sourceMapper: SemanticSourceMapper
+    let bodyStart: Int
+    let embeddedImages: [String: RenderedMarkdownImage]
+    var spans: Set<SourceSpan> = []
+
+    mutating func visitImage(_ image: Image) {
+        defer { descendInto(image) }
+        // The parser owns entity and escape decoding. Map its exact Image node
+        // back to the full Note rather than consulting a lexical link target.
+        guard SafeMarkdownRenderer.admittedImage(source: image.source, embeddedImages: embeddedImages) != nil,
+            let range = image.range,
+            let relative = bodyMapper.nsRange(for: range),
+            let span = sourceMapper.span(
+                for: NSRange(location: bodyStart + relative.location, length: relative.length))
+        else { return }
+        spans.insert(span)
     }
 }
 
@@ -1056,21 +1087,14 @@ private struct SafeHTMLVisitor: MarkupWalker {
         result += "</a>"
     }
     mutating func visitImage(_ image: Image) {
-        if let source = image.source,
-            !source.contains("?"), !source.contains("#"),
-            !source.hasPrefix("//"),
-            URLComponents(string: source)?.scheme == nil
-        {
-            let destination = source.removingPercentEncoding ?? source
-            if let embedded = embeddedImages[destination] {
-                let title =
-                    image.title.map {
-                        " title=\"\(SafeMarkdownRenderer.escapeAttribute($0))\""
-                    } ?? ""
-                result +=
-                    "<img class=\"scholium-embedded-image\" src=\"data:\(embedded.mimeType);base64,\(embedded.data.base64EncodedString())\" alt=\"\(SafeMarkdownRenderer.escapeAttribute(image.plainText))\"\(title)>"
-                return
-            }
+        if let embedded = SafeMarkdownRenderer.admittedImage(source: image.source, embeddedImages: embeddedImages) {
+            let title =
+                image.title.map {
+                    " title=\"\(SafeMarkdownRenderer.escapeAttribute($0))\""
+                } ?? ""
+            result +=
+                "<img class=\"scholium-embedded-image\" src=\"data:\(embedded.mimeType);base64,\(embedded.data.base64EncodedString())\" alt=\"\(SafeMarkdownRenderer.escapeAttribute(image.plainText))\"\(title)>"
+            return
         }
         result += "<span class=\"scholium-media-placeholder\">Image"
         if let title = image.title, !title.isEmpty {

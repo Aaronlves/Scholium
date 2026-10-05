@@ -20,6 +20,7 @@ export function createLiveProjectionNavigation(options: {
   mode(state: EditorState): EditorMode;
   projections: LiveProjectionIndexController;
   mermaidPresentations(state: EditorState): readonly ProjectionSourceRange[];
+  imagePresentations(state: EditorState): readonly ProjectionSourceRange[];
 }): {extension: Extension} {
   function blockRanges(state: EditorState) {
     return [
@@ -29,6 +30,8 @@ export function createLiveProjectionNavigation(options: {
         to,
         kind: "mermaid" as const,
       })),
+      ...options.imagePresentations(state)
+        .map(({from, to}) => ({from, to, kind: "image" as const})),
     ].sort((left, right) => left.from - right.from || left.to - right.to);
   }
 

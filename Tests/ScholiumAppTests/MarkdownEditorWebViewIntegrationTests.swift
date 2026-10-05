@@ -8248,6 +8248,14 @@ struct MarkdownEditorWebViewIntegrationTests {
             sourceBox.writingIndexContextKey = contextKey
         }
 
+        func configureImageResources(
+            _ query: @escaping EditorImageResourceQuery,
+            contextKey: String
+        ) {
+            sourceBox.imageResourcesQuery = query
+            sourceBox.imageResourceContextKey = contextKey
+        }
+
         func hideWindowForUnfocusedInputTesting() { window.orderOut(nil) }
 
         init(
@@ -8267,6 +8275,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             laysOutForPointerTesting: Bool = false,
             writingContinuationEnabled: Bool = false,
             writingContinuationQuery: @escaping EditorWritingContinuationQuery = { _, _ in .unavailable(nil) },
+            imageResourcesQuery: @escaping EditorImageResourceQuery = { _ in [:] },
             onTitleRename: @escaping @MainActor (String, String) async throws -> String = {
                 _, requested in requested
             }
@@ -8295,6 +8304,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             sourceBox.presentationCSS = initialPresentationCSS
             sourceBox.writingContinuationEnabled = writingContinuationEnabled
             sourceBox.writingContinuationQuery = writingContinuationQuery
+            sourceBox.imageResourcesQuery = imageResourcesQuery
             window = NSWindow(
                 contentRect: NSRect(
                     origin: .zero,
@@ -8996,6 +9006,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var writingContinuationModel = "model-a"
         @Published var writingIndexContextKey = ""
         var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
+        @Published var imageResourceContextKey = "image-harness"
+        var imageResourcesQuery: EditorImageResourceQuery = { _ in [:] }
         var activatedLinks: [String] = []
         let mode: MarkdownEditorMode
         init(_ source: String, mode: MarkdownEditorMode, documentTitle: String) {
@@ -9090,7 +9102,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                 writingContinuationEnabled: sourceBox.writingContinuationEnabled,
                 writingContinuationContextKey: sourceBox.writingContinuationModel,
                 writingIndexContextKey: sourceBox.writingIndexContextKey,
-                writingContinuationQuery: sourceBox.writingContinuationQuery
+                writingContinuationQuery: sourceBox.writingContinuationQuery,
+                imageResourceContextKey: sourceBox.imageResourceContextKey,
+                imageResourcesQuery: sourceBox.imageResourcesQuery
             )
         }
     }

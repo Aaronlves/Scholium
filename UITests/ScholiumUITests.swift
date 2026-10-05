@@ -4,9 +4,16 @@ import CryptoKit
 @preconcurrency import XCTest
 import notify
 
-/// Sets up exact text only in the isolated QA native field. A trailing space
-/// and ordinary Delete commit through AppKit's text-change route without the
-/// system clipboard or an input-source change. Subsequent keys remain native.
+@MainActor
+private func reportXCTestInputTransport() {
+    print(
+        "XCTest native text input: directAXTrusted=\(AXIsProcessTrusted()), pid \(ProcessInfo.processInfo.processIdentifier), bundle \(Bundle.main.bundleIdentifier ?? "unknown"), executable \(Bundle.main.executableURL?.path ?? "unknown")"
+    )
+}
+
+/// Enters exact text through XCTest's native keyboard transport in one isolated
+/// QA input. A trailing space and ordinary Delete commit through AppKit;
+/// the system clipboard and input-source settings are never accessed.
 @MainActor
 func typeCommittedText(
     _ text: String,
@@ -16,59 +23,82 @@ func typeCommittedText(
 ) {
     let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
     guard processes.count == 1, let process = processes.first,
-        process.executableURL?.path.contains("/.build/qa-runtime/") == true
+        process.executableURL?.path.contains("/.build/qa-runtime/") == true,
+        application.state != .notRunning
     else {
-        XCTFail("Exact input requires one isolated repository QA process.")
+        XCTFail(
+            "Exact input requires one isolated repository QA process and its XCTest application; processes \(processes.count), paths \(processes.compactMap { $0.executableURL?.path }), state \(application.state.rawValue)."
+        )
         return
-    }
-    if clickWithinVisibleFrame {
-        field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-    } else {
-        field.click()
     }
     let targetFrame = field.frame
+    let inputType = field.elementType
+    let inputIdentifier = field.identifier
+    guard !targetFrame.isEmpty, !targetFrame.isInfinite, !targetFrame.isNull,
+        [.textField, .searchField, .textView].contains(inputType)
+    else {
+        XCTFail("The QA input has no finite, nonempty editable frame: \(targetFrame).")
+        return
+    }
+    // Resolve from the supplied QA application, never mutate an arbitrary
+    // caller's element or choose between equal identifiers in different windows.
+    var matches: [(window: XCUIElement, input: XCUIElement)] = []
     var remainingNodes = 2_048
-    func nativeField(in node: AXUIElement, depth: Int = 0) -> AXUIElement? {
-        guard depth < 30, remainingNodes > 0 else { return nil }
-        remainingNodes -= 1
-        func attribute(_ name: String) -> CFTypeRef? {
-            var value: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(node, name as CFString, &value) == .success else { return nil }
-            return value
+    for window in application.windows.allElementsBoundByIndex where window.identifier.hasPrefix("scholium") {
+        let inputs = window.descendants(matching: inputType)
+        // Narrow before binding by index: unrelated editor text views can be
+        // replaced during an asynchronous render, changing the broad query.
+        let candidates = (inputIdentifier.isEmpty ? inputs : inputs.matching(identifier: inputIdentifier))
+            .allElementsBoundByIndex
+        guard candidates.count <= remainingNodes else {
+            XCTFail("The QA input lookup exceeded its bounded candidate budget.")
+            return
         }
-        let role = attribute(kAXRoleAttribute) as? String
-        let matchesIdentity =
-            attribute(kAXIdentifierAttribute) as? String == field.identifier
-            || (field.identifier.isEmpty && (role == "AXTextField" || role == "AXTextArea"))
-        if matchesIdentity,
-            let positionValue = attribute(kAXPositionAttribute),
-            CFGetTypeID(positionValue) == AXValueGetTypeID()
-        {
-            var position = CGPoint.zero
-            if AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
-                abs(position.x - targetFrame.minX) < 2,
-                abs(position.y - targetFrame.minY) < 2
+        remainingNodes -= candidates.count
+        for candidate in candidates {
+            let frame = candidate.frame
+            if abs(frame.minX - targetFrame.minX) < 2, abs(frame.minY - targetFrame.minY) < 2,
+                abs(frame.width - targetFrame.width) < 2, abs(frame.height - targetFrame.height) < 2
             {
-                return node
+                matches.append((window, candidate))
             }
         }
-        let children = attribute(kAXChildrenAttribute) as? [AXUIElement] ?? []
-        return children.lazy.compactMap { nativeField(in: $0, depth: depth + 1) }.first
     }
-    guard let native = nativeField(in: AXUIElementCreateApplication(process.processIdentifier)) else {
-        XCTFail("The focused QA input was not found in accessibility.")
+    guard matches.count == 1, let match = matches.first else {
+        XCTFail("The QA input has no unique XCTest window/input identity: \(field.identifier), \(targetFrame), matches \(matches.count).")
         return
     }
-    var settable: DarwinBoolean = false
-    guard AXUIElementIsAttributeSettable(native, kAXValueAttribute as CFString, &settable) == .success,
-        settable.boolValue,
-        AXUIElementSetAttributeValue(native, kAXValueAttribute as CFString, (text + " ") as CFString) == .success
-    else {
-        XCTFail("The QA native input does not accept an accessibility value.")
+    application.activate()
+    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == process.processIdentifier else {
+        XCTFail("The isolated QA process did not become active before text entry.")
         return
     }
-    field.typeKey(field.elementType == .textView ? .downArrow : .rightArrow, modifierFlags: .command)
-    field.typeKey(.delete, modifierFlags: [])
+    let input = match.input
+    if clickWithinVisibleFrame {
+        input.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+    } else {
+        input.click()
+    }
+    let focused = XCTNSPredicateExpectation(
+        predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: input)
+    guard XCTWaiter.wait(for: [focused], timeout: 5) == .completed else {
+        XCTFail("The identified QA input did not acquire native keyboard focus.")
+        return
+    }
+    input.typeKey("a", modifierFlags: .command)
+    if input.identifier == "scholium.chat.message" {
+        // Return submits this native composer. XCTest's typeText discards
+        // contextual modifiers, so insert draft newlines explicitly.
+        let lines = (text + " ").components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
+            if index > 0 { input.typeKey(.return, modifierFlags: .shift) }
+            if !line.isEmpty { input.typeText(line) }
+        }
+    } else {
+        input.typeText(text + " ")
+    }
+    input.typeKey(input.elementType == .textView ? .downArrow : .rightArrow, modifierFlags: .command)
+    input.typeKey(.delete, modifierFlags: [])
     XCTAssertEqual(field.value as? String, text, "The QA input did not commit its exact setup text.")
 }
 
@@ -159,6 +189,7 @@ final class ScholiumUITests: XCTestCase {
         if name.contains("testAgentChangesShowsExactUpdateAndRestoresOriginalBytes") {
             app.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "topic_knowledge"
         }
+        reportXCTestInputTransport()
         // A runner killed by XCTest cannot execute tearDown, so its QA app can
         // survive into the next test process. A fresh XCUIApplication can
         // report `.notRunning` even while that orphan still owns the bundle.

@@ -2,6 +2,34 @@ import AppKit
 @preconcurrency import XCTest
 
 extension ScholiumUITests {
+    /// The shared setup transport must preserve a draft's newlines without
+    /// accidentally dispatching Return to the composer's submit action.
+    @MainActor
+    func testNativeTextSetupKeepsMultilineChatDraftUnsent() throws {
+        waitForCurrentDocumentSurface()
+        let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalSource = try Data(contentsOf: sourceURL)
+        sidebarModeControl("Chat").click()
+        let create = app.buttons["scholium.chat.newConversation"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        let draft = "Synthetic unsent draft. 保留原文。\n\nA second paragraph. 尚待核对。\n"
+        typeCommittedText(draft, into: composer, in: app, clickWithinVisibleFrame: true)
+        XCTAssertEqual(composer.value as? String, draft)
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.emptyConversation"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.chat.queue"].firstMatch.exists)
+        sidebarModeControl("Library").click()
+        XCTAssertFalse(composer.exists)
+        sidebarModeControl("Chat").click()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertEqual(composer.value as? String, draft)
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.emptyConversation"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.chat.queue"].firstMatch.exists)
+        XCTAssertEqual(try Data(contentsOf: sourceURL), originalSource)
+    }
+
     /// Uses the current local archive schema with no runtime thread or account.
     /// All actions after seeding use the ordinary conversation list and alert.
     @MainActor

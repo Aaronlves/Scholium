@@ -22349,6 +22349,29 @@
     return setSelectedEffect.of(index);
   }
 
+  // image-resources.ts
+  var MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+  var MAX_IMAGE_CATALOG_BYTES = 80 * 1024 * 1024;
+  var MAX_IMAGE_ENVELOPE_BYTES = 4 * Math.ceil(MAX_IMAGE_CATALOG_BYTES / 3) + 512 * 1024;
+  var dataImage = /^data:image\/(?:png|jpeg|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
+  function validImageResources(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    let totalBytes = 0;
+    let metadataBytes = 0;
+    for (const [destination, resource] of Object.entries(value)) {
+      if (!destination || destination.length > 16384 || typeof resource !== "string") return false;
+      metadataBytes += new TextEncoder().encode(destination).length + 64;
+      if (metadataBytes > 512 * 1024) return false;
+      const match = dataImage.exec(resource);
+      if (!match || match[1].length % 4 !== 0) return false;
+      const bytes = match[1].length / 4 * 3 - (match[1].endsWith("==") ? 2 : match[1].endsWith("=") ? 1 : 0);
+      if (bytes <= 0 || bytes > MAX_IMAGE_BYTES) return false;
+      totalBytes += bytes;
+      if (totalBytes > MAX_IMAGE_CATALOG_BYTES) return false;
+    }
+    return true;
+  }
+
   // source-capacity.ts
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var sourceCapacityMessage = "The edited Markdown document exceeds the supported editor size.";
@@ -22357,7 +22380,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 42;
+  var EDITOR_PROTOCOL_VERSION = 43;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -22369,6 +22392,7 @@
     "setPresentationCSS",
     "setUserCSS",
     "setLinkPreviews",
+    "setImageResources",
     "setWritingContinuation",
     "setWritingIndexContext",
     "showPreview",
@@ -22514,6 +22538,8 @@
         return typeof operation.value === "string" && operation.value.length <= 500;
       case "setLinkPreviews":
         return Array.isArray(operation.value);
+      case "setImageResources":
+        return validImageResources(operation.value);
       case "setWritingContinuation":
         return typeof operation.enabled === "boolean" && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
       case "setWritingIndexContext":
@@ -22582,7 +22608,8 @@
     if (!validOperation(request.operation)) return false;
     try {
       const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-      return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES);
+      const maximum = type === "setImageResources" ? MAX_IMAGE_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
+      return encodedByteLength(value) <= maximum;
     } catch {
       return false;
     }
@@ -23467,6 +23494,33 @@ ${fence}
     visit(root);
     return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
   }
+  function directChildRanges(root, name2) {
+    const ranges = [];
+    for (let child = root.firstChild; child; child = child.nextSibling) {
+      if (child.name === name2) ranges.push({ from: child.from, to: child.to });
+    }
+    return ranges;
+  }
+  function referenceLabel(source) {
+    const label = source.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "").replace(/[ \t\r\n]+/g, " ");
+    return label.replace(/[^\u0131]+/g, (part) => part.toLowerCase().toUpperCase());
+  }
+  function imageReferenceTargets(tree, source) {
+    const targets = /* @__PURE__ */ new Map();
+    tree.iterate({
+      enter(reference) {
+        if (reference.name !== "LinkReference") return;
+        const node = reference.node;
+        const label = directChildRanges(node, "LinkLabel")[0];
+        const target = directChildRanges(node, "URL")[0];
+        if (!label || !target) return false;
+        const key = referenceLabel(source.slice(label.from + 1, label.to - 1));
+        if (key && !targets.has(key)) targets.set(key, target);
+        return false;
+      }
+    });
+    return targets;
+  }
   function complementRanges(from, to, excluded) {
     const visible = [];
     let position = from;
@@ -23491,7 +23545,7 @@ ${fence}
       return { from: range.from, to };
     });
   }
-  function inlinePresentation(node, kind, source) {
+  function inlinePresentation(node, kind, source, referenceTargets) {
     const markerNames = /* @__PURE__ */ new Set();
     switch (kind) {
       case "strong":
@@ -23531,7 +23585,7 @@ ${fence}
       case "comment":
         break;
     }
-    const markerRanges = childRanges(node, markerNames);
+    const markerRanges = kind === "image" ? directChildRanges(node, "LinkMark") : childRanges(node, markerNames);
     let targetRange = null;
     let aliasRange = null;
     let linkRange = null;
@@ -23539,7 +23593,22 @@ ${fence}
     let annotationContentRange = null;
     let projectionTo = node.to;
     let visibleRanges = complementRanges(node.from, node.to, markerRanges);
-    if (kind === "link" || kind === "image") {
+    if (kind === "image") {
+      if (markerRanges.length < 2) return null;
+      const alt = { from: markerRanges[0].to, to: markerRanges[1].from };
+      targetRange = directChildRanges(node, "URL")[0] ?? null;
+      if (!targetRange) {
+        const label = directChildRanges(node, "LinkLabel")[0];
+        const next = source.slice(node.to, node.to + 1);
+        if (!label && (markerRanges.length !== 2 || next === "(" || next === "[")) {
+          return null;
+        }
+        const key = referenceLabel(label && label.to - label.from > 2 ? source.slice(label.from + 1, label.to - 1) : source.slice(alt.from, alt.to));
+        targetRange = referenceTargets().get(key) ?? null;
+        if (!targetRange) return null;
+      }
+      visibleRanges = [alt];
+    } else if (kind === "link") {
       const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
       if (explicitVisible.length === 0) return null;
       targetRange = explicitVisible[0];
@@ -23617,6 +23686,8 @@ ${fence}
     const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
     const blockStack = [];
     const source = state.doc.toString();
+    let referenceTargets;
+    const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, source);
     tree.iterate({
       from,
       to,
@@ -23690,7 +23761,7 @@ ${fence}
         }
         const inlineKind = inlineKinds.get(node.name);
         if (inlineKind) {
-          const inline = inlinePresentation(node, inlineKind, source);
+          const inline = inlinePresentation(node, inlineKind, source, resolveReferenceTargets);
           if (inline) result.inlines.push(inline);
         }
         if ([
@@ -32395,6 +32466,7 @@ ${fence}
     setPresentationCSS: "defer",
     setUserCSS: "defer",
     setLinkPreviews: "defer",
+    setImageResources: "defer",
     goToLine: "defer",
     revealSourceRange: "defer",
     restoreRecovery: "defer",
@@ -35667,7 +35739,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     return { from: range.from, to };
   }
-  function finalizedLiveProjectionIndex(doc2, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter) {
+  function finalizedLiveProjectionIndex(doc2, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges) {
     const immutableExcluded = immutableProjectionRanges(excluded);
     const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
     const immutableQuoteRanges = immutableProjectionRanges(indexedQuoteRanges(syntax));
@@ -35712,8 +35784,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       structuralRanges: immutableStructuralRanges,
       mutationSensitiveRanges: immutableProjectionRanges([
         ...immutableCommandProtectedRanges,
-        ...immutableStructuralRanges
+        ...immutableStructuralRanges,
+        // Definition text can rebind an image outside the edited neighborhood
+        // without changing either node's local Markdown topology.
+        ...referenceDefinitionRanges
       ]),
+      referenceDefinitionRanges: immutableProjectionRanges(referenceDefinitionRanges),
       blockRanges: immutableProjectionRanges([
         // Headings are source-visible syntax projections rather than widgets,
         // but vertical traversal still needs their exact block boundary so a
@@ -35775,6 +35851,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       0,
       tree
     );
+    const referenceDefinitionRanges = [];
+    tree.iterate({ enter(node) {
+      if (node.name !== "LinkReference") return;
+      referenceDefinitionRanges.push({ from: node.from, to: node.to });
+      return false;
+    } });
     const codeBlocks = syntax.blocks.filter((block) => block.kind === "code").map((block) => ({
       from: block.from,
       to: block.to,
@@ -35838,7 +35920,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       callouts,
       mathExpressions,
       frontmatterRange,
-      yamlBoundary.unclosed
+      yamlBoundary.unclosed,
+      referenceDefinitionRanges
     );
     recordMetric("projection-index", startedAt, {
       documentLength: state.doc.length,
@@ -35917,7 +36000,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       callouts,
       mathExpressions,
       frontmatterRange,
-      index.hasUnclosedFrontmatter
+      index.hasUnclosedFrontmatter,
+      index.referenceDefinitionRanges.map((range) => ({ from: map(range.from), to: map(range.to) }))
     );
   }
   function createLiveProjectionIndexController(options) {
@@ -37381,7 +37465,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           from,
           to,
           kind: "mermaid"
-        }))
+        })),
+        ...options.imagePresentations(state).map(({ from, to }) => ({ from, to, kind: "image" }))
       ].sort((left, right) => left.from - right.from || left.to - right.to);
     }
     function horizontalRangeAt(state, offset, forward) {
@@ -38871,6 +38956,180 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     closeSearchPanel(view);
   }
 
+  // image-presentation.ts
+  function imageDestination(source) {
+    let destination = source;
+    if (destination.startsWith("<") && destination.endsWith(">")) destination = destination.slice(1, -1);
+    destination = destination.replace(/&(?:#[xX][\da-fA-F]{1,8}|#\d{1,8}|[a-zA-Z][\da-zA-Z]{1,31});/g, (reference) => {
+      if (reference.startsWith("&#")) {
+        const hexadecimal = /^&#[xX]/.test(reference);
+        const value = Number.parseInt(reference.slice(hexadecimal ? 3 : 2, -1), hexadecimal ? 16 : 10);
+        return String.fromCodePoint(value === 0 || value >= 1114112 || value >= 55296 && value < 57344 ? 65533 : value);
+      }
+      const decoder = document.createElement("span");
+      decoder.innerHTML = `<span data-destination="${reference}"></span>`;
+      return decoder.firstElementChild?.getAttribute("data-destination") ?? reference;
+    });
+    destination = destination.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\]\\^_`{|}~])/g, "$1");
+    if (!destination || destination.startsWith("//") || /[?#\u0000-\u001f\u007f]/.test(destination) || /^[a-z][a-z\d+.-]*:/i.test(destination)) return null;
+    try {
+      return decodeURIComponent(destination);
+    } catch {
+      return null;
+    }
+  }
+  function imagePresentation(state, image, resources, syntax) {
+    if (image.kind !== "image" || !image.targetRange) return null;
+    const destination = imageDestination(state.doc.sliceString(image.targetRange.from, image.targetRange.to));
+    const resource = destination === null || !Object.hasOwn(resources, destination) ? void 0 : resources[destination];
+    if (!resource) return null;
+    const firstLine = state.doc.lineAt(image.from);
+    const lastLine = state.doc.lineAt(image.to);
+    const block = /^\s*$/.test(state.doc.sliceString(firstLine.from, image.from)) && /^\s*$/.test(state.doc.sliceString(image.to, lastLine.to));
+    return {
+      from: block ? firstLine.from : image.from,
+      to: block ? lastLine.to : image.to,
+      sourceFrom: image.from,
+      sourceTo: image.to,
+      resource,
+      alt: imageAlternativeText(state, image, syntax),
+      block
+    };
+  }
+  function imageAlternativeText(state, image, syntax = semanticProjectionRanges(state, image.visibleRanges, 0)) {
+    const hidden = [...syntax.literals];
+    for (const child of syntax.inlines) {
+      if (child === image || child.from === image.from && child.to === image.to || !image.visibleRanges.some((range) => child.from >= range.from && child.to <= range.to)) continue;
+      let from = child.from;
+      for (const visible of child.visibleRanges) {
+        if (from < visible.from) hidden.push({ from, to: visible.from, nodeName: "ImageLabelSyntax" });
+        from = Math.max(from, visible.to);
+      }
+      if (from < child.to) hidden.push({ from, to: child.to, nodeName: "ImageLabelSyntax" });
+    }
+    hidden.sort((a, b) => a.from - b.from || a.to - b.to);
+    const readable = [];
+    for (const range of image.visibleRanges) {
+      let from = range.from;
+      for (const excluded of hidden) {
+        if (excluded.to <= from || excluded.from >= range.to) continue;
+        if (from < excluded.from) readable.push({ from, to: excluded.from });
+        from = Math.max(from, excluded.to);
+      }
+      if (from < range.to) readable.push({ from, to: range.to });
+    }
+    return readable.map((range) => {
+      let from = range.from, result = "";
+      syntaxTree(state).iterate({ from: range.from, to: range.to, enter(node) {
+        if (node.from < range.from || node.to > range.to || node.name !== "Escape" && node.name !== "Entity") return;
+        result += state.doc.sliceString(from, node.from);
+        const source = state.doc.sliceString(node.from, node.to);
+        if (node.name === "Escape") result += source.slice(1);
+        else {
+          const decoder = document.createElement("span");
+          decoder.innerHTML = source;
+          result += decoder.textContent ?? source;
+        }
+        from = node.to;
+        return false;
+      } });
+      return result + state.doc.sliceString(from, range.to);
+    }).join("");
+  }
+  var ImageWidget = class extends WidgetType {
+    constructor(presentation) {
+      super();
+      this.presentation = presentation;
+    }
+    presentation;
+    eq(other) {
+      const a = this.presentation, b = other.presentation;
+      return a.sourceFrom === b.sourceFrom && a.sourceTo === b.sourceTo && a.resource === b.resource && a.alt === b.alt && a.block === b.block;
+    }
+    toDOM(view) {
+      const shell = document.createElement(this.presentation.block ? "div" : "span");
+      shell.className = this.presentation.block ? "cm-live-image cm-live-image-block" : "cm-live-image";
+      shell.dataset.scholiumProtected = "image";
+      shell.dataset.scholiumSourceFrom = String(this.presentation.sourceFrom);
+      shell.dataset.scholiumSourceTo = String(this.presentation.sourceTo);
+      const image = document.createElement("img");
+      image.className = "scholium-embedded-image";
+      image.alt = this.presentation.alt;
+      image.draggable = false;
+      const measure = () => {
+        if (shell.isConnected) view.requestMeasure();
+      };
+      image.addEventListener("load", measure);
+      image.addEventListener("error", measure);
+      image.src = this.presentation.resource;
+      shell.append(image);
+      shell.addEventListener("mousedown", (event) => {
+        if (event.button !== 0 || view.composing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = image.getBoundingClientRect();
+        const position = event.clientX <= rect.left + rect.width / 2 ? this.presentation.sourceFrom : this.presentation.sourceTo;
+        if (position > view.state.doc.length) return;
+        view.dispatch({ selection: {
+          anchor: event.shiftKey ? view.state.selection.main.anchor : position,
+          head: position
+        }, scrollIntoView: true, annotations: Transaction.userEvent.of("select.pointer") });
+        view.focus();
+      });
+      return shell;
+    }
+    ignoreEvent(event) {
+      return event.type === "mousedown";
+    }
+  };
+  function createImageProjection(options) {
+    let resources = /* @__PURE__ */ Object.create(null);
+    const refresh = StateField.define({
+      create: build,
+      update(previous, transaction) {
+        if (transaction.docChanged || transactionChangedSyntaxTree(transaction) || options.selection.changed(transaction.startState, transaction.state) || options.shouldRefresh(transaction) || transaction.effects.some((effect) => effect.is(preserveLivePresentationLayout))) {
+          return build(transaction.state);
+        }
+        return previous;
+      },
+      provide: (field) => [
+        EditorView.decorations.from(field),
+        EditorView.atomicRanges.of((view) => view.state.field(field))
+      ]
+    });
+    function build(state) {
+      const index = options.projections.index(state);
+      if (index.hasUnclosedFrontmatter) return Decoration.none;
+      const ranges = [];
+      let outerImageTo = -1;
+      for (const image of index.syntax.inlines) {
+        if (image.kind !== "image") continue;
+        if (image.to <= outerImageTo) continue;
+        outerImageTo = image.to;
+        if ([...index.tables, ...index.footnoteRanges].some((range) => image.from >= range.from && image.to <= range.to)) continue;
+        const presentation = imagePresentation(state, image, resources, index.syntax);
+        if (!presentation) continue;
+        if (options.bodyIsActive() && options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation))) continue;
+        ranges.push(Decoration.replace({ widget: new ImageWidget(presentation), block: presentation.block }).range(presentation.from, presentation.to));
+      }
+      return Decoration.set(ranges, true);
+    }
+    return {
+      extension: refresh,
+      blockPresentations(state) {
+        const result = [];
+        state.field(refresh, false)?.between(0, state.doc.length, (from, to, decoration) => {
+          if (decoration.spec.block === true) result.push({ from, to });
+        });
+        return result;
+      },
+      setResources(value, view) {
+        resources = value;
+        if (view?.state.field(refresh, false)) view.dispatch({ effects: preserveLivePresentationLayout.of({ from: 0, to: view.state.doc.length }) });
+      }
+    };
+  }
+
   // editor.ts
   var editorStartupStartedAt = performance.now();
   var webkitWindow = window;
@@ -39132,6 +39391,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     projections: liveProjectionIndex,
     widgets: projectedWidgets,
     reuseCounts: liveWidgetReuseCounts
+  });
+  var liveImageProjection = createImageProjection({
+    selection: liveSelection,
+    projections: liveProjectionIndex,
+    bodyIsActive: () => lastDocumentFocusTarget !== "title",
+    shouldRefresh: (transaction) => transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect))
   });
   var liveSemanticLayout = createLiveSemanticLayout({
     selection: liveSelection,
@@ -40061,7 +40326,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var liveProjectionNavigation = createLiveProjectionNavigation({
     mode: configuredEditorMode,
     projections: liveProjectionIndex,
-    mermaidPresentations: (state) => liveMermaidProjection.presentations(state)
+    mermaidPresentations: (state) => liveMermaidProjection.presentations(state),
+    imagePresentations: (state) => liveImageProjection.blockPresentations(state)
   });
   var nativeFloating = createNativeFloatingPorts((event) => post({ type: "floatingSurface", event }));
   var selectingForAgent = false;
@@ -40154,6 +40420,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     liveDisplayMathProjection.extension,
     liveStructuredBlockProjections.calloutExtension,
     liveFootnoteProjection.extension,
+    liveImageProjection.extension,
     livePreview,
     Prec.high(liveProjectionNavigation.extension),
     previewPopover.extension,
@@ -40542,6 +40809,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         break;
       case "setLinkPreviews":
         editorOperations.setLinkPreviews(operation.value);
+        break;
+      case "setImageResources":
+        liveImageProjection.setResources(operation.value, editor);
         break;
       case "setWritingContinuation":
         inputSuggestions.configureWritingContinuation(operation.enabled, operation.contextKey);
@@ -41028,6 +41298,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentTitle.resetDocument();
       lastDocumentFocusTarget = void 0;
       linkPreviews = [];
+      liveImageProjection.setResources(/* @__PURE__ */ Object.create(null));
       linkPreviewIndexByRange = /* @__PURE__ */ new Map();
       lastUndoLabel = void 0;
       lastRedoLabel = void 0;

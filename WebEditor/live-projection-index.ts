@@ -118,6 +118,7 @@ export interface LiveProjectionIndex {
   readonly commandProtectedRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly structuralRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly mutationSensitiveRanges: readonly Readonly<ProjectionSourceRange>[];
+  readonly referenceDefinitionRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly blockRanges: readonly Readonly<LiveBlockProjectionRange>[];
   readonly footnoteRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly tablePositionRanges: readonly Readonly<IndexedTablePositionRange>[];
@@ -279,6 +280,7 @@ function finalizedLiveProjectionIndex(
   mathExpressions: readonly MathProjection[],
   frontmatterRange: ProjectionSourceRange | null,
   hasUnclosedFrontmatter: boolean,
+  referenceDefinitionRanges: readonly ProjectionSourceRange[],
 ): LiveProjectionIndex {
   const immutableExcluded = immutableProjectionRanges(excluded);
   const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
@@ -327,7 +329,11 @@ function finalizedLiveProjectionIndex(
     mutationSensitiveRanges: immutableProjectionRanges([
       ...immutableCommandProtectedRanges,
       ...immutableStructuralRanges,
+      // Definition text can rebind an image outside the edited neighborhood
+      // without changing either node's local Markdown topology.
+      ...referenceDefinitionRanges,
     ]),
+    referenceDefinitionRanges: immutableProjectionRanges(referenceDefinitionRanges),
     blockRanges: immutableProjectionRanges([
       // Headings are source-visible syntax projections rather than widgets,
       // but vertical traversal still needs their exact block boundary so a
@@ -410,6 +416,12 @@ function buildLiveProjectionIndex(
     0,
     tree,
   );
+  const referenceDefinitionRanges: ProjectionSourceRange[] = [];
+  tree.iterate({enter(node) {
+    if (node.name !== "LinkReference") return;
+    referenceDefinitionRanges.push({from: node.from, to: node.to});
+    return false;
+  }});
   const codeBlocks: SemanticCodeBlockRange[] = syntax.blocks
     .filter((block) => block.kind === "code")
     .map((block) => ({
@@ -496,6 +508,7 @@ function buildLiveProjectionIndex(
     mathExpressions,
     frontmatterRange,
     yamlBoundary.unclosed,
+    referenceDefinitionRanges,
   );
   recordMetric("projection-index", startedAt, {
     documentLength: state.doc.length,
@@ -582,6 +595,7 @@ function mapLiveProjectionIndex(
     mathExpressions,
     frontmatterRange,
     index.hasUnclosedFrontmatter,
+    index.referenceDefinitionRanges.map(range => ({from: map(range.from), to: map(range.to)})),
   );
 }
 

@@ -27,6 +27,83 @@ struct SafeMarkdownRendererTests {
         #expect(!html.contains("src=\"https://"))
     }
 
+    @Test(
+        "Admitted images use parser-decoded destinations with exact prefixed source spans",
+        arguments: ["a&amp;b.png", "a&#38;b.png", "a&#x26;b.png", #"a\&b.png"#])
+    func parserDecodedImageDestination(destination: String) throws {
+        let image = try RenderedMarkdownImage(
+            data: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+            mimeType: "image/png")
+        let source = "\u{FEFF}---\r\nunknown: 'unchanged'\r\n---\r\n# 图像 🦉\r\n\r\n![图 & review](Attachments/\(destination))\r\n"
+        let document = NoteDocument(relativePath: "entity-image.md", rawContent: source)
+        let rendered = SafeMarkdownRenderer.render(
+            document,
+            embeddedImages: ["Attachments/a&b.png": image])
+
+        #expect(rendered.htmlBody.components(separatedBy: "<img ").count - 1 == 1)
+        #expect(rendered.htmlBody.contains("src=\"data:image/png;base64,"))
+        #expect(rendered.htmlBody.contains("alt=\"图 &amp; review\""))
+        #expect(!rendered.htmlBody.contains("data-scholium-protected=\"embed\""))
+        #expect(rendered.semanticDocument.fingerprint == document.fingerprint)
+        #expect(Data(document.rawContent.utf8) == Data(source.utf8))
+    }
+
+    @Test("Image admission retains unavailable-resource and wiki Note linked fallbacks")
+    func imageAdmissionPreservesLinkedFallbacks() throws {
+        let image = try RenderedMarkdownImage(
+            data: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+            mimeType: "image/png")
+        let source = """
+            ![Admitted](Attachments/a&amp;b.png)
+
+            ![Missing](Attachments/missing.png)
+
+            ![Remote](https://example.com/image.png)
+
+            ![[Attachments/a&b.png]]
+
+            ![[Peer Note]]
+            """
+        let document = NoteDocument(relativePath: "image-fallbacks.md", rawContent: source)
+        let html = SafeMarkdownRenderer.render(
+            document,
+            embeddedImages: [
+                "Attachments/a&b.png": image,
+                "https://example.com/image.png": image,
+                "Peer Note": image,
+            ]
+        ).htmlBody
+
+        #expect(html.components(separatedBy: "<img ").count - 1 == 1)
+        #expect(html.components(separatedBy: "data-scholium-protected=\"embed\"").count - 1 == 4)
+        #expect(html.contains("href=\"scholium-note:Attachments/missing.png\""))
+        #expect(html.contains("href=\"scholium-note:Peer%20Note\""))
+        #expect(!html.contains("src=\"https://"))
+        #expect(Data(document.rawContent.utf8) == Data(source.utf8))
+    }
+
+    @Test("Nested admitted image syntax remains plain text in the outer image alt")
+    func nestedAdmittedImages() throws {
+        let image = try RenderedMarkdownImage(
+            data: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+            mimeType: "image/png")
+        let source = "![outer ![inner](Attachments/inner.png)](Attachments/outer.png)"
+        let document = NoteDocument(relativePath: "nested-images.md", rawContent: source)
+        let html = SafeMarkdownRenderer.render(
+            document,
+            embeddedImages: [
+                "Attachments/inner.png": image,
+                "Attachments/outer.png": image,
+            ]
+        ).htmlBody
+
+        #expect(html.components(separatedBy: "<img ").count - 1 == 1)
+        #expect(html.contains("alt=\"outer inner\""))
+        #expect(!html.contains("SCHOLIUMINLINETOKEN"))
+        #expect(!html.contains("data-scholium-protected=\"embed\""))
+        #expect(Data(document.rawContent.utf8) == Data(source.utf8))
+    }
+
     @Test("Embedded image values reject unsupported or malformed bytes")
     func invalidEmbeddedImageData() {
         #expect(throws: RenderedMarkdownImageError.invalidData) {

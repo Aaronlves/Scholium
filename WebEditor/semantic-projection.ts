@@ -169,6 +169,42 @@ function childRanges(
   return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
 }
 
+function directChildRanges(root: ProjectionSyntaxNode, name: string) {
+  const ranges: SemanticSourceRange[] = [];
+  for (let child = root.firstChild; child; child = child.nextSibling) {
+    if (child.name === name) ranges.push({from: child.from, to: child.to});
+  }
+  return ranges;
+}
+
+function referenceLabel(source: string) {
+  const label = source.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "")
+    .replace(/[ \t\r\n]+/g, " ");
+  // Match raw Markdown labels, without decoding escapes or entities. The
+  // CommonMark case-folding convention also equates sharp S with SS, while
+  // dotless i has no default case-fold mapping and must stay distinct.
+  return label.replace(/[^\u0131]+/g, part => part.toLowerCase().toUpperCase());
+}
+
+function imageReferenceTargets(tree: ReturnType<typeof syntaxTree>, source: string) {
+  const targets = new Map<string, SemanticSourceRange>();
+  tree.iterate({
+    enter(reference) {
+      if (reference.name !== "LinkReference") return;
+      const node = reference.node as unknown as ProjectionSyntaxNode;
+      const label = directChildRanges(node, "LinkLabel")[0];
+      const target = directChildRanges(node, "URL")[0];
+      if (!label || !target) return false;
+      const key = referenceLabel(source.slice(label.from + 1, label.to - 1));
+      // The first definition owns its label, even if its destination cannot
+      // be admitted as an image resource. A later local URL cannot override it.
+      if (key && !targets.has(key)) targets.set(key, target);
+      return false;
+    },
+  });
+  return targets;
+}
+
 function complementRanges(
   from: number,
   to: number,
@@ -216,6 +252,7 @@ function inlinePresentation(
   node: ProjectionSyntaxNode,
   kind: PresentationInlineKind,
   source: string,
+  referenceTargets: () => ReadonlyMap<string, SemanticSourceRange>,
 ): SemanticInlineProjection | null {
   const markerNames = new Set<string>();
   switch (kind) {
@@ -243,7 +280,8 @@ function inlinePresentation(
     break;
   case "comment": break;
   }
-  const markerRanges = childRanges(node, markerNames);
+  const markerRanges = kind === "image"
+    ? directChildRanges(node, "LinkMark") : childRanges(node, markerNames);
   let targetRange: SemanticSourceRange | null = null;
   let aliasRange: SemanticSourceRange | null = null;
   let linkRange: SemanticSourceRange | null = null;
@@ -251,7 +289,25 @@ function inlinePresentation(
   let annotationContentRange: SemanticSourceRange | null = null;
   let projectionTo = node.to;
   let visibleRanges = complementRanges(node.from, node.to, markerRanges);
-  if (kind === "link" || kind === "image") {
+  if (kind === "image") {
+    if (markerRanges.length < 2) return null;
+    const alt = {from: markerRanges[0].to, to: markerRanges[1].from};
+    targetRange = directChildRanges(node, "URL")[0] ?? null;
+    if (!targetRange) {
+      const label = directChildRanges(node, "LinkLabel")[0];
+      // Recoverable unfinished inline destinations and labels are source,
+      // rather than accidental shortcut references while the author types.
+      const next = source.slice(node.to, node.to + 1);
+      if (!label && (markerRanges.length !== 2 || next === "(" || next === "[")) {
+        return null;
+      }
+      const key = referenceLabel(label && label.to - label.from > 2
+        ? source.slice(label.from + 1, label.to - 1) : source.slice(alt.from, alt.to));
+      targetRange = referenceTargets().get(key) ?? null;
+      if (!targetRange) return null;
+    }
+    visibleRanges = [alt];
+  } else if (kind === "link") {
     const explicitVisible = childRanges(node, new Set(["URL"]));
     // The Markdown parser can retain a recoverable Link node for an unfinished
     // `[label](` prefix. Without a URL child there is no proven destination,
@@ -353,6 +409,8 @@ export function semanticProjectionRanges(
   const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
   const blockStack: SemanticBlockProjection[] = [];
   const source = state.doc.toString();
+  let referenceTargets: ReadonlyMap<string, SemanticSourceRange> | undefined;
+  const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, source);
   tree.iterate({
     from,
     to,
@@ -432,7 +490,7 @@ export function semanticProjectionRanges(
 
       const inlineKind = inlineKinds.get(node.name);
       if (inlineKind) {
-        const inline = inlinePresentation(node, inlineKind, source);
+        const inline = inlinePresentation(node, inlineKind, source, resolveReferenceTargets);
         if (inline) result.inlines.push(inline);
       }
       if ([

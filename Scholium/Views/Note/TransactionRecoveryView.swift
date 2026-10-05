@@ -11,8 +11,7 @@ struct TransactionRecoveryNotice: View {
 
     var body: some View {
         ScholiumRecoveryNotice(
-            presentation,
-            region: .workspaceBanner
+            presentation
         ) {
             Button("Inspect Recovery…", action: onInspect)
                 .scholiumActivationPointer()

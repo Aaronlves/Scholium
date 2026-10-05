@@ -23,12 +23,110 @@ describe("Lezer-backed semantic projection", () => {
     expect(ranges).toEqual([{from: 46_000, to: 51_000}]);
     expect(ranges[0].to - ranges[0].from).toBe(5_000);
   });
-  function completeProjection(source: string) {
+  function completeProjection(source: string, visibleRanges = [{from: 0, to: source.length}]) {
     const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
     const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
     if (!tree) throw new Error("Expected the semantic syntax tree to complete.");
-    return semanticProjectionRanges(state, [{from: 0, to: source.length}], 2_000, tree);
+    return semanticProjectionRanges(state, visibleRanges, 0, tree);
   }
+
+  it("resolves full, collapsed and shortcut image references to exact definition URLs", () => {
+    const source = [
+      "![Full *caption*][FIG URE]",
+      "![Collapsed][]",
+      "![Shortcut]",
+      "",
+      '[fig\ture]: <images/full.png> "Title"',
+      "[collapsed]: images/collapsed.jpg",
+      "[shortcut]: images/shortcut.webp",
+    ].join("\n");
+    const images = completeProjection(source).inlines.filter(inline => inline.kind === "image");
+
+    expect(images.map(image => source.slice(image.from, image.to))).toEqual([
+      "![Full *caption*][FIG URE]", "![Collapsed][]", "![Shortcut]",
+    ]);
+    expect(images.map(image => image.targetRange && source.slice(image.targetRange.from, image.targetRange.to)))
+      .toEqual(["<images/full.png>", "images/collapsed.jpg", "images/shortcut.webp"]);
+    expect(images.map(image => image.visibleRanges.map(range => source.slice(range.from, range.to))))
+      .toEqual([["Full *caption*"], ["Collapsed"], ["Shortcut"]]);
+    expect(images[0].markerRanges.map(range => source.slice(range.from, range.to))).toEqual(["![", "]"]);
+  });
+
+  it("matches raw reference labels with CommonMark case and whitespace normalization", () => {
+    for (const [image, definition, destination] of [
+      ["![alt][  FiG\nURE  ]", "[fig ure]: whitespace.png", "whitespace.png"],
+      ["![ẞ]", "[SS]: unicode.png", "unicode.png"],
+      ["![a\\]b]", "[a\\]b]: escaped.png", "escaped.png"],
+      ["![a&amp;b]", "[a&amp;b]: entity.png", "entity.png"],
+    ]) {
+      const source = `${image}\n\n${definition}`;
+      const resolved = completeProjection(source).inlines.find(inline => inline.kind === "image");
+      expect(resolved?.targetRange && source.slice(resolved.targetRange.from, resolved.targetRange.to))
+        .toBe(destination);
+    }
+    for (const source of [
+      "![ı]\n\n[I]: dotless.png",
+      "![a\\!b]\n\n[a!b]: escape.png",
+      "![a&amp;b]\n\n[a&b]: entity.png",
+      "![alt][fig\u00a0ure]\n\n[fig ure]: space.png",
+    ]) {
+      expect(completeProjection(source).inlines.filter(inline => inline.kind === "image")).toEqual([]);
+    }
+  });
+
+  it("keeps the first reference destination authoritative without substituting a later local image", () => {
+    const source = "![alt][figure]\n\n[FIGURE]: https://example.test/remote.png\n[figure]: local.png";
+    const image = completeProjection(source).inlines.find(inline => inline.kind === "image");
+    expect(image?.targetRange && source.slice(image.targetRange.from, image.targetRange.to))
+      .toBe("https://example.test/remote.png");
+  });
+
+  it("leaves missing references and unfinished destinations as source", () => {
+    for (const image of ["![missing][unknown]", "![missing][]", "![missing]",
+      "![known](", "![known](unfinished", "![known]()", "![known][unfinished"]) {
+      const source = `${image}\n\n[known]: admitted.png`;
+      expect(completeProjection(source).inlines.filter(inline => inline.kind === "image")).toEqual([]);
+    }
+  });
+
+  it("does not resolve image labels from reference lookalikes inside literals", () => {
+    for (const definition of [
+      "```markdown\n[hidden]: code.png\n```",
+      "    [hidden]: indented.png",
+      "%%\n[hidden]: comment.png\n%%",
+      "<!--\n[hidden]: html.png\n-->",
+      "---\ntitle: |\n  [hidden]: yaml.png\n---",
+    ]) {
+      const source = `${definition}\n\n![hidden]`;
+      expect(completeProjection(source).inlines.filter(inline => inline.kind === "image")).toEqual([]);
+    }
+  });
+
+  it("uses only an image's direct destination and alt markers", () => {
+    const source = "![alt [nested](wrong.png)](right.png)";
+    const image = completeProjection(source).inlines.find(inline => inline.kind === "image");
+    expect(image?.targetRange && source.slice(image.targetRange.from, image.targetRange.to)).toBe("right.png");
+    expect(image?.visibleRanges.map(range => source.slice(range.from, range.to))).toEqual(["alt [nested](wrong.png)"]);
+    expect(image?.markerRanges.map(range => source.slice(range.from, range.to))).toEqual(["![", "]", "(", ")"]);
+  });
+
+  it("resolves definitions outside the projection viewport and maps their separate URL ranges", () => {
+    const imageSource = "![caption][figure]";
+    const source = `${imageSource}\n\n${"Distant paragraph.\n\n".repeat(250)}[figure]: images/photo.png`;
+    const projection = completeProjection(source, [{from: 0, to: imageSource.length}]);
+    const image = projection.inlines.find(inline => inline.kind === "image");
+    expect(image?.targetRange && source.slice(image.targetRange.from, image.targetRange.to)).toBe("images/photo.png");
+    expect(projection.blocks.every(block => block.from <= imageSource.length)).toBe(true);
+
+    const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
+    const transaction = state.update({changes: {from: 0, insert: "Prefix.\n\n"}});
+    const mapped = mapSemanticProjectionRanges(projection, position => transaction.changes.mapPos(position, 1));
+    const mappedImage = mapped.inlines.find(inline => inline.kind === "image");
+    expect(mappedImage && transaction.state.doc.sliceString(mappedImage.from, mappedImage.to)).toBe(imageSource);
+    expect(mappedImage?.targetRange && transaction.state.doc.sliceString(mappedImage.targetRange.from, mappedImage.targetRange.to))
+      .toBe("images/photo.png");
+    expect(transaction.state.doc.toString()).toBe(`Prefix.\n\n${source}`);
+  });
 
   it("projects only paragraph identity suffixes outside protected syntax", () => {
     const source = "Paragraph. ^identity-1\n\n`code ^literal`\n\n```\nCode ^no\n```\n\n%% hidden ^no %%\n\nTrailing.";

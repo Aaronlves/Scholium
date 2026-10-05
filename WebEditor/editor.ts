@@ -188,6 +188,8 @@ import {
   performDocumentFind,
 } from "./document-find";
 
+import {createImageProjection} from "./image-presentation";
+
 const editorStartupStartedAt = performance.now();
 
 interface ScholiumWindow extends Window {
@@ -197,6 +199,7 @@ interface ScholiumWindow extends Window {
     | "editor_visible_projection";
 }
 interface SourceDelta { from: number; to: number; insert: string; exactInsert: string }
+
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
   prepareForReuse(): boolean;
@@ -553,6 +556,12 @@ const liveFootnoteProjection = createLiveFootnoteProjection({
   projections: liveProjectionIndex,
   widgets: projectedWidgets,
   reuseCounts: liveWidgetReuseCounts,
+});
+const liveImageProjection = createImageProjection({
+  selection: liveSelection,
+  projections: liveProjectionIndex,
+  bodyIsActive: () => lastDocumentFocusTarget !== "title",
+  shouldRefresh: transaction => transaction.effects.some(effect => effect.is(refreshLivePreviewEffect)),
 });
 
 interface LiveInlineProjectionState {
@@ -1745,6 +1754,7 @@ const liveProjectionNavigation = createLiveProjectionNavigation({
   mode: configuredEditorMode,
   projections: liveProjectionIndex,
   mermaidPresentations: (state) => liveMermaidProjection.presentations(state),
+  imagePresentations: (state) => liveImageProjection.blockPresentations(state),
 });
 
 const nativeFloating = createNativeFloatingPorts(event => post({type: "floatingSurface", event}));
@@ -1853,6 +1863,7 @@ const livePreviewMode = [
   liveDisplayMathProjection.extension,
   liveStructuredBlockProjections.calloutExtension,
   liveFootnoteProjection.extension,
+  liveImageProjection.extension,
   livePreview,
   Prec.high(liveProjectionNavigation.extension),
   previewPopover.extension,
@@ -2197,6 +2208,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
+  case "setImageResources": liveImageProjection.setResources(operation.value, editor); break;
   case "setWritingContinuation": inputSuggestions.configureWritingContinuation(operation.enabled, operation.contextKey); break;
   case "setWritingIndexContext": inputSuggestions.configureWritingIndexContext(operation.contextKey); break;
   case "showPreview": previewPopover.showAtSelection(); break;
@@ -2696,6 +2708,7 @@ const editorOperations = {
     documentTitle.resetDocument();
     lastDocumentFocusTarget = undefined;
     linkPreviews = [];
+    liveImageProjection.setResources(Object.create(null));
     linkPreviewIndexByRange = new Map();
     lastUndoLabel = undefined;
     lastRedoLabel = undefined;

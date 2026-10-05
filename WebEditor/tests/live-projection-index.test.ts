@@ -31,6 +31,27 @@ const dialect: MarkdownEditingDialect = {
 };
 
 describe("live projection index component", () => {
+  it("rebinds images after plain definition label edits while mapping unrelated prose", () => {
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const source = "![Image][figure]\n\n[figure]: Attachments/a.png\n\nUnrelated prose.";
+    let state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage, controller.extension]});
+    const initial = controller.index(state);
+    expect(initial.syntax.inlines.filter(image => image.kind === "image")).toHaveLength(1);
+    const definition = source.indexOf("[figure]:") + 1;
+    const removed = state.update({changes: {from: definition, insert: "x"}});
+    expect(controller.topologyWasMapped(removed)).toBe(false);
+    expect(controller.index(removed.state).syntax.inlines.filter(image => image.kind === "image")).toHaveLength(0);
+    const restored = removed.state.update({changes: {from: definition, to: definition + 1}});
+    expect(controller.topologyWasMapped(restored)).toBe(false);
+    expect(controller.index(restored.state).syntax.inlines.filter(image => image.kind === "image")).toHaveLength(1);
+    state = restored.state;
+    const prose = state.update({changes: {from: state.doc.toString().indexOf("prose"), insert: "ordinary "}});
+    expect(controller.topologyWasMapped(prose)).toBe(true);
+    const oracle = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const fresh = EditorState.create({doc: prose.state.doc, extensions: [scholiumNoteLanguage, oracle.extension]});
+    expect(controller.index(prose.state)).toEqual(oracle.index(fresh));
+  });
+
   it.each([false, true])("maps repeated mixed-script prose deletion to a fresh parse (line end: %s)", atLineEnd => {
     let builds = 0;
     const controller = createLiveProjectionIndexController({editingDialect: () => dialect,

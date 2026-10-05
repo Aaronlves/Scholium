@@ -62,6 +62,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     var writingContinuationContextKey = ""
     var writingIndexContextKey = ""
     var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
+    var imageResourceContextKey = ""
+    var imageResourcesQuery: EditorImageResourceQuery = { _ in [:] }
 
     static func requiresMathRuntime(linkPreviews: [DocumentLinkPreview]) -> Bool {
         linkPreviews.contains {
@@ -239,6 +241,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.setWritingIndexContext(writingIndexContextKey)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
+        session.installImageResourceQuery(imageResourcesQuery, contextKey: imageResourceContextKey)
         session.webViewPool?.registerAttached(webView)
         session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
 
@@ -303,6 +306,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onRequestDocumentTitleRename = onRequestDocumentTitleRename
         context.coordinator.linkCompletionQuery = linkCompletionQuery
         context.coordinator.writingContinuationQuery = writingContinuationQuery
+        session.installImageResourceQuery(imageResourcesQuery, contextKey: imageResourceContextKey)
         if context.coordinator.writingContinuationEnabled != writingContinuationEnabled
             || context.coordinator.writingContinuationContextKey != writingContinuationContextKey
         {
@@ -376,6 +380,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.activeWebView = nil
         coordinator.session.removeCommittedTextSynchronizer()
         coordinator.session.removeSourceChangeHandler()
+        coordinator.session.removeImageResourceQuery()
         coordinator.cancelMermaidRuntimeLoad()
         coordinator.cancelMathRuntimeLoad()
         coordinator.cancelLinkCompletionQuery()

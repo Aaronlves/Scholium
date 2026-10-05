@@ -135,8 +135,7 @@ struct IdentityMigrationNotice: View {
                 ),
                 detail: message.map { Text(verbatim: $0) },
                 systemImage: "exclamationmark.arrow.triangle.2.circlepath"
-            ),
-            region: .documentInline
+            )
         ) {
             Button("Retry Identity Recovery") {
                 Task { await onRetry() }
@@ -161,8 +160,7 @@ struct IdentityAmbiguityNotice: View {
                 "Confirm Note Identity",
                 message: Text(verbatim: ambiguityExplanation),
                 systemImage: "questionmark.folder"
-            ),
-            region: .documentInline
+            )
         ) {
             Button("Choose Identity…", action: onResolve)
                 .scholiumActivationPointer()

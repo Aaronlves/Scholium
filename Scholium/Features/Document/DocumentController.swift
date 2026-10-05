@@ -328,6 +328,32 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    /// Shared Review/Edit admission for source-referenced local images. The
+    /// Application operation alone resolves vault paths and scoped originals.
+    func documentImageResources(
+        target: DocumentEditingTarget,
+        relativePath: String,
+        source: String,
+        fingerprint: DocumentFingerprint
+    ) async -> [String: RenderedMarkdownImage] {
+        guard !Task.isCancelled, source.contains("!["),
+            DocumentFingerprint(content: source) == fingerprint
+        else { return [:] }
+        let epoch = hydrationEpoch
+        do {
+            let images = try await requireOperations().exportImages(
+                for: VaultQualifiedNoteID(vaultID: target.vaultID, relativePath: relativePath),
+                markdownSource: source
+            )
+            guard !Task.isCancelled, hydrationEpoch == epoch else { return [:] }
+            return images
+        } catch {
+            // Missing, denied or invalid images retain the authored-source
+            // fallback; resource preparation never replaces Note source.
+            return [:]
+        }
+    }
+
     func readProjectionHTML(
         target: DocumentEditingTarget,
         relativePath: String,
@@ -338,20 +364,12 @@ final class DocumentController: ObservableObject {
     ) async -> String {
         guard !Task.isCancelled, DocumentFingerprint(content: source) == fingerprint else { return "" }
         let epoch = hydrationEpoch
-        var embeddedImages: [String: RenderedMarkdownImage] = [:]
-        if source.contains("![") {
-            do {
-                embeddedImages = try await requireOperations().exportImages(
-                    for: VaultQualifiedNoteID(vaultID: target.vaultID, relativePath: relativePath),
-                    markdownSource: source
-                )
-            } catch is CancellationError {
-                return ""
-            } catch {
-                // Unavailable images keep the renderer's safe authored-link
-                // fallback; preparing one asset never replaces Note source.
-            }
-        }
+        let embeddedImages = await documentImageResources(
+            target: target,
+            relativePath: relativePath,
+            source: source,
+            fingerprint: fingerprint
+        )
         guard !Task.isCancelled, hydrationEpoch == epoch else { return "" }
         let stableTarget: String
         switch target {

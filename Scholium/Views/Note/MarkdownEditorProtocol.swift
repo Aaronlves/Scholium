@@ -1,12 +1,19 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 42
+let markdownEditorProtocolVersion = 43
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 // Two exact-source strings may each require six JSON bytes per source byte.
 // Transport size is distinct from the source capacity enforced on each field.
 let markdownEditorMaximumSourceEnvelopeBytes = MarkdownEditorDeltaApplier.maximumResultUTF8Bytes * 12 + 512_000
+// Admitted local images use their own outbound-only capacity; source and
+// inbound envelopes retain the ordinary limits above.
+let markdownEditorMaximumImageResourceBytes = 80 * 1_024 * 1_024
+let markdownEditorMaximumImageResourceMetadataBytes = 512 * 1_024
+let markdownEditorMaximumImageResourceEnvelopeBytes =
+    4 * ((markdownEditorMaximumImageResourceBytes + 2) / 3)
+    + markdownEditorMaximumImageResourceMetadataBytes
 
 enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case bold, emphasis, strikethrough, highlight, inlineCode, markdownComment
@@ -220,6 +227,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setPresentationCSS(String)
     case setUserCSS(String)
     case setLinkPreviews([MarkdownEditorLinkPreview])
+    case setImageResources([String: String])
     case setWritingContinuation(enabled: Bool, contextKey: String)
     case setWritingIndexContext(String)
     case showPreview
@@ -259,13 +267,20 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         }
     }
 
+    var maximumRequestEnvelopeBytes: Int {
+        if case .setImageResources = self {
+            return markdownEditorMaximumImageResourceEnvelopeBytes
+        }
+        return markdownEditorMaximumSourceEnvelopeBytes
+    }
+
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
         case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
             enabled, contextKey, plainText, selections
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews,
+        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setImageResources,
             setWritingContinuation, setWritingIndexContext, showPreview,
             measureVisibleProjection, showPreviewAt,
             announceStatus
@@ -296,6 +311,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setPresentationCSS: self = try .setPresentationCSS(container.decode(String.self, forKey: .value))
         case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
         case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))
+        case .setImageResources: self = try .setImageResources(container.decode([String: String].self, forKey: .value))
         case .setWritingContinuation:
             self = try .setWritingContinuation(
                 enabled: container.decode(Bool.self, forKey: .enabled),
@@ -391,6 +407,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setPresentationCSS(let value): try pair(.setPresentationCSS, value, .value, into: &container)
         case .setUserCSS(let value): try pair(.setUserCSS, value, .value, into: &container)
         case .setLinkPreviews(let value): try pair(.setLinkPreviews, value, .value, into: &container)
+        case .setImageResources(let value): try pair(.setImageResources, value, .value, into: &container)
         case .setWritingContinuation(let enabled, let contextKey):
             try container.encode(Kind.setWritingContinuation, forKey: .type)
             try container.encode(enabled, forKey: .enabled)

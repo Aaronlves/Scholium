@@ -79,6 +79,8 @@ struct MarkdownEditorTextSnapshot: Equatable, Sendable {
     let generation: Int
 }
 
+typealias EditorImageResourceQuery = @MainActor (String) async -> [String: RenderedMarkdownImage]
+
 /// A persistence input is bound to the editing base as well as exact source.
 /// A suspension ID proves a detached snapshot came from an input-frozen page.
 struct MarkdownEditorPersistenceSnapshot: Sendable {
@@ -161,7 +163,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     // survive that rotation for reconstruction to admit its selection/history.
     let bridgeDocumentID = UUID().uuidString
     private(set) var startingFingerprint = ""
-    private(set) var generation = 0 { didSet { if generation != oldValue { writingContextChanges.send() } } }
+    private(set) var generation = 0 {
+        didSet {
+            guard generation != oldValue else { return }
+            writingContextChanges.send()
+            refreshImageResources()
+        }
+    }
 
     let floatingSurfaces = DocumentFloatingSurfaceController()
     var webView: WKWebView?
@@ -184,6 +192,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingLine: (line: Int, focusesEditor: Bool)?
     private var pendingSourceRange: Range<Int>?
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
+    private var pendingImageResources: [String: String] = [:]
+    private var pendingImageResourceGeneration = 0
+    // Pending admission is not proof of delivery: typing may supersede its
+    // generation while earlier presentation operations are still awaiting.
+    private var deliveredImageResources: [String: String]?
+    private var imageResourceQuery: EditorImageResourceQuery?
+    private var imageResourceContextKey = ""
+    private var imageResourceQueryTask: Task<Void, Never>?
+    private var imageResourceQueryID: UUID?
     private var pendingWritingContinuationEnabled = false
     private var pendingWritingContinuationContextKey = ""
     private var pendingWritingIndexContextKey = ""
@@ -390,6 +407,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
         self.webView = webView
+        deliveredImageResources = nil
         sessionID = UUID()
         updatePresentation { $0.reset() }
         installQATerminationObserverIfEnabled()
@@ -450,6 +468,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingDocumentID = ""
         pendingDocumentTitle = ""
         pendingLinkPreviews = []
+        pendingImageResources = [:]
+        deliveredImageResources = nil
+        removeImageResourceQuery()
         pendingScrollFraction = nil
         pendingScrollAnchor = nil
         reconstructionScrollAnchor = nil
@@ -652,6 +673,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceOffsetMap = EditorSourceOffsetMap(source: source)
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         generation = 0
+        pendingImageResources = [:]
+        pendingImageResourceGeneration = generation
+        deliveredImageResources = nil
+        refreshImageResources()
         pendingMode = mode
         if let initialSourceRange {
             let lowerBound = max(0, initialSourceRange.lowerBound)
@@ -993,6 +1018,98 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         Task {
             _ = try? await send(.setLinkPreviews(pendingLinkPreviews), in: webView)
         }
+    }
+
+    func installImageResourceQuery(
+        _ query: @escaping EditorImageResourceQuery,
+        contextKey: String
+    ) {
+        let requiresRefresh = imageResourceQuery == nil || imageResourceContextKey != contextKey
+        imageResourceQuery = query
+        imageResourceContextKey = contextKey
+        if requiresRefresh { refreshImageResources() }
+    }
+
+    func removeImageResourceQuery() {
+        imageResourceQueryTask?.cancel()
+        imageResourceQueryTask = nil
+        imageResourceQueryID = nil
+        imageResourceQuery = nil
+    }
+
+    /// Resolve the checked live buffer, which may be newer than SwiftUI's
+    /// commit-paced source. A later edit or attachment context cancels and
+    /// supersedes this read without changing any editor transaction.
+    private func refreshImageResources() {
+        imageResourceQueryTask?.cancel()
+        imageResourceQueryTask = nil
+        imageResourceQueryID = nil
+        guard imageResourceQuery != nil, !documentID.isEmpty, !presentationIsClosed else { return }
+        let queryID = UUID()
+        let intendedRequestEpoch = requestEpoch
+        let intendedDocumentID = documentID
+        let intendedContextKey = imageResourceContextKey
+        imageResourceQueryID = queryID
+        imageResourceQueryTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            guard let self, !Task.isCancelled, !self.presentationIsClosed,
+                intendedRequestEpoch == self.requestEpoch,
+                intendedDocumentID == self.documentID,
+                intendedContextKey == self.imageResourceContextKey,
+                let query = self.imageResourceQuery
+            else { return }
+            defer {
+                if self.imageResourceQueryID == queryID {
+                    self.imageResourceQueryTask = nil
+                    self.imageResourceQueryID = nil
+                }
+            }
+            let source = self.checkedSource
+            let expectedGeneration = self.generation
+            let images = source.contains("![") ? await query(source) : [:]
+            guard !Task.isCancelled, !self.presentationIsClosed,
+                intendedRequestEpoch == self.requestEpoch,
+                intendedDocumentID == self.documentID,
+                intendedContextKey == self.imageResourceContextKey,
+                self.imageResourceQueryID == queryID,
+                expectedGeneration == self.generation,
+                source.utf8.elementsEqual(self.checkedSource.utf8)
+            else { return }
+            self.setImageResources(images, documentID: intendedDocumentID, generation: expectedGeneration)
+        }
+    }
+
+    /// Only image bytes admitted by Documents.exportImages become data URLs.
+    /// Replace the catalog as one presentation change, outside Undo/history.
+    func setImageResources(
+        _ images: [String: RenderedMarkdownImage],
+        documentID expectedDocumentID: String,
+        generation expectedGeneration: Int
+    ) {
+        guard !presentationIsClosed,
+            expectedDocumentID == documentID, expectedGeneration == generation
+        else { return }
+        var resources: [String: String] = [:]
+        var decodedBytes = 0
+        var metadataBytes = 1_024
+        for destination in images.keys.sorted() {
+            guard let image = images[destination] else { continue }
+            let keyBytes = destination.utf8.count * 6 + 64
+            guard image.data.count <= markdownEditorMaximumImageResourceBytes - decodedBytes,
+                keyBytes <= markdownEditorMaximumImageResourceMetadataBytes - metadataBytes
+            else { continue }
+            resources[destination] = "data:\(image.mimeType);base64,\(image.data.base64EncodedString())"
+            decodedBytes += image.data.count
+            metadataBytes += keyBytes
+        }
+        let requiresConvergence =
+            pendingImageResources != resources
+            || pendingImageResourceGeneration != expectedGeneration
+            || deliveredImageResources != resources
+        pendingImageResources = resources
+        pendingImageResourceGeneration = expectedGeneration
+        guard requiresConvergence else { return }
+        reconvergePendingPresentationState()
     }
 
     func showPreview() {
@@ -1959,6 +2076,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         head: head
                     )
                 }
+                deliveredImageResources = nil
                 let initialized = try await send(
                     .initialize(
                         text: source,
@@ -2129,6 +2247,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             let presentationCSS = pendingPresentationCSS
             let userCSS = pendingUserCSS
             let linkPreviews = pendingLinkPreviews
+            let imageResources = pendingImageResources
+            let imageResourceGeneration = pendingImageResourceGeneration
             let writingContinuationEnabled = pendingWritingContinuationEnabled
             let writingContinuationContextKey = pendingWritingContinuationContextKey
             let writingIndexContextKey = pendingWritingIndexContextKey
@@ -2152,6 +2272,26 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 in: webView,
                 requiringRequestEpoch: intendedRequestEpoch
             )
+            if imageResourceGeneration == generation,
+                deliveredImageResources != imageResources
+            {
+                do {
+                    let delivered = try await send(
+                        .setImageResources(imageResources),
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                    if delivered.resultingGeneration == imageResourceGeneration {
+                        deliveredImageResources = imageResources
+                    }
+                } catch SessionError.bridgeRejected(let message)
+                    where message == "stale editor generation"
+                {
+                    // New input supersedes this source-bound resource read.
+                    // The current query reconverges even when its bytes match
+                    // the pending catalog that never reached the page.
+                }
+            }
             _ = try await send(
                 .setWritingContinuation(
                     enabled: writingContinuationEnabled,
@@ -2171,6 +2311,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 presentationCSS == pendingPresentationCSS,
                 userCSS == pendingUserCSS,
                 linkPreviews == pendingLinkPreviews,
+                imageResources == pendingImageResources,
+                imageResourceGeneration == pendingImageResourceGeneration,
                 writingContinuationEnabled == pendingWritingContinuationEnabled,
                 writingContinuationContextKey == pendingWritingContinuationContextKey,
                 writingIndexContextKey == pendingWritingIndexContextKey
@@ -2269,8 +2411,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 operation: operation
             )
             let encoder = JSONEncoder()
+            encoder.outputFormatting = [.withoutEscapingSlashes]
             let requestData = try encoder.encode(request)
-            guard requestData.count <= markdownEditorMaximumSourceEnvelopeBytes,
+            guard requestData.count <= operation.maximumRequestEnvelopeBytes,
                 let requestJSON = String(data: requestData, encoding: .utf8)
             else {
                 throw SessionError.invalidResult
@@ -2426,6 +2569,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     private func invalidateRequestQueue(clearingRecoveryReport: Bool = true) {
         requestEpoch &+= 1
+        imageResourceQueryTask?.cancel()
+        imageResourceQueryTask = nil
+        imageResourceQueryID = nil
         rejectedChangeRecoveryTask?.cancel()
         rejectedChangeRecoveryTask = nil
         rejectedChangeRecoveryID = nil

@@ -1,5 +1,28 @@
 /* A decorative prefix leaves the authored label and selection text intact.
    The link remains one inline target and long filenames can wrap normally. */
+.scholium-embedded-image {
+  display: inline-block;
+  max-inline-size: 100%;
+  max-block-size: min(70vh, 40rem);
+  inline-size: auto;
+  block-size: auto;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.cm-live-image {
+  display: inline-block;
+  max-inline-size: 100%;
+  line-height: 0;
+  vertical-align: middle;
+}
+
+/* CodeMirror owns the block height and adjacent source rows. Keep vertical
+   spacing in those rows instead of unmeasured widget margins. */
+.cm-live-image-block {
+  display: block;
+}
+
 .scholium-attachment-link::before,
 .scholium-attachment-icon {
   content: "";

@@ -152,6 +152,8 @@ selection actions and remain independent of conversation settings.
 Attachment preparation joins the existing editor insertion and scoped rollback
 in [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).
 Quick Look retains only its scoped URL lease until dismissal/replacement/teardown.
+Review/Edit share native image admission. Generation-bound catalogs alter
+presentation only; CodeMirror owns geometry, remeasurement and exact-source activation.
 
 ### Shared document rendering
 

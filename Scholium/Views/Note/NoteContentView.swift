@@ -830,7 +830,9 @@ struct NoteContentView<ShellNotices: View>: View {
                 writingIndexContextKey: state.workspaceCatalog.map {
                     "\(state.currentVaultID?.uuidString ?? ""):\($0.generatedAt.timeIntervalSinceReferenceDate.bitPattern)"
                 } ?? "",
-                writingContinuationQuery: actions.writingContinuation
+                writingContinuationQuery: actions.writingContinuation,
+                imageResourceContextKey: "\(note.id.vaultID):\(note.id.relativePath):\(indexedImageAvailabilityGeneration)",
+                imageResourcesQuery: queryEditorImageResources
             )
             .id(editorSession.viewReconstructionID)
             .allowsHitTesting(!returnToReadAfterSave)
@@ -1212,6 +1214,26 @@ struct NoteContentView<ShellNotices: View>: View {
 
     private var hasUnsavedChanges: Bool {
         documentSession.hasUnsavedChanges
+    }
+
+    @MainActor
+    private func queryEditorImageResources(_ source: String) async -> [String: RenderedMarkdownImage] {
+        guard controller.selectedDocument?.editingTarget == target,
+            controller.retainsSession(documentSession, for: target),
+            editorSession.openingPresentationID == openingPresentationID
+        else { return [:] }
+        let images = await controller.documentImageResources(
+            target: target,
+            relativePath: note.id.relativePath,
+            source: source,
+            fingerprint: DocumentFingerprint(content: source)
+        )
+        guard !Task.isCancelled,
+            controller.selectedDocument?.editingTarget == target,
+            controller.retainsSession(documentSession, for: target),
+            editorSession.openingPresentationID == openingPresentationID
+        else { return [:] }
+        return images
     }
 
     @MainActor

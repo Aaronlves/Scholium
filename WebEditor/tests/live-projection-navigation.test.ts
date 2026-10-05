@@ -21,6 +21,7 @@ function navigation(options: {
   blocks?: readonly {from: number; to: number; kind: string}[];
   lists?: readonly {from: number; to: number}[];
   links?: readonly {from: number; to: number; kind: string}[];
+  images?: readonly {from: number; to: number}[];
 }) {
   let mode: EditorMode = "livePreview";
   const controller = createLiveProjectionNavigation({
@@ -31,6 +32,7 @@ function navigation(options: {
       syntax: {inlines: options.links ?? []},
     })} as unknown as LiveProjectionIndexController,
     mermaidPresentations: () => [],
+    imagePresentations: () => options.images ?? [],
   });
   let state = EditorState.create({
     doc: options.doc ?? source,
@@ -81,6 +83,19 @@ function navigation(options: {
 }
 
 describe("Live Preview keyboard projection entry", () => {
+  it("enters admitted image blocks vertically through the existing measured source handoff", async () => {
+    const imageSource = "Before.\n\n![Alt](Attachments/a.png)\n\nAfter.";
+    const from = imageSource.indexOf("![Alt]"), to = imageSource.indexOf("\n\nAfter");
+    const vertical = navigation({doc: imageSource, blocks: [], images: [{from, to}],
+      selection: EditorSelection.single(from - 1)});
+    vertical.view.moveVertically.mockReturnValue(EditorSelection.cursor(to + 1));
+    vertical.view.posAtCoords.mockReturnValue(from + 4);
+    expect(vertical.run("ArrowDown")).toBe(true);
+    await vertical.measure();
+    expect(vertical.view.state.selection.main).toMatchObject({anchor: from + 4, head: from + 4});
+    expect(vertical.view.state.doc.toString()).toBe(imageSource);
+  });
+
   it.each([true, false])("keeps plain vertical entry collapsed and retains its horizontal goal (down: %s)", async forward => {
     const head = forward ? 5 : block.to + 5;
     const harness = navigation({selection: EditorSelection.create([

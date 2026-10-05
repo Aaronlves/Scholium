@@ -58,7 +58,7 @@ An existing test name alone supplies no fresh passing evidence. Scenario/asserti
 | Related Material/Writing References | Current line/selection, source, links, Chat staging | Research shortcut, named cards/actions | Loading/empty/failure, departure/cancellation, stale source | Related Material/paragraph-link suites; native lifecycle; usefulness remains human |
 | Note/Folder organization | Duplicate/move, drag, batch operations | Menus, destination sheets, redundant drag routes | Collision, partial/retry/cancel, uncertain Trash | Native Duplicate/Move/collision retry/Trash cancel; committed Trash privacy-blocked |
 | Passage reorganization | Copy/extract/move/merge, exact preview | Research/menu destinations and property choices | Partial/protected selection, stale revisions, rollback | Native Copy/Extract/Move commits and Merge preview/cancel; Trash verification blocked |
-| Attachments/images | Copy/reference/import/index/paste, Quick Look | File/Insert and named preview routes | Missing original, unsafe path, insertion rollback | Fixed command reachability/Review images; native copy/reference/import/Undo/Quick Look; cross-app untested |
+| Attachments/images | Copy/reference/import/index/paste, Quick Look, inline Edit/Review | File/Insert and named preview routes | Missing original, unsafe path, insertion rollback | Native image admission/geometry/source; copy/reference/import/Undo/Quick Look; cross-app untested |
 | External Markdown/import | Open/reopen, captured unsaved import | Toolbar/File/Finder routes | Conflict/reload, collision, uncertain import | External lifecycle/import tests and native journey |
 | Export | HTML/PDF/DOCX snapshot/presets | Format/style/Save panel | Cancel, destination failure, long tails/footnotes | Native unsaved HTML/DOCX readback/Save cancel; prior disposable PDF export |
 | Changes/Agent receipts | Pending/History, review, exact Undo | Difference/review/receipt controls | Newer revision, unknown baseline, ineligible Undo | Change/Agent suites; native update/restore/History delete/cancel |
@@ -84,14 +84,21 @@ Review refresh re-resolves local images; unchanged Markdown/lifecycle does not
 continuously watch image files. Captures are inspected; real providers/Zotero,
 VoiceOver, physical IME and complete adaptations remain unverified.
 
-Complete repository gate stages pass: WebEditor 500, Core 582, performance 3,
-Contracts 107, Application 246 plus bridge 6/architecture 1, and App 1,360
+**2026-10-05 — Inline images and recovery notices:** Native fixtures verify
+proportional Edit/Review images, escaped paths, complete caption source,
+load/resize/mode/document switches, caret/selection/Undo and denied-resource fallbacks.
+Native QA checks menus/arrows and light/dark adaptations; compact persistent
+recovery notices retain actions at 300/520 points. Original private-Note/installed-
+binary reproduction and human VoiceOver remain unverified. Evidence:
+`.build/image-inline-evidence/RESULTS.md`.
+
+Complete repository gate stages pass: WebEditor 557, Core 586, performance 3,
+Contracts 107, Application 246 plus bridge 6/architecture 1, and App 1,379
 reported tests (31 conditional render/runtime/timing skips), localization,
-public API boundaries, Release and helper isolation. The initial run exposed
-obsolete mode-fixture ownership and an asynchronous readiness predicate; after
-correction, App and remaining stages passed separately, carrying forward unchanged
-products. Logs: `.build/feature-review-extension/gate.log`, `gate-app-final.log`
-and `gate-continuation.log`, plus `.build/verification/` and
+public API boundaries, Release and helper isolation. The final gate process stopped
+mid-App without a failure summary; complete App and remaining stages resumed against
+unchanged implementation hashes. Logs: `.build/image-inline-evidence/final-gate.log`,
+`final-app-resumed.log` and `final-gate-continuation.log`, plus `.build/verification/` and
 `.build/verification-release/`. QA runtime state is removed and all 506 standard
 fixture manifest files retain their hashes. No publishing or real-service proof.
 

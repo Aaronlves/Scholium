@@ -13,7 +13,7 @@ const policies: Record<EditorOperation["type"], CompositionRequestPolicy> = {
   queryText: "defer", querySelection: "defer", captureRecovery: "defer",
   markClean: "defer", setMode: "defer", setDocumentTitle: "defer",
   setWritingContinuation: "allow", setWritingIndexContext: "allow",
-  setPresentationCSS: "defer", setUserCSS: "defer", setLinkPreviews: "defer",
+  setPresentationCSS: "defer", setUserCSS: "defer", setLinkPreviews: "defer", setImageResources: "defer",
   goToLine: "defer", revealSourceRange: "defer", restoreRecovery: "defer",
   acknowledgeCommittedSnapshot: "defer", command: "defer", documentFind: "defer",
   clearDocumentFind: "defer", showPreview: "defer", showPreviewAt: "defer",

@@ -341,67 +341,39 @@ struct ScholiumRecoveryNoticePresentation {
     }
 }
 
-enum ScholiumRecoveryNoticeRegion: Equatable {
-    case documentInline
-    case workspaceBanner
-}
-
 /// Persistent recovery presentation shared across workflow-owned recovery
 /// states. Callers retain the domain state, operation, and action lifecycle;
-/// this component owns only the visible grammar and region adaptation.
+/// this component owns only the visible grammar and width adaptation.
 struct ScholiumRecoveryNotice<Action: View>: View {
     let presentation: ScholiumRecoveryNoticePresentation
-    let region: ScholiumRecoveryNoticeRegion
     @ViewBuilder let action: () -> Action
 
     init(
         _ presentation: ScholiumRecoveryNoticePresentation,
-        region: ScholiumRecoveryNoticeRegion,
         @ViewBuilder action: @escaping () -> Action
     ) {
         self.presentation = presentation
-        self.region = region
         self.action = action
     }
 
     var body: some View {
-        switch region {
-        case .documentInline:
-            noticeContent
-                .padding(ScholiumGrid.Spacing.nestedContentInset)
-                .background(
-                    ScholiumColorRole.raisedSurfaceBackground.color,
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                        style: .continuous
-                    )
+        noticeContent
+            .controlSize(.small)
+            .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+            .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
+            .frame(maxWidth: ScholiumMetrics.Notice.readableWidth, alignment: .leading)
+            .scholiumEditorialSurface(
+                .boundedPanel,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                    style: .continuous
                 )
-                .scholiumBoundary(
-                    .subtleBoundary,
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                        style: .continuous
-                    )
-                )
-        case .workspaceBanner:
-            noticeContent
-                .controlSize(.small)
-                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
-                .frame(maxWidth: ScholiumMetrics.Notice.readableWidth, alignment: .leading)
-                .scholiumEditorialSurface(
-                    .boundedPanel,
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                        style: .continuous
-                    )
-                )
-        }
+            )
     }
 
     private var noticeContent: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: region == .workspaceBanner ? .center : .top, spacing: ScholiumMetrics.Notice.contentSpacing) {
+            HStack(alignment: .center, spacing: ScholiumMetrics.Notice.contentSpacing) {
                 noticeDescription
                 Spacer(minLength: ScholiumGrid.Spacing.nestedContentInset)
                 action()
@@ -410,8 +382,8 @@ struct ScholiumRecoveryNotice<Action: View>: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 noticeDescription
                 action()
-                    .padding(.leading, region == .workspaceBanner ? ScholiumGrid.Dimension.iconTrackWidth + ScholiumGrid.Spacing.inlineControlGap : 0)
-                    .frame(maxWidth: .infinity, alignment: region == .workspaceBanner ? .leading : .trailing)
+                    .padding(.leading, ScholiumGrid.Dimension.iconTrackWidth + ScholiumGrid.Spacing.inlineControlGap)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .accessibilityElement(children: .contain)
@@ -423,11 +395,12 @@ struct ScholiumRecoveryNotice<Action: View>: View {
                 .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
                 .scholiumForeground(.attention)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Notice.detailSpacing) {
                 Text(presentation.title)
                     .font(ScholiumTypography.interface(.sectionTitle))
+                    .fixedSize(horizontal: false, vertical: true)
                 presentation.message
-                    .font(ScholiumTypography.interface(region == .workspaceBanner ? .small : .body))
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 if let detail = presentation.detail {

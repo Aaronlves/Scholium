@@ -673,16 +673,8 @@ struct FrontendArchitectureTests {
             transactionStart.lowerBound..<transactionEnd.lowerBound
         ]
 
-        #expect(recoveryComponent.contains("enum ScholiumRecoveryNoticeRegion"))
-        #expect(recoveryComponent.contains("case documentInline"))
-        #expect(recoveryComponent.contains("case workspaceBanner"))
         #expect(recoveryComponent.contains("struct ScholiumRecoveryNotice<Action: View>"))
         #expect(recoveryComponent.contains(".scholiumForeground(.attention)"))
-        #expect(
-            recoveryComponent.contains(
-                "ScholiumColorRole.raisedSurfaceBackground.color"
-            )
-        )
         #expect(recoveryComponent.contains(".scholiumEditorialSurface("))
         #expect(recoveryComponent.contains(".boundedPanel"))
         #expect(recoveryComponent.contains("ViewThatFits(in: .horizontal)"))
@@ -693,23 +685,20 @@ struct FrontendArchitectureTests {
         #expect(!recoveryComponent.contains("TriptychMutationRecoveryRecord"))
 
         #expect(migrationNotice.contains("ScholiumRecoveryNotice("))
-        #expect(migrationNotice.contains("region: .documentInline"))
         #expect(migrationNotice.contains("Task { await onRetry() }"))
         #expect(!migrationNotice.contains(".background(.orange"))
         #expect(!migrationNotice.contains(".stroke(.orange"))
 
         #expect(ambiguityNotice.contains("ScholiumRecoveryNotice("))
-        #expect(ambiguityNotice.contains("region: .documentInline"))
         #expect(!ambiguityNotice.contains(".background(.orange"))
         #expect(!ambiguityNotice.contains(".stroke(.orange"))
 
         let documentAdapterCount =
             identitySource.components(
-                separatedBy: "region: .documentInline"
+                separatedBy: "ScholiumRecoveryNotice("
             ).count - 1
         #expect(documentAdapterCount == 2)
         #expect(transactionNotice.contains("ScholiumRecoveryNotice("))
-        #expect(transactionNotice.contains("region: .workspaceBanner"))
         #expect(transactionNotice.contains("Button(\"Inspect Recovery…\", action: onInspect)"))
         #expect(
             transactionNotice.contains(

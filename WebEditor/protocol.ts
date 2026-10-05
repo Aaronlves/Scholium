@@ -1,5 +1,6 @@
-export const EDITOR_PROTOCOL_VERSION = 42;
+export const EDITOR_PROTOCOL_VERSION = 43;
 export const MAX_INBOUND_BYTES = 2_500_000;
+import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
 import {MAX_SOURCE_UTF8_BYTES, exactSourceFits} from "./source-capacity";
 export {MAX_SOURCE_UTF8_BYTES} from "./source-capacity";
 // Two exact source fields, each with worst-case JSON escaping, plus metadata.
@@ -109,6 +110,7 @@ export type EditorOperation =
   | {type: "setPresentationCSS"; value: string}
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkPreviews"; value: unknown[]}
+  | {type: "setImageResources"; value: Record<string, string>}
   | {type: "setWritingContinuation"; enabled: boolean; contextKey: string}
   | {type: "setWritingIndexContext"; contextKey: string}
   | {type: "showPreview"}
@@ -163,7 +165,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setWritingContinuation", "setWritingIndexContext", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
+  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setImageResources", "setWritingContinuation", "setWritingIndexContext", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
@@ -309,6 +311,7 @@ function validOperation(operation: Record<string, unknown>) {
   case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;
   case "announceStatus": return typeof operation.value === "string" && operation.value.length <= 500;
   case "setLinkPreviews": return Array.isArray(operation.value);
+  case "setImageResources": return validImageResources(operation.value);
   case "setWritingContinuation": return typeof operation.enabled === "boolean"
     && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
   case "setWritingIndexContext": return typeof operation.contextKey === "string"
@@ -399,7 +402,9 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
   if (!validOperation(request.operation as unknown as Record<string, unknown>)) return false;
   try {
     const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-    return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES);
+    const maximum = type === "setImageResources" ? MAX_IMAGE_ENVELOPE_BYTES
+      : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
+    return encodedByteLength(value) <= maximum;
   } catch { return false; }
 }
 export function rejected(requestID: string, generation: number, error: string): EditorCommandResult {
