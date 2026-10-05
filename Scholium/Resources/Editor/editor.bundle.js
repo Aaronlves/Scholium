@@ -22501,6 +22501,8 @@
     "queryScrollAnchor",
     "queryPerformance",
     "captureRecovery",
+    "suspendForDetachment",
+    "resumeAfterDetachment",
     "acknowledgeCommittedSnapshot",
     "announceStatus",
     "focus",
@@ -34136,6 +34138,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     let sessionFrameCount = 0;
     let sessionLongestFrame = 0;
     let sessionDroppedFrameCount = 0;
+    const abandonPendingRestoration = () => {
+      scrollRevision += 1;
+    };
+    for (const event of ["wheel", "pointerdown", "touchstart", "keydown"]) {
+      editor2.scrollDOM.addEventListener(event, abandonPendingRestoration, { capture: true, passive: true });
+    }
     editor2.scrollDOM.addEventListener("scroll", () => {
       options.onScroll();
       scrollReports.schedule(postCurrent);
@@ -40882,12 +40890,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           return rejected(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
         }
         editor.dispatch({ effects: setEditorSuspension.of(operation.suspensionID) });
-        return { ...successfulResult(request.requestID), recovery: captureRecovery() };
+        const recovery = captureRecovery();
+        return { ...successfulResult(request.requestID), text: recovery.source, recovery };
       }
       case "resumeAfterDetachment": {
-        if (editor.state.field(editorSuspensionState) !== operation.suspensionID) return rejected(request.requestID, documentVersion, "stale editor suspension");
-        editor.dispatch({ effects: setEditorSuspension.of(null) });
-        break;
+        const suspension = editor.state.field(editorSuspensionState);
+        if (suspension !== null && suspension !== operation.suspensionID) return rejected(request.requestID, documentVersion, "stale editor suspension");
+        if (suspension !== null) editor.dispatch({ effects: setEditorSuspension.of(null) });
+        return { ...successfulResult(request.requestID), text: exactEditorSource() };
       }
       case "restoreRecovery": {
         const snapshot = operation.snapshot;

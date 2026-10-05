@@ -412,7 +412,10 @@ struct WindowLifecycleTests {
             captureForReconstruction: {}
         )
         let peer = TerminationFailureProbe()
-        registry.register(id: UUID()) {
+        registry.register(
+            id: UUID(),
+            cancelClosePreparation: { successfulWindow.windowCloseCoordinator.cancelPreparation() }
+        ) {
             _ = try await successfulWindow.windowCloseCoordinator.prepare()
         }
         registry.register(id: UUID()) {
@@ -426,6 +429,7 @@ struct WindowLifecycleTests {
             Issue.record("A failed peer unexpectedly allowed application termination")
         } catch {
             // Expected: the application remains open.
+            registry.endTerminationAttempt()
         }
         #expect(successfulFlushCount == 1)
 

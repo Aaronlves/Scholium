@@ -55,9 +55,8 @@ extension MCPAppBridgeRequestRouterTests {
         let attachment = try await handle.documents.prepareDocumentAttachment(at: source, to: target, management: .copyIntoTriptych)
         let attachmentBefore = try await handle.documents.load(note.id)
         _ = try await handle.documents.save(
-            note.id,
-            changeSet: .source(attachmentBefore.rawContent + "\n[Material](" + attachment.markdownDestination + ")\n"),
-            expectedRevision: attachmentBefore.fingerprint
+            NoteMutationTarget(documentID: note.id, stableNoteID: fixture.topicNoteID, revision: attachmentBefore.fingerprint),
+            changeSet: .source(attachmentBefore.rawContent + "\n[Material](" + attachment.markdownDestination + ")\n")
         ).committedValue.document
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         func call(_ tool: ScholiumMCPToolName, _ extra: [String: MCPJSONValue] = [:]) async -> ScholiumMCPBridgeResponse {
@@ -92,9 +91,8 @@ extension MCPAppBridgeRequestRouterTests {
         let external = try await handle.documents.prepareDocumentAttachment(at: source, to: target, management: .referenceOriginal)
         let externalBefore = try await handle.documents.load(note.id)
         let externalDocument = try await handle.documents.save(
-            note.id,
-            changeSet: .source(externalBefore.rawContent + "\n[Material](" + external.markdownDestination + ")\n"),
-            expectedRevision: externalBefore.fingerprint
+            NoteMutationTarget(documentID: note.id, stableNoteID: fixture.topicNoteID, revision: externalBefore.fingerprint),
+            changeSet: .source(externalBefore.rawContent + "\n[Material](" + external.markdownDestination + ")\n")
         ).committedValue.document
         var externalRead = read
         externalRead["attachment_id"] = .string(external.record.id.uuidString)
@@ -153,9 +151,8 @@ extension MCPAppBridgeRequestRouterTests {
         let attachment = try await handle.documents.prepareDocumentAttachment(at: source, to: target, management: .copyIntoTriptych)
         let attachmentBefore = try await handle.documents.load(note.id)
         let attachmentDocument = try await handle.documents.save(
-            note.id,
-            changeSet: .source(attachmentBefore.rawContent + "\n[Material](" + attachment.markdownDestination + ")\n"),
-            expectedRevision: attachmentBefore.fingerprint
+            NoteMutationTarget(documentID: note.id, stableNoteID: fixture.topicNoteID, revision: attachmentBefore.fingerprint),
+            changeSet: .source(attachmentBefore.rawContent + "\n[Material](" + attachment.markdownDestination + ")\n")
         ).committedValue.document
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         var args: [String: MCPJSONValue] = [

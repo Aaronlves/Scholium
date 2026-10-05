@@ -481,10 +481,8 @@ struct WorkspaceRuntimeTests {
             .write(to: fixture.analysesURL.appendingPathComponent("Agency.md"), options: .atomic)
         do {
             _ = try await handle.documents.save(
-                fixture.analysisNoteID,
-                changeSet: .body("A stale write must not land.\n"),
-                expectedRevision: original.fingerprint
-            )
+                try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint),
+                changeSet: .body("A stale write must not land.\n"))
             Issue.record("A stale document revision was accepted.")
         } catch let error as VaultRepositoryError {
             guard case .conflict = error else {
@@ -499,9 +497,8 @@ struct WorkspaceRuntimeTests {
         var iterator = stream.makeAsyncIterator()
         _ = try #require(await iterator.next())
         let saved = try await handle.documents.save(
-            fixture.analysisNoteID,
-            changeSet: .body("A revision-gated application commit.\n"),
-            expectedRevision: current.fingerprint
+            try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: current.fingerprint),
+            changeSet: .body("A revision-gated application commit.\n")
         ).committedValue
         let event = try #require(await iterator.next())
         if case .sourceCommitted(let commit) = event {
@@ -1062,10 +1059,8 @@ struct WorkspaceRuntimeTests {
         } throws: { isAccessUnavailable($0) }
         await #expect {
             _ = try await handle.documents.save(
-                fixture.analysisNoteID,
-                changeSet: .body("Must not reach a replacement root.\n"),
-                expectedRevision: original.fingerprint
-            )
+                try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint),
+                changeSet: .body("Must not reach a replacement root.\n"))
         } throws: { isAccessUnavailable($0) }
         await #expect {
             _ = try await handle.discovery.refresh()
@@ -1524,10 +1519,8 @@ struct WorkspaceRuntimeTests {
         let services = await handle.services
         let original = try await handle.documents.load(fixture.analysisNoteID)
         _ = try await handle.documents.save(
-            fixture.analysisNoteID,
-            changeSet: .body("Freedom enables precisely bounded action.\n"),
-            expectedRevision: original.fingerprint
-        )
+            try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint),
+            changeSet: .body("Freedom enables precisely bounded action.\n"))
         let catalog = try #require(
             services.sourceCatalogs[fixture.analysisNoteID.vaultID]
         )
@@ -1787,10 +1780,8 @@ struct WorkspaceRuntimeTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)
         _ = try await handle.documents.save(
-            fixture.analysisNoteID,
-            changeSet: .body("One authoritative self-save.\n"),
-            expectedRevision: original.fingerprint
-        )
+            try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint),
+            changeSet: .body("One authoritative self-save.\n"))
         let committedGeneration = await handle.events.publishedGeneration
         try await Task.sleep(for: .seconds(1))
         #expect(await handle.events.publishedGeneration == committedGeneration)

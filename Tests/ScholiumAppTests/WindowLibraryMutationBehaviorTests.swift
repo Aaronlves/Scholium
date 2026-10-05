@@ -186,7 +186,9 @@ private final class LibraryMutationFixture {
     private func flushDraft() async throws {
         await beforeFlush()
         guard hasUnsavedChanges else { return }
-        let result = try await capabilities.documents.save(target.documentID, changeSet: .source(draft), expectedRevision: revision)
+        let result = try await capabilities.documents.save(
+            NoteMutationTarget(documentID: target.documentID, stableNoteID: target.stableNoteID, revision: revision),
+            changeSet: .source(draft))
         revision = result.committedValue.document.fingerprint
     }
 

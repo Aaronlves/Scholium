@@ -624,13 +624,31 @@ final class WindowModel: ObservableObject {
     lazy var windowCloseCoordinator = WindowCloseCoordinator(
         lifecyclePolicy: lifecyclePolicy,
         persistenceCoordinator: windowSessionPersistenceCoordinator,
-        flushContent: { [weak self] in
+        flushContent: { [weak self] retainSuspension in
             guard let self else {
                 throw ScholiumWindowLifecycleError.unregisteredBeforeReady
             }
             guard !self.transferInProgress else { throw CancellationError() }
+            // Finish any already admitted navigation before freezing its final
+            // selected editor. New transitions are refused during close.
+            await self.documentTransitionCoordinator.waitForIdle()
+            try Task.checkCancellation()
+            let document = self.documentController.selectedDocument
+            if let document,
+                self.documentController.session(for: document.editingTarget).editorSession.hasAttachedWebView
+            {
+                try await self.documentController.prepareSessionTransfer(document) { [weak self] suspensionID in
+                    if let suspensionID {
+                        try retainSuspension { [weak self] in
+                            self?.documentController.resumeAutosave(afterTransferOf: document, suspensionID: suspensionID)
+                        }
+                    }
+                }
+            }
+            try Task.checkCancellation()
             try await self.flushRegisteredEditorIfNeeded(capturingEditorState: true)
             try await self.chatController?.flushPersistence()
+            try Task.checkCancellation()
         },
         presentationSnapshot: { [weak self] in
             guard let self,

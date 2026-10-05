@@ -139,6 +139,47 @@ struct DocumentDetachedPersistenceTests {
         #expect(Data(fixture.dispatcher.source.utf8) == Data(source.utf8))
     }
 
+    @Test("A cancelled capture drains before a retry acquires its own input suspension")
+    func cancelledCaptureCannotReleaseRetry() async throws {
+        let fixture = try await makeEditor()
+        defer {
+            fixture.editor.detach(fixture.webView)
+            fixture.dispatcher.releaseScrollReply()
+        }
+        let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let document = WindowSelectedDocument.workspace(
+            .init(
+                sessionKey: key,
+                reference: .init(
+                    vaultID: key.vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                    relativePath: "Source.md", stableNoteID: key.noteID.uuidString)))
+        let session = DocumentSessionModel(key: key, editorSession: fixture.editor)
+        session.beginEditing(in: .source)
+        session.editingSource = fixture.dispatcher.source
+        session.originalEditingSource = fixture.dispatcher.source
+        session.editingRevision = fixture.revision
+        let controller = DocumentController()
+        controller.receiveSessionTransfer(.init(document: document, session: session, snapshot: nil, mode: .source))
+        defer { session.cancelScheduledWork() }
+        let started = AsyncStream<Void>.makeStream()
+        fixture.dispatcher.holdNextScrollReply = true
+        fixture.dispatcher.scrollDidStart = { started.continuation.yield(()) }
+        let first = Task { try await controller.prepareSessionTransfer(document) }
+        var iterator = started.stream.makeAsyncIterator()
+        _ = await iterator.next()
+        let firstSuspension = try #require(fixture.editor.detachmentSuspensionID)
+        first.cancel()
+        let retry = Task { try await controller.prepareSessionTransfer(document) }
+        fixture.dispatcher.releaseScrollReply()
+        await #expect(throws: CancellationError.self) { try await first.value }
+        try await retry.value
+        let retrySuspension = try #require(fixture.editor.detachmentSuspensionID)
+        #expect(retrySuspension != firstSuspension)
+        #expect(fixture.dispatcher.suspensionID == retrySuspension)
+        #expect(session.detachmentPreparationTask == nil)
+        try await fixture.editor.resumeAfterDetachment(suspensionID: retrySuspension)
+    }
+
     enum SaveScenario: CaseIterable {
         case ordinary, externalConflict, failedAcknowledgement, failedFrozenAcknowledgement
     }
@@ -281,14 +322,23 @@ struct DocumentDetachedPersistenceTests {
         var suspensionID: String?
         var failNextAcknowledgement = false
         var holdNextResumeReply = false
+        var holdNextScrollReply = false
+        var scrollDidStart: (() -> Void)?
         var resumeDidStart: (() -> Void)?
         private(set) var resumeDispatchCount = 0
         private var resumeReply: CheckedContinuation<Void, Never>?
+        private var scrollReply: CheckedContinuation<Void, Never>?
         private var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
 
         func releaseResumeReply() {
             let reply = resumeReply
             resumeReply = nil
+            reply?.resume()
+        }
+
+        func releaseScrollReply() {
+            let reply = scrollReply
+            scrollReply = nil
             reply?.resume()
         }
 
@@ -319,6 +369,14 @@ struct DocumentDetachedPersistenceTests {
                 }
             case .captureRecovery:
                 recovery = snapshot(request)
+            case .queryScrollAnchor:
+                if holdNextScrollReply {
+                    holdNextScrollReply = false
+                    await withCheckedContinuation { reply in
+                        scrollReply = reply
+                        scrollDidStart?()
+                    }
+                }
             case .queryText:
                 text = source
             case .acknowledgeCommittedSnapshot(let expected, let committed, _):

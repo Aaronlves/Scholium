@@ -195,7 +195,8 @@ extension WindowModel {
                         })
                 } else {
                     _ = try await capabilities.documents.save(
-                        card.candidate.note, changeSet: .source(plan.candidateSource), expectedRevision: document.fingerprint)
+                        NoteMutationTarget(documentID: card.candidate.note, stableNoteID: sourceID, revision: document.fingerprint),
+                        changeSet: .source(plan.candidateSource))
                     savedNewAnchor = true
                 }
             }

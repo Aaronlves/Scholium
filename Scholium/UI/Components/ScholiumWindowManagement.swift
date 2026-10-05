@@ -165,6 +165,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         let attachment = ReadinessMilestone()
         let content = ReadinessMilestone()
         var flusher: Flusher?
+        var cancelClosePreparation: (@MainActor () -> Void)?
 
         func state(for milestone: Milestone) -> ReadinessMilestone {
             switch milestone {
@@ -216,7 +217,11 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         return switchedWorkspace
     }
 
-    func register(id: UUID, flusher: @escaping Flusher) {
+    func register(
+        id: UUID,
+        cancelClosePreparation: @escaping @MainActor () -> Void = {},
+        flusher: @escaping Flusher
+    ) {
         let entry = entry(for: id)
         let publishesExistingWorkspaceContext =
             !entry.isRegistered && entry.triptychID != nil
@@ -229,6 +234,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         }
         entry.isRegistered = true
         entry.flusher = flusher
+        entry.cancelClosePreparation = cancelClosePreparation
         if publishesExistingWorkspaceContext {
             advanceWorkspaceContextRevision()
         }
@@ -323,6 +329,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         entry.isRegistered = false
         entry.triptychID = nil
         entry.flusher = nil
+        entry.cancelClosePreparation = nil
         if publishedWorkspaceContext {
             advanceWorkspaceContextRevision()
         }
@@ -351,6 +358,9 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
 
     func endTerminationAttempt() {
         isTerminationAttemptInProgress = false
+        for entry in entries.values where entry.isRegistered {
+            entry.cancelClosePreparation?()
+        }
     }
 
     func flushAll() async throws {
@@ -752,7 +762,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private func registerLifecycle() {
         guard !isRegistered else { return }
         readinessWasMarked = false
-        lifecycleRegistry.register(id: windowID) { [weak appState] in
+        lifecycleRegistry.register(
+            id: windowID,
+            cancelClosePreparation: { [weak appState] in
+                appState?.windowCloseCoordinator.cancelPreparation()
+            }
+        ) { [weak appState] in
             guard let appState else {
                 throw ScholiumWindowLifecycleError.unregisteredBeforeReady
             }
@@ -1096,7 +1111,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         guard !appState.transferInProgress else { return false }
         if closeIsAuthorized {
             closeIsAuthorized = false
-            return previousDelegate?.windowShouldClose?(sender) ?? true
+            let mayClose = previousDelegate?.windowShouldClose?(sender) ?? true
+            if !mayClose { appState.windowCloseCoordinator.cancelPreparation() }
+            return mayClose
         }
         guard !flushInFlight else { return false }
         flushInFlight = true
@@ -1152,6 +1169,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 attempt == self.closeAttemptGeneration,
                 self.window === sender
             else { return }
+            guard self.appState.windowCloseCoordinator.isPrepared else {
+                self.flushInFlight = false
+                return
+            }
             self.closeIsAuthorized = true
             self.flushInFlight = false
             sender.performClose(nil)

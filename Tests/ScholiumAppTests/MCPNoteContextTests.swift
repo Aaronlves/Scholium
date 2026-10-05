@@ -20,7 +20,8 @@ extension MCPAppBridgeRequestRouterTests {
             let prepared = try await handle.documents.prepareDocumentAttachment(at: material, to: target, management: .copyIntoTriptych)
             let current = try await handle.documents.load(note.id)
             _ = try await handle.documents.save(
-                note.id, changeSet: .source(current.rawContent + "\n[Material](" + prepared.markdownDestination + ")\n"), expectedRevision: current.fingerprint)
+                NoteMutationTarget(documentID: note.id, stableNoteID: fixture.analysisNoteID, revision: current.fingerprint),
+                changeSet: .source(current.rawContent + "\n[Material](" + prepared.markdownDestination + ")\n"))
         }
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         let scope: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString)]
@@ -55,7 +56,9 @@ extension MCPAppBridgeRequestRouterTests {
             at: material,
             to: .init(noteID: fixture.analysisNoteID, vaultID: note.id.vaultID, relativePath: note.id.relativePath), management: .copyIntoTriptych)
         source += "\n[Material](" + attachment.markdownDestination + ")\n"
-        _ = try await handle.documents.save(note.id, changeSet: .source(source), expectedRevision: note.fingerprint)
+        _ = try await handle.documents.save(
+            NoteMutationTarget(documentID: note.id, stableNoteID: fixture.analysisNoteID, revision: note.fingerprint),
+            changeSet: .source(source))
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         var args: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString)]
         let plain = try result(await router.handle(.init(tool: .readNote, arguments: args)))

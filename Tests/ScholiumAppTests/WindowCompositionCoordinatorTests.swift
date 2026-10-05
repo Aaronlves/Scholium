@@ -378,7 +378,9 @@ struct WindowCompositionCoordinatorTests {
         let coordinator = WindowCloseCoordinator(
             lifecyclePolicy: ScholiumLifecyclePolicy(),
             persistenceCoordinator: persistence,
-            flushContent: { events.append("flush content") },
+            flushContent: { _ in
+                events.append("flush content")
+            },
             presentationSnapshot: {
                 events.append("snapshot presentation")
                 return WindowSessionSnapshot()
@@ -430,7 +432,9 @@ struct WindowCompositionCoordinatorTests {
         let coordinator = WindowCloseCoordinator(
             lifecyclePolicy: ScholiumLifecyclePolicy(),
             persistenceCoordinator: persistence,
-            flushContent: { flushCount += 1 },
+            flushContent: { _ in
+                flushCount += 1
+            },
             presentationSnapshot: {
                 snapshotCount += 1
                 return WindowSessionSnapshot()
@@ -454,5 +458,46 @@ struct WindowCompositionCoordinatorTests {
         #expect(flushCount == 1)
         #expect(snapshotCount == 1)
         #expect(saveCount == 1)
+    }
+
+    @Test("Cancelled close releases late content preparation without publishing its snapshot")
+    func cancelledCloseRejectsLatePreparation() async throws {
+        let store = WindowSessionPersistenceStoreProbe()
+        let persistence = WindowSessionPersistenceCoordinator(store: store, lifecyclePolicy: ScholiumLifecyclePolicy())
+        var continuation: CheckedContinuation<Void, Never>?
+        var resumeCount = 0
+        var snapshotCount = 0
+        let coordinator = WindowCloseCoordinator(
+            lifecyclePolicy: ScholiumLifecyclePolicy(), persistenceCoordinator: persistence,
+            flushContent: { retainSuspension in
+                await withCheckedContinuation { continuation = $0 }
+                try retainSuspension { resumeCount += 1 }
+            },
+            presentationSnapshot: {
+                snapshotCount += 1
+                return WindowSessionSnapshot()
+            },
+            recordPersistenceFailure: { _ in }, finalizeDependencies: {})
+        let attempt = Task { try await coordinator.prepare() }
+        while continuation == nil { await Task.yield() }
+        coordinator.cancelPreparation()
+        try #require(continuation).resume()
+        do {
+            _ = try await attempt.value
+            Issue.record("A cancelled close prepared successfully")
+        } catch is CancellationError {
+            // The cancelled deadline won.
+        } catch let error as ScholiumWindowLifecycleError {
+            #expect(error == .cancelled)
+        } catch {
+            Issue.record("Unexpected cancelled-close failure: \(error)")
+        }
+        // The deadline releases its waiter independently of a noncooperative
+        // operation. Join that late operation's observable cleanup separately.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while resumeCount == 0, ContinuousClock.now < deadline { await Task.yield() }
+        #expect(resumeCount == 1)
+        #expect(snapshotCount == 0)
+        #expect(!coordinator.isPreparingOrFinalized)
     }
 }

@@ -507,6 +507,158 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test(
+        "Prepared window closure freezes final input and cancelled closure resumes it",
+        arguments: [false, true])
+    func preparedWindowClosureFreezesLastInput(cancelledTermination: Bool) async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/window-close-save-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
+        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let source = "\u{FEFF}Saved 中文 e\u{301} 🙂\r\n"
+        let file = vaults[1].appendingPathComponent("Close.md")
+        try Data(source.utf8).write(to: file)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Close save fixture")
+            let sourceVault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
+            let summary = try #require(sourceVault.documents.first { $0.id.relativePath == "Close.md" })
+            let snapshot = try await capabilities.documents.hydrate(summary)
+            let window = WindowModel(workspaceStore: store)
+            window.documentController.bind(to: capabilities.documents)
+            window.documentController.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
+            let selected = try #require(window.documentController.selectedDocument)
+            let session = window.documentController.session(for: selected.editingTarget)
+            window.documentController.beginEditing(
+                session: session, target: selected.editingTarget,
+                source: source, revision: snapshot.fingerprint, mode: .source)
+            let harness = EditorHarness(
+                source: source, usesSessionDocumentIdentity: true, suppliedSession: session.editorSession,
+                initialMode: .source)
+            defer {
+                harness.close()
+                session.cancelScheduledWork()
+            }
+            try await harness.waitUntilReady()
+
+            // The native coordinator schedules performClose on the next main-queue
+            // turn. Chat/window persistence can also suspend after content flush.
+            // The still-visible editor must already have stopped accepting input.
+            _ = try await window.windowCloseCoordinator.prepare()
+            do {
+                try await session.editorSession.perform(.pastePlain, argument: "LATE INPUT")
+                Issue.record("A window ready to close accepted unsaved source input")
+            } catch MarkdownEditorSession.SessionError.bridgeRejected {
+                #expect(try await session.editorSession.currentText(for: harness.documentID) == source)
+            }
+            if cancelledTermination {
+                let registry = ScholiumWindowLifecycleRegistry()
+                registry.register(
+                    id: UUID(),
+                    cancelClosePreparation: { window.windowCloseCoordinator.cancelPreparation() }
+                ) { _ = try await window.windowCloseCoordinator.prepare() }
+                registry.register(id: UUID()) {
+                    throw ScholiumWindowLifecycleError.failed("Peer save failed")
+                }
+                registry.beginTerminationAttempt()
+                await #expect(throws: ScholiumWindowLifecycleError.self) { try await registry.flushAll() }
+                registry.endTerminationAttempt()
+            } else {
+                window.windowCloseCoordinator.cancelPreparation()
+            }
+            if let resume = session.detachmentResumeTask { await resume.value }
+            #expect(session.editorSession.detachmentSuspensionID == nil)
+            #expect(!window.windowCloseCoordinator.isPreparingOrFinalized)
+            try await session.editorSession.perform(.pastePlain, argument: "Resumed ")
+            #expect(
+                try await session.editorSession.currentText(for: harness.documentID) == "Resumed " + source)
+            _ = try await harness.callPageJavaScript(
+                """
+                const event = new KeyboardEvent('keydown', {
+                    key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                    metaKey: true, bubbles: true, cancelable: true
+                });
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """)
+            #expect(try await session.editorSession.currentText(for: harness.documentID) == source)
+            _ = try await window.windowCloseCoordinator.prepare()
+            #expect(window.windowCloseCoordinator.isPrepared)
+            #expect(session.editorSession.detachmentSuspensionID != nil)
+            await harness.closeAndDrain()
+            #expect(try Data(contentsOf: file) == Data(source.utf8))
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+        await store.shutdownApplicationRuntime()
+    }
+
+    @Test("Detachment captures late input atomically and uncertain replies resume safely", arguments: [false, true])
+    func lateInputDuringDetachment(failedReply: Bool) async throws {
+        let source = "\u{FEFF}Saved 中文 e\u{301} 🙂\r\n"
+        let dispatcher = LateDetachmentInputDispatcher(failedReply: failedReply)
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher, initialMode: .source, initialSourceRange: 1..<1)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        if failedReply {
+            await #expect(throws: MarkdownEditorSession.SessionError.self) {
+                try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+            }
+            #expect(harness.session.detachmentSuspensionID == nil)
+        }
+        try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+        let suspensionID = try #require(harness.session.detachmentSuspensionID)
+        let expected = source.replacingOccurrences(of: "Saved", with: "Late Saved")
+        #expect(Data(harness.session.checkedSource.utf8) == Data(expected.utf8))
+        #expect(harness.session.generation > 0)
+        await #expect(throws: MarkdownEditorSession.SessionError.self) {
+            _ = try await harness.session.send(.resumeAfterDetachment(suspensionID: "different-attempt"), in: try #require(harness.session.webView))
+        }
+        #expect(harness.session.detachmentSuspensionID == suspensionID)
+        await #expect(throws: MarkdownEditorSession.SessionError.self) {
+            try await harness.session.perform(.pastePlain, argument: "FORBIDDEN")
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+        try await harness.session.resumeAfterDetachment(suspensionID: suspensionID)
+        #expect(harness.session.detachmentSuspensionID == nil)
+        try await harness.session.perform(.pastePlain, argument: "Resumed ")
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected.replacingOccurrences(of: "Saved", with: "Resumed Saved"))
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class LateDetachmentInputDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var injectInput = true
+        private let failedReply: Bool
+        init(failedReply: Bool) { self.failedReply = failedReply }
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            if injectInput, case .suspendForDetachment = request.operation {
+                injectInput = false
+                // The native request has captured its generation, but the
+                // page accepts one final input before the freeze arrives.
+                let input = MarkdownEditorRequest(
+                    sessionID: request.sessionID, documentID: request.documentID,
+                    startingFingerprint: request.startingFingerprint,
+                    knownGeneration: request.knownGeneration, expiresAt: request.expiresAt,
+                    operation: .command(.pastePlain, argument: "Late "))
+                let encoded = try JSONEncoder().encode(input)
+                _ = try await production.dispatch(requestJSON: String(decoding: encoded, as: UTF8.self), in: webView)
+                let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+                if failedReply { throw MarkdownEditorSession.SessionError.invalidResult }
+                return result
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
+    }
+
     @Test("Reselecting a retained attached editor releases its departure suspension")
     func retainedTabReselectionResumesAttachedEditor() async throws {
         let controller = DocumentController()

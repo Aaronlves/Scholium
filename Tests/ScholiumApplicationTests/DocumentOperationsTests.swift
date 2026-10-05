@@ -267,7 +267,10 @@ struct DocumentOperationsTests {
 
         #expect(try await handle.documents.documentAttachments(for: target).isEmpty)
         let linkedSource = original.rawContent + "\n[Material](" + attached.markdownDestination + ")\n"
-        let linked = try await handle.documents.save(fixture.targetID, changeSet: .source(linkedSource), expectedRevision: original.fingerprint).committedValue
+        let linked = try await handle.documents.save(
+            try await capturedSaveTarget(handle, fixture.targetID, revision: original.fingerprint),
+            changeSet: .source(linkedSource)
+        ).committedValue
         let lease = try await handle.documents.prepareDocumentAttachmentPreview(
             attachmentID: attached.record.id,
             for: target
@@ -445,21 +448,18 @@ struct DocumentOperationsTests {
 
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await handle.documents.save(
-                id,
+                try await capturedSaveTarget(handle, id, revision: DocumentFingerprint(content: "stale")),
                 changeSet: .insertFrontmatter([
                     "tags": .array(["explicit"])
-                ]),
-                expectedRevision: DocumentFingerprint(content: "stale")
-            )
+                ]))
         }
         #expect(try await handle.documents.load(id).rawContent == plain.rawContent)
 
         let inserted = try await handle.documents.save(
-            id,
+            try await capturedSaveTarget(handle, id, revision: plain.fingerprint),
             changeSet: .insertFrontmatter([
                 "tags": .array(["explicit"])
-            ]),
-            expectedRevision: plain.fingerprint
+            ])
         ).committedValue.document
         #expect(
             inserted.rawContent
@@ -491,12 +491,10 @@ struct DocumentOperationsTests {
             ).committedValue
             await #expect(throws: VaultRepositoryError.self) {
                 _ = try await handle.documents.save(
-                    id,
+                    try await capturedSaveTarget(handle, id, revision: created.fingerprint),
                     changeSet: .insertFrontmatter([
                         "summary": .string("Do not insert")
-                    ]),
-                    expectedRevision: created.fingerprint
-                )
+                    ]))
             }
             let loaded = try await handle.documents.load(id)
             #expect(loaded.rawContent == source)
@@ -523,10 +521,8 @@ struct DocumentOperationsTests {
 
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await handle.documents.commit(
-                id,
-                changeSet: .body("Replacement\r\n"),
-                expectedRevision: created.fingerprint
-            )
+                try await capturedSaveTarget(handle, id, revision: created.fingerprint),
+                changeSet: .body("Replacement\r\n"))
         }
 
         let loaded = try await handle.documents.load(id)
@@ -878,12 +874,10 @@ struct DocumentOperationsTests {
             at: referenceID
         )
         _ = try await handle.documents.save(
-            firstID,
+            try await capturedSaveTarget(handle, firstID, revision: first.fingerprint),
             changeSet: .exactContent(
                 first.rawContent + "\nA revised observation.\n"
-            ),
-            expectedRevision: first.fingerprint
-        )
+            ))
         let attachmentBytes = Data([9, 8, 7, 0, 255])
         try attachmentBytes.write(
             to: fixture.analysesURL.appendingPathComponent(
@@ -973,10 +967,8 @@ struct DocumentOperationsTests {
         let original = try await handle.documents.load(fixture.targetID)
         let revised = "\u{FEFF}---\r\ncustom: 'preserve'\r\n---\r\n# Target\r\n\r\nRevised source.\r\n"
         _ = try await handle.documents.save(
-            fixture.targetID,
-            changeSet: .exactContent(revised),
-            expectedRevision: original.fingerprint
-        )
+            try await capturedSaveTarget(handle, fixture.targetID, revision: original.fingerprint),
+            changeSet: .exactContent(revised))
         let refreshed = try await handle.discovery.refresh()
         #expect(refreshed.document(id: fixture.targetID)?.fingerprint == DocumentFingerprint(content: revised))
         #expect(!refreshed.research.healthIssues.contains { $0.contains("Settlement") })

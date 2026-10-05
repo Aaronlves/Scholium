@@ -160,10 +160,10 @@ One transition queue serializes guarded document and Library navigation. It
 flushes source before replacement and rechecks destination/supersession after
 suspension. A staged Library role change commits browse/shell state only, retaining
 Document and tabs. Failure preserves origin and recovery. Native committed close
-owns once-only teardown: content flush precedes final presentation save;
-SwiftUI disappearance detaches presentation only. Cancelled close retains flush
-registration so the attempt remains retryable; persistence refuses writes after
-native close.
+owns teardown. Selected-editor input freezes before final flush
+through presentation persistence and native close. Cancelled close/quit resumes
+its matching suspension and retains flush ownership. SwiftUI disappearance only
+detaches presentation; persistence refuses writes after close.
 
 ### Library projection and source-ahead mutations
 

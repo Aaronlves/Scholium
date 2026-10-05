@@ -281,30 +281,28 @@ public actor DocumentOperations: DocumentUseCases {
     /// Commits exact source without waiting for disposable workspace
     /// projections. This is the editor autosave completion boundary.
     public func commit(
-        _ id: VaultQualifiedNoteID,
-        changeSet: NoteChangeSet,
-        expectedRevision: DocumentFingerprint
+        _ target: NoteMutationTarget,
+        changeSet: NoteChangeSet
     ) async throws -> SaveResult {
         let handle = try await reference.requireHandle()
         return try await handle.commitDocument(
-            id,
-            changeSet: changeSet,
-            expectedRevision: expectedRevision
+            target,
+            changeSet: changeSet
         )
     }
 
     /// Delegates exact-byte revision checking and waits for the matching
     /// derived generation required by same-generation workflow consumers.
     public func save(
-        _ id: VaultQualifiedNoteID,
-        changeSet: NoteChangeSet,
-        expectedRevision: DocumentFingerprint
+        _ target: NoteMutationTarget,
+        changeSet: NoteChangeSet
     ) async throws -> WorkspaceMutationOutcome<SaveResult> {
         let handle = try await reference.requireHandle()
         return try await handle.saveDocument(
-            id,
+            target.documentID,
             changeSet: changeSet,
-            expectedRevision: expectedRevision
+            expectedRevision: target.revision,
+            expectedStableNoteID: target.stableNoteID
         )
     }
 

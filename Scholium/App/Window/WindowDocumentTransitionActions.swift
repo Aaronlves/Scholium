@@ -135,7 +135,7 @@ extension WindowModel {
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
     ) {
-        guard !transferInProgress else { return }
+        guard !transferInProgress, !windowCloseCoordinator.isPreparingOrFinalized else { return }
         var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
         var resolvedPreparation = preparation
         var retainedOpeningTab: DocumentTabItem?
@@ -276,6 +276,7 @@ extension WindowModel {
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
     ) {
+        guard !windowCloseCoordinator.isPreparingOrFinalized else { return }
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }

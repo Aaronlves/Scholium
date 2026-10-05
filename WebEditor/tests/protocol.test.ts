@@ -290,6 +290,13 @@ describe("guarded reference insertion", () => {
       expect(isEditorRequest({...request, operation: {type, suspensionID: ""}})).toBe(false);
     }
   });
+  it("freezes and resumes current input without admitting future generations or stale content commands", () => {
+    for (const type of ["suspendForDetachment", "resumeAfterDetachment"]) {
+      expect(generationCanExecuteEditorRequest(type, 3, 4)).toBe(true);
+      expect(generationCanExecuteEditorRequest(type, 5, 4)).toBe(false);
+    }
+    expect(generationCanExecuteEditorRequest("command", 3, 4)).toBe(false);
+  });
   it("admits escaped double-source acknowledgements while bounding each exact source", () => {
     const source = "\u0001".repeat(700_000);
     expect(isEditorRequest({...request, operation: {type: "acknowledgeCommittedSnapshot",

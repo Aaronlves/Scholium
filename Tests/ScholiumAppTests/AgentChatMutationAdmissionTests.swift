@@ -131,8 +131,10 @@ struct AgentChatMutationAdmissionTests {
             let vaultID = try #require(context.fixture.assignment.vault(for: .paperAnalysis)?.id)
             saveResearcherDraft = {
                 _ = try await context.handle.documents.save(
-                    .init(vaultID: vaultID, relativePath: "Alpha.md"),
-                    changeSet: .source(researcherSource), expectedRevision: context.fixture.analysisFingerprint)
+                    NoteMutationTarget(
+                        documentID: .init(vaultID: vaultID, relativePath: "Alpha.md"), stableNoteID: context.fixture.analysisNoteID,
+                        revision: context.fixture.analysisFingerprint),
+                    changeSet: .source(researcherSource))
             }
             let pending = Task { await context.controller.handle(context.request(.updateNote)) }
             do {

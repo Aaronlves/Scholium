@@ -5,7 +5,77 @@ import {createEditorScrollCoordinator, documentToolbarScrollMargin} from "../scr
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+function anchorRestorationHarness(fontsReady: Promise<void>) {
+  vi.stubGlobal("window", {
+    setTimeout, clearTimeout,
+    requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16),
+    cancelAnimationFrame: clearTimeout,
+  });
+  vi.stubGlobal("document", {fonts: {ready: fontsReady}});
+  const listeners = new Map<string, () => void>();
+  const scrollDOM = {
+    scrollTop: 0, scrollHeight: 2_000, clientHeight: 100,
+    getBoundingClientRect: () => ({top: 0}),
+    addEventListener: (event: string, callback: () => void) => { listeners.set(event, callback); },
+  };
+  let blockTop = 300;
+  const editor = {
+    state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM,
+    get documentTop() { return -scrollDOM.scrollTop; },
+    lineBlockAtHeight: (height: number) => ({from: height, to: height + 1, top: height, height: 20}),
+    lineBlockAt: () => ({from: 300, to: 320, top: blockTop, height: 20}),
+    requestMeasure: (request: {read(): number; write(value: number): void}) => request.write(request.read()),
+    dispatch: () => {},
+  } as unknown as EditorView;
+  const coordinator = createEditorScrollCoordinator(editor, {
+    onScroll: () => {}, post: () => {}, flushPresentationGeometry: () => {},
+  });
+  return {
+    scrollDOM,
+    emit: (event: string) => listeners.get(event)?.(),
+    setBlockTop: (top: number) => { blockTop = top; },
+    restore: () => coordinator.setAnchor({
+      sourceUTF16Offset: 300, blockUTF16LowerBound: 300, blockUTF16UpperBound: 320,
+      relativeBlockPosition: 0, fallbackFraction: 0.2,
+    }),
+  };
+}
+
 describe("scroll coordination across runtime reuse", () => {
+  it.each(["wheel", "keydown", "pointerdown", "touchstart"])("keeps the researcher viewport after %s input during restoration", async (input) => {
+    vi.useFakeTimers();
+    let finishFonts!: () => void;
+    const harness = anchorRestorationHarness(new Promise<void>(resolve => { finishFonts = resolve; }));
+    harness.restore();
+    await Promise.resolve();
+    expect(harness.scrollDOM.scrollTop).toBe(296);
+
+    harness.emit(input);
+    harness.scrollDOM.scrollTop = 700;
+    harness.emit("scroll");
+    vi.advanceTimersByTime(100);
+    finishFonts();
+    await Promise.resolve();
+
+    expect(harness.scrollDOM.scrollTop).toBe(700);
+  });
+
+  it("finishes font-layout restoration after its own programmatic scroll reports", async () => {
+    vi.useFakeTimers();
+    let finishFonts!: () => void;
+    const harness = anchorRestorationHarness(new Promise<void>(resolve => { finishFonts = resolve; }));
+    harness.restore();
+    harness.emit("scroll");
+    vi.advanceTimersByTime(100);
+    expect(harness.scrollDOM.scrollTop).toBe(296);
+
+    harness.setBlockTop(500);
+    finishFonts();
+    await Promise.resolve();
+
+    expect(harness.scrollDOM.scrollTop).toBe(496);
+  });
+
   it("updates and clears the covered caret region when native toolbar overlap changes", () => {
     let inset = "52px";
     const dom = {};

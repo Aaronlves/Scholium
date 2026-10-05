@@ -97,6 +97,14 @@ export function createEditorScrollCoordinator(
   let sessionFrameCount = 0;
   let sessionLongestFrame = 0;
   let sessionDroppedFrameCount = 0;
+  // Restoration retries may still be waiting for a frame or font layout when
+  // the researcher begins scrolling or moving the caret. Input takes viewport
+  // ownership immediately; scroll events alone also come from our own writes
+  // and must not invalidate the remaining measured restoration.
+  const abandonPendingRestoration = () => { scrollRevision += 1; };
+  for (const event of ["wheel", "pointerdown", "touchstart", "keydown"]) {
+    editor.scrollDOM.addEventListener(event, abandonPendingRestoration, {capture: true, passive: true});
+  }
   editor.scrollDOM.addEventListener("scroll", () => {
     options.onScroll();
     // Follow the painted viewport during scrolling, independently of the

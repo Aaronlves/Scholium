@@ -269,15 +269,18 @@ struct AppCompositionRootTests {
         }
 
         let store = makeTestWorkspaceStore()
+        _ = try await configurePresentationFixture(store: store, root: isolatedHome)
         let window = WindowModel(workspaceStore: store)
         let sessionID = UUID()
         await window.restoreWindowSession(id: sessionID)
+        try #require(window.didRestoreWindowSession)
         window.setDocumentTextScale(1.7)
 
         _ = try await window.windowCloseCoordinator.prepare()
 
         let saved = try #require(try await store.windowSession(id: sessionID))
         #expect(saved.documentTextScale == 1.7)
+        await store.shutdownApplicationRuntime()
     }
 
     @Test("Closing a background tab leaves the active document and its session untouched")
@@ -634,6 +637,7 @@ struct AppCompositionRootTests {
 
         // App termination can still be cancelled by another window. The same
         // open window must participate in a later close attempt.
+        window.windowCloseCoordinator.cancelPreparation()
         _ = try await window.windowCloseCoordinator.prepare()
         #expect(flushCount == 2)
 
@@ -788,10 +792,12 @@ struct AppCompositionRootTests {
             try? fileManager.removeItem(at: isolatedHome)
         }
 
+        let store = makeTestWorkspaceStore()
+        let fixtureVaultID = try await configurePresentationFixture(store: store, root: isolatedHome)
         var policy = ScholiumLifecyclePolicy()
         policy.presentationSnapshot = .milliseconds(30)
         let window = WindowModel(
-            workspaceStore: makeTestWorkspaceStore(),
+            workspaceStore: store,
             lifecyclePolicy: policy,
             finalWindowSessionSaver: { _, _ in
                 await withUnsafeContinuation {
@@ -800,8 +806,9 @@ struct AppCompositionRootTests {
             }
         )
         await window.restoreWindowSession(id: UUID())
+        try #require(window.didRestoreWindowSession)
         window.documentController.selectUnavailableDocument(
-            vaultID: UUID(),
+            vaultID: fixtureVaultID,
             relativePath: "Active.md"
         )
         let token = UUID()
@@ -819,6 +826,7 @@ struct AppCompositionRootTests {
         #expect(outcome.presentationWarning != nil)
         #expect(window.windowSessionPersistenceError != nil)
         #expect(window.refreshStatusText == "Window state not saved")
+        await store.shutdownApplicationRuntime()
     }
 
     @Test("Removing one window does not shut down the shared Application runtime")
@@ -1355,9 +1363,8 @@ struct AppCompositionRootTests {
 
         let cleanSource = originalSource + "\nCommitted from the first window.\n"
         let cleanCommit = try await firstWindow!.documentController.save(
-            originalID,
-            changeSet: .source(cleanSource),
-            expectedRevision: original.fingerprint
+            NoteMutationTarget(documentID: originalID, stableNoteID: stableNoteID, revision: original.fingerprint),
+            changeSet: .source(cleanSource)
         ).committedValue
         try await waitUntil("a clean peer converged to the committed source") {
             firstSession.editingSource == cleanSource
@@ -1374,9 +1381,8 @@ struct AppCompositionRootTests {
         firstSession.suppressAutosave = false
         let externalSource = "# Shared\n\nCommitted from the clean peer.\n"
         let externalCommit = try await secondWindow.documentController.save(
-            originalID,
-            changeSet: .source(externalSource),
-            expectedRevision: cleanCommit.document.fingerprint
+            NoteMutationTarget(documentID: originalID, stableNoteID: stableNoteID, revision: cleanCommit.document.fingerprint),
+            changeSet: .source(externalSource)
         ).committedValue
         try await waitUntil("the dirty peer entered Conflict without losing its buffer") {
             firstSession.conflict?.diskRevision == externalCommit.document.fingerprint
@@ -1453,9 +1459,8 @@ struct AppCompositionRootTests {
 
         let survivingSource = "# Shared\n\nThe surviving window still owns live work.\n"
         let survivingCommit = try await secondWindow.documentController.save(
-            renamedID,
-            changeSet: .source(survivingSource),
-            expectedRevision: movedRevision
+            NoteMutationTarget(documentID: renamedID, stableNoteID: stableNoteID, revision: movedRevision),
+            changeSet: .source(survivingSource)
         ).committedValue
         try await waitUntil("the surviving window received a later live commit") {
             secondSession.editingSource == survivingSource

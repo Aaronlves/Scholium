@@ -235,6 +235,8 @@ const forwardReadableOperationTypes = new Set([
   "queryScrollAnchor",
   "queryPerformance",
   "captureRecovery",
+  "suspendForDetachment",
+  "resumeAfterDetachment",
   "acknowledgeCommittedSnapshot",
   "announceStatus",
   "focus",
@@ -245,7 +247,7 @@ const forwardReadableOperationTypes = new Set([
 /**
  * Source, selection, mode, and projection mutations execute only against the
  * exact CodeMirror generation captured by native code. Snapshot reads and the
- * save acknowledgement may observe a newer generation, but no request may
+ * input suspension and save acknowledgement may observe a newer generation, but no request may
  * claim a generation the Web editor has not reached.
  */
 export function generationCanExecuteEditorRequest(

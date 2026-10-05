@@ -10,7 +10,9 @@ struct WindowClosePreparationOutcome: Sendable {
 /// dependency shutdown happens only after AppKit commits the close.
 @MainActor
 final class WindowCloseCoordinator {
-    typealias ContentFlusher = @MainActor () async throws -> Void
+    /// Install the acquired input suspension before awaiting any persistence.
+    /// The coordinator releases only this attempt's resumption on cancellation.
+    typealias ContentFlusher = @MainActor (_ retainSuspension: @escaping @MainActor (@escaping Finalizer) throws -> Void) async throws -> Void
     typealias PresentationSnapshot = @MainActor () -> WindowSessionSnapshot?
     typealias PersistenceFailureHandler = @MainActor (String?) -> Void
     typealias Finalizer = @MainActor () -> Void
@@ -23,14 +25,17 @@ final class WindowCloseCoordinator {
     private let finalizeDependencies: Finalizer
     private var closeAttemptSequence: UInt64 = 0
     private var currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
+    private var preparedOutcome: WindowClosePreparationOutcome?
+    private var resumePreparedContent: Finalizer?
     private var activePreparation:
         (
             attempt: LifecycleAttemptID,
             task: Task<WindowClosePreparationOutcome, Error>
         )?
     private(set) var isFinalized = false
+    var isPrepared: Bool { preparedOutcome != nil && !isFinalized }
     var isPreparingOrFinalized: Bool {
-        activePreparation != nil || isFinalized
+        activePreparation != nil || preparedOutcome != nil || isFinalized
     }
 
     init(
@@ -53,6 +58,7 @@ final class WindowCloseCoordinator {
         guard !isFinalized else {
             return WindowClosePreparationOutcome(presentationWarning: nil)
         }
+        if let preparedOutcome { return preparedOutcome }
         if let activePreparation {
             return try await activePreparation.task.value
         }
@@ -76,7 +82,17 @@ final class WindowCloseCoordinator {
                 activePreparation = nil
             }
         }
-        return try await task.value
+        do {
+            let outcome = try await task.value
+            guard currentCloseAttemptID == attempt, !isFinalized else {
+                throw ScholiumWindowLifecycleError.cancelled
+            }
+            preparedOutcome = outcome
+            return outcome
+        } catch {
+            if currentCloseAttemptID == attempt { cancelPreparation() }
+            throw error
+        }
     }
 
     private func performPreparation(
@@ -89,7 +105,15 @@ final class WindowCloseCoordinator {
             guard let self, !self.isFinalized else {
                 throw ScholiumWindowLifecycleError.unregisteredBeforeReady
             }
-            try await self.flushContent()
+            try await self.flushContent { resume in
+                guard attempt == self.currentCloseAttemptID, !self.isFinalized,
+                    !Task.isCancelled
+                else {
+                    resume()
+                    throw ScholiumWindowLifecycleError.cancelled
+                }
+                self.resumePreparedContent = resume
+            }
         }
         guard attempt == currentCloseAttemptID, !isFinalized else {
             throw ScholiumWindowLifecycleError.cancelled
@@ -122,11 +146,27 @@ final class WindowCloseCoordinator {
         }
     }
 
+    /// A refused native close or cancelled application termination restores
+    /// only the input suspension acquired by this attempt. Late completion
+    /// cannot prepare a window after cancellation or release a newer attempt.
+    func cancelPreparation() {
+        guard !isFinalized else { return }
+        currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
+        activePreparation?.task.cancel()
+        activePreparation = nil
+        preparedOutcome = nil
+        let resume = resumePreparedContent
+        resumePreparedContent = nil
+        resume?()
+    }
+
     func finalize() {
         guard !isFinalized else { return }
         isFinalized = true
         activePreparation?.task.cancel()
         activePreparation = nil
+        preparedOutcome = nil
+        resumePreparedContent = nil
         persistenceCoordinator.close()
         finalizeDependencies()
     }

@@ -549,26 +549,22 @@ final class DocumentController: ObservableObject {
     }
 
     func save(
-        _ id: VaultQualifiedNoteID,
-        changeSet: NoteChangeSet,
-        expectedRevision: DocumentFingerprint
+        _ target: NoteMutationTarget,
+        changeSet: NoteChangeSet
     ) async throws -> WorkspaceMutationOutcome<SaveResult> {
         try await requireOperations().save(
-            id,
-            changeSet: changeSet,
-            expectedRevision: expectedRevision
+            target,
+            changeSet: changeSet
         )
     }
 
     func commit(
-        _ id: VaultQualifiedNoteID,
-        changeSet: NoteChangeSet,
-        expectedRevision: DocumentFingerprint
+        _ target: NoteMutationTarget,
+        changeSet: NoteChangeSet
     ) async throws -> SaveResult {
         try await requireOperations().commit(
-            id,
-            changeSet: changeSet,
-            expectedRevision: expectedRevision
+            target,
+            changeSet: changeSet
         )
     }
 
@@ -981,14 +977,61 @@ final class DocumentController: ObservableObject {
         scheduleAutosave(session: session, target: document.editingTarget)
     }
 
-    func prepareSessionTransfer(_ document: WindowSelectedDocument) async throws {
+    func prepareSessionTransfer(
+        _ document: WindowSelectedDocument,
+        onSuspended: @escaping @MainActor (String?) throws -> Void = { _ in }
+    ) async throws {
         let session = session(for: document.editingTarget)
+        // Retain the admitted save before serialized preparation yields. Its
+        // completion can clear the session slot without clearing its failure.
+        let admittedSave = session.activeSaveTask
+        // A cancelled close can still be awaiting a bounded WebKit capture.
+        // Drain that acquisition before another close/navigation can reuse its
+        // suspension; the old catch must never release the new attempt's input.
+        while let previous = session.detachmentPreparationTask {
+            let previousToken = session.detachmentPreparationToken
+            _ = await previous.result
+            if session.detachmentPreparationToken == previousToken {
+                session.detachmentPreparationTask = nil
+                session.detachmentPreparationToken = nil
+            }
+        }
+        try Task.checkCancellation()
+        let token = UUID()
+        let preparation = Task { @MainActor in
+            try await self.performSessionTransferPreparation(document, session: session, admittedSave: admittedSave)
+            // Ownership handoff belongs inside the serialized acquisition;
+            // a retry cannot reuse its token before close retains its release.
+            try onSuspended(session.editorSession.detachmentSuspensionID)
+        }
+        session.detachmentPreparationToken = token
+        session.detachmentPreparationTask = preparation
+        defer {
+            if session.detachmentPreparationToken == token {
+                session.detachmentPreparationTask = nil
+                session.detachmentPreparationToken = nil
+            }
+        }
+        try await withTaskCancellationHandler {
+            try await preparation.value
+        } onCancel: {
+            preparation.cancel()
+        }
+    }
+
+    private func performSessionTransferPreparation(
+        _ document: WindowSelectedDocument,
+        session: DocumentSessionModel,
+        admittedSave: Task<EditorSaveOutcome, Error>?
+    ) async throws {
         // A previous transition's completion may have queued resumption on
         // this actor. Finish it before freezing the next navigation snapshot.
         if let resume = session.detachmentResumeTask { await resume.value }
+        try Task.checkCancellation()
         guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
         session.cancelAutosave()
         do {
+            if let admittedSave { _ = try await admittedSave.value }
             if let save = session.activeSaveTask {
                 _ = try await save.value
                 let deadline = ContinuousClock.now.advanced(by: .seconds(2))
@@ -998,8 +1041,10 @@ final class DocumentController: ObservableObject {
                 guard !session.isSavingEdit else { throw DocumentControllerError.changedDuringSave }
             }
             if session.editorSession.hasAttachedWebView {
+                try Task.checkCancellation()
                 try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
             }
+            try Task.checkCancellation()
             guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
         } catch {
             resumeAutosave(afterTransferOf: document, suspensionID: session.editorSession.detachmentSuspensionID)
@@ -2087,9 +2132,12 @@ final class DocumentController: ObservableObject {
             let path = relativePath(for: target)
             guard !path.isEmpty else { throw DocumentControllerError.documentUnavailable }
             return try await commit(
-                VaultQualifiedNoteID(vaultID: key.vaultID, relativePath: path),
-                changeSet: .source(source),
-                expectedRevision: expectedRevision
+                NoteMutationTarget(
+                    documentID: VaultQualifiedNoteID(vaultID: key.vaultID, relativePath: path),
+                    stableNoteID: key.noteID,
+                    revision: expectedRevision
+                ),
+                changeSet: .source(source)
             )
         case .unavailable:
             throw DocumentControllerError.documentUnavailable

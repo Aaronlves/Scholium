@@ -115,6 +115,8 @@ final class DocumentSessionModel: ObservableObject {
     var pendingEditorCommit: (snapshot: MarkdownEditorPersistenceSnapshot, document: NoteDocument)?
     var detachmentResumeTask: Task<Void, Never>?
     var detachmentResumeToken: UUID?
+    var detachmentPreparationTask: Task<Void, Error>?
+    var detachmentPreparationToken: UUID?
     private var editorCancellable: AnyCancellable?
     private var nextScrollRestoreRequestID: UInt64 = 0
 
@@ -289,6 +291,7 @@ final class DocumentSessionModel: ObservableObject {
 
     func cancelScheduledWork() {
         cancelAutosave()
+        detachmentPreparationTask?.cancel()
         detachmentResumeTask?.cancel()
         detachmentResumeTask = nil
         detachmentResumeToken = nil
@@ -605,6 +608,7 @@ final class DocumentSessionStore {
         if session.isSavingEdit || session.activeSaveTask != nil || session.pendingEditorCommit != nil {
             reasons.insert(.saveInFlight)
         }
+        if session.detachmentPreparationTask != nil { reasons.insert(.saveInFlight) }
         if session.canRetrySave { reasons.insert(.retryableRecovery) }
         if session.editorSession.hasRecoverableBuffer { reasons.insert(.recoveryBuffer) }
         return reasons

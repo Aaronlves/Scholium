@@ -2257,12 +2257,18 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       return rejected(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
     }
     editor.dispatch({effects: setEditorSuspension.of(operation.suspensionID)});
-    return {...successfulResult(request.requestID), recovery: captureRecovery()};
+    // Freezing and capturing share one turn, including input that arrived
+    // after the native request was created or composition finished.
+    const recovery = captureRecovery();
+    return {...successfulResult(request.requestID), text: recovery.source, recovery};
   }
   case "resumeAfterDetachment": {
-    if (editor.state.field(editorSuspensionState) !== operation.suspensionID) return rejected(request.requestID, documentVersion, "stale editor suspension");
-    editor.dispatch({effects: setEditorSuspension.of(null)});
-    break;
+    const suspension = editor.state.field(editorSuspensionState);
+    if (suspension !== null && suspension !== operation.suspensionID) return rejected(request.requestID, documentVersion, "stale editor suspension");
+    // A rejected freeze or lost resume reply may leave no suspension. Cleanup
+    // is source-neutral; a different live token still owns its frozen input.
+    if (suspension !== null) editor.dispatch({effects: setEditorSuspension.of(null)});
+    return {...successfulResult(request.requestID), text: exactEditorSource()};
   }
   case "restoreRecovery": {
     const snapshot = operation.snapshot;

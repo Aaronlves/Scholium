@@ -59,9 +59,8 @@ struct DocumentChangeOperationsTests {
         #expect(try Data(contentsOf: sourceURL) == c)
         let authored = "# Agency\n\nThe researcher revises the account.\n"
         _ = try await reopenedHandle.documents.save(
-            fixture.analysisNoteID, changeSet: .exactContent(authored),
-            expectedRevision: DocumentFingerprint(data: c)
-        )
+            try await capturedSaveTarget(reopenedHandle, fixture.analysisNoteID, revision: DocumentFingerprint(data: c)),
+            changeSet: .exactContent(authored))
         let pendingAuthored = try await reopenedHandle.changes.pendingChanges()
         #expect(pendingAuthored.first?.startingRevision == DocumentFingerprint(data: c))
         #expect(pendingAuthored.first?.endingRevision == DocumentFingerprint(data: Data(authored.utf8)))

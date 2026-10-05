@@ -51,7 +51,7 @@ An existing test name alone supplies no fresh passing evidence. Scenario/asserti
 | Opening, tabs and history | Repeat/open/new tab, Back/Forward | Menus, tab/window routes | Failed hydration, retained session, close failure | Fixed cross-role origin preservation; opening regressions |
 | Review/Edit/Source | Exact source, YAML, semantic Markdown | Mode/Format/Insert, task/footnote actions | Malformed/protected syntax, Undo, composition | Window-owned mode; native roles/tabs/caret/viewport/Undo; editor/Callouts/clipboard |
 | Find and completion | Find/Replace, slash/Wikilink/Analysis candidates | Return/Tab/Escape, named fields | No match, cancellation, Undo, marked text | Editor Find/completion; native journeys |
-| Save/conflict/recovery | Autosave/manual save, external refresh | Shared Save, comparison/repair controls | External conflict, interrupted editor, late input | Fixed close input suspension; WebKit failure/resumption regressions |
+| Save/conflict/recovery | Autosave/manual save, external refresh | Shared Save, comparison/repair controls | External conflict, interrupted editor, late input | Fixed stable-Note save identity, late-input/close suspension and scroll ownership; fixture/WebKit regressions |
 | Quick/Advanced Search | Lexical/property/Boolean/direct-link queries | Native field/results and keyboard opening | Invalid/empty/limited/stale, cancellation | Search suites; native result opening |
 | Search helpers | Saved Searches, term groups, paragraph locations | Explicit insertion/explanation/destination names | Invalid store, changed drafts, bounded pagination | Named fields/Escape/geometry fixed; native locators and saved/group management |
 | Links | Incoming/Outgoing/External, annotations | Named selector/filter/disclosure/source actions | Missing/ambiguous/repeated links, retained context | Connections/parser suites; native direction checks; formatted annotations readable in exploratory fixture |
@@ -101,6 +101,12 @@ unchanged implementation hashes. Logs: `.build/image-inline-evidence/final-gate.
 `final-app-resumed.log` and `final-gate-continuation.log`, plus `.build/verification/` and
 `.build/verification-release/`. QA runtime state is removed and all 506 standard
 fixture manifest files retain their hashes. No publishing or real-service proof.
+
+**2026-10-05 — Saving/recovery:** Disposable native QA preserves observed accepted
+bytes through switching, caret return, window close and graceful relaunch.
+Safety-scoped gate and regression evidence: `.build/saving-recovery-evidence/summary.json`.
+Physical IME/VoiceOver, private/system-service paths and unstaged forced-termination
+edits remain outside proof.
 
 Retained prior native baselines remain bounded: 2026-09-16 Bootstrap/editor
 conflict and recovery (`.build/bootstrap-verification/RESULTS.md`,

@@ -1305,7 +1305,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// SwiftUI removes the WKWebView during a note collapse or replacement.
     /// The retained document session replays this snapshot into the next view.
     func captureStateForViewReconstruction(suspendForDetachment: Bool = false) async throws {
-        let expectedKey = RecoveryCaptureKey(
+        var expectedKey = RecoveryCaptureKey(
             requestEpoch: requestEpoch,
             generation: generation
         )
@@ -1340,6 +1340,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         markdownEditorSelectionRangesAreValid(snapshot.ranges, forEditorUTF16Length: checkedEditorUTF16Length)
                     else { throw SessionError.invalidResult }
                     recoverySnapshot = snapshot
+                    // The atomic freeze can include input accepted after the
+                    // request's generation was captured. `send` has validated
+                    // and reconciled that full source before this snapshot.
+                    expectedKey = RecoveryCaptureKey(requestEpoch: requestEpoch, generation: generation)
                     detachmentCapture = DetachmentCapture(
                         suspensionID: suspensionID, transportSessionID: sessionID, snapshot: snapshot
                     )

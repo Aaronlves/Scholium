@@ -122,16 +122,15 @@ public protocol DocumentUseCases: LibraryMutationUseCases {
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
-    /// Commits authoritative source bytes and returns before disposable
-    /// workspace projections necessarily reach the same revision.
-    func commit(_ id: VaultQualifiedNoteID, changeSet: NoteChangeSet, expectedRevision: DocumentFingerprint) async throws -> SaveResult
+    /// Commits the captured stable Note identity at its exact source revision
+    /// and returns before disposable workspace projections reach that revision.
+    func commit(_ target: NoteMutationTarget, changeSet: NoteChangeSet) async throws -> SaveResult
     /// Commits authoritative source bytes and waits for the matching complete
     /// derived workspace generation. Use only when the caller immediately
     /// consumes graph, identity, Search, or other same-generation projection.
     func save(
-        _ id: VaultQualifiedNoteID,
-        changeSet: NoteChangeSet,
-        expectedRevision: DocumentFingerprint
+        _ target: NoteMutationTarget,
+        changeSet: NoteChangeSet
     ) async throws -> WorkspaceMutationOutcome<SaveResult>
     func move(
         _ id: VaultQualifiedNoteID,

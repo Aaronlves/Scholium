@@ -42,23 +42,23 @@ extension WorkspaceHandle {
         }
     }
 
-    /// Shared Metadata writer; callers hold the workspace source-mutation lease.
-
+    /// Source-only completion for retained editors; the shared writer acquires
+    /// the source lease before checking the captured identity and revision.
     func commitDocument(
-        _ id: VaultQualifiedNoteID,
-        changeSet: NoteChangeSet,
-        expectedRevision: DocumentFingerprint
+        _ target: NoteMutationTarget,
+        changeSet: NoteChangeSet
     ) async throws -> SaveResult {
         switch try await performDocumentSave(
-            id,
+            target.documentID,
             changeSet: changeSet,
-            expectedRevision: expectedRevision,
-            completion: .sourceOnly
+            expectedRevision: target.revision,
+            completion: .sourceOnly,
+            expectedStableNoteID: target.stableNoteID
         ) {
         case .committed(let outcome):
             return outcome.committedValue
         case .notWritten(let reason):
-            throw documentSaveError(reason, expectedRevision: expectedRevision)
+            throw documentSaveError(reason, expectedRevision: target.revision)
         case .recoveryRequired(let record):
             throw TriptychTransactionError.recoveryRequired(record)
         }
@@ -100,15 +100,23 @@ extension WorkspaceHandle {
         // Note while this writer waits for the source lease. Undo's receipt is
         // itself a mandatory identity binding, even without a caller-supplied ID.
         if let stableNoteID = undoEvidence?.noteID ?? expectedStableNoteID {
-            let identity = try await resolvedIdentity(
-                for: id,
-                expectedRevision: expectedRevision
-            )
+            guard
+                let identity = try await services.controlStore.identityRecord(
+                    vaultID: id.vaultID, relativePath: id.relativePath)
+            else { throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath) }
             try requireExpectedIdentity(
                 stableNoteID,
                 resolved: identity.id,
                 relativePath: id.relativePath
             )
+            // Source-only saves can advance several revisions before the
+            // disposable projection refresh. Its identity must still be
+            // resolved, while the repository independently proves the exact
+            // source revision immediately before replacement.
+            guard
+                currentSnapshot.document(id: id)?.stableIdentity.resolvedID == identity.id
+                    || sourceAheadIdentityRecords[id]?.id == identity.id
+            else { throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath) }
         }
         let save = try await repository.saveOutcome(
             relativePath: id.relativePath,

@@ -129,10 +129,8 @@ struct WorkspaceSourceOperationGateTests {
         let holder = try await handle.acquireWorkspaceSourceOperation(.refreshCycle)
         let cancelled = Task {
             try await handle.documents.save(
-                fixture.analysisNoteID,
-                changeSet: .body("This cancelled write must never commit.\n"),
-                expectedRevision: original.fingerprint
-            )
+                try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint),
+                changeSet: .body("This cancelled write must never commit.\n"))
         }
         #expect(await waitUntilWorkspaceWaiterCount(1, handle: handle))
 

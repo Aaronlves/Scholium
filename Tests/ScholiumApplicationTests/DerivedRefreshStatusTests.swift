@@ -161,10 +161,8 @@ struct DerivedRefreshStatusTests {
         let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL)
         let saved = try await handle.documents.commit(
-            fixture.analysisNoteID,
-            changeSet: .body("Committed exactly once.\n"),
-            expectedRevision: original.fingerprint
-        )
+            try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint),
+            changeSet: .body("Committed exactly once.\n"))
         let committedRevision = saved.document.fingerprint
 
         // Save acknowledges authoritative bytes. The owned background refresh
@@ -349,10 +347,8 @@ struct DerivedRefreshStatusTests {
         try makeDerivedRefreshFail()
         let original = try await handle.documents.load(fixture.analysisNoteID)
         let saved = try await handle.documents.save(
-            fixture.analysisNoteID,
-            changeSet: .body("Committed once despite a failed derived refresh.\n"),
-            expectedRevision: original.fingerprint
-        )
+            try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint),
+            changeSet: .body("Committed once despite a failed derived refresh.\n"))
         #expect(saved.derivedRefreshWarning?.isEmpty == false)
         #expect(saved.identityRecoveryWarning == nil)
         #expect(
