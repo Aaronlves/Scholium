@@ -140,28 +140,32 @@ extension WorkspaceSourceOperationGateOwner {
     private func waitForWorkspaceSourceOperationChange() async throws {
         try Task.checkCancellation()
         let waiterID = UUID()
-        let result = await withTaskCancellationHandler {
-            await withCheckedContinuation {
-                (
-                    continuation: CheckedContinuation<
-                        Result<Void, any Error>,
-                        Never
-                    >
-                ) in
-                // `onCancel` may run before this actor regains execution.
-                // Inspecting the current task closes that enqueue race.
-                if Task.isCancelled {
-                    continuation.resume(returning: .failure(CancellationError()))
-                } else {
-                    sourceOperationGate.enqueueWaiter(
-                        id: waiterID,
-                        continuation: continuation
-                    )
+        let result = await withTaskCancellationHandler(
+            operation: {
+                await withCheckedContinuation {
+                    (
+                        continuation: CheckedContinuation<
+                            Result<Void, any Error>,
+                            Never
+                        >
+                    ) in
+                    // `onCancel` may run before this actor regains execution.
+                    // Inspecting the current task closes that enqueue race.
+                    if Task.isCancelled {
+                        continuation.resume(returning: .failure(CancellationError()))
+                    } else {
+                        sourceOperationGate.enqueueWaiter(
+                            id: waiterID,
+                            continuation: continuation
+                        )
+                    }
                 }
-            }
-        } onCancel: {
-            Task { await self.cancelWorkspaceSourceOperationWaiter(waiterID) }
-        }
+            },
+            onCancel: {
+                Task { await self.cancelWorkspaceSourceOperationWaiter(waiterID) }
+            },
+            isolation: self
+        )
         return try result.get()
     }
 
