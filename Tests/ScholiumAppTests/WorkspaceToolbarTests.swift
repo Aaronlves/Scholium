@@ -599,8 +599,8 @@ struct WorkspaceToolbarTests {
         projection.invalidate()
     }
 
-    @Test("The shared tab well divides available space equally, then favors a crowded selection")
-    func toolbarTabStripCompressionAndScroll() throws {
+    @Test("The shared tab well divides available space equally, then favors a crowded selection", arguments: [CGFloat(1), CGFloat(2)])
+    func toolbarTabStripCompressionAndScroll(backingScale: CGFloat) throws {
         let tabs = (0..<5).map { index in
             DocumentTabItem(
                 document: .unavailable(vaultID: UUID(), relativePath: "\(index).md"),
@@ -609,9 +609,11 @@ struct WorkspaceToolbarTests {
         }
         let projection = DocumentToolbarTabs()
         let group = try #require(projection.item(for: DocumentToolbarTabItem.identifier))
-        let window = testWindow()
+        let window = ToolbarTabBackingScaleWindow(backingScale: backingScale)
         window.contentView?.addSubview(group.control)
-        group.control.frame = NSRect(x: 20, y: 20, width: 520, height: DocumentToolbarTabStrip.height)
+        // Equality fixtures divide into whole-point shares at both 1x and 2x.
+        // AppKit may distribute a fractional share across adjacent backing pixels.
+        group.control.frame = NSRect(x: 20, y: 20, width: 521, height: DocumentToolbarTabStrip.height)
         defer {
             projection.invalidate()
             window.close()
@@ -630,7 +632,7 @@ struct WorkspaceToolbarTests {
         #expect(abs(threeControls[2].frame.width - threeControls[1].frame.width) < 1)
 
         let fourTabs = Array(tabs.prefix(4))
-        group.control.frame.size.width = 900
+        group.control.frame.size.width = 902
         projection.update(tabs: fourTabs, selectedID: tabs[3].id)
         group.control.layoutSubtreeIfNeeded()
         let active = try #require(projection.control(for: tabs[3].id))
@@ -673,7 +675,7 @@ struct WorkspaceToolbarTests {
         #expect(abs(selectedLast.reduce(0, +) - selectedFirst.reduce(0, +)) < 2)
         #expect(totalWidthIsConserved(selectedFirst, stripWidth: 708))
 
-        group.control.frame.size.width = 600
+        group.control.frame.size.width = 602
         projection.update(tabs: fourTabs, selectedID: tabs[3].id)
         group.control.layoutSubtreeIfNeeded()
         #expect(inactive.allSatisfy { abs($0.frame.width - inactive[0].frame.width) < 1 })
@@ -840,5 +842,21 @@ struct WorkspaceToolbarTests {
         )
         window.isReleasedWhenClosed = false
         return window
+    }
+}
+
+@MainActor
+private final class ToolbarTabBackingScaleWindow: NSWindow {
+    private let layoutBackingScale: CGFloat
+    override var backingScaleFactor: CGFloat { layoutBackingScale }
+
+    init(backingScale: CGFloat) {
+        layoutBackingScale = backingScale
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 640),
+            styleMask: [.titled, .resizable, .closable],
+            backing: .buffered,
+            defer: false)
+        isReleasedWhenClosed = false
     }
 }
