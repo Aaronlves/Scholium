@@ -4,7 +4,7 @@ import CryptoKit
 import notify
 
 /// External driver for the frozen RDF-1 performance protocol. This class does
-/// not create fixtures, package Scholium, or decide whether a run is a release
+/// not create the frozen RDF-1, package Scholium, or decide whether a run is a release
 /// gate. `run-performance-benchmarks.sh` owns those fail-closed checks and
 /// invokes this single method against an explicitly registered app bundle.
 final class ScholiumPerformanceUITests: XCTestCase {
@@ -160,6 +160,26 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let runID = try required("SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID", in: environment)
         let triptych = URL(fileURLWithPath: fixtureRoot, isDirectory: true)
         let noteURL = triptych.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let imageAlt = "Packaged image fixture"
+        let imageURL = triptych.appendingPathComponent("01-analyses/Attachments/packaged-smoke.png")
+        try FileManager.default.createDirectory(
+            at: imageURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 120, pixelsHigh: 90, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0))
+        bitmap.bitmapData?.initialize(repeating: 255, count: bitmap.bytesPerRow * bitmap.pixelsHigh)
+        for y in 12..<78 {
+            for x in 12..<108 {
+                bitmap.setColor(NSColor(calibratedRed: 0.18, green: 0.35, blue: 0.72, alpha: 1), atX: x, y: y)
+            }
+        }
+        let imageBytes = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        try imageBytes.write(to: imageURL)
+        // The driver receives a disposable copy, never the standard fixture.
+        var smokeBytes = try Data(contentsOf: noteURL)
+        smokeBytes.append(Data("\n![\(imageAlt)](Attachments/packaged-smoke.png)\n".utf8))
+        try smokeBytes.write(to: noteURL)
         let originalBytes = try Data(contentsOf: noteURL)
         let originalSource = try XCTUnwrap(String(data: originalBytes, encoding: .utf8))
         let addition = "packaged-core-smoke-\(runID)\n"
@@ -239,13 +259,23 @@ final class ScholiumPerformanceUITests: XCTestCase {
         noteRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         let mode = documentModeControl(in: application)
         XCTAssertTrue(mode.waitForExistence(timeout: 20))
-        selectPackagedSourceMode(in: application, control: mode)
+        XCTAssertEqual(documentModeState(mode), "Edit")
+        XCTAssertTrue(application.images[imageAlt].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertGreaterThan(application.images[imageAlt].firstMatch.frame.width, 0)
+        XCTAssertGreaterThan(application.images[imageAlt].firstMatch.frame.height, 0)
+        selectPackagedMode("Source", in: application, control: mode)
         let editor = application.descendants(matching: .any)["Markdown source editor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 20))
         XCTAssertTrue(
             waitUntil(timeout: 20) {
                 self.packagedSourceAccessibilityMatches(originalSource, in: editor)
             })
+        selectPackagedMode("Review", in: application, control: mode)
+        XCTAssertTrue(application.images[imageAlt].firstMatch.waitForExistence(timeout: 10))
+        selectPackagedMode("Source", in: application, control: mode)
+        XCTAssertTrue(waitUntil(timeout: 20) {
+            self.packagedSourceAccessibilityMatches(originalSource, in: editor)
+        })
         editor.click()
         editor.typeKey(.end, modifierFlags: [.command])
         editor.typeText(addition)
@@ -277,7 +307,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
         restoredRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         let restoredMode = documentModeControl(in: application)
         XCTAssertTrue(restoredMode.waitForExistence(timeout: 20))
-        selectPackagedSourceMode(in: application, control: restoredMode)
+        selectPackagedMode("Edit", in: application, control: restoredMode)
+        XCTAssertTrue(application.images[imageAlt].firstMatch.waitForExistence(timeout: 10))
+        selectPackagedMode("Source", in: application, control: restoredMode)
         let restoredEditor = application.descendants(matching: .any)["Markdown source editor"]
         XCTAssertTrue(restoredEditor.waitForExistence(timeout: 20))
         XCTAssertTrue(
@@ -287,6 +319,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "Reopening after relaunch must display the exact saved source."
         )
         XCTAssertEqual(try Data(contentsOf: noteURL), expectedBytes)
+        XCTAssertEqual(try Data(contentsOf: imageURL), imageBytes)
     }
 
     @MainActor
@@ -401,18 +434,22 @@ final class ScholiumPerformanceUITests: XCTestCase {
     }
 
     @MainActor
-    private func selectPackagedSourceMode(
+    private func selectPackagedMode(
+        _ requestedMode: String,
         in application: XCUIApplication,
         control: XCUIElement
     ) {
-        if documentModeState(control) == "Source" { return }
+        if documentModeState(control) == requestedMode { return }
         application.menuBars.menuBarItems["View"].click()
         let documentModeMenu = application.menuItems["Document Mode"].firstMatch
         XCTAssertTrue(documentModeMenu.waitForExistence(timeout: 5))
         documentModeMenu.hover()
-        let source = application.menuItems["Source"].firstMatch
-        XCTAssertTrue(source.waitForExistence(timeout: 5))
-        source.click()
+        let requested = application.menuItems[requestedMode].firstMatch
+        XCTAssertTrue(requested.waitForExistence(timeout: 5))
+        requested.click()
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            self.documentModeState(control) == requestedMode
+        }, "The packaged Document must report the requested \(requestedMode) mode.")
     }
 
     /// Samples only the app and WebKit service PIDs attributed to this exact

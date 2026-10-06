@@ -2204,6 +2204,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     }
                 }
                 updatePresentation { $0.complete(appliedMode) }
+                // Derived presentation can arrive during scroll or focus
+                // restoration after the initial convergence. Once loading
+                // completes, publish those retained values through the same
+                // guarded path used by subsequent presentation updates.
+                reconvergePendingPresentationState()
                 // CodeMirror has replaced its exact source, but WebKit can
                 // retain the previous accessibility value until a separate
                 // DOM interaction occurs. Invalidate that value projection

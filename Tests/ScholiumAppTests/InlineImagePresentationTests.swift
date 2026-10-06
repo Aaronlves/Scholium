@@ -73,6 +73,50 @@ extension MarkdownEditorWebViewIntegrationTests {
         await review.closeAndDrain()
     }
 
+    @Test("Initial images arriving after presentation convergence remain visible when loading completes")
+    func initialImageCatalogAfterConvergence() async throws {
+        let image = try InlineImageFixture.landscapePNG.image()
+        let source = "Before fixture.\n\n![fixture](Attachments/figure)\n\nAfter fixture.\n"
+        let after = try #require(source.range(of: "After fixture.")?.lowerBound.utf16Offset(in: source))
+        let gate = InlineImageQueryGate()
+        let barrier = InlineImageStartupScrollBarrier()
+        let harness = EditorHarness(
+            source: source, bridgeDispatcher: barrier,
+            initialSourceRange: after..<after, imageResourcesQuery: gate.query)
+        defer {
+            gate.releaseAll()
+            barrier.resume()
+            harness.close()
+        }
+        do {
+            try await barrier.waitUntilSuspended()
+            #expect(!harness.session.isLoaded)
+            let selection = harness.session.context?.selections
+            let generation = harness.session.generation
+            let undoLabel = harness.session.context?.undoLabel
+            // Resolve the admitted catalog through its existing synchronous
+            // owner after convergence, while initial scroll restoration waits.
+            harness.session.setImageResources(
+                ["Attachments/figure": image], documentID: harness.documentID, generation: generation)
+            #expect(barrier.nonemptyCatalogGenerations.isEmpty)
+            barrier.resume()
+            try await harness.waitUntilReady()
+            _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.landscapePNG.width)
+            #expect(barrier.nonemptyCatalogGenerations == [generation])
+            #expect(try await harness.session.currentText() == source)
+            #expect(harness.session.generation == generation)
+            #expect(harness.session.context?.selections == selection)
+            #expect(harness.session.context?.undoLabel == undoLabel)
+            #expect(!harness.session.isDirty)
+            await harness.closeAndDrain()
+        } catch {
+            barrier.resume()
+            gate.releaseAll()
+            await harness.closeAndDrain()
+            throw error
+        }
+    }
+
     @Test("Image refresh remeasures the nearby caret and preserves exact source, selection, modes and Undo")
     func inlineImageRefreshPreservesEditorState() async throws {
         let landscape = try InlineImageFixture.landscapePNG.image()
@@ -718,6 +762,44 @@ private final class InlineImagePresentationBarrier: MarkdownEditorBridgeDispatch
                 Issue.record("The suspended image convergence did not complete after its generation changed.")
                 throw MarkdownEditorSession.SessionError.unavailable
             }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+}
+
+@MainActor
+private final class InlineImageStartupScrollBarrier: MarkdownEditorBridgeDispatching {
+    private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+    private var didSuspend = false
+    private var released = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var nonemptyCatalogGenerations: [Int] = []
+
+    func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+        let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+        if !didSuspend, !released, case .setScrollFraction = request.operation {
+            didSuspend = true
+            await withCheckedContinuation { continuation = $0 }
+        }
+        let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+        if case .setImageResources(let resources) = request.operation, !resources.isEmpty {
+            let reply = try #require(result as? [String: Any])
+            #expect(reply["accepted"] as? Bool == true)
+            nonemptyCatalogGenerations.append(request.knownGeneration)
+        }
+        return result
+    }
+
+    func resume() {
+        released = true
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func waitUntilSuspended() async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while continuation == nil {
+            try #require(ContinuousClock.now < deadline, "Initial restoration did not reach its post-convergence barrier.")
             try await Task.sleep(for: .milliseconds(10))
         }
     }
