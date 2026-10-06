@@ -342,23 +342,12 @@ final class ScholiumPerformanceUITests: XCTestCase {
             XCTFail("The native path field did not clear; observed \(String(describing: pathField.value)).")
             return
         }
-        var enteredPrefix = ""
-        for character in folder.path {
-            switch character {
-            case "A"..."Z":
-                application.typeKey(String(character).lowercased(), modifierFlags: [.shift])
-            case "_":
-                application.typeKey("-", modifierFlags: [.shift])
-            default:
-                application.typeKey(String(character), modifierFlags: [])
-            }
-            enteredPrefix.append(character)
-            guard waitUntil(timeout: 5, condition: { pathField.value as? String == enteredPrefix }) else {
-                XCTFail(
-                    "Native path input must settle the exact prefix \(enteredPrefix.debugDescription); observed \(String(describing: pathField.value))."
-                )
-                return
-            }
+        application.typeText(folder.path)
+        guard waitUntil(timeout: 5, condition: { pathField.value as? String == folder.path }) else {
+            XCTFail(
+                "Native path input must settle the exact folder \(folder.path.debugDescription); observed \(String(describing: pathField.value))."
+            )
+            return
         }
         let enteredPath = pathField.value as? String
         XCTAssertEqual(
@@ -374,17 +363,29 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.typeKey(.return, modifierFlags: [])
         }
         XCTAssertTrue(waitUntil(timeout: 5) { !goToFolder.exists })
-        if panel.exists {
-            let choose = panel.buttons["OKButton"]
-            XCTAssertTrue(choose.waitForExistence(timeout: 5))
+        let selectedPath = application.descendants(matching: .any)[
+            "scholium.bootstrap.existingFolders"
+        ].staticTexts.matching(
+            NSPredicate(
+                format: "value IN %@",
+                [folder.path, folder.path.hasSuffix("/") ? folder.path : folder.path + "/"]
+            )
+        ).firstMatch
+        let selectionReturned = {
+            !panel.exists && selectedPath.exists
+                && (button != "scholium.bootstrap.authorizeParent" || !chooseButton.exists)
+        }
+        let choose = panel.buttons["OKButton"]
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                selectionReturned() || (panel.exists && choose.exists)
+            })
+        if !selectionReturned(), panel.exists, choose.exists {
             choose.coordinate(
                 withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
             ).click()
-            XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
         }
-        let selectedPath = application.staticTexts.matching(
-            NSPredicate(format: "value CONTAINS %@", folder.path)
-        ).firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) { selectionReturned() })
         XCTAssertTrue(
             selectedPath.waitForExistence(timeout: 10),
             "The packaged picker must return the exact disposable folder before continuing."
