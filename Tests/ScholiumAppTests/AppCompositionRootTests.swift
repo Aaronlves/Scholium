@@ -366,6 +366,28 @@ struct AppCompositionRootTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try "# A\n".write(to: analyses.appendingPathComponent("A.md"), atomically: true, encoding: .utf8)
         try "# B\n".write(to: topics.appendingPathComponent("B.md"), atomically: true, encoding: .utf8)
+        let analysisVaultID = UUID()
+        let topicVaultID = UUID()
+        let manifest = TriptychManifest(
+            vaultIDs: [.paperAnalysis: analysisVaultID, .topicKnowledge: topicVaultID, .output: UUID()])
+        let analysisIdentities = ["Old A 1.md", "Old A 2.md"].map {
+            NoteIdentityRecord(vaultID: analysisVaultID, relativePath: $0, fingerprint: DocumentFingerprint(content: "# A\n"))
+        }
+        let topicIdentities = ["Old B 1.md", "Old B 2.md"].map {
+            NoteIdentityRecord(vaultID: topicVaultID, relativePath: $0, fingerprint: DocumentFingerprint(content: "# B\n"))
+        }
+        // Two absent paths with matching source bytes leave each current Note genuinely ambiguous after reconciliation.
+        let control = fixture.appendingPathComponent(".scholium")
+        try FileManager.default.createDirectory(at: control, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(manifest).write(to: control.appendingPathComponent("manifest.json"))
+        let records = try JSONSerialization.jsonObject(with: encoder.encode(analysisIdentities + topicIdentities))
+        try JSONSerialization.data(
+            withJSONObject: ["records": records, "pendingRebindings": [], "unresolvedAmbiguities": []],
+            options: [.prettyPrinted, .sortedKeys]
+        ).write(to: control.appendingPathComponent("identities.json"))
         let store = makeTestWorkspaceStore()
         let configured = try await store.configureTriptychCapabilities(
             paperAnalysisURL: analyses, topicKnowledgeURL: topics, outputURL: works,
@@ -380,6 +402,18 @@ struct AppCompositionRootTests {
                 && window.workspaceProjectionController.cachedNote(
                     vaultID: topicVault.id, stableNoteID: nil, relativePath: "B.md") != nil
         }
+        func hasExpectedAmbiguity(_ note: WorkspaceNoteSummary?, candidates: [NoteIdentityRecord]) -> Bool {
+            guard let note, case .ambiguous(let candidateIDs) = note.stableIdentity else { return false }
+            return Set(candidateIDs) == Set(candidates.map(\.id))
+        }
+        try #require(
+            hasExpectedAmbiguity(
+                window.workspaceProjectionController.cachedNote(
+                    vaultID: analysisVault.id, stableNoteID: nil, relativePath: "A.md"), candidates: analysisIdentities))
+        try #require(
+            hasExpectedAmbiguity(
+                window.workspaceProjectionController.cachedNote(
+                    vaultID: topicVault.id, stableNoteID: nil, relativePath: "B.md"), candidates: topicIdentities))
         let a = WindowSelectedDocument.unavailable(vaultID: analysisVault.id, relativePath: "A.md")
         let b = WindowSelectedDocument.unavailable(vaultID: topicVault.id, relativePath: "B.md")
         let aSnapshot = try #require(
