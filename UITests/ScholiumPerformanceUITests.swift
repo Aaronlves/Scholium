@@ -311,30 +311,54 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let panel = application.descendants(matching: .any)["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         application.typeKey("g", modifierFlags: [.command, .shift])
-        let goToFolder = application.sheets.matching(
-            NSPredicate(format: "identifier != %@", "open-panel")
-        ).firstMatch
-        XCTAssertTrue(goToFolder.waitForExistence(timeout: 5))
-        let pathField = goToFolder.textFields.firstMatch
-        XCTAssertTrue(pathField.waitForExistence(timeout: 5))
-        pathField.click()
-        pathField.typeKey("a", modifierFlags: [.command])
-        pathField.typeText(folder.path)
-        let confirmFolder = goToFolder.buttons.allElementsBoundByIndex
-            .reversed()
-            .first(where: {
-                $0.isEnabled && $0.label != "Cancel" && $0.label != "Close"
-                    && $0.identifier != "CancelButton" && $0.identifier != "CloseButton"
-            })
-        if let confirmFolder {
-            confirmFolder.click()
-        } else {
-            pathField.typeKey(.return, modifierFlags: [])
+        let goToFolders = application.sheets.matching(identifier: "GoToWindow")
+        XCTAssertTrue(goToFolders.element(boundBy: 0).waitForExistence(timeout: 5))
+        guard goToFolders.count == 1 else {
+            XCTFail("The packaged picker must own exactly one native Go to Folder sheet.")
+            return
         }
+        let goToFolder = goToFolders.element
+        let pathFields = goToFolder.textFields.matching(identifier: "PathTextField")
+        XCTAssertTrue(pathFields.element(boundBy: 0).waitForExistence(timeout: 5))
+        guard pathFields.count == 1 else {
+            XCTFail("The native Go to Folder sheet must own exactly one path field.")
+            return
+        }
+        let pathField = pathFields.element
+        guard pathField.isHittable else {
+            XCTFail("The native Go to Folder path field must be hittable before entering its exact path.")
+            return
+        }
+        pathField.click()
+        application.typeKey("a", modifierFlags: [.command])
+        application.typeKey(.delete, modifierFlags: [])
+        guard waitUntil(timeout: 5, condition: { pathField.value as? String == "" }) else {
+            XCTFail("The native path field did not clear; observed \(String(describing: pathField.value)).")
+            return
+        }
+        var enteredPrefix = ""
+        for character in folder.path {
+            application.typeText(String(character))
+            enteredPrefix.append(character)
+            guard waitUntil(timeout: 5, condition: { pathField.value as? String == enteredPrefix }) else {
+                XCTFail(
+                    "Native path input must settle the exact prefix \(enteredPrefix.debugDescription); observed \(String(describing: pathField.value))."
+                )
+                return
+            }
+        }
+        let enteredPath = pathField.value as? String
+        XCTAssertEqual(
+            enteredPath,
+            folder.path,
+            "The native path field must contain the exact disposable folder before confirmation."
+        )
+        guard enteredPath == folder.path else { return }
+        application.typeKey(.return, modifierFlags: [])
         // Go to Folder can use the first Return to accept a completion. The
         // panel route is ready only after the sheet has actually closed.
-        if !waitUntil(timeout: 2) { !goToFolder.exists } {
-            pathField.typeKey(.return, modifierFlags: [])
+        if !waitUntil(timeout: 2) { !goToFolder.exists }, goToFolder.exists {
+            application.typeKey(.return, modifierFlags: [])
         }
         XCTAssertTrue(waitUntil(timeout: 5) { !goToFolder.exists })
         if panel.exists {
