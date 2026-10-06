@@ -550,7 +550,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
         let beginningToken = "QA-CJK-BEGIN-\(UUID().uuidString)"
         application.typeKey(.home, modifierFlags: [.command])
-        try paste(beginningToken, into: application)
+        typeText(beginningToken, into: application)
         XCTAssertTrue(
             waitUntil(timeout: 20) {
                 (editor.value as? String)?.contains(beginningToken) == true
@@ -560,7 +560,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
         for _ in 0..<24 { application.typeKey(.pageDown, modifierFlags: []) }
         let middleToken = "QA-CJK-MIDDLE-\(UUID().uuidString)"
-        try paste(middleToken, into: application)
+        typeText(middleToken, into: application)
         XCTAssertTrue(
             waitUntil(timeout: 20) {
                 (editor.value as? String)?.contains(middleToken) == true
@@ -570,7 +570,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
         let endToken = "QA-CJK-END-\(UUID().uuidString)"
         application.typeKey(.end, modifierFlags: [.command])
-        try paste(endToken, into: application)
+        typeText(endToken, into: application)
         XCTAssertEqual(try Data(contentsOf: noteURL), originalData)
 
         application.typeKey("s", modifierFlags: [.command])
@@ -1284,19 +1284,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
     }
 
     @MainActor
-    private func paste(_ text: String, into application: XCUIApplication) throws {
-        let process = Process()
-        let input = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
-        process.standardInput = input
-        try process.run()
-        input.fileHandleForWriting.write(Data(text.utf8))
-        try input.fileHandleForWriting.close()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        application.typeKey("v", modifierFlags: [.command])
+    private func typeText(_ text: String, into application: XCUIApplication) {
+        application.typeText(text)
     }
 
     @MainActor
