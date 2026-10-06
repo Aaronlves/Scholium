@@ -67,6 +67,16 @@ developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
 ```
 
+日常推送与 PR 的 CI 使用 `verify.sh --ci`，保留仓库与可复现 Editor 检查、
+Core／Contracts／Application、bridge 及其余 App 测试；仅将两个昂贵的
+`MarkdownEditorWebViewIntegrationTests`、`MarkdownEditorReuseTests` 套件和
+优化版 Release 构建留给完整门禁。日常检查验证 Debug helper；完整门禁还验证
+Release helper。Editor 类型检查与测试在 bundle 检查中只运行一次。
+
+发布 Beta 前，在 `Verify` workflow 中为准确候选 ref 手动选择 **full**，并在适当
+开发机器上运行默认完整门禁，再完成适用的打包启动、artifact 与性能检查。
+标签推送不重复触发 CI；日常检查通过不等于发布门禁通过。
+
 常用开发命令：
 
 ```bash

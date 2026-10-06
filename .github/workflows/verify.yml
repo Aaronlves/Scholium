@@ -1,10 +1,8 @@
 name: Verify
 
-# Tools/Scripts/verify.sh is already the repository's whole gate: documentation
-# authority, interface localization, swift-format, the architecture and I/O wall
-# guards, every Swift test product, the reproducible editor bundle comparison,
-# the public symbol graph wall, and a release build. It only ever ran when
-# someone remembered to type it. This runs it on every change instead.
+# Daily checks retain the repository guards and correctness suites. Full
+# verification is explicitly selected before a beta, followed by the owning
+# local/package gates. Tagging an already verified commit starts no duplicate run.
 
 on:
   push:
@@ -12,40 +10,26 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Verification scope (full is required before beta publication)
+        type: choice
+        options: [full, daily]
+        default: full
+        required: true
 
-# A newer push supersedes an in-flight run on the same ref. Pushes to main are
-# kept, so the history of what passed on the default branch stays complete.
+# Superseded daily pushes stop consuming runners. Explicit full verification
+# has a separate group and is allowed to finish even while development advances.
 concurrency:
-  group: verify-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: verify-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'daily' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || inputs.profile == 'daily' }}
 
 permissions:
   contents: read
 
 jobs:
-  # Fast feedback on the TypeScript surface. verify.sh covers this too, by way
-  # of run-editor-toolchain.sh --test, but it reports roughly twenty minutes
-  # later; a type error should not cost that long to learn about.
-  editor:
-    name: Editor typecheck and tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: WebEditor
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: WebEditor/package-lock.json
-      - run: npm ci --ignore-scripts
-      - run: npm run typecheck
-      - run: npm test
-
   verify:
-    name: Full verification
+    name: Repository verification
     # Scholium is built for the machine it is written on, and reaches for macOS
     # 27 controls where they exist. #available guards those calls at runtime but
     # the symbols still have to be in the SDK to compile, so the runner needs
@@ -62,9 +46,8 @@ jobs:
         with:
           node-version: 24
 
-      # run-editor-toolchain.sh installs npm dependencies in temporary storage
-      # and refuses an in-worktree WebEditor/node_modules, so there is nothing
-      # here for actions/setup-node to cache.
+      # run-editor-toolchain.sh installs lockfile-pinned npm dependencies in
+      # isolated .build staging and excludes the worktree's node_modules.
       - name: Install ripgrep
         run: command -v rg >/dev/null 2>&1 || brew install ripgrep
 
@@ -80,20 +63,19 @@ jobs:
           python3 --version
 
       - name: Verify
-        # The measurement suites assert absolute durations calibrated on a
-        # development Mac. This runner has three cores and 7 GB, so it would
-        # report its own size rather than a regression. That evidence stays a
-        # local step; everything else about correctness runs here.
-        #
-        # Five tests in ScholiumAppTests likewise need a display of a working
-        # size, the bundled typefaces registered with the font server, and
-        # scroll bars set the way a Mac with a pointing device sets them. They
-        # are reported as skipped rather than loosened; the other 1,052 in that
-        # target still run.
+        # Shared CI cannot witness calibrated local timing or the required
+        # display/font/input setup. Those declarations remain reported skips;
+        # the full gate must also run on a suitable development Mac before release.
         env:
           SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE: "1"
           SCHOLIUM_SKIP_DISPLAY_EVIDENCE: "1"
-        run: Tools/Scripts/verify.sh
+          SCHOLIUM_VERIFY_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'daily' }}
+        run: |
+          case "$SCHOLIUM_VERIFY_PROFILE" in
+            daily) Tools/Scripts/verify.sh --ci ;;
+            full) Tools/Scripts/verify.sh ;;
+            *) echo "Unknown verification profile" >&2; exit 64 ;;
+          esac
 
       # verify.sh writes each failing step's full log under .build; the console
       # only carries the tail of it.

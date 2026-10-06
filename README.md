@@ -81,10 +81,17 @@ developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
 ```
 
-The same gate runs on every push and pull request to `main` through
-`.github/workflows/verify.yml`. `run-editor-toolchain.sh` refuses an
-in-worktree `WebEditor/node_modules`, so a checkout kept populated for editor
-tooling can run everything below but not `verify.sh` itself.
+Daily push and pull-request CI runs `verify.sh --ci`. It retains the repository
+and reproducible-editor guards, Core/Contracts/Application and bridge tests,
+and all App tests except the two expensive `MarkdownEditorWebViewIntegrationTests`
+and `MarkdownEditorReuseTests` suites. It validates the Debug helper; the default
+full gate also runs those suites, builds Release and validates the Release helper.
+Editor typecheck and tests run once within the reproducible-bundle check.
+
+Before publishing a beta, select **full** in the `Verify` workflow's manual run
+for the exact candidate ref, and run the default full gate locally. Then complete
+the applicable packaged smoke, artifact and performance gates. Tag pushes start
+no duplicate CI run. The daily result alone does not authorize publication.
 
 CI declares two things it cannot witness, and both come back as skips rather
 than passes:
@@ -92,11 +99,11 @@ than passes:
 - `SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE=1` — the measurement suites assert
   absolute durations calibrated on a development Mac, and a three-core shared
   runner would report its own size rather than a regression.
-- `SCHOLIUM_SKIP_DISPLAY_EVIDENCE=1` — five tests in `ScholiumAppTests` need a
+- `SCHOLIUM_SKIP_DISPLAY_EVIDENCE=1` — display-dependent App tests need a
   display of a working size, the bundled typefaces registered with the font
   server, and scroll bars set the way a Mac with a pointing device sets them.
 
-Everything else runs in CI. Those two kinds of evidence are only real when
+The full CI profile runs the remaining checks. Those two kinds of evidence are only real when
 `verify.sh` runs on a development Mac, so run it there before a release.
 
 Common development commands:

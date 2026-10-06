@@ -1,6 +1,17 @@
 #!/bin/zsh
 set -euo pipefail
 
+# The default remains the complete pre-distribution gate. Daily CI defers only
+# the two expensive editor WebKit suites and the optimized Release build.
+PROFILE=full
+if (( $# > 0 )); then
+  if (( $# != 1 )) || [[ "$1" != "--ci" ]]; then
+    print -u2 "Usage: ${0:t} [--ci]"
+    exit 64
+  fi
+  PROFILE=daily
+fi
+
 ROOT="${0:A:h:h:h}"
 SCRATCH="${ROOT}/.build/verification"
 RELEASE_SCRATCH="${ROOT}/.build/verification-release"
@@ -369,6 +380,12 @@ run_swift_test_product() {
     # This target owns AppKit windows and WebKit processes. Make Swift
     # Testing's in-process execution order explicit at that shared boundary.
     parallelism_arguments=(--no-parallel)
+    if [[ "${PROFILE}" == daily ]]; then
+      # These are complete live WebKit ownership suites, including their
+      # extension files. Every assertion still runs in the default full gate.
+      selection_arguments+=(--skip '^ScholiumAppTests\.(MarkdownEditorWebViewIntegrationTests|MarkdownEditorReuseTests)/')
+      print "Daily CI defers MarkdownEditorWebViewIntegrationTests and MarkdownEditorReuseTests to full release verification."
+    fi
   fi
   if [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
     # Timed bridge lifecycles and the RDF-1 refresh measurement own quiet
@@ -449,6 +466,19 @@ if rg -n 'ScholiumCore' \
   "${SCRATCH}/out/symbolgraph/ScholiumApplication.symbols.json"; then
   echo "Symbol graph guard failed: ScholiumApplication exposes a ScholiumCore type." >&2
   exit 1
+fi
+
+if [[ "${PROFILE}" == daily ]]; then
+  helper_log="${SCRATCH}/debug-helper-build.log"
+  if ! swift build --package-path "${ROOT}" --scratch-path "${SCRATCH}" \
+    --product ScholiumAgentHelper > "${helper_log}" 2>&1; then
+    print -u2 "Debug helper build failed. Last 80 log lines:"
+    tail -n 80 "${helper_log}" >&2
+    exit 1
+  fi
+  python3 "${ROOT}/Tools/Scripts/verify-agent-helper.py" "${SCRATCH}/debug/ScholiumAgentHelper"
+  print "Daily CI passed; the optimized Release build and Release helper remain required in the default full gate."
+  exit 0
 fi
 
 mkdir -p "${RELEASE_SCRATCH}"
