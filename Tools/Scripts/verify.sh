@@ -376,10 +376,13 @@ run_swift_test_product() {
   local -a parallelism_arguments selection_arguments
   parallelism_arguments=()
   selection_arguments=(--filter "${test_product}")
-  if [[ "${test_product}" == "ScholiumAppTests" ]]; then
-    # This target owns AppKit windows and WebKit processes. Make Swift
-    # Testing's in-process execution order explicit at that shared boundary.
+  if [[ "${test_product}" == "ScholiumCoreTests" || "${test_product}" == "ScholiumAppTests" ]]; then
+    # Core's bounded URLSession fixtures need CPU time within their unchanged
+    # resource deadlines; App owns shared AppKit windows and WebKit processes.
+    # Serialize top-level tests while preserving each test's concurrent tasks.
     parallelism_arguments=(--no-parallel)
+  fi
+  if [[ "${test_product}" == "ScholiumAppTests" ]]; then
     if [[ "${PROFILE}" == daily ]]; then
       # These are complete live WebKit ownership suites, including their
       # extension files. Every assertion still runs in the default full gate.
