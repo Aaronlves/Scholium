@@ -164,10 +164,11 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let imageURL = triptych.appendingPathComponent("01-analyses/Attachments/packaged-smoke.png")
         try FileManager.default.createDirectory(
             at: imageURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let bitmap = try XCTUnwrap(NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: 120, pixelsHigh: 90, bitsPerSample: 8,
-            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-            bytesPerRow: 0, bitsPerPixel: 0))
+        let bitmap = try XCTUnwrap(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: 120, pixelsHigh: 90, bitsPerSample: 8,
+                samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                bytesPerRow: 0, bitsPerPixel: 0))
         bitmap.bitmapData?.initialize(repeating: 255, count: bitmap.bytesPerRow * bitmap.pixelsHigh)
         for y in 12..<78 {
             for x in 12..<108 {
@@ -273,9 +274,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
         selectPackagedMode("Review", in: application, control: mode)
         XCTAssertTrue(application.images[imageAlt].firstMatch.waitForExistence(timeout: 10))
         selectPackagedMode("Source", in: application, control: mode)
-        XCTAssertTrue(waitUntil(timeout: 20) {
-            self.packagedSourceAccessibilityMatches(originalSource, in: editor)
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                self.packagedSourceAccessibilityMatches(originalSource, in: editor)
+            })
         editor.click()
         editor.typeKey(.end, modifierFlags: [.command])
         editor.typeText(addition)
@@ -447,9 +449,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let requested = application.menuItems[requestedMode].firstMatch
         XCTAssertTrue(requested.waitForExistence(timeout: 5))
         requested.click()
-        XCTAssertTrue(waitUntil(timeout: 10) {
-            self.documentModeState(control) == requestedMode
-        }, "The packaged Document must report the requested \(requestedMode) mode.")
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                self.documentModeState(control) == requestedMode
+            }, "The packaged Document must report the requested \(requestedMode) mode.")
     }
 
     /// Samples only the app and WebKit service PIDs attributed to this exact
