@@ -6,9 +6,9 @@ import Foundation
 public enum SearchContract {
     public static let maximumNoteResults = 500
     public static let currentVersion = 20
-    public static let schemaVersion = 24
-    public static let tokenizerPolicyVersion = 2
-    public static let rankingPolicyVersion = 5
+    public static let schemaVersion = 25
+    public static let tokenizerPolicyVersion = 3
+    public static let rankingPolicyVersion = 6
     public static let maximumInterfaceResults = 100
     public static let maximumQueryUTF16Count = 16_384
     public static let maximumQueryTokenCount = 64

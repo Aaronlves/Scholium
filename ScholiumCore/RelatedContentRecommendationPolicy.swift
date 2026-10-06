@@ -52,9 +52,15 @@ enum RelatedContentRecommendationPolicy {
         let words: Set<String>
 
         init(_ text: String) {
-            exact = text.precomposedStringWithCanonicalMapping
-                .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            exact = Self.exact(in: text)
             words = Set(RelatedContentQueryTerms.orderedTokens(in: text))
+        }
+
+        /// Readable copies share canonical Unicode and whitespace; case and
+        /// diacritics remain authored distinctions rather than lexical keys.
+        static func exact(in text: String) -> String {
+            text.precomposedStringWithCanonicalMapping
+                .split(whereSeparator: \.isWhitespace).joined(separator: " ")
         }
 
         func similarity(to other: Self) -> Double {

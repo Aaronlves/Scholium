@@ -86,10 +86,10 @@ struct RelatedContentQueryTermsTests {
         #expect(RelatedContentQueryTerms.terms(in: "happy", limit: 32) == ["happy"])
     }
 
-    @Test("Unicode normalization and CJK script transitions retain the established lexical projection")
+    @Test("Unicode normalization retains attached runs and pure CJK bigrams")
     func unicodeAndCJK() {
         #expect(RelatedContentQueryTerms.terms(in: "CAFÉ cafe\u{301} 自由意志 autonomy", limit: 32) == ["café", "自由", "由意", "意志", "autonomy"])
-        #expect(RelatedContentQueryTerms.orderedTokens(in: "自由freedom自主") == ["自由", "freedom", "自主"])
+        #expect(RelatedContentQueryTerms.orderedTokens(in: "自由freedom自主") == ["自由freedom自主"])
         let cjk = "自由意志自主责任充分必要条件情感理由价值判断"
         let selected = RelatedContentQueryTerms.terms(in: cjk, limit: 6)
         let expectedTokens = SearchTokenization.queryTokens(for: cjk)
@@ -127,19 +127,18 @@ struct RelatedContentQueryTermsTests {
         }
     }
 
-    /// Frozen scalar-run extraction before ASCII preparation. The oracle still
-    /// normalizes each completed token independently, including folded Unicode.
+    /// Independent Character-run oracle for the canonical matching boundary.
+    /// ASCII preparation must retain this Unicode and pure-CJK projection.
     private func referenceTokens(in value: String) -> [String] {
         let ignored = Set(
             "a an and are as at be been being but by for from had has have if in is it its of on or that the these this those to was we were with".split(
                 separator: " "
             ).map(String.init))
         var result: [String] = []
-        var run = ""
-        var cjk: Bool?
-        func finish() {
-            guard !run.isEmpty else { return }
-            for candidate in cjk == true ? SearchTokenization.queryTokens(for: run) : [run] {
+        let runs = SearchTextNormalization.normalize(value).split(whereSeparator: { !SearchTokenization.isTokenCharacter($0) })
+        for run in runs {
+            let pureCJK = run.unicodeScalars.allSatisfy(SearchTokenization.isCJK)
+            for candidate in pureCJK ? SearchTokenization.queryTokens(for: String(run)) : [String(run)] {
                 let token = SearchTextNormalization.normalize(candidate)
                 let containsCJK = SearchTokenization.containsCJK(token)
                 if !token.isEmpty, token.utf8.count <= 128,
@@ -148,20 +147,7 @@ struct RelatedContentQueryTermsTests {
                     result.append(token)
                 }
             }
-            run = ""
-            cjk = nil
         }
-        for scalar in SearchTextNormalization.normalize(value).unicodeScalars {
-            let nextCJK = SearchTokenization.isCJK(scalar)
-            guard nextCJK || CharacterSet.alphanumerics.contains(scalar) else {
-                finish()
-                continue
-            }
-            if let cjk, cjk != nextCJK { finish() }
-            cjk = nextCJK
-            run.unicodeScalars.append(scalar)
-        }
-        finish()
         return result
     }
 

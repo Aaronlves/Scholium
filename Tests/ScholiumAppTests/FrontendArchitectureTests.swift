@@ -3260,7 +3260,7 @@ struct FrontendArchitectureTests {
         }
         let commit = try sourceSection(
             handleSource,
-            from: "func commitDocument(\n        _ id:",
+            from: "func commitDocument(\n        _ target: NoteMutationTarget,",
             to: "private func performDocumentSave("
         )
         #expect(commit.contains("completion: .sourceOnly"))

@@ -70,29 +70,29 @@ enum RelatedContentQueryTerms {
         return selected.sorted().map { indices[$0] }
     }
 
-    /// Retains occurrence order, repetitions and explicit negation. This is the
-    /// existing deterministic lexical/CJK projection, not linguistic stemming.
+    /// Retains occurrence order, repetitions and explicit negation using
+    /// canonical matcher boundaries, with bigrams for pure CJK runs only.
     static func orderedTokens(in value: String) -> [String] {
         let normalized = SearchTextNormalization.normalize(value)
         var result: [String] = []
         var current = ""
-        var currentIsCJK: Bool?
+        var currentIsPureCJK = true
 
         func finish() {
             guard !current.isEmpty else { return }
             // The complete input is already case-normalized and this run
-            // contains only alphanumerics. ASCII runs cannot acquire different
-            // boundaries, normalization or CJK tokens when normalized again.
+            // contains only canonical token Characters. ASCII runs cannot
+            // acquire different boundaries, normalization or CJK tokens when normalized again.
             // Keep non-ASCII runs on the established Unicode/CJK path.
             if current.utf8.allSatisfy({ $0 < 128 }) {
                 if current.utf8.count > 1, current.utf8.count <= 128, !ignoredLatinTerms.contains(current) {
                     result.append(current)
                 }
                 current = ""
-                currentIsCJK = nil
+                currentIsPureCJK = true
                 return
             }
-            let candidates = currentIsCJK == true ? SearchTokenization.queryTokens(for: current) : [current]
+            let candidates = currentIsPureCJK ? SearchTokenization.queryTokens(for: current) : [current]
             for candidate in candidates {
                 let token = SearchTextNormalization.normalize(candidate)
                 let containsCJK = SearchTokenization.containsCJK(token)
@@ -104,18 +104,18 @@ enum RelatedContentQueryTerms {
                 result.append(token)
             }
             current = ""
-            currentIsCJK = nil
+            currentIsPureCJK = true
         }
 
-        for scalar in normalized.unicodeScalars {
-            let isCJK = SearchTokenization.isCJK(scalar)
-            guard isCJK || CharacterSet.alphanumerics.contains(scalar) else {
+        for character in normalized {
+            guard SearchTokenization.isTokenCharacter(character) else {
                 finish()
                 continue
             }
-            if let currentIsCJK, currentIsCJK != isCJK { finish() }
-            currentIsCJK = isCJK
-            current.unicodeScalars.append(scalar)
+            // Script transitions and underscores are not canonical boundaries.
+            // Splitting them would supply terms that cannot match the authored run.
+            currentIsPureCJK = currentIsPureCJK && character.unicodeScalars.allSatisfy(SearchTokenization.isCJK)
+            current.append(character)
         }
         finish()
         return result

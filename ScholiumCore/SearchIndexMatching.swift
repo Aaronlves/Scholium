@@ -276,13 +276,6 @@ struct RelatedContentSeedMaterial {
 }
 
 private enum RelatedContentSeedTermExtractor {
-    private static let ignoredLatinTerms: Set<String> = [
-        "a", "an", "and", "are", "as", "at", "be", "been", "being", "but",
-        "by", "for", "from", "had", "has", "have", "if", "in", "is", "it",
-        "its", "not", "of", "on", "or", "that", "the", "these", "this",
-        "those", "to", "was", "we", "were", "with",
-    ]
-
     static func terms(
         in projection: SearchDocumentProjection,
         limit: Int
@@ -337,46 +330,10 @@ private enum RelatedContentSeedTermExtractor {
     }
 
     static func tokens(in value: String) -> [String] {
-        let normalized = SearchTextNormalization.normalize(value)
-        var result: [String] = []
-        var current = ""
-        var currentIsCJK: Bool?
-
-        func finish() {
-            guard !current.isEmpty else { return }
-            let candidates =
-                currentIsCJK == true
-                ? SearchTokenization.queryTokens(for: current)
-                : [current]
-            for candidate in candidates {
-                let token = SearchTextNormalization.normalize(candidate)
-                let containsCJK = SearchTokenization.containsCJK(token)
-                guard !token.isEmpty,
-                    token.utf8.count <= 128,
-                    containsCJK || token.count > 1,
-                    containsCJK || !ignoredLatinTerms.contains(token)
-                else {
-                    continue
-                }
-                result.append(token)
-            }
-            current = ""
-            currentIsCJK = nil
-        }
-
-        for scalar in normalized.unicodeScalars {
-            let isCJK = SearchTokenization.isCJK(scalar)
-            let isToken = CharacterSet.alphanumerics.contains(scalar)
-            guard isCJK || isToken else {
-                finish()
-                continue
-            }
-            if let currentIsCJK, currentIsCJK != isCJK { finish() }
-            currentIsCJK = isCJK
-            current.unicodeScalars.append(scalar)
-        }
-        finish()
-        return result
+        // Whole-Note seeding retains its source-only frequency/field policy,
+        // while focus and source share canonical lexical boundaries. Incidental
+        // source negation remains excluded; explicit focus keeps authored "not".
+        RelatedContentQueryTerms.orderedTokens(in: value).filter { $0 != "not" }
     }
 }
 
@@ -668,15 +625,14 @@ enum SearchMatcher {
         }
     }
 
-    static func ftsExpression(for clauses: [SearchLexicalClause]) -> String {
-        clauses.map { clause in
-            let tokens = SearchTokenization.queryTokens(for: clause.value.text)
-            let terms: [String]
-            if tokens.isEmpty {
-                terms = [clause.value.text]
-            } else {
-                terms = tokens
-            }
+    /// Indexed terms are conservative conjunctive constraints. A symbol-only
+    /// part supplies no constraint, including when it appears between CJK runs.
+    static func ftsExpression(
+        for clauses: [SearchLexicalClause], hasIndexedTokens: (String) throws -> Bool
+    ) rethrows -> String? {
+        let expressions = try clauses.compactMap { clause -> String? in
+            let terms = try SearchTokenization.queryTokens(for: clause.value.text).filter(hasIndexedTokens)
+            guard !terms.isEmpty else { return nil }
             let expression = terms.map { token in
                 let escaped = token.replacingOccurrences(of: "\"", with: "\"\"")
                 return "\"\(escaped)\"" + (clause.value.isPrefix ? "*" : "")
@@ -698,12 +654,13 @@ enum SearchMatcher {
                 case .path: "path"
                 }
             return "\(column):\(grouped)"
-        }.joined(separator: " AND ")
+        }
+        return expressions.isEmpty ? nil : expressions.joined(separator: " AND ")
     }
 
     static func isTokenBoundary(before index: String.Index, in text: String) -> Bool {
         guard index > text.startIndex else { return true }
-        return !isTokenCharacter(text[text.index(before: index)])
+        return !SearchTokenization.isTokenCharacter(text[text.index(before: index)])
     }
 
     static func beginsWithCJK(_ value: String) -> Bool {
@@ -716,13 +673,7 @@ enum SearchMatcher {
 
     static func isTokenBoundary(after index: String.Index, in text: String) -> Bool {
         guard index < text.endIndex else { return true }
-        return !isTokenCharacter(text[index])
-    }
-
-    static func isTokenCharacter(_ character: Character) -> Bool {
-        character.unicodeScalars.allSatisfy {
-            CharacterSet.alphanumerics.contains($0) || $0 == "_"
-        }
+        return !SearchTokenization.isTokenCharacter(text[index])
     }
 }
 

@@ -896,6 +896,13 @@ public enum SearchQueryParser {
                     escaped = false
                 } else if character == "\\" {
                     escaped = true
+                } else if character == "\"" {
+                    return .failure(
+                        diagnostic(
+                            .partialQuotedValue,
+                            "A quote must enclose the complete value of one Search clause.",
+                            token
+                        ))
                 } else {
                     result.append(character)
                 }
@@ -1127,8 +1134,9 @@ public enum SearchTextNormalization {
         normalize(value, options: [.caseInsensitive])
     }
 
-    /// Deterministic comparison form corresponding to FTS5
-    /// `unicode61 remove_diacritics 2`. Exact identity keys deliberately keep
+    /// Deterministic comparison form shared by lexical projections, index input
+    /// and queries. FTS5 `unicode61` has narrower diacritic folding, so it receives
+    /// this comparison form rather than defining it. Exact identity keys keep
     /// using `normalize(_:)`, which preserves diacritics and punctuation.
     public static func lexicalNormalize(_ value: String) -> String {
         normalize(value, options: [.caseInsensitive, .diacriticInsensitive])
@@ -1138,9 +1146,22 @@ public enum SearchTextNormalization {
         in value: String,
         requestedRange: Range<Int>
     ) -> Range<Int>? {
-        mappedOriginalUTF16Range(
+        originalUTF16RangesForLexicalNormalization(
             in: value,
-            requestedRange: requestedRange,
+            requestedRanges: [requestedRange]
+        )[0]
+    }
+
+    /// Maps normalized UTF-16 ranges to complete source graphemes in request
+    /// order. Empty or out-of-bounds requests return nil. One source mapping is
+    /// built for the batch; each request uses binary searches over that mapping.
+    public static func originalUTF16RangesForLexicalNormalization(
+        in value: String,
+        requestedRanges: [Range<Int>]
+    ) -> [Range<Int>?] {
+        mappedOriginalUTF16Ranges(
+            in: value,
+            requestedRanges: requestedRanges,
             normalizer: lexicalNormalize
         )
     }
@@ -1167,11 +1188,12 @@ public enum SearchTextNormalization {
         return result.precomposedStringWithCanonicalMapping
     }
 
-    private static func mappedOriginalUTF16Range(
+    private static func mappedOriginalUTF16Ranges(
         in value: String,
-        requestedRange: Range<Int>,
+        requestedRanges: [Range<Int>],
         normalizer: (String) -> String
-    ) -> Range<Int>? {
+    ) -> [Range<Int>?] {
+        guard !requestedRanges.isEmpty else { return [] }
         struct Offset {
             let normalized: Range<Int>
             let original: Range<Int>
@@ -1217,27 +1239,83 @@ public enum SearchTextNormalization {
                 ))
         }
 
-        guard normalized == normalizer(value) else { return nil }
-        let overlapping = offsets.filter {
-            $0.normalized.lowerBound < requestedRange.upperBound
-                && $0.normalized.upperBound > requestedRange.lowerBound
+        guard normalized == normalizer(value) else {
+            return Array(repeating: nil, count: requestedRanges.count)
         }
-        guard let first = overlapping.first, let last = overlapping.last else { return nil }
-        return first.original.lowerBound..<last.original.upperBound
+        return requestedRanges.map { requestedRange in
+            guard !requestedRange.isEmpty,
+                requestedRange.lowerBound >= 0,
+                requestedRange.upperBound <= normalizedUTF16Count
+            else { return nil }
+
+            var lower = 0
+            var upper = offsets.count
+            while lower < upper {
+                let middle = lower + (upper - lower) / 2
+                if offsets[middle].normalized.upperBound <= requestedRange.lowerBound {
+                    lower = middle + 1
+                } else {
+                    upper = middle
+                }
+            }
+            let first = lower
+            upper = offsets.count
+            while lower < upper {
+                let middle = lower + (upper - lower) / 2
+                if offsets[middle].normalized.lowerBound < requestedRange.upperBound {
+                    lower = middle + 1
+                } else {
+                    upper = middle
+                }
+            }
+            guard first < lower else { return nil }
+            return offsets[first].original.lowerBound..<offsets[lower - 1].original.upperBound
+        }
     }
 }
 
 public enum SearchTokenization {
+    public static func isTokenCharacter(_ character: Character) -> Bool {
+        if let ascii = character.asciiValue {
+            return (48...57).contains(ascii) || (65...90).contains(ascii)
+                || (97...122).contains(ascii) || ascii == 95
+        }
+        return character.unicodeScalars.allSatisfy(isTokenScalar)
+    }
+
+    private static func isTokenScalar(_ scalar: Unicode.Scalar) -> Bool {
+        CharacterSet.alphanumerics.contains(scalar) || scalar == "_"
+    }
+
+    /// Candidate text only. Exact matching retains the authored symbols. The
+    /// native Unicode table must not attach a symbol to a canonical word run.
+    private static func candidateText(_ normalized: String) -> String {
+        var result = ""
+        var separator = false
+        func append(_ value: String, token: Bool) {
+            guard token else {
+                separator = !result.isEmpty
+                return
+            }
+            if separator {
+                result.append(" ")
+                separator = false
+            }
+            result.append(value)
+        }
+        for character in normalized { append(String(character), token: isTokenCharacter(character)) }
+        return result
+    }
+
     public static func indexText(_ value: String) -> String {
-        let normalized = SearchTextNormalization.normalize(value)
+        let normalized = candidateText(SearchTextNormalization.lexicalNormalize(value))
         guard containsCJK(normalized) else { return normalized }
         let additions = indexScriptTokens(in: normalized)
-        guard !additions.isEmpty else { return normalized }
-        return normalized + " " + additions.joined(separator: " ")
+        return additions.isEmpty ? normalized : normalized + " " + additions.joined(separator: " ")
     }
 
     public static func queryTokens(for value: String) -> [String] {
-        let normalized = SearchTextNormalization.normalize(value)
+        let normalized = candidateText(SearchTextNormalization.lexicalNormalize(value))
         var result: [String] = []
         var nonCJK = ""
         func finishNonCJK() {

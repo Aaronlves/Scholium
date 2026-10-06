@@ -10,6 +10,7 @@ struct RelatedContentSourceProjection: Codable, Sendable {
     struct Paragraph: Codable, Sendable {
         let range: SearchSourceRange
         let displayText: String
+        let exactReadableText: String
         let normalizedDisplayText: String
         let textIndex: RelatedContentTextIndex
         let scoringDocument: RelatedContentBM25F.Document
@@ -23,6 +24,8 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             let shared = scoringDocument.sharingPreparedText(normalizedDisplayText, index: textIndex)
             self.range = range
             self.displayText = displayText.utf8.elementsEqual(shared.text.utf8) ? shared.text : displayText
+            let exact = RelatedContentRecommendationPolicy.TextSignature.exact(in: self.displayText)
+            exactReadableText = exact.utf8.elementsEqual(self.displayText.utf8) ? self.displayText : exact
             self.normalizedDisplayText = shared.text
             self.textIndex = shared.index
             self.scoringDocument = scoringDocument
@@ -35,6 +38,8 @@ struct RelatedContentSourceProjection: Codable, Sendable {
                 .resolve(in: scoringDocument)
             range = try container.decode(SearchSourceRange.self, forKey: .range)
             displayText = try container.decodeIfPresent(String.self, forKey: .displayText) ?? matching.text
+            let exact = RelatedContentRecommendationPolicy.TextSignature.exact(in: displayText)
+            exactReadableText = exact.utf8.elementsEqual(displayText.utf8) ? displayText : exact
             normalizedDisplayText = matching.text
             textIndex = matching.index
         }
@@ -124,7 +129,8 @@ struct RelatedContentSourceProjection: Codable, Sendable {
     var estimatedByteCount: Int {
         return 128 + noteScoringDocument.estimatedByteCount
             + paragraphs.reduce(0) {
-                $0 + 128 + $1.displayText.utf8.count + $1.normalizedDisplayText.utf8.count
+                $0 + 144 + $1.displayText.utf8.count + $1.normalizedDisplayText.utf8.count
+                    + ($1.exactReadableText.utf8.elementsEqual($1.displayText.utf8) ? 0 : $1.exactReadableText.utf8.count)
                     + $1.textIndex.estimatedByteCount
                     + $1.scoringDocument.estimatedByteCount
             }

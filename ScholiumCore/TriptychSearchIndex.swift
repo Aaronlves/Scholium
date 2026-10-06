@@ -818,7 +818,7 @@ public actor TriptychSearchIndex {
             value: .prefix(lookup.partial),
             sourceRange: 0..<0
         )
-        let expression = SearchMatcher.ftsExpression(for: [clause])
+        guard let expression = try database.ftsExpression(for: [clause]) else { return [] }
         struct Accumulator {
             var text: String
             var fields: Set<SearchLexicalField>
@@ -850,36 +850,24 @@ public actor TriptychSearchIndex {
                 predicates.append("(" + eligibility.joined(separator: " OR ") + ")")
             }
 
-            let columns: [(SearchLexicalField, Int32)] = [
-                (.path, 0),
-                (.title, 1),
-                (.alias, 2),
-                (.heading, 3),
-                (.summary, 4),
-                (.author, 5),
-                (.publicationDate, 6),
-                (.tag, 7),
-                (.footnote, 8),
-                (.linkAnnotation, 9),
-                (.body, 10),
-            ]
             var terms: [String: Accumulator] = [:]
             try database.query(
                 """
-                SELECT search_fts.path, search_fts.title, search_fts.aliases,
-                       search_fts.headings, search_fts.summary, search_fts.authors,
-                       search_fts.publication_date, search_fts.tags, search_fts.footnotes,
-                       search_fts.link_annotations, search_fts.body
+                SELECT s.field, s.text
                 FROM search_fts
                 JOIN search_documents d ON d.id = search_fts.document_id
+                JOIN search_segments s ON s.document_id = d.id
                 WHERE \(predicates.joined(separator: " AND "))
-                ORDER BY d.path_key, d.relative_path;
+                ORDER BY d.path_key, d.relative_path, s.ordinal;
                 """,
                 bindings: bindings
             ) { row in
                 try Task.checkCancellation()
-                for (field, column) in columns where lookup.field == nil || lookup.field == field {
-                    guard let value = row.text(at: column) else { continue }
+                // FTS owns candidate admission, never displayed vocabulary.
+                // Original semantic segments preserve authored lexical spelling.
+                if let rawField = row.text(at: 0), let field = SearchLexicalField(rawValue: rawField),
+                    lookup.field == nil || lookup.field == field, let value = row.text(at: 1)
+                {
                     for term in SearchTokenization.vocabularyTerms(in: value) {
                         let key = SearchTextNormalization.lexicalNormalize(term)
                         guard !key.isEmpty,
@@ -1187,7 +1175,7 @@ public actor TriptychSearchIndex {
             #endif
             let ranks = try lexicalRanks(for: ast)
             let normalizedNeedles = SearchMatcher.normalizedNeedles(for: ast.expression)
-            let admission = Self.candidateAdmission(ast.expression)
+            let admission = try candidateAdmission(ast.expression)
             var sql = "SELECT d.id FROM search_documents d WHERE " + admission.sql
             var bindings = admission.bindings
             if let vaultID {
@@ -1423,9 +1411,13 @@ public actor TriptychSearchIndex {
                 candidates: [], scoring: scoring,
                 preparation: prepareBackgroundPool ? .complete(.init()) : nil)
         }
-        let expression = terms.map { term in
-            SearchMatcher.ftsExpression(for: [.init(field: nil, value: .term(term), sourceRange: 0..<0)])
-        }.joined(separator: " OR ")
+        let constraints = try terms.map { term in
+            try database.ftsExpression(for: [.init(field: nil, value: .term(term), sourceRange: 0..<0)])
+        }
+        // OR recall must retain even terms that this native tokenizer cannot
+        // represent. Role/seed scope and exact lexical verification still apply.
+        let unrestricted = constraints.contains { $0 == nil }
+        let expression = constraints.compactMap { $0 }.joined(separator: " OR ")
         let rolePlaceholders = candidateRoles.map { _ in "?" }
             .joined(separator: ", ")
         var result: [RelatedLexicalInput] = []
@@ -1443,14 +1435,12 @@ public actor TriptychSearchIndex {
             SELECT \(Self.documentColumns(includingSourceEvidence: false, includingRelatedRankingText: true)), d.id
             FROM search_fts
             JOIN search_documents d ON d.id = search_fts.document_id
-            WHERE search_fts MATCH ?
+            WHERE \(unrestricted ? "1 = 1" : "search_fts MATCH ?")
               AND d.role IN (\(rolePlaceholders))
               AND NOT (d.vault_id = ? AND d.relative_path = ?)
             ORDER BY d.normalized_title, d.role_order, d.path_key, d.relative_path;
             """,
-            bindings: [
-                .text(expression)
-            ]
+            bindings: (unrestricted ? [] : [.text(expression)])
                 + candidateRoles.map {
                     .text($0.vaultRole.rawValue)
                 } + [
@@ -1642,7 +1632,14 @@ public actor TriptychSearchIndex {
     }
 
     private static func rankingKey(_ clause: SearchLexicalClause) -> SearchLexicalClause {
-        SearchLexicalClause(field: clause.field, value: clause.value, sourceRange: 0..<0)
+        let text = SearchTextNormalization.lexicalNormalize(clause.value.text)
+        let value: SearchLexicalValue =
+            switch clause.value {
+            case .term: .term(text)
+            case .phrase: .phrase(text)
+            case .prefix: .prefix(text)
+            }
+        return SearchLexicalClause(field: clause.field, value: value, sourceRange: 0..<0)
     }
 
     private func lexicalRanks(for ast: SearchQueryAST) throws -> [SearchLexicalClause: [Int: Double]] {
@@ -1655,6 +1652,10 @@ public actor TriptychSearchIndex {
             let key = Self.rankingKey(clause)
             guard ranks[key] == nil else { continue }
             var values: [Int: Double] = [:]
+            guard let expression = try database.ftsExpression(for: [clause]) else {
+                ranks[key] = values
+                continue
+            }
             // All roles retain one corpus for statistics and admission. Role
             // changes field salience only; exact identity is ordered separately.
             try database.query(
@@ -1669,7 +1670,7 @@ public actor TriptychSearchIndex {
                 FROM search_fts JOIN search_documents d ON d.id = search_fts.document_id
                 WHERE search_fts MATCH ?;
                 """,
-                bindings: [.text(SearchMatcher.ftsExpression(for: [clause]))]
+                bindings: [.text(expression)]
             ) { row in
                 try Task.checkCancellation()
                 values[row.int(at: 0)] = row.double(at: 1)
@@ -1681,23 +1682,24 @@ public actor TriptychSearchIndex {
 
     /// FTS is a candidate superset, not proof of a phrase or exclusion. Negated predicates
     /// and property/link uncertainty must not be discarded before exact evaluation.
-    private static func candidateAdmission(_ expression: SearchExpression, negated: Bool = false) -> (sql: String, bindings: [SearchSQLiteBinding]) {
+    private func candidateAdmission(_ expression: SearchExpression, negated: Bool = false) throws -> (sql: String, bindings: [SearchSQLiteBinding]) {
         switch expression {
         case .clause(let clause):
             if !negated, case .paragraph(let query) = clause {
-                let inner = candidateAdmission(query.expression)
+                let inner = try candidateAdmission(query.expression)
                 return ("(d.paragraphs_complete = 0 OR " + inner.sql + ")", inner.bindings)
             }
             if !negated, case .lexical(let value) = clause {
-                return ("d.id IN (SELECT document_id FROM search_fts WHERE search_fts MATCH ?)", [.text(SearchMatcher.ftsExpression(for: [value]))])
+                guard let constraint = try database.ftsExpression(for: [value]) else { return ("1 = 1", []) }
+                return ("d.id IN (SELECT document_id FROM search_fts WHERE search_fts MATCH ?)", [.text(constraint)])
             }
             return ("1 = 1", [])
-        case .not(let child): return candidateAdmission(child, negated: !negated)
+        case .not(let child): return try candidateAdmission(child, negated: !negated)
         case .and(let children), .or(let children):
             let conjunction: Bool
             if case .and = expression { conjunction = !negated } else { conjunction = negated }
             guard !children.isEmpty else { return (conjunction ? "1 = 1" : "0 = 1", []) }
-            let pieces = children.map { candidateAdmission($0, negated: negated) }
+            let pieces = try children.map { try candidateAdmission($0, negated: negated) }
             return ("(" + pieces.map(\.sql).joined(separator: conjunction ? " AND " : " OR ") + ")", pieces.flatMap(\.bindings))
         }
     }
@@ -2442,7 +2444,7 @@ public actor TriptychSearchIndex {
             CREATE VIRTUAL TABLE search_fts USING fts5(
                 document_id UNINDEXED, path, title, aliases, headings, summary, authors, publication_date,
                 tags, callouts, footnotes, link_annotations, body,
-                tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3'
+                tokenize = '\(SearchSQLiteTokenizer.configuration)', prefix = '2 3'
             );
             """)
     }

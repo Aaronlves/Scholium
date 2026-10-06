@@ -36,8 +36,8 @@ extension TriptychSearchIndex {
         let focused = !request.seed.focuses.isEmpty
         var ranked:
             [(
-                passage: RelatedContentPassage, normalizedText: String, score: Double, documentIndex: Int, focusCoverage: Int, phraseCoverage: Double,
-                localIdentity: Bool
+                passage: RelatedContentPassage, score: Double, documentIndex: Int, focusCoverage: Int, phraseCoverage: Double,
+                localIdentity: Bool, exactReadableText: String
             )] =
                 []
         var scoringDocuments: [RelatedContentBM25F.Document] = []
@@ -132,7 +132,7 @@ extension TriptychSearchIndex {
                     localIdentity = RelatedContentRecommendationPolicy.locallyMatchesFocusedIdentity(
                         focusedIdentities!, normalizedText: normalized)
                 }
-                ranked.append((passage, normalized, 0, documentIndex, focusCoverage, phraseCoverage, localIdentity))
+                ranked.append((passage, 0, documentIndex, focusCoverage, phraseCoverage, localIdentity, unit.exactReadableText))
             }
         }
         let evaluation = try RelatedContentBM25F.evaluate(
@@ -190,7 +190,7 @@ extension TriptychSearchIndex {
         var duplicatePassages = Set<String>()
         for item in ranked where item.score > 0 {
             let note = item.passage.candidate.note
-            let key = item.normalizedText
+            let key = item.exactReadableText
             guard seen[note, default: []].insert(key).inserted else {
                 if record != nil { duplicatePassages.insert(item.passage.id) }
                 continue
@@ -325,24 +325,118 @@ extension TriptychSearchIndex {
         _ text: String, matches: [RelatedContentSeedTermMatch]
     ) -> (text: String, ranges: [Range<Int>]) {
         let focused = matches.filter { $0.seedKind != .sourceNote }
-        let terms = (focused.isEmpty ? matches : focused).flatMap(\.terms)
+        let terms = Array(
+            Set(
+                (focused.isEmpty ? matches : focused).flatMap(\.terms)
+                    .map(SearchTextNormalization.lexicalNormalize))
+        ).sorted()
         let normalized = SearchTextNormalization.lexicalNormalize(text)
-        let occurrences = terms.flatMap { SearchMatcher.occurrences(of: .term($0), in: normalized) }
-            .sorted { $0.lowerBound < $1.lowerBound }
-        guard let first = occurrences.first,
-            let original = SearchTextNormalization.originalUTF16RangeForLexicalNormalization(in: text, requestedRange: first),
-            let anchor = Range(NSRange(location: original.lowerBound, length: original.count), in: text)
-        else { return (String(text.prefix(240)) + (text.count > 240 ? "…" : ""), []) }
-        let start = text.index(anchor.lowerBound, offsetBy: -40, limitedBy: text.startIndex) ?? text.startIndex
-        let end = text.index(start, offsetBy: 240, limitedBy: text.endIndex) ?? text.endIndex
-        let prefix = start > text.startIndex ? "…" : ""
-        let excerpt = prefix + text[start..<end] + (end < text.endIndex ? "…" : "")
-        let normalizedExcerpt = SearchTextNormalization.lexicalNormalize(excerpt)
-        let ranges = terms.flatMap { SearchMatcher.occurrences(of: .term($0), in: normalizedExcerpt) }
-            .prefix(64).compactMap {
-                SearchTextNormalization.originalUTF16RangeForLexicalNormalization(in: excerpt, requestedRange: $0)
+        let requested = terms.enumerated().flatMap { term, value in
+            SearchMatcher.occurrences(of: .term(value), in: normalized).map { (term: term, range: $0) }
+        }
+        let mapped = SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+            in: text, requestedRanges: requested.map(\.range))
+        var positions: [String.Index] = []
+        var utf16Offsets: [Int] = []
+        var utf16Offset = 0
+        for position in text.indices {
+            positions.append(position)
+            utf16Offsets.append(utf16Offset)
+            utf16Offset += String(text[position]).utf16.count
+        }
+        positions.append(text.endIndex)
+        utf16Offsets.append(utf16Offset)
+        func characterOffset(_ offset: Int) -> Int? {
+            var lower = 0
+            var upper = utf16Offsets.count
+            while lower < upper {
+                let middle = lower + (upper - lower) / 2
+                if utf16Offsets[middle] < offset { lower = middle + 1 } else { upper = middle }
             }
-        return (excerpt, Array(Set(ranges)).sorted { $0.lowerBound < $1.lowerBound })
+            return lower < utf16Offsets.count && utf16Offsets[lower] == offset ? lower : nil
+        }
+        struct Occurrence {
+            let term: Int
+            let lower: Int
+            let upper: Int
+            let original: Range<Int>
+        }
+        let occurrences = zip(requested, mapped).compactMap { request, original -> Occurrence? in
+            guard let original,
+                let lower = characterOffset(original.lowerBound), let upper = characterOffset(original.upperBound),
+                upper - lower <= 240
+            else { return nil }
+            return Occurrence(term: request.term, lower: lower, upper: upper, original: original)
+        }.sorted {
+            if $0.lower != $1.lower { return $0.lower < $1.lower }
+            if $0.upper != $1.upper { return $0.upper < $1.upper }
+            return $0.term < $1.term
+        }
+        let starts = Set([0] + occurrences.flatMap { [max(0, $0.lower - 40), max(0, $0.upper - 240)] }).sorted()
+        let ends = occurrences.indices.sorted {
+            if occurrences[$0].upper != occurrences[$1].upper { return occurrences[$0].upper < occurrences[$1].upper }
+            return $0 < $1
+        }
+        var counts = Array(repeating: 0, count: terms.count)
+        var active = Array(repeating: false, count: occurrences.count)
+        var distinct = 0
+        var repeated = 0
+        var lowerCursor = 0
+        var upperCursor = 0
+        var best = (start: 0, distinct: -1, repeated: -1)
+        func adjust(_ term: Int, by delta: Int) {
+            let previous = counts[term]
+            counts[term] += delta
+            distinct += (counts[term] > 0 ? 1 : 0) - (previous > 0 ? 1 : 0)
+            repeated += min(2, counts[term]) - min(2, previous)
+        }
+        // Each occurrence enters/leaves at most once. Distinct focused concepts
+        // lead; repeated language contributes only a saturated secondary tie.
+        for start in starts {
+            let end = min(start + 240, positions.count - 1)
+            while upperCursor < ends.count, occurrences[ends[upperCursor]].upper <= end {
+                let index = ends[upperCursor]
+                if occurrences[index].lower >= start {
+                    active[index] = true
+                    adjust(occurrences[index].term, by: 1)
+                }
+                upperCursor += 1
+            }
+            while lowerCursor < occurrences.count, occurrences[lowerCursor].lower < start {
+                if active[lowerCursor] {
+                    active[lowerCursor] = false
+                    adjust(occurrences[lowerCursor].term, by: -1)
+                }
+                lowerCursor += 1
+            }
+            if distinct > best.distinct || distinct == best.distinct && repeated > best.repeated {
+                best = (start, distinct, repeated)
+            }
+        }
+        let winningEnd = min(best.start + 240, positions.count - 1)
+        let winning = occurrences.filter { $0.lower >= best.start && $0.upper <= winningEnd }
+        // Balance readable context around the winning cluster, retaining every
+        // complete match used to select it.
+        var start = 0
+        if let first = winning.first, let upper = winning.map(\.upper).max() {
+            start = min(max(0, (first.lower + upper - 240) / 2), max(0, positions.count - 1 - 240))
+        }
+        let end = min(start + 240, positions.count - 1)
+        let prefix = start > 0 ? "…" : ""
+        let excerpt = prefix + text[positions[start]..<positions[end]] + (end < positions.count - 1 ? "…" : "")
+        let ranges = occurrences.filter { $0.lower >= start && $0.upper <= end }.prefix(64).map {
+            let lower = $0.original.lowerBound - utf16Offsets[start] + prefix.utf16.count
+            let upper = $0.original.upperBound - utf16Offsets[start] + prefix.utf16.count
+            return lower..<upper
+        }
+        // Highlights come from complete-text matches: cropping a word cannot
+        // turn its former suffix into a new whole-word witness.
+        return (
+            excerpt,
+            Array(Set(ranges)).sorted {
+                $0.lowerBound == $1.lowerBound ? $0.upperBound < $1.upperBound : $0.lowerBound < $1.lowerBound
+            }
+        )
     }
 }
 

@@ -18,6 +18,7 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
     // The actor-owned read transaction bounds both reuse and lifetime. Checked-out
     // statements leave this pool, so nested row queries cannot reuse an active cursor.
     private var readStatements: [String: SearchSQLiteStatement]?
+    private var searchTokenizer: SearchSQLiteTokenizer?
 
     init(path: String) throws {
         if sqlite3_open_v2(
@@ -54,6 +55,20 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
     }
 
     var lastInsertRowID: Int { Int(sqlite3_last_insert_rowid(handle)) }
+
+    /// A nil expression means this lexical clause supplies no safe indexed
+    /// constraint. Exact matching remains responsible for its truth and range.
+    func ftsExpression(for clauses: [SearchLexicalClause]) throws -> String? {
+        let tokenizer: SearchSQLiteTokenizer
+        if let existing = searchTokenizer {
+            tokenizer = existing
+        } else {
+            guard let handle else { throw SearchIndexError.sqlite("The Search database is closed.") }
+            tokenizer = try SearchSQLiteTokenizer(database: handle)
+            searchTokenizer = tokenizer
+        }
+        return try SearchMatcher.ftsExpression(for: clauses) { try tokenizer.hasTokens(in: $0) }
+    }
 
     /// Diagnostic only. Sample after the index writer has settled; no page
     /// contents or source text cross this boundary.

@@ -98,8 +98,8 @@ rollback failure distinguishes proven retained source from uncertain presence;
 neither permits blind recreation. One owned source-commit task is queued before
 the mutation lease releases and coalesces matching watcher work.
 
-Contracts owns the shared Search grammar, provider capability table, source
-coordinates and typed results; Core owns disposable index validation, exact
+Contracts owns Search grammar, lexical comparison and boundaries, provider capabilities,
+source coordinates and results; Core owns disposable index validation, exact
 predicate evaluation, lexical ranking and read transactions; Application
 authorizes visible scope. Adapters own no parallel parser or ranking. Candidate
 evaluation and page hydration share one read transaction. Eligibility precedes

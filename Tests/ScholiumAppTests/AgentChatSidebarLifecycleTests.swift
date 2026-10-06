@@ -422,8 +422,18 @@ struct AgentChatSidebarLifecycleTests {
         try await verify("initial") { session.initialTranscriptPhase == .visible && session.viewportRequest == nil && readers(host).count == 4 }
         let identities = Set(readers(host).map(ObjectIdentifier.init))
         let anchor = AgentChatReadingSession.Anchor(id: "reply-1", offset: -80)
-        session.pause()
-        session.anchor = anchor
+        let marker = try #require(session.markers[anchor.id]?.view)
+        let scroll = try #require(marker.enclosingScrollView)
+        let document = try #require(scroll.documentView)
+        var requestedBounds = scroll.contentView.bounds
+        requestedBounds.origin.y = marker.convert(marker.bounds, to: document).minY - anchor.offset - scroll.contentInsets.top
+        let constrainedBounds = scroll.contentView.constrainBoundsRect(requestedBounds)
+        try #require(constrainedBounds.origin == requestedBounds.origin)
+        session.beginUserScroll()
+        scroll.contentView.scroll(to: constrainedBounds.origin)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        session.endUserScroll()
+        try #require(session.anchor == anchor)
         func anchorIsPositioned() -> Bool {
             guard let marker = session.markers[anchor.id]?.view, let scroll = marker.enclosingScrollView, let document = scroll.documentView else {
                 return false

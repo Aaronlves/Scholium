@@ -936,9 +936,21 @@ struct MarkdownEditorWebViewIntegrationTests {
                     }
                     throw new Error('Missing transfer text: ' + text);
                 };
-                const start = locate('Moved 中文 title');
-                const x = start.rect.left + 1, y = start.rect.top + start.rect.height / 2;
-                start.node.parentElement.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                const nativeSelection = window.getSelection();
+                if (!nativeSelection || nativeSelection.isCollapsed || nativeSelection.rangeCount !== 1)
+                    throw new Error('Text drag requires one native selected range');
+                const selectedRect = Array.from(nativeSelection.getRangeAt(0).getClientRects())
+                    .find(rect => rect.width > 0 && rect.height > 0);
+                if (!selectedRect) throw new Error('Text drag selection has no visible rect');
+                const x = Math.floor((selectedRect.left + selectedRect.right) / 2);
+                const y = Math.floor((selectedRect.top + selectedRect.bottom) / 2);
+                if (!(x > selectedRect.left && x < selectedRect.right
+                        && y > selectedRect.top && y < selectedRect.bottom))
+                    throw new Error('Text drag selection has no integer interior point');
+                const pressTarget = document.elementFromPoint(x, y);
+                if (!pressTarget || !content.contains(pressTarget))
+                    throw new Error('Text drag point does not hit editor content');
+                pressTarget.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
                     button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
                 const data = new DataTransfer();
                 content.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
