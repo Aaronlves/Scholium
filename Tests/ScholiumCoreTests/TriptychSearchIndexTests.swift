@@ -922,7 +922,7 @@ struct TriptychSearchIndexTests {
             ).noteResults.isEmpty)
     }
 
-    @Test("A cancelled first build reports progress and publishes no generation")
+    @Test("A cancelled first build reports progress and publishes no generation", .timeLimit(.minutes(2)))
     func cancelledInitialBuildRemainsUnavailable() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -945,21 +945,31 @@ struct TriptychSearchIndexTests {
         let progressGate = InitialSearchBuildProgressGate()
         let workspaceGeneration = try await index.workspaceGeneration() + 1
         let build = Task {
-            try await index.synchronizeManifest(
-                documents.map(SearchIndexManifestEntry.init(document:)),
-                workspaceGeneration: workspaceGeneration,
-                loadChanged: { entry in
-                    guard let source = sources[entry.relativePath] else {
-                        throw SearchIndexError.invalidDocuments("missing fixture source")
-                    }
-                    await progressGate.pauseAfterFirstProgressBatch()
-                    return source
-                },
-                validateManifest: {})
+            do {
+                let result = try await index.synchronizeManifest(
+                    documents.map(SearchIndexManifestEntry.init(document:)),
+                    workspaceGeneration: workspaceGeneration,
+                    loadChanged: { entry in
+                        guard let source = sources[entry.relativePath] else {
+                            throw SearchIndexError.invalidDocuments("missing fixture source")
+                        }
+                        await progressGate.pauseAfterFirstProgressBatch()
+                        return source
+                    },
+                    validateManifest: {})
+                await progressGate.buildFinished()
+                return result
+            } catch {
+                await progressGate.buildFinished()
+                throw error
+            }
         }
+        // Scheduler contention before the first batch is fixture readiness,
+        // separate from the unchanged deadline for observing delivered progress.
+        let ready = await progressGate.waitUntilPausedAfterFirstProgressBatch()
         let deadline = ContinuousClock.now.advanced(by: .seconds(30))
         var observedProgress = false
-        while ContinuousClock.now < deadline {
+        while ready && ContinuousClock.now < deadline {
             if await progressGate.hasPausedAfterFirstProgressBatch(),
                 case .building(let progress) = await index.availability(),
                 progress.completed > 0,
@@ -1243,10 +1253,13 @@ struct TriptychSearchIndexTests {
 private actor InitialSearchBuildProgressGate {
     private var loadedDocuments = 0
     private var paused = false
+    private let readinessStream: AsyncStream<Void>
+    private let readinessContinuation: AsyncStream<Void>.Continuation
     private let releaseStream: AsyncStream<Void>
     private let releaseContinuation: AsyncStream<Void>.Continuation
 
     init() {
+        (readinessStream, readinessContinuation) = AsyncStream.makeStream(of: Void.self)
         (releaseStream, releaseContinuation) = AsyncStream.makeStream(of: Void.self)
     }
 
@@ -1254,8 +1267,19 @@ private actor InitialSearchBuildProgressGate {
         loadedDocuments += 1
         guard loadedDocuments == 33 else { return }
         paused = true
+        readinessContinuation.yield(())
+        readinessContinuation.finish()
         for await _ in releaseStream { break }
         paused = false
+    }
+
+    func waitUntilPausedAfterFirstProgressBatch() async -> Bool {
+        for await _ in readinessStream { return true }
+        return false
+    }
+
+    func buildFinished() {
+        readinessContinuation.finish()
     }
 
     func hasPausedAfterFirstProgressBatch() -> Bool {
