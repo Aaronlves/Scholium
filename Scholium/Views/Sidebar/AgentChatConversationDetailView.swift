@@ -13,7 +13,7 @@ struct AgentChatConversationDetailView: View {
     let isVisible: Bool
     let addSelection: (UUID) async -> Bool
     let noteChoices: [WorkspaceCatalogNote]
-    let addNote: (WorkspaceCatalogNote, UUID) async throws -> Void
+    let prepareNotes: @MainActor (UUID) throws -> (@MainActor (WorkspaceCatalogNote) async throws -> Void)
     let openReference: (URL) -> Bool
     let openAttachment: (AgentChatAttachment) -> Void
     let showInLibrary: (URL) -> Void
@@ -60,9 +60,9 @@ struct AgentChatConversationDetailView: View {
         .allowsHitTesting(isVisible && isCurrentConversation)
         .accessibilityElement(children: .contain)
         .accessibilityHidden(!isVisible || !isCurrentConversation)
-        .sheet(item: $presentation.queueEditTarget) { target in
+        .sheet(item: queuedMessageEditorTarget) { target in
             AgentChatQueuedMessageEditor(
-                message: target.message,
+                target: target,
                 save: { controller.editQueuedMessage(target.message.id, text: $0, in: target.conversationID) },
                 close: { presentation.queueEditTarget = nil })
         }
@@ -70,7 +70,7 @@ struct AgentChatConversationDetailView: View {
             AgentChatChildInspector(child: child, openReference: openReference)
         }
         .sheet(item: $presentation.notePickerTarget) { target in
-            AgentChatNotePicker(notes: noteChoices) { note in try await prepareNote(note, in: target.id) }
+            AgentChatNotePicker(notes: noteChoices) { note in try prepareNote(note, in: target.id) }
         }
         .sheet(item: $presentation.pdfPagesTarget) { target in AgentChatPDFPagesView(controller: controller, target: target) }
         .sheet(item: $presentation.comparisonRequest) { request in
@@ -103,12 +103,26 @@ struct AgentChatConversationDetailView: View {
                 presentation.showsFiles = false
                 presentation.showsAgents = false
                 presentation.contextAnchor = nil
+                presentation.notePickerTarget = nil
+                presentation.pdfPagesTarget = nil
+                presentation.inspectedAgent = nil
+                presentation.comparisonRequest = nil
             }
         }
         .onChange(of: presentation.find.query) { _, _ in refreshFind(reset: true) }
         .onChange(of: displayedConversation?.messages) { _, _ in
             if presentation.showsFind { refreshFind() }
         }
+    }
+
+    /// Hiding dismisses the sheet presentation while its existing target keeps
+    /// unsaved writing. Only the editor's explicit Cancel or Save clears it.
+    var queuedMessageEditorTarget: Binding<AgentChatQueueEditTarget?> {
+        Binding(
+            get: { isVisible && isCurrentConversation ? presentation.queueEditTarget : nil },
+            set: { target in
+                if let target { presentation.queueEditTarget = target }
+            })
     }
 
     private var header: some View {
@@ -1032,15 +1046,18 @@ struct AgentChatConversationDetailView: View {
         }
     }
 
-    private func prepareNote(_ note: WorkspaceCatalogNote, in conversationID: UUID) async throws {
-        var failure: (any Error)?
-        let prepared = await controller.performMaterialPreparation(in: conversationID) {
-            do { try await addNote(note, conversationID) } catch {
-                failure = error
-                throw error
+    private func prepareNote(_ note: WorkspaceCatalogNote, in conversationID: UUID) throws -> (@MainActor () async throws -> Void) {
+        let addPreparedNote = try prepareNotes(conversationID)
+        return { [controller] in
+            var failure: (any Error)?
+            let prepared = await controller.performMaterialPreparation(in: conversationID) {
+                do { try await addPreparedNote(note) } catch {
+                    failure = error
+                    throw error
+                }
             }
+            guard prepared else { throw failure ?? CancellationError() }
         }
-        guard prepared else { throw failure ?? CancellationError() }
     }
 
     private var completionCandidates: [AgentChatComposerCandidate] {
@@ -1094,9 +1111,15 @@ struct AgentChatConversationDetailView: View {
         }
         switch candidate.action {
         case .note(let note):
+            let work: @MainActor () async throws -> Void
+            do { work = try prepareNote(note, in: conversationID) } catch {
+                controller.reportMaterialError(error.localizedDescription, in: conversationID)
+                finish(false)
+                return
+            }
             Task { @MainActor in
                 do {
-                    try await prepareNote(note, in: conversationID)
+                    try await work()
                     finish(true)
                 } catch { finish(false) }
             }
@@ -1283,15 +1306,20 @@ struct AgentChatConversationDetailView: View {
                 canChooseCompletion: { canChooseCompletion($0, in: conversationID) },
                 chooseCompletion: { candidate, finish in chooseCompletion(candidate, in: conversationID, finish: finish) },
                 transferMaterials: { materials, origin in
-                    guard let conversationID else { return }
+                    guard isVisible, isCurrentConversation, let conversationID else { return }
                     guard !controller.preparingMaterials.contains(conversationID) else {
                         controller.reportMaterialError(ScholiumL10n.string("Finish preparing the current material before adding another."), in: conversationID)
+                        return
+                    }
+                    let addPreparedNote: @MainActor (WorkspaceCatalogNote) async throws -> Void
+                    do { addPreparedNote = try prepareNotes(conversationID) } catch {
+                        controller.reportMaterialError(error.localizedDescription, in: conversationID)
                         return
                     }
                     Task { @MainActor in
                         await controller.addTransferredMaterials(materials, origin: origin, to: conversationID) { item in
                             let note = try AgentChatPasteboardSnapshot.resolve(item, in: noteChoices)
-                            try await addNote(note, conversationID)
+                            try await addPreparedNote(note)
                         }
                     }
                 },

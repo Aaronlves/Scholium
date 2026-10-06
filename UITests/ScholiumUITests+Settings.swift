@@ -2,6 +2,114 @@ import AppKit
 @preconcurrency import XCTest
 
 extension ScholiumUITests {
+    /// One offline journey proves the fresh preference, retained history and
+    /// native draft, repeated hiding, and both durable values across relaunch.
+    @MainActor
+    func testChatSidebarPreferenceStartsOffAndPreservesDraftThroughRelaunch() throws {
+        waitForCurrentDocumentSurface()
+        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let original = try Data(contentsOf: note)
+        XCTAssertFalse(sidebarModeControl("Chat").exists)
+        app.terminate()
+        let fixture = try seedChatEntryFixture()
+        app = configuredApplication(sessionID: sessionID, appearance: .light)
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
+        app.launch()
+        waitForCurrentDocumentSurface()
+
+        func openVisibilitySettings() -> (XCUIElement, XCUIElement) {
+            let window = openSettingsForTransactionTest()
+            let search = window.searchFields["scholium.settings.search"]
+            typeCommittedText("Chat", into: search, in: app)
+            selectSettingsSearchResult("agents.chatSidebar", in: window)
+            let toggle = window.checkBoxes["scholium.settings.chatSidebarEnabled"]
+            XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+            return (window, toggle)
+        }
+        func closeSettings(_ window: XCUIElement) {
+            app.typeKey("w", modifierFlags: .command)
+            XCTAssertTrue(waitUntil(timeout: 3) { !window.exists })
+        }
+        let (firstSettings, firstToggle) = openVisibilitySettings()
+        XCTAssertFalse(selectionControlIsSelected(firstToggle))
+        firstToggle.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { self.selectionControlIsSelected(firstToggle) })
+        closeSettings(firstSettings)
+        XCTAssertTrue(sidebarModeControl("Chat").waitForExistence(timeout: 5))
+        selectDocumentMode("Edit")
+        sidebarModeControl("Chat").click()
+        chatDeletionRow(fixture.short.id).click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertEqual(composer.value as? String, fixture.short.draft)
+        let draft = "Retained unsent input — 保留中文、English 与选择。"
+        typeCommittedText(draft, into: composer, in: app, clickWithinVisibleFrame: true)
+
+        for iteration in 0..<3 {
+            let settings = openSettingsForTransactionTest()
+            selectSettingsCategory("agents", in: settings)
+            let toggle = settings.checkBoxes["scholium.settings.chatSidebarEnabled"]
+            XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+            XCTAssertTrue(selectionControlIsSelected(toggle))
+            toggle.click()
+            if iteration == 0 {
+                resizeProofWindow(settings, toWidth: 780, height: 640)
+                let search = settings.searchFields["scholium.settings.search"]
+                typeCommittedText("connection", into: search, in: app)
+                app.typeKey(.escape, modifierFlags: [])
+                let form = settingsContentScrollView(in: settings)
+                form.swipeUp(velocity: .slow)
+                form.swipeUp(velocity: .slow)
+                XCTAssertEqual(search.value as? String, "connection")
+            }
+            closeSettings(settings)
+            XCTAssertTrue(waitUntil(timeout: 5) { !self.sidebarModeControl("Chat").exists && !composer.exists })
+            XCTAssertEqual(documentModeState(documentModeControl()), "Edit")
+            XCTAssertEqual(try Data(contentsOf: note), original)
+            let (reopened, disabled) = openVisibilitySettings()
+            XCTAssertFalse(selectionControlIsSelected(disabled))
+            XCTAssertTrue(
+                waitUntil(timeout: 5) {
+                    let form = self.settingsContentScrollView(in: reopened)
+                    return disabled.isHittable && disabled.frame.intersection(form.frame).height >= disabled.frame.height - 1
+                }, "Settings search must reveal the checkbox after retained search and scrolling")
+            XCTAssertEqual(reopened.searchFields["scholium.settings.search"].value as? String, "Chat")
+            if iteration == 2 {
+                resizeProofWindow(reopened, toWidth: 780, height: 640)
+                XCTAssertTrue(disabled.isHittable)
+                captureSettingsTransaction(reopened, named: "chat-visibility-off-minimum-width")
+            }
+            disabled.click()
+            closeSettings(reopened)
+            sidebarModeControl("Chat").click()
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            XCTAssertEqual(composer.value as? String, draft)
+            XCTAssertEqual(documentModeState(documentModeControl()), "Edit")
+        }
+
+        let settings = openSettingsForTransactionTest()
+        selectSettingsCategory("agents", in: settings)
+        settings.checkBoxes["scholium.settings.chatSidebarEnabled"].click()
+        closeSettings(settings)
+        relaunchSettingsTransactionApplication()
+        XCTAssertFalse(sidebarModeControl("Chat").exists, "OFF must survive graceful relaunch")
+        let (offSettings, offToggle) = openVisibilitySettings()
+        XCTAssertFalse(selectionControlIsSelected(offToggle))
+        offToggle.click()
+        closeSettings(offSettings)
+        relaunchSettingsTransactionApplication()
+        XCTAssertTrue(sidebarModeControl("Chat").waitForExistence(timeout: 5), "ON must survive graceful relaunch")
+        sidebarModeControl("Chat").click()
+        chatDeletionRow(fixture.short.id).click()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertEqual(composer.value as? String, draft)
+        XCTAssertEqual(try Data(contentsOf: note), original)
+        let archive = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.archive)) as? [String: Any])
+        let conversations = try XCTUnwrap(archive["conversations"] as? [[String: Any]])
+        XCTAssertEqual(conversations.compactMap { ($0["messages"] as? [Any])?.count }.sorted(), [2, 72])
+        captureSettingsTransaction(app.windows.firstMatch, named: "chat-visibility-relaunch-retained-draft")
+    }
+
     /// The fresh fixture's Codex connection stays disconnected. Enabling this
     /// machine-local preference must neither replace its model nor initiate a
     /// connection, and disabling it retains the selection for later use.

@@ -5,7 +5,7 @@ import SwiftUI
 struct AgentChatNotePicker: View {
     struct Target: Identifiable { let id: UUID }
     let notes: [WorkspaceCatalogNote]
-    let add: (WorkspaceCatalogNote) async throws -> Void
+    let prepare: @MainActor (WorkspaceCatalogNote) throws -> (@MainActor () async throws -> Void)
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var selectedID: String?
@@ -53,10 +53,15 @@ struct AgentChatNotePicker: View {
                 Button("Add") {
                     guard let note = visibleNotes.first(where: { $0.id == selectedID }), operation == nil else { return }
                     error = nil
+                    let work: @MainActor () async throws -> Void
+                    do { work = try prepare(note) } catch {
+                        self.error = error.localizedDescription
+                        return
+                    }
                     operation = Task { @MainActor in
                         defer { operation = nil }
                         do {
-                            try await add(note)
+                            try await work()
                             try Task.checkCancellation()
                             dismiss()
                         } catch is CancellationError {} catch { self.error = error.localizedDescription }
@@ -67,7 +72,8 @@ struct AgentChatNotePicker: View {
             }
         }
         .padding(20).frame(width: 440, height: 430)
-        .onDisappear { operation?.cancel() }
+        // Admitted work outlives presentation hiding. Explicit Cancel above
+        // retains cancellation authority through the controller's preparation.
         .tint(nil as Color?)
     }
 }

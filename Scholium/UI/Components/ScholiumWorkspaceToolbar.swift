@@ -473,6 +473,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
                 .receive(on: DispatchQueue.main).map { _ in () }.eraseToAnyPublisher(),
             appState.shellState.$sidebarContent.dropFirst().receive(on: DispatchQueue.main).map { _ in () }.eraseToAnyPublisher(),
+            appState.chatSidebarPreferences.$isEnabled.dropFirst().receive(on: DispatchQueue.main).map { _ in () }.eraseToAnyPublisher(),
             appState.shellState.$libraryVisible.dropFirst().receive(on: DispatchQueue.main).map { _ in () }.eraseToAnyPublisher(),
             appState.shellState.$colorScheme.dropFirst().receive(on: DispatchQueue.main).map { _ in () }.eraseToAnyPublisher(),
             appState.commandObservation.$revision
@@ -515,21 +516,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
         refreshNotifications()
 
-        if let control = toolbarItem(Item.sidebar)?.view as? ScholiumSidebarModeControl {
-            control.selectedSegment = shellState.libraryVisible ? shellState.sidebarContent.rawValue : -1
-            let unavailable = appState.workspaceAssignment == nil
-            control.setEnabled(!unavailable, forSegment: SidebarContent.chat.rawValue)
-            let awaitingInput = chat?.needsInput == true
-            let title =
-                unavailable
-                ? ScholiumL10n.string("No Triptych Open")
-                : awaitingInput ? String(localized: "Chat Needs Your Input") : String(localized: "Chat")
-            control.setSegmentToolTips([sidebarModeLabels[0], title])
-            control.setImage(
-                ScholiumNativeToolbarPresentation.symbol(
-                    named: awaitingInput ? "exclamationmark.bubble" : "bubble.left.and.bubble.right",
-                    accessibilityDescription: title), forSegment: SidebarContent.chat.rawValue)
-        }
+        if let item = toolbarItem(Item.sidebar) { updateSidebarModeItem(item) }
 
         if let item = toolbarItem(Item.back) {
             update(
@@ -640,7 +627,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             item.state =
                 appState.shellState.libraryVisible
                     && item.tag == appState.shellState.sidebarContent.rawValue ? .on : .off
-            return item.tag != SidebarContent.chat.rawValue || appState.workspaceAssignment != nil
+            return item.tag != SidebarContent.chat.rawValue || appState.canPresentChat
         }
         if item.action == #selector(selectInspectorModeFromMenu(_:)) {
             item.state = (item.representedObject as? String) == appState.shellState.inspector.mode.rawValue ? .on : .off
@@ -677,13 +664,56 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     func activateSidebar(_ content: SidebarContent) {
-        guard !isInvalidated, content != .chat || appState.workspaceAssignment != nil else { return }
+        guard !isInvalidated, content != .chat || appState.canPresentChat else { return }
         windowActions.setLibraryVisible(appState.shellState.activateSidebar(content))
         refreshPresentation()
     }
 
     private var sidebarModeLabels: [String] {
         [ScholiumL10n.string("Library"), ScholiumL10n.string("Chat")]
+    }
+
+    private func updateSidebarModeItem(_ item: NSToolbarItem) {
+        guard let control = item.view as? ScholiumSidebarModeControl else { return }
+        let modes: [SidebarContent] = appState.isChatSidebarEnabled ? [.library, .chat] : [.library]
+        let labels = sidebarModeLabels
+        let symbols = ["books.vertical", "bubble.left.and.bubble.right"]
+        let countChanged = control.segmentCount != modes.count
+        if countChanged { control.segmentCount = modes.count }
+        for mode in modes {
+            control.setImage(
+                ScholiumNativeToolbarPresentation.symbol(named: symbols[mode.rawValue], accessibilityDescription: labels[mode.rawValue]),
+                forSegment: mode.rawValue)
+            control.setImageScaling(.scaleProportionallyDown, forSegment: mode.rawValue)
+        }
+        control.selectedSegment =
+            appState.shellState.libraryVisible && modes.contains(appState.shellState.sidebarContent)
+            ? appState.shellState.sidebarContent.rawValue : -1
+        var toolTips = modes.map { labels[$0.rawValue] }
+        if appState.isChatSidebarEnabled {
+            let awaitingInput = appState.chatController?.needsInput == true
+            let title =
+                appState.workspaceAssignment == nil
+                ? ScholiumL10n.string("No Triptych Open")
+                : awaitingInput ? String(localized: "Chat Needs Your Input") : labels[1]
+            control.setEnabled(appState.canPresentChat, forSegment: SidebarContent.chat.rawValue)
+            toolTips[1] = title
+            control.setImage(
+                ScholiumNativeToolbarPresentation.symbol(
+                    named: awaitingInput ? "exclamationmark.bubble" : symbols[1], accessibilityDescription: title), forSegment: 1)
+        }
+        control.setSegmentToolTips(toolTips)
+        if countChanged { control.sizeToFit() }
+        if let menu = item.menuFormRepresentation?.submenu, menu.items.map(\.tag) != modes.map(\.rawValue) {
+            menu.removeAllItems()
+            for mode in modes {
+                let entry = NSMenuItem(title: labels[mode.rawValue], action: #selector(selectSidebarMenu(_:)), keyEquivalent: "")
+                entry.target = self
+                entry.tag = mode.rawValue
+                entry.image = ScholiumNativeToolbarPresentation.symbol(named: symbols[mode.rawValue])
+                menu.addItem(entry)
+            }
+        }
     }
 
     private func sidebarModeItem(identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
@@ -731,6 +761,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let overflow = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
         overflow.submenu = menu
         item.menuFormRepresentation = overflow
+        updateSidebarModeItem(item)
         return item
     }
 

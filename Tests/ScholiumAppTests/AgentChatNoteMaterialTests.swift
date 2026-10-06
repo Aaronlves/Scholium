@@ -32,12 +32,16 @@ struct AgentChatNoteMaterialTests {
         let source = "\u{FEFF}---\r\ntitle: 原文与解释\r\ncustom: 'keep exactly'\r\n---\r\n# 材料\r\n\r\nLiteral **source** 😀.\r\n"
         let file = analyses.appendingPathComponent("Source.md")
         try Data(source.utf8).write(to: file)
+        let secondSource = "# Second synthetic material\n\nKeep both captured Notes.\n"
+        try Data(secondSource.utf8).write(to: analyses.appendingPathComponent("Second.md"))
         let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
         do {
             let configured = try await store.configureTriptychCapabilities(
                 paperAnalysisURL: analyses, topicKnowledgeURL: topics,
                 outputURL: works, portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Chat Material Fixture")
-            let window = WindowModel(workspaceStore: store, requestedTriptychID: configured.id)
+            let preference = ChatSidebarPreferenceFixture(enabled: true)
+            defer { preference.cleanup() }
+            let window = WindowModel(workspaceStore: store, requestedTriptychID: configured.id, chatSidebarPreferences: preference.preferences)
             await window.refreshWorkspaceAssignment(preferredTriptychID: configured.id)
             try await window.openWorkspaceVault(.paperAnalysis)
             let note = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Source.md" })
@@ -63,6 +67,16 @@ struct AgentChatNoteMaterialTests {
             #expect(captured.count == 1)
             #expect(throws: AgentChatNoteMaterialError.self) { try AgentChatPasteboardSnapshot.resolve(item, in: []) }
             let libraryNote = try #require(window.notes.first { $0.relativePath == "Source.md" })
+            let retainedIDs = chat.conversations.map(\.id)
+            preference.preferences.isEnabled = false
+            #expect(!window.canAddNotesToChat([item]) && !window.canAddLibraryNoteToChat(libraryNote))
+            #expect(!window.addNotesToChat([item]) && !window.addLibraryNoteToChat(libraryNote))
+            #expect(!(await window.addCurrentSelectionToChat()))
+            await #expect(throws: ChatSidebarPresentationError.self) { try await window.addNoteToChat(note, conversationID: target) }
+            #expect(chat.conversations.map(\.id) == retainedIDs && chat.selectedID == other)
+            #expect(chat.conversations.first { $0.id == target }?.draft == "Discuss the supplied material.")
+            #expect(chat.conversations.allSatisfy { $0.attachments.isEmpty && $0.messages.isEmpty })
+            preference.preferences.isEnabled = true
             #expect(window.canAddNotesToChat([item]))
             #expect(window.canAddLibraryNoteToChat(libraryNote))
             let stale = SidebarNoteDragItem(
@@ -71,8 +85,44 @@ struct AgentChatNoteMaterialTests {
                     revision: .init(content: "a different version")))
             #expect(!window.canAddNotesToChat([stale]))
             #expect(!window.addNotesToChat([stale]))
+            let secondNote = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Second.md" })
+            let secondItem = SidebarNoteDragItem(
+                .init(
+                    documentID: .init(vaultID: secondNote.reference.vaultID, relativePath: secondNote.reference.relativePath),
+                    stableNoteID: try #require(secondNote.reference.stableNoteID.flatMap(UUID.init(uuidString:))), revision: secondNote.fingerprint))
+            // The composer captures the same admitted loader before scheduling
+            // a multi-item transfer. Hide while its first stage is suspended.
+            let addPreparedNote = try window.prepareChatNoteMaterials(in: target)
+            var releaseFirstMaterial: CheckedContinuation<Void, Never>?
+            defer { releaseFirstMaterial?.resume() }
+            var preparedItems = 0
+            let transferring = Task {
+                await chat.addTransferredMaterials([.note(item), .note(secondItem)], origin: .drop, to: target) { captured in
+                    preparedItems += 1
+                    if preparedItems == 1 { await withCheckedContinuation { releaseFirstMaterial = $0 } }
+                    try await addPreparedNote(AgentChatPasteboardSnapshot.resolve(captured, in: window.workspaceCatalog?.notes ?? []))
+                }
+            }
+            try await wait { releaseFirstMaterial != nil }
+            preference.preferences.isEnabled = false
+            #expect(throws: ChatSidebarPresentationError.self) { try window.prepareChatNoteMaterials(in: other) }
+            #expect(!window.addNotesToChat([secondItem]))
+            #expect(chat.selectedID == other && chat.preparingMaterials == [target])
+            releaseFirstMaterial?.resume()
+            releaseFirstMaterial = nil
+            await transferring.value
+            let transferred = try #require(chat.conversations.first { $0.id == target })
+            #expect(preparedItems == 2 && transferred.attachments.map(\.text) == [source, secondSource])
+            #expect(transferred.draft == "Discuss the supplied material." && transferred.messages.isEmpty)
+            #expect(chat.selectedID == other && chat.selected?.attachments.isEmpty == true)
+            #expect(chat.preparingMaterials.isEmpty && chat.materialErrors[target] == nil && window.chatController === chat)
+            preference.preferences.isEnabled = true
             chat.select(target)
+            for attachment in transferred.attachments { chat.removeAttachment(attachment.id) }
             #expect(window.addLibraryNoteToChat(libraryNote))
+            // A transfer admitted before hiding still finishes in its captured
+            // conversation, while later requests are refused.
+            preference.preferences.isEnabled = false
             #expect(chat.contextPresentationID != nil)
             chat.select(other)
             try await wait { chat.conversations.first { $0.id == target }?.attachments.isEmpty == false }
@@ -85,6 +135,8 @@ struct AgentChatNoteMaterialTests {
             #expect(chat.selectedID == other && chat.selected?.attachments.isEmpty == true)
             let material = try #require(chat.conversations.first { $0.id == target }?.attachments.first)
             #expect(material.text == source && material.fingerprint == DocumentFingerprint(data: Data(source.utf8)))
+            #expect(!window.isChatSidebarEnabled && window.chatController === chat)
+            preference.preferences.isEnabled = true
             #expect(material.extent == .wholeNote && material.source == .savedSource && material.vaultRole == .sourceCorpus)
             #expect(chat.conversations.first { $0.id == target }?.messages.isEmpty == true)
             #expect(!chat.attachContext([material], to: UUID()))
@@ -95,7 +147,10 @@ struct AgentChatNoteMaterialTests {
             chat.connect(executable: fixture, home: chat.runtimeHome, helper: fixture)
             try await wait { chat.canSend }
             chat.send()
+            preference.preferences.isEnabled = false
             try await wait { chat.state == .ready && !chat.isBusy && chat.selected?.pendingMessageID == nil && chat.selected?.messages.isEmpty == false }
+            #expect(window.chatController === chat && chat.connectionState == .ready && !window.isChatSidebarEnabled)
+            preference.preferences.isEnabled = true
             let turn = try JSONDecoder().decode(MCPJSONValue.self, from: Data(contentsOf: chat.runtimeHome.appendingPathComponent("last-turn.json")))
             let input = try #require(turn.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue)
             #expect(input.contains(source) && input.contains("Extent: wholeNote") && input.contains("Source: savedSource"))

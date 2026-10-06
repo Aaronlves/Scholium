@@ -939,6 +939,18 @@ extension ScholiumUITests {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
 
+        // Existing journeys explicitly exercise the enabled Chat surface.
+        // Seed a real Bool in this new fixture's isolated preference domain;
+        // the visibility journey leaves it unset to prove the fresh default
+        // and both durable choices across relaunch.
+        if !name.contains("testChatSidebarPreferenceStartsOffAndPreservesDraftThroughRelaunch") {
+            let preferences = homeDirectory.appendingPathComponent("Library/Preferences", isDirectory: true)
+            try FileManager.default.createDirectory(at: preferences, withIntermediateDirectories: true)
+            try PropertyListSerialization.data(
+                fromPropertyList: ["scholium.chat.sidebarEnabled": true], format: .binary, options: 0
+            ).write(to: preferences.appendingPathComponent("com.scholium.qa.plist"), options: .atomic)
+        }
+
         for staticAnchor in [
             analyses.appendingPathComponent("QA Autosave A.md"),
             analyses.appendingPathComponent("QA Autosave B.md"),

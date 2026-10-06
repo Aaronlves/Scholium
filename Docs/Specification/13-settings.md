@@ -215,7 +215,10 @@ does not create a second appearance owner or duplicate its controls. Its native
 form and Advanced CSS entry share the Document Appearance owner;
 profile changes never reset CSS snippets. [Source Properties Appendix A](02-notes-and-file-operations.md#appendix-a-authored-source-properties)
 owns authored YAML; [Agent Chat §8.7](12-agent-chat.md) owns Selection
-Actions and runtime configuration. Agents & Chat keeps connection state and
+Actions and runtime configuration. Connection and Chat contains the native
+**Show Chat in Sidebar** checkbox, available without a Triptych, with Settings
+search leading to this single editing location; §18.2 owns its
+availability and preservation contract. Agents & Chat keeps connection state and
 primary connect or sign-in actions in Connection and Chat, with custom paths
 inline. Skills and Tools and External Access are its retained task segments.
 Selection Action edits belong to one page draft and have one scoped Save;

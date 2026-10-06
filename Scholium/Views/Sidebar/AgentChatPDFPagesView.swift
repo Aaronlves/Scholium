@@ -36,7 +36,8 @@ struct AgentChatPDFPagesView: View {
                 self.error = AgentChatLocalMaterialLabels.error(error)
             }
         }
-        .onDisappear { operation?.cancel() }
+        // Presentation hiding preserves admitted page preparation; explicit
+        // Cancel above still cancels its controller-owned operation.
     }
 
     private func prepare() {

@@ -49,7 +49,15 @@ the transition. Reduce Motion presents the complete page directly. Native split 
 remains authoritative, including menu and window-resize changes. Inspector controls
 use native enabled, selected, pressed, and disabled states, with no hand-tinted
 unavailable symbols or custom refusal animation. Chat is available with an open Triptych
-even without a Note. [Chat presentation §18.2.2](14-chat-interface.md) owns the conversation list,
+when **Show Chat in Sidebar** is enabled, even without a Note. This persistent
+This Mac preference defaults off when unset. When off, the selector contains
+only Library. Re-enabling uses Settings navigation or search. Turning it off returns
+visible Chat to Library without changing pane visibility, Document mode or
+source. It preserves conversations, drafts, provider settings and pending work;
+re-enabling restores access. While this preference is off, Chat accepts no handoff, drop or focus action,
+and notification activation leads to the same Settings control. This preference
+does not disconnect the Agent or change MCP/external-host access.
+[Chat presentation §18.2.2](14-chat-interface.md) owns the conversation list,
 composer, transcript and capability controls. §8.7 owns their behavior.
 Inspector modes remain document-dependent. Toolbar
 validation and View menus derive availability from the same current window state. Native

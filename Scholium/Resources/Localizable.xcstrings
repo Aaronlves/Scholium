@@ -1,6 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Show Chat in Sidebar": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Show Chat in Sidebar"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "在边栏显示聊天"}}}},
+    "Chat Sidebar — This Mac": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Chat Sidebar — This Mac"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "聊天边栏 — 此 Mac"}}}},
+    "Conversations, drafts and active work are retained when Chat is hidden.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Conversations, drafts and active work are retained when Chat is hidden."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "隐藏聊天后，会话、草稿和正在进行的工作仍会保留。"}}}},
+    "Chat is hidden. Turn on Show Chat in Sidebar in Settings to continue.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Chat is hidden. Turn on Show Chat in Sidebar in Settings to continue."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "聊天已隐藏。请在设置中开启“在边栏显示聊天”后继续。"}}}},
     "Could Not Open Workspace": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Could Not Open Workspace"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法打开工作区"}}}},
     "Earlier Input Retained": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Earlier Input Retained"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "较早的输入已保留"}}}},
     "The draft changed elsewhere. Copy this earlier input before discarding it.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The draft changed elsewhere. Copy this earlier input before discarding it."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "草稿已在其他位置更改。可先复制这段较早的输入，再丢弃它。"}}}},

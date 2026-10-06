@@ -6,6 +6,7 @@ struct RelatedMaterialNoteGroupView: View {
     var termGroup: SearchTermGroup? = nil
     let canInsert: Bool
     let canInsertParagraph: Bool
+    let canAddToChat: Bool
     let isLoading: Bool
     let entranceProgress: CGFloat
     var separatesFromPreviousGroup = false
@@ -52,9 +53,10 @@ struct RelatedMaterialNoteGroupView: View {
                             Text(
                                 verbatim: "\(index + 1). " + String(card.passage.excerpt.prefix(8))
                                     + (card.passage.excerpt.count > 8 ? "…" : ""))
-                        }.disabled(card.attachment == nil)
+                        }.disabled(!canAddToChat || card.attachment == nil)
                     }
                 }
+                .disabled(!canAddToChat)
                 .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Add to Chat")), \(first.sourceIdentity)")))
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -76,6 +78,7 @@ struct RelatedMaterialNoteGroupView: View {
                         isLoading: isLoading,
                         entranceProgress: entranceProgress,
                         canInsertParagraph: canInsertParagraph && card.linkTarget != nil,
+                        canAddToChat: canAddToChat,
                         insertParagraph: { insertParagraph(card) },
                         open: { open(card) }, addToChat: { addToChat(card) }
                     )
@@ -93,6 +96,7 @@ private struct RelatedMaterialPassageView: View {
     let isLoading: Bool
     let entranceProgress: CGFloat
     let canInsertParagraph: Bool
+    let canAddToChat: Bool
     let insertParagraph: () -> Void
     let open: () -> Void
     let addToChat: () -> Void
@@ -137,13 +141,13 @@ private struct RelatedMaterialPassageView: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isLoading {
                 Button(action: addToChat) { Label("Add to Chat", systemImage: "plus.bubble") }
-                    .disabled(card.attachment == nil)
+                    .disabled(!canAddToChat || card.attachment == nil)
             }
         }
         .contextMenu {
             if !isLoading {
                 Button("Insert Paragraph Link", action: insertParagraph).disabled(!canInsertParagraph)
-                Button("Add to Chat", action: addToChat).disabled(card.attachment == nil)
+                Button("Add to Chat", action: addToChat).disabled(!canAddToChat || card.attachment == nil)
                 Button("Open Source", action: open)
             }
         }
@@ -151,7 +155,7 @@ private struct RelatedMaterialPassageView: View {
             if !isLoading && canInsertParagraph {
                 Button("Insert Paragraph Link", action: insertParagraph)
             }
-            if !isLoading && card.attachment != nil {
+            if !isLoading && canAddToChat && card.attachment != nil {
                 Button("Add to Chat", action: addToChat)
             }
         }

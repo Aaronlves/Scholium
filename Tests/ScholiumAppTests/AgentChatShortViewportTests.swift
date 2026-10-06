@@ -59,7 +59,7 @@ struct AgentChatShortViewportTests {
         let native = AgentChatComposerSession(conversationID: conversation.id)
         let detail = AgentChatConversationDetailView(
             controller: controller, isVisible: true, addSelection: { _ in false },
-            noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+            noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
             openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
             showConversationChanges: { _ in }, presentation: presentation, readingSession: reading,
             nativeSession: native, focusRequest: nil, consumeFocusRequest: { _ in },

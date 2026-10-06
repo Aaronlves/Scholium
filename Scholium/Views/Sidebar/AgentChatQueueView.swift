@@ -1,3 +1,4 @@
+import Observation
 import ScholiumContracts
 import SwiftUI
 
@@ -197,47 +198,47 @@ struct AgentChatQueuedMessageContents: View {
 }
 
 struct AgentChatQueuedMessageEditor: View {
-    let message: AgentChatMessage
+    @Bindable var target: AgentChatQueueEditTarget
     let save: (String) -> Bool
     let close: () -> Void
-    @State private var text: String
-    @State private var unavailable = false
     @FocusState private var focused: Bool
-
-    init(message: AgentChatMessage, save: @escaping (String) -> Bool, close: @escaping () -> Void) {
-        self.message = message
-        self.save = save
-        self.close = close
-        _text = State(initialValue: message.text)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Edit Queued Message", bundle: .module).font(.headline)
-            TextEditor(text: $text).font(.body).focused($focused)
+            TextEditor(text: $target.text).font(.body).focused($focused)
                 .accessibilityLabel(Text("Queued message", bundle: .module))
                 .frame(minHeight: 160)
-            if !message.attachments.isEmpty || !message.localMaterials.isEmpty {
+            if !target.message.attachments.isEmpty || !target.message.localMaterials.isEmpty {
                 Text("Attached materials will be kept.", bundle: .module).font(.caption).foregroundStyle(.secondary)
             }
-            if unavailable {
+            if target.unavailable {
                 Text("This message is no longer queued. Your edited text remains available to copy.", bundle: .module)
                     .font(.callout).foregroundStyle(.secondary)
             }
             HStack {
                 Button("Cancel", action: close).keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Save") { if save(text) { close() } else { unavailable = true } }
+                Button("Save") { if save(target.text) { close() } else { target.unavailable = true } }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || unavailable)
+                    .disabled(target.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || target.unavailable)
             }
         }.padding(20).frame(width: 420, height: 320).tint(nil as Color?)
             .task { focused = true }
     }
 }
 
-struct AgentChatQueueEditTarget: Identifiable {
+@MainActor @Observable
+final class AgentChatQueueEditTarget: Identifiable {
     let conversationID: UUID
     let message: AgentChatMessage
-    var id: String { message.id }
+    nonisolated var id: String { message.id }
+    var text: String
+    var unavailable = false
+
+    init(conversationID: UUID, message: AgentChatMessage) {
+        self.conversationID = conversationID
+        self.message = message
+        text = message.text
+    }
 }

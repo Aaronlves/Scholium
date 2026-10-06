@@ -161,7 +161,7 @@ extension WindowModel {
         guard currentNote != nil, !transferInProgress else { return false }
         switch action {
         case .copyLink: return currentDocumentDescriptor != nil && workspaceCatalog != nil
-        case .addToChat: return currentDocumentDescriptor != nil && windowWorkspaceController.activeCapabilities != nil
+        case .addToChat: return isChatSidebarEnabled && currentDocumentDescriptor != nil && windowWorkspaceController.activeCapabilities != nil
         case .move: return currentDocumentCapabilities.allows(.move)
         case .duplicate: return currentDocumentCapabilities.allows(.duplicate)
         case .merge: return canMergeCurrentNote

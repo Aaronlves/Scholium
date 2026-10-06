@@ -18,6 +18,7 @@ enum AgentSettingsCategory: String, CaseIterable, Identifiable {
 
 struct AgentIntegrationSettingsView: View {
     let searchQuery: String
+    @ObservedObject private var chatSidebarPreferences: ChatSidebarPreferences
     private let coreProtocolURL = try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL()
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.agentChatSettingsController) private var chatController
@@ -30,7 +31,10 @@ struct AgentIntegrationSettingsView: View {
         category: .connection)
     @State private var hasRestoredCategory = false
 
-    init(searchQuery: String = "") { self.searchQuery = searchQuery }
+    init(searchQuery: String = "", chatSidebarPreferences: ChatSidebarPreferences = .shared) {
+        self.searchQuery = searchQuery
+        self.chatSidebarPreferences = chatSidebarPreferences
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -52,6 +56,18 @@ struct AgentIntegrationSettingsView: View {
                 switch category {
                 case .connection:
                     Form {
+                        Section {
+                            Toggle(isOn: $chatSidebarPreferences.isEnabled) {
+                                Text("Show Chat in Sidebar", bundle: .module)
+                            }
+                            .toggleStyle(.checkbox)
+                            .accessibilityIdentifier("scholium.settings.chatSidebarEnabled")
+                            Text("Conversations, drafts and active work are retained when Chat is hidden.", bundle: .module)
+                                .foregroundStyle(.secondary)
+                        } header: {
+                            Text("Chat Sidebar — This Mac", bundle: .module)
+                        }
+                        .id("agents.chatSidebar")
                         if let chatController {
                             AgentChatConnectionSettingsView(controller: chatController)
                         } else {
@@ -128,7 +144,7 @@ struct AgentIntegrationSettingsView: View {
         switch searchTarget {
         case "agents.protocol", "agents.skills", "agents.tools": matching = .capabilities
         case "agents.external": matching = .externalAccess
-        case "agents.connection", "agents.behavior", "agents.paths": matching = .connection
+        case "agents.chatSidebar", "agents.connection", "agents.behavior", "agents.paths": matching = .connection
         default: matching = nil
         }
         navigation.updateQuery(searchQuery)

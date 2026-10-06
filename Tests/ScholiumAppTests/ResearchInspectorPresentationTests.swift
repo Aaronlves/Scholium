@@ -136,7 +136,7 @@ struct ResearchInspectorPresentationTests {
 
     private func result(_ group: RelatedMaterialsSession.NoteGroup, loading: Bool) -> some View {
         RelatedMaterialNoteGroupView(
-            group: group, canInsert: false, canInsertParagraph: false,
+            group: group, canInsert: false, canInsertParagraph: false, canAddToChat: !loading,
             isLoading: loading, entranceProgress: 1,
             open: { _ in }, insert: { _ in }, insertParagraph: { _ in }, addToChat: { _ in }
         )

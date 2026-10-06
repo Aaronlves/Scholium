@@ -44,7 +44,8 @@ func typeCommittedText(
     // caller's element or choose between equal identifiers in different windows.
     var matches: [(window: XCUIElement, input: XCUIElement)] = []
     var remainingNodes = 2_048
-    for window in application.windows.allElementsBoundByIndex where window.identifier.hasPrefix("scholium") {
+    for window in application.windows.allElementsBoundByIndex
+    where window.identifier.hasPrefix("scholium") || window.identifier == "com_apple_SwiftUI_Settings_window" {
         let inputs = window.descendants(matching: inputType)
         // Narrow before binding by index: unrelated editor text views can be
         // replaced during an asynchronous render, changing the broad query.

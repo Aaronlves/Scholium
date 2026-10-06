@@ -185,14 +185,15 @@ struct ContentView: View {
                     AgentChatView(
                         controller: chat,
                         transcriptReaderID: appState.nativeWindowID,
-                        isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
+                        isVisible: appState.isChatSidebarEnabled && shellState.libraryVisible && shellState.sidebarContent == .chat,
                         addSelection: { conversationID in
                             guard chat.selectedID == conversationID else { return false }
                             return await appState.addCurrentSelectionToChat()
                         },
                         noteChoices: appState.workspaceCatalog?.notes ?? [],
-                        addNote: { note, conversationID in
-                            try await appState.addNoteToChat(note, conversationID: conversationID)
+                        prepareNotes: { conversationID in
+                            guard appState.chatController === chat else { throw CancellationError() }
+                            return try appState.prepareChatNoteMaterials(in: conversationID)
                         },
                         openReference: { appState.openChatReference($0) },
                         openAttachment: { attachment in Task { await appState.openChatAttachment(attachment) }
@@ -893,6 +894,7 @@ struct ContentView: View {
                 },
                 insertRelated: { card in Task { await appState.insertRelatedMaterialLink(card) } },
                 insertRelatedParagraph: { card in Task { await appState.insertRelatedMaterialParagraphLink(card) } },
+                canDiscussRelated: appState.canPresentChat,
                 discussRelated: { card in
                     Task {
                         if await appState.useRelatedMaterial(card, inChat: true),

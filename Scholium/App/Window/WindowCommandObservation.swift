@@ -12,6 +12,7 @@ final class WindowCommandObservation: ObservableObject {
 
     init(
         shellState: WindowShellState,
+        chatSidebarPreferences: ChatSidebarPreferences,
         workspaceController: WindowWorkspaceController,
         libraryMutationController: WindowLibraryMutationController,
         discoveryController: DiscoveryController,
@@ -37,6 +38,7 @@ final class WindowCommandObservation: ObservableObject {
             .eraseToAnyPublisher()
         let commandChanges: [AnyPublisher<Void, Never>] = [
             changes(shellState.$libraryVisible),
+            changes(chatSidebarPreferences.$isEnabled),
             changes(shellState.$inspector),
             changes(shellState.$selectedWorkspace),
             changes(shellState.$documentTextScale),

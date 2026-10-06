@@ -152,7 +152,9 @@ struct WorkspaceToolbarTests {
 
     @Test("The native toolbar owns command identity, overflow, and navigation")
     func nativeToolbarOwnsLayout() throws {
-        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let preference = ChatSidebarPreferenceFixture(enabled: true)
+        defer { preference.cleanup() }
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore(), chatSidebarPreferences: preference.preferences)
         let split = testSplitViewController()
         let window = testWindow()
         window.contentViewController = split
@@ -723,7 +725,9 @@ struct WorkspaceToolbarTests {
 
     @Test("Peripheral controls mirror their current accessible visibility state")
     func peripheralControlsMirrorVisibility() async throws {
-        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let preference = ChatSidebarPreferenceFixture(enabled: true)
+        defer { preference.cleanup() }
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore(), chatSidebarPreferences: preference.preferences)
         let split = testSplitViewController()
         let window = testWindow()
         window.contentViewController = split
@@ -765,6 +769,18 @@ struct WorkspaceToolbarTests {
         #expect(controller.validateMenuItem(libraryItem))
         #expect(!controller.validateMenuItem(chatItem))
         #expect(sidebarMenu.items.allSatisfy { $0.state == .off })
+        let selector = try #require(sidebar.view as? NSSegmentedControl)
+        preference.preferences.isEnabled = false
+        await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+        #expect(sidebar.view === selector && selector.segmentCount == 1)
+        #expect(sidebarMenu.items.map(\.tag) == [SidebarContent.library.rawValue])
+        #expect(!controller.validateMenuItem(chatItem))
+        #expect(!model.shellState.libraryVisible && model.shellState.sidebarContent == .library)
+        preference.preferences.isEnabled = true
+        await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+        #expect(sidebar.view === selector && selector.segmentCount == 2)
+        #expect(sidebarMenu.items.map(\.tag) == [SidebarContent.library.rawValue, SidebarContent.chat.rawValue])
+        #expect(!model.shellState.libraryVisible && selector.selectedSegment == -1)
         controller.invalidate()
         #expect(!controller.validateMenuItem(libraryItem))
         model.shellState.recordLibraryVisibility(true)

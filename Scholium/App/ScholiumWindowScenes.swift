@@ -674,6 +674,7 @@ struct ScholiumWindowRoot: View {
 /// Receives the retained scene pair and observes model publications before
 /// deriving child state. A root reevaluation must keep these owners paired.
 struct ScholiumWindowObservedRoot: View {
+    @Environment(\.openSettings) private var openSettings
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.scholiumIncreasedContrast) private var increasedContrast
     @Environment(\.scholiumReduceTransparency) private var reduceTransparency
@@ -792,6 +793,13 @@ struct ScholiumWindowObservedRoot: View {
             guard hasReadyWorkspace,
                 let notification = SystemNotificationService.shared.takeOpeningRoute(windowID: route.windowID)
             else { return }
+            if case .chat = notification, !appState.isChatSidebarEnabled,
+                appState.workspaceAssignment?.id == notification.triptychID
+            {
+                SettingsNavigationRequest.select(.agents, agentCategory: .connection, sectionID: "agents.chatSidebar")
+                openSettings()
+                return
+            }
             if let sidebar = await appState.openSystemNotification(notification),
                 !shellState.libraryVisible || shellState.sidebarContent != sidebar
             {
@@ -832,7 +840,7 @@ struct ScholiumWindowObservedRoot: View {
                 appState.vaultError = error.localizedDescription
             }
         }
-        .onAppear { [weak appState, weak windowCoordinator, openWindowAction] in
+        .onAppear { [weak appState, weak windowCoordinator, openWindowAction, openSettings] in
             guard let appState, let windowCoordinator else { return }
             if !appState.isDetachedDocumentWindow {
                 appState.workspaceStore.documentLocations.openMainWindow = { route in
@@ -852,6 +860,11 @@ struct ScholiumWindowObservedRoot: View {
                 [weak appState, weak windowCoordinator] notification in
                 guard let appState, appState.workspaceAssignment?.id == notification.triptychID else { return false }
                 windowCoordinator?.makeKeyAndOrderFront()
+                if case .chat = notification, !appState.isChatSidebarEnabled {
+                    SettingsNavigationRequest.select(.agents, agentCategory: .connection, sectionID: "agents.chatSidebar")
+                    openSettings()
+                    return true
+                }
                 Task {
                     if let sidebar = await appState.openSystemNotification(notification),
                         !appState.shellState.libraryVisible || appState.shellState.sidebarContent != sidebar

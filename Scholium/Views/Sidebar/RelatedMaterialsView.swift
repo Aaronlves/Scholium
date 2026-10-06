@@ -12,6 +12,7 @@ struct RelatedMaterialsView: View {
     let findWithTermGroup: @MainActor (SearchTermGroup?) -> Void
     let retry: () -> Void
     let open: (RelatedMaterialCard) -> Void
+    let canAddToChat: Bool
     let addToChat: (RelatedMaterialCard) -> Void
     let insert: (RelatedMaterialCard) -> Void
     let insertParagraph: (RelatedMaterialCard) -> Void
@@ -102,6 +103,7 @@ struct RelatedMaterialsView: View {
                             termGroup: session.seed?.termGroup,
                             canInsert: editor != nil && session.insertionPoint != nil && !session.isLoading && !session.isInsertingParagraphLink,
                             canInsertParagraph: editor != nil && session.canInsertParagraphLink,
+                            canAddToChat: canAddToChat,
                             isLoading: session.isLoading,
                             entranceProgress: reduceMotion
                                 ? 1 : entrance.progress(for: group.id, at: timeline.date),

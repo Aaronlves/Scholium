@@ -653,8 +653,8 @@ conversation coalesce to its latest qualifying event; independent conversations
 retain independent destinations. Notification delivery failure cannot change
 execution or research results.
 
-Clicking a Chat notification opens the exact retained conversation in its
-Triptych, including archived history, without changing the current Note or
+When Chat is available under §18.2, clicking a Chat notification opens the exact
+retained conversation in its Triptych, including archived history, without changing the current Note or
 restoring execution authority. It neither connects, sends, resumes, answers nor
 grants permission. A missing conversation is reported without selecting another
 as a substitute. Notification payloads retain only opaque Triptych/conversation

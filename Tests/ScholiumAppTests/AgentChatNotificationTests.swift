@@ -153,7 +153,9 @@ struct AgentChatNotificationTests {
             let configured = try await store.configureTriptychCapabilities(
                 paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1],
                 outputURL: vaults[2], portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Notification fixture")
-            let window = WindowModel(workspaceStore: store, requestedTriptychID: configured.id)
+            let preference = ChatSidebarPreferenceFixture(enabled: true)
+            defer { preference.cleanup() }
+            let window = WindowModel(workspaceStore: store, requestedTriptychID: configured.id, chatSidebarPreferences: preference.preferences)
             await window.refreshWorkspaceAssignment(preferredTriptychID: configured.id)
             try await window.openWorkspaceVault(.paperAnalysis)
             let note = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Source.md" })
@@ -172,6 +174,12 @@ struct AgentChatNotificationTests {
             chat.editDraft("Other conversation draft")
             let current = chat.selectedID
             let route = SystemNotificationRoute.chat(.init(triptychID: configured.id, conversationID: target, event: .inputRequired))
+            preference.preferences.isEnabled = false
+            #expect(await window.openSystemNotification(route) == nil)
+            #expect(chat.selectedID == current && chat.selected?.draft == "Other conversation draft")
+            #expect(window.chatController === chat && chat.connectionState == .disconnected)
+            #expect(window.shellState.sidebarContent == .library && !window.shellState.operationIssues.isEmpty)
+            preference.preferences.isEnabled = true
             #expect(await window.openSystemNotification(route) == .chat)
             #expect(chat.selectedID == target && chat.connectionState == .disconnected)
             #expect(window.documentController.selectedDocument?.editingTarget == document.editingTarget)

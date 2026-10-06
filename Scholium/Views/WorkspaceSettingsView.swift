@@ -88,8 +88,8 @@ struct ScholiumSettingsView: View {
             }
             .onChange(of: searchQuery) { _, _ in
                 if !isSearching {
-                    searchTarget = nil
                     if let destinationBeforeSearch {
+                        searchTarget = nil
                         destination = destinationBeforeSearch
                         self.destinationBeforeSearch = nil
                     }
@@ -136,6 +136,12 @@ struct ScholiumSettingsView: View {
 
     private func restoreRequestedDestination() {
         destination = ScholiumSettingsDestination(rawValue: persistedPane) ?? .workspace
+        if let target = SettingsNavigationRequest.takeRequestedSection(for: destination) {
+            searchTarget = target
+            searchRevision += 1
+        } else if searchTarget?.destination != destination {
+            searchTarget = nil
+        }
     }
 
     private var categorySelection: Binding<ScholiumSettingsDestination> {

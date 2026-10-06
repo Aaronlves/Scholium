@@ -4,6 +4,22 @@ import ScholiumContracts
 
 @testable import ScholiumApp
 
+@MainActor
+struct ChatSidebarPreferenceFixture {
+    let defaults: UserDefaults
+    let preferences: ChatSidebarPreferences
+    private let suiteName: String
+
+    init(enabled: Bool? = nil) {
+        suiteName = "scholium.qa.chatSidebar.\(UUID())"
+        defaults = UserDefaults(suiteName: suiteName)!
+        if let enabled { defaults.set(enabled, forKey: ChatSidebarPreferences.enabledKey) }
+        preferences = ChatSidebarPreferences(defaults: defaults)
+    }
+
+    func cleanup() { defaults.removePersistentDomain(forName: suiteName) }
+}
+
 func agentChatFixtureWorkspace(root: URL, triptychID: UUID) throws -> URL {
     let workspace = root.appendingPathComponent("Triptychs/\(triptychID.uuidString)/.scholium")
     try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)

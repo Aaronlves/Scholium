@@ -26,7 +26,7 @@ struct AgentChatView: View {
     let isVisible: Bool
     let addSelection: (UUID) async -> Bool
     let noteChoices: [WorkspaceCatalogNote]
-    let addNote: (WorkspaceCatalogNote, UUID) async throws -> Void
+    let prepareNotes: @MainActor (UUID) throws -> (@MainActor (WorkspaceCatalogNote) async throws -> Void)
     let openReference: (URL) -> Bool
     let openAttachment: (AgentChatAttachment) -> Void
     let showInLibrary: (URL) -> Void
@@ -129,6 +129,8 @@ struct AgentChatView: View {
             if !visible {
                 PerformanceProbe.shared.cancelChatEntry()
                 diagnosticsPresentation = nil
+                showsAccountUsage = false
+                showsRename = false
             }
             markVisibleConversationRead()
         }
@@ -166,7 +168,7 @@ struct AgentChatView: View {
     private var detailPage: some View {
         AgentChatConversationDetailView(
             controller: controller, isVisible: isVisible && !showsConversationList,
-            addSelection: addSelection, noteChoices: noteChoices, addNote: addNote,
+            addSelection: addSelection, noteChoices: noteChoices, prepareNotes: prepareNotes,
             openReference: openReference, openAttachment: openAttachment,
             showInLibrary: showInLibrary, showChanges: showChanges,
             showConversationChanges: showConversationChanges,

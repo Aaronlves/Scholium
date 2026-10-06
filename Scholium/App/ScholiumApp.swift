@@ -63,6 +63,10 @@ final class WindowModel: ObservableObject {
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
+    let chatSidebarPreferences: ChatSidebarPreferences
+    var isChatSidebarEnabled: Bool { chatSidebarPreferences.isEnabled }
+    var canPresentChat: Bool { isChatSidebarEnabled && workspaceAssignment != nil }
+    private var chatSidebarObservation: AnyCancellable?
     let writingContinuationContextCache = WritingContinuationContextCache()
     var selectionResult: (inquiry: AgentChatSelectionInquiry, attachment: AgentChatAttachment, model: String, result: AgentSelectionResult)?
     lazy var discoveryController = DiscoveryController(
@@ -260,6 +264,7 @@ final class WindowModel: ObservableObject {
     private let libraryTreeProjectionCache = LibraryTreeProjectionCache()
     lazy var commandObservation = WindowCommandObservation(
         shellState: shellState,
+        chatSidebarPreferences: chatSidebarPreferences,
         workspaceController: windowWorkspaceController,
         libraryMutationController: libraryMutationController,
         discoveryController: discoveryController,
@@ -695,6 +700,7 @@ final class WindowModel: ObservableObject {
         nativeWindowID: UUID? = nil,
         requestedTriptychID: UUID? = nil,
         requestedInitialDocument: VaultNoteReference? = nil,
+        chatSidebarPreferences: ChatSidebarPreferences = .shared,
         lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
         finalWindowSessionSaver: WindowSessionPersistenceCoordinator.Saver? = nil
     ) {
@@ -703,6 +709,7 @@ final class WindowModel: ObservableObject {
         self.nativeWindowID = resolvedWindowID
         windowSessionID = resolvedWindowID
         self.workspaceStore = workspaceStore
+        self.chatSidebarPreferences = chatSidebarPreferences
         self.lifecyclePolicy = lifecyclePolicy
         self.editorFlushCoordinator = WindowEditorFlushCoordinator(
             windowID: resolvedWindowID,
@@ -813,6 +820,14 @@ final class WindowModel: ObservableObject {
         #endif
         searchController.loadSavedSearches()
         startWorkspaceObservers()
+        chatSidebarObservation = chatSidebarPreferences.$isEnabled.dropFirst().sink { [weak self] enabled in
+            guard let self else { return }
+            self.objectWillChange.send()
+            if !enabled, self.shellState.sidebarContent == .chat {
+                // Keep native pane visibility and width; only replace its content.
+                _ = self.shellState.activateSidebar(.library)
+            }
+        }
     }
 
     deinit {

@@ -10,6 +10,8 @@ struct AgentChatComposerSessionTests {
     @Test("Leaving and remounting a draft retains its native selection and typing Undo")
     func remountRetainsNativeEditing() async throws {
         _ = NSApplication.shared
+        let preference = ChatSidebarPreferenceFixture(enabled: true)
+        defer { preference.cleanup() }
         let conversationID = UUID()
         let session = AgentChatComposerSession(conversationID: conversationID)
         var draft = "Retained 中文 draft."
@@ -20,7 +22,9 @@ struct AgentChatComposerSessionTests {
                 isFocused: Binding(get: { focused }, set: { focused = $0 }),
                 nativeSession: session,
                 readCurrentDraft: { draft },
-                isEnabled: true, submit: {})
+                isEnabled: true, submit: {}
+            )
+            .environment(\.scholiumDocumentSurfaceVisibility, preference.preferences.isEnabled ? .active : .retained)
         }
         let host = NSHostingView(rootView: AnyView(input()))
         let window = mount(host)
@@ -43,13 +47,15 @@ struct AgentChatComposerSessionTests {
         // A retained detail stays allocated behind the list, but has no native
         // first responder or delivery route. Reopening restores the same input.
         #expect(window.makeFirstResponder(editor))
-        host.rootView = AnyView(input().environment(\.scholiumDocumentSurfaceVisibility, .retained))
+        preference.preferences.isEnabled = false
+        host.rootView = AnyView(input())
         try await settle(host) { !editor.isEditable && editor.onSubmit == nil }
         #expect(session.host.window === window && window.firstResponder !== editor)
         #expect(editor.isHiddenOrHasHiddenAncestor)
         #expect(editor.onTransferMaterials == nil && editor.onCompletionKey == nil)
         #expect(editor.string == draft && editor.selectedRange() == selection)
         #expect(editor.undoManager === undo && undo.canUndo)
+        preference.preferences.isEnabled = true
         host.rootView = AnyView(input())
         try await settle(host) { editor.isEditable && editor.onSubmit != nil }
         #expect(!editor.isHiddenOrHasHiddenAncestor)
@@ -65,6 +71,21 @@ struct AgentChatComposerSessionTests {
         #expect(editor.undoManager === undo && undo.canUndo)
         undo.undo()
         #expect(editor.string == original && draft == original)
+        editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: editor.string.utf16.count, length: 0))
+        session.host.commitCurrentDraft()
+        try #require(editor.hasMarkedText())
+        // Input services may replace preedit before textDidChange is delivered.
+        editor.textStorage?.replaceCharacters(in: editor.markedRange(), with: "拼音")
+        let lateInput = editor.string
+        preference.preferences.isEnabled = false
+        host.rootView = AnyView(input())
+        try await settle(host) { !editor.isEditable && editor.onSubmit == nil }
+        #expect(draft == lateInput && !editor.hasMarkedText())
+        #expect(session.host.editor === editor && window.firstResponder !== editor)
+        preference.preferences.isEnabled = true
+        host.rootView = AnyView(input())
+        try await settle(host) { editor.isEditable && editor.string == lateInput }
+        #expect(draft == lateInput && session.host.editor === editor)
     }
 
     @Test("An externally replaced draft invalidates retained typing Undo while the native session stays stable")

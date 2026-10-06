@@ -9,9 +9,14 @@ extension WindowModel {
             await openNotifiedAgentChange(change)
             return nil
         case .chat(let destination):
-            guard workspaceAssignment?.id == destination.triptychID, let chat = chatController else { return nil }
+            guard workspaceAssignment?.id == destination.triptychID else { return nil }
+            guard isChatSidebarEnabled else {
+                reportOperationIssue(ChatSidebarPresentationError.hidden.localizedDescription, kind: .information)
+                return nil
+            }
+            guard let chat = chatController else { return nil }
             let opened = await chat.selectNotification(destination)
-            guard chatController === chat, workspaceAssignment?.id == destination.triptychID else { return nil }
+            guard isChatSidebarEnabled, chatController === chat, workspaceAssignment?.id == destination.triptychID else { return nil }
             if opened {
                 return .chat
             } else {
@@ -39,6 +44,7 @@ extension WindowModel {
     private func stageCurrentSelectionInChat(
         inquiry: AgentChatSelectionInquiry, newConversation: Bool = false, validate: @escaping AgentSelectionValidation = { true }
     ) async throws -> Bool {
+        guard isChatSidebarEnabled else { throw ChatSidebarPresentationError.hidden }
         guard !Task.isCancelled, let chat = chatController else { return false }
         let selected = chat.selectedID
         @MainActor func capture() async throws {
@@ -161,6 +167,10 @@ extension WindowModel {
                 },
                 continueInChat: { [weak self, weak chat] reply in
                     guard let self, let chat, self.chatController === chat else { return }
+                    guard self.isChatSidebarEnabled else {
+                        self.reportOperationIssue(ChatSidebarPresentationError.hidden.localizedDescription, kind: .information)
+                        return
+                    }
                     let version = reply ?? ""
                     if let id = conversationsByVersion[version], chat.conversations.contains(where: { $0.id == id && $0.isAvailable }) {
                         chat.select(id)
@@ -224,6 +234,10 @@ extension WindowModel {
 
     @MainActor @discardableResult
     func addLibraryNoteToChat(_ note: WindowDocumentLocation) -> Bool {
+        guard isChatSidebarEnabled else {
+            reportOperationIssue(ChatSidebarPresentationError.hidden.localizedDescription, kind: .information)
+            return false
+        }
         guard let target = NoteMutationTarget(note), addNotesToChat([SidebarNoteDragItem(target)]) else {
             reportOperationIssue(AgentChatNoteMaterialError.unavailable.localizedDescription, kind: .information)
             return false
@@ -233,7 +247,7 @@ extension WindowModel {
 
     @MainActor
     func canAddNotesToChat(_ items: [SidebarNoteDragItem]) -> Bool {
-        guard !items.isEmpty, let chat = chatController, chat.isLoaded,
+        guard isChatSidebarEnabled, !items.isEmpty, let chat = chatController, chat.isLoaded,
             workspaceAssignment?.id == chat.triptychID,
             windowWorkspaceController.activeCapabilities != nil,
             let notes = workspaceCatalog?.notes,
@@ -244,25 +258,24 @@ extension WindowModel {
 
     @MainActor @discardableResult
     func addNotesToChat(_ items: [SidebarNoteDragItem]) -> Bool {
-        guard canAddNotesToChat(items), let chat = chatController,
-            let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity
+        guard canAddNotesToChat(items), let chat = chatController
         else { return false }
         if chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
-        guard let conversationID = chat.selectedID else { return false }
+        guard let conversationID = chat.selectedID, let addPreparedNote = try? prepareChatNoteMaterials(in: conversationID) else { return false }
         chat.presentContext(in: conversationID)
         Task { @MainActor [weak self, weak chat] in
-            guard let self, let chat, self.chatController === chat,
-                self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime
+            guard let self, let chat, self.chatController === chat
             else { return }
             await chat.addTransferredMaterials(
                 items.map(AgentChatTransferredMaterial.note), origin: .drop,
                 to: conversationID
             ) { [weak self] item in
-                guard let self, self.chatController === chat,
-                    self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime
+                guard let self, self.chatController === chat
                 else { throw CancellationError() }
                 let note = try AgentChatPasteboardSnapshot.resolve(item, in: self.workspaceCatalog?.notes ?? [])
-                try await self.addNoteToChat(note, conversationID: conversationID)
+                // This transfer was admitted while Chat was shown. Hiding its
+                // presentation does not cancel captured pending work.
+                try await addPreparedNote(note)
             }
         }
         return true
@@ -270,6 +283,28 @@ extension WindowModel {
 
     @MainActor
     func addNoteToChat(_ note: WorkspaceCatalogNote, conversationID: UUID) async throws {
+        try await prepareChatNoteMaterials(in: conversationID)(note)
+    }
+
+    /// Admit once before scheduling a transfer. Every item keeps the same
+    /// conversation and runtime even if Chat is hidden between awaits.
+    @MainActor
+    func prepareChatNoteMaterials(in conversationID: UUID) throws -> @MainActor (WorkspaceCatalogNote) async throws -> Void {
+        guard isChatSidebarEnabled else { throw ChatSidebarPresentationError.hidden }
+        guard let chat = chatController,
+            let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity,
+            chat.conversations.contains(where: { $0.id == conversationID && $0.isAvailable })
+        else { throw AgentChatNoteMaterialError.unavailable }
+        return { [weak self, weak chat] note in
+            guard let self, let chat, self.chatController === chat,
+                self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime
+            else { throw CancellationError() }
+            try await self.attachNoteToChat(note, conversationID: conversationID)
+        }
+    }
+
+    @MainActor
+    private func attachNoteToChat(_ note: WorkspaceCatalogNote, conversationID: UUID) async throws {
         guard let chat = chatController,
             chat.conversations.contains(where: { $0.id == conversationID && $0.isAvailable == true }),
             let capabilities = windowWorkspaceController.activeCapabilities,
@@ -319,7 +354,7 @@ extension WindowModel {
     @MainActor
     func agentNoteDisplayState(canDisplay: Bool) -> AgentNoteDisplayWindow.State? {
         guard let triptych = workspaceAssignment?.id else { return nil }
-        let visibleConversation = shellState.libraryVisible && shellState.sidebarContent == .chat ? chatController?.selectedID : nil
+        let visibleConversation = isChatSidebarEnabled && shellState.libraryVisible && shellState.sidebarContent == .chat ? chatController?.selectedID : nil
         return .init(triptychID: triptych, canDisplay: canDisplay && shellState.hasCompletedInitialRestore, visibleConversationID: visibleConversation)
     }
 

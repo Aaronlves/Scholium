@@ -71,11 +71,30 @@ func localizedInterfaceString(_ keyAndValue: String.LocalizationValue) -> String
 /// The revision makes repeated links work even when the remembered pane is equal.
 @MainActor
 enum SettingsNavigationRequest {
-    static func select(_ pane: ScholiumSettingsDestination, agentCategory: AgentSettingsCategory? = nil) {
+    static let requestedSectionKey = "scholium.settings.requestedSection"
+
+    static func select(
+        _ pane: ScholiumSettingsDestination, agentCategory: AgentSettingsCategory? = nil,
+        sectionID: String? = nil, defaults: UserDefaults = .standard
+    ) {
         if let agentCategory {
-            UserDefaults.standard.set(agentCategory.rawValue, forKey: "scholium.settings.agentCategory")
+            defaults.set(agentCategory.rawValue, forKey: "scholium.settings.agentCategory")
         }
-        UserDefaults.standard.set(pane.rawValue, forKey: "scholium.settings.selectedPane")
-        UserDefaults.standard.set(UUID().uuidString, forKey: "scholium.settings.navigationRevision")
+        if let sectionID {
+            defaults.set(sectionID, forKey: requestedSectionKey)
+        } else {
+            defaults.removeObject(forKey: requestedSectionKey)
+        }
+        defaults.set(pane.rawValue, forKey: "scholium.settings.selectedPane")
+        defaults.set(UUID().uuidString, forKey: "scholium.settings.navigationRevision")
+    }
+
+    /// A requested section is a one-shot route, never retained browsing state.
+    static func takeRequestedSection(
+        for pane: ScholiumSettingsDestination, defaults: UserDefaults = .standard
+    ) -> SettingsSearchTarget? {
+        let sectionID = defaults.string(forKey: requestedSectionKey)
+        defaults.removeObject(forKey: requestedSectionKey)
+        return SettingsSearchTarget.all.first { $0.id == sectionID && $0.destination == pane }
     }
 }

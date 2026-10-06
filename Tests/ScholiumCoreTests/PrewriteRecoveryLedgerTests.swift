@@ -6,6 +6,58 @@ import Testing
 
 @Suite("Interrupted save transactions")
 struct PrewriteRecoveryLedgerTests {
+    @Test("An interrupted manifest publication does not hide a verified recovery")
+    func incompleteTransactionDoesNotHideRecovery() throws {
+        let fixture = try Fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try fixture.writeVault("before", path: "Note.md")
+        let ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage)
+        let transaction = try ledger.beginMutation(
+            relativePath: "Note.md", expected: Data("before".utf8), candidate: Data("after".utf8))
+        try ledger.retainMutation(transaction, reason: "Interrupted")
+        // beginMutation publishes source files before its manifest. A process
+        // killed in that interval leaves this exact nonauthorizing state.
+        let incomplete = fixture.transactionDirectory(UUID())
+        try FileManager.default.createDirectory(at: incomplete, withIntermediateDirectories: false)
+        let partialCandidate = incomplete.appendingPathComponent("candidate.md")
+        try Data("unstaged manifest".utf8).write(to: partialCandidate)
+
+        for _ in 0..<3 {
+            let reopened = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
+            #expect(reopened.healthDiagnostic?.contains("no manifest") == true)
+            let retained = try #require(reopened.retainedMutations().only)
+            #expect(retained.id == transaction.id)
+            #expect(try reopened.candidateData(for: retained) == Data("after".utf8))
+            #expect(try Data(contentsOf: partialCandidate) == Data("unstaged manifest".utf8))
+            #expect(try Data(contentsOf: fixture.vault.appendingPathComponent("Note.md")) == Data("before".utf8))
+            #expect(reopened.healthDiagnostic?.contains("no manifest") == true)
+        }
+    }
+
+    @Test("An unsafe manifest remains nonauthorizing rather than being treated as absent", arguments: [false, true])
+    func unsafeManifestIsNotAbsent(isDirectory: Bool) throws {
+        let fixture = try Fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage)
+        let transaction = try ledger.beginMutation(
+            relativePath: "Note.md", expected: Data("before".utf8), candidate: Data("after".utf8))
+        try ledger.retainMutation(transaction, reason: "Interrupted")
+        let unsafe = fixture.transactionDirectory(UUID())
+        try FileManager.default.createDirectory(at: unsafe, withIntermediateDirectories: false)
+        let manifest = unsafe.appendingPathComponent("manifest.json")
+        let outside = fixture.root.appendingPathComponent("outside-manifest.json")
+        let outsideData = Data("outside synthetic bytes".utf8)
+        try outsideData.write(to: outside)
+        if isDirectory {
+            try FileManager.default.createDirectory(at: manifest, withIntermediateDirectories: false)
+        } else {
+            try FileManager.default.createSymbolicLink(at: manifest, withDestinationURL: outside)
+        }
+        #expect(throws: (any Error).self) { try ledger.retainedMutations() }
+        #expect(try Data(contentsOf: outside) == outsideData)
+        #expect(FileManager.default.fileExists(atPath: fixture.transactionDirectory(transaction.id).path))
+    }
+
     @Test("Redundant backup cleanup keeps its transaction address until restart")
     func backupCleanupCanWaitWithoutLosingItsAddress() throws {
         let fixture = try Fixture()

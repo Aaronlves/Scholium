@@ -3,8 +3,8 @@ import ScholiumContracts
 import SwiftUI
 
 /// Retained only for the selected conversation, including a visit to its list.
-/// Native editing survives in the window's conversation session store; picker
-/// tasks stay with the mounted detail.
+/// Native editing survives in the window's conversation session store; admitted
+/// material work stays with the controller when its picker is hidden.
 @MainActor @Observable
 final class AgentChatDetailPresentation {
     enum ContextAnchor { case composer, conversation }

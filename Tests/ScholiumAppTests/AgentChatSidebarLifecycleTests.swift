@@ -35,7 +35,7 @@ struct AgentChatSidebarLifecycleTests {
         let host = NSHostingView(
             rootView: AgentChatView(
                 controller: controller, transcriptReaderID: readerID, isVisible: true, addSelection: { _ in false },
-                noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
                 openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }
             )
@@ -103,7 +103,7 @@ struct AgentChatSidebarLifecycleTests {
         try await controller.flushPersistence()
     }
 
-    @Test("An outgoing or hidden detail relinquishes Find focus without retargeting its native draft or Undo")
+    @Test("An outgoing or hidden detail relinquishes focus and idle sheets while preserving queued writing, native draft and Undo")
     func outgoingDetailKeepsItsConversationIdentity() async throws {
         _ = NSApplication.shared
         let root = repository.appendingPathComponent(".build/agent-chat-tests/outgoing-identity-\(UUID())")
@@ -121,10 +121,10 @@ struct AgentChatSidebarLifecycleTests {
         let nativeSession = AgentChatComposerSession(conversationID: firstID)
         let presentation = AgentChatDetailPresentation()
         let readingSession = AgentChatReadingSession()
-        func detail(visible: Bool) -> some View {
+        func detail(visible: Bool) -> AgentChatConversationDetailView {
             AgentChatConversationDetailView(
                 controller: controller, isVisible: visible, addSelection: { _ in false },
-                noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
                 openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }, presentation: presentation,
                 readingSession: readingSession, nativeSession: nativeSession,
@@ -135,6 +135,12 @@ struct AgentChatSidebarLifecycleTests {
         let host = NSHostingView(rootView: AnyView(detail(visible: true)))
         let window = mount(host)
         defer {
+            presentation.notePickerTarget = nil
+            presentation.queueEditTarget = nil
+            if let sheet = window.attachedSheet {
+                window.endSheet(sheet)
+                sheet.orderOut(nil)
+            }
             window.contentView = nil
             window.close()
         }
@@ -175,13 +181,34 @@ struct AgentChatSidebarLifecycleTests {
         try #require(window.makeFirstResponder(find))
         let resumedFindEditor = try #require(find.currentEditor())
         try #require(window.firstResponder === resumedFindEditor)
+        // An idle picker is retained presentation state, not admitted material
+        // work. Hiding Chat must remove its future keyboard/accessibility route.
+        presentation.notePickerTarget = .init(id: firstID)
+        #expect(presentation.notePickerTarget?.id == firstID)
         host.rootView = AnyView(detail(visible: false))
         try await settle(host) { !find.isEnabled && window.firstResponder !== resumedFindEditor }
+        #expect(presentation.notePickerTarget?.id == nil, "A hidden retained Chat must dismiss its Note picker.")
         #expect(findField(in: host) === find)
         #expect(editor.string == retained && editor.selectedRange() == selection)
         #expect(editor.undoManager === undo && undo.canUndo)
         #expect(controller.conversations.first { $0.id == firstID }?.draft == retained)
         #expect(controller.conversations.first { $0.id == secondID }?.draft == "Second independent draft")
+        // The sheet's writing belongs to its retained target. A presentation-
+        // only dismissal must not consume text that may still need copying.
+        let queueTarget = AgentChatQueueEditTarget(
+            conversationID: firstID, message: .init(role: .user, text: "Original queued message"))
+        queueTarget.text = "Unsent queued-message edits"
+        queueTarget.unavailable = true
+        presentation.queueEditTarget = queueTarget
+        let hiddenQueue = detail(visible: false).queuedMessageEditorTarget
+        #expect(hiddenQueue.wrappedValue?.id == nil)
+        hiddenQueue.wrappedValue = nil
+        #expect(presentation.queueEditTarget === queueTarget)
+        #expect(queueTarget.text == "Unsent queued-message edits" && queueTarget.unavailable)
+        #expect(detail(visible: true).queuedMessageEditorTarget.wrappedValue === queueTarget)
+        // Test-owned dismissal keeps the following native Find restoration
+        // independent of a queued-message modal or actual attached-sheet focus.
+        presentation.queueEditTarget = nil
         host.rootView = AnyView(detail(visible: true))
         try await settle(host) { editor.isEditable && find.isEnabled }
         #expect(window.firstResponder === find.currentEditor())
@@ -207,7 +234,7 @@ struct AgentChatSidebarLifecycleTests {
         func detail(visible: Bool) -> some View {
             AgentChatConversationDetailView(
                 controller: controller, isVisible: visible, addSelection: { _ in false },
-                noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
                 openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }, presentation: presentation,
                 readingSession: readingSession, nativeSession: nativeSession,
@@ -271,7 +298,7 @@ struct AgentChatSidebarLifecycleTests {
             func detail() -> some View {
                 AgentChatConversationDetailView(
                     controller: controller, isVisible: true, addSelection: { _ in false },
-                    noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+                    noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
                     openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                     showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: nativeSession,
                     focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
@@ -365,7 +392,7 @@ struct AgentChatSidebarLifecycleTests {
         let native = AgentChatComposerSession(conversationID: conversation.id)
         func detail(visible: Bool) -> some View {
             AgentChatConversationDetailView(
-                controller: controller, isVisible: visible, addSelection: { _ in false }, noteChoices: [], addNote: { _, _ in },
+                controller: controller, isVisible: visible, addSelection: { _ in false }, noteChoices: [], prepareNotes: { _ in { _ in } },
                 openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: native,
                 focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
@@ -469,7 +496,7 @@ struct AgentChatSidebarLifecycleTests {
         let projection = AgentChatTimelineProjection(conversation.messages)
         let detail = AgentChatConversationDetailView(
             controller: controller, isVisible: true, addSelection: { _ in false },
-            noteChoices: [], addNote: { _, _ in }, openReference: { _ in false },
+            noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
             openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
             showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: nativeSession,
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},

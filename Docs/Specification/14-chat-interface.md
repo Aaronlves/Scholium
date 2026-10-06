@@ -406,7 +406,10 @@ additional input to its bound running turn; Send Next retains queue order while
 idle. Inspection cannot dispatch or reorder input. Edit Message opens a native editor
 for the queued text without replacing the composer draft or its materials.
 Saving preserves queue identity, position and attached context. If already sent,
-the edit is not applied and remains available to copy. The composer places Add to Chat, a small Context indicator,
+the edit is not applied and remains available to copy. Hiding Chat dismisses its
+transient dialogs and preserves unsaved queued-message text for the editor's
+return; accepted material preparation continues unless explicitly cancelled.
+The composer places Add to Chat, a small Context indicator,
 the current reasoning gauge and delivery in one bottom row.
 The composer has one enclosing surface. Its quote, Note and file summaries sit
 directly within it; they do not add nested card backgrounds. Secondary controls

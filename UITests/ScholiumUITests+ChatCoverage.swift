@@ -147,7 +147,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    private func seedChatEntryFixture() throws -> (
+    func seedChatEntryFixture() throws -> (
         short: (id: UUID, turns: Int, draft: String), long: (id: UUID, turns: Int, draft: String), archive: URL
     ) {
         let manifest = try XCTUnwrap(
@@ -383,7 +383,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    private func chatDeletionRow(_ id: UUID) -> XCUIElement {
+    func chatDeletionRow(_ id: UUID) -> XCUIElement {
         app.descendants(matching: .any)["scholium.chat.conversation.\(id.uuidString)"].firstMatch
     }
 

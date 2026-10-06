@@ -7,6 +7,30 @@ import Testing
 @Suite("Settings search routing")
 @MainActor
 struct SettingsSearchRoutingTests {
+    @Test("Repeated Chat links reveal its sole setting once; ordinary navigation clears stale section requests")
+    func chatSectionRequests() {
+        let fixture = ChatSidebarPreferenceFixture()
+        defer { fixture.cleanup() }
+        let defaults = fixture.defaults
+        SettingsNavigationRequest.select(.agents, agentCategory: .connection, sectionID: "agents.chatSidebar", defaults: defaults)
+        let revision = defaults.string(forKey: "scholium.settings.navigationRevision")
+        #expect(defaults.string(forKey: "scholium.settings.selectedPane") == ScholiumSettingsDestination.agents.rawValue)
+        #expect(defaults.string(forKey: "scholium.settings.agentCategory") == AgentSettingsCategory.connection.rawValue)
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults)?.sectionID == "agents.chatSidebar")
+        #expect(defaults.object(forKey: SettingsNavigationRequest.requestedSectionKey) == nil)
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults) == nil)
+        SettingsNavigationRequest.select(.agents, agentCategory: .connection, sectionID: "agents.chatSidebar", defaults: defaults)
+        #expect(defaults.string(forKey: "scholium.settings.navigationRevision") != revision)
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults)?.sectionID == "agents.chatSidebar")
+        SettingsNavigationRequest.select(.agents, sectionID: "agents.chatSidebar", defaults: defaults)
+        SettingsNavigationRequest.select(.document, defaults: defaults)
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .document, defaults: defaults) == nil)
+        SettingsNavigationRequest.select(.agents, sectionID: "agents.chatSidebar", defaults: defaults)
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .document, defaults: defaults) == nil)
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults) == nil)
+        #expect(!fixture.preferences.isEnabled && defaults.object(forKey: ChatSidebarPreferences.enabledKey) == nil)
+    }
+
     @Test("Search retains native editable plain-text field-editor behavior")
     func nativeSearchInput() throws {
         _ = NSApplication.shared
@@ -90,6 +114,9 @@ struct SettingsSearchRoutingTests {
             ("选段操作", .writing, "writing.selection"),
             ("选区操作", .writing, "writing.selection"),
             ("回车", .agents, "agents.behavior"),
+            ("Show Chat in Sidebar", .agents, "agents.chatSidebar"),
+            ("Chat Sidebar", .agents, "agents.chatSidebar"),
+            ("关闭聊天", .agents, "agents.chatSidebar"),
             ("Core Protocol", .agents, "agents.protocol"),
             ("工具授权", .agents, "agents.tools"),
             ("Claude", .agents, "agents.external"),

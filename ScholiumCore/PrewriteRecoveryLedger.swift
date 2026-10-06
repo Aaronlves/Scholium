@@ -64,7 +64,12 @@ final class PrewriteRecoveryLedger {
     private let byteAccess: VaultDescriptorAccess
     private let lock: AdvisoryFileLock
     private let fileManager: FileManager
-    private(set) var healthDiagnostic: String?
+    private var transactionHealthDiagnostic: String?
+    private var incompleteManifestDiagnostic: String?
+    var healthDiagnostic: String? {
+        let messages = [transactionHealthDiagnostic, incompleteManifestDiagnostic].compactMap { $0 }
+        return messages.isEmpty ? nil : messages.joined(separator: "\n")
+    }
 
     init(
         storageURL: URL,
@@ -205,7 +210,7 @@ final class PrewriteRecoveryLedger {
         transaction.replacementReconciled = true
         try writeManifest(transaction)
         if let reason = transaction.retainedReason {
-            healthDiagnostic = "A save transaction requires researcher-visible recovery: \(reason)"
+            transactionHealthDiagnostic = "A save transaction requires researcher-visible recovery: \(reason)"
         }
         // The exact bytes are now durable. Remove only the same checked backup.
         try access.withOpenRegularFile(path) { descriptor, parent, name, status in
@@ -288,7 +293,7 @@ final class PrewriteRecoveryLedger {
                 rootURL: vaultURL.resolvingSymlinksInPath().standardizedFileURL
             )
         } catch {
-            healthDiagnostic = "Interrupted saves remain retained because the authorized vault root is unavailable."
+            transactionHealthDiagnostic = "Interrupted saves remain retained because the authorized vault root is unavailable."
             return
         }
         do {
@@ -342,17 +347,18 @@ final class PrewriteRecoveryLedger {
                             )
                         }
                     } catch {
-                        healthDiagnostic = "A pending save transaction could not be verified and remains untouched: \(error.localizedDescription)"
+                        transactionHealthDiagnostic = "A pending save transaction could not be verified and remains untouched: \(error.localizedDescription)"
                     }
                 }
             }
         } catch {
-            healthDiagnostic = "Interrupted-save transactions could not be enumerated: \(error.localizedDescription)"
+            transactionHealthDiagnostic = "Interrupted-save transactions could not be enumerated: \(error.localizedDescription)"
         }
     }
 
     private func pendingMutationsLocked() throws -> [MutationTransaction] {
-        try fileManager.contentsOfDirectory(
+        incompleteManifestDiagnostic = nil
+        return try fileManager.contentsOfDirectory(
             at: rootURL,
             includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
         ).filter { $0.lastPathComponent != ".transactions.lock" }
@@ -365,7 +371,20 @@ final class PrewriteRecoveryLedger {
                         "The interrupted-save store contains an unsafe entry."
                     )
                 }
-                let data = try Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+                guard let directoryID = UUID(uuidString: directory.lastPathComponent),
+                    directory.lastPathComponent == directoryID.uuidString.lowercased()
+                else {
+                    throw VaultRepositoryError.recoveryLedgerUnavailable(
+                        "The interrupted-save store contains an unsupported transaction."
+                    )
+                }
+                guard let data = try storage.readIfPresent(directory: directory.lastPathComponent, fileName: "manifest.json") else {
+                    // The lock excludes active preparation. Interruption before
+                    // manifest publication grants these bytes no authority, but
+                    // must not hide other independently verified recoveries.
+                    incompleteManifestDiagnostic = "An interrupted-save entry has no manifest. Its bytes remain untouched and cannot authorize restoration."
+                    return nil
+                }
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let transaction = try decoder.decode(MutationTransaction.self, from: data)
@@ -435,7 +454,7 @@ final class PrewriteRecoveryLedger {
         var retained = transaction
         retained.retainedReason = reason
         try writeManifest(retained)
-        healthDiagnostic = "A save transaction requires researcher-visible recovery: \(reason)"
+        transactionHealthDiagnostic = "A save transaction requires researcher-visible recovery: \(reason)"
     }
 
     private func writeManifest(_ transaction: MutationTransaction) throws {

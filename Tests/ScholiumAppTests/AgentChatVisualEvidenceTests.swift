@@ -151,7 +151,7 @@ struct AgentChatVisualEvidenceTests {
         for scheme in [ColorScheme.light, .dark] {
             let content = AgentChatView(
                 controller: controller, transcriptReaderID: UUID(), isVisible: false, addSelection: { _ in false },
-                noteChoices: [], addNote: { _, _ in },
+                noteChoices: [], prepareNotes: { _ in { _ in } },
                 openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
             )
@@ -197,7 +197,7 @@ struct AgentChatVisualEvidenceTests {
         }
         for empty in [false, true] {
             for scheme in [ColorScheme.light, .dark] {
-                let content = AgentChatNotePicker(notes: empty ? [] : notes, add: { _ in })
+                let content = AgentChatNotePicker(notes: empty ? [] : notes, prepare: { _ in {} })
                     .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, scheme)
                 let host = NSHostingView(rootView: content)
                 host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
@@ -487,7 +487,7 @@ struct AgentChatVisualEvidenceTests {
         for scheme in [ColorScheme.light, .dark] {
             let content = AgentChatView(
                 controller: controller, transcriptReaderID: UUID(), isVisible: false, addSelection: { _ in false },
-                noteChoices: [], addNote: { _, _ in }, openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
+                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
             )
             .frame(width: 340, height: 700).background(Color(nsColor: .windowBackgroundColor))

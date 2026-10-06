@@ -129,6 +129,9 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 "writing.selection", .writing, "Selection Actions",
                 ["selection", "prompt", "instruction", "选段操作", "选区操作", "指令"]),
             Self(
+                "agents.chatSidebar", .agents, "Show Chat in Sidebar",
+                ["Chat Sidebar", "show", "hide", "enable", "disable", "built-in Chat", "聊天边栏", "显示聊天", "隐藏聊天", "启用聊天", "关闭聊天"]),
+            Self(
                 "agents.connection", .agents, "Chat in Scholium",
                 ["Agents & Chat", "connect", "sign in", "Codex", "聊天", "智能体", "连接", "登录"],
                 aliases: ["Open Connection and Chat"]),

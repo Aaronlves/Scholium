@@ -82,6 +82,8 @@ struct StyleOperationsTests {
         var edited = original
         edited.settings.lineWidthCharacterUnits = 84
         edited.settings.body.fontSizePoints = 14.5
+        edited.settings.body.lineHeight = 1.9
+        edited.settings.body.paragraphSpacingEm = 1.2
         edited.settings.body.fontFamily = .init(rawValue: "Helvetica Neue")
         edited.settings.headings.fontFamily = .init(rawValue: "Songti SC")
         edited.settings.body.cjkStrongFontFamily = "Noto Sans CJK SC"
@@ -90,6 +92,8 @@ struct StyleOperationsTests {
         edited.settings.headings.cjkStrongFontFamily = "Songti SC"
         edited.settings.headings.cjkEmphasisFontFamily = "STKaiti"
         edited.settings.headings.weight = 600
+        edited.settings.headings.level1.spaceBeforeEm = 2
+        edited.settings.headings.level1.spaceAfterEm = 0.8
         edited.settings.hyphenation = .automatic
         let orientationIndex = try #require(
             edited.settings.callouts.firstIndex(where: { $0.role == .orientation })
@@ -105,12 +109,16 @@ struct StyleOperationsTests {
         #expect(copyID != original.id)
         #expect(duplicated.appearanceProfiles.first(where: { $0.id == copyID })?.name == "Dissertation Copy")
 
+        let configurationURL = try await operations.appearanceConfigurationURL()
+        let savedBytes = try Data(contentsOf: configurationURL)
         let reloaded: any StyleUseCases = StyleOperations(applicationSupportURL: support)
         let persisted = try await reloaded.styleSnapshot()
         let persistedCopy = try #require(
             persisted.appearanceProfiles.first(where: { $0.id == copyID })
         )
         #expect(persisted.selectedAppearanceProfileID == copyID)
+        #expect(persistedCopy.settings == edited.settings)
+        #expect(try Data(contentsOf: configurationURL) == savedBytes)
         #expect(persistedCopy.settings.lineWidthCharacterUnits == 84)
         #expect(persistedCopy.settings.body.fontSizePoints == 14.5)
         #expect(persistedCopy.settings.body.fontFamily.rawValue == "Helvetica Neue")

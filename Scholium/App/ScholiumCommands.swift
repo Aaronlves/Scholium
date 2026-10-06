@@ -444,6 +444,7 @@ private struct ScholiumInsertCommandContent: View {
 
 private struct ScholiumViewCommandContent: View {
     let commandRevision: UInt64
+    @ObservedObject private var chatSidebarPreferences = ChatSidebarPreferences.shared
     @FocusedObject private var appState: WindowModel?
     @FocusedObject private var external: ExternalMarkdownWindowModel?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
@@ -497,8 +498,12 @@ private struct ScholiumViewCommandContent: View {
             workspaceWindowActions?.activateSidebar(.library)
         }
         .disabled(workspaceWindowActions?.canUseSidebar() != true)
-        Button("Chat") { workspaceWindowActions?.activateSidebar(.chat) }
-            .disabled(workspaceWindowActions?.canUseSidebar() != true || appState?.workspaceAssignment == nil)
+        if chatSidebarPreferences.isEnabled {
+            Button("Chat") {
+                workspaceWindowActions?.activateSidebar(.chat)
+            }
+            .disabled(workspaceWindowActions?.canUseSidebar() != true || appState?.canPresentChat != true)
+        }
         Button(
             ScholiumL10n.dynamicString(
                 appState?.researchInspectorVisible == true
@@ -685,7 +690,7 @@ private struct ScholiumResearchCommandContent: View {
             }
         }
         .scholiumKeyboardShortcut(.addSelectionToChat)
-        .disabled(appState?.currentNote == nil || appState?.chatController == nil)
+        .disabled(appState?.currentNote == nil || appState?.canPresentChat != true || appState?.chatController == nil)
         if let controller = appState?.chatController {
             AgentChatStopCommand(controller: controller)
         }

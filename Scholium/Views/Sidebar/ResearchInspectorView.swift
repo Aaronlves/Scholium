@@ -33,6 +33,7 @@ struct ResearchInspectorView: View {
     let openRelated: (RelatedMaterialCard) -> Void
     let insertRelated: (RelatedMaterialCard) -> Void
     let insertRelatedParagraph: (RelatedMaterialCard) -> Void
+    let canDiscussRelated: Bool
     let discussRelated: (RelatedMaterialCard) -> Void
 
     init(
@@ -55,6 +56,7 @@ struct ResearchInspectorView: View {
         openRelated: @escaping (RelatedMaterialCard) -> Void,
         insertRelated: @escaping (RelatedMaterialCard) -> Void,
         insertRelatedParagraph: @escaping (RelatedMaterialCard) -> Void,
+        canDiscussRelated: Bool,
         discussRelated: @escaping (RelatedMaterialCard) -> Void
     ) {
         self.editor = editor
@@ -76,6 +78,7 @@ struct ResearchInspectorView: View {
         self.openRelated = openRelated
         self.insertRelated = insertRelated
         self.insertRelatedParagraph = insertRelatedParagraph
+        self.canDiscussRelated = canDiscussRelated
         self.discussRelated = discussRelated
     }
 
@@ -103,7 +106,7 @@ struct ResearchInspectorView: View {
                 editor: editor, termGroups: termGroups, find: findRelated,
                 findWithTermGroup: findRelatedWithTermGroup,
                 retry: retryRelated,
-                open: openRelated, addToChat: discussRelated,
+                open: openRelated, canAddToChat: canDiscussRelated, addToChat: discussRelated,
                 insert: insertRelated, insertParagraph: insertRelatedParagraph
             )
             .animation(paneAnimation) { pane in

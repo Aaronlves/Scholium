@@ -102,11 +102,14 @@ unchanged implementation hashes. Logs: `.build/image-inline-evidence/final-gate.
 `.build/verification-release/`. QA runtime state is removed and all 506 standard
 fixture manifest files retain their hashes. No publishing or real-service proof.
 
-**2026-10-05 — Saving/recovery:** Disposable native QA preserves observed accepted
-bytes through switching, caret return, window close and graceful relaunch.
-Safety-scoped gate and regression evidence: `.build/saving-recovery-evidence/summary.json`.
-Physical IME/VoiceOver, private/system-service paths and unstaged forced-termination
-edits remain outside proof.
+**2026-10-05 — Saving/recovery and presentation:** Prior native fixture QA preserves
+accepted bytes through switching, caret return, closure and graceful relaunch.
+SIGKILL fixtures distinguish staged edits, committed source and unstaged input;
+incomplete ledgers preserve other recoveries. Reviewed gate, Chat visibility and
+Review/Edit checks: `.build/saving-recovery-ux-evidence/summary.json`; recovery:
+`.build/saving-recovery-continuation-evidence/checkpoint.json`. Native QA confirms
+off/on/search/relaunch and retained drafts. Physical IME/VoiceOver and private/system-service
+paths remain unproved.
 
 Retained prior native baselines remain bounded: 2026-09-16 Bootstrap/editor
 conflict and recovery (`.build/bootstrap-verification/RESULTS.md`,

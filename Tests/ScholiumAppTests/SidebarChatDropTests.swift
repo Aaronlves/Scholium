@@ -53,6 +53,10 @@ import Testing
         drag.draggingSource = control
         #expect(control.performDragOperation(drag))
         #expect(accepted == 1)
+        control.segmentCount = 1
+        #expect(control.draggingEntered(drag).isEmpty)
+        #expect(!control.performDragOperation(drag))
+        control.segmentCount = 2
         control.setEnabled(false, forSegment: SidebarContent.chat.rawValue)
         #expect(!control.performDragOperation(drag))
         control.setEnabled(true, forSegment: SidebarContent.chat.rawValue)

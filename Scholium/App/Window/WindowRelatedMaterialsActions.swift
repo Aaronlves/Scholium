@@ -248,6 +248,7 @@ extension WindowModel {
             let seed = materials.seed
         else { return false }
         do {
+            if inChat, !isChatSidebarEnabled { throw ChatSidebarPresentationError.hidden }
             if !inChat {
                 // The catalog is a derived presentation snapshot and may be
                 // one watcher publication behind the user's action. Verify

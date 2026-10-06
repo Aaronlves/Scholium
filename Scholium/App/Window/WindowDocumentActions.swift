@@ -24,6 +24,10 @@ extension WindowModel {
     }
 
     func addCurrentNoteToVisibleChat() async {
+        guard isChatSidebarEnabled else {
+            reportOperationIssue(ChatSidebarPresentationError.hidden.localizedDescription, kind: .information)
+            return
+        }
         guard let note = currentNote, let descriptor = currentDocumentDescriptor else { return }
         do {
             let main = try await workspaceStore.documentLocations.mainWindow(for: self)
@@ -43,6 +47,10 @@ extension WindowModel {
     }
 
     func performPassageAction(_ action: DocumentPassageAction, captured: MarkdownSourceSelectionSnapshot? = nil) {
+        if action == .addToChat, !isChatSidebarEnabled {
+            reportOperationIssue(ChatSidebarPresentationError.hidden.localizedDescription, kind: .information)
+            return
+        }
         guard let descriptor = currentDocumentDescriptor, presentationRouter.sheet == nil else { return }
         let initialSession = documentController.session(for: descriptor)
         let expectedSelections = initialSession.editorSession.context?.selections
