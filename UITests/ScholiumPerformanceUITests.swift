@@ -330,6 +330,12 @@ final class ScholiumPerformanceUITests: XCTestCase {
             return
         }
         pathField.click()
+        let focused = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: pathField)
+        guard XCTWaiter.wait(for: [focused], timeout: 5) == .completed else {
+            XCTFail("The identified native path field did not acquire keyboard focus.")
+            return
+        }
         application.typeKey("a", modifierFlags: [.command])
         application.typeKey(.delete, modifierFlags: [])
         guard waitUntil(timeout: 5, condition: { pathField.value as? String == "" }) else {
@@ -338,7 +344,14 @@ final class ScholiumPerformanceUITests: XCTestCase {
         }
         var enteredPrefix = ""
         for character in folder.path {
-            application.typeText(String(character))
+            switch character {
+            case "A"..."Z":
+                application.typeKey(String(character).lowercased(), modifierFlags: [.shift])
+            case "_":
+                application.typeKey("-", modifierFlags: [.shift])
+            default:
+                application.typeKey(String(character), modifierFlags: [])
+            }
             enteredPrefix.append(character)
             guard waitUntil(timeout: 5, condition: { pathField.value as? String == enteredPrefix }) else {
                 XCTFail(
