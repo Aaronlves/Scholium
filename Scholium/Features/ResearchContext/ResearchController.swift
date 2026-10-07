@@ -55,6 +55,7 @@ final class ResearchController: ObservableObject {
 
     let linksInspector = LinksInspectorSession()
     let relatedMaterials = RelatedMaterialsSession()
+    let keptPassages = KeptPassagesSession()
 
     @Published private(set) var researchSnapshot: WorkspaceResearchSnapshot?
     @Published private(set) var agentChanges: [AgentChange]?
@@ -122,6 +123,7 @@ final class ResearchController: ObservableObject {
         if self.capabilities?.triptychID != capabilities.triptychID {
             linksInspector.reset()
             relatedMaterials.reset()
+            keptPassages.reset()
             retainedRecoveries = [:]
             transactionRecoveryRecords = []
             transactionRecoveryError = nil
@@ -138,6 +140,7 @@ final class ResearchController: ObservableObject {
 
     func unbind() {
         relatedMaterials.reset()
+        keptPassages.reset()
         agentChangesRefreshTask?.cancel()
         pendingChangesRefreshTask?.cancel()
         agentChangesRefreshTask = nil
@@ -397,6 +400,7 @@ final class ResearchController: ObservableObject {
 
     func reset() {
         relatedMaterials.reset()
+        keptPassages.reset()
         recoveryRefreshGeneration &+= 1
         retainedRecoveries = [:]
         transactionRecoveryRecords = []

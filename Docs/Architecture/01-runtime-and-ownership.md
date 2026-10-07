@@ -262,17 +262,16 @@ Settings field, never notification delivery.
 
 ### Inspector ownership
 
-Research retains Links query/direction/group/position and one disposable Related
-Material session per window. They consume source-bound immutable projections,
-not another graph, writable metadata store or runtime. Location updates publish only
-changed context. Recommendation requests bind context, document/runtime identity
-and revocable insertion receipts. Document
-departure resets them even while hidden; hiding cancels work. Publication rechecks
-identity and automatic follow also checks editor focus/mode. Stale responses may
-refresh/retry once; insertion rechecks current generation/caret in the Editor.
-Retained cards preserve context until successful replacement. Source opening or
-Chat staging revalidates revisions and cannot overwrite dirty destination source.
-Exact passages and readable projections remain distinct.
+Research owns disposable Links location, Related discovery and kept snapshots,
+not another graph/store/runtime. Changed locations alone publish. Related requests
+bind context, document/runtime identity and revocable insertion receipts;
+departure resets discovery, hiding cancels work. Publication rechecks identity;
+automatic follow checks focus/mode. Stale responses may refresh once; insertion
+rechecks generation/caret. Kept snapshots survive document/results changes,
+clearing on unbind/reset/Triptych replacement. Links capture verifies source and
+occurrence; exact/readable text stay distinct. Kept opening is seed-independent.
+Opening/Chat staging revalidate revisions without overwriting dirty destinations;
+delayed keep/open checks runtime/owner identity. Kept text never persists.
 
 ### Settings authority
 

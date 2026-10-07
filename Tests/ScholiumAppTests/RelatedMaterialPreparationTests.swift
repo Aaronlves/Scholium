@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ScholiumContracts
 import Testing
@@ -22,20 +23,33 @@ struct RelatedMaterialPreparationTests {
     func silentAndCoalesced() async throws {
         let model = RelatedMaterialsSession()
         var calls = 0
+        var presentationPublications = 0
+        let observations = [
+            model.$isLoading.dropFirst().sink { _ in presentationPublications += 1 },
+            model.$cards.dropFirst().sink { _ in presentationPublications += 1 },
+            model.$seed.dropFirst().sink { _ in presentationPublications += 1 },
+        ]
+        defer { observations.forEach { $0.cancel() } }
         let first = try #require(model.prepareBackground(key: key(), pause: {}) { calls += 1 })
         await first.value
         #expect(model.prepareBackground(key: key(), pause: {}) { calls += 1 } == nil)
         #expect(calls == 1)
         #expect(model.cards.isEmpty && model.seed == nil && !model.didSearch && !model.isLoading && model.issue == nil)
-        let failed = try #require(model.prepareBackground(key: key(editor: 1), pause: {}) { throw CocoaError(.fileReadNoSuchFile) })
+        let failed = try #require(
+            model.prepareBackground(key: key(editor: 1), pause: {}) {
+                calls += 1
+                throw CocoaError(.fileReadNoSuchFile)
+            })
         await failed.value
+        #expect(calls == 2)
         #expect(model.issue == nil && model.presentation == .waiting)
         let retry = try #require(model.prepareBackground(key: key(editor: 1), pause: {}) { calls += 1 })
         await retry.value
-        #expect(calls == 2)
+        #expect(calls == 3)
         let newIndex = try #require(model.prepareBackground(key: key(editor: 1, index: 2), pause: {}) { calls += 1 })
         await newIndex.value
-        #expect(calls == 3)
+        #expect(calls == 4)
+        #expect(presentationPublications == 0)
     }
 
     @Test("Late preparation after Note departure cannot suppress the new Note or a return visit")

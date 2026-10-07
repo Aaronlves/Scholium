@@ -130,6 +130,8 @@ extension WindowModel {
     func enqueueDocumentTransition(
         preparation: DocumentTransitionPreparation = .saveSelectedDocument,
         retainingCurrentDocument target: DocumentSessionKey? = nil,
+        validateBeforePreparation: @escaping @MainActor () throws -> Void = {},
+        admitBeforePreparation: @escaping @MainActor () async throws -> Void = {},
         _ operation: @escaping @MainActor () async throws -> Void,
         didFail customFailure: (@MainActor (Error) -> Void)? = nil,
         didSucceed: (@MainActor () -> Void)? = nil,
@@ -142,6 +144,9 @@ extension WindowModel {
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
+                try validateBeforePreparation()
+                try await admitBeforePreparation()
+                try validateBeforePreparation()
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
                 if case .openingDocument(let placement, let retainedTab) = preparation {
                     let effectivePlacement: DocumentTabPlacement = self.isDetachedDocumentWindow ? .replaceSelected : placement
@@ -160,6 +165,7 @@ extension WindowModel {
                         // Freeze before the final save: input accepted while
                         // opening a destination must not escape the saved base.
                         try await self.documentController.prepareSessionTransfer(document)
+                        try validateBeforePreparation()
                         try await self.documentController.flushDocumentBeforeDeparture(document, capturingEditorState: false)
                         if session.editorSession.hasAttachedWebView {
                             // A commit rebases the editor identity. Capture its
@@ -174,6 +180,7 @@ extension WindowModel {
                             preservedEditor = (document, session.editorSession.detachmentSuspensionID)
                         }
                         try await self.documentController.prepareSessionTransfer(document)
+                        try validateBeforePreparation()
                     }
                 case .operationOnly:
                     break

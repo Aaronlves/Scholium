@@ -44,9 +44,8 @@ enum ScholiumGrid {
         static let noteGroupSeparation = Spacing.inlineControlGap
         static let iconColumnWidth = foundationUnit * 4
         static let iconToTextGap = foundationUnit * 2
-        /// Content padding inside the native GroupBox, aligned to the shared
-        /// note-heading text rail after its platform-provided inner gutter.
-        static let passageCardLeadingInset = iconColumnWidth + Spacing.labelAccessoryGap
+        /// Passage and disclosure align with the identity header's text.
+        static let passageLeadingInset = iconColumnWidth + iconToTextGap
         static let connectionOccurrenceVerticalInset = foundationUnit
         static let actionCopyGap = foundationUnit
     }

@@ -12,13 +12,6 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
     var relativePath: String? = nil
     var separatesFromPreviousGroup = false
     @ViewBuilder let actions: () -> Actions
-    @State private var hovered = false
-    @FocusState private var keyboardFocused: Bool
-    @AccessibilityFocusState private var accessibilityFocused: Bool
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
-
-    private var showsActions: Bool { hovered || keyboardFocused || accessibilityFocused }
-
     private var sourceIdentity: String {
         ([title]
             + [
@@ -42,70 +35,45 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Button {
-                expanded.toggle()
-            } label: {
-                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Apparatus.iconToTextGap) {
-                    Image(systemName: symbol).frame(width: ScholiumGrid.Apparatus.iconColumnWidth)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                            ResearchText(text: Text(verbatim: title)).font(ScholiumTypography.interface(.control, emphasis: .strong))
-                                .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
-                            if let occurrenceCount {
-                                Text(occurrenceCount.formatted())
-                                    .font(ScholiumTypography.interface(.small))
-                                    .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                            }
-                            Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                                .font(.caption)
-                                .opacity(showsActions ? 1 : 0)
-                                .accessibilityHidden(true)
-                        }
-                        if let directoryContext {
-                            ResearchText(text: Text(verbatim: directoryContext))
+        Button {
+            expanded.toggle()
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Apparatus.iconToTextGap) {
+                Image(systemName: symbol).frame(width: ScholiumGrid.Apparatus.iconColumnWidth)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                        ResearchText(text: Text(verbatim: title)).font(ScholiumTypography.interface(.control, emphasis: .strong))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                        if let occurrenceCount {
+                            Text(occurrenceCount.formatted())
                                 .font(ScholiumTypography.interface(.small))
                                 .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                                .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                         }
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.caption)
+                            .accessibilityHidden(true)
                     }
-                    Spacer(minLength: 0)
+                    if let directoryContext {
+                        ResearchText(text: Text(verbatim: directoryContext))
+                            .font(ScholiumTypography.interface(.small))
+                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                            .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                .contentShape(Rectangle())
-                .scholiumContentControlInk(
-                    resting: .secondaryText,
-                    emphasized: .accent
-                )
-                .researchGroupEntrance(entranceProgress)
+                Spacer(minLength: 0)
             }
-            .buttonStyle(
-                ScholiumContentControlButtonStyle(
-                    isFocused: keyboardFocused,
-                    isHovering: hovered,
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
-            )
-            .focused($keyboardFocused)
-            .accessibilityLabel(Text(verbatim: sourceIdentity))
-            .accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
-            .help(sourceIdentity)
-            Menu(content: actions) {
-                ScholiumSidebarHeaderIcon(systemImage: "ellipsis")
-                    .opacity(showsActions ? 1 : 0)
-                    .researchGroupEntrance(entranceProgress)
-            }
-            .scholiumSidebarHeaderControl()
-            .focused($keyboardFocused)
-            .accessibilityFocused($accessibilityFocused)
-            .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("More Actions")), \(sourceIdentity)")))
-            .help("More Actions")
+            .contentShape(Rectangle())
+            .frame(minHeight: ScholiumSidebarLayout.controlHeight)
+            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+            .researchGroupEntrance(entranceProgress)
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: sourceIdentity))
+        .accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
+        .help(sourceIdentity)
+        .contextMenu(menuItems: actions)
         .padding(.top, separatesFromPreviousGroup ? ScholiumGrid.Apparatus.noteGroupSeparation : 0)
-        .onHover { hovered = $0 }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: showsActions)
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RelatedMaterialNoteGroupView: View {
     let group: RelatedMaterialsSession.NoteGroup
+    @ObservedObject var keptPassages: KeptPassagesSession
     var termGroup: SearchTermGroup? = nil
     let canInsert: Bool
     let canInsertParagraph: Bool
@@ -14,6 +15,7 @@ struct RelatedMaterialNoteGroupView: View {
     let insert: (RelatedMaterialCard) -> Void
     let insertParagraph: (RelatedMaterialCard) -> Void
     let addToChat: (RelatedMaterialCard) -> Void
+    let keepRelated: (RelatedMaterialCard) -> Void
     @State private var expanded = true
 
     var body: some View {
@@ -45,19 +47,31 @@ struct RelatedMaterialNoteGroupView: View {
                 .help("Creates a paragraph anchor in the source note when needed, then inserts a link at the writing cursor.")
                 Button("Open Source") { open(first) }
                     .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Open Source")), \(first.sourceIdentity)")))
-                Menu("Add to Chat") {
-                    ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
-                        Button {
-                            addToChat(card)
-                        } label: {
-                            Text(
-                                verbatim: "\(index + 1). " + String(card.passage.excerpt.prefix(8))
-                                    + (card.passage.excerpt.count > 8 ? "…" : ""))
-                        }.disabled(!canAddToChat || card.attachment == nil)
+                if canAddToChat {
+                    Menu("Add to Chat") {
+                        ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
+                            Button {
+                                addToChat(card)
+                            } label: {
+                                Text(
+                                    verbatim: "\(index + 1). " + String(card.passage.excerpt.prefix(8))
+                                        + (card.passage.excerpt.count > 8 ? "…" : ""))
+                            }.disabled(card.attachment == nil)
+                        }
                     }
+                    .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Add to Chat")), \(first.sourceIdentity)")))
                 }
-                .disabled(!canAddToChat)
-                .accessibilityLabel(Text(verbatim: ScholiumL10n.string("\(ScholiumL10n.string("Add to Chat")), \(first.sourceIdentity)")))
+                if !isLoading {
+                    keptPassageMenus
+                }
+            }
+            .accessibilityActions {
+                if !isLoading {
+                    if canInsert && first.linkTarget != nil {
+                        Button("Link to This Note") { insert(first) }
+                    }
+                    Button("Open Source") { open(first) }
+                }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if !isLoading {
@@ -79,12 +93,59 @@ struct RelatedMaterialNoteGroupView: View {
                         entranceProgress: entranceProgress,
                         canInsertParagraph: canInsertParagraph && card.linkTarget != nil,
                         canAddToChat: canAddToChat,
+                        isKept: keptPassages.contains(card),
                         insertParagraph: { insertParagraph(card) },
-                        open: { open(card) }, addToChat: { addToChat(card) }
+                        open: { open(card) }, addToChat: { addToChat(card) },
+                        toggleKept: { toggleKept(card) }
                     )
                     .accessibilityHidden(isLoading)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var keptPassageMenus: some View {
+        if group.passages.contains(where: { !keptPassages.contains($0) }) {
+            Menu("Keep Passage") {
+                ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
+                    if !keptPassages.contains(card) {
+                        Button {
+                            toggleKept(card)
+                        } label: {
+                            passageChoice(index: index, card: card)
+                        }
+                    }
+                }
+            }
+        }
+        if group.passages.contains(where: { keptPassages.contains($0) }) {
+            Menu("Remove Kept Passage") {
+                ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
+                    if keptPassages.contains(card) {
+                        Button {
+                            toggleKept(card)
+                        } label: {
+                            passageChoice(index: index, card: card)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func passageChoice(index: Int, card: RelatedMaterialCard) -> Text {
+        Text(
+            verbatim: "\(index + 1). " + String(card.passage.excerpt.prefix(8))
+                + (card.passage.excerpt.count > 8 ? "…" : ""))
+    }
+
+    private func toggleKept(_ card: RelatedMaterialCard) {
+        guard !isLoading else { return }
+        if let entry = keptPassages.entry(for: card) {
+            keptPassages.remove(entry.id)
+        } else {
+            keepRelated(card)
         }
     }
 }
@@ -97,69 +158,91 @@ private struct RelatedMaterialPassageView: View {
     let entranceProgress: CGFloat
     let canInsertParagraph: Bool
     let canAddToChat: Bool
+    let isKept: Bool
     let insertParagraph: () -> Void
     let open: () -> Void
     let addToChat: () -> Void
+    let toggleKept: () -> Void
+    @State private var contextExpanded = false
+    private var keptActionTitle: LocalizedStringKey { isKept ? "Remove Kept Passage" : "Keep Passage" }
 
     var body: some View {
-        Button(action: open) {
-            ResearchPassageCard {
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    ResearchPassageExcerpt(
-                        text: ResearchPassageHighlight.matches(
-                            in: card.passage.excerpt, ranges: card.passage.excerptMatches)
-                    )
-                    .foregroundStyle(ScholiumNativeColorRole.label.color)
-                    .scholiumContentControlInk(resting: .primaryText, emphasized: .accent)
-                    if termGroup != nil, !card.matchedTermGroupAlternatives.isEmpty {
-                        Text("Matched alternative: \(card.matchedTermGroupAlternatives.joined(separator: ", "))")
-                            .font(.caption)
-                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+        let preview = ResearchCompactExcerpt(text: card.passage.excerpt, matches: card.passage.excerptMatches)
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: open) {
+                ResearchPassageLayout {
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Group {
+                            if contextExpanded {
+                                ResearchPassageExcerpt(text: Text(verbatim: card.passage.displayText), isExpanded: true)
+                            } else {
+                                ResearchPassagePreview(source: card.passage.excerpt, matches: card.passage.excerptMatches) {
+                                    ResearchPassageHighlight.matches(in: $0.text, ranges: $0.matches)
+                                }
+                            }
+                        }.foregroundStyle(ScholiumNativeColorRole.label.color)
+                        if termGroup != nil, !card.matchedTermGroupAlternatives.isEmpty {
+                            Text("Matched alternative: \(card.matchedTermGroupAlternatives.joined(separator: ", "))")
+                                .font(.caption)
+                                .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                        }
                     }
                 }
+                .researchGroupEntrance(entranceProgress)
             }
+            .buttonStyle(.plain)
+            .scholiumActivationPointer()
+            .accessibilityLabel(
+                Text(
+                    verbatim:
+                        "\(card.sourceIdentity), \(contextExpanded ? card.passage.displayText : preview.text)"
+                        + (termGroup != nil && !card.matchedTermGroupAlternatives.isEmpty
+                            ? ", " + ScholiumL10n.string("Matched alternative: \(card.matchedTermGroupAlternatives.joined(separator: ", "))", locale: locale)
+                            : ""))
+            )
+            .accessibilityHint(Text(verbatim: RelatedMaterialGraphExplanation.passageHint(for: card.candidate, locale: locale)))
+            .help(Text(verbatim: RelatedMaterialGraphExplanation.passageHint(for: card.candidate, locale: locale)))
+            .contextMenu {
+                if !isLoading {
+                    Button("Insert Paragraph Link", action: insertParagraph).disabled(!canInsertParagraph)
+                    if canAddToChat {
+                        Button("Add to Chat", action: addToChat).disabled(card.attachment == nil)
+                    }
+                    Button("Open Source", action: open)
+                    Button(keptActionTitle, action: toggleKept)
+                }
+            }
+            .accessibilityActions {
+                if !isLoading && canInsertParagraph {
+                    Button("Insert Paragraph Link", action: insertParagraph)
+                }
+                if !isLoading && canAddToChat && card.attachment != nil {
+                    Button("Add to Chat", action: addToChat)
+                }
+                if !isLoading {
+                    Button(keptActionTitle, action: toggleKept)
+                }
+            }
+            .accessibilityIdentifier("scholium.related.card.\(card.id)")
+            ResearchPassageContextDisclosure(
+                expanded: $contextExpanded, identity: card.sourceIdentity, identifier: card.id
+            )
+            .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
             .researchGroupEntrance(entranceProgress)
         }
-        .buttonStyle(.borderless)
-        .scholiumActivationPointer()
-        .scholiumContentControlPointerFeedback(
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                style: .continuous
-            )
-        )
-        .accessibilityLabel(
-            Text(
-                verbatim:
-                    "\(card.sourceIdentity), \(card.passage.excerpt)"
-                    + (termGroup != nil && !card.matchedTermGroupAlternatives.isEmpty
-                        ? ", " + ScholiumL10n.string("Matched alternative: \(card.matchedTermGroupAlternatives.joined(separator: ", "))", locale: locale)
-                        : ""))
-        )
-        .accessibilityHint(Text(verbatim: RelatedMaterialGraphExplanation.passageHint(for: card.candidate, locale: locale)))
-        .help(Text(verbatim: RelatedMaterialGraphExplanation.passageHint(for: card.candidate, locale: locale)))
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            if !isLoading {
+                Button(action: toggleKept) {
+                    Label(keptActionTitle, systemImage: isKept ? "pin.slash" : "pin")
+                }
+            }
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if !isLoading {
+            if !isLoading && canAddToChat {
                 Button(action: addToChat) { Label("Add to Chat", systemImage: "plus.bubble") }
-                    .disabled(!canAddToChat || card.attachment == nil)
+                    .disabled(card.attachment == nil)
             }
         }
-        .contextMenu {
-            if !isLoading {
-                Button("Insert Paragraph Link", action: insertParagraph).disabled(!canInsertParagraph)
-                Button("Add to Chat", action: addToChat).disabled(!canAddToChat || card.attachment == nil)
-                Button("Open Source", action: open)
-            }
-        }
-        .accessibilityActions {
-            if !isLoading && canInsertParagraph {
-                Button("Insert Paragraph Link", action: insertParagraph)
-            }
-            if !isLoading && canAddToChat && card.attachment != nil {
-                Button("Add to Chat", action: addToChat)
-            }
-        }
-        .accessibilityIdentifier("scholium.related.card.\(card.id)")
     }
 }
 
@@ -174,13 +257,17 @@ struct RelatedMaterialSkeleton: View {
                 expanded: .constant(true),
                 separatesFromPreviousGroup: separatesFromPreviousGroup
             ) {}
-            ResearchPassageCard {
-                // Redacted text uses the same natural wrapping as a result,
-                // rather than three short fixed-width bars unrelated to the pane.
-                ResearchPassageExcerpt(
-                    text: Text(
-                        verbatim: Array(repeating: ScholiumL10n.dynamicString("Writing References"), count: 10)
-                            .joined(separator: " ")))
+            VStack(alignment: .leading, spacing: 0) {
+                ResearchPassageLayout {
+                    // Redacted text uses the same natural wrapping as a result,
+                    // rather than three short fixed-width bars unrelated to the pane.
+                    ResearchPassageExcerpt(
+                        text: Text(
+                            verbatim: Array(repeating: ScholiumL10n.dynamicString("Writing References"), count: 10)
+                                .joined(separator: " ")))
+                }
+                ResearchPassageContextDisclosure(expanded: .constant(false), identity: "", identifier: "placeholder")
+                    .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
             }
         }
         .redacted(reason: .placeholder)

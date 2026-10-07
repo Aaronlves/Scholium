@@ -20,7 +20,11 @@ struct ResearchInspectorPresentationTests {
                 ) {
                     Button("Open Linked Note", action: {})
                 }
-                passage(Array(repeating: ScholiumL10n.dynamicString("Writing References"), count: 10).joined(separator: " "))
+                VStack(alignment: .leading, spacing: 0) {
+                    passage(Array(repeating: ScholiumL10n.dynamicString("Writing References"), count: 10).joined(separator: " "))
+                    ResearchPassageContextDisclosure(expanded: .constant(false), identity: "", identifier: "test")
+                        .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
+                }
             }
             let placeholder = try await rowSizes(width: width) {
                 RelatedMaterialSkeleton(separatesFromPreviousGroup: separated)
@@ -30,7 +34,7 @@ struct ResearchInspectorPresentationTests {
         }
     }
 
-    @Test("Excerpt height follows its complete supplied text and available width")
+    @Test("Compact excerpts stop at three lines; deliberate expansion retains complete text")
     func excerptNaturalSize() async throws {
         let short = try await rowSizes(width: 220) { passage("A brief passage.") }
         let medium = "A research note preserves the distinction between a source claim and an interpretation. 原文与解释需要区分。"
@@ -39,6 +43,11 @@ struct ResearchInspectorPresentationTests {
         let threeLines = try await rowSizes(width: 220) { passage("One\nTwo\nThree") }
         let fiveLines = try await rowSizes(width: 220) { passage("One\nTwo\nThree\nFour\nFive") }
         let tenLines = try await rowSizes(width: 220) { passage("One\nTwo\nThree\nFour\nFive\nSix\nSeven\nEight\nNine\nTen") }
+        let expanded = try await rowSizes(width: 220) {
+            ResearchPassageLayout {
+                ResearchPassageExcerpt(text: Text("One\nTwo\nThree\nFour\nFive\nSix\nSeven\nEight\nNine\nTen"), isExpanded: true)
+            }
+        }
         let shortSize = try #require(short.first)
         let narrowSize = try #require(narrow.first)
         let ordinarySize = try #require(ordinary.first)
@@ -46,9 +55,10 @@ struct ResearchInspectorPresentationTests {
         let fiveSize = try #require(fiveLines.first)
         let tenSize = try #require(tenLines.first)
         #expect(shortSize.height < ordinarySize.height)
-        #expect(ordinarySize.height < narrowSize.height)
-        #expect(threeSize.height < fiveSize.height)
-        #expect(fiveSize.height < tenSize.height)
+        #expect(ordinarySize.height <= narrowSize.height)
+        #expect(abs(threeSize.height - fiveSize.height) < 0.5)
+        #expect(abs(fiveSize.height - tenSize.height) < 0.5)
+        #expect(try #require(expanded.first).height > tenSize.height * 2)
         #expect(narrowSize.width <= 220 && ordinarySize.width <= 320)
     }
 
@@ -61,6 +71,26 @@ struct ResearchInspectorPresentationTests {
         }
         try #require(ready.count == 3 && loading.count == ready.count)
         expectSameGeometry(ready, loading)
+    }
+
+    @Test("Measured compact context retains late Chinese matches at narrow and enlarged sizes", arguments: [13.0, 20.0])
+    func matchFitsVisibleLines(pointSize: CGFloat) async throws {
+        let text = String(repeating: "这是需要保留的限定语，", count: 16) + "不是目标概念的证明，" + String(repeating: "仍需检查上下文，", count: 16)
+        let match = NSRange(try #require(text.range(of: "目标概念")), in: text)
+        for width in [160.0, 260.0] {
+            let preview = ResearchPassagePreview.fittingExcerpt(
+                source: text, matches: [match.location..<NSMaxRange(match)], width: width, pointSize: pointSize)
+            #expect(preview.text.contains("不是目标概念"))
+            let complete = try await rowSizes(width: width) {
+                ResearchPassageExcerpt(text: Text(verbatim: preview.text), isExpanded: true)
+                    .font(.system(size: pointSize)).lineSpacing(ScholiumGrid.Apparatus.passageLineSpacing)
+            }
+            let compact = try await rowSizes(width: width) {
+                ResearchPassageExcerpt(text: Text(verbatim: preview.text))
+                    .font(.system(size: pointSize)).lineSpacing(ScholiumGrid.Apparatus.passageLineSpacing)
+            }
+            expectSameGeometry(complete, compact)
+        }
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_RESEARCH_INSPECTOR"] == "1"))
@@ -131,14 +161,14 @@ struct ResearchInspectorPresentationTests {
     }
 
     private func passage(_ text: String) -> some View {
-        ResearchPassageCard { ResearchPassageExcerpt(text: Text(verbatim: text)) }
+        ResearchPassageLayout { ResearchPassageExcerpt(text: Text(verbatim: text)) }
     }
 
     private func result(_ group: RelatedMaterialsSession.NoteGroup, loading: Bool) -> some View {
         RelatedMaterialNoteGroupView(
-            group: group, canInsert: false, canInsertParagraph: false, canAddToChat: !loading,
+            group: group, keptPassages: KeptPassagesSession(), canInsert: false, canInsertParagraph: false, canAddToChat: !loading,
             isLoading: loading, entranceProgress: 1,
-            open: { _ in }, insert: { _ in }, insertParagraph: { _ in }, addToChat: { _ in }
+            open: { _ in }, insert: { _ in }, insertParagraph: { _ in }, addToChat: { _ in }, keepRelated: { _ in }
         )
         .redacted(reason: loading ? .placeholder : [])
         .modifier(ResearchSkeletonPulse(isActive: loading))

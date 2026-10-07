@@ -5,6 +5,7 @@ import SwiftUI
 struct RelatedMaterialsView: View {
     @Environment(\.locale) private var locale
     @ObservedObject var session: RelatedMaterialsSession
+    @ObservedObject var keptPassages: KeptPassagesSession
     let isVisible: Bool
     let editor: MarkdownEditorSession?
     let termGroups: [SearchTermGroup]
@@ -16,6 +17,8 @@ struct RelatedMaterialsView: View {
     let addToChat: (RelatedMaterialCard) -> Void
     let insert: (RelatedMaterialCard) -> Void
     let insertParagraph: (RelatedMaterialCard) -> Void
+    let keepRelated: (RelatedMaterialCard) -> Void
+    let openKept: (KeptPassage) -> Void
     @State private var pointerInReferences = false
     @State private var entrance = ResearchGroupEntrance()
     @State private var hasMountedResults = false
@@ -26,6 +29,7 @@ struct RelatedMaterialsView: View {
             let groups = session.noteGroups
             List {
                 Group {
+                    KeptPassagesRows(session: keptPassages, open: openKept)
                     if !termGroups.isEmpty || session.selectedTermGroup != nil {
                         Menu {
                             Picker(
@@ -100,6 +104,7 @@ struct RelatedMaterialsView: View {
                     ForEach(groups) { group in
                         RelatedMaterialNoteGroupView(
                             group: group,
+                            keptPassages: keptPassages,
                             termGroup: session.seed?.termGroup,
                             canInsert: editor != nil && session.insertionPoint != nil && !session.isLoading && !session.isInsertingParagraphLink,
                             canInsertParagraph: editor != nil && session.canInsertParagraphLink,
@@ -111,7 +116,8 @@ struct RelatedMaterialsView: View {
                             open: { if !session.isLoading { open($0) } },
                             insert: { if !session.isLoading { insert($0) } },
                             insertParagraph: insertParagraph,
-                            addToChat: { if !session.isLoading { addToChat($0) } }
+                            addToChat: { if !session.isLoading { addToChat($0) } },
+                            keepRelated: { if !session.isLoading { keepRelated($0) } }
                         )
                         .redacted(reason: session.isLoading ? .placeholder : [])
                         .modifier(ResearchSkeletonPulse(isActive: session.isLoading))

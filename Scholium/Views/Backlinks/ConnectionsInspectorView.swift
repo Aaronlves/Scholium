@@ -275,6 +275,9 @@ enum InspectorLinkRow: Identifiable {
 struct ConnectionsInspectorView: View {
     let context: ConnectionsInspectorContext
     @ObservedObject var session: LinksInspectorSession
+    @ObservedObject var keptPassages: KeptPassagesSession
+    let keepLink: (InspectorLinkItem) -> Void
+    let openKept: (KeptPassage) -> Void
     var isActive = true
 
     private var direction: ConnectionDirection { session.direction }
@@ -316,6 +319,7 @@ struct ConnectionsInspectorView: View {
             .padding(.horizontal, ResearchInspectorLayout.contentInset)
             ScrollViewReader { proxy in
                 List {
+                    KeptPassagesRows(session: keptPassages, open: openKept)
                     ForEach(rows) { row in
                         // Keep one concrete native row even when its semantic
                         // content is conditional or a group is collapsed.
@@ -324,6 +328,19 @@ struct ConnectionsInspectorView: View {
                         }
                         .id(row.id)
                         .researchListRow()
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            if case .occurrence(let item) = row {
+                                let isKept = keptPassages.contains(item)
+                                Button {
+                                    toggleKept(item)
+                                } label: {
+                                    Label(
+                                        isKept ? LocalizedStringKey("Remove Kept Passage") : LocalizedStringKey("Keep Passage"),
+                                        systemImage: isKept ? "pin.slash" : "pin")
+                                }
+                                .disabled(item.source == nil && !isKept)
+                            }
+                        }
                     }
                 }
                 .researchListStyle()
@@ -336,6 +353,8 @@ struct ConnectionsInspectorView: View {
                 .onChange(of: key, initial: true) { _, key in
                     if let id = session.location(for: key).scrollID {
                         proxy.scrollTo(id, anchor: .top)
+                    } else if !keptPassages.entries.isEmpty {
+                        proxy.scrollTo("scholium.kept.heading", anchor: .top)
                     } else if let id = groups.first?.id {
                         proxy.scrollTo(id, anchor: .top)
                     }
@@ -401,8 +420,9 @@ struct ConnectionsInspectorView: View {
                 if let peer = group.items.first?.peer {
                     Button("Open Linked Note") { context.openReference(peer.reference, nil) }
                 }
+                keptPassageMenus(for: group)
             }
-            .contextMenu {
+            .accessibilityActions {
                 if let peer = group.items.first?.peer {
                     Button("Open Linked Note") { context.openReference(peer.reference, nil) }
                 }
@@ -411,33 +431,88 @@ struct ConnectionsInspectorView: View {
         case .occurrence(let item):
             LinkOccurrenceRow(
                 item: item,
+                query: session.location(for: key).query,
+                isKept: keptPassages.contains(item),
                 activate: {
                     guard let source = item.source else { return }
                     context.openReference(source.reference, item.edge.occurrence.linkSpan.start.line)
-                }, openReference: context.openReference)
+                }, openReference: context.openReference,
+                toggleKept: { toggleKept(item) })
+        }
+    }
+
+    @ViewBuilder
+    private func keptPassageMenus(for group: InspectorLinkGroup) -> some View {
+        if group.items.contains(where: { !keptPassages.contains($0) }) {
+            Menu("Keep Passage") {
+                ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                    if !keptPassages.contains(item) {
+                        Button {
+                            toggleKept(item)
+                        } label: {
+                            passageChoice(index: index, item: item)
+                        }
+                        .disabled(item.source == nil)
+                    }
+                }
+            }
+        }
+        if group.items.contains(where: { keptPassages.contains($0) }) {
+            Menu("Remove Kept Passage") {
+                ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                    if keptPassages.contains(item) {
+                        Button {
+                            toggleKept(item)
+                        } label: {
+                            passageChoice(index: index, item: item)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func passageChoice(index: Int, item: InspectorLinkItem) -> Text {
+        let text = ResearchLinkPassage(occurrence: item.edge.occurrence).text
+        return Text(verbatim: "\(index + 1). " + String(text.prefix(8)) + (text.count > 8 ? "…" : ""))
+    }
+
+    private func toggleKept(_ item: InspectorLinkItem) {
+        if let entry = keptPassages.entry(for: item) {
+            keptPassages.remove(entry.id)
+        } else {
+            keepLink(item)
         }
     }
 }
 
 private struct LinkOccurrenceRow: View {
     let item: InspectorLinkItem
+    let query: String
+    let isKept: Bool
     let activate: () -> Void
     let openReference: (VaultNoteReference, Int?) -> Void
+    let toggleKept: () -> Void
+    @State private var contextExpanded = false
+    private var keptActionTitle: LocalizedStringKey { isKept ? "Remove Kept Passage" : "Keep Passage" }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let passage = ResearchLinkPassage(occurrence: item.edge.occurrence, query: query)
+        let preview = ResearchCompactExcerpt(text: passage.text, matches: passage.focus)
+        VStack(alignment: .leading, spacing: 0) {
             Button(action: activate) {
-                ResearchPassageCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ResearchPassageHighlight.link(
-                            in: contextText, label: item.edge.occurrence.alias ?? item.edge.occurrence.target
-                        )
-                        .textRenderer(ResearchHighlightRenderer())
-                        .foregroundStyle(ScholiumNativeColorRole.label.color)
-                        .scholiumContentControlInk(
-                            resting: .primaryText,
-                            emphasized: .accent
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                ResearchPassageLayout {
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Group {
+                            if contextExpanded {
+                                ResearchPassageExcerpt(
+                                    text: ResearchPassageHighlight.occurrences(in: passage.text, ranges: passage.highlights), isExpanded: true)
+                            } else {
+                                ResearchPassagePreview(source: passage.text, matches: passage.focus) {
+                                    ResearchPassageHighlight.occurrences(in: $0.text, ranges: passage.highlights.isEmpty ? [] : $0.matches)
+                                }
+                            }
+                        }.foregroundStyle(ScholiumNativeColorRole.label.color)
                         if let diagnosticTitle = item.diagnosticTitle {
                             Label(diagnosticTitle, systemImage: "exclamationmark.triangle")
                                 .font(ScholiumTypography.interface(.small))
@@ -445,14 +520,22 @@ private struct LinkOccurrenceRow: View {
                                 .help(diagnosticTitle)
                         }
                         if let annotation = item.edge.occurrence.annotation {
-                            Divider()
-                            HStack(alignment: .top, spacing: 8) {
+                            let annotationMatches = ResearchLinkPassage.queryMatches(in: annotation.text, query: query)
+                            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                                 Image(systemName: "text.bubble")
                                     .accessibilityHidden(true)
-                                Text(annotation.text)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Group {
+                                    if contextExpanded {
+                                        ResearchPassageExcerpt(
+                                            text: ResearchPassageHighlight.occurrences(in: annotation.text, ranges: annotationMatches), isExpanded: true)
+                                    } else {
+                                        ResearchPassagePreview(source: annotation.text, matches: annotationMatches, lineLimit: 2) {
+                                            ResearchPassageHighlight.occurrences(in: $0.text, ranges: $0.matches)
+                                        }
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .font(ScholiumTypography.interface(.body))
+                            .font(ScholiumTypography.interface(.control))
                             .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                         }
                     }
@@ -462,19 +545,38 @@ private struct LinkOccurrenceRow: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .scholiumActivationPointer()
-            .scholiumContentControlPointerFeedback(
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                    style: .continuous
-                )
-            )
             .disabled(item.source == nil)
             .help("Show this passage")
-            .accessibilityLabel(Text(verbatim: [item.diagnosticTitle, contextText].compactMap { $0 }.joined(separator: ", ")))
+            .contextMenu {
+                Button(keptActionTitle, action: toggleKept)
+                    .disabled(item.source == nil && !isKept)
+                if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
+                    let peer = item.peer, let line = item.edge.destination?.span?.start.line
+                {
+                    Button("Open Linked Passage") { openReference(peer.reference, line) }
+                }
+            }
+            .accessibilityActions {
+                if item.source != nil || isKept {
+                    Button(keptActionTitle, action: toggleKept)
+                }
+                if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
+                    let peer = item.peer, let line = item.edge.destination?.span?.start.line
+                {
+                    Button("Open Linked Passage") { openReference(peer.reference, line) }
+                }
+            }
+            .accessibilityLabel(
+                Text(verbatim: [item.diagnosticTitle, contextExpanded ? passage.text : preview.text].compactMap { $0 }.joined(separator: ", "))
+            )
             .accessibilityValue(Text(item.edge.occurrence.annotation?.text ?? ""))
             .accessibilityIdentifier("scholium.links.occurrence." + item.id)
+            ResearchPassageContextDisclosure(
+                expanded: $contextExpanded, identity: item.displayTitle, identifier: item.id
+            )
+            .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
             if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
                 let peer = item.peer, let line = item.edge.destination?.span?.start.line
             {
@@ -484,14 +586,10 @@ private struct LinkOccurrenceRow: View {
                     Text("Open Linked Passage")
                 }
                 .buttonStyle(ScholiumContentActionButtonStyle())
+                .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
             }
         }
-    }
-
-    private var contextText: String {
-        let occurrence = item.edge.occurrence
-        return ResearchExcerptPresentation.readableText(
-            occurrence.localContext.isEmpty ? occurrence.target : occurrence.localContext)
+        .onChange(of: item.edge.occurrence) { _, _ in contextExpanded = false }
     }
 
 }
@@ -505,7 +603,8 @@ private struct LinkOccurrenceRow: View {
             freshness: .unavailable("No workspace is open."),
             retryRefresh: {},
             openReference: { _, _ in }
-        ), session: LinksInspectorSession()
+        ), session: LinksInspectorSession(), keptPassages: KeptPassagesSession(),
+        keepLink: { _ in }, openKept: { _ in }
     )
     .frame(width: 320, height: 600)
 }

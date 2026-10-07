@@ -47,7 +47,6 @@ final class WindowModel: ObservableObject {
         let sourceScope: LibrarySourceScope
         let vaultSnapshot: WorkspaceVaultSnapshot
         let vaultConfig: VaultConfig
-        let notes: [WindowDocumentLocation]
         let request: DiscoveryLibraryRequest?
     }
 

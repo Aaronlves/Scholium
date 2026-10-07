@@ -58,8 +58,11 @@ extension ScholiumUITests {
         try FileManager.default.createDirectory(at: termGroupsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try termGroupsData.write(to: termGroupsURL)
         let mixedLine = lineWords + " " + adjacentWords
+        let lateQualification = "Late qualification: this synthetic material does not establish agreement or evidence. 最后的限定仍须完整可读。"
         let longPassage =
-            "合成界面样本：\(lineWords) 标记这段可回到原文的材料。研究者可以先阅读上下文，再判断它与当前问题的关系；这里不预设支持或反对。The passage remains a source excerpt, with mixed-script wording and enough context to inspect its wrapping in the research pane."
+            "合成界面样本：\(lineWords) 标记这段可回到原文的材料。研究者可以先阅读上下文，再判断它与当前问题的关系；这里不预设支持或反对。The passage remains a source excerpt, with mixed-script wording and enough context to inspect its wrapping in the research pane. "
+            + "A compact preview cannot replace the complete paragraph when its final sentence limits the apparent claim. "
+            + lateQualification
         let additions = [
             (firstURL, "\n\n" + mixedLine + "\n" + lineWords + "\n" + mixedLine),
             (secondURL, "\n\n" + longPassage + "\n\n" + destinationWords),
@@ -75,6 +78,7 @@ extension ScholiumUITests {
         app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
         app.launchEnvironment["SCHOLIUM_UI_TEST_INCREASE_CONTRAST"] = "1"
         app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_TRANSPARENCY"] = "1"
+        app.launchArguments += ["-colorScheme", "light"]
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 45))
@@ -82,6 +86,22 @@ extension ScholiumUITests {
         let workspace = app.windows["scholium-main-\(sessionID.uuidString)"].firstMatch
         XCTAssertTrue(workspace.exists)
         focusWorkspaceWindow(workspace)
+
+        // This journey owns Chat-enabled menu parity. Set the real Bool through
+        // Settings before establishing any editor selection or Inspector state.
+        app.menuBars.menuBarItems["Scholium QA"].click()
+        app.menuItems["Settings…"].click()
+        let settings = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        selectSettingsCategory("agents", in: settings)
+        let chatEnabled = settings.checkBoxes["scholium.settings.chatSidebarEnabled"].firstMatch
+        XCTAssertTrue(chatEnabled.waitForExistence(timeout: 5))
+        if !selectionControlIsSelected(chatEnabled) { chatEnabled.click() }
+        XCTAssertTrue(waitUntil(timeout: 3) { self.selectionControlIsSelected(chatEnabled) })
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 5) { !settings.exists })
+        focusWorkspaceWindow(workspace)
+        XCTAssertTrue(sidebarModeControl("Chat", in: workspace).exists)
 
         let inspector = app.descendants(matching: .any)["scholium.researchInspector"].firstMatch
         let inspectorMode = app.descendants(matching: .any)["scholium.inspectorMode"].firstMatch
@@ -140,10 +160,101 @@ extension ScholiumUITests {
         find.click()
         waitForMaterial(lineWords, excluding: adjacentWords)
         XCTAssertEqual(editor.value as? String, firstSource)
+        let longCard = card(containing: "合成界面样本")
+        XCTAssertTrue(longCard.waitForExistence(timeout: 5))
+        let contextID = "scholium.research.context." + String(longCard.identifier.dropFirst("scholium.related.card.".count))
+        let context = app.buttons.matching(NSPredicate(format: "identifier == %@", contextID)).firstMatch
+        XCTAssertTrue(context.waitForExistence(timeout: 5))
+        XCTAssertEqual(context.value as? String, "Collapsed")
+        XCTAssertTrue(context.label.contains("Show Context"))
+        let compactHeight = longCard.frame.height
+        XCTAssertGreaterThan(compactHeight, 20)
+        XCTAssertLessThanOrEqual(compactHeight, 100, "An ordinary passage preview must stay within a few readable lines.")
+        let groupHeader = workspace.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@ AND value == %@", "QA Autosave B,", "Expanded")
+        ).firstMatch
+        XCTAssertTrue(groupHeader.exists && groupHeader.isHittable)
+        let groupHeaderFrame = groupHeader.frame
         let groupedReferences = XCTAttachment(screenshot: workspace.screenshot())
-        groupedReferences.name = "Research Inspector grouped references"
+        groupedReferences.name = "Research Inspector compact references — Light"
         groupedReferences.lifetime = .keepAlways
         add(groupedReferences)
+        editor.click()
+        editor.typeKey(.end, modifierFlags: .command)
+        editor.typeKey(.leftArrow, modifierFlags: .command)
+        editor.typeKey(.upArrow, modifierFlags: [])
+
+        for expansion in 0..<2 {
+            context.click()
+            XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Expanded" })
+            XCTAssertTrue(context.label.contains("Hide Context"))
+            XCTAssertTrue(longCard.label.contains(lateQualification), "Expanded context must retain the paragraph's late qualification.")
+            XCTAssertGreaterThan(longCard.frame.height, compactHeight + 20)
+            XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
+            XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
+            XCTAssertEqual(editor.value as? String, firstSource)
+            XCTAssertEqual(try Data(contentsOf: firstURL), Data(firstSource.utf8))
+            if expansion == 0 {
+                let expanded = XCTAttachment(screenshot: workspace.screenshot())
+                expanded.name = "Research Inspector full paragraph context — Light"
+                expanded.lifetime = .keepAlways
+                add(expanded)
+            }
+            context.click()
+            XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Collapsed" })
+            XCTAssertLessThanOrEqual(longCard.frame.height, 100)
+        }
+        groupHeader.rightClick()
+        let openSource = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Open Source")).firstMatch
+        XCTAssertTrue(openSource.waitForExistence(timeout: 5))
+        for title in ["Link to This Note", "Insert Paragraph Link", "Add to Chat", "Keep Passage"] {
+            XCTAssertTrue(
+                app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", title)).firstMatch.exists,
+                "The native group context menu must retain \(title).")
+        }
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !openSource.exists })
+        XCTAssertEqual(groupHeader.frame, groupHeaderFrame, "A cancelled context menu must not reflow the group header.")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
+        XCTAssertEqual(editor.value as? String, firstSource)
+
+        // The initial caret was at the beginning of the middle source line.
+        // Typing after inspecting context and cancelling its menu must still reach
+        // that caret; Undo must remain a single native editor transaction.
+        let caretProbe = "q"
+        app.typeKey(caretProbe, modifierFlags: [])
+        let probedSource = firstSource.replacingOccurrences(of: "\n" + lineWords + "\n", with: "\n" + caretProbe + lineWords + "\n")
+        XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == probedSource })
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == firstSource })
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 8) { (try? Data(contentsOf: firstURL)) == Data(firstSource.utf8) })
+
+        let ordinaryFrame = workspace.frame
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Dark"].firstMatch.click()
+        resizeProofWindow(workspace, toWidth: 780, height: 640)
+        XCTAssertTrue(context.isHittable && groupHeader.isHittable)
+        XCTAssertLessThanOrEqual(longCard.frame.height, 100)
+        let narrow = XCTAttachment(screenshot: workspace.screenshot())
+        narrow.name = "Research Inspector compact references — Dark narrow adapted"
+        narrow.lifetime = .keepAlways
+        add(narrow)
+        context.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Expanded" })
+        XCTAssertTrue(longCard.label.contains(lateQualification))
+        let narrowExpanded = XCTAttachment(screenshot: workspace.screenshot())
+        narrowExpanded.name = "Research Inspector full paragraph context — Dark narrow adapted"
+        narrowExpanded.lifetime = .keepAlways
+        add(narrowExpanded)
+        context.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Collapsed" })
+        resizeProofWindow(workspace, toWidth: ordinaryFrame.width, height: ordinaryFrame.height)
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Light"].firstMatch.click()
+        XCTAssertEqual(editor.value as? String, firstSource)
 
         // The collection is loaded before Search is ever opened. Choosing a
         // group admits one complete authored alternative, then explicitly
@@ -169,6 +280,53 @@ extension ScholiumUITests {
             waitUntil(timeout: 30) { card(containing: lineWords).exists && card(containing: lineWords).isEnabled && !card(containing: alternative).exists })
         chooseTermGroup(termGroupName)
         XCTAssertTrue(waitUntil(timeout: 30) { card(containing: alternative).exists && card(containing: alternative).isEnabled })
+
+        // Library browsing retains the active Note's references. Do not use
+        // Find or reselect the Inspector to repair context after a role change.
+        context.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Expanded" })
+        let relatedCards = workspace.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.related.card."))
+        let retainedCardIDs = relatedCards.allElementsBoundByIndex.map(\.identifier)
+        XCTAssertGreaterThan(retainedCardIDs.count, 1)
+        let navigator = workspace.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+        let roles = [("Topics", "QA Topic.md"), ("Works", "QA Work.md"), ("Analyses", "QA Autosave A.md")]
+        func assertRelatedBrowseContext() throws {
+            XCTAssertEqual(documentTitle(in: workspace), "QA Autosave A")
+            XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
+            XCTAssertEqual(editor.value as? String, firstSource)
+            XCTAssertEqual(inspectorMode.value as? String, "Related Material")
+            XCTAssertEqual(relatedCards.allElementsBoundByIndex.map(\.identifier), retainedCardIDs)
+            XCTAssertTrue(relatedCards.allElementsBoundByIndex.allSatisfy(\.isEnabled))
+            XCTAssertEqual(context.value as? String, "Expanded")
+            XCTAssertTrue(longCard.label.contains(lateQualification))
+            XCTAssertEqual((termGroupProvenance.value as? String) ?? termGroupProvenance.label, provenanceText)
+            XCTAssertTrue(card(containing: alternative).exists)
+            XCTAssertFalse(app.descendants(matching: .any)["scholium.related.issue"].firstMatch.exists)
+            for (url, bytes) in expectedBytes { XCTAssertEqual(try Data(contentsOf: url), bytes) }
+        }
+        for (role, path) in roles {
+            navigator.descendants(matching: .any)[role].firstMatch.click()
+            XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteRow.\(path)"].firstMatch.waitForExistence(timeout: 8))
+            try assertRelatedBrowseContext()
+        }
+        // No intermediate waits; owner tests separately force overlapping
+        // requests. This journey checks the final native Library destination.
+        for (role, _) in roles { navigator.descendants(matching: .any)[role].firstMatch.click() }
+        XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch.waitForExistence(timeout: 8))
+        try assertRelatedBrowseContext()
+        clickInspectorVisibilityControl(in: workspace)
+        XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+        navigator.descendants(matching: .any)["Topics"].firstMatch.click()
+        XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteRow.QA Topic.md"].firstMatch.waitForExistence(timeout: 8))
+        XCTAssertFalse(inspector.exists, "Browsing a role must not reopen the hidden Inspector.")
+        clickInspectorVisibilityControl(in: workspace)
+        XCTAssertTrue(context.waitForExistence(timeout: 5))
+        try assertRelatedBrowseContext()
+        navigator.descendants(matching: .any)["Analyses"].firstMatch.click()
+        XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch.waitForExistence(timeout: 8))
+        try assertRelatedBrowseContext()
+        context.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Collapsed" })
 
         // The final line contains BOTH vocabularies; select only its last two
         // words. Ignoring that selection would also retrieve the Analysis.
@@ -504,8 +662,33 @@ extension ScholiumUITests {
 
     @MainActor
     func testInspectorLinksSelectIncomingAndOutgoingDirections() throws {
+        app.terminate()
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let topicURL = triptychDirectory.appendingPathComponent("02-topics/QA Topic.md")
+        let selectionProbe = "retainedselectionprobe"
+        let lateQualification = "Late qualification: this authored connection is not evidence of agreement. 最后的限定仍须完整可读。"
+        let longPassage =
+            "链接上下文合成样本。A reader should be able to inspect the complete argument before treating the late link as a useful connection. "
+            + "The opening establishes a question, the middle describes a possible comparison, and the source keeps both without inferring support or opposition. "
+            + "Only after that context does [[QA Autosave A|contextlinkprobe]] appear. The final sentence matters even when a compact preview cannot display it. "
+            + lateQualification
+        // Enrich only this journey's existing Notes, while its QA app is down.
+        // Preserve the original annotated occurrences and the 500-Note count.
+        try write(source(at: noteURL) + "\n\n" + selectionProbe, to: noteURL)
+        try write(source(at: topicURL) + "\n\n" + longPassage, to: topicURL)
         let originalBytes = try Data(contentsOf: noteURL)
+        let originalSource = try source(at: noteURL)
+        let topicBytes = try Data(contentsOf: topicURL)
+        app.launchArguments += ["-colorScheme", "light"]
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 45))
+        waitForCurrentDocumentSurface()
+        let workspace = app.windows["scholium-main-\(sessionID.uuidString)"].firstMatch
+        focusWorkspaceWindow(workspace)
+        selectDocumentMode("Source", in: workspace)
+        let editor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == originalSource })
         _ = selectResearchInspectorDirection("outgoing")
         let outgoing = app.buttons.matching(
             NSPredicate(
@@ -529,9 +712,70 @@ extension ScholiumUITests {
             )
         ).firstMatch
         XCTAssertTrue(incoming.waitForExistence(timeout: 8))
-        let group = app.descendants(matching: .any).matching(
+        let longIncoming = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "scholium.links.occurrence.", "contextlinkprobe")
+        ).firstMatch
+        XCTAssertTrue(longIncoming.waitForExistence(timeout: 5))
+        let contextID = "scholium.research.context." + String(longIncoming.identifier.dropFirst("scholium.links.occurrence.".count))
+        let context = app.buttons.matching(NSPredicate(format: "identifier == %@", contextID)).firstMatch
+        XCTAssertTrue(context.waitForExistence(timeout: 5))
+        XCTAssertEqual(context.value as? String, "Collapsed")
+        XCTAssertTrue(context.label.contains("Show Context"))
+        let compactHeight = longIncoming.frame.height
+        XCTAssertGreaterThan(compactHeight, 20)
+        XCTAssertLessThanOrEqual(compactHeight, 100, "Links must share the compact three-line passage presentation.")
+        let compactLinks = XCTAttachment(screenshot: workspace.screenshot())
+        compactLinks.name = "Research Inspector compact incoming links — Light"
+        compactLinks.lifetime = .keepAlways
+        add(compactLinks)
+        editor.click()
+        editor.typeKey(.end, modifierFlags: .command)
+        editor.typeKey(.leftArrow, modifierFlags: [.option, .shift])
+        for expansion in 0..<2 {
+            context.click()
+            XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Expanded" })
+            XCTAssertTrue(context.label.contains("Hide Context"))
+            XCTAssertTrue(longIncoming.label.contains(lateQualification), "The full paragraph must retain the qualification after the late link.")
+            XCTAssertGreaterThan(longIncoming.frame.height, compactHeight + 20)
+            XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
+            XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
+            XCTAssertEqual(editor.value as? String, originalSource)
+            XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+            XCTAssertEqual(try Data(contentsOf: topicURL), topicBytes)
+            if expansion == 0 {
+                let expandedLinks = XCTAttachment(screenshot: workspace.screenshot())
+                expandedLinks.name = "Research Inspector full incoming link context — Light"
+                expandedLinks.lifetime = .keepAlways
+                add(expandedLinks)
+            }
+            context.click()
+            XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Collapsed" })
+            XCTAssertLessThanOrEqual(longIncoming.frame.height, 100)
+        }
+        let group = workspace.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium.links.group.")
         ).firstMatch
+        XCTAssertTrue(group.exists && group.isHittable)
+        let groupFrame = group.frame
+        group.rightClick()
+        let openLinkedNote = app.menuItems["Open Linked Note"].firstMatch
+        XCTAssertTrue(openLinkedNote.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.menuItems["Keep Passage"].firstMatch.exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !openLinkedNote.exists })
+        XCTAssertEqual(group.frame, groupFrame)
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
+        XCTAssertEqual(editor.value as? String, originalSource)
+        // Context and its cancelled menu must preserve the editor's selection.
+        // Native replacement and Undo prove it without a private editor hook.
+        let replacement = "q"
+        app.typeKey(replacement, modifierFlags: [])
+        let replacedSource = String(originalSource.dropLast(selectionProbe.count)) + replacement
+        XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == replacedSource })
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 5) { editor.value as? String == originalSource })
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 8) { (try? Data(contentsOf: noteURL)) == originalBytes })
         XCTAssertTrue(group.waitForExistence(timeout: 5))
         group.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !incoming.exists })
@@ -539,6 +783,65 @@ extension ScholiumUITests {
         XCTAssertTrue(incoming.waitForExistence(timeout: 5))
         let field = app.searchFields["scholium.links.search"].firstMatch
         XCTAssertTrue(field.exists)
+        field.click()
+        field.typeText("QA Topic")
+        XCTAssertEqual(field.value as? String, "QA Topic")
+        XCTAssertTrue(longIncoming.waitForExistence(timeout: 5))
+        context.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Expanded" })
+        let occurrences = workspace.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.links.occurrence."))
+        let retainedOccurrenceIDs = occurrences.allElementsBoundByIndex.map(\.identifier)
+        let retainedGroupID = group.identifier
+        let inspector = workspace.descendants(matching: .any)["scholium.researchInspector"].firstMatch
+        let inspectorMode = workspace.descendants(matching: .any)["scholium.inspectorMode"].firstMatch
+        let navigator = workspace.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+        let roles = [("Topics", "QA Topic.md"), ("Works", "QA Work.md"), ("Analyses", "QA Autosave A.md")]
+        XCTAssertGreaterThan(retainedOccurrenceIDs.count, 1)
+        func assertLinksBrowseContext(collapsed: Bool) throws {
+            XCTAssertEqual(documentTitle(in: workspace), "QA Autosave A")
+            XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
+            XCTAssertEqual(editor.value as? String, originalSource)
+            XCTAssertEqual(inspectorMode.value as? String, "Links")
+            XCTAssertEqual(field.value as? String, "QA Topic")
+            XCTAssertFalse(workspace.descendants(matching: .any)["scholium.researchProjectionFreshness"].firstMatch.exists)
+            XCTAssertTrue(group.exists)
+            XCTAssertEqual(group.identifier, retainedGroupID)
+            if collapsed {
+                XCTAssertFalse(incoming.exists, "Role browsing must not reopen the collapsed link group.")
+            } else {
+                XCTAssertEqual(occurrences.allElementsBoundByIndex.map(\.identifier), retainedOccurrenceIDs)
+                XCTAssertEqual(context.value as? String, "Expanded")
+                XCTAssertTrue(longIncoming.label.contains(lateQualification))
+            }
+            XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+            XCTAssertEqual(try Data(contentsOf: topicURL), topicBytes)
+        }
+        for (role, path) in roles {
+            navigator.descendants(matching: .any)[role].firstMatch.click()
+            XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteRow.\(path)"].firstMatch.waitForExistence(timeout: 8))
+            try assertLinksBrowseContext(collapsed: false)
+        }
+        context.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Collapsed" })
+        group.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !incoming.exists })
+        for (role, _) in roles { navigator.descendants(matching: .any)[role].firstMatch.click() }
+        XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch.waitForExistence(timeout: 8))
+        try assertLinksBrowseContext(collapsed: true)
+        clickInspectorVisibilityControl(in: workspace)
+        XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+        navigator.descendants(matching: .any)["Topics"].firstMatch.click()
+        XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteRow.QA Topic.md"].firstMatch.waitForExistence(timeout: 8))
+        XCTAssertFalse(inspector.exists, "Browsing a role must not reopen the hidden Inspector.")
+        clickInspectorVisibilityControl(in: workspace)
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        try assertLinksBrowseContext(collapsed: true)
+        navigator.descendants(matching: .any)["Analyses"].firstMatch.click()
+        XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch.waitForExistence(timeout: 8))
+        try assertLinksBrowseContext(collapsed: true)
+        group.click()
+        XCTAssertTrue(incoming.waitForExistence(timeout: 5))
+        XCTAssertEqual(occurrences.allElementsBoundByIndex.map(\.identifier), retainedOccurrenceIDs)
         typeCommittedText("no-such-fixture-link", into: field, in: app)
         XCTAssertTrue(app.descendants(matching: .any)["scholium.connections.empty"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(incoming.exists)
@@ -548,10 +851,71 @@ extension ScholiumUITests {
         XCTAssertTrue(incoming.waitForExistence(timeout: 5))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
         XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+        // A filter hit after the authored link must be readable without
+        // changing the occurrence identity or its source-opening action.
+        let filteredOccurrenceID = longIncoming.identifier
+        let filteredOccurrence = workspace.buttons.matching(NSPredicate(format: "identifier == %@", filteredOccurrenceID)).firstMatch
+        let linkCenteredPreview = filteredOccurrence.label
+        XCTAssertTrue(linkCenteredPreview.contains("contextlinkprobe"))
+        field.click()
+        field.typeText("Late qualification")
+        XCTAssertEqual(field.value as? String, "Late qualification")
+        XCTAssertTrue(waitUntil(timeout: 5) { filteredOccurrence.exists && filteredOccurrence.label.contains("Late qualification") })
+        XCTAssertEqual(filteredOccurrence.identifier, filteredOccurrenceID)
+        XCTAssertEqual(context.value as? String, "Collapsed")
+        XCTAssertLessThanOrEqual(filteredOccurrence.frame.height, 100)
+        XCTAssertTrue(filteredOccurrence.isHittable, "The filter-relevant passage must be visibly reachable in its compact row.")
+        let filteredLinks = XCTAttachment(screenshot: workspace.screenshot())
+        filteredLinks.name = "Research Inspector compact link context follows Find in Links"
+        filteredLinks.lifetime = .keepAlways
+        add(filteredLinks)
+        context.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Expanded" })
+        XCTAssertTrue(filteredOccurrence.label.contains("contextlinkprobe"))
+        XCTAssertTrue(filteredOccurrence.label.contains(lateQualification))
+        XCTAssertEqual(documentTitle(in: workspace), "QA Autosave A")
+        XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
+        XCTAssertEqual(editor.value as? String, originalSource)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+        XCTAssertEqual(try Data(contentsOf: topicURL), topicBytes)
+        context.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { context.value as? String == "Collapsed" })
+        XCTAssertTrue(filteredOccurrence.label.contains("Late qualification"))
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
+        XCTAssertEqual(field.value as? String, "")
+        XCTAssertTrue(waitUntil(timeout: 5) { filteredOccurrence.label == linkCenteredPreview })
+        XCTAssertEqual(filteredOccurrence.identifier, filteredOccurrenceID)
+        XCTAssertEqual(context.value as? String, "Collapsed")
+        XCTAssertLessThanOrEqual(filteredOccurrence.frame.height, 100)
         let links = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         links.name = "Research Inspector incoming links"
         links.lifetime = .keepAlways
         add(links)
+        XCTAssertEqual(try Data(contentsOf: topicURL), topicBytes)
+        // Passage activation remains separate from showing context and still
+        // opens its source Note in the retained Document mode.
+        field.click()
+        field.typeText("QA Topic")
+        XCTAssertEqual(field.value as? String, "QA Topic")
+        longIncoming.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Topic", timeout: 10))
+        XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+        XCTAssertEqual(try Data(contentsOf: topicURL), topicBytes)
+        XCTAssertTrue(waitUntil(timeout: 5) { field.value as? String == "" }, "A different Note must not inherit A's Links query.")
+        let back = workspace.toolbars.buttons["Back"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) { back.exists && back.isEnabled })
+        back.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", in: workspace, timeout: 8))
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == originalSource })
+        XCTAssertEqual(field.value as? String, "QA Topic", "Back must restore the original Note's Links location.")
+        XCTAssertEqual(occurrences.allElementsBoundByIndex.map(\.identifier), retainedOccurrenceIDs)
+        XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
+        XCTAssertEqual(editor.value as? String, originalSource)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+        XCTAssertEqual(try Data(contentsOf: topicURL), topicBytes)
     }
 
     /// The default final QA route. It keeps one isolated application process

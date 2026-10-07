@@ -31,7 +31,8 @@ extension WindowModel {
                 libraryRequest: request
             )
             try validateDestination()
-            try commitStagedWorkspaceLibrarySelection(staged)
+            let accepted = try commitStagedWorkspaceLibrarySelection(staged)
+            refreshIdentityState(from: accepted)
         } catch {
             if discoveryController.isCurrentLibraryRequest(request) {
                 discoveryController.failLibraryRequest(
@@ -43,8 +44,6 @@ extension WindowModel {
         }
         shellState.selectLibraryWorkspace(slot)
         attentionPresentationState.selectWorkspaceSlot(slot)
-        await refreshIdentityState()
-        scheduleWorkspaceCatalogRefresh()
     }
 
     func validateDocumentIsAvailable(
@@ -75,7 +74,7 @@ extension WindowModel {
             slot: slot,
             libraryRequest: libraryRequest
         )
-        try commitStagedWorkspaceLibrarySelection(staged)
+        _ = try commitStagedWorkspaceLibrarySelection(staged)
         await refreshIdentityState()
         scheduleWorkspaceCatalogRefresh()
     }
@@ -108,10 +107,6 @@ extension WindowModel {
             sourceScope
             ?? libraryRequest?.sourceScope
             ?? discoveryController.libraryState(for: resolvedSlot).sourceScope
-        let targetNotes = vaultSnapshot.documents
-            .map(WindowDocumentLocation.workspace)
-            .sorted(by: notesAreOrdered)
-
         if let libraryRequest,
             !discoveryController.isCurrentLibraryRequest(libraryRequest)
         {
@@ -123,19 +118,24 @@ extension WindowModel {
             sourceScope: targetSourceScope,
             vaultSnapshot: vaultSnapshot,
             vaultConfig: targetConfig,
-            notes: targetNotes,
             request: libraryRequest
         )
     }
 
     func commitStagedWorkspaceLibrarySelection(
         _ staged: StagedWorkspaceLibrarySelection
-    ) throws {
+    ) throws -> WorkspaceVaultSnapshot {
         if let request = staged.request,
             !discoveryController.isCurrentLibraryRequest(request)
         {
             throw CancellationError()
         }
+        // Workspace events may advance the inventory while destination staging
+        // is suspended. Browsing consumes that accepted projection, never an
+        // older staged copy or a new catalog refresh.
+        let snapshot =
+            workspaceProjectionController.vaultSnapshot(id: staged.registeredVault.id)
+            ?? staged.vaultSnapshot
         currentRegisteredVault = staged.registeredVault
         currentVaultRole = staged.registeredVault.role
         vaultConfig = staged.vaultConfig
@@ -151,9 +151,10 @@ extension WindowModel {
         }
         attentionPresentationState.selectWorkspaceSlot(staged.workspace)
         workspaceProjectionController.commitVaultSelection(
-            snapshot: staged.vaultSnapshot,
-            notes: staged.notes
+            snapshot: snapshot,
+            notes: snapshot.documents.map(WindowDocumentLocation.workspace).sorted(by: notesAreOrdered)
         )
+        return snapshot
     }
 
     func workspaceSlot(for vault: RegisteredVault) -> WorkspaceVaultSlot? {

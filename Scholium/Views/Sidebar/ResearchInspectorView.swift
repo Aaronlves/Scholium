@@ -35,6 +35,9 @@ struct ResearchInspectorView: View {
     let insertRelatedParagraph: (RelatedMaterialCard) -> Void
     let canDiscussRelated: Bool
     let discussRelated: (RelatedMaterialCard) -> Void
+    let keepRelated: (RelatedMaterialCard) -> Void
+    let keepLink: (InspectorLinkItem) -> Void
+    let openKept: (KeptPassage) -> Void
 
     init(
         research: ResearchController,
@@ -57,7 +60,10 @@ struct ResearchInspectorView: View {
         insertRelated: @escaping (RelatedMaterialCard) -> Void,
         insertRelatedParagraph: @escaping (RelatedMaterialCard) -> Void,
         canDiscussRelated: Bool,
-        discussRelated: @escaping (RelatedMaterialCard) -> Void
+        discussRelated: @escaping (RelatedMaterialCard) -> Void,
+        keepRelated: @escaping (RelatedMaterialCard) -> Void,
+        keepLink: @escaping (InspectorLinkItem) -> Void,
+        openKept: @escaping (KeptPassage) -> Void
     ) {
         self.editor = editor
         self.termGroups = termGroups
@@ -80,6 +86,9 @@ struct ResearchInspectorView: View {
         self.insertRelatedParagraph = insertRelatedParagraph
         self.canDiscussRelated = canDiscussRelated
         self.discussRelated = discussRelated
+        self.keepRelated = keepRelated
+        self.keepLink = keepLink
+        self.openKept = openKept
     }
 
     var body: some View {
@@ -91,6 +100,9 @@ struct ResearchInspectorView: View {
             ConnectionsInspectorView(
                 context: connectionsContext,
                 session: research.linksInspector,
+                keptPassages: research.keptPassages,
+                keepLink: keepLink,
+                openKept: openKept,
                 isActive: linksActive
             )
             .animation(paneAnimation) { pane in
@@ -102,12 +114,14 @@ struct ResearchInspectorView: View {
 
             RelatedMaterialsView(
                 session: research.relatedMaterials,
+                keptPassages: research.keptPassages,
                 isVisible: relatedActive,
                 editor: editor, termGroups: termGroups, find: findRelated,
                 findWithTermGroup: findRelatedWithTermGroup,
                 retry: retryRelated,
                 open: openRelated, canAddToChat: canDiscussRelated, addToChat: discussRelated,
-                insert: insertRelated, insertParagraph: insertRelatedParagraph
+                insert: insertRelated, insertParagraph: insertRelatedParagraph,
+                keepRelated: keepRelated, openKept: openKept
             )
             .animation(paneAnimation) { pane in
                 pane.opacity(showsRelated ? 1 : 0)

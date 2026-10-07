@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ScholiumContracts
 import Testing
@@ -506,18 +507,44 @@ struct RelatedMaterialsTests {
     func unchangedContext() async {
         let model = RelatedMaterialsSession()
         let seed = seed()
-        let response = response(seed.request)
-        await model.find(capture: { seed }, retrieve: { _ in response }, references: [], automatic: true).value
+        let response = populatedResponse(seed)
+        let source = reference()
+        var captures = 0
+        var retrievals = 0
+        await model.find(
+            capture: {
+                captures += 1
+                return seed
+            },
+            retrieve: { _ in
+                await MainActor.run { retrievals += 1 }
+                return response
+            }, references: [source], automatic: true
+        ).value
+        let retainedCards = model.cards
+        #expect(retainedCards.count == 1)
+        var cardPublications = 0
+        var seedResets = 0
+        let observations = [
+            model.$cards.dropFirst().sink { _ in cardPublications += 1 },
+            model.$seed.dropFirst().sink { if $0 == nil { seedResets += 1 } },
+        ]
+        defer { observations.forEach { $0.cancel() } }
         model.invalidateWritingContext()
         var moved = seed
         moved.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 1, selection: .init(anchor: 3, head: 3))
         await model.find(
-            capture: { moved },
+            capture: {
+                captures += 1
+                return moved
+            },
             retrieve: { _ in
-                Issue.record("Unchanged selection unexpectedly repeated retrieval")
+                await MainActor.run { retrievals += 1 }
                 return response
-            }, references: [], automatic: true
+            }, references: [source], automatic: true
         ).value
+        #expect(captures == 2 && retrievals == 1)
+        #expect(model.cards == retainedCards && cardPublications == 0 && seedResets == 0)
         #expect(model.didSearch && !model.isLoading && model.issue == nil)
         #expect(model.insertionPoint == moved.insertionPoint && !model.contextChanged)
     }
@@ -532,23 +559,32 @@ struct RelatedMaterialsTests {
             references: [reference()], automatic: true
         ).value
         let originalCard = model.cards.first
+        var cardPublications: [[RelatedMaterialCard]] = []
+        var loadingTransitions: [Bool] = []
+        let observations = [
+            model.$cards.dropFirst().sink { cardPublications.append($0) },
+            model.$isLoading.removeDuplicates().dropFirst().sink { loadingTransitions.append($0) },
+        ]
+        defer { observations.forEach { $0.cancel() } }
         var current = seed()
         current.searchGeneration = .init(triptychID: vault, sequence: 2, sourceManifestHash: "changed")
         let captured = current
         let currentResponse = response(captured.request, generation: captured.searchGeneration)
-        var retrieved = false
+        var retrievals = 0
         await model.find(
             capture: { captured },
             retrieve: { _ in
                 await MainActor.run {
-                    retrieved = true
+                    retrievals += 1
                     #expect(model.cards.first == originalCard)
                     #expect(model.isLoading)
                 }
                 return currentResponse
             }, references: [], automatic: true
         ).value
-        #expect(retrieved)
+        #expect(retrievals == 1)
+        #expect(cardPublications == [[]])
+        #expect(loadingTransitions == [true, false])
         #expect(model.cards.isEmpty)
         #expect(model.presentation == .empty)
         #expect(model.seed?.searchGeneration == captured.searchGeneration)

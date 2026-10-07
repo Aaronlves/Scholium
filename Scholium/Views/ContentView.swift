@@ -903,14 +903,16 @@ struct ContentView: View {
                             windowCoordinator.actions.activateSidebar(.chat)
                         }
                     }
-                }
+                },
+                keepRelated: { appState.keepRelatedPassage($0) },
+                keepLink: { item in Task { await appState.keepLinkPassage(item) } },
+                openKept: { entry in Task { await appState.openKeptPassage(entry) } }
             )
         } else {
-            ScholiumContentStateView(
-                "No Document Selected",
-                indicator: .symbol("doc.text")
+            KeptPassagesWithoutDocumentView(
+                session: researchController.keptPassages,
+                open: { entry in Task { await appState.openKeptPassage(entry) } }
             )
-            .accessibilityIdentifier("scholium.noDocumentInspectorState")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .scholiumSurface(.apparatus)
         }

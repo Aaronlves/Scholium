@@ -146,8 +146,19 @@ struct WorkspaceToolbarTests {
             ))
         let apparatus = content[apparatusStart.lowerBound..<detailStart.lowerBound]
 
-        #expect(apparatus.contains("scholium.noDocumentInspectorState"))
+        let retainedPassages = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Sidebar/KeptPassagesRows.swift"
+            ),
+            encoding: .utf8
+        )
+        let emptyStateStart = try #require(retainedPassages.range(of: "struct KeptPassagesWithoutDocumentView: View {"))
+        let emptyState = retainedPassages[emptyStateStart.lowerBound...]
+
+        #expect(apparatus.contains("KeptPassagesWithoutDocumentView("))
+        #expect(emptyState.contains("scholium.noDocumentInspectorState"))
         #expect(!apparatus.contains("Color.clear"))
+        #expect(!emptyState.contains("Color.clear"))
     }
 
     @Test("The native toolbar owns command identity, overflow, and navigation")

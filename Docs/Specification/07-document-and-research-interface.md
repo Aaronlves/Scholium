@@ -413,11 +413,10 @@ before Document Mode only while the Note has pending saved-source changes. Resea
 menu, Note Actions, Chat and
 Notifications share this route without marking review. No all-reviewed action exists.
 
-The comparison shows §5.7's exact snapshots without invented attribution and preserves
-surrounding context and precise intraline differences. Removed text uses semantic
-red and strikethrough; inserted text uses semantic color and underline. Textual
-Before/After labels, line positions and difference boundaries preserve meaning
-without color. **Previous Difference** and **Next Difference** navigate the
+The comparison preserves §5.7's exact snapshots, context and intraline differences
+without invented attribution. Removed text uses semantic red and strikethrough; inserted text uses
+semantic color and underline. Before/After labels, positions and boundaries retain
+meaning without color. **Previous Difference** and **Next Difference** navigate the
 comparison; long source remains readable with bounded scrolling. The sheet
 does not alter the live editor, source selection, or Undo history.
 
@@ -444,7 +443,7 @@ Content crossfades; toolbar and Document stay still. Panes retain scroll positio
 the hidden one loses input and accessibility immediately. Reduce Motion switches
 directly. Neither pane repeats the selector. Workspaces retain selection across
 Notes and tabs. Hiding Inspector moves no content elsewhere. Without a Document
-it shows No Document Selected.
+it shows No Document Selected beside any kept passages.
 
 Related Material follows selected or paused Edit/Source text, including unsaved
 writing. Opening, switching editors and selection changes schedule debounced
@@ -457,33 +456,30 @@ context summary, refresh command or caret-confirmation step.
 §13 retrieves Analyses, Topics and other Works as researcher writing. Results show
 the Note title, verified match excerpt, quiet role identity, Link to This Note and
 Add to Chat. Headers share Links' disclosure pattern: role symbol, title, adjacent
-chevron and trailing actions. The chevron appears on hover or focus without
-reflow. Help and accessible headers, passages and actions identify role and
+chevron and optional count form one row without a visible action-menu button.
+Titles stay neutral on hover; native press and focus feedback remain distinct
+from selection. Native context menus hold secondary commands without row reflow;
+keyboard context-menu and named accessibility actions retain nonpointer access. Help and accessible headers, passages and actions identify role and
 relative path. Duplicate titles add quiet vault/directory context; unique titles
 remain compact. Identity context never changes ranking. Headers toggle expansion
 without navigation; their link action inserts the Note link. Groups start
-expanded with at most two retrieved passages. A shared native passage-card
-container owns insets, type alignment and grouping in both
-panes. Each excerpt opens its checked paragraph; its chat action stages that
+expanded with at most two retrieved passages. A shared layout aligns passages
+in native List rows without filled excerpt cards. Each excerpt opens its checked
+paragraph; its chat action stages that
 paragraph and the captured writing context without sending. No action generates
 philosophical prose. Note order follows retrieval's Note ranking and passages
 retain their within-Note ranking. Trailing native row swipe actions reveal Link to This Note on the group header
 and Add to Chat on a paragraph. Full-swipe execution is disabled: reveal alone
 never inserts, attaches or sends. Native List owns gesture direction arbitration,
 closing, scrolling and action feedback. Only one reveal remains open; reverse
-swipe, outside interaction or Escape closes it. A group action menu revealed by pointer hover, keyboard focus or accessibility focus
-provides named keyboard and pointer alternatives, including selection of a
-paragraph for Chat or Insert Paragraph Link. Paragraph choices use an ordinal plus at most eight source
+swipe, outside interaction or Escape closes it. Group context menus retain paragraph choices for Chat, Keep/Remove and Insert
+Paragraph Link; passage menus expose applicable actions directly. Paragraph choices use an ordinal plus at most eight source
 characters and an ellipsis; the attached source remains complete. Context menus and accessibility actions remain additional
-routes. Actions take no width from the resting excerpt. Both panes share native List rows, identity headers, passage containers and
-secondary heading color. Their copy rail and spacing follow Library Sidebar
-layout roles; Links controls use that rail, without extra outer horizontal padding.
-The action menu uses the same image-only label and native control treatment as
-the Library Sidebar, with a reserved target to prevent reflow. Analysis, Topic and Work use the existing three workspace role symbols. There is no refresh header; shortcut guidance appears only before the first usable query. Empty results show
-one concise empty state without repeating writing instructions. Waiting, empty
-and failed retrieval use the shared Sidebar state presentation. Loading alone
-shows pulsing skeletons, including replacement searches. Existing rows retain their
-geometry and reading position while masked as inactive placeholders. New Note groups enter
+routes. Actions take no resting excerpt width. Both panes share native List rows, neutral
+headers, compact passages and Library Sidebar rails. Role symbols identify Analysis,
+Topic and Work. No refresh header repeats shortcut guidance after a usable query.
+Waiting, empty and failed retrieval use the shared Sidebar state presentation.
+Loading masks retained rows as inactive pulsing skeletons without moving them. New Note groups enter
 as one visual unit: the identity header and every excerpt share a single upward
 translation and opacity sample. Groups start in reading order with overlapping,
 brief ease-out entrances; no blur, scaling, bounce, clipping reveal or separate
@@ -499,11 +495,11 @@ source. Excerpts open the checked source paragraph. Excerpts use a shared restra
 background and medium word weight. Related Material highlights at most three
 distinct complete words covered by Search-owned readable-text matches, excluding
 common words; it never highlights YAML-only matches or displays keyword capsules.
-Links highlights the authored link alias or target when it has one unambiguous
-occurrence in the readable context. Ambiguous labels remain unhighlighted.
-Initial loading uses pulsing skeleton cards matching the title, role, excerpt and
-action-area geometry of real results; Reduce Motion keeps them static. Subsequent
-retrieval masks retained cards with the same pulse, without adding loading rows or layout animation.
+Links highlights unambiguous authored aliases or targets. With Find active,
+highlights mark actual localized substring matches in readable context or annotations;
+title, path and hidden-target matches create no body highlight.
+Initial pulsing skeletons match result geometry; replacement adds no rows or layout
+animation. Reduce Motion keeps skeletons static.
 Researchers may explicitly choose one of their authored Search term groups as
 additional lexical input for a Related Material search. The selected group name
 and original terms remain inspectable beside the results; matching alternatives
@@ -516,15 +512,31 @@ mapping, and leaves the captured writing passage and existing source and Chat
 actions intact.
 Loading exposes one accessible search status and no actionable placeholder results.
 Completion, cancellation or failure restores retained same-Note cards.
-Brief opacity transitions accompany action disclosure only. Ellipses identify omitted text; there is no generated summary, standing
-keyword list, full-paragraph expansion, or repeated Open Source button.
-A contextual Retry action recovers from failure or unavailable sources. Normal automatic replacement does not add a stack of disabled actions.
-Content YAML contributes to Note ordering but is not displayed as a separate
-result. Each recommended Note presents an actual matching paragraph; metadata,
-a title or another paragraph matching cannot substitute for that paragraph.
-Opening preserves Document mode and follows the destination's recommendation lifecycle.
-Cards omit raw Markdown, full paths and internal offsets. Matches are discovery
-leads, never evidential verdicts; Help/accessibility explains connection paths.
+**Keep Passage** retains a captured Links or Related excerpt above either pane's
+results. Snapshots preserve exact text, source, revision and locator;
+compact previews expand in place. They survive searches, Note/role changes,
+Inspector hiding and closing document tabs, but end on window or Triptych closure.
+Kept text never persists or enters Markdown. Repeating Keep for the same
+source revision and locator is idempotent; another revision remains distinct.
+Source edits or deletion never replace captured text. Open Source rechecks the
+revision; changed sources open without stale positioning, unavailable sources
+retain the snapshot and current Document. Remove Kept Passage removes only that
+snapshot. Keep/Remove preserve writing selection and Undo through the shared
+context-menu, keyboard and accessibility routes. Native leading passage swipes offer the
+same actions with full-swipe execution disabled; Related's trailing actions remain.
+
+Compact previews favor distinct focused matches over repeated language. Links
+centers its authored occurrence or active Find matches. Prefer one or two source
+sentences within the available width's compact line bound.
+Long sentences use contiguous exact text with omission ellipses.
+Show Context expands the complete readable paragraph or occurrence in place;
+Hide Context collapses it. Neither navigates, replaces editor selection nor changes
+the writing target. Navigation and handoff retain original revision, locator and
+complete text. No generated summary, keyword list or repeated Open Source button. Retry recovers
+retrieval/source failure. Content YAML affects Note ordering, never substituting
+for a matching paragraph. Opening preserves Document mode and recommendation
+lifecycle. Cards omit raw Markdown, paths and offsets. Matches remain discovery
+leads; Help/accessibility explains connection paths without evidential verdicts.
 Open Source checks the paragraph revision when
 queued navigation executes. Changed sources open without old positioning and
 explain the mismatch; unverifiable or unsaved sources receive a distinct
@@ -572,15 +584,16 @@ the target cannot be resolved, use the existing unavailable/recovery path rather
 highlighting an unrelated paragraph or claiming arrival. No toast or explanatory success
 caption accompanies the jump. The existing dialect parser projects link labels without exposing link syntax or changing
 source anchors. Explicit outgoing fragments retain a direct Open Linked Passage action. Repeated links remain separate occurrences. No inferred relation, predicate, or
-Combined direction is introduced. Each row retains its exact source anchor, complete
-local context, and optional annotation; repeated links remain repeated occurrences.
-Links has no annotation editing, creation, draft, or save controls. Passage and
+Combined direction is introduced. Each row retains its exact source anchor, complete local context and optional
+annotation. Links has no annotation mutation controls. Passage and
 annotation form one activation target that reveals the exact source occurrence.
-Note group headings use a document symbol and stronger type. Each occurrence has
-one native grouped card: the directly related passage uses regular primary text;
-its annotation follows a separator with an inset comment symbol and secondary text.
-The card forms one source-navigation button; hierarchy uses grouping, spacing and
-type as well as color. Titles, passages and annotations wrap; line numbers stay internal.
+Note group headings use the grouped Note’s role symbol and stronger neutral type. Each
+occurrence follows the shared compact preview and full-context disclosure policy.
+The passage uses regular primary text; its annotation follows with a comment
+symbol and secondary text, compact until context is expanded. Passage and annotation
+remain one source-navigation button, separate from context disclosure. Hierarchy
+uses alignment, spacing and type. Long titles wrap within a compact header and
+retain their complete identity in Help and accessibility; line numbers stay internal.
 Ordinary incoming, outgoing, and in-document link
 navigation retains the current Document mode and reveals the corresponding rendered
 paragraph in Review or exact line in Edit/Source. Outgoing fragment links use the

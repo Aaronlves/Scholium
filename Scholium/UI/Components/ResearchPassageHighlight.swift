@@ -22,12 +22,17 @@ enum ResearchPassageHighlight {
         return styled(text, ranges: selected)
     }
 
-    static func link(in text: String, label: String) -> Text {
-        // Do not guess which occurrence is the authored link if its label repeats.
-        guard !label.isEmpty, let range = text.range(of: label),
-            text.range(of: label, range: range.upperBound..<text.endIndex) == nil
-        else { return Text(verbatim: text) }
-        return styled(text, ranges: [range])
+    static func occurrences(in text: String, ranges: [Range<Int>]) -> Text {
+        var merged: [Range<Int>] = []
+        for range in ranges.sorted(by: { $0.lowerBound < $1.lowerBound })
+        where range.lowerBound >= 0 && !range.isEmpty && range.upperBound <= text.utf16.count {
+            if let previous = merged.last, range.lowerBound <= previous.upperBound {
+                merged[merged.count - 1] = previous.lowerBound..<max(previous.upperBound, range.upperBound)
+            } else {
+                merged.append(range)
+            }
+        }
+        return styled(text, ranges: merged.compactMap { Range(NSRange(location: $0.lowerBound, length: $0.count), in: text) })
     }
 
     private static func styled(_ text: String, ranges: [Range<String.Index>]) -> Text {

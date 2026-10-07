@@ -272,11 +272,13 @@ private struct LinksLifecycleView: View {
     let graph: GraphSnapshot
     let catalog: WorkspaceCatalogSnapshot
     let session: LinksInspectorSession
+    let keptPassages = KeptPassagesSession()
 
     var body: some View {
         ConnectionsInspectorView(
             context: .init(
                 graph: graph, catalog: catalog, current: state.current,
-                freshness: .current, retryRefresh: {}, openReference: { _, _ in }), session: session)
+                freshness: .current, retryRefresh: {}, openReference: { _, _ in }), session: session,
+            keptPassages: keptPassages, keepLink: { _ in }, openKept: { _ in })
     }
 }

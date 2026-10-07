@@ -336,97 +336,19 @@ extension TriptychSearchIndex {
         }
         let mapped = SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
             in: text, requestedRanges: requested.map(\.range))
-        var positions: [String.Index] = []
-        var utf16Offsets: [Int] = []
-        var utf16Offset = 0
-        for position in text.indices {
-            positions.append(position)
-            utf16Offsets.append(utf16Offset)
-            utf16Offset += String(text[position]).utf16.count
-        }
-        positions.append(text.endIndex)
-        utf16Offsets.append(utf16Offset)
-        func characterOffset(_ offset: Int) -> Int? {
-            var lower = 0
-            var upper = utf16Offsets.count
-            while lower < upper {
-                let middle = lower + (upper - lower) / 2
-                if utf16Offsets[middle] < offset { lower = middle + 1 } else { upper = middle }
-            }
-            return lower < utf16Offsets.count && utf16Offsets[lower] == offset ? lower : nil
-        }
-        struct Occurrence {
-            let term: Int
-            let lower: Int
-            let upper: Int
-            let original: Range<Int>
-        }
-        let occurrences = zip(requested, mapped).compactMap { request, original -> Occurrence? in
-            guard let original,
-                let lower = characterOffset(original.lowerBound), let upper = characterOffset(original.upperBound),
-                upper - lower <= 240
-            else { return nil }
-            return Occurrence(term: request.term, lower: lower, upper: upper, original: original)
-        }.sorted {
-            if $0.lower != $1.lower { return $0.lower < $1.lower }
-            if $0.upper != $1.upper { return $0.upper < $1.upper }
-            return $0.term < $1.term
-        }
-        let starts = Set([0] + occurrences.flatMap { [max(0, $0.lower - 40), max(0, $0.upper - 240)] }).sorted()
-        let ends = occurrences.indices.sorted {
-            if occurrences[$0].upper != occurrences[$1].upper { return occurrences[$0].upper < occurrences[$1].upper }
-            return $0 < $1
-        }
-        var counts = Array(repeating: 0, count: terms.count)
-        var active = Array(repeating: false, count: occurrences.count)
-        var distinct = 0
-        var repeated = 0
-        var lowerCursor = 0
-        var upperCursor = 0
-        var best = (start: 0, distinct: -1, repeated: -1)
-        func adjust(_ term: Int, by delta: Int) {
-            let previous = counts[term]
-            counts[term] += delta
-            distinct += (counts[term] > 0 ? 1 : 0) - (previous > 0 ? 1 : 0)
-            repeated += min(2, counts[term]) - min(2, previous)
-        }
-        // Each occurrence enters/leaves at most once. Distinct focused concepts
-        // lead; repeated language contributes only a saturated secondary tie.
-        for start in starts {
-            let end = min(start + 240, positions.count - 1)
-            while upperCursor < ends.count, occurrences[ends[upperCursor]].upper <= end {
-                let index = ends[upperCursor]
-                if occurrences[index].lower >= start {
-                    active[index] = true
-                    adjust(occurrences[index].term, by: 1)
-                }
-                upperCursor += 1
-            }
-            while lowerCursor < occurrences.count, occurrences[lowerCursor].lower < start {
-                if active[lowerCursor] {
-                    active[lowerCursor] = false
-                    adjust(occurrences[lowerCursor].term, by: -1)
-                }
-                lowerCursor += 1
-            }
-            if distinct > best.distinct || distinct == best.distinct && repeated > best.repeated {
-                best = (start, distinct, repeated)
-            }
-        }
-        let winningEnd = min(best.start + 240, positions.count - 1)
-        let winning = occurrences.filter { $0.lower >= best.start && $0.upper <= winningEnd }
-        // Balance readable context around the winning cluster, retaining every
-        // complete match used to select it.
-        var start = 0
-        if let first = winning.first, let upper = winning.map(\.upper).max() {
-            start = min(max(0, (first.lower + upper - 240) / 2), max(0, positions.count - 1 - 240))
-        }
-        let end = min(start + 240, positions.count - 1)
-        let prefix = start > 0 ? "…" : ""
-        let excerpt = prefix + text[positions[start]..<positions[end]] + (end < positions.count - 1 ? "…" : "")
-        let ranges = occurrences.filter { $0.lower >= start && $0.upper <= end }.prefix(64).map {
-            let lower = $0.original.lowerBound - utf16Offsets[start] + prefix.utf16.count
-            let upper = $0.original.upperBound - utf16Offsets[start] + prefix.utf16.count
+        let window = ResearchExcerptWindow(
+            text: text,
+            matches: zip(requested, mapped).compactMap { request, original in
+                original.map { .init(range: $0, identity: terms[request.term]) }
+            },
+            characterLimit: 240, leadingContext: 40)
+        let lower = String.Index(utf16Offset: window.range.lowerBound, in: text)
+        let upper = String.Index(utf16Offset: window.range.upperBound, in: text)
+        let prefix = lower > text.startIndex ? "…" : ""
+        let excerpt = prefix + text[lower..<upper] + (upper < text.endIndex ? "…" : "")
+        let ranges = window.matches.prefix(64).map {
+            let lower = $0.lowerBound - window.range.lowerBound + prefix.utf16.count
+            let upper = $0.upperBound - window.range.lowerBound + prefix.utf16.count
             return lower..<upper
         }
         // Highlights come from complete-text matches: cropping a word cannot

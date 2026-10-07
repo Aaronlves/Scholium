@@ -136,7 +136,8 @@ extension WindowModel {
         recordsNavigationHistory: Bool = true,
         managedCreationBodyStartUTF16: Int? = nil,
         committedSnapshot: WorkspaceNoteSnapshot? = nil,
-        validateDisplay: @MainActor () throws -> Void = {}
+        validateDisplay: @MainActor () throws -> Void = {},
+        validateSource: @MainActor () async throws -> Void = {}
     ) async throws {
         guard !transferInProgress else { throw CancellationError() }
         try validateDisplay()
@@ -164,7 +165,7 @@ extension WindowModel {
             recordsNavigationHistory: recordsNavigationHistory,
             managedCreationBodyStartUTF16: managedCreationBodyStartUTF16,
             committedSnapshot: committedSnapshot,
-            validateDisplay: validateDisplay
+            validateDisplay: validateDisplay, validateSource: validateSource
         )
     }
 
@@ -174,7 +175,8 @@ extension WindowModel {
         recordsNavigationHistory: Bool = true,
         managedCreationBodyStartUTF16: Int? = nil,
         committedSnapshot: WorkspaceNoteSnapshot? = nil,
-        validateDisplay: @MainActor () throws -> Void = {}
+        validateDisplay: @MainActor () throws -> Void = {},
+        validateSource: @MainActor () async throws -> Void = {}
     ) async throws {
         if workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
         guard
@@ -198,6 +200,7 @@ extension WindowModel {
         if managedCreationBodyStartUTF16 == nil,
             let retainedTab = documentTabController.tab(for: reference)
         {
+            try await validateSource()
             try validateDisplay()
             guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
             try validateDocumentIsAvailable(retainedTab.document)
@@ -236,6 +239,7 @@ extension WindowModel {
         } else {
             hydrated = try await hydrateForOpening(snapshot)
         }
+        try await validateSource()
         try validateDisplay()
         guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
         guard
@@ -300,9 +304,9 @@ extension WindowModel {
                 relativePath: summary.id.relativePath
             )?.hasSameSourceBinding(as: summary) == true
         else { throw WorkspaceHydrationError.staleSnapshot }
-        try commitStagedWorkspaceLibrarySelection(staged)
+        let accepted = try commitStagedWorkspaceLibrarySelection(staged)
         shellState.selectLibraryWorkspace(staged.workspace)
-        refreshIdentityState(from: staged.vaultSnapshot)
+        refreshIdentityState(from: accepted)
         scheduleWorkspaceCatalogRefresh()
     }
 
@@ -361,12 +365,16 @@ extension WindowModel {
         line: Int? = nil,
         mode: NotePresentationMode? = nil,
         inspectorMode: ResearchInspectorMode? = nil,
-        sourceFingerprint: DocumentFingerprint? = nil
+        sourceFingerprint: DocumentFingerprint? = nil,
+        validateDisplay: @escaping @MainActor () throws -> Void = {},
+        validateSource: @escaping @MainActor () async throws -> Void = {}
     ) async {
+        do { try validateDisplay() } catch { return }
         if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
             await owner.openWorkspaceReference(
-                reference, line: line, mode: mode, inspectorMode: inspectorMode, sourceFingerprint: sourceFingerprint)
+                reference, line: line, mode: mode, inspectorMode: inspectorMode, sourceFingerprint: sourceFingerprint,
+                validateDisplay: validateDisplay, validateSource: validateSource)
             return
         }
         let navigationMode = mode ?? presentedDocumentMode
@@ -375,8 +383,12 @@ extension WindowModel {
                 DocumentSessionKey(vaultID: reference.vaultID, noteID: $0)
             }
         }
-        enqueueDocumentTransition(preparation: openingPreparation(for: reference), retainingCurrentDocument: retainedTarget) { [weak self] in
+        enqueueDocumentTransition(
+            preparation: openingPreparation(for: reference), retainingCurrentDocument: retainedTarget,
+            validateBeforePreparation: validateDisplay, admitBeforePreparation: validateSource
+        ) { [weak self] in
             guard let self else { return }
+            try validateDisplay()
             let alreadyCurrent =
                 sourceFingerprint != nil
                 && self.currentDocumentDescriptor?.reference.vaultID == reference.vaultID
@@ -384,9 +396,10 @@ extension WindowModel {
             if !alreadyCurrent {
                 try await self.activateWorkspaceReference(
                     reference,
-                    tabActivation: .place(.replaceSelected)
+                    tabActivation: .place(.replaceSelected), validateDisplay: validateDisplay, validateSource: validateSource
                 )
             }
+            try validateDisplay()
             if let inspectorMode { self.researchController.selectInspectorMode(inspectorMode) }
             var verifiedLine = line
             var locationNotice: String?
@@ -407,6 +420,7 @@ extension WindowModel {
                     document = nil
                 }
                 try Task.checkCancellation()
+                try validateDisplay()
                 guard self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
                     self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey
                 else { throw CancellationError() }
