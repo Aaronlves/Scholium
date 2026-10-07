@@ -192,6 +192,14 @@ pop-up selects these modes. Find and an indicator-free More share one native too
 group between Mode and Import. More contains Save, Find,
 Reveal Original in Finder, and Close Window. Reopening the same external file
 reveals its existing window and session. It has no Library, Chat, or Inspector.
+Opening, revealing, or closing an external file does not create, reveal, or change
+a Triptych window. Existing Triptych windows retain their selection and sessions.
+Import is the explicit bridge to a Triptych; reopening after closure reads the
+external file's current saved source.
+Unresolved Triptych membership permits authorized reading in Review with an
+explicit routing retry; editing and Import remain unavailable until that retry
+confirms an external file. A registered result offers explicit guarded Note opening.
+Background recovery does not change the reading context.
 
 The external window's trailing, system-accent toolbar action **Import to Triptych…** also
 appears in File. Its sheet selects one registered Triptych and Analyses,

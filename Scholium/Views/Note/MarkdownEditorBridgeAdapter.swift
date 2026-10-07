@@ -162,6 +162,11 @@ struct EditorDocumentTitleRenameMessage: Equatable, Sendable {
     let requestedTitle: String
 }
 
+struct EditorCitationInsertionMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let reference: MarkdownEditorCitationReference
+}
+
 struct EditorLinkCompletionQueryMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
     let requestID: String
@@ -209,6 +214,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case requestTextPaste(EditorTextPasteMessage)
     case requestMermaidRuntime(EditorBridgeEnvelope)
     case requestMathRuntime(EditorBridgeEnvelope)
+    case requestCitationInsertion(EditorCitationInsertionMessage)
     case linkCompletionQuery(EditorLinkCompletionQueryMessage)
     case writingContinuationQuery(EditorWritingContinuationQueryMessage)
     case cancelWritingContinuation(EditorWritingContinuationCancellationMessage)
@@ -233,6 +239,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
         case .requestDocumentTitleRename(let message): message.envelope
         case .requestDocumentFind(let message): message.envelope
         case .requestTextPaste(let message): message.envelope
+        case .requestCitationInsertion(let message): message.envelope
         case .linkCompletionQuery(let message): message.envelope
         case .writingContinuationQuery(let message): message.envelope
         case .cancelWritingContinuation(let message): message.envelope
@@ -439,6 +446,32 @@ enum EditorBridgeMessageDecoder {
                 UUID(uuidString: requestID) != nil
             else { return nil }
             return .cancelWritingContinuation(.init(envelope: envelope, requestID: requestID))
+        case "requestCitationInsertion":
+            guard
+                hasOnlyKeys(
+                    object,
+                    additional: [
+                        "type", "actionID", "requestID", "query", "fromUTF16", "toUTF16", "caretUTF16Offset", "editorCaretUTF16Offset", "interactionRevision",
+                    ]),
+                object["actionID"] as? String == "insertCitation",
+                let requestID = boundedString(object["requestID"], maximumUTF8Bytes: 128), UUID(uuidString: requestID) != nil,
+                let query = boundedString(object["query"], maximumUTF8Bytes: 2_048), query.utf16.count <= 512,
+                let from = nonnegativeInteger(object["fromUTF16"]),
+                let to = nonnegativeInteger(object["toUTF16"]),
+                let caret = nonnegativeInteger(object["caretUTF16Offset"]),
+                let editorCaret = nonnegativeInteger(object["editorCaretUTF16Offset"]),
+                let revision = nonnegativeInteger(object["interactionRevision"]),
+                to == caret, to - from == query.utf16.count + 1,
+                to <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes,
+                editorCaret <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes
+            else { return nil }
+            return .requestCitationInsertion(
+                .init(
+                    envelope: envelope,
+                    reference: .init(
+                        actionID: "insertCitation", requestID: requestID, query: query,
+                        fromUTF16: from, toUTF16: to, caretUTF16Offset: caret,
+                        editorCaretUTF16Offset: editorCaret, interactionRevision: revision)))
         case "linkCompletionQuery":
             guard
                 hasOnlyKeys(
@@ -609,7 +642,9 @@ enum EditorBridgeMessageDecoder {
     }
 
     private static func integer(_ value: Any?) -> Int? {
-        guard let number = value as? NSNumber else { return nil }
+        guard let number = value as? NSNumber,
+            CFGetTypeID(number) != CFBooleanGetTypeID()
+        else { return nil }
         let integer = number.intValue
         guard NSNumber(value: integer) == number else { return nil }
         return integer
@@ -621,7 +656,9 @@ enum EditorBridgeMessageDecoder {
     }
 
     private static func finiteDouble(_ value: Any?) -> Double? {
-        guard let number = value as? NSNumber else { return nil }
+        guard let number = value as? NSNumber,
+            CFGetTypeID(number) != CFBooleanGetTypeID()
+        else { return nil }
         let result = number.doubleValue
         return result.isFinite ? result : nil
     }

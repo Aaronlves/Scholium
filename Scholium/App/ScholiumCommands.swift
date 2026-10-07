@@ -361,6 +361,21 @@ private struct ScholiumInsertCommandContent: View {
             .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.annotatedWikilink) != true)
         Divider()
+        Button("Citation…") { editorActions?.perform(.insertCitation) }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.insertCitation) != true)
+        Button("Bibliography…") { editorActions?.perform(.insertBibliography) }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.insertBibliography) != true)
+        Menu("Citations") {
+            Button("Refresh Citations") { editorActions?.perform(.refreshCitations) }
+                .disabled(editorActions?.isAvailable(.refreshCitations) != true)
+            Button("Citation Style…") { editorActions?.perform(.citationStyle) }
+                .disabled(editorActions?.isAvailable(.citationStyle) != true)
+            Button("Cancel Citation Operation") { editorActions?.perform(.cancelCitation) }
+                .disabled(editorActions?.isAvailable(.cancelCitation) != true)
+        }
+        Divider()
         Button("Footnote") { editorActions?.perform(.insertFootnote) }
             .scholiumActivationPointer()
             .scholiumKeyboardShortcut(.insertFootnote)

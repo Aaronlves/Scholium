@@ -19,7 +19,9 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        markdownFiles.finishLaunching()
+        markdownFiles.finishLaunching(
+            isDefaultLaunch: notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true
+        )
     }
 
     @objc private func applicationMenuDidSendAction(_ notification: Notification) {

@@ -654,10 +654,32 @@ struct NoteContentView<ShellNotices: View>: View {
         state.identityAmbiguity != nil
             || state.pendingIdentityRebinding != nil
             || documentIntegrityPresentation != nil
+            || citationPresentation.isVisible
+    }
+
+    private var citationPresentation: DocumentCitationPresentation {
+        documentSession.citationPresentation(committedDocument: note.document, editingIsAvailable: editingIsAvailable)
     }
 
     @ViewBuilder
     private var localNotices: some View {
+        DocumentCitationNotice(
+            presentation: citationPresentation,
+            dismiss: editorSession.dismissCitationStatus,
+            refresh: {
+                Task { @MainActor in
+                    guard controller.selectedDocument?.editingTarget == target, citationPresentation.canRefresh else { return }
+                    do { try await editorSession.perform(.refreshCitations) } catch {
+                        await editorSession.announceCitationStatus(ScholiumErrorLocalization.message(error))
+                    }
+                }
+            },
+            openSource: {
+                guard controller.selectedDocument?.editingTarget == target, citationPresentation.canOpenSource else { return }
+                selectPresentationMode(.source)
+            }
+        )
+
         if let ambiguity = state.identityAmbiguity {
             IdentityAmbiguityNotice(ambiguity: ambiguity) {
                 actions.requestIdentityResolution()

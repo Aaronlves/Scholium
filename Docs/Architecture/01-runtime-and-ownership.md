@@ -215,7 +215,8 @@ source, Undo or closed tabs.
 
 The App file-opening coordinator sequences Finder, File and Chat routes, resolves
 registered Note ownership before external opening, and queues launch requests until
-scene routing is ready. ExternalMarkdownWindowRegistry owns file-window deduplication
+scene routing is ready. Launch intent gates automatic workspace creation.
+ExternalMarkdownWindowRegistry owns file-window deduplication
 and close/quit admission. Each external model owns its editor, observation,
 conflict and import presentation; ExternalMarkdownFileSession owns guarded file
 I/O. Import captures checked source, then uses workspace creation and Note opening.

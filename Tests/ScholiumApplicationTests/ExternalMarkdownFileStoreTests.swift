@@ -315,6 +315,92 @@ struct ExternalMarkdownFileStoreTests {
         await session.close()
     }
 
+    @Test("Canceled external saves stop at actor admission or immediately before replacement", arguments: [false, true])
+    func canceledSavePreservesOriginal(beforeSwap: Bool) async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        let original = Data("\u{FEFF}# Original\r\n".utf8)
+        try original.write(to: file)
+        let (session, opened) = try ExternalMarkdownFileSession.open(file)
+        if beforeSwap {
+            await session.installBeforeSwapTestHook { _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+        }
+        let saving = Task {
+            if !beforeSwap { withUnsafeCurrentTask { $0?.cancel() } }
+            return try await session.save(candidate: "# Canceled edit\r\n", expected: opened)
+        }
+        await #expect(throws: CancellationError.self) { _ = try await saving.value }
+        #expect(try Data(contentsOf: file) == original)
+        #expect(try await session.load().identity == opened.identity)
+        let staged = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(".source.md-scholium-") }
+        #expect(staged.isEmpty)
+        await session.close()
+    }
+
+    @Test("Cleanup failure after exact source proof keeps the confirmed save and the displaced original")
+    func cleanupFailureDoesNotRevokeConfirmedSave() async throws {
+        let root = try fixture()
+        defer {
+            _ = Darwin.chmod(root.path, 0o700)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let file = root.appendingPathComponent("source.md")
+        let original = Data("\u{FEFF}# Original\r\n".utf8)
+        let candidate = "\u{FEFF}# Confirmed edit\r\n"
+        try original.write(to: file)
+        let (session, opened) = try ExternalMarkdownFileSession.open(file)
+        await session.installAfterSaveProofTestHook { _ in
+            _ = Darwin.chmod(root.path, 0o500)
+        }
+
+        let saved = try await session.save(candidate: candidate, expected: opened)
+        #expect(saved.source == candidate)
+        #expect(saved.fingerprint == DocumentFingerprint(content: candidate))
+        #expect(try Data(contentsOf: file) == Data(candidate.utf8))
+        #expect(try await session.load().identity == saved.identity)
+        let staged = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(".source.md-scholium-") }
+        #expect(staged.count == 1)
+        #expect(try Data(contentsOf: #require(staged.first)) == original)
+        // A save acknowledgement uses the committed revision even while
+        // housekeeping remains blocked; it does not repeat the replacement.
+        let unchanged = try await session.save(candidate: candidate, expected: saved)
+        #expect(unchanged.identity == saved.identity)
+        #expect(try Data(contentsOf: file) == Data(candidate.utf8))
+        await session.close()
+    }
+
+    @Test("Post-proof cleanup never deletes an unexpected peer entry")
+    func changedCleanupEntryIsPreserved() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("source.md")
+        let parkedOriginal = root.appendingPathComponent("retained-original.md")
+        let original = Data("# Original\r\n".utf8)
+        let peer = Data("# Peer-owned staging entry\r\n".utf8)
+        let candidate = "# Confirmed edit\r\n"
+        try original.write(to: file)
+        let (session, opened) = try ExternalMarkdownFileSession.open(file)
+        await session.installAfterSaveProofTestHook { stagingURL in
+            _ = Darwin.rename(stagingURL.path, parkedOriginal.path)
+            try? peer.write(to: stagingURL)
+        }
+
+        let saved = try await session.save(candidate: candidate, expected: opened)
+        #expect(saved.source == candidate)
+        #expect(try Data(contentsOf: file) == Data(candidate.utf8))
+        #expect(try Data(contentsOf: parkedOriginal) == original)
+        let staged = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(".source.md-scholium-") }
+        #expect(staged.count == 1)
+        #expect(try Data(contentsOf: #require(staged.first)) == peer)
+        await session.close()
+    }
+
     @Test("Only valid, bounded UTF-8 regular Markdown files can open")
     func unsuitableOriginals() throws {
         let root = try fixture()

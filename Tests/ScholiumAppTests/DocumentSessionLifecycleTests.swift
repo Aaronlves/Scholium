@@ -563,6 +563,7 @@ struct DocumentSessionLifecycleTests {
         controller.migratePresentationPath(
             from: "Before.md",
             to: "After.md",
+            noteID: key.noteID,
             vaultID: key.vaultID
         )
 

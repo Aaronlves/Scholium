@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import OSLog
 import ScholiumContracts
 
 public enum ExternalMarkdownFileError: Error, Equatable, LocalizedError, Sendable {
@@ -78,6 +79,8 @@ public actor ExternalMarkdownFileSession {
     private var isClosed = false
     private var beforeSwapForTesting: (@Sendable (URL) -> Void)?
     private var beforeRollbackForTesting: (@Sendable (URL) -> Void)?
+    private var afterSaveProofForTesting: (@Sendable (URL) -> Void)?
+    private static let logger = Logger(subsystem: "com.scholium.app", category: "ExternalMarkdownSave")
 
     private init(url: URL, scope: ExternalMarkdownSecurityScope, identity: ExternalMarkdownFileIdentity) {
         self.url = url
@@ -142,6 +145,7 @@ public actor ExternalMarkdownFileSession {
     /// Manual save of the checked editor buffer. This never accepts a Chat
     /// snapshot as its revision authority, and never modifies the candidate.
     public func save(candidate: String, expected: ExternalMarkdownFileSnapshot) throws -> ExternalMarkdownFileSnapshot {
+        try Task.checkCancellation()
         try validate(expected)
         let candidateBytes = Data(candidate.utf8)
         guard candidateBytes.count <= Self.maximumBytes else { throw ExternalMarkdownFileError.tooLarge }
@@ -160,12 +164,14 @@ public actor ExternalMarkdownFileSession {
         var replacementMayHaveCommitted = false
         coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &coordinationError) { coordinatedURL in
             outcome = Result {
+                try Task.checkCancellation()
                 guard coordinatedURL.standardizedFileURL == url else { throw ExternalMarkdownFileError.changed }
                 let saved = try Self.replace(
                     at: url, expected: expectedBytes, identity: expected.identity,
                     candidate: candidateBytes, replacementMayHaveCommitted: &replacementMayHaveCommitted,
                     beforeSwapForTesting: beforeSwapForTesting,
-                    beforeRollbackForTesting: beforeRollbackForTesting)
+                    beforeRollbackForTesting: beforeRollbackForTesting,
+                    afterSaveProofForTesting: afterSaveProofForTesting)
                 return try ExternalMarkdownFileSnapshot(
                     url: url, bytes: saved.bytes, identity: saved.identity, sessionID: sessionID)
             }
@@ -200,6 +206,10 @@ public actor ExternalMarkdownFileSession {
 
     internal func installBeforeRollbackTestHook(_ hook: @escaping @Sendable (URL) -> Void) {
         beforeRollbackForTesting = hook
+    }
+
+    internal func installAfterSaveProofTestHook(_ hook: @escaping @Sendable (URL) -> Void) {
+        afterSaveProofForTesting = hook
     }
 
     private struct ReadResult {
@@ -266,7 +276,8 @@ public actor ExternalMarkdownFileSession {
         at url: URL, expected: Data, identity: ExternalMarkdownFileIdentity,
         candidate: Data, replacementMayHaveCommitted: inout Bool,
         beforeSwapForTesting: (@Sendable (URL) -> Void)?,
-        beforeRollbackForTesting: (@Sendable (URL) -> Void)?
+        beforeRollbackForTesting: (@Sendable (URL) -> Void)?,
+        afterSaveProofForTesting: (@Sendable (URL) -> Void)?
     ) throws -> ReadResult {
         let parentURL = url.deletingLastPathComponent()
         let directory = Darwin.open(parentURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
@@ -329,6 +340,7 @@ public actor ExternalMarkdownFileSession {
         guard fstatat(directory, stagingName, &stagedEntryAtSwap, AT_SYMLINK_NOFOLLOW) == 0 else {
             throw ExternalMarkdownFileError.changed
         }
+        try Task.checkCancellation()
         guard renameatx_np(directory, stagingName, directory, name, UInt32(RENAME_SWAP)) == 0 else {
             throw mappedErrno()
         }
@@ -387,12 +399,19 @@ public actor ExternalMarkdownFileSession {
             }
             _ = try checkedParent(directory, url: parentURL)
             guard fsync(directory) == 0 else { throw mappedErrno() }
-            guard entryMatches(originalDescriptor, directory: directory, name: stagingName) else {
-                throw ExternalMarkdownFileError.commitUncertain
+            // Exact candidate readback and displaced-source reconciliation
+            // have confirmed the save. Housekeeping cannot revoke that proof
+            // or turn a subsequent retry into another source write.
+            afterSaveProofForTesting?(parentURL.appendingPathComponent(stagingName))
+            if entryMatches(originalDescriptor, directory: directory, name: stagingName),
+                unlinkat(directory, stagingName, 0) == 0
+            {
+                stageExists = false
             }
-            guard unlinkat(directory, stagingName, 0) == 0 else { throw mappedErrno() }
-            stageExists = false
-            _ = fsync(directory)
+            let cleanupSynchronized = fsync(directory) == 0
+            if stageExists || !cleanupSynchronized {
+                logger.error("An external Markdown save was confirmed, but ancillary cleanup or directory synchronization was incomplete.")
+            }
             return saved
         } catch let error as ExternalMarkdownFileError where error == .changed {
             throw error

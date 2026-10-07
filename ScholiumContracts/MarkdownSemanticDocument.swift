@@ -408,6 +408,7 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
     public let mathExpressions: [MathExpression]
     public let links: [LinkOccurrence]
     public let diagnostics: [MarkdownDiagnostic]
+    public let zoteroFields: ZoteroMarkdownFields
 
     public init(parsing document: NoteDocument) {
         self = MarkdownSemanticParser.parse(document)
@@ -423,7 +424,8 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
         footnoteReferences: [FootnoteReference],
         mathExpressions: [MathExpression],
         links: [LinkOccurrence],
-        diagnostics: [MarkdownDiagnostic]
+        diagnostics: [MarkdownDiagnostic],
+        zoteroFields: ZoteroMarkdownFields? = nil
     ) {
         self.fingerprint = fingerprint
         self.blocks = blocks
@@ -435,6 +437,7 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
         self.mathExpressions = mathExpressions
         self.links = links
         self.diagnostics = diagnostics
+        self.zoteroFields = zoteroFields ?? .empty(fingerprint: fingerprint)
     }
 }
 
@@ -460,6 +463,7 @@ public enum MarkdownSemanticParser {
         var inlines: [MarkdownInline] = []
         var headings: [HeadingNode] = []
         var literalRanges: [NSRange] = []
+        var inlineHTMLSpans: [SourceSpan] = []
         collectMarkup(
             parsed,
             bodyMapper: bodyMapper,
@@ -468,7 +472,8 @@ public enum MarkdownSemanticParser {
             blocks: &blocks,
             inlines: &inlines,
             headings: &headings,
-            literalRanges: &literalRanges
+            literalRanges: &literalRanges,
+            inlineHTMLSpans: &inlineHTMLSpans
         )
 
         let commentResult = parseComments(
@@ -511,7 +516,7 @@ public enum MarkdownSemanticParser {
             excluded: literalRanges,
             inlines: inlines
         )
-        return MarkdownSemanticDocument(
+        let original = MarkdownSemanticDocument(
             fingerprint: document.fingerprint,
             blocks: blocks.sorted { $0.span.utf16LowerBound < $1.span.utf16LowerBound },
             inlines: inlines.sorted { left, right in
@@ -531,6 +536,17 @@ public enum MarkdownSemanticParser {
                     ($0.span?.utf16LowerBound ?? Int.max) < ($1.span?.utf16LowerBound ?? Int.max)
                 }
         )
+        let zoteroFields = ZoteroMarkdownFields.parse(document, semantic: original, inlineHTMLSpans: inlineHTMLSpans)
+        let metadata = zoteroFields.metadataSpans.map(\.utf16Range)
+        return MarkdownSemanticDocument(
+            fingerprint: original.fingerprint,
+            blocks: original.blocks.filter { !($0.kind == .html && metadata.contains($0.span.utf16Range)) },
+            inlines: original.inlines, headings: original.headings, callouts: original.callouts,
+            footnoteDefinitions: original.footnoteDefinitions, footnoteReferences: original.footnoteReferences,
+            mathExpressions: original.mathExpressions,
+            links: original.links.filter { !$0.target.lowercased().hasPrefix(ZoteroMarkdownFields.citationScheme) },
+            diagnostics: original.diagnostics, zoteroFields: zoteroFields
+        )
     }
 
     private static func collectMarkup(
@@ -541,7 +557,8 @@ public enum MarkdownSemanticParser {
         blocks: inout [MarkdownBlock],
         inlines: inout [MarkdownInline],
         headings: inout [HeadingNode],
-        literalRanges: inout [NSRange]
+        literalRanges: inout [NSRange],
+        inlineHTMLSpans: inout [SourceSpan]
     ) {
         if let range = markup.range,
             let relativeRange = bodyMapper.nsRange(for: range)
@@ -566,6 +583,7 @@ public enum MarkdownSemanticParser {
                 if markup is CodeBlock || markup is InlineCode || markup is HTMLBlock || markup is InlineHTML {
                     literalRanges.append(relativeRange)
                 }
+                if markup is InlineHTML { inlineHTMLSpans.append(span) }
             }
         }
 
@@ -578,7 +596,8 @@ public enum MarkdownSemanticParser {
                 blocks: &blocks,
                 inlines: &inlines,
                 headings: &headings,
-                literalRanges: &literalRanges
+                literalRanges: &literalRanges,
+                inlineHTMLSpans: &inlineHTMLSpans
             )
         }
     }

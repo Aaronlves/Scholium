@@ -1441,6 +1441,7 @@ final class DocumentController: ObservableObject {
     func migratePresentationPath(
         from sourcePath: String,
         to destinationPath: String,
+        noteID: UUID,
         vaultID: UUID?
     ) {
         if let vaultID,
@@ -1457,7 +1458,7 @@ final class DocumentController: ObservableObject {
             restoredUnqualifiedPresentations[destinationPath] = presentation
         }
         let migratedKeys = retainedReferences.compactMap { key, reference in
-            reference.vaultID == vaultID && reference.relativePath == sourcePath ? key : nil
+            key.noteID == noteID && reference.vaultID == vaultID && reference.relativePath == sourcePath ? key : nil
         }
         for key in migratedKeys {
             guard let reference = retainedReferences[key] else { continue }
@@ -2302,6 +2303,22 @@ final class DocumentController: ObservableObject {
             if let note = vault.documents.first(where: {
                 $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID
             }) {
+                return .located(vault, note)
+            }
+            if let rebinding = vault.identityRecovery.pendingRebindings.first(where: {
+                $0.vaultID == vaultID && $0.noteID == descriptor.sessionKey.noteID
+                    && ($0.previousRelativePath == descriptor.reference.relativePath
+                        || $0.relativePath == descriptor.reference.relativePath)
+            }),
+                let note = vault.documents.first(where: {
+                    $0.id.relativePath == rebinding.relativePath
+                        && $0.stableIdentity == .pending(descriptor.sessionKey.noteID)
+                        && $0.fingerprint == rebinding.fingerprint
+                })
+            {
+                // Identity was confirmed before the move. Pending record
+                // migration blocks writes, but is not a deleted document or
+                // permission to attach a replacement at its former path.
                 return .located(vault, note)
             }
             guard

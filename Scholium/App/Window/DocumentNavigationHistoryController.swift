@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import ScholiumContracts
 
 enum DocumentNavigationDirection: Sendable {
     case back
@@ -116,5 +117,48 @@ final class DocumentNavigationHistoryController: ObservableObject {
         entries = []
         currentIndex = nil
         revision &+= 1
+    }
+
+    /// Visits retain return positions, while their location follows the same
+    /// stable Note identity as open tabs. A reused path cannot claim a visit.
+    func migratePath(from source: String, to destination: String, key: DocumentSessionKey) {
+        var changed = false
+        for index in entries.indices {
+            guard let descriptor = entries[index].document.workspaceDescriptor,
+                descriptor.sessionKey == key,
+                descriptor.reference.relativePath == source
+            else { continue }
+            entries[index].document = relocated(descriptor, to: destination)
+            changed = true
+        }
+        if changed { revision &+= 1 }
+    }
+
+    func receive(_ snapshot: WorkspaceSnapshot) {
+        var changed = false
+        for index in entries.indices {
+            guard let descriptor = entries[index].document.workspaceDescriptor,
+                let note = snapshot.vault(id: descriptor.sessionKey.vaultID)?.documents.first(where: {
+                    $0.stableIdentity.resolvedID == descriptor.sessionKey.noteID
+                }), note.id.relativePath != descriptor.reference.relativePath
+            else { continue }
+            entries[index].document = relocated(descriptor, to: note.id.relativePath)
+            changed = true
+        }
+        if changed { revision &+= 1 }
+    }
+
+    private func relocated(_ descriptor: WindowDocumentDescriptor, to path: String) -> WindowSelectedDocument {
+        .workspace(
+            .init(
+                sessionKey: descriptor.sessionKey,
+                reference: .init(
+                    vaultID: descriptor.reference.vaultID,
+                    vaultName: descriptor.reference.vaultName,
+                    vaultRole: descriptor.reference.vaultRole,
+                    relativePath: path,
+                    stableNoteID: descriptor.reference.stableNoteID
+                )
+            ))
     }
 }

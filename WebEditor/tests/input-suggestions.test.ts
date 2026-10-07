@@ -5,13 +5,15 @@ import {
 } from "@codemirror/autocomplete";
 import {EditorSelection, EditorState, StateEffect, Transaction, type Extension, type TransactionSpec} from "@codemirror/state";
 import {EditorView, type DecorationSet, type WidgetType} from "@codemirror/view";
-import {history, undo} from "@codemirror/commands";
+import {history, undo, undoDepth} from "@codemirror/commands";
 import {parseHTML} from "linkedom";
 import {describe, expect, it, vi} from "vitest";
 import {
   createEditorInputSuggestions,
   inputSuggestionTesting,
   safeContinuationSuffix,
+  type EditorCitationSuggestionIntent,
+  type EditorInputSuggestionActionCompletion,
 } from "../input-suggestions";
 import type {EditorMode, MarkdownEditingDialect} from "../protocol";
 import {exactSourceHistory, exactSourceState, setExactSource} from "../exact-source-history";
@@ -623,5 +625,181 @@ describe("Indexed writing suggestions", () => {
   it("does not suggest after spaces or at the end of a protected region", () => {
     expect(synchronousResult(controller().suggestions.writingCompletionSource, "   ")).toBeNull();
     expect(synchronousResult(controller("source", [{from: 0, to: 3}]).suggestions.writingCompletionSource, "res")).toBeNull();
+  });
+});
+
+
+function citationSuggestionHarness(source = "According to @", setup: {
+  composing?: boolean; mode?: EditorMode; protectedRanges?: readonly {from: number; to: number}[];
+  readOnly?: boolean; editable?: boolean; multipleSelections?: boolean;
+  canInsertCitation?: (state: EditorState) => boolean;
+} = {}) {
+  const normalized = normalizedDocumentText(source);
+  let composing = setup.composing ?? false, revision = 1;
+  let state = EditorState.create({doc: normalized,
+    selection: setup.multipleSelections ? EditorSelection.create([EditorSelection.cursor(0), EditorSelection.cursor(normalized.length)])
+      : {anchor: normalized.length},
+    extensions: [history(), exactSourceHistory, EditorState.allowMultipleSelections.of(true),
+      ...(setup.readOnly ? [EditorState.readOnly.of(true)] : []),
+      ...(setup.editable === false ? [EditorView.editable.of(false)] : [])]})
+    .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
+  const intents: EditorCitationSuggestionIntent[] = [], queries: {id: string; kind: string; query: string}[] = [];
+  const suggestions = createEditorInputSuggestions({
+    nativeFloating: {show: () => 0, hide: () => {}}, mode: () => setup.mode ?? "livePreview",
+    dialect: () => dialect, isComposing: () => composing,
+    protectedRanges: () => setup.protectedRanges ?? [],
+    requestLinkCompletions: (id, kind, query) => {queries.push({id, kind, query});},
+    requestCitationInsertion: intent => intents.push(intent), citationContextRevision: () => revision,
+    canInsertCitation: setup.canInsertCitation,
+    didApply: () => {throw new Error("A citation intent must not label an editor mutation.");},
+  });
+  const view = {get state() {return state;}, get composing() {return composing;}, hasFocus: true,
+    dispatch(spec: Transaction | TransactionSpec) {
+      state = spec instanceof Transaction ? spec.state : state.update(spec).state;
+    }} as unknown as EditorView;
+  function result() {
+    return suggestions.citationCompletionSource(new CompletionContext(state, state.selection.main.head, false)) as CompletionResult | null;
+  }
+  function accept(completionResult: CompletionResult) {
+    const action = completionResult.options[0];
+    expect(typeof action.apply).toBe("function");
+    if (typeof action.apply === "function") action.apply(view, action, completionResult.from, state.selection.main.head);
+  }
+  return {suggestions, intents, queries, view, result, accept, state: () => state,
+    setComposing: (value: boolean) => {composing = value;}, changeRevision: () => {revision++;}};
+}
+
+describe("local citation completion", () => {
+  it("checks citation availability when offering and accepting without restricting Analysis references", async () => {
+    let available = false;
+    const checkedStates: EditorState[] = [];
+    const h = citationSuggestionHarness("According to @Scanlon", {canInsertCitation: state => {
+      checkedStates.push(state);
+      return available;
+    }});
+    expect(h.result()).toBeNull();
+    expect(checkedStates).toEqual([h.state()]);
+    const pending = h.suggestions.analysisReferenceCompletionSource(
+      new CompletionContext(h.state(), h.state().selection.main.head, false),
+    ) as Promise<CompletionResult>;
+    expect(h.queries[0]).toMatchObject({kind: "analysisReference", query: "Scanlon"});
+    h.suggestions.resolveLinkCompletionQuery(h.queries[0].id, [{
+      label: "T. M. Scanlon 1998", insertion: "What We Owe", detail: "Analysis", path: "Analyses/What We Owe.md",
+      displayText: "T. M. Scanlon 1998", isAmbiguous: false,
+    }]);
+    expect((await pending).options.map(option => option.label)).toEqual(["T. M. Scanlon 1998"]);
+    expect(checkedStates).toHaveLength(1);
+    available = true;
+    const offered = h.result()!;
+    expect(offered.options).toHaveLength(1);
+    available = false;
+    h.accept(offered);
+    expect(checkedStates).toHaveLength(3);
+    expect(checkedStates[2]).toBe(h.state());
+    expect(h.intents).toEqual([]);
+    expect(h.state().field(exactSourceState).text).toBe("According to @Scanlon");
+    expect(undoDepth(h.state())).toBe(0);
+  });
+
+  it("shares the 512 UTF-16 unit query limit with Analysis references and keeps the preceding boundary", async () => {
+    const query = "🧭".repeat(255) + "ab";
+    expect(query.length).toBe(512);
+    const h = citationSuggestionHarness(`According to @${query}`);
+    const offered = h.result()!;
+    expect(offered.from).toBe("According to ".length);
+    const pending = h.suggestions.analysisReferenceCompletionSource(
+      new CompletionContext(h.state(), h.state().selection.main.head, false),
+    ) as Promise<CompletionResult>;
+    expect(h.queries[0]).toMatchObject({kind: "analysisReference", query});
+    h.suggestions.resolveLinkCompletionQuery(h.queries[0].id, []);
+    expect((await pending).from).toBe(offered.from);
+    h.accept(offered);
+    expect(h.intents[0].query).toBe(query);
+    expect(h.intents[0].toUTF16 - h.intents[0].fromUTF16).toBe(513);
+    for (const source of [`@${query}c`, `mail@${query}`]) {
+      const invalid = citationSuggestionHarness(source);
+      expect(invalid.result()).toBeNull();
+      expect(invalid.suggestions.analysisReferenceCompletionSource(
+        new CompletionContext(invalid.state(), invalid.state().selection.main.head, false),
+      )).toBeNull();
+      expect(invalid.queries).toEqual([]);
+    }
+  });
+
+  it("offers an immediate typed action while Analysis references are still pending", async () => {
+    const h = citationSuggestionHarness("According to @Scanlon");
+    const context = new CompletionContext(h.state(), h.state().selection.main.head, false);
+    const pending = h.suggestions.analysisReferenceCompletionSource(context) as Promise<CompletionResult>;
+    expect(pending).toBeInstanceOf(Promise);
+    expect(h.queries[0].kind).toBe("analysisReference");
+    const local = h.result()!;
+    expect(local).not.toBeInstanceOf(Promise);
+    const action = local.options[0] as EditorInputSuggestionActionCompletion;
+    expect(action.label).toBe("Insert Citation…");
+    expect(action.actionID).toBe("insertCitation");
+    expect(action.detail).toBe("Zotero");
+    expect(action).not.toHaveProperty("path");
+    h.suggestions.resolveLinkCompletionQuery(h.queries[0].id, [{
+      label: "T. M. Scanlon 1998", insertion: "What We Owe", detail: "Analysis", path: "Analyses/What We Owe.md",
+      displayText: "T. M. Scanlon 1998", isAmbiguous: false,
+    }]);
+    expect((await pending).options.map(option => option.label)).toEqual(["T. M. Scanlon 1998"]);
+    expect(h.state().field(exactSourceState).text).toBe("According to @Scanlon");
+  });
+
+  it("emits checked exact offsets without deleting the query or adding an Undo event", () => {
+    const source = "\uFEFF🧭 First.\r\nAccording to @作者 e\u0301";
+    const h = citationSuggestionHarness(source);
+    const result = h.result()!;
+    h.accept(result);
+    expect(h.intents).toHaveLength(1);
+    expect(h.intents[0]).toMatchObject({actionID: "insertCitation", query: "作者 e\u0301",
+      fromUTF16: source.indexOf("@"), toUTF16: source.length, caretUTF16Offset: source.length,
+      editorCaretUTF16Offset: normalizedDocumentText(source).length, interactionRevision: 1});
+    expect(h.intents[0].requestID.length).toBeGreaterThan(0);
+    expect(h.state().field(exactSourceState).text).toBe(source);
+    expect(undoDepth(h.state())).toBe(0);
+    h.accept(result);
+    expect(h.intents).toHaveLength(1);
+  });
+
+  it("rejects source, interaction, lifecycle and composition changes before acceptance", () => {
+    for (const invalidate of [
+      (h: ReturnType<typeof citationSuggestionHarness>) => h.view.dispatch({changes: {from: 0, insert: "changed "}}),
+      (h: ReturnType<typeof citationSuggestionHarness>) => h.changeRevision(),
+      (h: ReturnType<typeof citationSuggestionHarness>) => h.suggestions.resetDocument(),
+      (h: ReturnType<typeof citationSuggestionHarness>) => h.setComposing(true),
+      (h: ReturnType<typeof citationSuggestionHarness>) => h.view.dispatch({selection: {anchor: 0}}),
+    ]) {
+      const h = citationSuggestionHarness();
+      const result = h.result()!;
+      invalidate(h);
+      const before = h.state().field(exactSourceState).text;
+      h.accept(result);
+      expect(h.intents).toEqual([]);
+      expect(h.state().field(exactSourceState).text).toBe(before);
+    }
+    const restored = citationSuggestionHarness();
+    const result = restored.result()!;
+    restored.view.dispatch({selection: {anchor: 0}}); restored.changeRevision();
+    restored.view.dispatch({selection: {anchor: restored.state().doc.length}}); restored.changeRevision();
+    restored.accept(result);
+    expect(restored.intents).toEqual([]);
+  });
+
+  it("yields to composition, protected spans, read-only state and unsupported completion contexts", () => {
+    for (const h of [
+      citationSuggestionHarness("@", {composing: true}),
+      citationSuggestionHarness("@", {mode: "source"}),
+      citationSuggestionHarness("@", {readOnly: true}),
+      citationSuggestionHarness("@", {editable: false}),
+      citationSuggestionHarness("@", {multipleSelections: true}),
+      citationSuggestionHarness("@key", {protectedRanges: [{from: 0, to: 4}]}),
+      citationSuggestionHarness("@name", {protectedRanges: [{from: 1, to: 5}]}),
+      citationSuggestionHarness("mail@example"),
+    ]) expect(h.result()).toBeNull();
+    const {suggestions} = controller();
+    const h = citationSuggestionHarness();
+    expect(suggestions.citationCompletionSource(new CompletionContext(h.state(), h.state().doc.length, false))).toBeNull();
   });
 });

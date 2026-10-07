@@ -1,4 +1,5 @@
 import {Text} from "@codemirror/state";
+import {isCitationDestination} from "./zotero-field-envelope";
 
 /** Resolves a clicked link from the exact CodeMirror source line. */
 export function linkTargetAt(source: string | Text, offset: number): string | null {
@@ -15,7 +16,10 @@ export function linkTargetAt(source: string | Text, offset: number): string | nu
   for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
     const from = lineFrom + match.index;
     const to = from + match[0].length;
-    if (offset >= from && offset < to) return match[1].trim();
+    if (offset >= from && offset < to) {
+      const target = match[1].trim().replace(/^<|>$/g, "");
+      return isCitationDestination(target) ? null : match[1].trim();
+    }
   }
   return null;
 }

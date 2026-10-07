@@ -59,12 +59,11 @@ identity disagreement pins the session dirty and coalesces a complete editor rea
 before save. Both runtimes enforce the same source limit; escaped transport
 capacity is checked separately.
 
-Every request binds protocol, request, session/document, fingerprint, generation
-and expiration. Mutation requests serialize and recheck identity after suspension;
-nonmutating snapshots may observe later generations. Expired/composing work cannot
-mutate source. Requests pass source as structured page-world arguments/encoded
-JSON, never interpolated executable JavaScript. Foundation object decoding is not
-used on outbound source values because leading BOM must survive exactly.
+Requests bind protocol/request, session/document, fingerprint, generation and
+expiration. Mutations serialize and recheck identity after suspension; snapshots
+may observe later generations. Expired/composing work cannot mutate. Outbound
+source uses structured page-world arguments/JSON, never executable interpolation
+or Foundation object decoding that loses leading BOM.
 
 A save acknowledges one immutable committed snapshot. Newer input stays dirty
 and schedules another save rather than being overwritten. Proven commits remain
@@ -98,11 +97,10 @@ maps to one exact source position in the same state, not an independent range.
 Direction adapters consume one content/bidi model without replacing text or
 altering composition, selection, insertion, deletion or Undo.
 
-Each Markdown command creates one atomic transaction/Undo event, preserving all
-bytes outside proved edit ranges. Multi-selection transformations refuse protected
-frontmatter, code/literal/comment/raw-HTML and malformed/ambiguous boundaries.
-Filename editing is an identity-checked native move request, never a Markdown title
-writer. Failed rename retains its draft error.
+Markdown commands are atomic Undo transactions preserving other bytes.
+Multi-selections refuse protected frontmatter, literals/code/comments/raw HTML
+and ambiguous or malformed boundaries. Filename drafts use identity-checked
+native moves; errors remain.
 
 ### Source locations and transient interaction
 
@@ -123,19 +121,25 @@ requests fail; unmappable editable passage requests may use Source. Current-Note
 Search consumes an immutable checked editor snapshot without flush, save or index
 publication; navigation validates freshness before a non-history reveal.
 
-Previews/completion/Find are transient and retain their originating session/window,
-request and geometry identity. Scroll, context exit, document change and teardown
-dismiss through that owner. Swift owns graph resolution, committed preview content,
-containment and URL policy; WebKit reports anchors/geometry only. Stale/ambiguous
-preview results are discarded. Find matching/replacement remains CodeMirror-owned;
-Review matching is read-only. Completion and reference insertion validate current
-context, generation, selection and protected ranges before one Undo transaction.
-Insertion receipts are revocable projections, never a second buffer.
+Previews/completion/Find retain originating session/window, request and geometry
+identity; scroll, exit, departure and teardown dismiss them. Swift owns graph
+resolution, committed previews, containment and URL policy; WebKit reports
+anchors/geometry only. Stale/ambiguous results are discarded. CodeMirror owns Find/replacement;
+Review matching is read-only. Completion/insertion rechecks context, generation,
+selection and protected ranges for one Undo. Receipts are revocable projections,
+not buffers.
 
-Separate typed WebEditor ports expose preview, completion and selection; the native
-host arbitrates one visible surface without universal payloads or unrelated callbacks.
-Review admits bounded read-page extensions. Chat's extension owns reply lifecycle,
-projection updates, transcript WebView subclass and events, outside the neutral reader.
+Typed WebEditor preview/completion/selection ports share arbitration of one native
+surface. Review admits bounded read-page extensions; Chat owns reply lifecycle,
+projection, WebView and events outside the neutral reader.
+
+Application's `ZoteroDocumentIntegration` implements Contracts' callback port,
+composed by `WorkspaceStore`. `MarkdownEditorSession` and `zotero-transaction.ts` stage against exact
+source/selection for one Undo. Contracts and editor parse versioned Markdown
+carriers; display uses readable fallback, never vendor HTML. Zotero owns
+picker/CSL. Completion confirms cleanup only; cancellation revokes acceptance
+and drains callbacks. Document notices derive integrity from committed Review
+source or the exact editing buffer. Status retains runtime acceptance.
 
 Writing continuation shares the retained editor's inline suggestion owner, with
 separate generation-bound request/cancellation messages. A short post-input pause

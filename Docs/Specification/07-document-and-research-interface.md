@@ -49,9 +49,8 @@ Cancel and operation-specific confirmation. Merge property conflicts show both
 authored entries and a named, initially unselected source/destination choice for
 each key. All choices precede the exact preview; changing destination clears them.
 
-Formatting and insertion remain available through native Format/Insert menus,
-keyboard shortcuts, and exact Markdown input. These routes preserve the current
-selection and share the existing source transaction and Undo behavior.
+Native Format/Insert menus, shortcuts and exact Markdown share selection-preserving
+source transactions and Undo.
 
 Document Find is one compact nonmodal floating panel at the document's logical
 upper trailing corner, using §19.1's native treatment. It neither dims nor
@@ -67,19 +66,21 @@ Clicking the document keeps Find open; reopening focuses its query. Drafts/optio
 stay with the document; narrow reflow retains native fields. Marked text remains
 local until committed; results cannot overwrite composition or consume Return/Escape.
 
-After `/` in a supported Edit context, insertion commands filter as text is
-typed. Acceptance replaces the slash and query in one Undo transaction;
-Escape preserves the text. Deletion remains ordinary editor input.
+After `/` in supported Edit contexts, insertion commands filter typed text;
+acceptance replaces slash/query in one Undo. Escape preserves them; deletion
+remains ordinary input.
 
-Slash commands, Wikilink, analysis-reference and Callout candidates share one
-bounded native list beside the caret, retaining editor focus. Filtering preserves
-width and opening direction; overflow scrolls. Autosave keeps it open until
-acceptance, dismissal or invalid context. Pointer/keyboard share one native
-secondary selection; click/Return accepts. Identity/path fits
-without another text owner. During composition, menus,
-candidates and previews yield immediately to input method; navigation and
-acceptance resume afterward.
-Native lists follow §19's system text, colors, controls and elevation.
+Slash commands, Wikilink, analysis-reference, citation command and Callout candidates
+share one bounded native caret list retaining editor focus. Width/direction
+survive filtering; overflow scrolls. Autosave retains it until acceptance,
+dismissal or invalid context. Pointer/keyboard share native secondary selection;
+click/Return accepts. Identity/path fits without another text owner. Composition
+immediately yields menus, candidates and previews to the input method until resumed.
+Lists follow §19's system text, colors, controls and elevation.
+
+Typing `@` retains Analysis-note choices and adds **Insert Citation…** (§15.5).
+Insert exposes Citation, Bibliography and the Citations submenu for Refresh,
+Style and Cancel; cancellation preserves the literal query.
 
 Edit/Source preview uses the document font, dotted underline and AI ⇥/Index ⇥
 badge; it clears the caret without a panel.
@@ -391,13 +392,14 @@ until the researcher disables or selectively re-enables managed copies.
 
 ### 18.4.2 Export Note
 
-**Export Note…** opens a preview. A native toolbar shows
-format, More and Export; a titlebar accessory reveals Match Document, APA 7,
-MLA 9, text size and PDF/DOCX paper size. The system draws the scroll edge as
-content moves behind the titlebar. Match Document uses Document Appearance.
-YAML is optional; presets format pages without rewriting citations.
-**Export** opens a native Save panel. Content stays opaque under §§19–20.
-DOCX preview is indicative; failure stays actionable and cancellation is quiet.
+**Export Note…** previews format, More and Export in a native toolbar; its
+accessory offers Match Document, APA 7, MLA 9, text size and PDF/DOCX paper size.
+System scroll edges follow content. Match Document uses Document Appearance;
+YAML is optional. Presets preserve supported CSL bibliography indentation/spacing
+without rewriting citations. Exports are static; DOCX has no live Zotero citation
+fields. Known stale/unresolved output requires explicit **Export Saved Text**.
+Export opens a native Save panel; content stays opaque (§§19–20). DOCX preview
+is indicative; errors remain actionable, cancellation quiet.
 
 ## 18.5 Contextual research and Changes
 

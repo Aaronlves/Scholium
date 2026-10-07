@@ -32,9 +32,31 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the exact-insertion byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(43);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(44);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
+  it("admits only closed citation operations with bounded completion coordinates", () => {
+    const reference = {actionID: "insertCitation", requestID: "8E1AD940-840E-49D1-A675-2C6D1079EAA0",
+      query: "Author e\u0301", fromUTF16: 10, toUTF16: 20, caretUTF16Offset: 20,
+      editorCaretUTF16Offset: 19, interactionRevision: 7};
+    const begin = {type: "beginCitation", transactionID: "citation_fixture", command: "addEditCitation", reference};
+    expect(isEditorRequest({...request, operation: begin})).toBe(true);
+    for (const invalid of [
+      {...begin, command: "unlinkAll"}, {...begin, transactionID: ""},
+      {...begin, transactionID: "bad\nidentifier"}, {...begin, unexpected: true},
+      {...begin, reference: {...reference, toUTF16: 19}},
+      {...begin, reference: {...reference, interactionRevision: true}},
+      {...begin, reference: {...reference, editorCaretUTF16Offset: -1}},
+      {...begin, reference: {...reference, unexpected: true}},
+    ]) expect(isEditorRequest({...request, operation: invalid})).toBe(false);
+    const callback = {type: "citationCallback", transactionID: "citation_fixture", value: {type: "getFields"}};
+    expect(isEditorRequest({...request, operation: callback})).toBe(true);
+    expect(isEditorRequest({...request, operation: {...callback, value: {type: "getFields", privateData: true}}})).toBe(false);
+    for (const type of ["finishCitation", "cancelCitation"]) {
+      expect(isEditorRequest({...request, operation: {type, transactionID: "citation_fixture"}})).toBe(true);
+      expect(isEditorRequest({...request, operation: {type, transactionID: "citation_fixture", text: "replacement"}})).toBe(false);
+    }
+  });
   it("binds Select All to the current editor generation", () => {
     expect(isEditorRequest({...request, operation: {type: "selectAll"}})).toBe(true);
     expect(generationCanExecuteEditorRequest("selectAll", 4, 4)).toBe(true);

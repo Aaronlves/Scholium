@@ -329,8 +329,9 @@ creates no separate portable comment object.
 
 YAML frontmatter is the sole authority for user-authored structured properties.
 All three Note roles permit user-defined keys and shapes. Scholium supplies no
-managed field catalog, mandatory bibliography, field lifecycle, role-based
-property restrictions, or separate Metadata record and editing surface.
+managed YAML field catalog, mandatory bibliography, role-based property
+restrictions, or separate Metadata record and editing surface. Zotero citation
+fields (§15.5) remain source-owned document structures.
 
 ### Shared authored YAML
 

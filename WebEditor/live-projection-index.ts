@@ -28,7 +28,9 @@ import {
   semanticProjectionRanges,
   type SemanticProjectionRanges,
 } from "./semantic-projection";
-import {frontmatterBoundary} from "./state";
+import {frontmatterBoundary, normalizedDocumentText} from "./state";
+import {setExactSource} from "./exact-source-history";
+import {projectFieldsForState, type FieldProjection} from "./zotero-fields";
 import {
   tablePresentation,
   type TablePresentation,
@@ -102,6 +104,7 @@ export interface LiveQuoteProjectionRange extends ProjectionSourceRange {
 }
 
 export interface LiveProjectionIndex {
+  readonly zoteroFields: FieldProjection;
   /** Stable only while local Markdown topology is proven unchanged. */
   readonly topologyIdentity: object;
   readonly syntax: SemanticProjectionRanges;
@@ -266,7 +269,7 @@ function calloutRangeIncludingPendingQuoteLines(
 }
 
 function finalizedLiveProjectionIndex(
-  doc: Text,
+  state: EditorState,
   topologyIdentity: object,
   syntax: SemanticProjectionRanges,
   excluded: readonly ProjectionSourceRange[],
@@ -282,6 +285,16 @@ function finalizedLiveProjectionIndex(
   hasUnclosedFrontmatter: boolean,
   referenceDefinitionRanges: readonly ProjectionSourceRange[],
 ): LiveProjectionIndex {
+  const doc = state.doc;
+  if (syntax.inlines.some(inline => inline.kind === "citation")) {
+    const catalog = projectFieldsForState(state);
+    const admitted = new Set(catalog.diagnostics.length ? [] : catalog.fields
+      .filter(field => field.kind === "citation")
+      .map(field => rangeKey(normalizedDocumentText(catalog.source.slice(0, field.range.from)).length,
+        normalizedDocumentText(catalog.source.slice(0, field.range.to)).length)));
+    syntax = {...syntax, inlines: syntax.inlines.filter(inline => inline.kind !== "citation"
+      || admitted.has(rangeKey(inline.from, inline.to)))};
+  }
   const immutableExcluded = immutableProjectionRanges(excluded);
   const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
   const immutableQuoteRanges = immutableProjectionRanges(indexedQuoteRanges(syntax));
@@ -309,6 +322,7 @@ function finalizedLiveProjectionIndex(
     ...immutableMathExpressions,
   ].map(({from, to}) => ({from, to})));
   return Object.freeze({
+    get zoteroFields() { return projectFieldsForState(state); },
     topologyIdentity,
     syntax,
     quoteRanges: immutableQuoteRanges,
@@ -494,7 +508,7 @@ function buildLiveProjectionIndex(
   }));
   const mathExpressions = mathExpressionsFromCatalog(state, syntax);
   const index = finalizedLiveProjectionIndex(
-    state.doc,
+    state,
     Object.freeze({}),
     syntax,
     excluded,
@@ -568,7 +582,7 @@ function mapLiveProjectionIndex(
     to: map(index.frontmatterRange.to),
   };
   return finalizedLiveProjectionIndex(
-    transaction.state.doc,
+    transaction.state,
     index.topologyIdentity,
     syntax,
     index.literals.excluded.map((range) => ({from: map(range.from), to: map(range.to)})),
@@ -611,7 +625,7 @@ export function createLiveProjectionIndexController(
     create: build,
     update(previous, transaction) {
       if (!transaction.docChanged) {
-        return transactionChangedSyntaxTree(transaction)
+        return transactionChangedSyntaxTree(transaction) || transaction.effects.some(effect => effect.is(setExactSource))
           ? build(transaction.state)
           : previous;
       }

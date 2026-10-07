@@ -71,6 +71,10 @@ struct WindowResearchCapabilities: Sendable {
 
 @MainActor
 final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
+    static var citationIntegration: any ZoteroDocumentIntegrating {
+        ZoteroDocumentIntegration.shared
+    }
+
     static func unpackWordDocument(_ data: Data) async throws -> [String: Data] {
         try await WordDocumentArchiveOperations.unpack(data)
     }

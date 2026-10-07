@@ -8,6 +8,18 @@ import UniformTypeIdentifiers
 
 struct ExternalMarkdownWindowRoute: Codable, Hashable {
     let fileURL: URL
+    let needsOwnershipResolution: Bool
+
+    init(fileURL: URL, needsOwnershipResolution: Bool = false) {
+        self.fileURL = fileURL
+        self.needsOwnershipResolution = needsOwnershipResolution
+    }
+}
+
+enum ExternalMarkdownOwnershipState {
+    case external
+    case unresolved
+    case managed(VaultNoteReference, triptychID: UUID)
 }
 
 struct ExternalMarkdownImportResult {
@@ -35,6 +47,11 @@ enum ExternalMarkdownWindowIssue: LocalizedError {
 final class ExternalMarkdownWindowRegistry {
     static let shared = ExternalMarkdownWindowRegistry()
     private var models: [ObjectIdentifier: ExternalMarkdownWindowModel] = [:]
+    private let policy: ScholiumLifecyclePolicy
+
+    init(policy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()) {
+        self.policy = policy
+    }
 
     var hasOpenWindows: Bool { !models.isEmpty }
 
@@ -130,10 +147,55 @@ final class ExternalMarkdownWindowRegistry {
     func flushAll() async throws {
         let current = Array(models.values)
         do {
-            for model in current {
-                guard await model.prepareTermination() else { throw ExternalMarkdownWindowIssue.unsaved }
+            try await withScholiumLifecycleDeadline(
+                phase: .applicationTermination, timeout: policy.applicationTermination
+            ) { [policy] in
+                var firstError: (any Error)?
+                let concurrency = max(1, policy.maximumConcurrentWindowFlushes)
+                for start in stride(from: 0, to: current.count, by: concurrency) {
+                    try Task.checkCancellation()
+                    let end = min(start + concurrency, current.count)
+                    let tasks = current[start..<end].map { model in
+                        Task { @MainActor in
+                            do {
+                                try await withScholiumLifecycleDeadline(
+                                    phase: .contentFlush, timeout: policy.contentFlush
+                                ) {
+                                    guard await model.prepareTermination() else {
+                                        throw ExternalMarkdownWindowIssue.unsaved
+                                    }
+                                }
+                            } catch {
+                                if !Task.isCancelled {
+                                    if model.error == nil || error is ScholiumWindowLifecycleError {
+                                        model.error = ScholiumErrorLocalization.message(error)
+                                    }
+                                    model.reveal()
+                                }
+                                throw error
+                            }
+                        }
+                    }
+                    try await withTaskCancellationHandler {
+                        for task in tasks {
+                            do { try await task.value } catch {
+                                if firstError == nil { firstError = error }
+                            }
+                        }
+                        try Task.checkCancellation()
+                    } onCancel: {
+                        for task in tasks { task.cancel() }
+                    }
+                }
+                if let firstError { throw firstError }
             }
         } catch {
+            if error as? ScholiumWindowLifecycleError == .timedOut(.applicationTermination) {
+                for model in current where model.isPreparingTermination {
+                    model.error = ScholiumErrorLocalization.message(error)
+                    model.reveal()
+                }
+            }
             for model in current { await model.resumeInput() }
             throw error
         }
@@ -159,6 +221,8 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     @Published private(set) var inputResumeError: String?
     @Published private(set) var isResumingInput = false
     @Published var mode: NotePresentationMode = .read
+    @Published private(set) var ownership: ExternalMarkdownOwnershipState
+    @Published private(set) var isResolvingOwnership = false
     @Published var error: String?
     @Published var asksForAccess = false
     @Published private(set) var needsFileAccess = false
@@ -187,6 +251,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private var openingTaskID: UUID?
     @Published private(set) var isPreparingClose = false
     @Published private(set) var isTerminating = false
+    @Published private(set) var isPreparingTermination = false
     @Published private(set) var isChangingMode = false
     private var modeTransitionTask: Task<Void, Never>?
     private var inputSuspensionID: String?
@@ -201,7 +266,8 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private weak var previousDelegate: (any NSWindowDelegate)?
 
     init(
-        url: URL, editorSession: MarkdownEditorSession = MarkdownEditorSession(),
+        url: URL, needsOwnershipResolution: Bool = false,
+        editorSession: MarkdownEditorSession = MarkdownEditorSession(),
         openFile: @escaping OpenFile = { url in
             try await Task.detached(priority: .userInitiated) {
                 try ExternalMarkdownFileSession.open(url)
@@ -209,6 +275,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         }
     ) {
         originalURL = url.standardizedFileURL
+        ownership = needsOwnershipResolution ? .unresolved : .external
         grantedURL = url
         self.editorSession = editorSession
         self.openFile = openFile
@@ -228,24 +295,68 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     var title: String { displayFilename ?? originalURL.lastPathComponent }
     var documentID: String { "external:\(originalURL.path):\(openingID.uuidString)" }
     var isDirty: Bool { editorSession.isDirty || editorSession.hasRecoverableBuffer }
+    var permitsSourceActions: Bool {
+        if case .external = ownership { return true }
+        return false
+    }
+    var canRetryOwnership: Bool {
+        guard !isClosed, snapshot != nil, !isBusy, !isResolvingOwnership else { return false }
+        if case .unresolved = ownership { return true }
+        return false
+    }
+    var managedNote: (reference: VaultNoteReference, triptychID: UUID)? {
+        if case .managed(let reference, let triptychID) = ownership { return (reference, triptychID) }
+        return nil
+    }
+    var canOpenManagedNote: Bool { !isClosed && !isBusy && !isResolvingOwnership && managedNote != nil }
+
+    func retryOwnership(
+        using classify: @MainActor () async throws -> ExternalMarkdownOwnershipState
+    ) async {
+        guard canRetryOwnership, let fileSession, let snapshot else { return }
+        isResolvingOwnership = true
+        defer { isResolvingOwnership = false }
+        do {
+            let resolved = try await classify()
+            try Task.checkCancellation()
+            guard !isClosed else { return }
+            let current = try await fileSession.load()
+            try Task.checkCancellation()
+            guard !isClosed else { return }
+            guard current.identity == snapshot.identity, current.fingerprint == snapshot.fingerprint else {
+                throw ExternalMarkdownFileError.changed
+            }
+            ownership = resolved
+        } catch {
+            guard !isClosed, !Task.isCancelled else { return }
+            // Ownership failure leaves the reading-only notice and its Retry.
+            // Source failures retain their existing exact-file repair routes.
+            if error is ExternalMarkdownFileError {
+                self.error = ScholiumErrorLocalization.message(error)
+            }
+        }
+    }
     private var operationInProgress: Bool {
         isLoading || openingTaskID != nil || isSaving || isImporting || isRefreshing
             || importCommitInProgress || isResumingInput
     }
-    var isBusy: Bool { operationInProgress || isPreparingClose || isTerminating || isChangingMode }
+    var isBusy: Bool {
+        operationInProgress || isPreparingClose || isTerminating || isPreparingTermination
+            || isChangingMode
+    }
     var canRequestClose: Bool {
         !isClosed && (!isBusy && !editorSession.isComposing || isLoading && snapshot == nil && !isPreparingClose && !isTerminating)
     }
     var canSave: Bool {
-        snapshot != nil && fileSession != nil && (isDirty || retainsEditor && editorReady) && !isBusy
+        permitsSourceActions && snapshot != nil && fileSession != nil && (isDirty || retainsEditor && editorReady) && !isBusy
             && !hasConflict && !editorSession.isComposing
             && inputResumeError == nil
     }
     var canImport: Bool {
-        snapshot != nil && fileSession != nil && !isBusy && !hasConflict && !editorSession.isComposing
+        permitsSourceActions && snapshot != nil && fileSession != nil && !isBusy && !hasConflict && !editorSession.isComposing
             && pendingImport == nil && inputResumeError == nil
     }
-    var canPresentImport: Bool { !isClosed && (canImport || pendingImport != nil && !isBusy) }
+    var canPresentImport: Bool { permitsSourceActions && !isClosed && (canImport || pendingImport != nil && !isBusy) }
     var retainsEditor: Bool { didAllocateEditor }
     var editorReady: Bool {
         editorSession.isLoaded && editorSession.presentedMode == mode.editorMode
@@ -261,6 +372,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         guard !isClosed, snapshot != nil, fileSession != nil, !isBusy,
             !editorSession.isComposing, inputResumeError == nil
         else { return false }
+        guard permitsSourceActions || requested == .read else { return false }
         if requested == .read {
             return !hasConflict && (mode == .read || !retainsEditor || editorReady)
         }
@@ -352,6 +464,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             asksForAccess = false
             needsFileAccess = false
         } catch {
+            if Task.isCancelled { return }
             self.error = ScholiumErrorLocalization.message(error)
             asksForAccess = error as? ExternalMarkdownFileError == .permissionDenied
             needsFileAccess = asksForAccess
@@ -416,7 +529,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
 
     @discardableResult
     func save(allowingLifecycle: Bool = false) async -> Bool {
-        guard !isClosed, !operationInProgress,
+        guard permitsSourceActions, !isClosed, !operationInProgress,
             allowingLifecycle || !isPreparingClose && !isTerminating && !isChangingMode, !hasConflict,
             !editorSession.isComposing, inputResumeError == nil || allowingLifecycle, let snapshot,
             let fileSession
@@ -445,6 +558,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             }
             let candidate = try await editorSession.persistenceSnapshot(
                 expectedRevision: baseSnapshot.fingerprint)
+            try Task.checkCancellation()
             let committed = try await fileSession.save(candidate: candidate.text, expected: baseSnapshot)
             pendingAcknowledgement = (candidate, committed)
             self.snapshot = committed
@@ -461,6 +575,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             error = nil
             return acknowledgement == .clean
         } catch {
+            if Task.isCancelled { return false }
             self.error = ScholiumErrorLocalization.message(error)
             if error as? ExternalMarkdownFileError == .permissionDenied { needsFileAccess = true }
             if error as? ExternalMarkdownFileError == .changed { hasConflict = true }
@@ -650,14 +765,25 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             return false
         }
         isTerminating = true
-        do { try await suspendInput() } catch {
+        isPreparingTermination = true
+        defer { isPreparingTermination = false }
+        do {
+            try await suspendInput()
+            try Task.checkCancellation()
+        } catch {
+            if Task.isCancelled {
+                await resumeInput()
+                return false
+            }
             isTerminating = false
             self.error = ScholiumErrorLocalization.message(error)
             reveal()
             return false
         }
         if !isDirty { return true }
-        if await save(allowingLifecycle: true) { return true }
+        let saved = await save(allowingLifecycle: true)
+        guard !Task.isCancelled else { return false }
+        if saved { return true }
         await resumeInput()
         reveal()
         return false
@@ -810,13 +936,13 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     }
 
     var editorActions: ScholiumFocusedEditorActions? {
-        guard !isClosed, mode != .read, !isBusy, editorReady, inputResumeError == nil else {
+        guard permitsSourceActions, !isClosed, mode != .read, !isBusy, editorReady, inputResumeError == nil else {
             return nil
         }
         return ScholiumFocusedEditorActions(
             documentID: documentID, isComposing: editorSession.isComposing,
             isAvailable: { [weak self] command in
-                guard let self, !self.isBusy, self.inputResumeError == nil, !self.editorSession.isComposing,
+                guard let self, self.permitsSourceActions, !self.isBusy, self.inputResumeError == nil, !self.editorSession.isComposing,
                     ![MarkdownEditorCommand.insertImage].contains(command)
                 else { return false }
                 return self.editorSession.context?.availableCommands.contains(command) == true
@@ -832,7 +958,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
 
     private func performEditorCommand(_ command: MarkdownEditorCommand, argument: String? = nil) {
         Task { @MainActor in
-            guard !isClosed, mode != .read, !isBusy, inputResumeError == nil, !editorSession.isComposing,
+            guard permitsSourceActions, !isClosed, mode != .read, !isBusy, inputResumeError == nil, !editorSession.isComposing,
                 editorReady
             else { return }
             do { try await editorSession.perform(command, argument: argument) } catch {

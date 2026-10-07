@@ -6,6 +6,131 @@ import Testing
 
 @Suite("Stable note identity recovery")
 struct NoteIdentityRecoveryTests {
+    @Test("An unsupported window layout cannot block a confirmed move or repeated recovery")
+    func unsupportedWindowDoesNotBlockMoveRecovery() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let stores = try await fixture.makeStores()
+        let repository = try fixture.repository(vaultID: fixture.worksID, root: fixture.works)
+        let exactSource = "\u{FEFF}---\r\ncustom: 'unchanged'\r\n---\r\n# Work\r\n[[Other]]"
+        let original = try await repository.create(relativePath: "Old.md", content: exactSource)
+        let identity = try #require(
+            try await stores.control.identity(
+                forVaultID: fixture.worksID, relativePath: "Old.md", fingerprint: original.fingerprint))
+        let session = WindowSessionSnapshot(
+            id: stores.sessionID,
+            selectedWorkspace: .output,
+            openDocuments: [.init(vaultID: fixture.worksID, relativePath: "Old.md")],
+            selectedDocument: .init(vaultID: fixture.worksID, relativePath: "Old.md"),
+            workspaceSessions: [
+                .init(
+                    workspace: .output,
+                    vaultID: fixture.worksID,
+                    documentPresentations: ["Old.md": .init(scrollFraction: 0.42)])
+            ])
+        try await stores.sessions.save(session)
+        let unsupported = WindowSessionSnapshot(openDocuments: session.openDocuments)
+        var incomplete = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(unsupported)) as? [String: Any])
+        incomplete.removeValue(forKey: "documentMode")
+        let unsupportedBytes = try JSONSerialization.data(withJSONObject: incomplete, options: [.sortedKeys])
+        let unsupportedURL = fixture.support.appendingPathComponent("Window Sessions")
+            .appendingPathComponent(unsupported.id.uuidString + ".json")
+        try unsupportedBytes.write(to: unsupportedURL)
+        let ledger = try PrewriteRecoveryLedger(storageURL: await repository.storageURL)
+        let candidate = Data((exactSource + "\r\nCandidate").utf8)
+        let transaction = try ledger.beginMutation(
+            relativePath: "Old.md", expected: Data(exactSource.utf8), candidate: candidate)
+        try ledger.retainMutation(transaction, reason: "Synthetic interrupted save")
+
+        // The filesystem move and stable identity commit already succeeded.
+        // Recovery must finish app-owned records without touching source again.
+        try FileManager.default.moveItem(
+            at: fixture.works.appendingPathComponent("Old.md"),
+            to: fixture.works.appendingPathComponent("New.md"))
+        _ = try await stores.control.moveIdentity(
+            id: identity.id, vaultID: fixture.worksID,
+            from: "Old.md", to: "New.md", fingerprint: original.fingerprint)
+        let coordinator = NoteIdentityRecoveryCoordinator(control: stores.control, windowSessions: stores.sessions)
+        let failures = await coordinator.resumePendingRebindings(vaultID: fixture.worksID, repository: repository)
+        #expect(failures.isEmpty)
+        #expect(try await stores.control.pendingIdentityRebindings(vaultID: fixture.worksID).isEmpty)
+        #expect(try await stores.control.identityRecord(id: identity.id)?.relativePath == "New.md")
+        let migrated = try #require(try await stores.sessions.load(id: session.id))
+        #expect(migrated == session.migratingPath(vaultID: fixture.worksID, from: "Old.md", to: "New.md"))
+        let recovery = try #require(try await repository.interruptedSaveRecoveries().first)
+        #expect(recovery.id.transactionID == transaction.id)
+        #expect(recovery.relativePath == "New.md")
+        #expect(try await repository.interruptedSaveRecoveryContent(recovery).exactSource == String(decoding: candidate, as: UTF8.self))
+        #expect(try Data(contentsOf: unsupportedURL) == unsupportedBytes)
+
+        let repeated = await coordinator.resumePendingRebindings(vaultID: fixture.worksID, repository: repository)
+        #expect(repeated.isEmpty)
+        #expect(try await stores.sessions.load(id: session.id) == migrated)
+        #expect(try Data(contentsOf: fixture.works.appendingPathComponent("New.md")) == Data(exactSource.utf8))
+        #expect(!FileManager.default.fileExists(atPath: fixture.works.appendingPathComponent("Old.md").path))
+        #expect(try Data(contentsOf: unsupportedURL) == unsupportedBytes)
+    }
+
+    @Test("Corrupt current window data retains progress and retries only record migration")
+    func corruptWindowRecoveryRetainsProgress() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let stores = try await fixture.makeStores()
+        let repository = try fixture.repository(vaultID: fixture.worksID, root: fixture.works)
+        let original = try await repository.create(relativePath: "Old.md", content: "unchanged\n[[Other]]")
+        let identity = try #require(
+            try await stores.control.identity(
+                forVaultID: fixture.worksID, relativePath: "Old.md", fingerprint: original.fingerprint))
+        let session = WindowSessionSnapshot(
+            id: stores.sessionID,
+            openDocuments: [.init(vaultID: fixture.worksID, relativePath: "Old.md")],
+            selectedDocument: .init(vaultID: fixture.worksID, relativePath: "Old.md"))
+        try await stores.sessions.save(session)
+        let sessionURL = fixture.support.appendingPathComponent("Window Sessions")
+            .appendingPathComponent(session.id.uuidString + ".json")
+        let supportedBytes = try Data(contentsOf: sessionURL)
+        let corruptBytes = Data("{ malformed current window data".utf8)
+        try corruptBytes.write(to: sessionURL)
+        let ledger = try PrewriteRecoveryLedger(storageURL: await repository.storageURL)
+        let candidate = Data("recovery candidate".utf8)
+        let transaction = try ledger.beginMutation(
+            relativePath: "Old.md", expected: Data(original.rawContent.utf8), candidate: candidate)
+        try ledger.retainMutation(transaction, reason: "Synthetic interrupted save")
+        try FileManager.default.moveItem(
+            at: fixture.works.appendingPathComponent("Old.md"),
+            to: fixture.works.appendingPathComponent("New.md"))
+        _ = try await stores.control.moveIdentity(
+            id: identity.id, vaultID: fixture.worksID,
+            from: "Old.md", to: "New.md", fingerprint: original.fingerprint)
+        let coordinator = NoteIdentityRecoveryCoordinator(control: stores.control, windowSessions: stores.sessions)
+
+        for _ in 0..<2 {
+            let failures = await coordinator.resumePendingRebindings(vaultID: fixture.worksID, repository: repository)
+            #expect(failures.count == 1)
+            #expect(failures.first?.rebinding.noteID == identity.id)
+            #expect(try await stores.control.pendingIdentityRebindings(vaultID: fixture.worksID).count == 1)
+            #expect(try Data(contentsOf: sessionURL) == corruptBytes)
+            #expect(try await repository.interruptedSaveRecoveries().first?.relativePath == "New.md")
+            #expect(try await repository.load(relativePath: "New.md").fingerprint == original.fingerprint)
+        }
+        // Repair only the test-owned malformed window record, then resume the
+        // pending migration, including its already-completed recovery step.
+        try supportedBytes.write(to: sessionURL)
+        let failures = await coordinator.resumePendingRebindings(vaultID: fixture.worksID, repository: repository)
+        #expect(failures.isEmpty)
+        #expect(try await stores.control.pendingIdentityRebindings(vaultID: fixture.worksID).isEmpty)
+        #expect(
+            try await stores.sessions.load(id: session.id)
+                == session.migratingPath(
+                    vaultID: fixture.worksID, from: "Old.md", to: "New.md"))
+        let recovery = try #require(try await repository.interruptedSaveRecoveries().first)
+        #expect(recovery.id.transactionID == transaction.id)
+        #expect(try await repository.interruptedSaveRecoveryContent(recovery).exactSource == "recovery candidate")
+        #expect(try Data(contentsOf: fixture.works.appendingPathComponent("New.md")) == Data(original.rawContent.utf8))
+        #expect(!FileManager.default.fileExists(atPath: fixture.works.appendingPathComponent("Old.md").path))
+    }
+
     @Test("A unique external rename migrates every app-owned path reference")
     func uniqueExternalRenameMigration() async throws {
         let fixture = try Fixture()

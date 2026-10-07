@@ -124,6 +124,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         case selectionTooLong
         case staleRequest
         case bridgeRejected(String)
+        case citationFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -131,7 +132,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             case .invalidResult: "The Markdown editor returned an invalid document."
             case .selectionTooLong: "Select at most 2,000 characters for one source-anchored comment."
             case .staleRequest: "The Markdown editor request belonged to a replaced document or session."
-            case .bridgeRejected(let message): message
+            case .bridgeRejected(let message), .citationFailed(let message): message
             }
         }
     }
@@ -166,6 +167,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private(set) var generation = 0 {
         didSet {
             guard generation != oldValue else { return }
+            citationInteractionRevision &+= 1
             writingContextChanges.send()
             refreshImageResources()
         }
@@ -183,6 +185,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             && inFlightRequestTasks.isEmpty && unfinishedBridgeDispatches.isEmpty
             && webView?.isLoading == false
     }
+    private var citationTransactionID: String?
+    @Published private(set) var citationStatus: String?
+    private var citationCancellationRequested = false
+    private var citationInteractionRevision: UInt64 = 0
+    private let citationIntegration: any ZoteroDocumentIntegrating
     private var pendingSource: String?
     private var pendingDocumentID = ""
     private var pendingDocumentTitle = ""
@@ -394,14 +401,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     init(
         bridgeDispatcher: any MarkdownEditorBridgeDispatching,
-        lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()
+        lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
+        citationIntegration: any ZoteroDocumentIntegrating = WorkspaceStore.citationIntegration
     ) {
         self.bridgeDispatcher = bridgeDispatcher
         self.lifecyclePolicy = lifecyclePolicy
+        self.citationIntegration = citationIntegration
         super.init()
     }
 
     func attach(_ webView: WKWebView) {
+        updatePublished(\.citationStatus, to: nil)
         presentationIsClosed = false
         floatingSurfaces.reset()
         invalidateRequestQueue(clearingRecoveryReport: false)
@@ -540,6 +550,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             reconvergePendingPresentationState()
         }
         if previousSelection != selections || wasComposing != isComposing {
+            citationInteractionRevision &+= 1
             writingContextChanges.send()
             selectionChanges.send(hasNonemptySelection)
         }
@@ -567,6 +578,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// Drops clean editor presentation after its tab closes. A recovery buffer
     /// remains available until its separate safety owner releases it.
     func endClosedPresentation(preservingSourceWork: Bool = false) {
+        citationInteractionRevision &+= 1
         let retainsComposition = isComposing
         presentationIsClosed = true
         openingPresentationID = UUID()
@@ -609,6 +621,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         initialSourceRange: Range<Int>? = nil
     ) {
         detachmentCapture = nil
+        updatePublished(\.citationStatus, to: nil)
         pendingDetachmentSuspensionID = nil
         floatingSurfaces.reset()
         let isFirstDocumentLoad = self.documentID != documentID
@@ -704,6 +717,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func setMode(_ mode: MarkdownEditorMode) {
+        if pendingMode != mode { citationInteractionRevision &+= 1 }
         let requiresConvergence = pendingMode != mode || presentedMode != mode
         pendingMode = mode
         guard requiresConvergence else { return }
@@ -1305,6 +1319,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// SwiftUI removes the WKWebView during a note collapse or replacement.
     /// The retained document session replays this snapshot into the next view.
     func captureStateForViewReconstruction(suspendForDetachment: Bool = false) async throws {
+        if suspendForDetachment { citationInteractionRevision &+= 1 }
         var expectedKey = RecoveryCaptureKey(
             requestEpoch: requestEpoch,
             generation: generation
@@ -1790,6 +1805,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func resignFocusAndWait() async {
         focusRequestRevision &+= 1
+        citationInteractionRevision &+= 1
         automaticFocusIsAuthorized = false
         await resignFocusAndWait(revision: focusRequestRevision)
     }
@@ -1812,7 +1828,175 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         _ = try? await send(.blur, in: webView)
     }
 
+    /// Zotero owns the picker and formatter. The editor stages every callback
+    /// against one exact snapshot and publishes only one accepted transaction.
+    func performCitation(
+        _ command: ZoteroDocumentCommand,
+        reference: MarkdownEditorCitationReference? = nil
+    ) async throws {
+        updatePublished(\.citationStatus, to: nil)
+        do {
+            try await performCitationTransaction(command, reference: reference)
+        } catch {
+            await announceCitationStatus(ScholiumErrorLocalization.message(error))
+            throw error
+        }
+    }
+
+    private func performCitationTransaction(
+        _ command: ZoteroDocumentCommand,
+        reference: MarkdownEditorCitationReference?
+    ) async throws {
+        guard isReady, isLoaded, !isComposing, preferredDocumentFocusTarget != .title,
+            citationTransactionID == nil, let webView
+        else { throw SessionError.unavailable }
+        let transactionID = "citation_" + UUID().uuidString
+        let capturedSessionID = sessionID
+        let capturedDocumentID = documentID
+        let capturedRevision = citationInteractionRevision
+        _ = try await send(.beginCitation(transactionID: transactionID, command: command.rawValue, reference: reference), in: webView)
+        citationTransactionID = transactionID
+        citationCancellationRequested = false
+        defer {
+            if citationTransactionID == transactionID { citationTransactionID = nil }
+        }
+        let authority: @Sendable () async -> ZoteroDocumentAuthority = { [weak self] in
+            await self?.citationAuthority(
+                transactionID: transactionID, sessionID: capturedSessionID,
+                documentID: capturedDocumentID, revision: capturedRevision) ?? .unavailable
+        }
+        let result = await citationIntegration.run(
+            transactionID: transactionID, command: command, documentID: bridgeDocumentID,
+            authority: authority,
+            handler: { [weak self] callback in
+                guard let self else { throw SessionError.unavailable }
+                return try await self.handleCitationCallback(
+                    callback, transactionID: transactionID,
+                    sessionID: capturedSessionID, documentID: capturedDocumentID, revision: capturedRevision)
+            })
+        do {
+            if result.status == .cleanedUp, result.remoteCleanupConfirmed,
+                await authority() == .current
+            {
+                _ = try await send(.finishCitation(transactionID: transactionID), in: webView)
+                _ = try? await send(.focus, in: webView)
+            } else {
+                if self.webView === webView, sessionID == capturedSessionID {
+                    _ = try? await send(.cancelCitation(transactionID: transactionID), in: webView)
+                }
+                switch result.status {
+                case .cancelled: return
+                case .busy:
+                    throw SessionError.citationFailed("Zotero is handling another citation operation. Finish or cancel its open dialog, then try again.")
+                case .unavailable, .cleanedUp:
+                    if citationCancellationRequested, result.remoteCleanupConfirmed { return }
+                    throw SessionError.citationFailed(
+                        "The document changed during the citation operation. Your text was preserved; try again at the current position.")
+                case .failed:
+                    throw SessionError.citationFailed(citationStatus ?? result.message ?? "The citation operation could not finish. Your text was preserved.")
+                case .unknown:
+                    throw SessionError.citationFailed(result.message ?? "The citation operation could not finish. Your text was preserved.")
+                }
+            }
+        } catch {
+            if self.webView === webView, sessionID == capturedSessionID {
+                _ = try? await send(.cancelCitation(transactionID: transactionID), in: webView)
+            }
+            if citationCancellationRequested, citationTransactionID == transactionID,
+                case SessionError.staleRequest = error
+            {
+                return
+            }
+            throw error
+        }
+    }
+
+    private func citationAuthority(
+        transactionID: String, sessionID capturedSessionID: UUID,
+        documentID capturedDocumentID: String, revision: UInt64
+    ) -> ZoteroDocumentAuthority {
+        guard citationTransactionID == transactionID else { return .unavailable }
+        if citationCancellationRequested { return .cancelled }
+        return sessionID == capturedSessionID && documentID == capturedDocumentID
+            && citationInteractionRevision == revision
+            && isReady && isLoaded && !isComposing && !presentationIsClosed
+            && detachmentSuspensionID == nil && webView != nil
+            ? .current : .unavailable
+    }
+
+    private func handleCitationCallback(
+        _ callback: ZoteroDocumentCallback, transactionID: String,
+        sessionID capturedSessionID: UUID, documentID capturedDocumentID: String, revision: UInt64
+    ) async throws -> ZoteroDocumentReply {
+        guard
+            citationAuthority(
+                transactionID: transactionID, sessionID: capturedSessionID,
+                documentID: capturedDocumentID, revision: revision) == .current, let webView
+        else { throw SessionError.staleRequest }
+        switch callback {
+        case .activate:
+            NSApp.activate()
+            webView.window?.makeKeyAndOrderFront(nil)
+            return .none
+        case .displayAlert(let text, let icon, let buttons):
+            guard let window = webView.window else { throw SessionError.unavailable }
+            let alert = NSAlert()
+            alert.messageText = "Zotero"
+            alert.informativeText = text
+            alert.alertStyle = icon == 0 ? .critical : .warning
+            let titles = buttons == 0 ? ["OK"] : buttons == 1 ? ["OK", "Cancel"] : buttons == 2 ? ["Yes", "No"] : ["Yes", "No", "Cancel"]
+            for title in titles { alert.addButton(withTitle: ScholiumL10n.dynamicString(title)) }
+            NSApp.activate()
+            window.makeKeyAndOrderFront(nil)
+            let response = await withCheckedContinuation { continuation in
+                alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+            }
+            let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+            return .alert(index == 0 ? 1 : index == 1 ? 0 : 2)
+        default:
+            let value = try MarkdownEditorCitationCallback(callback)
+            do {
+                let result = try await send(.citationCallback(transactionID: transactionID, value: value), in: webView)
+                guard let reply = result.citationReply else { throw SessionError.invalidResult }
+                return reply.protocolReply
+            } catch {
+                await announceCitationStatus(ScholiumErrorLocalization.message(error))
+                throw error
+            }
+        }
+    }
+
+    func announceCitationStatus(_ message: String) async {
+        guard citationStatus != message else { return }
+        citationStatus = message
+        if let webView { _ = try? await send(.announceStatus(message), in: webView) }
+    }
+
+    func dismissCitationStatus() { updatePublished(\.citationStatus, to: nil) }
+
     func perform(_ command: MarkdownEditorCommand, argument: String? = nil) async throws {
+        switch command {
+        case .insertCitation:
+            try await performCitation(.addEditCitation)
+            return
+        case .insertBibliography:
+            try await performCitation(.addEditBibliography)
+            return
+        case .refreshCitations:
+            try await performCitation(.refresh)
+            return
+        case .citationStyle:
+            try await performCitation(.setDocPrefs)
+            return
+        case .cancelCitation:
+            guard let transactionID = citationTransactionID else { return }
+            citationCancellationRequested = true
+            if let webView { _ = try? await send(.cancelCitation(transactionID: transactionID), in: webView) }
+            await citationIntegration.cancelCurrentTransaction(transactionID: transactionID)
+            await announceCitationStatus(ScholiumL10n.dynamicString("Citation cancelled. Finish or cancel any open Zotero dialog."))
+            return
+        default: break
+        }
         guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
         _ = try await send(.command(command, argument: argument), in: webView)
     }
@@ -2396,6 +2580,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             + Double(duration.attoseconds) / 1_000_000_000_000_000
         let expiresAt = Int64((Date().timeIntervalSince1970 * 1_000 + durationMilliseconds).rounded(.down))
         let previous = operation.serializesSourceMutation ? sourceMutationBarrier : nil
+        let capturedCitationRevision = citationInteractionRevision
         let context = BridgeRequestContext(
             requestEpoch: requiredRequestEpoch ?? requestEpoch,
             sessionID: sessionID,
@@ -2439,6 +2624,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     timeout: remaining
                 ) { [self, bridgeDispatcher] in
                     guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
+                    if case .finishCitation(let transactionID) = operation {
+                        guard
+                            citationAuthority(
+                                transactionID: transactionID, sessionID: context.sessionID,
+                                documentID: context.documentID, revision: capturedCitationRevision) == .current
+                        else { throw SessionError.staleRequest }
+                    }
                     let dispatchID = UUID()
                     unfinishedBridgeDispatches.insert(dispatchID)
                     defer { unfinishedBridgeDispatches.remove(dispatchID) }

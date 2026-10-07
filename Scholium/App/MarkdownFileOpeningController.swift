@@ -8,29 +8,38 @@ import UniformTypeIdentifiers
 /// bound once available; requests received during launch retain their URLs.
 @MainActor
 final class MarkdownFileOpeningController: ObservableObject {
+    enum LaunchPresentation: Equatable {
+        case awaitingLaunch
+        case defaultWorkspace
+        case requestedScene
+    }
+
     static let contentType = UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)
-    @Published private(set) var handlesLaunchDocuments = false
+    @Published private(set) var launchPresentation = LaunchPresentation.awaitingLaunch
     private var pending: [URL] = []
     private var task: Task<Void, Never>?
     private var bootstrapObservation: AnyCancellable?
     private var bootstrapResolved = false
     private var workspaceStore: WorkspaceStore?
+    private weak var bootstrapController: ApplicationBootstrapController?
     private var openExternalWindow: ((ExternalMarkdownWindowRoute) -> Void)?
     private var openWorkspaceWindow: ((TriptychWindowRoute) -> Void)?
     private var lifecycleRegistry: ScholiumWindowLifecycleRegistry?
     private var selectionPanel: NSOpenPanel?
     private var acceptsRequests = true
-    private var launchFinished = false
     private var launchSuppressionConsumed = false
 
-    /// AppKit delivers files used to launch the app before this boundary. Keep
-    /// a queued launch token until the initial Bootstrap can consume it.
-    func finishLaunching() { launchFinished = true }
+    /// AppKit names the launch intent even when its file event arrives later.
+    /// A saved-scene, file, notification or service launch already has another
+    /// route; only a default launch may create the initial workspace.
+    func finishLaunching(isDefaultLaunch: Bool) {
+        guard launchPresentation == .awaitingLaunch else { return }
+        launchPresentation = isDefaultLaunch ? .defaultWorkspace : .requestedScene
+    }
 
     func consumeLaunchBootstrapSuppression() -> Bool {
-        guard handlesLaunchDocuments, !launchSuppressionConsumed else { return false }
+        guard launchPresentation == .requestedScene, !launchSuppressionConsumed else { return false }
         launchSuppressionConsumed = true
-        handlesLaunchDocuments = false
         return true
     }
 
@@ -41,16 +50,34 @@ final class MarkdownFileOpeningController: ObservableObject {
         selectionPanel?.cancel(nil)
     }
 
-    func cancelTermination() { acceptsRequests = true }
+    func cancelTermination() {
+        acceptsRequests = true
+        drain()
+    }
 
     func connect(
         bootstrap: ApplicationBootstrapController,
         openWindow: OpenWindowAction,
         lifecycleRegistry: ScholiumWindowLifecycleRegistry
     ) {
+        connect(
+            bootstrap: bootstrap,
+            openExternalWindow: { openWindow(id: "scholium-external-markdown", value: $0) },
+            openWorkspaceWindow: { openWindow(id: "scholium-main", value: $0) },
+            lifecycleRegistry: lifecycleRegistry
+        )
+    }
+
+    func connect(
+        bootstrap: ApplicationBootstrapController,
+        openExternalWindow: @escaping (ExternalMarkdownWindowRoute) -> Void,
+        openWorkspaceWindow: @escaping (TriptychWindowRoute) -> Void,
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    ) {
+        bootstrapController = bootstrap
         self.lifecycleRegistry = lifecycleRegistry
-        openExternalWindow = { openWindow(id: "scholium-external-markdown", value: $0) }
-        openWorkspaceWindow = { openWindow(id: "scholium-main", value: $0) }
+        self.openExternalWindow = openExternalWindow
+        self.openWorkspaceWindow = openWorkspaceWindow
         if bootstrapObservation == nil {
             bootstrapObservation = bootstrap.$state.sink { [weak self] state in
                 guard let self else { return }
@@ -75,8 +102,8 @@ final class MarkdownFileOpeningController: ObservableObject {
 
     func requestOpen(_ urls: [URL]) {
         guard acceptsRequests, !urls.isEmpty else { return }
-        if !launchFinished && !launchSuppressionConsumed {
-            handlesLaunchDocuments = true
+        if launchPresentation == .awaitingLaunch {
+            launchPresentation = .requestedScene
         }
         for url in urls where !pending.contains(where: { ExternalMarkdownWindowRegistry.referToSameFile($0, url) }) {
             pending.append(url)
@@ -106,11 +133,44 @@ final class MarkdownFileOpeningController: ObservableObject {
     }
 
     func openImported(_ reference: VaultNoteReference, in triptychID: UUID) async throws {
+        try Task.checkCancellation()
         guard acceptsRequests, let workspaceStore, let openWorkspaceWindow else {
             throw ScholiumFileSelectionError.presenterUnavailable
         }
         if try await workspaceStore.documentLocations.openInExistingWindow(reference, triptychID: triptychID) { return }
+        try Task.checkCancellation()
+        guard acceptsRequests else { throw CancellationError() }
         openWorkspaceWindow(TriptychWindowRoute(triptychID: triptychID, initialDocument: reference))
+    }
+
+    func retryExternalOwnership(_ model: ExternalMarkdownWindowModel) async {
+        await model.retryOwnership {
+            if self.workspaceStore == nil, let bootstrap = self.bootstrapController {
+                bootstrap.retry()
+                for await state in bootstrap.$state.values {
+                    try Task.checkCancellation()
+                    if case .starting = state { continue }
+                    break
+                }
+            }
+            guard self.acceptsRequests, let store = self.workspaceStore else {
+                throw ScholiumFileSelectionError.presenterUnavailable
+            }
+            let assignments = try await store.registeredTriptychs()
+            try Task.checkCancellation()
+            guard self.acceptsRequests else { throw CancellationError() }
+            if let note = Self.managedNote(at: model.originalURL, assignments: assignments) {
+                return .managed(note.reference, triptychID: note.triptychID)
+            }
+            return .external
+        }
+    }
+
+    func openManagedPreview(_ model: ExternalMarkdownWindowModel) async throws {
+        guard acceptsRequests, model.canOpenManagedNote, let note = model.managedNote else {
+            throw ScholiumFileSelectionError.presenterUnavailable
+        }
+        try await openImported(note.reference, in: note.triptychID)
     }
 
     func openRecovery(
@@ -153,14 +213,39 @@ final class MarkdownFileOpeningController: ObservableObject {
         return relativePath
     }
 
+    private static func managedNote(
+        at url: URL, assignments: [TriptychAssignment]
+    ) -> (reference: VaultNoteReference, triptychID: UUID)? {
+        for assignment in assignments {
+            for vault in assignment.vaults.values {
+                guard
+                    let path = managedMarkdownRelativePath(
+                        at: url, in: URL(fileURLWithPath: vault.canonicalPath)
+                    )
+                else { continue }
+                return (
+                    VaultNoteReference(
+                        vaultID: vault.id, vaultName: vault.name,
+                        vaultRole: vault.role, relativePath: path), assignment.id
+                )
+            }
+        }
+        return nil
+    }
+
     private func drain() {
-        guard acceptsRequests, task == nil, bootstrapResolved, openExternalWindow != nil else { return }
+        guard acceptsRequests, !pending.isEmpty, task == nil, bootstrapResolved, openExternalWindow != nil else { return }
         task = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.task = nil }
+            defer {
+                self.task = nil
+                self.drain()
+            }
             while !self.pending.isEmpty {
+                guard !Task.isCancelled, self.acceptsRequests else { return }
                 let url = self.pending.removeFirst()
                 do { try await self.open(url) } catch is CancellationError { return } catch {
+                    guard !Task.isCancelled, self.acceptsRequests else { return }
                     let alert = NSAlert()
                     alert.messageText = ScholiumL10n.string("Markdown Could Not Be Opened")
                     alert.informativeText = error.localizedDescription
@@ -175,29 +260,36 @@ final class MarkdownFileOpeningController: ObservableObject {
         guard url.isFileURL, ["md", "markdown"].contains(url.pathExtension.lowercased()) else {
             throw ScholiumFileSelectionError.rejectedSelection(message: ScholiumL10n.string("Choose a Markdown file (.md or .markdown)."))
         }
-        if let workspaceStore {
+        if url.pathExtension.lowercased() == "md", let workspaceStore {
             // A registered root is a routing hint; the normal Note open still
             // validates access, containment, source and identity.
-            let assignments = try await workspaceStore.registeredTriptychs()
+            let assignments: [TriptychAssignment]
+            do {
+                assignments = try await workspaceStore.registeredTriptychs()
+            } catch {
+                try Task.checkCancellation()
+                guard acceptsRequests else { throw CancellationError() }
+                // A retained reader already owns its exact file session. A
+                // later registry failure cannot prevent revealing that buffer.
+                if ExternalMarkdownWindowRegistry.shared.reveal(url) { return }
+                openExternalWindow?(ExternalMarkdownWindowRoute(fileURL: url, needsOwnershipResolution: true))
+                return
+            }
             try Task.checkCancellation()
             guard acceptsRequests else { throw CancellationError() }
-            for assignment in assignments {
-                for vault in assignment.vaults.values {
-                    guard
-                        let relativePath = Self.managedMarkdownRelativePath(
-                            at: url, in: URL(fileURLWithPath: vault.canonicalPath)
-                        )
-                    else { continue }
-                    let reference = VaultNoteReference(vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role, relativePath: relativePath)
-                    try ExternalMarkdownWindowRegistry.shared.closeForManagedOpen(url)
-                    try await openImported(reference, in: assignment.id)
-                    return
-                }
+            if let note = Self.managedNote(at: url, assignments: assignments) {
+                try ExternalMarkdownWindowRegistry.shared.closeForManagedOpen(url)
+                try await openImported(note.reference, in: note.triptychID)
+                return
             }
         }
         try Task.checkCancellation()
         if ExternalMarkdownWindowRegistry.shared.reveal(url) { return }
-        openExternalWindow?(ExternalMarkdownWindowRoute(fileURL: url))
+        openExternalWindow?(
+            ExternalMarkdownWindowRoute(
+                fileURL: url,
+                needsOwnershipResolution: url.pathExtension.lowercased() == "md" && workspaceStore == nil
+            ))
     }
 }
 

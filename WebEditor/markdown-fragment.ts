@@ -9,6 +9,7 @@ import {systemSymbolElement} from "./system-symbols";
 import {localized, localizedTemplate} from "./localization";
 import {linkAnnotationAfter} from "./link-annotation";
 import {cjkPresentationRanges, languageForText} from "./text-language";
+import {citationLinkSource, isCitationDestination} from "./zotero-field-envelope";
 
 export interface MarkdownFragmentCallout {
   identifier: string;
@@ -129,6 +130,23 @@ function appendInlineMarkdownNode(
     return;
   }
   if (cursor.name === "Link") {
+    if (isCitationDestination(raw.slice(raw.lastIndexOf("](") + 2, -1).trim().replace(/^<|>$/g, ""))) {
+      try {
+        const citation = citationLinkSource(raw);
+        if (!citation) throw new Error("Invalid citation carrier.");
+        const span = document.createElement("span");
+        span.className = "cm-live-citation";
+        span.dir = "auto";
+        appendInlineMarkdownPlain(raw.slice(citation.fallbackRange.from, citation.fallbackRange.to), span,
+          optionsAt(options, cursor.from + citation.fallbackRange.from));
+        parent.append(span);
+      } catch {
+        // Malformed managed metadata remains inspectable and cannot become an
+        // ordinary application URL or projected link.
+        appendTextWithLanguage(raw, parent);
+      }
+      return;
+    }
     const link = /^\[([\s\S]*?)\]\(([\s\S]*?)\)$/.exec(raw);
     const span = document.createElement("span");
     span.className = "cm-live-link";
@@ -171,6 +189,12 @@ function appendInlineMarkdownNode(
   }
   if (cursor.name === "Escape") {
     appendTextWithLanguage(raw.startsWith("\\") ? raw.slice(1) : raw, parent);
+    return;
+  }
+  if (cursor.name === "Entity") {
+    const entity = document.createElement("span");
+    entity.innerHTML = raw;
+    appendTextWithLanguage(entity.textContent ?? "", parent);
     return;
   }
 

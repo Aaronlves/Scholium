@@ -32,13 +32,17 @@ private struct ExternalMarkdownComparisonView: View {
 
 struct ExternalMarkdownWindowView: View {
     @EnvironmentObject private var bootstrap: ApplicationBootstrapController
+    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
     @StateObject private var model: ExternalMarkdownWindowModel
     @State private var confirmsReload = false
     @State private var readReadyDocumentID: String?
     private var documentFind: DocumentFindPresentationModel { model.documentFind }
 
-    init(url: URL) {
-        _model = StateObject(wrappedValue: ExternalMarkdownWindowModel(url: url))
+    init(url: URL, needsOwnershipResolution: Bool = false) {
+        _model = StateObject(
+            wrappedValue: ExternalMarkdownWindowModel(
+                url: url, needsOwnershipResolution: needsOwnershipResolution
+            ))
     }
 
     var body: some View {
@@ -246,11 +250,52 @@ struct ExternalMarkdownWindowView: View {
     }
 
     private var hasDocumentNotices: Bool {
-        model.error != nil || model.inputResumeError != nil || model.mode != .read && model.editorSession.errorMessage != nil
+        !model.permitsSourceActions || model.error != nil || model.inputResumeError != nil || model.mode != .read && model.editorSession.errorMessage != nil
+            || model.citationPresentation?.isVisible == true
     }
 
     @ViewBuilder
     private var documentNotices: some View {
+        if let presentation = model.citationPresentation {
+            DocumentCitationNotice(
+                presentation: presentation,
+                dismiss: model.editorSession.dismissCitationStatus,
+                refresh: {
+                    Task { @MainActor in
+                        guard model.citationPresentation?.canRefresh == true else { return }
+                        do { try await model.editorSession.perform(.refreshCitations) } catch {
+                            await model.editorSession.announceCitationStatus(ScholiumErrorLocalization.message(error))
+                        }
+                    }
+                },
+                openSource: { model.selectMode(.source) }
+            )
+        }
+        if !model.permitsSourceActions {
+            ScholiumDocumentStatusNotice(
+                ScholiumL10n.string("Reading Only"),
+                detail: ScholiumL10n.string(
+                    model.managedNote == nil
+                        ? "This file is open for reading. Retry to enable editing and Import."
+                        : "This file is a Triptych Note. Open Note to use its Triptych."
+                ), kind: .attention
+            ) {
+                if model.managedNote != nil {
+                    Button("Open Note") {
+                        Task {
+                            do { try await applicationDelegate.markdownFiles.openManagedPreview(model) } catch {
+                                model.error = ScholiumErrorLocalization.message(error)
+                            }
+                        }
+                    }.disabled(!model.canOpenManagedNote)
+                } else {
+                    Button("Retry") {
+                        Task { await applicationDelegate.markdownFiles.retryExternalOwnership(model) }
+                    }.disabled(!model.canRetryOwnership)
+                }
+            }
+            .accessibilityIdentifier("scholium.externalMarkdown.readingOnly")
+        }
         if let error = model.error {
             ScholiumDocumentStatusNotice(
                 ScholiumL10n.string(model.hasConflict ? "Conflict" : "Error"), detail: error,

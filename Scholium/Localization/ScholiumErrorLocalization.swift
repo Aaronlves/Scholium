@@ -447,6 +447,7 @@ enum ScholiumErrorLocalization {
             case .invalidResult: ScholiumL10n.string("The Markdown editor returned an invalid document.", locale: locale)
             case .selectionTooLong: ScholiumL10n.string("Select at most 2,000 characters for one source-anchored comment.", locale: locale)
             case .staleRequest: ScholiumL10n.string("The Markdown editor request belonged to a replaced document or session.", locale: locale)
+            case .citationFailed(let message): ScholiumL10n.dynamicString(message)
             case .bridgeRejected(let message):
                 ScholiumL10n.string("The Markdown editor could not complete this request. Diagnostic details: \(message)", locale: locale)
             }

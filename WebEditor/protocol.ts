@@ -1,6 +1,8 @@
-export const EDITOR_PROTOCOL_VERSION = 43;
+export const EDITOR_PROTOCOL_VERSION = 44;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
+import {validZoteroCallback, type ZoteroCallback, type ZoteroCallbackReply, type ZoteroTransactionCommand} from "./zotero-transaction";
+import type {EditorCitationSuggestionIntent} from "./input-suggestions";
 import {MAX_SOURCE_UTF8_BYTES, exactSourceFits} from "./source-capacity";
 export {MAX_SOURCE_UTF8_BYTES} from "./source-capacity";
 // Two exact source fields, each with worst-case JSON escaping, plus metadata.
@@ -19,7 +21,8 @@ export type MarkdownEditorCommand =
   | "tableInsertRowBefore" | "tableInsertRowAfter" | "tableDeleteRow"
   | "tableInsertColumnBefore" | "tableInsertColumnAfter" | "tableDeleteColumn"
   | "tableAlignLeft" | "tableAlignCenter" | "tableAlignRight"
-  | "pastePlain" | "pasteMarkdown" | "linkSelectedText";
+  | "pastePlain" | "pasteMarkdown" | "linkSelectedText"
+  | "insertCitation" | "insertBibliography" | "refreshCitations" | "citationStyle" | "cancelCitation";
 
 export interface SelectionRange { anchor: number; head: number }
 export type EditorFocusTarget = "title" | "editor";
@@ -78,6 +81,7 @@ export interface EditorContext {
   availableCommands: MarkdownEditorCommand[];
   undoLabel?: string;
   redoLabel?: string;
+  citationState?: "current" | "stale" | "unresolved";
 }
 export interface EditorPerformanceSample {
   name: string;
@@ -131,6 +135,10 @@ export type EditorOperation =
   | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string}
   | {type: "insertReference"; selection: SelectionRange; generation: number; target: string}
   | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string; preserveSelection: boolean}
+  | {type: "beginCitation"; transactionID: string; command: ZoteroTransactionCommand; reference?: EditorCitationSuggestionIntent}
+  | {type: "citationCallback"; transactionID: string; value: ZoteroCallback}
+  | {type: "finishCitation"; transactionID: string}
+  | {type: "cancelCitation"; transactionID: string}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
   | {type: "pasteClipboard"; plainText: string; selections: SelectionRange[]}
   | {type: "suspendForDetachment"; suspensionID: string}
@@ -160,6 +168,7 @@ export interface EditorCommandResult {
   performanceSamples?: EditorPerformanceSample[];
   find?: DocumentFindResult;
   commitSuperseded?: boolean;
+  citationReply?: ZoteroCallbackReply;
   accepted: boolean;
   error?: string;
 }
@@ -167,7 +176,7 @@ export interface EditorCommandResult {
 const operationTypes = new Set([
   "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setImageResources", "setWritingContinuation", "setWritingIndexContext", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
+  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "beginCitation", "citationCallback", "finishCitation", "cancelCitation", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
@@ -178,7 +187,7 @@ const commandTypes = new Set<MarkdownEditorCommand>([
   "insertFootnote", "insertInlineFootnote", "insertTable", "insertImage", "insertAttachment", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter",
   "tableDeleteRow", "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
   "tableAlignLeft", "tableAlignCenter", "tableAlignRight", "pastePlain", "pasteMarkdown",
-  "linkSelectedText",
+  "linkSelectedText", "insertCitation", "insertBibliography", "refreshCitations", "citationStyle", "cancelCitation",
 ]);
 function validMode(value: unknown): value is EditorMode {
   return value === "livePreview" || value === "source";
@@ -297,6 +306,19 @@ function validDialect(value: unknown): value is MarkdownEditingDialect {
     && mathematics.displayDelimiter === "$$"
     && mathematics.singleDollarInline === true;
 }
+function validCitationIdentifier(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
+}
+function validCitationReference(value: unknown): value is EditorCitationSuggestionIntent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const intent = value as Record<string, unknown>;
+  const keys = ["actionID", "requestID", "query", "fromUTF16", "toUTF16", "caretUTF16Offset", "editorCaretUTF16Offset", "interactionRevision"];
+  return Object.keys(intent).length === keys.length && Object.keys(intent).every(key => keys.includes(key))
+    && intent.actionID === "insertCitation" && typeof intent.requestID === "string" && intent.requestID.length <= 128
+    && typeof intent.query === "string" && intent.query.length <= 512
+    && [intent.fromUTF16, intent.toUTF16, intent.caretUTF16Offset, intent.editorCaretUTF16Offset, intent.interactionRevision].every(n => Number.isSafeInteger(n) && Number(n) >= 0)
+    && intent.toUTF16 === intent.caretUTF16Offset && Number(intent.toUTF16) - Number(intent.fromUTF16) === intent.query.length + 1;
+}
 function validOperation(operation: Record<string, unknown>) {
   switch (operation.type) {
   case "initialize":
@@ -362,6 +384,16 @@ function validOperation(operation: Record<string, unknown>) {
       && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
   case "suspendForDetachment": case "resumeAfterDetachment":
     return typeof operation.suspensionID === "string" && operation.suspensionID.length > 0 && operation.suspensionID.length <= 128;
+  case "beginCitation":
+    return validCitationIdentifier(operation.transactionID)
+      && ["addEditCitation", "addEditBibliography", "refresh", "setDocPrefs"].includes(String(operation.command))
+      && (operation.reference === undefined || validCitationReference(operation.reference))
+      && Object.keys(operation).every(key => ["type", "transactionID", "command", "reference"].includes(key));
+  case "citationCallback":
+    return validCitationIdentifier(operation.transactionID) && validZoteroCallback(operation.value)
+      && Object.keys(operation).length === 3;
+  case "finishCitation": case "cancelCitation":
+    return validCitationIdentifier(operation.transactionID) && Object.keys(operation).length === 2;
   case "command":
     return typeof operation.command === "string" && commandTypes.has(operation.command as MarkdownEditorCommand)
       && (operation.argument === undefined || typeof operation.argument === "string");

@@ -44,6 +44,132 @@ struct ExternalMarkdownWindowLifecycleTests {
         }
     }
 
+    @Test(
+        "A stalled external reader bounds quit, saves its healthy peer, and cannot save after the rejected attempt",
+        arguments: [ScholiumLifecyclePhase.contentFlush, .applicationTermination])
+    func stalledTerminationRetainsBufferAndFlushesPeer(phase: ScholiumLifecyclePhase) async throws {
+        try await verifyStalledTermination(phase: phase, pausesSaveCapture: false)
+    }
+
+    @Test("A save capture completing after a rejected quit cannot start a late source write")
+    func lateSaveCaptureCannotWriteAfterRejectedQuit() async throws {
+        try await verifyStalledTermination(phase: .contentFlush, pausesSaveCapture: true)
+    }
+
+    private func verifyStalledTermination(phase: ScholiumLifecyclePhase, pausesSaveCapture: Bool) async throws {
+        try await withEditor { stalled in
+            try await withEditor { healthy in
+                try await waitUntilIdle(stalled.model)
+                try await waitUntilIdle(healthy.model)
+                try stalled.insertNative("\r\nRetained after rejected quit")
+                try healthy.insertNative("\r\nSaved by a healthy peer")
+                let original = Data(try #require(stalled.model.snapshot).source.utf8)
+                let retained = Data(stalled.editor.checkedSource.utf8)
+                let savedPeer = Data(healthy.editor.checkedSource.utf8)
+                let pause = PausedBridgeRequest()
+                stalled.bridge.textQueriesBeforePause = pausesSaveCapture ? 1 : 0
+                stalled.bridge.nextTextQueryPause = pause
+                defer { pause.release() }
+                var policy = ScholiumLifecyclePolicy()
+                policy.contentFlush = phase == .contentFlush ? .milliseconds(200) : .seconds(3)
+                policy.applicationTermination = phase == .applicationTermination ? .milliseconds(500) : .seconds(3)
+                let registry = ExternalMarkdownWindowRegistry(policy: policy)
+                registry.register(stalled.model)
+                registry.register(healthy.model)
+                defer {
+                    registry.unregister(stalled.model)
+                    registry.unregister(healthy.model)
+                }
+                let clock = ContinuousClock()
+                let started = clock.now
+                let flushing = Task { @MainActor in
+                    await #expect(throws: ScholiumWindowLifecycleError.timedOut(phase)) {
+                        try await registry.flushAll()
+                    }
+                }
+                do {
+                    try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                        await pause.waitForArrival()
+                    }
+                } catch {
+                    pause.release()
+                    _ = await flushing.value
+                    throw error
+                }
+                _ = await flushing.value
+
+                #expect(started.duration(to: clock.now) < .seconds(1))
+                #expect(registry.hasOpenWindows)
+                #expect(stalled.model.error != nil)
+                #expect(stalled.model.isDirty)
+                #expect(stalled.model.isPreparingTermination)
+                #expect(!stalled.model.canRequestClose)
+                #expect(Data(stalled.editor.checkedSource.utf8) == retained)
+                #expect(try Data(contentsOf: stalled.url) == original)
+                #expect(try Data(contentsOf: healthy.url) == savedPeer)
+                #expect(!healthy.model.isTerminating)
+
+                // The old capture deliberately ignores cancellation. Its late
+                // completion must thaw input without starting the rejected save.
+                pause.release()
+                try await waitUntilIdle(stalled.model)
+                #expect(!stalled.model.isPreparingTermination)
+                #expect(stalled.bridge.suspensionID == nil)
+                #expect(stalled.editor.detachmentSuspensionID == nil)
+                #expect(stalled.model.isDirty)
+                #expect(Data(stalled.editor.checkedSource.utf8) == retained)
+                #expect(try Data(contentsOf: stalled.url) == original)
+
+                // An independent retry after the resource recovers can save.
+                try await waitUntilIdle(healthy.model)
+                try await registry.flushAll()
+                #expect(try Data(contentsOf: stalled.url) == retained)
+                await stalled.model.resumeInput()
+                await healthy.model.resumeInput()
+            }
+        }
+    }
+
+    @Test("A conflicting external reader refuses quit while a healthy peer saves and both remain open")
+    func failedTerminationStillFlushesPeer() async throws {
+        try await withEditor { failing in
+            try await withEditor { healthy in
+                try await waitUntilIdle(failing.model)
+                try await waitUntilIdle(healthy.model)
+                try failing.insertNative("\r\nRetain the conflicting editor")
+                try healthy.insertNative("\r\nSave this independent editor")
+                let buffer = Data(failing.editor.checkedSource.utf8)
+                let peer = Data(healthy.editor.checkedSource.utf8)
+                let external = Data("# Concurrent replacement\r\n".utf8)
+                try external.write(to: failing.url, options: .atomic)
+                await failing.model.refreshFromDisk()
+                try await waitUntilIdle(failing.model)
+                #expect(failing.model.hasConflict)
+                let conflict = failing.model.error
+                let registry = ExternalMarkdownWindowRegistry()
+                registry.register(failing.model)
+                registry.register(healthy.model)
+                defer {
+                    registry.unregister(failing.model)
+                    registry.unregister(healthy.model)
+                }
+
+                await #expect(throws: ExternalMarkdownWindowIssue.self) { try await registry.flushAll() }
+
+                #expect(registry.hasOpenWindows)
+                #expect(failing.model.hasConflict)
+                #expect(failing.model.error == conflict)
+                #expect(Data(failing.editor.checkedSource.utf8) == buffer)
+                #expect(try Data(contentsOf: failing.url) == external)
+                #expect(try Data(contentsOf: healthy.url) == peer)
+                #expect(!failing.model.isTerminating)
+                #expect(!healthy.model.isTerminating)
+                #expect(failing.bridge.suspensionID == nil)
+                #expect(healthy.bridge.suspensionID == nil)
+            }
+        }
+    }
+
     @Test("Reopening the same URL keeps its dirty session and closing removes that route")
     func sameURLKeepsDirtySession() async throws {
         try await withEditor { fixture in
@@ -514,6 +640,12 @@ struct ExternalMarkdownWindowLifecycleTests {
         }
     }
 
+    private func waitUntilIdle(_ model: ExternalMarkdownWindowModel) async throws {
+        try await withScholiumLifecycleDeadline(phase: .contentFlush, timeout: .seconds(3)) {
+            while model.isBusy { await Task.yield() }
+        }
+    }
+
     @MainActor
     private struct EditorFixture {
         let url: URL
@@ -546,6 +678,8 @@ struct ExternalMarkdownWindowLifecycleTests {
         var generation = 0
         var suspensionID: String?
         var resumeFailuresRemaining = 0
+        var nextTextQueryPause: PausedBridgeRequest?
+        var textQueriesBeforePause = 0
 
         func insertBrowserOnly(_ exact: String) {
             source += exact
@@ -563,6 +697,14 @@ struct ExternalMarkdownWindowLifecycleTests {
                 self.source = source
                 generation = 0
             case .queryText:
+                if let pause = nextTextQueryPause {
+                    if textQueriesBeforePause > 0 {
+                        textQueriesBeforePause -= 1
+                    } else {
+                        nextTextQueryPause = nil
+                        await pause.suspend()
+                    }
+                }
                 text = source
             case .captureRecovery:
                 recovery = recoverySnapshot(request)
@@ -610,6 +752,30 @@ struct ExternalMarkdownWindowLifecycleTests {
                 documentID: request.documentID, fingerprint: request.startingFingerprint,
                 generation: generation, ranges: [.init(anchor: 0, head: 0)], source: source,
                 stateJSON: nil, undoHistoryPreserved: false, dirty: generation > 0, focusTarget: .editor)
+        }
+    }
+
+    @MainActor
+    private final class PausedBridgeRequest {
+        private let arrivals = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var released = false
+
+        func suspend() async {
+            arrivals.continuation.yield(())
+            guard !released else { return }
+            await withCheckedContinuation { continuation = $0 }
+        }
+
+        func waitForArrival() async {
+            var iterator = arrivals.stream.makeAsyncIterator()
+            _ = await iterator.next()
+        }
+
+        func release() {
+            released = true
+            continuation?.resume()
+            continuation = nil
         }
     }
 

@@ -110,11 +110,10 @@ extension WindowModel {
     }
 
     func retryIdentityRecovery() async {
-        do {
-            try await refreshLibrarySourceScope()
-        } catch {
-            identityResolutionError = error.localizedDescription
-        }
+        await retryDerivedRefresh()
+        identityResolutionError =
+            currentDocumentIdentityMigrationFailure?.message
+            ?? workspaceProjectionController.catalogError
     }
 
     func refreshIdentityState() async {

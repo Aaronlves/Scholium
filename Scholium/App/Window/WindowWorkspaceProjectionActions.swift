@@ -26,12 +26,15 @@ extension WindowModel {
     private func refreshWorkspaceProjection(
         refreshingStatus: String?
     ) async -> WorkspaceSnapshot? {
-        guard let vaultID = currentRegisteredVault?.id else { return nil }
+        guard let vaultID = currentRegisteredVault?.id,
+            let runtimeIdentity = windowWorkspaceController.activeCapabilities?.runtimeIdentity
+        else { return nil }
         if let refreshingStatus { refreshStatusText = refreshingStatus }
         do {
             let snapshot = try await discoveryController.refreshWorkspace()
             guard currentRegisteredVault?.id == vaultID,
                 let capabilities = windowWorkspaceController.activeCapabilities,
+                capabilities.runtimeIdentity == runtimeIdentity,
                 let commit = workspaceProjectionController.replaceSnapshot(
                     snapshot,
                     runtimeIdentity: capabilities.runtimeIdentity,
@@ -39,11 +42,15 @@ extension WindowModel {
                     context: workspaceProjectionContext
                 )
             else { return nil }
-            applyWorkspaceProjectionCommit(commit)
+            let reconciliation = reconcilePublishedDocuments(snapshot)
+            applyWorkspaceProjectionCommit(commit, documentReconciliation: reconciliation)
             refreshStatusText = nil
             workspaceProjectionController.reportCatalogError(nil)
             return snapshot
         } catch {
+            guard currentRegisteredVault?.id == vaultID,
+                windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity
+            else { return nil }
             refreshStatusText = "Triptych refresh failed"
             workspaceProjectionController.reportCatalogError(error.localizedDescription)
             return nil
@@ -99,19 +106,15 @@ extension WindowModel {
             )
         }
 
-        if case .inventoryChanged(let change) = event,
-            let vaultID = currentRegisteredVault?.id
-        {
+        if case .inventoryChanged(let change) = event {
             for move in change.moved
-            where move.previousLocation.vaultID == vaultID
-                && move.location.vaultID == vaultID
-            {
+            where move.previousLocation.vaultID == move.location.vaultID {
                 migrateInMemoryPath(
                     from: move.previousLocation.relativePath,
                     to: move.location.relativePath,
                     noteID: move.stableNoteID,
                     identityResolved: true,
-                    vaultID: vaultID
+                    vaultID: move.location.vaultID
                 )
             }
         }
@@ -125,10 +128,7 @@ extension WindowModel {
             return
         }
 
-        let documentReconciliation = documentController.receive(
-            event.snapshot,
-            openDocuments: documentTabController.tabs.map(\.document)
-        )
+        let documentReconciliation = reconcilePublishedDocuments(event.snapshot)
         researchController.receive(event.snapshot)
         researchController.observeDocumentChangesGeneration(
             event.snapshot.documentChangesGeneration
@@ -164,6 +164,25 @@ extension WindowModel {
             selectedDocumentPath: selectedDocumentPath,
             retainedDeletedDocumentPath: documentController.retainedDeletedDocumentPath
         )
+    }
+
+    private func reconcilePublishedDocuments(_ snapshot: WorkspaceSnapshot) -> DocumentWorkspaceReconciliation {
+        for vault in snapshot.vaults {
+            for rebinding in vault.identityRecovery.pendingRebindings {
+                migrateInMemoryPath(
+                    from: rebinding.previousRelativePath, to: rebinding.relativePath,
+                    noteID: rebinding.noteID, identityResolved: false, vaultID: vault.vault.id
+                )
+            }
+            for rebinding in vault.identityRecovery.completedRebindings {
+                migrateInMemoryPath(
+                    from: rebinding.previousRelativePath, to: rebinding.relativePath,
+                    noteID: rebinding.id, identityResolved: true, vaultID: vault.vault.id
+                )
+            }
+        }
+        documentNavigationHistoryController.receive(snapshot)
+        return documentController.receive(snapshot, openDocuments: documentTabController.tabs.map(\.document))
     }
 
     func applyWorkspaceProjectionCommit(

@@ -76,6 +76,44 @@ attachment text, metadata, annotations and original local file bytes remain
 distinct; a successful capability lookup alone is not proof that an original
 was read.
 
+### 15.5 Manuscript citations and bibliography
+
+Manuscript citation editing uses Zotero Desktop's HTTP document integration.
+Zotero owns source search/selection, multi-source clusters, locators,
+prefixes/suffixes, suppress-author, citation style and CSL rendering. Scholium
+supplies ordered manuscript fields and persists accepted changes; it neither
+bundles a CSL processor nor writes library items through this route. The
+independent Agent connection retains §15.3's confirmation boundary. Only inline
+citation styles are supported. Note styles and automatic footnote/endnote
+conversion are unavailable; requests leave source unchanged and explain the
+limitation.
+
+Exact Markdown carries each citation as a standard link with a readable fallback
+label and versioned `scholium-zotero:1:` destination. The encoded payload retains
+stable host occurrence identity and opaque Zotero field data, including supplied
+item references and metadata. Bibliography is readable Markdown between paired
+field comments; a document comment retains Zotero document/style data and the
+accepted field state. No hidden rich text or sidecar becomes citation authority.
+Citekeys and title matching cannot replace Zotero's library-qualified references.
+
+Each operation stages callbacks against the current exact source and selection.
+Only a validated accepted candidate applies in one Undo, preserving bytes outside
+changed ranges. Completion alone confirms protocol cleanup, not acceptance.
+Composition, selection, mode or document changes revoke pending acceptance;
+cancellation or failure preserves typed input and source. Protocol cleanup cannot
+publish partial fields.
+
+Changed field identities, codes or order mark citation state stale. Manual
+fallback edits remain source; Zotero handles their citation consequences on
+Refresh. **Refresh Citations** delegates the complete ordered clusters and
+bibliography to Zotero; **Citation Style…** changes style there. Library metadata
+changes require explicit Refresh. Offline Notes retain exact fields and their
+last readable fallback; disconnected formatting is Unavailable, never fresh
+output. Unknown versions, malformed/duplicate fields and unresolved sources retain
+bytes. Stale/unresolved state stays visible in a native Document notice with guarded
+**Refresh Citations** and **Source** repair; identity is never guessed. §18.4 owns
+insertion and export presentation.
+
 ## 16. Onboarding
 
 Before workspace construction, bootstrap state is **Starting**, **Registry

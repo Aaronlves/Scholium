@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 43
+let markdownEditorProtocolVersion = 44
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 // Two exact-source strings may each require six JSON bytes per source byte.
@@ -27,6 +27,7 @@ enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case tableInsertColumnBefore, tableInsertColumnAfter, tableDeleteColumn
     case tableAlignLeft, tableAlignCenter, tableAlignRight
     case pastePlain, pasteMarkdown, linkSelectedText
+    case insertCitation, insertBibliography, refreshCitations, citationStyle, cancelCitation
 }
 
 struct MarkdownEditorSelectionRange: Codable, Hashable, Sendable {
@@ -146,6 +147,7 @@ struct MarkdownEditorContext: Codable, Hashable, Sendable {
     let availableCommands: [MarkdownEditorCommand]
     let undoLabel: String?
     let redoLabel: String?
+    var citationState: MarkdownEditorCitationState? = nil
 }
 
 /// The comparatively small, Equatable part of editor interaction state that
@@ -160,6 +162,7 @@ struct EditorInteractionAvailability: Hashable, Sendable {
     let availableCommands: [MarkdownEditorCommand]
     let undoLabel: String?
     let redoLabel: String?
+    let citationState: MarkdownEditorCitationState?
 
     init(context: MarkdownEditorContext) {
         activeInlineConstructs = context.activeInlineConstructs
@@ -170,6 +173,7 @@ struct EditorInteractionAvailability: Hashable, Sendable {
         availableCommands = context.availableCommands
         undoLabel = context.undoLabel
         redoLabel = context.redoLabel
+        citationState = context.citationState
     }
 
     func context(
@@ -183,7 +187,8 @@ struct EditorInteractionAvailability: Hashable, Sendable {
             composing: composing,
             availableCommands: availableCommands,
             undoLabel: undoLabel,
-            redoLabel: redoLabel
+            redoLabel: redoLabel,
+            citationState: citationState
         )
     }
 }
@@ -248,6 +253,10 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
     case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String, preserveSelection: Bool)
     case insertReference(selection: MarkdownEditorSelectionRange, generation: Int, target: String)
+    case beginCitation(transactionID: String, command: String, reference: MarkdownEditorCitationReference?)
+    case citationCallback(transactionID: String, value: MarkdownEditorCitationCallback)
+    case finishCitation(transactionID: String)
+    case cancelCitation(transactionID: String)
     case command(MarkdownEditorCommand, argument: String?)
     case pasteClipboard(plainText: String, selections: [MarkdownEditorSelectionRange])
     case markClean, focus, focusTitle, blur
@@ -257,7 +266,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     /// queue behind one another or behind an obsolete content generation.
     var serializesSourceMutation: Bool {
         switch self {
-        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .command, .pasteClipboard,
+        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .finishCitation, .command, .pasteClipboard,
             .suspendForDetachment, .resumeAfterDetachment:
             true
         case .documentFind(let query):
@@ -277,7 +286,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
         case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
-            enabled, contextKey, plainText, selections
+            enabled, contextKey, plainText, selections, transactionID, reference
     }
     private enum Kind: String, Codable {
         case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setImageResources,
@@ -287,7 +296,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case goToLine, revealSourceRange, selectAll, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor,
             queryPerformance
         case captureRecovery, suspendForDetachment, resumeAfterDetachment, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, insertReference,
-            command, pasteClipboard, documentFind, clearDocumentFind,
+            beginCitation, citationCallback, finishCitation, cancelCitation, command, pasteClipboard, documentFind, clearDocumentFind,
             markClean, focus,
             focusTitle, blur
     }
@@ -366,6 +375,19 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 selection: container.decode(MarkdownEditorSelectionRange.self, forKey: .selection),
                 generation: container.decode(Int.self, forKey: .generation),
                 target: container.decode(String.self, forKey: .target))
+        case .beginCitation:
+            self = try .beginCitation(
+                transactionID: container.decode(String.self, forKey: .transactionID),
+                command: container.decode(String.self, forKey: .command),
+                reference: container.decodeIfPresent(MarkdownEditorCitationReference.self, forKey: .reference))
+        case .citationCallback:
+            self = try .citationCallback(
+                transactionID: container.decode(String.self, forKey: .transactionID),
+                value: container.decode(MarkdownEditorCitationCallback.self, forKey: .value))
+        case .finishCitation:
+            self = try .finishCitation(transactionID: container.decode(String.self, forKey: .transactionID))
+        case .cancelCitation:
+            self = try .cancelCitation(transactionID: container.decode(String.self, forKey: .transactionID))
         case .command:
             self = try .command(
                 container.decode(MarkdownEditorCommand.self, forKey: .command),
@@ -462,6 +484,21 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(selection, forKey: .selection)
             try container.encode(generation, forKey: .generation)
             try container.encode(target, forKey: .target)
+        case .beginCitation(let transactionID, let command, let reference):
+            try container.encode(Kind.beginCitation, forKey: .type)
+            try container.encode(transactionID, forKey: .transactionID)
+            try container.encode(command, forKey: .command)
+            try container.encodeIfPresent(reference, forKey: .reference)
+        case .citationCallback(let transactionID, let value):
+            try container.encode(Kind.citationCallback, forKey: .type)
+            try container.encode(transactionID, forKey: .transactionID)
+            try container.encode(value, forKey: .value)
+        case .finishCitation(let transactionID):
+            try container.encode(Kind.finishCitation, forKey: .type)
+            try container.encode(transactionID, forKey: .transactionID)
+        case .cancelCitation(let transactionID):
+            try container.encode(Kind.cancelCitation, forKey: .type)
+            try container.encode(transactionID, forKey: .transactionID)
         case .command(let command, let argument):
             try container.encode(Kind.command, forKey: .type)
             try container.encode(command, forKey: .command)
@@ -536,6 +573,7 @@ struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
     let performanceSamples: [MarkdownEditorPerformanceSample]?
     let find: DocumentFindResult?
     let commitSuperseded: Bool?
+    var citationReply: MarkdownEditorCitationReply? = nil
     let accepted: Bool
     let error: String?
 }

@@ -40,7 +40,7 @@ enum NoteExportPaperSize: Hashable, Sendable {
     }
 }
 
-private enum NoteExportError: LocalizedError {
+enum NoteExportError: LocalizedError {
     case invalidTextSize
     case invalidSource
     case emptyOutput
@@ -48,6 +48,8 @@ private enum NoteExportError: LocalizedError {
     case pageLoadTimedOut
     case missingLocalImage(String)
     case docxPackaging
+    case citationStateStale
+    case citationSourceUnresolved
 
     var errorDescription: String? {
         switch self {
@@ -60,6 +62,10 @@ private enum NoteExportError: LocalizedError {
             ScholiumL10n.string("The image at \(destination) could not be included in the export.")
         case .docxPackaging:
             ScholiumL10n.string("The Word document could not be prepared for export.")
+        case .citationStateStale:
+            ScholiumL10n.string("The citations changed. Refresh Citations or choose Export Saved Text.")
+        case .citationSourceUnresolved:
+            ScholiumL10n.string("The citation source is unresolved. Repair it or choose Export Saved Text.")
         }
     }
 }
@@ -67,6 +73,19 @@ private enum NoteExportError: LocalizedError {
 /// Renders one supplied NoteDocument snapshot without reading or changing its source file.
 @MainActor
 struct NoteExportService {
+    /// Offline export knows only source integrity, never a live library's freshness.
+    static func citationExportIssue(in document: NoteDocument) -> NoteExportError? {
+        let fields = MarkdownSemanticDocument(parsing: document).zoteroFields
+        if !fields.canMutate { return .citationSourceUnresolved }
+        if fields.citationStateStale { return .citationStateStale }
+        return nil
+    }
+
+    static func requireCitationExportAdmission(in document: NoteDocument, allowSavedCitationText: Bool = false) throws {
+        try Task.checkCancellation()
+        if !allowSavedCitationText, let issue = citationExportIssue(in: document) { throw issue }
+    }
+
     /// A Word preview follows the same HTML layout, but keeps the renderer's
     /// visible image placeholder for figures the native Word writer omits.
     static func renderDOCXPreviewHTML(
@@ -77,8 +96,10 @@ struct NoteExportService {
         paperSize: NoteExportPaperSize,
         appearance: DocumentAppearanceSettings = .defaultSettings,
         includeYAML: Bool = false,
-        embeddedImages: [String: RenderedMarkdownImage] = [:]
+        embeddedImages: [String: RenderedMarkdownImage] = [:],
+        allowSavedCitationText: Bool = false
     ) async throws -> Data {
+        try requireCitationExportAdmission(in: document, allowSavedCitationText: allowSavedCitationText)
         let html = try makeHTML(
             document: document, title: title, style: style, textSize: textSize,
             paperSize: paperSize, appearance: appearance, includeYAML: includeYAML,
@@ -98,8 +119,10 @@ struct NoteExportService {
         paperSize: NoteExportPaperSize,
         appearance: DocumentAppearanceSettings = .defaultSettings,
         includeYAML: Bool = false,
-        embeddedImages: [String: RenderedMarkdownImage] = [:]
+        embeddedImages: [String: RenderedMarkdownImage] = [:],
+        allowSavedCitationText: Bool = false
     ) async throws -> Data {
+        try requireCitationExportAdmission(in: document, allowSavedCitationText: allowSavedCitationText)
         let html = try makeHTML(
             document: document, title: title, style: style, textSize: textSize,
             paperSize: paperSize, appearance: appearance, includeYAML: includeYAML,
@@ -140,7 +163,8 @@ struct NoteExportService {
             )
             output = try await addWordFootnotes(
                 wordContent.footnotes, to: nativeDOCX, markers: wordContent.markers,
-                links: wordLinks.links, headings: wordContent.headings)
+                links: wordLinks.links, headings: wordContent.headings,
+                bibliographies: wordContent.bibliographies)
         }
         guard !output.isEmpty else { throw NoteExportError.emptyOutput }
         if format == .docx, !output.starts(with: [0x50, 0x4B]) {
@@ -149,9 +173,12 @@ struct NoteExportService {
         return output
     }
 
-    private static func prepareWordContent(
+    static func prepareWordContent(
         html: String, document: NoteDocument
-    ) -> (html: String, footnotes: [(Int, NSAttributedString)], markers: [String: Int], headings: [String: Int]) {
+    ) -> (
+        html: String, footnotes: [(Int, NSAttributedString)], markers: [String: Int], headings: [String: Int],
+        bibliographies: [String: ZoteroMarkdownBibliographyStyle]
+    ) {
         var headings: [String: Int] = [:]
         var prepared = replacingRegex(#"<h([1-6])\b[^>]*>"#, in: html) { match, source in
             let marker = "SCHOLIUMHEADING\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))END"
@@ -159,6 +186,16 @@ struct NoteExportService {
             return source.substring(with: match.range) + marker
         }
         let semantic = MarkdownSemanticDocument(parsing: document)
+        var bibliographies: [String: ZoteroMarkdownBibliographyStyle] = [:]
+        if let layout = semantic.zoteroFields.documentState?.bibliographyStyle {
+            prepared = replacingRegex(#"<section class="scholium-zotero-bibliography"[^>]*>[\s\S]*?</section>"#, in: prepared) { match, source in
+                replacingRegex(#"<p\b[^>]*>"#, in: source.substring(with: match.range)) { entry, section in
+                    let marker = "SCHOLIUMBIBLIOGRAPHY\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))END"
+                    bibliographies[marker] = layout
+                    return section.substring(with: entry.range) + marker
+                }
+            }
+        }
         let referenced = Set(semantic.footnoteReferences.map(\.ordinal))
         let footnotes = semantic.footnoteDefinitions.compactMap { definition -> (Int, NSAttributedString)? in
             guard let ordinal = definition.ordinal, referenced.contains(ordinal) else { return nil }
@@ -176,7 +213,7 @@ struct NoteExportService {
                 )) ?? NSAttributedString(string: definition.content)
             return (ordinal, content)
         }
-        guard !footnotes.isEmpty else { return (prepared, [], [:], headings) }
+        guard !footnotes.isEmpty else { return (prepared, [], [:], headings, bibliographies) }
         let ids = Set(footnotes.map(\.0))
         var markers: [String: Int] = [:]
         for ordinal in ids.sorted() {
@@ -188,17 +225,20 @@ struct NoteExportService {
             }
         }
         prepared = replacingRegex(#"<section class="footnotes"[\s\S]*?</section>"#, in: prepared) { _, _ in "" }
-        return (prepared, footnotes, markers, headings)
+        return (prepared, footnotes, markers, headings, bibliographies)
     }
 
     private static func addWordFootnotes(
-        _ footnotes: [(Int, NSAttributedString)], to data: Data, markers: [String: Int], links: [WordLink], headings: [String: Int]
+        _ footnotes: [(Int, NSAttributedString)], to data: Data, markers: [String: Int], links: [WordLink], headings: [String: Int],
+        bibliographies: [String: ZoteroMarkdownBibliographyStyle]
     ) async throws -> Data {
         do {
             var package = try await WorkspaceStore.unpackWordDocument(data)
             let documentXML = try wordPart("word/document.xml", in: package)
             var relationships = try wordPart("word/_rels/document.xml.rels", in: package)
-            let preparedXML = try replacingWordMarkers(in: documentXML, footnotes: markers, links: links, headings: headings)
+            let preparedXML = try replacingWordMarkers(
+                in: documentXML, footnotes: markers, links: links, headings: headings,
+                bibliographies: bibliographies)
             package["word/document.xml"] = Data(preparedXML.utf8)
             for link in links {
                 relationships = relationships.replacingOccurrences(
@@ -253,7 +293,7 @@ struct NoteExportService {
         return text
     }
 
-    private struct WordLink {
+    struct WordLink {
         let id: String
         let target: String
         let start: String
@@ -285,21 +325,25 @@ struct NoteExportService {
         return (marked, ranges.map(\.1))
     }
 
-    private static func replacingWordMarkers(in xml: String, footnotes: [String: Int], links: [WordLink], headings: [String: Int]) throws -> String {
+    static func replacingWordMarkers(
+        in xml: String, footnotes: [String: Int], links: [WordLink], headings: [String: Int],
+        bibliographies: [String: ZoteroMarkdownBibliographyStyle]
+    ) throws -> String {
         let document = try XMLDocument(xmlString: xml, options: .nodePreserveWhitespace)
-        try normalizeWordRunProperties(in: document)
+        try normalizeNativeWordProperties(in: document)
         let relationshipNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
         if document.rootElement()?.namespace(forPrefix: "r") == nil {
             document.rootElement()?.addNamespace(XMLNode.namespace(withName: "r", stringValue: relationshipNamespace) as! XMLNode)
         }
         let starts = Dictionary(uniqueKeysWithValues: links.map { ($0.start, $0.id) })
         let ends = Dictionary(uniqueKeysWithValues: links.map { ($0.end, $0.id) })
-        let tokens = Array(footnotes.keys) + Array(starts.keys) + Array(ends.keys) + Array(headings.keys)
+        let tokens = Array(footnotes.keys) + Array(starts.keys) + Array(ends.keys) + Array(headings.keys) + Array(bibliographies.keys)
         guard !tokens.isEmpty else { return document.xmlString }
         let pattern = tokens.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
         let regex = try NSRegularExpression(pattern: pattern)
         var startNodes: [String: XMLElement] = [:]
         var endNodes: [String: XMLElement] = [:]
+        var bibliographyMarkers = Set<String>()
         var referencedFootnotes = Set<Int>()
         var footnoteDisplayNumbers: [Int: Int] = [:]
         let existingBookmarks = try document.nodes(forXPath: "//*[local-name()='bookmarkStart']").compactMap { $0 as? XMLElement }
@@ -384,6 +428,12 @@ struct NoteExportService {
                     let outline = XMLElement(name: "w:outlineLvl")
                     outline.addAttribute(XMLNode.attribute(withName: "w:val", stringValue: String(level - 1)) as! XMLNode)
                     properties.addChild(outline)
+                } else if let layout = bibliographies[token] {
+                    guard bibliographyMarkers.insert(token).inserted else { throw NoteExportError.docxPackaging }
+                    var ancestor: XMLNode? = parent
+                    while ancestor != nil, ancestor?.localName != "p" { ancestor = ancestor?.parent }
+                    guard let paragraph = ancestor as? XMLElement else { throw NoteExportError.docxPackaging }
+                    applyWordBibliographyLayout(layout, to: paragraph)
                 }
                 offset = NSMaxRange(match.range)
             }
@@ -409,17 +459,72 @@ struct NoteExportService {
             parent.insertChild(hyperlink, at: first)
         }
         let remainingText = document.rootElement()?.stringValue ?? ""
-        guard !tokens.contains(where: { remainingText.contains($0) }) else { throw NoteExportError.docxPackaging }
+        guard bibliographyMarkers == Set(bibliographies.keys),
+            !tokens.contains(where: { remainingText.contains($0) })
+        else { throw NoteExportError.docxPackaging }
         return document.xmlString
     }
 
-    /// AppKit writes an obsolete complex-script size name and unordered run
-    /// properties. Normalize the OOXML structure without changing text or values.
-    private static func normalizeWordRunProperties(in document: XMLDocument) throws {
+    /// The source callback owns bibliography layout. Apply it after AppKit and
+    /// page presets, which otherwise lose HTML indentation and line multiples.
+    private static func applyWordBibliographyLayout(_ layout: ZoteroMarkdownBibliographyStyle, to paragraph: XMLElement) {
+        let properties = paragraph.elements(forName: "w:pPr").first ?? XMLElement(name: "w:pPr")
+        if properties.parent == nil { paragraph.insertChild(properties, at: 0) }
+        for child in properties.children ?? [] where ["tabs", "spacing", "ind"].contains(child.localName ?? "") { child.detach() }
+        func value(_ number: Double) -> String { String(Int(number.rounded())) }
+        func attribute(_ name: String, _ content: String, on element: XMLElement) {
+            element.addAttribute(XMLNode.attribute(withName: "w:\(name)", stringValue: content) as! XMLNode)
+        }
+        var additions: [XMLElement] = []
+        if !layout.tabStops.isEmpty {
+            let tabs = XMLElement(name: "w:tabs")
+            for stop in layout.tabStops {
+                let tab = XMLElement(name: "w:tab")
+                attribute("val", "left", on: tab)
+                attribute("pos", value(stop), on: tab)
+                tabs.addChild(tab)
+            }
+            additions.append(tabs)
+        }
+        let spacing = XMLElement(name: "w:spacing")
+        attribute("before", "0", on: spacing)
+        attribute("after", value(layout.entrySpacing), on: spacing)
+        attribute("line", value(layout.lineSpacing), on: spacing)
+        attribute("lineRule", "auto", on: spacing)
+        additions.append(spacing)
+        let indentation = XMLElement(name: "w:ind")
+        attribute("left", value(layout.indent), on: indentation)
+        attribute(layout.firstLineIndent < 0 ? "hanging" : "firstLine", value(abs(layout.firstLineIndent)), on: indentation)
+        additions.append(indentation)
+        // Keep the paragraph-property schema order without reordering unrelated
+        // paragraph settings produced by the native writer.
+        let afterIndent: Set<String> = [
+            "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment",
+            "textboxTightWrap", "outlineLvl", "divId", "cnfStyle", "rPr", "sectPr", "pPrChange",
+        ]
+        let afterTabs = afterIndent.union([
+            "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE",
+            "autoSpaceDN", "bidi", "adjustRightInd", "snapToGrid", "spacing", "ind",
+        ])
+        for addition in additions {
+            let following = addition.localName == "tabs" ? afterTabs : afterIndent.union(["ind"])
+            let index = properties.children?.firstIndex { following.contains($0.localName ?? "") } ?? properties.childCount
+            properties.insertChild(addition, at: index)
+        }
+    }
+
+    /// AppKit writes obsolete complex-script size and first-line indent names,
+    /// plus unordered run properties. Preserve values in the OOXML schema.
+    private static func normalizeNativeWordProperties(in document: XMLDocument) throws {
         let namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
         guard document.rootElement()?.namespace(forPrefix: "w")?.stringValue == namespace else { throw NoteExportError.docxPackaging }
         for node in try document.nodes(forXPath: "//*[local-name()='sz-cs']") where node.name == "w:sz-cs" {
             node.name = "w:szCs"
+        }
+        for node in try document.nodes(forXPath: "//*[local-name()='ind']") where node.name == "w:ind" {
+            guard let indentation = node as? XMLElement, let native = indentation.attribute(forName: "w:first-line") else { continue }
+            guard indentation.attribute(forName: "w:firstLine") == nil else { throw NoteExportError.docxPackaging }
+            native.name = "w:firstLine"
         }
         let order = [
             "rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike", "outline", "shadow", "emboss", "imprint",
@@ -695,11 +800,12 @@ struct NoteExportService {
         return result
     }
 
-    private static func markBodyParagraphs(in html: String, with marker: String) -> String {
+    static func markBodyParagraphs(in html: String, with marker: String) -> String {
         let tags = try! NSRegularExpression(pattern: "</?([A-Za-z][A-Za-z0-9-]*)\\b[^>]*>")
         let source = html as NSString
         let excludedContainers: Set<String> = ["li", "blockquote", "td", "th"]
         var insideMain = false
+        var bibliographySections: [Bool] = []
         var excludedDepth = 0
         var cursor = 0
         var marked = ""
@@ -709,10 +815,18 @@ struct NoteExportService {
             let tag = source.substring(with: match.range(at: 1)).lowercased()
             let closing = source.substring(with: match.range).hasPrefix("</")
             if tag == "main" { insideMain = !closing }
+            if tag == "section" {
+                if closing {
+                    _ = bibliographySections.popLast()
+                } else {
+                    bibliographySections.append(
+                        bibliographySections.last == true || source.substring(with: match.range).contains("class=\"scholium-zotero-bibliography\""))
+                }
+            }
             if excludedContainers.contains(tag) {
                 excludedDepth += closing ? -1 : 1
             }
-            if tag == "p", !closing, insideMain, excludedDepth == 0 {
+            if tag == "p", !closing, insideMain, excludedDepth == 0, bibliographySections.last != true {
                 marked += marker
             }
             cursor = end
@@ -798,6 +912,7 @@ struct NoteExportService {
             blockquote { margin-inline: 0; padding-inline-start: 1em; border-inline-start: 1pt solid #888; }
             .scholium-media-placeholder { font-style: italic; }
             \(styleCSS)
+            .scholium-document .scholium-zotero-bibliography p { text-indent: 0; }
             @media print { body { max-width: none; padding: 0; } }
             </style>
             </head><body>
@@ -834,6 +949,9 @@ struct NoteExportService {
         }
     }
 
+    // WebKit lays out and captures CSS pixels (96/inch); PDF uses points (72/inch).
+    private static let pdfPointsPerCSSPixel: CGFloat = 72.0 / 96.0
+
     private static func renderPDF(
         html: String, paperSize: NoteExportPaperSize, style: NoteExportStyle
     ) async throws -> Data {
@@ -841,8 +959,12 @@ struct NoteExportService {
         configuration.websiteDataStore = .nonPersistent()
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        let cssPaperSize = CGSize(
+            width: paperSize.pointSize.width / pdfPointsPerCSSPixel,
+            height: paperSize.pointSize.height / pdfPointsPerCSSPixel
+        )
         let webView = WKWebView(
-            frame: CGRect(origin: .zero, size: paperSize.pointSize),
+            frame: CGRect(origin: .zero, size: cssPaperSize),
             configuration: configuration
         )
         let loader = NoteExportPageLoader()
@@ -916,7 +1038,7 @@ struct NoteExportService {
             (try await webView.evaluateJavaScript(boundaryScript) as? [NSNumber])?
             .map { CGFloat(truncating: $0) } ?? []
         let margin: CGFloat = style == .document ? 54 : 72
-        let contentHeight = paperSize.pointSize.height - margin * 2
+        let contentHeight = (paperSize.pointSize.height - margin * 2) / pdfPointsPerCSSPixel
         var captures: [Data] = []
         var start: CGFloat = 0
         while start < fullHeight {
@@ -931,7 +1053,7 @@ struct NoteExportService {
             }
             let capture = WKPDFConfiguration()
             capture.rect = CGRect(
-                x: 0, y: start, width: paperSize.pointSize.width, height: end - start
+                x: 0, y: start, width: cssPaperSize.width, height: end - start
             )
             captures.append(try await webView.pdf(configuration: capture))
             start = end
@@ -965,19 +1087,20 @@ struct NoteExportService {
             let bounds = page.getBoxRect(.mediaBox)
             guard bounds.width.isFinite, bounds.height.isFinite,
                 bounds.width > 0, bounds.height > 0,
-                bounds.height <= paperSize.height - margin * 2 + 1
+                bounds.height * pdfPointsPerCSSPixel <= paperSize.height - margin * 2 + 1
             else { throw NoteExportError.invalidPDF }
             context.beginPDFPage(nil)
             context.saveGState()
             context.clip(
                 to: CGRect(
-                    x: 0, y: mediaBox.height - margin - bounds.height,
-                    width: mediaBox.width, height: bounds.height
+                    x: 0, y: mediaBox.height - margin - bounds.height * pdfPointsPerCSSPixel,
+                    width: mediaBox.width, height: bounds.height * pdfPointsPerCSSPixel
                 ))
             context.translateBy(
-                x: -bounds.minX,
-                y: mediaBox.height - margin - bounds.maxY
+                x: -bounds.minX * pdfPointsPerCSSPixel,
+                y: mediaBox.height - margin - bounds.maxY * pdfPointsPerCSSPixel
             )
+            context.scaleBy(x: pdfPointsPerCSSPixel, y: pdfPointsPerCSSPixel)
             context.drawPDFPage(page)
             context.restoreGState()
             let number = NSAttributedString(
@@ -1006,7 +1129,7 @@ struct NoteExportService {
             throw NoteExportError.invalidPDF
         }
         // Core Graphics draws page content but never carries PDF annotations.
-        // Apply the same page translation to each captured link rectangle so
+        // Apply the same scaling and translation to each captured link rectangle so
         // the final PDF retains working links at the visible text positions.
         for (index, data) in captures.enumerated() {
             guard let source = PDFDocument(data: data),
@@ -1015,8 +1138,9 @@ struct NoteExportService {
             else { throw NoteExportError.invalidPDF }
             let bounds = sourcePage.bounds(for: .mediaBox)
             let transform = CGAffineTransform(
-                translationX: -bounds.minX,
-                y: paperSize.height - margin - bounds.maxY
+                a: pdfPointsPerCSSPixel, b: 0, c: 0, d: pdfPointsPerCSSPixel,
+                tx: -bounds.minX * pdfPointsPerCSSPixel,
+                ty: paperSize.height - margin - bounds.maxY * pdfPointsPerCSSPixel
             )
             for annotation in sourcePage.annotations {
                 guard

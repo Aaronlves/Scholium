@@ -1055,7 +1055,9 @@ final class WindowModel: ObservableObject {
         }
         if let tab = documentTabController.tabs.first(where: {
             $0.document.sessionKey == DocumentSessionKey(vaultID: vaultID, noteID: noteID)
-        }), let descriptor = tab.document.workspaceDescriptor {
+        }), let descriptor = tab.document.workspaceDescriptor,
+            descriptor.reference.relativePath == sourcePath
+        {
             let updatedReference = VaultNoteReference(
                 vaultID: descriptor.reference.vaultID,
                 vaultName: descriptor.reference.vaultName,
@@ -1083,7 +1085,12 @@ final class WindowModel: ObservableObject {
         documentController.migratePresentationPath(
             from: sourcePath,
             to: destinationPath,
+            noteID: noteID,
             vaultID: vaultID
+        )
+        documentNavigationHistoryController.migratePath(
+            from: sourcePath, to: destinationPath,
+            key: DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         )
     }
 

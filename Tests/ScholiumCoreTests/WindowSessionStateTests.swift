@@ -135,6 +135,44 @@ struct WindowSessionStateTests {
             ])
     }
 
+    @Test("Wrongly typed and unreadable window records still block path migration", arguments: RecordFailure.allCases)
+    func migrationDoesNotIgnoreRecordFailures(_ failure: RecordFailure) async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WindowSessionSnapshotStore(applicationSupportURL: root)
+        let vaultID = UUID()
+        let snapshot = WindowSessionSnapshot(openDocuments: [.init(vaultID: vaultID, relativePath: "Old.md")])
+        try await store.save(snapshot)
+        let directory = root.appendingPathComponent("Window Sessions", isDirectory: true)
+        let healthyURL = directory.appendingPathComponent(snapshot.id.uuidString + ".json")
+        let healthyBytes = try Data(contentsOf: healthyURL)
+        let invalidURL = directory.appendingPathComponent(UUID().uuidString + ".json")
+        switch failure {
+        case .wrongType:
+            var invalid = try #require(
+                JSONSerialization.jsonObject(with: JSONEncoder().encode(WindowSessionSnapshot())) as? [String: Any])
+            invalid["openDocuments"] = 7
+            try JSONSerialization.data(withJSONObject: invalid).write(to: invalidURL)
+        case .unreadable:
+            try FileManager.default.createDirectory(at: invalidURL, withIntermediateDirectories: false)
+        }
+        do {
+            try await store.migratePath(vaultID: vaultID, from: "Old.md", to: "New.md")
+            Issue.record("A malformed or unreadable record must retain migration recovery.")
+        } catch DecodingError.typeMismatch {
+            #expect(failure == .wrongType)
+        } catch {
+            #expect(failure == .unreadable)
+        }
+        #expect(try Data(contentsOf: healthyURL) == healthyBytes)
+        #expect(try await store.load(id: snapshot.id) == snapshot)
+    }
+
+    enum RecordFailure: CaseIterable, Sendable {
+        case wrongType
+        case unreadable
+    }
+
     @Test("A late older lifecycle generation cannot replace newer window state")
     func staleWriteGenerationIsRejected() async throws {
         let root = temporaryDirectory()

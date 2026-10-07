@@ -726,6 +726,162 @@ struct SidebarTreeTests {
         #expect(sidebarNativeDragPayload(from: pasteboard) == nil)
     }
 
+    @MainActor
+    @Test("The native tree accepts root gaps and Folder destinations for Notes and Folders")
+    func nativeOutlineMoveDestinations() throws {
+        let vaultID = UUID()
+        let source = workspaceNote(vaultID: vaultID, stableID: UUID(), path: "Source/Note.md", source: "# Note\n")
+        let other = workspaceNote(vaultID: vaultID, stableID: UUID(), path: "Source/Other.md", source: "# Other\n")
+        let folders: Set<String> = ["Source", "Source/Group", "Source/Group/Child", "Target", "Target/Nested"]
+        let notes = [source, other]
+        let projection = LibraryTreeProjection(preorderedNotes: notes, folderRelativePaths: Array(folders))
+        let inventory = SidebarTreeDropInventory(
+            currentVaultID: vaultID, sourceScope: .library, currentVaultRole: .other, canMutate: true,
+            notes: notes, folderRelativePaths: folders,
+            pathComparisonPolicy: .init(caseSensitive: true, normalizationSensitive: true),
+            pendingNoteMoves: [], pendingFolderMoves: [])
+        var noteDestinations: [String?] = []
+        var folderDestinations: [String?] = []
+        var groups: [[SidebarNoteDragItem]] = []
+        let configuration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots, notes: notes, scope: .init(vaultID: vaultID, sourceScope: .library),
+            expandedFolderIDs: projection.expandableFolderIDs, revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {}, canMutate: true,
+            dropInventory: inventory, onMoveNoteDrop: { _, folder in noteDestinations.append(folder) },
+            onMoveFolderDrop: { _, folder in folderDestinations.append(folder) },
+            onMoveNotesDrop: { items, folder in
+                #expect(folder == nil)
+                groups.append(items)
+            })
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        let outline = fixture.outlineView
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
+        coordinator.apply(configuration: configuration)
+        func item(_ path: String) throws -> SidebarOutlineItem {
+            try #require((0..<outline.numberOfRows).compactMap { outline.item(atRow: $0) as? SidebarOutlineItem }.first { $0.id == path })
+        }
+        let drag = SidebarTreeDraggingInfo(source: outline, window: fixture.window)
+        defer { drag.draggingPasteboard.releaseGlobally() }
+        try drag.setPayload(SidebarNoteDragItem(try #require(NoteMutationTarget(source))), type: sidebarNativeDraggingTypes[0])
+
+        for index in [0, projection.roots.count, NSOutlineViewDropOnItemIndex] {
+            #expect(coordinator.outlineView(outline, validateDrop: drag, proposedItem: nil, proposedChildIndex: index) == .move)
+            #expect(coordinator.outlineView(outline, acceptDrop: drag, item: nil, childIndex: index))
+        }
+        #expect(noteDestinations.count == 3)
+        #expect(noteDestinations.allSatisfy { $0 == nil })
+        for path in ["Target", "Target/Nested"] {
+            let target = try item(path)
+            #expect(coordinator.outlineView(outline, validateDrop: drag, proposedItem: target, proposedChildIndex: 0) == .move)
+            #expect(coordinator.outlineView(outline, acceptDrop: drag, item: target, childIndex: NSOutlineViewDropOnItemIndex))
+        }
+        #expect(noteDestinations.suffix(2) == ["Target", "Target/Nested"])
+        let nestedTarget = try item("Target/Nested")
+        let parentTarget = try item("Target")
+        outline.collapseItem(parentTarget)
+        #expect(!coordinator.outlineView(outline, acceptDrop: drag, item: nestedTarget, childIndex: NSOutlineViewDropOnItemIndex))
+        #expect(noteDestinations.count == 5)
+        outline.expandItem(parentTarget)
+        #expect(
+            coordinator.outlineView(outline, validateDrop: drag, proposedItem: try item(source.relativePath), proposedChildIndex: NSOutlineViewDropOnItemIndex)
+                .isEmpty)
+        #expect(
+            coordinator.outlineView(outline, validateDrop: drag, proposedItem: try item("Source"), proposedChildIndex: NSOutlineViewDropOnItemIndex).isEmpty)
+        #expect(coordinator.outlineView(outline, validateDrop: drag, proposedItem: nil, proposedChildIndex: projection.roots.count + 1).isEmpty)
+
+        try drag.setPayload(SidebarFolderDragItem(.init(vaultID: vaultID, relativePath: "Source/Group")), type: sidebarNativeDraggingTypes[1])
+        #expect(coordinator.outlineView(outline, validateDrop: drag, proposedItem: nil, proposedChildIndex: 0) == .move)
+        #expect(coordinator.outlineView(outline, acceptDrop: drag, item: nil, childIndex: 0))
+        #expect(
+            coordinator.outlineView(outline, validateDrop: drag, proposedItem: try item("Target"), proposedChildIndex: NSOutlineViewDropOnItemIndex) == .move)
+        #expect(coordinator.outlineView(outline, acceptDrop: drag, item: try item("Target"), childIndex: NSOutlineViewDropOnItemIndex))
+        #expect(folderDestinations.count == 2)
+        #expect(folderDestinations[0] == nil)
+        #expect(folderDestinations[1] == "Target")
+        for path in ["Source", "Source/Group", "Source/Group/Child"] {
+            #expect(
+                coordinator.outlineView(outline, validateDrop: drag, proposedItem: try item(path), proposedChildIndex: NSOutlineViewDropOnItemIndex).isEmpty)
+        }
+        try drag.setPayload(SidebarFolderDragItem(.init(vaultID: vaultID, relativePath: "Source")), type: sidebarNativeDraggingTypes[1])
+        #expect(coordinator.outlineView(outline, validateDrop: drag, proposedItem: nil, proposedChildIndex: 0).isEmpty)
+        let foreign = workspaceNote(vaultID: UUID(), stableID: UUID(), path: source.relativePath, source: "# Note\n")
+        try drag.setPayload(SidebarNoteDragItem(try #require(NoteMutationTarget(foreign))), type: sidebarNativeDraggingTypes[0])
+        #expect(coordinator.outlineView(outline, validateDrop: drag, proposedItem: nil, proposedChildIndex: 0).isEmpty)
+
+        let payloads = try notes.map { SidebarNoteDragItem(try #require(NoteMutationTarget($0))) }
+        drag.draggingPasteboard.clearContents()
+        drag.draggingPasteboard.writeObjects(
+            try payloads.map { payload in
+                let item = NSPasteboardItem()
+                item.setData(try JSONEncoder().encode(payload), forType: sidebarNativeDraggingTypes[0])
+                return item
+            })
+        #expect(coordinator.outlineView(outline, validateDrop: drag, proposedItem: nil, proposedChildIndex: 0) == .move)
+        #expect(coordinator.outlineView(outline, acceptDrop: drag, item: nil, childIndex: 0))
+        #expect(groups.first?.map(\.mutationTarget) == payloads.map(\.mutationTarget))
+        let parentRow = outline.row(forItem: try item("Source"))
+        let childRow = outline.row(forItem: try item(source.relativePath))
+        #expect(!outline.canDragRows(with: IndexSet([parentRow, childRow]), at: .zero))
+    }
+
+    @MainActor
+    @Test("Drop commit rechecks revisions, target lifetime, visible ownership and process-private payloads")
+    func nativeOutlineDropRevalidation() throws {
+        let vaultID = UUID()
+        let stableID = UUID()
+        let source = workspaceNote(vaultID: vaultID, stableID: stableID, path: "Source/Note.md", source: "# Note\n")
+        var commits = 0
+        func configuration(notes: [WindowDocumentLocation], folders: Set<String>, revision: UInt64) -> SidebarOutlineSourceList {
+            let projection = LibraryTreeProjection(preorderedNotes: notes, folderRelativePaths: Array(folders))
+            return makeSidebarCoordinatorConfiguration(
+                roots: projection.roots, notes: notes, scope: .init(vaultID: vaultID, sourceScope: .library),
+                expandedFolderIDs: projection.expandableFolderIDs, revealRequest: nil, requestedFocusPath: nil,
+                onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {}, canMutate: true,
+                projectionRevision: revision,
+                dropInventory: .init(
+                    currentVaultID: vaultID, sourceScope: .library, currentVaultRole: .other, canMutate: true,
+                    notes: notes, folderRelativePaths: folders,
+                    pathComparisonPolicy: .init(caseSensitive: true, normalizationSensitive: true),
+                    pendingNoteMoves: [], pendingFolderMoves: []),
+                onMoveNoteDrop: { _, _ in commits += 1 })
+        }
+        let initial = configuration(notes: [source], folders: ["Source", "Target"], revision: 1)
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: initial)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        let outline = fixture.outlineView
+        defer { fixture.window.close() }
+        coordinator.apply(configuration: initial)
+        let target = try #require((0..<outline.numberOfRows).compactMap { outline.item(atRow: $0) as? SidebarOutlineItem }.first { $0.id == "Target" })
+        let drag = SidebarTreeDraggingInfo(source: outline, window: fixture.window)
+        defer { drag.draggingPasteboard.releaseGlobally() }
+        let payload = SidebarNoteDragItem(try #require(NoteMutationTarget(source)))
+        try drag.setPayload(payload, type: sidebarNativeDraggingTypes[0])
+        #expect(coordinator.outlineView(outline, validateDrop: drag, proposedItem: target, proposedChildIndex: NSOutlineViewDropOnItemIndex) == .move)
+
+        let changed = workspaceNote(vaultID: vaultID, stableID: stableID, path: source.relativePath, source: "# External change\n")
+        coordinator.apply(configuration: configuration(notes: [changed], folders: ["Source", "Target"], revision: 2))
+        #expect(!coordinator.outlineView(outline, acceptDrop: drag, item: target, childIndex: NSOutlineViewDropOnItemIndex))
+        coordinator.apply(configuration: configuration(notes: [source], folders: ["Source"], revision: 3))
+        #expect(!coordinator.outlineView(outline, acceptDrop: drag, item: target, childIndex: NSOutlineViewDropOnItemIndex))
+        coordinator.apply(configuration: initial)
+        outline.isHidden = true
+        #expect(!coordinator.outlineView(outline, acceptDrop: drag, item: nil, childIndex: 0))
+        outline.isHidden = false
+        drag.draggingSource = nil
+        #expect(!coordinator.outlineView(outline, acceptDrop: drag, item: nil, childIndex: 0))
+        drag.draggingSource = outline
+        drag.draggingPasteboard.clearContents()
+        #expect(!coordinator.outlineView(outline, acceptDrop: drag, item: nil, childIndex: 0))
+        try drag.setPayload(payload, type: sidebarNativeDraggingTypes[0])
+        coordinator.detach(from: fixture.scrollView)
+        #expect(!coordinator.outlineView(outline, acceptDrop: drag, item: nil, childIndex: 0))
+        #expect(commits == 0)
+    }
+
     @Test("Group drop validation rejects filename collisions across source folders")
     func nativeMultipleNoteDropCollision() throws {
         let vaultID = UUID()
@@ -1732,7 +1888,11 @@ private func makeSidebarCoordinatorConfiguration(
     onBatchTrash: @escaping ([NoteMutationTarget]) -> Void = { _ in },
     copyRelativePath: @escaping (String) -> Void = { _ in },
     projectionRevision: UInt64 = 1,
-    focusRequestGeneration: UInt64 = 0
+    focusRequestGeneration: UInt64 = 0,
+    dropInventory suppliedDropInventory: SidebarTreeDropInventory? = nil,
+    onMoveNoteDrop: @escaping (SidebarNoteDragItem, String?) -> Void = { _, _ in },
+    onMoveFolderDrop: @escaping (SidebarFolderDragItem, String?) -> Void = { _, _ in },
+    onMoveNotesDrop: @escaping ([SidebarNoteDragItem], String?) -> Void = { _, _ in }
 ) -> SidebarOutlineSourceList {
     let context = SidebarTreeContext(
         currentVaultID: scope.vaultID,
@@ -1751,17 +1911,19 @@ private func makeSidebarCoordinatorConfiguration(
         requestSystemTrash: { _ in },
         showError: { _ in }
     )
-    let dropInventory = SidebarTreeDropInventory(
-        currentVaultID: scope.vaultID,
-        sourceScope: .library,
-        currentVaultRole: .other,
-        canMutate: canMutate,
-        notes: notes,
-        folderRelativePaths: [],
-        pathComparisonPolicy: nil,
-        pendingNoteMoves: [],
-        pendingFolderMoves: []
-    )
+    let dropInventory =
+        suppliedDropInventory
+        ?? SidebarTreeDropInventory(
+            currentVaultID: scope.vaultID,
+            sourceScope: .library,
+            currentVaultRole: .other,
+            canMutate: canMutate,
+            notes: notes,
+            folderRelativePaths: [],
+            pathComparisonPolicy: nil,
+            pendingNoteMoves: [],
+            pendingFolderMoves: []
+        )
     return SidebarOutlineSourceList(
         roots: roots,
         projectionRevision: projectionRevision,
@@ -1779,14 +1941,51 @@ private func makeSidebarCoordinatorConfiguration(
         onConsumeRevealRequest: onConsumeRevealRequest,
         onFocusRequestHandled: onFocusRequestHandled,
         onSelect: onSelect,
-        onMoveNoteDrop: { _, _ in },
-        onMoveFolderDrop: { _, _ in },
+        onMoveNoteDrop: onMoveNoteDrop,
+        onMoveFolderDrop: onMoveFolderDrop,
         selectedRowIDs: selectedRowIDs ?? Set(selectedDocumentPath.map { [$0] } ?? []),
         onSelectionChange: onSelectionChange,
         onBatchMove: onBatchMove,
         onBatchTrash: onBatchTrash,
-        onMoveNotesDrop: { _, _ in }
+        onMoveNotesDrop: onMoveNotesDrop
     )
+}
+
+@MainActor
+private final class SidebarTreeDraggingInfo: NSObject, NSDraggingInfo {
+    let draggingPasteboard = NSPasteboard.withUniqueName()
+    var draggingSource: Any?
+    var draggingDestinationWindow: NSWindow?
+    var draggingLocation: NSPoint { .zero }
+    var draggingSourceOperationMask: NSDragOperation { .move }
+    var draggedImageLocation: NSPoint { .zero }
+    nonisolated var draggedImage: NSImage? { nil }
+    var draggingSequenceNumber: Int { 1 }
+    var draggingFormation: NSDraggingFormation = .none
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 1
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+
+    init(source: NSView, window: NSWindow) {
+        draggingSource = source
+        draggingDestinationWindow = window
+    }
+
+    func setPayload(_ payload: some Encodable, type: NSPasteboard.PasteboardType) throws {
+        draggingPasteboard.clearContents()
+        let item = NSPasteboardItem()
+        item.setData(try JSONEncoder().encode(payload), forType: type)
+        draggingPasteboard.writeObjects([item])
+    }
+
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    nonisolated override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+    func resetSpringLoading() {}
+    func enumerateDraggingItems(
+        options: NSDraggingItemEnumerationOptions, for view: NSView?, classes classArray: [AnyClass],
+        searchOptions: [NSPasteboard.ReadingOptionKey: Any],
+        using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
+    ) {}
 }
 
 @MainActor

@@ -113,6 +113,38 @@ struct DocumentNavigationHistoryControllerTests {
         #expect(controller.currentDocument == renamed)
     }
 
+    @Test("A move retargets every visit of that identity and preserves independent return positions")
+    func moveRetargetsVisits() throws {
+        let controller = DocumentNavigationHistoryController()
+        let first = fixtureDocument(path: "Nested/Before.md")
+        let descriptor = try #require(first.workspaceDescriptor)
+        let other = fixtureDocument(path: "Other.md")
+        let foreign = fixtureDocument(path: "Nested/Before.md")
+        let position = DocumentNavigationVisitPosition(
+            sourceFingerprint: "exact-revision", scrollPosition: ObservedScrollPosition(fraction: 0.6)
+        )
+        controller.record(first)
+        controller.captureCurrent(document: first, position: position)
+        controller.record(other)
+        controller.record(first)
+        controller.record(foreign)
+        let revision = controller.revision
+
+        controller.migratePath(from: "Nested/Before.md", to: "After.md", key: descriptor.sessionKey)
+        #expect(controller.count == 4)
+        #expect(controller.currentDocument == foreign)
+        #expect(controller.target(for: .back)?.relativePath == "After.md")
+        let moved = try #require(controller.target(for: .back))
+        #expect(controller.commit(.back, to: moved))
+        #expect(controller.commit(.back, to: other))
+        #expect(controller.target(for: .back)?.relativePath == "After.md")
+        #expect(controller.position(for: .back) == position)
+        #expect(controller.revision > revision)
+        let settledRevision = controller.revision
+        controller.migratePath(from: "Nested/Before.md", to: "After.md", key: descriptor.sessionKey)
+        #expect(controller.revision == settledRevision)
+    }
+
     private func fixtureDocument(path: String) -> WindowSelectedDocument {
         let vaultID = UUID()
         let noteID = UUID()

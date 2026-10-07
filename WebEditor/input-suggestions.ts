@@ -1,4 +1,5 @@
-import {exactSourceFitsChanges} from "./exact-source-history";
+import {exactSourceFitsChanges, exactSourceState} from "./exact-source-history";
+import {boundedUUID} from "./uuid";
 import {isolateHistory} from "@codemirror/commands";
 import {
   CompletionContext,
@@ -27,6 +28,7 @@ import {
   type MarkdownEditingDialect,
 } from "./protocol";
 import {transformMarkdown} from "./transformations";
+import {exactOffsetForNormalizedOffset} from "./state";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import {Decoration, WidgetType, keymap, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate} from "@codemirror/view";
 import type {NativeSuggestionPort} from "./native-floating";
@@ -45,6 +47,22 @@ export interface EditorLinkCompletionCandidate {
 
 export type EditorLinkCompletionKind = "wikilink" | "analysisReference" | "term";
 
+export type EditorInputSuggestionActionID = "insertCitation";
+export interface EditorCitationSuggestionIntent {
+  readonly actionID: EditorInputSuggestionActionID;
+  readonly requestID: string;
+  readonly query: string;
+  readonly fromUTF16: number;
+  readonly toUTF16: number;
+  readonly caretUTF16Offset: number;
+  readonly editorCaretUTF16Offset: number;
+  readonly interactionRevision: number;
+}
+
+export interface EditorInputSuggestionActionCompletion extends Completion {
+  readonly actionID: EditorInputSuggestionActionID;
+}
+
 interface SourceRange {
   readonly from: number;
   readonly to: number;
@@ -61,6 +79,9 @@ interface InputSuggestionOptions {
     kind: EditorLinkCompletionKind,
     query: string,
   ): void;
+  requestCitationInsertion?(intent: EditorCitationSuggestionIntent): void;
+  citationContextRevision?(): number;
+  canInsertCitation?(state: EditorState): boolean;
   requestWritingContinuation?(requestID: string, state: EditorState, position: number): void;
   cancelWritingContinuation?(requestID: string): void;
   didApply(undoLabel: string): void;
@@ -71,6 +92,7 @@ export interface EditorInputSuggestionsController {
   readonly writingCompletionSource: CompletionSource;
   readonly wikilinkCompletionSource: CompletionSource;
   readonly analysisReferenceCompletionSource: CompletionSource;
+  readonly citationCompletionSource: CompletionSource;
   readonly slashCompletionSource: CompletionSource;
   readonly calloutCompletionSource: CompletionSource;
   resetDocument(): void;
@@ -97,6 +119,7 @@ function writingContinuationPhaseLabel(
 type SuggestionType =
   | "scholium-note"
   | "scholium-analysis-reference"
+  | "scholium-command-citation"
   | "scholium-callout-role"
   | "scholium-command-callout"
   | "scholium-command-date"
@@ -110,6 +133,7 @@ type SuggestionType =
 const suggestionSymbolByType: Record<SuggestionType, WebSystemSymbolKey> = {
   "scholium-note": "doc-text",
   "scholium-analysis-reference": "doc-text",
+  "scholium-command-citation": "text-quote",
   "scholium-callout-role": "text-quote",
   "scholium-command-callout": "text-quote",
   "scholium-command-date": "calendar",
@@ -144,6 +168,18 @@ function positionIsProtected(
   return options.protectedRanges(state).some((range) =>
     position >= range.from && position < range.to,
   );
+}
+
+function analysisReferenceContext(options: InputSuggestionOptions, state: EditorState, position: number) {
+  if (!isLiveSuggestionContext(options, state)) return null;
+  const line = state.doc.lineAt(position);
+  const scanFrom = Math.max(line.from, position - 514);
+  const beforeCursor = state.doc.sliceString(scanFrom, position);
+  const match = /(^|[\s([{])@([^\n@|\]]{0,512})$/u.exec(beforeCursor);
+  if (!match || match[2].length > 512) return null;
+  const from = scanFrom + match.index + match[1].length;
+  if (positionIsProtected(options, state, from)) return null;
+  return {from, query: match[2]};
 }
 
 function termSuffix(state: EditorState, position: number, candidate: EditorLinkCompletionCandidate): string | null {
@@ -211,21 +247,6 @@ function continuationContextAllowed(options: InputSuggestionOptions, state: Edit
     && sentenceIsUnfinished(before)
     && !/\[\[[^\]\n]*$|(?:^|\s)@[^\s]*$|(?:^|\s)\/[^\s]*$/u.test(before)
     && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
-}
-
-export function boundedUUID() {
-  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
-  return [
-    hex.slice(0, 4).join(""),
-    hex.slice(4, 6).join(""),
-    hex.slice(6, 8).join(""),
-    hex.slice(8, 10).join(""),
-    hex.slice(10, 16).join(""),
-  ].join("-");
 }
 
 function localISODate(date = new Date()) {
@@ -782,18 +803,55 @@ export function createEditorInputSuggestions(
     }));
   };
 
+  let citationDocumentEpoch = 0;
+  const citationCompletionSource: CompletionSource = (context: CompletionContext) => {
+    if (!options.requestCitationInsertion || !options.citationContextRevision
+      || !isLiveSuggestionContext(options, context.state) || context.state.readOnly
+      || !context.state.facet(EditorView.editable)
+      || options.canInsertCitation?.(context.state) === false) return null;
+    const reference = analysisReferenceContext(options, context.state, context.pos);
+    if (!reference) return null;
+    const {from, query} = reference;
+    if (options.protectedRanges(context.state).some(range => from < range.to && context.pos > range.from)) return null;
+    const source = context.state.field(exactSourceState, false)?.text;
+    if (source === undefined) return null;
+    const fromUTF16 = exactOffsetForNormalizedOffset(source, from);
+    const toUTF16 = exactOffsetForNormalizedOffset(source, context.pos);
+    const interactionRevision = options.citationContextRevision();
+    if (fromUTF16 === null || toUTF16 === null || !Number.isSafeInteger(interactionRevision)
+      || interactionRevision < 0 || source.slice(fromUTF16, toUTF16) !== `@${query}`) return null;
+    const documentEpoch = citationDocumentEpoch;
+    const intent: EditorCitationSuggestionIntent = {
+      actionID: "insertCitation", requestID: boundedUUID(), query, fromUTF16, toUTF16,
+      caretUTF16Offset: toUTF16, editorCaretUTF16Offset: context.pos, interactionRevision,
+    };
+    let accepted = false;
+    const action: EditorInputSuggestionActionCompletion = {
+      actionID: "insertCitation", label: localized("Insert Citation…"), detail: "Zotero",
+      type: "scholium-command-citation" satisfies SuggestionType, boost: 99,
+      apply: (view, _completion, currentFrom, currentTo) => {
+        if (accepted || documentEpoch !== citationDocumentEpoch || !view.hasFocus || view.composing
+          || !isLiveSuggestionContext(options, view.state) || view.state.readOnly || !view.state.facet(EditorView.editable)
+          || options.canInsertCitation?.(view.state) === false
+          || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection)
+          || view.state.field(exactSourceState, false)?.text !== source
+          || options.citationContextRevision?.() !== interactionRevision
+          || currentFrom !== from || currentTo !== context.pos
+          || options.protectedRanges(view.state).some(range => from < range.to && context.pos > range.from)) return;
+        accepted = true;
+        closeCompletion(view);
+        options.requestCitationInsertion?.(intent);
+      },
+    };
+    return {from, options: [action], filter: false};
+  };
+
   const analysisReferenceCompletionSource: CompletionSource = (
     context: CompletionContext,
   ) => {
-    if (!isLiveSuggestionContext(options, context.state)) return null;
-    const line = context.state.doc.lineAt(context.pos);
-    const scanFrom = Math.max(line.from, context.pos - 512);
-    const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
-    const match = /(^|[\s([{])@([^\n@|\]]{0,510})$/u.exec(beforeCursor);
-    if (!match) return null;
-    const typed = match[2];
-    const from = scanFrom + match.index + match[1].length;
-    if (positionIsProtected(options, context.state, from)) return null;
+    const reference = analysisReferenceContext(options, context.state, context.pos);
+    if (!reference) return null;
+    const {from, query: typed} = reference;
 
     const requestID = boundedUUID();
     const candidates = new Promise<EditorLinkCompletionCandidate[]>((resolve) => {
@@ -967,6 +1025,7 @@ export function createEditorInputSuggestions(
 
   return {
     resetDocument() {
+      citationDocumentEpoch++;
       clearInlineWriting?.();
       cancelContinuations();
       for (const pending of pendingLinkQueries.values()) {
@@ -996,6 +1055,7 @@ export function createEditorInputSuggestions(
         slashCompletionSource,
         calloutCompletionSource,
         wikilinkCompletionSource,
+        citationCompletionSource,
         analysisReferenceCompletionSource,
       ],
       activateOnCompletion: (completion) => completion.type === "scholium-command-callout",
@@ -1024,6 +1084,7 @@ export function createEditorInputSuggestions(
     })],
     wikilinkCompletionSource,
     analysisReferenceCompletionSource,
+    citationCompletionSource,
     slashCompletionSource,
     calloutCompletionSource,
     resolveLinkCompletionQuery(requestID: string, value: unknown) {

@@ -1,8 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Footnote and endnote citation styles are unavailable. Your text was preserved.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Footnote and endnote citation styles are unavailable. Your text was preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "脚注和尾注引用样式不可用。您的文本已保留。"}}}},
+    "The citation operation could not finish. Your text was preserved.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The citation operation could not finish. Your text was preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用操作未能完成。您的文本已保留。"}}}},
+    "A citation operation is already active or this editor is unavailable.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "A citation operation is already active or this editor is unavailable."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "另一项引用操作正在进行，或此编辑器不可用。"}}}},
+    "Citation completion is stale.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citation completion is stale."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用补全已失效。"}}}},
+    "Citation transaction is unavailable.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citation transaction is unavailable."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用操作不可用。"}}}},
+    "Citation source changed before acceptance.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citation source changed before acceptance."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受引用操作前，文档源文本已更改。"}}}},
+    "Citation Operation": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citation Operation"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用操作"}}}},
     "AI" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI"}}}},
     "Index" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Index"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "索引"}}}},
+    "Insert Citation…" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Insert Citation…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "插入引用…"}}}},
     "Accept AI continuation: {text} (Tab)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept AI continuation: {text} (Tab)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受 AI 续写：{text}（Tab）"}}}},
     "Accept index suggestion: {text} (Tab)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept index suggestion: {text} (Tab)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受索引建议：{text}（Tab）"}}}},
     "AI continuation timed out." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "AI continuation timed out."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "AI 续写超时。"}}}},

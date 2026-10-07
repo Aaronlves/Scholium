@@ -250,18 +250,6 @@ struct SidebarView: View {
                 .accessibilityIdentifier("scholium.libraryCreate")
             }
         }
-        .background {
-            SidebarLibraryHeaderDropDestination(
-                dropInventory: dropInventory,
-                onMoveNoteDrop: { item, targetFolder in
-                    performNoteDrop([item], into: targetFolder)
-                },
-                onMoveFolderDrop: { item, targetFolder in
-                    performFolderDrop([item], into: targetFolder)
-                },
-                onMoveNotesDrop: { performNoteDrop($0, into: $1) }
-            )
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.libraryHeader")
     }

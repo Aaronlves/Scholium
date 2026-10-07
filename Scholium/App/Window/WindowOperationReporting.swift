@@ -142,7 +142,7 @@ extension WindowModel {
             String(localized: "The File Operation Completed with Warnings"),
             kind: .warning,
             detail: messages.joined(separator: " "),
-            offersRefresh: !derivedRefreshWarnings.isEmpty || presentationWarning != nil
+            offersRefresh: !derivedRefreshWarnings.isEmpty || !identityRecoveryWarnings.isEmpty || presentationWarning != nil
         )
         return true
     }

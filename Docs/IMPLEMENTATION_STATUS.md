@@ -15,9 +15,9 @@ The native App reaches a registered three-vault Triptych, Library and document
 tabs, Review/Edit/Source, source-derived Search and Links, Writing References,
 Changes, guarded Note/file operations, note reorganization and Recovery.
 External Markdown opens independently and imports to a selected Triptych role.
-Exact Markdown remains authoritative; YAML properties are authored in source,
-not a separate managed metadata editor. File links and paragraph anchors refer
-to current source, not snapshot citations or inferred philosophical evidence.
+Exact Markdown remains authoritative; YAML is authored source. The Zotero
+citation adapter reaches body fields, bold/italic fallback and static exports; live picker/CSL
+and native/offline recovery acceptance remain pending.
 
 External Agents connect through the bundled App-mediated MCP helper. Note
 operations, attachment reads, display, move previews and Agent Change inspection/Undo

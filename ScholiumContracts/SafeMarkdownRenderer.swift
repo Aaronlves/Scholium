@@ -129,7 +129,8 @@ public enum SafeMarkdownRenderer {
         depth: Int,
         objects: RenderedMarkdownObjects?,
         embeddedImages: [String: RenderedMarkdownImage],
-        locatedLinkSpans: [SourceSpan]? = nil
+        locatedLinkSpans: [SourceSpan]? = nil,
+        bibliographyStyle: ZoteroMarkdownBibliographyStyle? = nil
     ) -> String {
         guard depth < 12 else {
             return "<p class=\"scholium-render-warning\" dir=\"auto\">Nested rendering limit reached.</p>"
@@ -160,16 +161,42 @@ public enum SafeMarkdownRenderer {
             .filter { !$0.isInline }
             .map(\.span)
         let visibleBlocks = semantic.blocks.filter { block in
-            !(outerCallouts.map(\.span) + removedDefinitionSpans + standaloneAnchorSpans).contains {
-                $0.utf16LowerBound <= block.span.utf16LowerBound
-                    && $0.utf16UpperBound >= block.span.utf16UpperBound
-            }
+            !(outerCallouts.map(\.span) + removedDefinitionSpans + standaloneAnchorSpans
+                + semantic.zoteroFields.fields.filter { semantic.zoteroFields.canMutate && $0.kind == .bibliography }.map(\.span)).contains {
+                    $0.utf16LowerBound <= block.span.utf16LowerBound
+                        && $0.utf16UpperBound >= block.span.utf16UpperBound
+                }
         }
         let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]] =
             depth == 0
             ? Dictionary(grouping: visibleBlocks, by: \.kind).mapValues { blocks in
                 blocks.map(\.span).sorted { $0.utf16LowerBound < $1.utf16LowerBound }
             } : [:]
+        for (index, field) in semantic.zoteroFields.fields.enumerated() where semantic.zoteroFields.canMutate {
+            guard let relative = relativeRange(field.span, bodyStart: bodyStart, bodyLength: bodyLength) else { continue }
+            let attributes = "\(sourceAttributes(field.span)) data-scholium-protected=\"zotero-field\""
+            if field.kind == .citation {
+                let key = "SCHOLIUMINLINETOKEN\(nonce)Z\(index)"
+                inlineHTML[key] =
+                    "<span class=\"scholium-zotero-citation\" \(attributes)>\(renderInlineMarkdown(field.fallbackMarkdown, embeddedImages: embeddedImages))</span>"
+                replacements.append(Replacement(range: relative, text: key))
+            } else {
+                let key = "\(nonce)-bibliography-\(index)"
+                let fragment = NoteDocument(relativePath: "bibliography.md", rawContent: field.fallbackMarkdown)
+                let fallback = renderBody(
+                    document: fragment, semantic: MarkdownSemanticDocument(parsing: fragment),
+                    depth: depth + 1, objects: objects, embeddedImages: embeddedImages,
+                    bibliographyStyle: semantic.zoteroFields.documentState?.bibliographyStyle)
+                blockHTML[key] = "<section class=\"scholium-zotero-bibliography\" \(attributes)>\(fallback)</section>"
+                replacements.append(Replacement(range: relative, text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"))
+            }
+        }
+        if semantic.zoteroFields.canMutate, let state = semantic.zoteroFields.documentState,
+            let relative = relativeRange(state.span, bodyStart: bodyStart, bodyLength: bodyLength)
+        {
+            replacements.append(Replacement(range: relative, text: ""))
+        }
+
         for (index, callout) in outerCallouts.enumerated() {
             guard let relative = relativeRange(callout.span, bodyStart: bodyStart, bodyLength: bodyLength) else { continue }
             let key = "\(nonce)-block-\(index)"
@@ -340,7 +367,8 @@ public enum SafeMarkdownRenderer {
             source: transformed, objects: objects,
             tableSources: visibleBlocks.filter { $0.kind == .table }.map {
                 (document.rawContent as NSString).substring(with: $0.span.nsRange)
-            }
+            },
+            bibliographyStyle: bibliographyStyle
         )
         visitor.visit(parsed)
 
@@ -982,6 +1010,7 @@ private struct SafeHTMLVisitor: MarkupWalker {
     var sourceLines: [(text: String, ending: String)]? = nil
     var objects: RenderedMarkdownObjects? = nil
     var tableSources: [String] = []
+    var bibliographyStyle: ZoteroMarkdownBibliographyStyle? = nil
     var tableSourceIndex = 0
     var blockSourceIndices: [MarkdownBlockKind: Int] = [:]
     var quoteMetadata: [String: SafeHTMLQuoteMetadata] = [:]
@@ -992,7 +1021,17 @@ private struct SafeHTMLVisitor: MarkupWalker {
 
     mutating func visitDocument(_ document: Document) { descendInto(document) }
     mutating func visitParagraph(_ paragraph: Paragraph) {
-        result += "<p dir=\"auto\"\(sourceAttributes(for: .paragraph))>"
+        let bibliography: String
+        if let style = bibliographyStyle, style.isValid {
+            let css =
+                "margin-top:0pt;margin-left:\(style.bodyIndentPoints)pt;"
+                + "text-indent:\(style.firstLineOffsetPoints)pt;line-height:\(style.lineHeightMultiple);"
+                + "margin-bottom:\(style.entrySpacingPoints)pt;"
+            bibliography = " class=\"scholium-zotero-bibliography-entry\" style=\"\(css)\""
+        } else {
+            bibliography = ""
+        }
+        result += "<p dir=\"auto\"\(bibliography)\(sourceAttributes(for: .paragraph))>"
         descendInto(paragraph)
         result += "</p>\n"
     }

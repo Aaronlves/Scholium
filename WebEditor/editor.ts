@@ -1,3 +1,5 @@
+import {ZoteroMarkdownTransaction, type ZoteroTransactionContext, unsupportedNoteCitationStyleMessage} from "./zotero-transaction";
+import {fieldOperationTransaction, fieldMetadataRanges, citationInsertionContextSupported} from "./zotero-fields";
 import {CommittedSnapshotReceipt} from "./committed-snapshot-receipt";
 import {attachmentSymbol} from "./attachment-presentation";
 import {editorSuspension, editorSuspensionState, setEditorSuspension} from "./editor-suspension";
@@ -142,7 +144,8 @@ import {createPreviewPopoverController, renderPreviewMathNodes} from "./preview-
 import {appendMarkdownBlocks} from "./markdown-fragment";
 import {createEditorScrollCoordinator, documentToolbarScrollMargin} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
-import {boundedUUID, createEditorInputSuggestions} from "./input-suggestions";
+import {createEditorInputSuggestions} from "./input-suggestions";
+import {boundedUUID} from "./uuid";
 import {exactOffsetForNormalizedOffset} from "./state";
 import {
   AnimationFrameCoalescer,
@@ -220,6 +223,15 @@ const webkitWindow = window as ScholiumWindow;
 // Resolve its proxy for each message instead of retaining the previous owner.
 const nativeHandler = () => webkitWindow.webkit?.messageHandlers?.scholium;
 let documentAttachment = 0;
+let citationInsertionRevision = 0;
+let citationCompositionRevision = 0;
+let citationTransaction: ZoteroMarkdownTransaction | null = null;
+let citationTransactionID: string | null = null;
+function citationContext(transactionID: string): ZoteroTransactionContext {
+  return {transactionID, mode: configuredEditorMode(editor.state),
+    interactionRevision: citationInsertionRevision, compositionRevision: citationCompositionRevision,
+    composing: editor.composing || compositionGate.active};
+}
 let bridgeSessionID = "";
 let bridgeDocumentID = "";
 let bridgeFingerprint = "";
@@ -303,7 +315,7 @@ const documentTitle = createDocumentTitle({
   dispatch: effect => editor.dispatch({effects: effect}),
   requestRename: request => post({type: "requestDocumentTitleRename", ...request}),
   focusChanged: () => setDocumentFocusTarget("title"),
-  beginComposition: () => { compositionGate.begin("title"); publishEditorContext(); },
+  beginComposition: () => { citationInsertionRevision++; citationCompositionRevision++; compositionGate.begin("title"); publishEditorContext(); },
   endComposition: () => finishComposition("title"),
 });
 
@@ -317,6 +329,7 @@ const liveInlineClassByKind: Partial<Record<SemanticInlineProjection["kind"], st
   highlight: "cm-live-highlight",
   code: "cm-live-code",
   link: "cm-live-link",
+  citation: "cm-live-citation",
 };
 
 /** @param {{from: number, to: number}[]} ranges @param {number} from @param {number} to */
@@ -1141,6 +1154,19 @@ function buildLiveDecorations(
     }
   }
 
+  const citationProjection = index.zoteroFields;
+  for (const metadata of fieldMetadataRanges(citationProjection)) {
+    const from = normalizedDocumentText(citationProjection.source.slice(0, metadata.from)).length;
+    const to = normalizedDocumentText(citationProjection.source.slice(0, metadata.to)).length;
+    if (projectionSelections.some(selection => selectionActivatesSyntax(selection, {from, to}))) continue;
+    if (!coveredRanges.some(range => overlaps([range], from, to))) continue;
+    const hidden = hiddenSyntax.range(from, to);
+    decorations.push(hidden); atomicRanges.push(hidden);
+    const line = doc.lineAt(from);
+    if (line.from === from && line.to === to) {
+      decorations.push(Decoration.line({attributes: {class: "cm-live-link-annotation-source-line"}}).range(line.from));
+    }
+  }
   const result = Decoration.set(decorations, true);
   const atoms = Decoration.set(atomicRanges, true);
   recordEditorMetric("projection", projectionStartedAt, {
@@ -1447,6 +1473,7 @@ const interactionReporter = new AnimationFrameCoalescer(
 /** @type {number | null} */
 
 const stateReporter = EditorView.updateListener.of((update) => {
+  if (update.docChanged || update.selectionSet) citationInsertionRevision++;
   const isProgrammatic = update.transactions.some(
     (transaction) => transaction.annotation(programmaticDocumentChange) === true,
   );
@@ -1821,6 +1848,9 @@ const sourceCollapsedActiveLine = [
 
 const inputSuggestions = createEditorInputSuggestions({
   nativeFloating: nativeFloating.suggestions,
+  requestCitationInsertion: intent => post({type: "requestCitationInsertion", ...intent}),
+  citationContextRevision: () => citationInsertionRevision,
+  canInsertCitation: state => citationInsertionAvailable(state),
   mode: configuredEditorMode,
   dialect: () => editingDialect,
   isComposing: () => editor.composing,
@@ -2052,6 +2082,15 @@ function indexedTaskItemForSelection(
   ) ?? null;
 }
 
+function citationInsertionAvailable(state: EditorState) {
+  if (citationTransaction !== null || state.readOnly || state.field(editorSuspensionState) !== null
+    || state.selection.ranges.length !== 1 || !state.selection.main.empty
+    || liveProjectionIndex.index(state).zoteroFields.diagnostics.length
+    || editingFrontmatterSelection(state)
+    || projectionSelectionOverlaps(protectedCommandRanges(state), state.selection.main)) return false;
+  return citationInsertionContextSupported(state, state.selection.main.head);
+}
+
 function currentEditorContext(view = editor): EditorContext {
   const state = view.state;
   const inline = new Set<string>();
@@ -2076,7 +2115,7 @@ function currentEditorContext(view = editor): EditorContext {
     "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
     "tableAlignLeft", "tableAlignCenter", "tableAlignRight",
   ]);
-  const availableCommands = allCommands.filter((command) => {
+  const availableCommands: MarkdownEditorCommand[] = allCommands.filter((command) => {
     if (tableOnlyCommands.has(command)) return currentTablePosition !== undefined;
     if (command === "toggleTask") {
       return state.selection.ranges.every((selection) =>
@@ -2085,16 +2124,26 @@ function currentEditorContext(view = editor): EditorContext {
     if (command === "linkSelectedText") return state.selection.ranges.every((selection) => !selection.empty);
     return true;
   });
+  const fieldProjection = liveProjectionIndex.index(state).zoteroFields;
+  if (citationTransaction !== null) availableCommands.push("cancelCitation");
+  else if (fieldProjection.diagnostics.length === 0 && state.selection.ranges.length === 1 && !editingFrontmatterSelection(state)) {
+    const head = fieldProjection.fields.length ? exactOffsetForNormalizedOffset(fieldProjection.source, state.selection.main.head) : null;
+    const inField = head !== null && fieldProjection.fields.some(field => head >= field.range.from && head < field.range.to);
+    if (inField || citationInsertionAvailable(state)) availableCommands.push("insertCitation", "insertBibliography");
+    availableCommands.push("citationStyle");
+    if (fieldProjection.fields.length) availableCommands.push("refreshCitations");
+  }
   return {
     selections: editorSelections(state),
     activeInlineConstructs: [...inline],
     activeBlockConstructs: [...block],
     tablePosition: currentTablePosition,
     composing: view.composing || compositionGate.active,
-    availableCommands: view.composing || compositionGate.active ? [] : editingFrontmatterSelection(state)
-      ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? [] : availableCommands,
+    availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state)
+      ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter(command => ["cancelCitation", "refreshCitations", "insertCitation", "insertBibliography", "citationStyle"].includes(command)) : availableCommands,
     undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
     redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : undefined,
+    citationState: fieldProjection.diagnostics.length ? "unresolved" : fieldProjection.citationStateStale ? "stale" : "current",
   };
 }
 
@@ -2256,6 +2305,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     if (!documentTitle.allowsDetachment()) {
       return rejected(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
     }
+    citationInsertionRevision++;
     editor.dispatch({effects: setEditorSuspension.of(operation.suspensionID)});
     // Freezing and capturing share one turn, including input that arrived
     // after the native request was created or composition finished.
@@ -2367,6 +2417,68 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     const undoLabel = operation.preserveSelection ? "Create Paragraph Link" : "Adopt Suggestion";
     lastUndoLabel = lastRedoLabel = undoLabel;
     return successfulResult(request.requestID, true, undoLabel);
+  }
+  case "beginCitation": {
+    if (citationTransaction !== null || editor.state.field(editorSuspensionState) !== null || document.activeElement?.closest("[data-scholium-title-input]")) {
+      return rejected(request.requestID, documentVersion, localized("A citation operation is already active or this editor is unavailable."));
+    }
+    const reference = operation.reference;
+    const source = exactEditorSource();
+    let referenceRange: {from: number; to: number; expected: string} | undefined;
+    if (reference) {
+      if (reference.interactionRevision !== citationInsertionRevision
+        || reference.editorCaretUTF16Offset !== editor.state.selection.main.head
+        || exactOffsetForNormalizedOffset(source, reference.editorCaretUTF16Offset) !== reference.caretUTF16Offset
+        || source.slice(reference.fromUTF16, reference.toUTF16) !== `@${reference.query}`) {
+        return rejected(request.requestID, documentVersion, localized("Citation completion is stale."));
+      }
+      referenceRange = {from: source.slice(0, reference.fromUTF16).replaceAll("\r\n", "\n").length,
+        to: reference.editorCaretUTF16Offset, expected: `@${reference.query}`};
+    }
+    citationTransaction = ZoteroMarkdownTransaction.capture(editor.state, {...citationContext(operation.transactionID),
+      command: operation.command, referenceRange});
+    citationTransactionID = operation.transactionID;
+    publishEditorContext();
+    break;
+  }
+  case "citationCallback": {
+    if (!citationTransaction || citationTransactionID !== operation.transactionID) return rejected(request.requestID, documentVersion, localized("Citation transaction is unavailable."));
+    try {
+      const citationReply = citationTransaction.applyCallback(editor.state, citationContext(operation.transactionID), operation.value);
+      return {...successfulResult(request.requestID), citationReply};
+    } catch (error) {
+      if (error instanceof Error && error.message === unsupportedNoteCitationStyleMessage) {
+        return rejected(request.requestID, documentVersion, localized(unsupportedNoteCitationStyleMessage));
+      }
+      throw error;
+    }
+  }
+  case "finishCitation": {
+    if (!citationTransaction || citationTransactionID !== operation.transactionID) return rejected(request.requestID, documentVersion, localized("Citation transaction is unavailable."));
+    let staged;
+    try {
+      staged = citationTransaction.finalize(editor.state, citationContext(operation.transactionID), {status: "cleanedUp", remoteCleanupConfirmed: true});
+    } catch {
+      return rejected(request.requestID, documentVersion, localized("The citation operation could not finish. Your text was preserved."));
+    } finally {
+      citationTransaction = null;
+      citationTransactionID = null;
+      publishEditorContext();
+    }
+    if (!staged) { publishEditorContext(); return successfulResult(request.requestID); }
+    const transaction = fieldOperationTransaction(editor.state, staged);
+    if (!transaction) return rejected(request.requestID, documentVersion, localized("Citation source changed before acceptance."));
+    editor.dispatch({...transaction, ...(staged.selection ? {selection: staged.selection} : {})});
+    lastUndoLabel = lastRedoLabel = localized("Citation Operation");
+    publishEditorContext();
+    return successfulResult(request.requestID, true, localized("Citation Operation"));
+  }
+  case "cancelCitation": {
+    if (citationTransactionID === operation.transactionID) {
+      citationTransaction?.cancel(); citationTransaction = null; citationTransactionID = null;
+      publishEditorContext();
+    }
+    break;
   }
   case "command": {
     let argument = operation.argument;
@@ -2483,6 +2595,7 @@ editor.contentDOM.addEventListener("compositionend", event => {
 });
 editor.contentDOM.addEventListener("compositionstart", event => {
   if (documentTitle.ownsCompositionEvent(event)) return;
+  citationInsertionRevision++; citationCompositionRevision++;
   compositionGate.begin();
   const attachment = documentAttachment;
   window.queueMicrotask(() => {
@@ -2692,6 +2805,7 @@ window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change",
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
+    citationTransaction?.cancel(); citationTransaction = null; citationTransactionID = null; citationInsertionRevision++;
     documentAttachment += 1;
     committedSnapshotReceipt.clear();
     interactionReporter.cancel();
@@ -2745,6 +2859,7 @@ const editorOperations = {
     previewPopover.hide();
     const scrollSnapshot = editor.scrollSnapshot();
     const nextMode = mode === "livePreview" ? "livePreview" : "source";
+    if (nextMode !== configuredEditorMode(editor.state)) citationInsertionRevision++;
     editor.dispatch({
       effects: [
         modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),

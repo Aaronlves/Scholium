@@ -68,6 +68,7 @@ private final class NoteExportPreviewModel: ObservableObject {
     let embeddedImages: [String: RenderedMarkdownImage]
     let excludedRoots: [URL]
     let appearance: DocumentAppearanceSettings
+    let citationExportIssue: NoteExportError?
     weak var window: NSWindow?
 
     @Published var format: NoteExportFormat = .pdf
@@ -75,6 +76,7 @@ private final class NoteExportPreviewModel: ObservableObject {
     @Published var textSize: CGFloat = 12.5
     @Published var paperSize: NoteExportPaperSize = .a4
     @Published var includeYAML = false
+    @Published var allowSavedCitationText = false
     @Published private(set) var previewData: Data?
     @Published private(set) var error: String?
     @Published private(set) var isRendering = false
@@ -91,6 +93,7 @@ private final class NoteExportPreviewModel: ObservableObject {
         self.embeddedImages = embeddedImages
         self.excludedRoots = excludedRoots
         self.appearance = appearance
+        self.citationExportIssue = NoteExportService.citationExportIssue(in: document)
         self.textSize = CGFloat(appearance.body.fontSizePoints)
     }
 
@@ -99,6 +102,8 @@ private final class NoteExportPreviewModel: ObservableObject {
             format: format, style: style, textSize: textSize,
             paperSize: paperSize, includeYAML: includeYAML)
     }
+
+    var citationExportAllowed: Bool { citationExportIssue == nil || allowSavedCitationText }
 
     var formatLabel: String {
         switch format {
@@ -122,7 +127,8 @@ private final class NoteExportPreviewModel: ObservableObject {
                     style: key.style, textSize: key.textSize, paperSize: key.paperSize,
                     appearance: appearance,
                     includeYAML: key.includeYAML,
-                    embeddedImages: embeddedImages
+                    embeddedImages: embeddedImages,
+                    allowSavedCitationText: true
                 )
             } else {
                 data = try await NoteExportService.render(
@@ -130,7 +136,8 @@ private final class NoteExportPreviewModel: ObservableObject {
                     style: key.style, textSize: key.textSize, paperSize: key.paperSize,
                     appearance: appearance,
                     includeYAML: key.includeYAML,
-                    embeddedImages: embeddedImages
+                    embeddedImages: embeddedImages,
+                    allowSavedCitationText: true
                 )
             }
             try Task.checkCancellation()
@@ -148,6 +155,10 @@ private final class NoteExportPreviewModel: ObservableObject {
 
     func export() async {
         guard !isRendering, !isExporting, let window else { return }
+        guard citationExportAllowed else {
+            error = citationExportIssue?.localizedDescription
+            return
+        }
         isExporting = true
         error = nil
         defer { isExporting = false }
@@ -191,9 +202,11 @@ private final class NoteExportPreviewModel: ObservableObject {
                     style: key.style, textSize: key.textSize, paperSize: key.paperSize,
                     appearance: appearance,
                     includeYAML: key.includeYAML,
-                    embeddedImages: embeddedImages
+                    embeddedImages: embeddedImages,
+                    allowSavedCitationText: allowSavedCitationText
                 )
             }
+            try NoteExportService.requireCitationExportAdmission(in: document, allowSavedCitationText: allowSavedCitationText)
             try data.write(to: url, options: .atomic)
             window.performClose(nil)
         } catch {
@@ -206,7 +219,7 @@ private final class NoteExportPreviewModel: ObservableObject {
     }
 
     func copyPreview() {
-        guard renderedKey == previewKey, let previewData else { return }
+        guard citationExportAllowed, renderedKey == previewKey, let previewData else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         switch format {
@@ -220,7 +233,7 @@ private final class NoteExportPreviewModel: ObservableObject {
     }
 
     func printPreview() {
-        guard format == .pdf, renderedKey == previewKey,
+        guard citationExportAllowed, format == .pdf, renderedKey == previewKey,
             let previewData, let document = PDFDocument(data: previewData),
             let operation = document.printOperation(
                 for: NSPrintInfo.shared, scalingMode: .pageScaleNone, autoRotate: true
@@ -360,7 +373,7 @@ private final class NoteExportChrome: NSObject, NSToolbarDelegate {
         formatItem?.title = model.formatLabel
         formatItem?.menu = makeFormatMenu()
         moreItem?.menu = makeMoreMenu()
-        let canExport = !model.isRendering && !model.isExporting && model.previewData != nil
+        let canExport = !model.isRendering && !model.isExporting && model.previewData != nil && model.citationExportAllowed
         exportItem?.isEnabled = canExport
         exportButton?.isEnabled = canExport
         let style: String
@@ -426,10 +439,14 @@ private final class NoteExportChrome: NSObject, NSToolbarDelegate {
     private func makeMoreMenu() -> NSMenu {
         let menu = NSMenu()
         if model.format == .pdf {
-            menu.addItem(menuItem(ScholiumL10n.string("Print…"), action: #selector(printNote(_:))))
+            let print = menuItem(ScholiumL10n.string("Print…"), action: #selector(printNote(_:)))
+            print.isEnabled = model.citationExportAllowed
+            menu.addItem(print)
         }
         if model.format != .docx {
-            menu.addItem(menuItem(ScholiumL10n.string("Copy to Clipboard"), action: #selector(copyNote(_:))))
+            let copy = menuItem(ScholiumL10n.string("Copy to Clipboard"), action: #selector(copyNote(_:)))
+            copy.isEnabled = model.citationExportAllowed
+            menu.addItem(copy)
         }
         if !menu.items.isEmpty { menu.addItem(.separator()) }
         let yaml = menuItem(
@@ -522,6 +539,18 @@ private struct NoteExportPreviewView: View {
                 .ignoresSafeArea(edges: .top)
             VStack {
                 Spacer()
+                if let issue = model.citationExportIssue {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(issue.localizedDescription)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Toggle(ScholiumL10n.string("Export Saved Text"), isOn: $model.allowSavedCitationText)
+                            .toggleStyle(.checkbox)
+                    }
+                    .padding(12)
+                    .background(.regularMaterial)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 18)
+                }
                 if model.format == .docx {
                     Text(
                         ScholiumL10n.string(

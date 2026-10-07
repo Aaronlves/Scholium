@@ -1,0 +1,618 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "paragraph-leading-readable-link",
+      "source": "[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)",
+      "ids": [
+        "cite_a"
+      ],
+      "plainTexts": [
+        "Fang & Li"
+      ],
+      "stateStale": true,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 0,
+          "to": 562
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 1,
+          "to": 17
+        }
+      ]
+    },
+    {
+      "name": "prose-leading-link",
+      "source": "Argument 😀 [*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9) 依据。",
+      "ids": [
+        "cite_a"
+      ],
+      "plainTexts": [
+        "Fang & Li"
+      ],
+      "stateStale": true,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 12,
+          "to": 574
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 13,
+          "to": 29
+        }
+      ]
+    },
+    {
+      "name": "accepted-mixed-bytes-all-fields",
+      "source": "﻿---\r\nunknown: 'keep' # comment\n---\r\n<!--scholium-zotero-document:1:eyJkYXRhIjoiPD94bWwgdmVyc2lvbj1cIjEuMFwiPz48ZGF0YSBmdXR1cmU9XCJrZWVwXCI+XHJcbjxzdHlsZSBpZD1cInN5bnRoZXRpYy1zdHlsZVwiLz48cHJlZnMgZmllbGRUeXBlPVwiSHR0cFwiLz7wn5iAIGXMgTwvZGF0YT4iLCJiaWJsaW9ncmFwaHlTdHlsZSI6eyJmaXJzdExpbmVJbmRlbnQiOi03MjAsImluZGVudCI6NzIwLCJsaW5lU3BhY2luZyI6NDgwLCJlbnRyeVNwYWNpbmciOjI0MCwidGFiU3RvcHMiOls3MjBdfSwiYWNjZXB0ZWRGaWVsZHMiOlt7ImlkIjoiY2l0ZV9hIiwiY29kZSI6IklURU0gQ1NMX0NJVEFUSU9OIHtcImNpdGF0aW9uSURcIjpcInN5bnRoZXRpYy1hXCIsXCJjaXRhdGlvbkl0ZW1zXCI6W3tcImlkXCI6MSxcInVyaXNcIjpbXCJodHRwOi8vem90ZXJvLm9yZy91c2Vycy8xL2l0ZW1zL0FCQ0RFRkdIXCJdLFwibG9jYXRvclwiOlwiNDJcIixcImxhYmVsXCI6XCJwYWdlXCJ9XSxcInByb3BlcnRpZXNcIjp7XCJwbGFpbkNpdGF0aW9uXCI6XCJGYW5nICYgTGlcIixcImZvcm1hdHRlZENpdGF0aW9uXCI6XCI8aT5GYW5nPC9pPiAmYW1wOyA8Yj5MaTwvYj5cIixcImZ1dHVyZVwiOntcImtlZXBcIjpcIvCfmIAgZcyBXCJ9fX0ifSx7ImlkIjoiY2l0ZV9iIiwiY29kZSI6IklURU0gQ1NMX0NJVEFUSU9OIHtcImNpdGF0aW9uSURcIjpcInN5bnRoZXRpYy1iXCIsXCJjaXRhdGlvbkl0ZW1zXCI6W3tcImlkXCI6XCJodHRwOi8vem90ZXJvLm9yZy91c2Vycy8xL2l0ZW1zL0JDREVGR0hJXCJ9XSxcInByb3BlcnRpZXNcIjp7XCJwbGFpbkNpdGF0aW9uXCI6XCIoT3RoZXIsIDIwMjUpXCJ9fSJ9LHsiaWQiOiJiaWJfYSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIn1dfQ==-->\r\n\r\n[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9) [\\(Other\\, 2025\\)](scholium-zotero:1:eyJpZCI6ImNpdGVfYiIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYlwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOlwiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9CQ0RFRkdISVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiKE90aGVyLCAyMDI1KVwifX0iLCJ0ZXh0IjoiKE90aGVyLCAyMDI1KSJ9)\r\n\r\n<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\r\n\r\nFang\\. *Book\\.*\r\n\r\nLi\\. Other\\.\r\n\r\n<!--/scholium-zotero-field-->\r\nTail é no final newline",
+      "ids": [
+        "cite_a",
+        "cite_b",
+        "bib_a"
+      ],
+      "plainTexts": [
+        "Fang & Li",
+        "(Other, 2025)",
+        "Fang. Book.Li. Other."
+      ],
+      "stateStale": false,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 1275,
+          "to": 1837
+        },
+        {
+          "from": 1838,
+          "to": 2200
+        },
+        {
+          "from": 2204,
+          "to": 2635
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 1276,
+          "to": 1292
+        },
+        {
+          "from": 1839,
+          "to": 1855
+        },
+        {
+          "from": 2571,
+          "to": 2602
+        }
+      ]
+    },
+    {
+      "name": "bibliography-readable-paragraphs",
+      "source": "<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\n\nFang\\. *Book\\.*\n\nLi\\. Other\\.\n\n<!--/scholium-zotero-field-->",
+      "ids": [
+        "bib_a"
+      ],
+      "plainTexts": [
+        "Fang. Book.Li. Other."
+      ],
+      "stateStale": true,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 0,
+          "to": 425
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 365,
+          "to": 394
+        }
+      ]
+    },
+    {
+      "name": "manual-current-fallback-accepted",
+      "source": "<!--scholium-zotero-document:1:eyJkYXRhIjoiPD94bWwgdmVyc2lvbj1cIjEuMFwiPz48ZGF0YSBmdXR1cmU9XCJrZWVwXCI+XHJcbjxzdHlsZSBpZD1cInN5bnRoZXRpYy1zdHlsZVwiLz48cHJlZnMgZmllbGRUeXBlPVwiSHR0cFwiLz7wn5iAIGXMgTwvZGF0YT4iLCJhY2NlcHRlZEZpZWxkcyI6W3siaWQiOiJjaXRlX2EiLCJjb2RlIjoiSVRFTSBDU0xfQ0lUQVRJT04ge1wiY2l0YXRpb25JRFwiOlwic3ludGhldGljLWFcIixcImNpdGF0aW9uSXRlbXNcIjpbe1wiaWRcIjoxLFwidXJpc1wiOltcImh0dHA6Ly96b3Rlcm8ub3JnL3VzZXJzLzEvaXRlbXMvQUJDREVGR0hcIl0sXCJsb2NhdG9yXCI6XCI0MlwiLFwibGFiZWxcIjpcInBhZ2VcIn1dLFwicHJvcGVydGllc1wiOntcInBsYWluQ2l0YXRpb25cIjpcIkZhbmcgJiBMaVwiLFwiZm9ybWF0dGVkQ2l0YXRpb25cIjpcIjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPlwiLFwiZnV0dXJlXCI6e1wia2VlcFwiOlwi8J+YgCBlzIFcIn19fSJ9XX0=-->\n\n[Manual **text** &amp; 😀](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)",
+      "ids": [
+        "cite_a"
+      ],
+      "plainTexts": [
+        "Manual text & 😀"
+      ],
+      "stateStale": false,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 692,
+          "to": 1262
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 693,
+          "to": 717
+        }
+      ]
+    },
+    {
+      "name": "outside-order-change",
+      "source": "<!--scholium-zotero-document:1:eyJkYXRhIjoiPD94bWwgdmVyc2lvbj1cIjEuMFwiPz48ZGF0YSBmdXR1cmU9XCJrZWVwXCI+XHJcbjxzdHlsZSBpZD1cInN5bnRoZXRpYy1zdHlsZVwiLz48cHJlZnMgZmllbGRUeXBlPVwiSHR0cFwiLz7wn5iAIGXMgTwvZGF0YT4iLCJiaWJsaW9ncmFwaHlTdHlsZSI6eyJmaXJzdExpbmVJbmRlbnQiOi03MjAsImluZGVudCI6NzIwLCJsaW5lU3BhY2luZyI6NDgwLCJlbnRyeVNwYWNpbmciOjI0MCwidGFiU3RvcHMiOls3MjBdfSwiYWNjZXB0ZWRGaWVsZHMiOlt7ImlkIjoiY2l0ZV9hIiwiY29kZSI6IklURU0gQ1NMX0NJVEFUSU9OIHtcImNpdGF0aW9uSURcIjpcInN5bnRoZXRpYy1hXCIsXCJjaXRhdGlvbkl0ZW1zXCI6W3tcImlkXCI6MSxcInVyaXNcIjpbXCJodHRwOi8vem90ZXJvLm9yZy91c2Vycy8xL2l0ZW1zL0FCQ0RFRkdIXCJdLFwibG9jYXRvclwiOlwiNDJcIixcImxhYmVsXCI6XCJwYWdlXCJ9XSxcInByb3BlcnRpZXNcIjp7XCJwbGFpbkNpdGF0aW9uXCI6XCJGYW5nICYgTGlcIixcImZvcm1hdHRlZENpdGF0aW9uXCI6XCI8aT5GYW5nPC9pPiAmYW1wOyA8Yj5MaTwvYj5cIixcImZ1dHVyZVwiOntcImtlZXBcIjpcIvCfmIAgZcyBXCJ9fX0ifSx7ImlkIjoiY2l0ZV9iIiwiY29kZSI6IklURU0gQ1NMX0NJVEFUSU9OIHtcImNpdGF0aW9uSURcIjpcInN5bnRoZXRpYy1iXCIsXCJjaXRhdGlvbkl0ZW1zXCI6W3tcImlkXCI6XCJodHRwOi8vem90ZXJvLm9yZy91c2Vycy8xL2l0ZW1zL0JDREVGR0hJXCJ9XSxcInByb3BlcnRpZXNcIjp7XCJwbGFpbkNpdGF0aW9uXCI6XCIoT3RoZXIsIDIwMjUpXCJ9fSJ9LHsiaWQiOiJiaWJfYSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIn1dfQ==-->\n\n[\\(Other\\, 2025\\)](scholium-zotero:1:eyJpZCI6ImNpdGVfYiIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYlwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOlwiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9CQ0RFRkdISVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiKE90aGVyLCAyMDI1KVwifX0iLCJ0ZXh0IjoiKE90aGVyLCAyMDI1KSJ9) [*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)\n\n<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\n\nFang\\. *Book\\.*\n\nLi\\. Other\\.\n\n<!--/scholium-zotero-field-->",
+      "ids": [
+        "cite_b",
+        "cite_a",
+        "bib_a"
+      ],
+      "plainTexts": [
+        "(Other, 2025)",
+        "Fang & Li",
+        "Fang. Book.Li. Other."
+      ],
+      "stateStale": true,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 1236,
+          "to": 1598
+        },
+        {
+          "from": 1599,
+          "to": 2161
+        },
+        {
+          "from": 2163,
+          "to": 2588
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 1237,
+          "to": 1253
+        },
+        {
+          "from": 1600,
+          "to": 1616
+        },
+        {
+          "from": 2528,
+          "to": 2557
+        }
+      ]
+    },
+    {
+      "name": "outside-code-change",
+      "source": "<!--scholium-zotero-document:1:eyJkYXRhIjoiPD94bWwgdmVyc2lvbj1cIjEuMFwiPz48ZGF0YSBmdXR1cmU9XCJrZWVwXCI+XHJcbjxzdHlsZSBpZD1cInN5bnRoZXRpYy1zdHlsZVwiLz48cHJlZnMgZmllbGRUeXBlPVwiSHR0cFwiLz7wn5iAIGXMgTwvZGF0YT4iLCJhY2NlcHRlZEZpZWxkcyI6W3siaWQiOiJjaXRlX2EiLCJjb2RlIjoiSVRFTSBDU0xfQ0lUQVRJT04ge1wiY2l0YXRpb25JRFwiOlwic3ludGhldGljLWFcIixcImNpdGF0aW9uSXRlbXNcIjpbe1wiaWRcIjoxLFwidXJpc1wiOltcImh0dHA6Ly96b3Rlcm8ub3JnL3VzZXJzLzEvaXRlbXMvQUJDREVGR0hcIl0sXCJsb2NhdG9yXCI6XCI0MlwiLFwibGFiZWxcIjpcInBhZ2VcIn1dLFwicHJvcGVydGllc1wiOntcInBsYWluQ2l0YXRpb25cIjpcIkZhbmcgJiBMaVwiLFwiZm9ybWF0dGVkQ2l0YXRpb25cIjpcIjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPlwiLFwiZnV0dXJlXCI6e1wia2VlcFwiOlwi8J+YgCBlzIFcIn19fSJ9XX0=-->\n\n[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYlwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOlwiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9CQ0RFRkdISVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiKE90aGVyLCAyMDI1KVwifX0iLCJ0ZXh0IjoiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+In0=)",
+      "ids": [
+        "cite_a"
+      ],
+      "plainTexts": [
+        "Fang & Li"
+      ],
+      "stateStale": true,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 692,
+          "to": 1074
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 693,
+          "to": 709
+        }
+      ]
+    },
+    {
+      "name": "all-fields-removed",
+      "source": "<!--scholium-zotero-document:1:eyJkYXRhIjoiPD94bWwgdmVyc2lvbj1cIjEuMFwiPz48ZGF0YSBmdXR1cmU9XCJrZWVwXCI+XHJcbjxzdHlsZSBpZD1cInN5bnRoZXRpYy1zdHlsZVwiLz48cHJlZnMgZmllbGRUeXBlPVwiSHR0cFwiLz7wn5iAIGXMgTwvZGF0YT4iLCJiaWJsaW9ncmFwaHlTdHlsZSI6eyJmaXJzdExpbmVJbmRlbnQiOi03MjAsImluZGVudCI6NzIwLCJsaW5lU3BhY2luZyI6NDgwLCJlbnRyeVNwYWNpbmciOjI0MCwidGFiU3RvcHMiOls3MjBdfSwiYWNjZXB0ZWRGaWVsZHMiOlt7ImlkIjoiY2l0ZV9hIiwiY29kZSI6IklURU0gQ1NMX0NJVEFUSU9OIHtcImNpdGF0aW9uSURcIjpcInN5bnRoZXRpYy1hXCIsXCJjaXRhdGlvbkl0ZW1zXCI6W3tcImlkXCI6MSxcInVyaXNcIjpbXCJodHRwOi8vem90ZXJvLm9yZy91c2Vycy8xL2l0ZW1zL0FCQ0RFRkdIXCJdLFwibG9jYXRvclwiOlwiNDJcIixcImxhYmVsXCI6XCJwYWdlXCJ9XSxcInByb3BlcnRpZXNcIjp7XCJwbGFpbkNpdGF0aW9uXCI6XCJGYW5nICYgTGlcIixcImZvcm1hdHRlZENpdGF0aW9uXCI6XCI8aT5GYW5nPC9pPiAmYW1wOyA8Yj5MaTwvYj5cIixcImZ1dHVyZVwiOntcImtlZXBcIjpcIvCfmIAgZcyBXCJ9fX0ifSx7ImlkIjoiY2l0ZV9iIiwiY29kZSI6IklURU0gQ1NMX0NJVEFUSU9OIHtcImNpdGF0aW9uSURcIjpcInN5bnRoZXRpYy1iXCIsXCJjaXRhdGlvbkl0ZW1zXCI6W3tcImlkXCI6XCJodHRwOi8vem90ZXJvLm9yZy91c2Vycy8xL2l0ZW1zL0JDREVGR0hJXCJ9XSxcInByb3BlcnRpZXNcIjp7XCJwbGFpbkNpdGF0aW9uXCI6XCIoT3RoZXIsIDIwMjUpXCJ9fSJ9LHsiaWQiOiJiaWJfYSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIn1dfQ==-->\n\nNo fields remain.",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": true,
+      "diagnosticKinds": [],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "duplicate-occurrence-inert",
+      "source": "[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9) [*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "duplicate-id"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "duplicate-document-inert",
+      "source": "<!--scholium-zotero-document:1:eyJkYXRhIjoiPD94bWwgdmVyc2lvbj1cIjEuMFwiPz48ZGF0YSBmdXR1cmU9XCJrZWVwXCI+XHJcbjxzdHlsZSBpZD1cInN5bnRoZXRpYy1zdHlsZVwiLz48cHJlZnMgZmllbGRUeXBlPVwiSHR0cFwiLz7wn5iAIGXMgTwvZGF0YT4ifQ==-->\n\n<!--scholium-zotero-document:1:eyJkYXRhIjoiPD94bWwgdmVyc2lvbj1cIjEuMFwiPz48ZGF0YSBmdXR1cmU9XCJrZWVwXCI+XHJcbjxzdHlsZSBpZD1cInN5bnRoZXRpYy1zdHlsZVwiLz48cHJlZnMgZmllbGRUeXBlPVwiSHR0cFwiLz7wn5iAIGXMgTwvZGF0YT4ifQ==-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "duplicate-document"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "fenced-code-inert",
+      "source": "```markdown\n[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)\n<!--scholium-zotero-document:1:eyJkYXRhIjoiPD94bWwgdmVyc2lvbj1cIjEuMFwiPz48ZGF0YSBmdXR1cmU9XCJrZWVwXCI+XHJcbjxzdHlsZSBpZD1cInN5bnRoZXRpYy1zdHlsZVwiLz48cHJlZnMgZmllbGRUeXBlPVwiSHR0cFwiLz7wn5iAIGXMgTwvZGF0YT4iLCJiaWJsaW9ncmFwaHlTdHlsZSI6eyJmaXJzdExpbmVJbmRlbnQiOi03MjAsImluZGVudCI6NzIwLCJsaW5lU3BhY2luZyI6NDgwLCJlbnRyeVNwYWNpbmciOjI0MCwidGFiU3RvcHMiOls3MjBdfSwiYWNjZXB0ZWRGaWVsZHMiOlt7ImlkIjoiY2l0ZV9hIiwiY29kZSI6IklURU0gQ1NMX0NJVEFUSU9OIHtcImNpdGF0aW9uSURcIjpcInN5bnRoZXRpYy1hXCIsXCJjaXRhdGlvbkl0ZW1zXCI6W3tcImlkXCI6MSxcInVyaXNcIjpbXCJodHRwOi8vem90ZXJvLm9yZy91c2Vycy8xL2l0ZW1zL0FCQ0RFRkdIXCJdLFwibG9jYXRvclwiOlwiNDJcIixcImxhYmVsXCI6XCJwYWdlXCJ9XSxcInByb3BlcnRpZXNcIjp7XCJwbGFpbkNpdGF0aW9uXCI6XCJGYW5nICYgTGlcIixcImZvcm1hdHRlZENpdGF0aW9uXCI6XCI8aT5GYW5nPC9pPiAmYW1wOyA8Yj5MaTwvYj5cIixcImZ1dHVyZVwiOntcImtlZXBcIjpcIvCfmIAgZcyBXCJ9fX0ifSx7ImlkIjoiY2l0ZV9iIiwiY29kZSI6IklURU0gQ1NMX0NJVEFUSU9OIHtcImNpdGF0aW9uSURcIjpcInN5bnRoZXRpYy1iXCIsXCJjaXRhdGlvbkl0ZW1zXCI6W3tcImlkXCI6XCJodHRwOi8vem90ZXJvLm9yZy91c2Vycy8xL2l0ZW1zL0JDREVGR0hJXCJ9XSxcInByb3BlcnRpZXNcIjp7XCJwbGFpbkNpdGF0aW9uXCI6XCIoT3RoZXIsIDIwMjUpXCJ9fSJ9LHsiaWQiOiJiaWJfYSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIn1dfQ==-->\n```",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "YAML-example-inert",
+      "source": "---\nexample: '[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)'\n---\nBody",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "raw-HTML-block-inert",
+      "source": "<div>\n[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)\n</div>",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "raw-inline-HTML-inert",
+      "source": "Before <span>[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)</span> after.",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "heading-unsupported",
+      "source": "# [*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "unsupported-context"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "unsupported-version",
+      "source": "[Visible](scholium-zotero:2:AAAA)",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "unsupported-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "unpaired-bibliography-close",
+      "source": "<!--/scholium-zotero-field-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "ordinary-link-label",
+      "source": "[About scholium-zotero:](https://example.com)",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [],
+      "fieldRanges": [],
+      "fallbackRanges": []
+    },
+    {
+      "name": "marker-document-leading-space",
+      "source": " <!--scholium-zotero-document:1:eyJkYXRhIjoiPHN5bnRoZXRpYyAvPiIsImFjY2VwdGVkRmllbGRzIjpbXX0=-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "marker-document-leading-three-spaces",
+      "source": "   <!--scholium-zotero-document:1:eyJkYXRhIjoiPHN5bnRoZXRpYyAvPiIsImFjY2VwdGVkRmllbGRzIjpbXX0=-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "marker-document-trailing-space",
+      "source": "<!--scholium-zotero-document:1:eyJkYXRhIjoiPHN5bnRoZXRpYyAvPiIsImFjY2VwdGVkRmllbGRzIjpbXX0=--> ",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "marker-document-trailing-tab",
+      "source": "<!--scholium-zotero-document:1:eyJkYXRhIjoiPHN5bnRoZXRpYyAvPiIsImFjY2VwdGVkRmllbGRzIjpbXX0=-->\t",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "marker-document-BOM-prefix",
+      "source": "﻿<!--scholium-zotero-document:1:eyJkYXRhIjoiPHN5bnRoZXRpYyAvPiIsImFjY2VwdGVkRmllbGRzIjpbXX0=-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": {
+        "from": 1,
+        "to": 95
+      }
+    },
+    {
+      "name": "marker-bibliography-leading-space",
+      "source": " <!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\n\nFang\\. *Book\\.*\n\nLi\\. Other\\.\n\n<!--/scholium-zotero-field-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "marker-bibliography-closing-leading-space",
+      "source": "<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\n\nFang\\. *Book\\.*\n\nLi\\. Other\\.\n\n <!--/scholium-zotero-field-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "marker-bibliography-opening-trailing-space",
+      "source": "<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==--> \n\nFang\\. *Book\\.*\n\nLi\\. Other\\.\n\n<!--/scholium-zotero-field-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "marker-bibliography-closing-trailing-space",
+      "source": "<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\n\nFang\\. *Book\\.*\n\nLi\\. Other\\.\n\n<!--/scholium-zotero-field--> ",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "marker-bibliography-standalone-CR",
+      "source": "<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\r\rFang\\. *Book\\.*\r\rLi\\. Other\\.\r\r<!--/scholium-zotero-field-->",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "bibliography-extra-edge-blank-LF",
+      "source": "<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\n\n\nFang\\. *Book\\.*\n\nLi\\. Other\\.\n\n\n<!--/scholium-zotero-field-->",
+      "ids": [
+        "bib_a"
+      ],
+      "plainTexts": [
+        "Fang. Book.Li. Other."
+      ],
+      "stateStale": true,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 0,
+          "to": 427
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 365,
+          "to": 396
+        }
+      ],
+      "documentRange": null
+    },
+    {
+      "name": "bibliography-extra-edge-blank-CRLF",
+      "source": "<!--scholium-zotero-field:1:eyJpZCI6ImJpYl9hIiwia2luZCI6ImJpYmxpb2dyYXBoeSIsImNvZGUiOiJCSUJMIHtcInVuY2l0ZWRcIjpbXSxcIm9taXR0ZWRcIjpbXSxcImN1c3RvbVwiOltdfSBDU0xfQklCTElPR1JBUEhZIiwidGV4dCI6IjxkaXYgY2xhc3M9XCJjc2wtYmliLWJvZHlcIj48ZGl2IGNsYXNzPVwiY3NsLWVudHJ5XCI+RmFuZy4gPGk+Qm9vay48L2k+PC9kaXY+PGRpdiBjbGFzcz1cImNzbC1lbnRyeVwiPkxpLiBPdGhlci48L2Rpdj48L2Rpdj4ifQ==-->\r\n\r\n\r\nFang\\. *Book\\.*\r\n\r\nLi\\. Other\\.\r\n\r\n\r\n<!--/scholium-zotero-field-->",
+      "ids": [
+        "bib_a"
+      ],
+      "plainTexts": [
+        "Fang. Book.Li. Other."
+      ],
+      "stateStale": true,
+      "diagnosticKinds": [],
+      "fieldRanges": [
+        {
+          "from": 0,
+          "to": 435
+        }
+      ],
+      "fallbackRanges": [
+        {
+          "from": 367,
+          "to": 402
+        }
+      ],
+      "documentRange": null
+    },
+    {
+      "name": "named-footnote-container-unsupported",
+      "source": "[^a]: [*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "unsupported-context"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "inline-footnote-container-unsupported",
+      "source": "^[[*Fang* \\& **Li**](scholium-zotero:1:eyJpZCI6ImNpdGVfYSIsImtpbmQiOiJjaXRhdGlvbiIsImNvZGUiOiJJVEVNIENTTF9DSVRBVElPTiB7XCJjaXRhdGlvbklEXCI6XCJzeW50aGV0aWMtYVwiLFwiY2l0YXRpb25JdGVtc1wiOlt7XCJpZFwiOjEsXCJ1cmlzXCI6W1wiaHR0cDovL3pvdGVyby5vcmcvdXNlcnMvMS9pdGVtcy9BQkNERUZHSFwiXSxcImxvY2F0b3JcIjpcIjQyXCIsXCJsYWJlbFwiOlwicGFnZVwifV0sXCJwcm9wZXJ0aWVzXCI6e1wicGxhaW5DaXRhdGlvblwiOlwiRmFuZyAmIExpXCIsXCJmb3JtYXR0ZWRDaXRhdGlvblwiOlwiPGk+RmFuZzwvaT4gJmFtcDsgPGI+TGk8L2I+XCIsXCJmdXR1cmVcIjp7XCJrZWVwXCI6XCLwn5iAIGXMgVwifX19IiwidGV4dCI6IjxpPkZhbmc8L2k+ICZhbXA7IDxiPkxpPC9iPiJ9)]",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "mutationBlocked": true,
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    },
+    {
+      "name": "bare-reserved-token-malformed",
+      "source": "Before scholium-zotero:1:AAAA after.",
+      "ids": [],
+      "plainTexts": [],
+      "stateStale": false,
+      "diagnosticKinds": [
+        "malformed-envelope"
+      ],
+      "fieldRanges": [],
+      "fallbackRanges": [],
+      "documentRange": null
+    }
+  ],
+  "completedCodes": [
+    {
+      "kind": "citation",
+      "code": "ITEM CSL_CITATION {\"citationID\":\"synthetic-a\",\"citationItems\":[{\"id\":1,\"uris\":[\"http://zotero.org/users/1/items/ABCDEFGH\"],\"locator\":\"42\",\"label\":\"page\"}],\"properties\":{\"plainCitation\":\"Fang & Li\",\"formattedCitation\":\"<i>Fang</i> &amp; <b>Li</b>\",\"future\":{\"keep\":\"😀 é\"}}}",
+      "completed": true
+    },
+    {
+      "kind": "citation",
+      "code": "ITEM CSL_CITATION {\"citationID\":\"synthetic-b\",\"citationItems\":[{\"id\":\"http://zotero.org/users/1/items/BCDEFGHI\"}],\"properties\":{\"plainCitation\":\"(Other, 2025)\"}}",
+      "completed": true
+    },
+    {
+      "kind": "citation",
+      "code": "",
+      "completed": false
+    },
+    {
+      "kind": "citation",
+      "code": "TEMP",
+      "completed": false
+    },
+    {
+      "kind": "citation",
+      "code": "ITEM CSL_CITATION {}",
+      "completed": false
+    },
+    {
+      "kind": "citation",
+      "code": "ITEM CSL_CITATION {\"citationItems\":[]}",
+      "completed": false
+    },
+    {
+      "kind": "citation",
+      "code": "ITEM CSL_CITATION {\"citationItems\":[{\"id\":true}]}",
+      "completed": false
+    },
+    {
+      "kind": "citation",
+      "code": "ITEM CSL_CITATION {\"citationItems\":[{\"id\":0}]}",
+      "completed": false
+    },
+    {
+      "kind": "citation",
+      "code": "ITEM CSL_CITATION {\"citationItems\":[{\"id\":1.5}]}",
+      "completed": false
+    },
+    {
+      "kind": "citation",
+      "code": "ITEM CSL_CITATION {\"citationItems\":[{\"id\":9007199254740992}]}",
+      "completed": false
+    },
+    {
+      "kind": "bibliography",
+      "code": "BIBL {\"uncited\":[],\"omitted\":[],\"custom\":[]} CSL_BIBLIOGRAPHY",
+      "completed": true
+    },
+    {
+      "kind": "bibliography",
+      "code": "BIBL {}",
+      "completed": false
+    },
+    {
+      "kind": "bibliography",
+      "code": "BIBL [] CSL_BIBLIOGRAPHY",
+      "completed": false
+    }
+  ]
+}

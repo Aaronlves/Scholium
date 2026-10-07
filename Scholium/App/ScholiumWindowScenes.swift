@@ -104,7 +104,9 @@ struct ScholiumApp: App {
 
         WindowGroup(id: "scholium-external-markdown", for: ExternalMarkdownWindowRoute.self) { route in
             if let value = route.wrappedValue {
-                ExternalMarkdownWindowView(url: value.fileURL)
+                ExternalMarkdownWindowView(
+                    url: value.fileURL, needsOwnershipResolution: value.needsOwnershipResolution
+                )
             }
         }
         .defaultSize(width: 880, height: 700)
@@ -157,16 +159,52 @@ private struct ScholiumBootstrapWindowContent: View {
 @MainActor
 private struct ScholiumBootstrapWindowEnvironmentContent: View {
     @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
+    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
     @Binding var route: BootstrapWindowRoute
 
     var body: some View {
-        ApplicationBootstrapGate(controller: applicationBootstrap) {
-            ScholiumBootstrapWindowReadyContent(route: $route)
+        ScholiumBootstrapLaunchGate(
+            fileOpening: applicationDelegate.markdownFiles,
+            purpose: route.purpose
+        ) {
+            ApplicationBootstrapGate(controller: applicationBootstrap) {
+                ScholiumBootstrapWindowReadyContent(route: $route)
+            }
         }
         .focusedSceneValue(
             \.scholiumApplicationBootstrapStatus,
             ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
         )
+    }
+}
+
+/// Launch admission precedes storage and registration presentation. External
+/// reading must not create a Triptych failure window when its registry is ill.
+@MainActor
+private struct ScholiumBootstrapLaunchGate<Content: View>: View {
+    @ObservedObject var fileOpening: MarkdownFileOpeningController
+    @Environment(\.dismissWindow) private var dismissWindow
+    let purpose: BootstrapPurpose
+    @ViewBuilder let content: () -> Content
+    @State private var admitsBootstrap: Bool?
+
+    var body: some View {
+        Group {
+            if admitsBootstrap == true { content() } else { Color.clear }
+        }
+        .task(id: fileOpening.launchPresentation) {
+            guard admitsBootstrap == nil else { return }
+            if purpose != .firstConfiguration {
+                admitsBootstrap = true
+            } else if fileOpening.launchPresentation != .awaitingLaunch {
+                if fileOpening.consumeLaunchBootstrapSuppression() {
+                    admitsBootstrap = false
+                    dismissWindow()
+                } else {
+                    admitsBootstrap = true
+                }
+            }
+        }
     }
 }
 
@@ -322,19 +360,14 @@ private struct ScholiumBootstrapRoot: View {
         )
         .task {
             guard !Task.isCancelled else { return }
-            if suppressBootstrapForLaunchDocuments() { return }
             guard !didRouteToWorkspace else { return }
             if openFixtureWorkspaceIfRequested() {
                 return
             }
             await model.refresh()
-            guard !Task.isCancelled, !suppressBootstrapForLaunchDocuments(), !didRouteToWorkspace else { return }
+            guard !Task.isCancelled, !didRouteToWorkspace else { return }
             shouldPresentSetup = model.requiresSetup && !didRouteToWorkspace
             openConfiguredWorkspaceIfAvailable()
-        }
-        .onReceive(applicationDelegate.markdownFiles.$handlesLaunchDocuments) { handlesDocuments in
-            guard handlesDocuments else { return }
-            Task { @MainActor in _ = suppressBootstrapForLaunchDocuments() }
         }
         .onReceive(SystemNotificationService.shared.$notificationWindowID) { id in
             guard route.purpose == .firstConfiguration, let id else { return }
@@ -387,18 +420,6 @@ private struct ScholiumBootstrapRoot: View {
         }
     }
 
-    private func suppressBootstrapForLaunchDocuments() -> Bool {
-        guard route.purpose == .firstConfiguration, !didRouteToWorkspace,
-            applicationDelegate.markdownFiles.consumeLaunchBootstrapSuppression()
-        else { return false }
-        // A refresh already suspended by this Bootstrap must not install a
-        // default workspace after its file-launch route has taken ownership.
-        didRouteToWorkspace = true
-        shouldPresentSetup = false
-        dismissWindow()
-        return true
-    }
-
     private var workspaceSetupContext: WorkspaceSetupContext {
         WorkspaceSetupContext(
             isCreatingNewTriptych: model.isCreatingNewTriptych,
@@ -429,7 +450,6 @@ private struct ScholiumBootstrapRoot: View {
     }
 
     private func openConfiguredWorkspaceIfAvailable() {
-        guard !suppressBootstrapForLaunchDocuments() else { return }
         if route.purpose == .firstConfiguration,
             let notificationWindowID = SystemNotificationService.shared.notificationWindowID
         {

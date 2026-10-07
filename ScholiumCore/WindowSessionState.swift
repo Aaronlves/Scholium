@@ -61,9 +61,10 @@ public actor WindowSessionSnapshotStore {
         }
     }
 
-    /// Migrates every committed session currently bound to the moved note's
-    /// vault. All files are decoded before any are replaced so corrupt state
-    /// cannot cause a knowingly partial migration.
+    /// Migrates current-format committed sessions bound to the moved note's
+    /// vault. Unsupported incomplete layouts stay unchanged and cannot restore
+    /// a window. All supported files are decoded before any are replaced so
+    /// corrupt state cannot cause a knowingly partial migration.
     public func migratePath(vaultID: UUID, from sourcePath: String, to destinationPath: String) throws {
         guard FileManager.default.fileExists(atPath: directoryURL.path) else { return }
         let urls = try FileManager.default.contentsOfDirectory(
@@ -75,10 +76,16 @@ public actor WindowSessionSnapshotStore {
         decoder.dateDecodingStrategy = .iso8601
         var updates: [(URL, WindowSessionSnapshot)] = []
         for url in urls {
-            let snapshot = try decoder.decode(
-                WindowSessionSnapshot.self,
-                from: Data(contentsOf: url, options: [.mappedIfSafe])
-            )
+            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            let snapshot: WindowSessionSnapshot
+            do {
+                snapshot = try decoder.decode(WindowSessionSnapshot.self, from: data)
+            } catch DecodingError.keyNotFound {
+                // The same incomplete layout remains nonauthorizing in load
+                // and save. It cannot block independent current sessions or
+                // stable Note identity recovery merely by remaining on disk.
+                continue
+            }
             let migrated = snapshot.migratingPath(
                 vaultID: vaultID,
                 from: sourcePath,

@@ -57,15 +57,20 @@ struct NoteExportServiceTests {
             options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
             documentAttributes: nil
         )
-        let bodyIndex = (word.string as NSString).range(of: "A paragraph.").location
-        #expect(bodyIndex != NSNotFound)
+        let bodyLocation = (word.string as NSString).range(of: "A paragraph.").location
+        let bodyIndex = try #require(bodyLocation == NSNotFound ? nil : bodyLocation)
         let wordFont = try #require(
             word.attribute(.font, at: bodyIndex, effectiveRange: nil) as? NSFont)
         #expect(abs(wordFont.pointSize - 12) < 0.5)
-        let wordParagraph = try #require(
-            word.attribute(.paragraphStyle, at: bodyIndex, effectiveRange: nil) as? NSParagraphStyle
-        )
-        #expect(wordParagraph.firstLineHeadIndent >= 35.5)
+        // This macOS AppKit reader drops standard w:firstLine while accepting
+        // its writer's obsolete w:first-line. Assert the portable output schema.
+        let package = try await WorkspaceStore.unpackWordDocument(wordData)
+        let wordXML = try XMLDocument(data: #require(package["word/document.xml"]), options: .nodePreserveWhitespace)
+        let paragraph = try #require(try wordXML.nodes(forXPath: "//*[local-name()='p' and contains(., 'A paragraph.')]").first as? XMLElement)
+        let indentation = try #require(paragraph.elements(forName: "w:pPr").first?.elements(forName: "w:ind").first)
+        #expect(indentation.attribute(forName: "w:firstLine")?.stringValue == "720")
+        #expect((indentation.attribute(forName: "w:left")?.stringValue ?? "0") == "0")
+        #expect(try wordXML.nodes(forXPath: "//@*[local-name()='first-line']").isEmpty)
     }
 
     @Test("Standalone HTML escapes its title and keeps rendered source text")
@@ -246,21 +251,21 @@ struct NoteExportServiceTests {
                 options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
                 documentAttributes: nil
             )
+            let package = try await WorkspaceStore.unpackWordDocument(data)
+            let wordXML = try XMLDocument(data: #require(package["word/document.xml"]), options: .nodePreserveWhitespace)
+            #expect(try wordXML.nodes(forXPath: "//@*[local-name()='first-line']").isEmpty)
             for (text, indented) in [
                 ("Main heading", false), ("First body paragraph.", true),
                 ("Later heading", false), ("Second body paragraph.", true),
                 ("Quoted paragraph.", false),
             ] {
-                let location = (word.string as NSString).range(of: text).location
-                let index = try #require(location == NSNotFound ? nil : location)
-                let paragraph = try #require(
-                    word.attribute(.paragraphStyle, at: index, effectiveRange: nil)
-                        as? NSParagraphStyle
-                )
-                #expect(
-                    (paragraph.firstLineHeadIndent >= 35.5) == indented,
-                    "\(text): head=\(paragraph.headIndent), first=\(paragraph.firstLineHeadIndent), lists=\(paragraph.textLists.count)"
-                )
+                #expect(word.string.contains(text))
+                // Native re-import retains text but drops the corrected standard
+                // indent attribute; it cannot establish Word paragraph layout.
+                let paragraph = try #require(try wordXML.nodes(forXPath: "//*[local-name()='p' and contains(., '\(text)')]").first as? XMLElement)
+                let firstLine =
+                    paragraph.elements(forName: "w:pPr").first?.elements(forName: "w:ind").first?.attribute(forName: "w:firstLine")?.stringValue ?? "0"
+                #expect(firstLine == (indented ? "720" : "0"), "\(text): \(paragraph.xmlString)")
             }
             let listLocation = (word.string as NSString).range(of: "Listed item").location
             let listIndex = try #require(listLocation == NSNotFound ? nil : listLocation)

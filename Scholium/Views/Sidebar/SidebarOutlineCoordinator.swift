@@ -732,20 +732,46 @@ extension SidebarOutlineSourceList {
             return menu
         }
 
-        private func dropFolderTarget(
+        @MainActor
+        private struct DropTarget {
+            let item: SidebarOutlineItem?
+            let childIndex: Int
+
+            var folderRelativePath: String? { item?.node.folderRelativePath }
+        }
+
+        private func dropTarget(
             in outlineView: NSOutlineView,
-            info: NSDraggingInfo
-        ) -> SidebarOutlineItem? {
-            let point = outlineView.convert(info.draggingLocation, from: nil)
-            let row = outlineView.row(at: point)
-            guard row >= 0 else { return nil }
-            guard let item = outlineView.item(atRow: row) as? SidebarOutlineItem else {
-                return nil
+            item: Any?,
+            childIndex: Int
+        ) -> DropTarget? {
+            guard self.outlineView === outlineView,
+                !outlineView.isHiddenOrHasHiddenAncestor
+            else { return nil }
+
+            guard let item else {
+                guard
+                    childIndex == NSOutlineViewDropOnItemIndex
+                        || (0...roots.count).contains(childIndex)
+                else { return nil }
+                // The native outline owns root insertion gaps, including the
+                // end gap when the pointer is below the last row. Order is
+                // derived by the Library, so this expresses only root placement.
+                return DropTarget(
+                    item: nil,
+                    childIndex: childIndex == NSOutlineViewDropOnItemIndex ? roots.count : childIndex
+                )
             }
-            if item.node.isFolder, item.node.folderRelativePath != nil {
-                return item
-            }
-            return nil
+            guard let item = item as? SidebarOutlineItem,
+                itemsByID[item.id] === item,
+                outlineView.row(forItem: item) >= 0,
+                item.node.isFolder, item.node.folderRelativePath != nil,
+                childIndex == NSOutlineViewDropOnItemIndex
+                    || (0...item.children.count).contains(childIndex)
+            else { return nil }
+            // Folder contents are sorted; advertise the containing Folder,
+            // rather than promising an insertion order the model does not own.
+            return DropTarget(item: item, childIndex: NSOutlineViewDropOnItemIndex)
         }
 
         private func validatedDrop(
@@ -845,18 +871,17 @@ extension SidebarOutlineSourceList {
             proposedChildIndex index: Int
         ) -> NSDragOperation {
             guard let payload = sidebarNativeDragPayload(from: info),
-                let target = dropFolderTarget(in: outlineView, info: info),
-                let folderRelativePath = target.node.folderRelativePath,
+                let target = dropTarget(in: outlineView, item: item, childIndex: index),
                 validatedDrop(
                     payload: payload,
-                    folderRelativePath: folderRelativePath
+                    folderRelativePath: target.folderRelativePath
                 )
             else {
                 return []
             }
             outlineView.setDropItem(
-                target,
-                dropChildIndex: NSOutlineViewDropOnItemIndex
+                target.item,
+                dropChildIndex: target.childIndex
             )
             return .move
         }
@@ -867,10 +892,7 @@ extension SidebarOutlineSourceList {
             item: Any?,
             childIndex index: Int
         ) -> Bool {
-            guard index == NSOutlineViewDropOnItemIndex,
-                let target = item as? SidebarOutlineItem,
-                target.node.isFolder,
-                let targetFolder = target.node.folderRelativePath,
+            guard let target = dropTarget(in: outlineView, item: item, childIndex: index),
                 let payload = sidebarNativeDragPayload(from: info)
             else {
                 return false
@@ -878,12 +900,12 @@ extension SidebarOutlineSourceList {
             guard
                 validatedDrop(
                     payload: payload,
-                    folderRelativePath: targetFolder
+                    folderRelativePath: target.folderRelativePath
                 )
             else { return false }
             commitSidebarNativeDrop(
                 payload,
-                folderRelativePath: targetFolder,
+                folderRelativePath: target.folderRelativePath,
                 onMoveNote: configuration.onMoveNoteDrop,
                 onMoveFolder: configuration.onMoveFolderDrop,
                 onMoveNotes: configuration.onMoveNotesDrop

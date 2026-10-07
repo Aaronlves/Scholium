@@ -10,6 +10,7 @@ export function interactionAvailabilitySignature(context: EditorContext) {
     availableCommands: context.availableCommands,
     undoLabel: context.undoLabel ?? null,
     redoLabel: context.redoLabel ?? null,
+    citationState: context.citationState ?? null,
   });
 }
 

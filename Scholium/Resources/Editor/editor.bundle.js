@@ -1,108 +1,5 @@
 "use strict";
 (() => {
-  // committed-snapshot-receipt.ts
-  var CommittedSnapshotReceipt = class {
-    receipt = null;
-    clear() {
-      this.receipt = null;
-    }
-    remember(identity, operation) {
-      this.receipt = {
-        sessionID: identity.sessionID,
-        documentID: identity.documentID,
-        startingFingerprint: identity.startingFingerprint,
-        ...operation
-      };
-    }
-    replay(request, current, source, dirty2) {
-      if (!this.canReplay(request, current) || request.operation.type !== "acknowledgeCommittedSnapshot") return null;
-      return { text: source, commitSuperseded: dirty2 || source !== request.operation.committedText };
-    }
-    canReplay(request, current) {
-      const receipt = this.receipt;
-      const operation = request.operation;
-      return receipt !== null && operation.type === "acknowledgeCommittedSnapshot" && request.startingFingerprint !== current.startingFingerprint && receipt.sessionID === current.sessionID && request.sessionID === receipt.sessionID && receipt.documentID === current.documentID && request.documentID === receipt.documentID && request.startingFingerprint === receipt.startingFingerprint && current.startingFingerprint === receipt.committedFingerprint && operation.committedFingerprint === receipt.committedFingerprint && operation.expectedText === receipt.expectedText && operation.committedText === receipt.committedText;
-    }
-  };
-
-  // attachment-presentation.ts
-  var attachmentSymbols = {
-    pdf: "doc-richtext",
-    doc: "doc-text",
-    docx: "doc-text",
-    odt: "doc-text",
-    rtf: "doc-text",
-    txt: "doc-text",
-    xls: "tablecells",
-    xlsx: "tablecells",
-    ods: "tablecells",
-    numbers: "tablecells",
-    csv: "tablecells",
-    tsv: "tablecells",
-    ppt: "rectangle-on-rectangle",
-    pptx: "rectangle-on-rectangle",
-    odp: "rectangle-on-rectangle",
-    key: "rectangle-on-rectangle",
-    png: "photo",
-    jpg: "photo",
-    jpeg: "photo",
-    gif: "photo",
-    webp: "photo",
-    heic: "photo",
-    heif: "photo",
-    avif: "photo",
-    tiff: "photo",
-    tif: "photo",
-    bmp: "photo",
-    svg: "photo",
-    ico: "photo",
-    zip: "doc-zipper",
-    gz: "doc-zipper",
-    gzip: "doc-zipper",
-    tar: "doc-zipper",
-    tgz: "doc-zipper",
-    bz2: "doc-zipper",
-    xz: "doc-zipper",
-    "7z": "doc-zipper",
-    rar: "doc-zipper"
-  };
-  function attachmentSymbol(destination) {
-    if (/[\u0000-\u001f\u007f]/.test(destination)) return null;
-    let path = destination.trim();
-    if (path.startsWith("<") && path.endsWith(">")) path = path.slice(1, -1);
-    else if (path.startsWith("<") || path.endsWith(">")) return null;
-    if (!path || path.startsWith("#")) return null;
-    if (/^scholium-note:/i.test(path)) {
-      path = path.slice("scholium-note:".length);
-    }
-    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(path)?.[1].toLowerCase();
-    if (scheme === "file") {
-      try {
-        const url = new URL(path);
-        if (url.hostname && url.hostname !== "localhost") return null;
-        path = url.pathname;
-      } catch {
-        return null;
-      }
-    } else if (scheme) {
-      return null;
-    }
-    path = path.split(/[?#]/, 1)[0];
-    try {
-      path = decodeURIComponent(path);
-    } catch {
-      return null;
-    }
-    if (path.startsWith("#") || /\.(?:md|markdown)[?#]/i.test(path)) return null;
-    if (!path || /[\u0000-\u001f\u007f]/.test(path) || path.startsWith("//") || path.endsWith("/") || /^[a-z][a-z\d+.-]*:/i.test(path)) return null;
-    const filename = path.slice(path.lastIndexOf("/") + 1);
-    const dot2 = filename.lastIndexOf(".");
-    if (dot2 <= 0 || dot2 === filename.length - 1) return null;
-    const extension = filename.slice(dot2 + 1).toLowerCase();
-    if (extension === "md" || extension === "markdown") return null;
-    return Object.hasOwn(attachmentSymbols, extension) ? attachmentSymbols[extension] : "paperclip";
-  }
-
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -12517,7 +12414,7 @@
     Create a decorator.
     */
     constructor(config2) {
-      const { regexp, decoration, decorate, boundary, maxLength = 1e3 } = config2;
+      const { regexp, decoration, decorate, boundary: boundary2, maxLength = 1e3 } = config2;
       if (!regexp.global)
         throw new RangeError("The regular expression given to MatchDecorator should have its 'g' flag set");
       this.regexp = regexp;
@@ -12534,7 +12431,7 @@
       } else {
         throw new RangeError("Either 'decorate' or 'decoration' should be provided to MatchDecorator");
       }
-      this.boundary = boundary;
+      this.boundary = boundary2;
       this.maxLength = maxLength;
     }
     /**
@@ -13806,1116 +13703,6 @@
     while (last < lines)
       last = last * 10 + 9;
     return last;
-  }
-
-  // editor-suspension.ts
-  var setEditorSuspension = StateEffect.define();
-  var editorSuspensionState = StateField.define({
-    create: () => null,
-    update(value, transaction) {
-      if (value !== null && transaction.docChanged) throw new Error("editor is suspended for detachment");
-      const change = transaction.effects.find((effect) => effect.is(setEditorSuspension));
-      return change ? change.value : value;
-    }
-  });
-  var editorSuspension = [
-    editorSuspensionState,
-    EditorState.readOnly.from(editorSuspensionState, (token) => token !== null),
-    EditorView.editable.from(editorSuspensionState, (token) => token === null),
-    EditorView.editorAttributes.from(editorSuspensionState, (token) => token === null ? {} : { inert: "" }),
-    EditorState.transactionFilter.of((transaction) => transaction.startState.field(editorSuspensionState) !== null && transaction.docChanged ? [] : transaction)
-  ];
-
-  // localization.ts
-  var webInterfaceLocalizationKeys = [
-    "Tab",
-    "AI",
-    "Index",
-    "Accept AI continuation: {text} (Tab)",
-    "Accept index suggestion: {text} (Tab)",
-    "AI continuation timed out.",
-    "AI continuation is preparing.",
-    "AI continuation is retrieving related context.",
-    "AI continuation is composing.",
-    "AI continuation is not enabled.",
-    "AI continuation is not connected. Connect Codex in Agents & Chat.",
-    "AI continuation is not ready. Check Writing Assistance settings.",
-    "The selected AI continuation model is unavailable. Choose an available model in Writing Assistance.",
-    "AI continuation is still stopping. Try again in a moment.",
-    "AI continuation could not connect. Check Agents & Chat.",
-    "AI continuation timed out. Library completion remains available.",
-    "AI returned no usable continuation. Library completion remains available.",
-    "AI continuation could not be used for this writing context.",
-    "AI continuation was cancelled.",
-    "AI continuation could not be generated. Library completion remains available.",
-    "The edited Markdown document exceeds the supported editor size.",
-    "Finish editing the note title before switching documents.",
-    "The insertion position changed. Confirm the cursor again.",
-    "The reference is too large.",
-    "Finish composition before adopting a suggestion.",
-    "The passage changed. Request a new suggestion.",
-    "The suggestion is too large.",
-    "Copy",
-    "Expand",
-    "YAML frontmatter",
-    "File and image paste is not supported in Editor 1.0.",
-    "Markdown editor, Edit mode",
-    "Markdown source editor",
-    "Note title",
-    "Empty Note",
-    "This note has no body content.",
-    "Heading level {level}",
-    "Link",
-    "Callout",
-    "Quotation",
-    "Table",
-    "Bulleted list",
-    "Numbered list",
-    "Bold text",
-    "Emphasized text",
-    "Inline code",
-    "Exact Markdown and YAML source",
-    "Task item",
-    "Completed task",
-    "Incomplete task",
-    "Show Link Annotation for {title}",
-    "Hide Link Annotation for {title}",
-    "Link Annotation",
-    "Callout: {title}",
-    "linked note",
-    "Markdown table",
-    "Embedded note {title}",
-    "Open embedded note {title}",
-    "Embedded note content for {title}",
-    "Embedded note",
-    "Mathematics could not be rendered. Source is shown.",
-    "Diagram rendering is unavailable. Mermaid source is shown.",
-    "This Mermaid diagram is unsupported or could not be rendered. Source is shown.",
-    "This Mermaid diagram could not be isolated safely. Source is shown.",
-    "Mermaid source: {source}",
-    "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
-    "This Mermaid diagram could not be rendered. Source is shown.",
-    "Footnote {ordinal}",
-    "Footnotes",
-    "Return to footnote reference {ordinal}",
-    "Edit mode unavailable",
-    "Close the YAML frontmatter in Source mode to restore the visual projection.",
-    "The editor could not preserve the exact source line endings.",
-    "The replacement would make the document too large.",
-    "The Markdown editor could not start.",
-    "The Review renderer stopped unexpectedly.",
-    "No preview is available at the insertion point.",
-    "Preview content",
-    "Paragraph",
-    "Bold",
-    "Italic",
-    "Strikethrough",
-    "Highlight",
-    "Annotated Wikilink",
-    "Inline Code",
-    "Code Block",
-    "Blockquote",
-    "Comment",
-    "Date",
-    "Inline Math",
-    "Display Math",
-    "Mermaid",
-    "Footnote",
-    "Divider",
-    "Orientation",
-    "Introduces the note's purpose, scope, and route.",
-    "Source",
-    "Records sources that anchor the note without implying that they support every claim.",
-    "Connections",
-    "Routes the reader to a curated set of neighboring knowledge objects.",
-    "Statement",
-    "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it.",
-    "Illustration",
-    "Presents a scenario, example, thought experiment, or test case used in reasoning.",
-    "Preserves source-specific wording with attribution.",
-    "Caution",
-    "Marks a limitation, unresolved dependency, source restriction, or interpretive warning.",
-    "Note",
-    "Preserves an unsupported callout without assigning a research role.",
-    "Selection actions",
-    "Return saves \xB7 Shift-Return adds a line \xB7 Escape cancels",
-    "Submit Comment for QA",
-    "Comment for line {start}",
-    "Comment for lines {start} through {end}",
-    "Open comment at line {start}",
-    "Open comment at lines {start} through {end}",
-    "Open {count} comments at line {start}",
-    "Open {count} comments at lines {start} through {end}",
-    "Could not save. Your Comment is still here.",
-    "This Comment is too long to save here.",
-    "Saving\u2026",
-    "{label}. {meaning}"
-  ];
-  var fallbackPayload = {
-    languageTag: "en",
-    strings: {}
-  };
-  var templatePlaceholder = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
-  var interfaceLanguageIdentifier = /^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$/;
-  function placeholders(value) {
-    return [...value.matchAll(templatePlaceholder)].map((match) => match[1]).sort().join("\0");
-  }
-  function supportedInterfaceLanguage(identifier4) {
-    if (identifier4.length > 64 || !interfaceLanguageIdentifier.test(identifier4)) return "en";
-    const normalized2 = identifier4.replaceAll("_", "-").toLowerCase();
-    const parts = normalized2.split("-");
-    return parts[0] === "zh" && (parts.length === 1 || parts[1] === "hans" || parts[1] === "cn" || parts[1] === "sg") ? "zh-Hans" : "en";
-  }
-  function validatedInterfaceLocalization(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    const candidate = value;
-    if (typeof candidate.languageTag !== "string" || candidate.languageTag.length > 64 || !interfaceLanguageIdentifier.test(candidate.languageTag) || !candidate.strings || typeof candidate.strings !== "object" || Array.isArray(candidate.strings)) return null;
-    const strings = {};
-    const languageTag = supportedInterfaceLanguage(candidate.languageTag);
-    if (languageTag === "en" && !/^en(?:[-_]|$)/i.test(candidate.languageTag)) {
-      return { ...fallbackPayload };
-    }
-    const entries = candidate.strings;
-    for (const key of webInterfaceLocalizationKeys) {
-      if (!Object.hasOwn(entries, key)) continue;
-      const translation = entries[key];
-      if (typeof translation === "string" && translation.trim().length > 0 && translation.length <= 4096 && placeholders(translation) === placeholders(key)) {
-        strings[key] = translation;
-      }
-    }
-    return { languageTag, strings };
-  }
-  function interfaceLocalizationFromBase64(encoded) {
-    if (!encoded || encoded.length > 2796204) return fallbackPayload;
-    try {
-      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-      if (bytes.byteLength > 2097152) return fallbackPayload;
-      return validatedInterfaceLocalization(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))) ?? fallbackPayload;
-    } catch {
-      return fallbackPayload;
-    }
-  }
-  function payloadFromDocument() {
-    if (typeof document === "undefined") return fallbackPayload;
-    const encoded = document.querySelector(
-      'meta[name="scholium-interface-localization"]'
-    )?.content;
-    return interfaceLocalizationFromBase64(encoded ?? "");
-  }
-  var activePayload = payloadFromDocument();
-  function localized(key) {
-    return localizedFrom(activePayload, key);
-  }
-  function localizedTemplate(key, replacements) {
-    return localizedTemplateFrom(activePayload, key, replacements);
-  }
-  function localizedFrom(payload, key) {
-    return payload.strings[key] ?? key;
-  }
-  function localizedTemplateFrom(payload, key, replacements) {
-    return localizedFrom(payload, key).replace(
-      templatePlaceholder,
-      (placeholder, name2) => Object.hasOwn(replacements, name2) ? String(replacements[name2]) : placeholder
-    );
-  }
-  var calloutLocalizationKeys = {
-    orient: ["Orientation", "Introduces the note's purpose, scope, and route."],
-    cite: ["Source", "Records sources that anchor the note without implying that they support every claim."],
-    connect: ["Connections", "Routes the reader to a curated set of neighboring knowledge objects."],
-    state: ["Statement", "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it."],
-    illustrate: ["Illustration", "Presents a scenario, example, thought experiment, or test case used in reasoning."],
-    quote: ["Quotation", "Preserves source-specific wording with attribution."],
-    flag: ["Caution", "Marks a limitation, unresolved dependency, source restriction, or interpretive warning."],
-    neutral: ["Note", "Preserves an unsupported callout without assigning a research role."]
-  };
-  function localizedCallout(identifier4, fallback) {
-    if (activePayload.languageTag !== "zh-Hans") return fallback;
-    const keys = calloutLocalizationKeys[identifier4];
-    return keys ? { label: localized(keys[0]), meaning: localized(keys[1]) } : fallback;
-  }
-
-  // document-title.ts
-  function createDocumentTitle(options) {
-    const refreshDocumentTitleEffect = StateEffect.define();
-    let documentTitle2 = "";
-    let documentTitleDraft = null;
-    let documentTitleError = null;
-    let documentTitleRenameRequest = null;
-    let documentTitlePresentationRevision = 0;
-    class DocumentTitleWidget extends WidgetType {
-      constructor(title, presentationRevision) {
-        super();
-        this.title = title;
-        this.presentationRevision = presentationRevision;
-      }
-      title;
-      presentationRevision;
-      eq(other) {
-        return other.title === this.title && other.presentationRevision === this.presentationRevision;
-      }
-      toDOM() {
-        const attachment = options.attachment();
-        const wrapper = document.createElement("div");
-        wrapper.className = "cm-live-note-title scholium-note-title";
-        wrapper.setAttribute("role", "heading");
-        wrapper.setAttribute("aria-level", "1");
-        wrapper.setAttribute("aria-label", documentTitleDraft ?? this.title);
-        wrapper.setAttribute("dir", "auto");
-        wrapper.setAttribute("data-scholium-protected", "note-title");
-        const input = document.createElement("textarea");
-        input.className = "scholium-note-title-input";
-        input.value = documentTitleDraft ?? this.title;
-        input.rows = 1;
-        input.wrap = "soft";
-        input.spellcheck = false;
-        input.maxLength = 1024;
-        input.setAttribute("aria-label", localized("Note title"));
-        input.setAttribute("data-scholium-title-input", "true");
-        input.disabled = documentTitleRenameRequest !== null;
-        if (documentTitleRenameRequest) input.setAttribute("aria-busy", "true");
-        if (documentTitleError) {
-          input.setAttribute("aria-invalid", "true");
-          input.setAttribute("aria-describedby", "scholium-note-title-error");
-        }
-        const resize = () => {
-          input.style.height = "0";
-          input.style.height = `${input.scrollHeight}px`;
-        };
-        let composing = false;
-        let commitAfterComposition = false;
-        const normalizeInput = () => {
-          if (attachment !== options.attachment()) return;
-          if (composing) {
-            documentTitleDraft = input.value;
-            wrapper.setAttribute("aria-label", input.value || this.title);
-            resize();
-            return;
-          }
-          const normalized2 = input.value.replace(/[\r\n]+/g, " ");
-          if (normalized2 !== input.value) input.value = normalized2;
-          documentTitleDraft = input.value;
-          wrapper.setAttribute("aria-label", input.value || this.title);
-          documentTitleError = null;
-          input.removeAttribute("aria-invalid");
-          input.removeAttribute("aria-describedby");
-          wrapper.querySelector(".scholium-note-title-error")?.remove();
-          resize();
-        };
-        const commit = () => {
-          if (attachment !== options.attachment() || options.isSuspended()) return;
-          if (documentTitleRenameRequest) return;
-          const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
-          documentTitleDraft = requestedTitle;
-          if (requestedTitle === documentTitle2) {
-            documentTitleDraft = null;
-            documentTitleError = null;
-            return;
-          }
-          const requestID = options.requestID();
-          documentTitleRenameRequest = {
-            requestID,
-            requestedTitle
-          };
-          input.disabled = true;
-          input.setAttribute("aria-busy", "true");
-          options.requestRename({
-            requestID,
-            expectedTitle: documentTitle2,
-            requestedTitle
-          });
-        };
-        let cancelling = false;
-        input.addEventListener("input", normalizeInput);
-        input.addEventListener("focus", () => {
-          if (attachment !== options.attachment()) return;
-          options.focusChanged();
-        });
-        input.addEventListener("compositionstart", () => {
-          if (attachment !== options.attachment()) return;
-          composing = true;
-          options.beginComposition();
-        });
-        input.addEventListener("compositionend", () => {
-          if (attachment !== options.attachment()) return;
-          composing = false;
-          options.endComposition();
-          normalizeInput();
-          if (commitAfterComposition) {
-            commitAfterComposition = false;
-            commit();
-          }
-        });
-        input.addEventListener("keydown", (event) => {
-          if (attachment !== options.attachment()) return;
-          if (composing || event.isComposing) return;
-          if (event.key === "Enter") {
-            event.preventDefault();
-            commit();
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            cancelling = true;
-            documentTitleDraft = null;
-            documentTitleError = null;
-            input.value = documentTitle2;
-            resize();
-            input.blur();
-          }
-        });
-        input.addEventListener("blur", () => {
-          if (attachment !== options.attachment()) return;
-          if (cancelling) {
-            cancelling = false;
-            return;
-          }
-          if (composing) {
-            commitAfterComposition = true;
-            return;
-          }
-          commit();
-        });
-        const stopEditorPointerHandling = (event) => event.stopPropagation();
-        input.addEventListener("pointerdown", stopEditorPointerHandling);
-        input.addEventListener("mousedown", stopEditorPointerHandling);
-        wrapper.addEventListener("pointerdown", (event) => {
-          if (event.target === input || input.disabled) return;
-          event.preventDefault();
-          input.focus();
-          input.setSelectionRange(input.value.length, input.value.length);
-        });
-        wrapper.append(input);
-        if (documentTitleError) {
-          const error = document.createElement("div");
-          error.id = "scholium-note-title-error";
-          error.className = "scholium-note-title-error";
-          error.setAttribute("role", "alert");
-          error.textContent = documentTitleError;
-          wrapper.append(error);
-        }
-        queueMicrotask(resize);
-        return wrapper;
-      }
-      ignoreEvent() {
-        return true;
-      }
-    }
-    function documentTitleDecorations() {
-      if (!documentTitle2) return Decoration.none;
-      return Decoration.set([
-        Decoration.widget({
-          widget: new DocumentTitleWidget(
-            documentTitle2,
-            documentTitlePresentationRevision
-          ),
-          block: true,
-          side: -2
-        }).range(0)
-      ]);
-    }
-    function resolveDocumentTitleRename(requestID, accepted, title, error) {
-      if (!documentTitleRenameRequest || requestID !== documentTitleRenameRequest.requestID || typeof accepted !== "boolean" || typeof title !== "string" || title.length > 1024 || typeof error !== "string" || error.length > 4096) return;
-      const requestedTitle = documentTitleRenameRequest.requestedTitle;
-      documentTitleRenameRequest = null;
-      if (accepted) {
-        documentTitle2 = title;
-        documentTitleDraft = null;
-        documentTitleError = null;
-      } else {
-        documentTitleDraft = requestedTitle;
-        documentTitleError = error;
-      }
-      documentTitlePresentationRevision += 1;
-      options.dispatch(refreshDocumentTitleEffect.of(null));
-      if (!accepted) {
-        const attachment = options.attachment();
-        queueMicrotask(() => {
-          if (attachment !== options.attachment()) return;
-          const input = document.querySelector(
-            ".scholium-note-title-input"
-          );
-          input?.focus();
-          input?.setSelectionRange(input.value.length, input.value.length);
-        });
-      }
-    }
-    const liveDocumentTitle = StateField.define({
-      create: () => documentTitleDecorations(),
-      update: (decorations2, transaction) => {
-        const titleChanged = transaction.effects.some((effect) => effect.is(refreshDocumentTitleEffect));
-        return transaction.docChanged || titleChanged ? documentTitleDecorations() : decorations2;
-      },
-      provide: (field) => EditorView.decorations.from(field)
-    });
-    return {
-      extension: liveDocumentTitle,
-      resolveRename: resolveDocumentTitleRename,
-      // The native detachment transaction consults this before capturing source.
-      // Filename drafts live in this control and are not source recovery data.
-      allowsDetachment: () => documentTitleRenameRequest === null && (documentTitleDraft === null || documentTitleDraft === documentTitle2),
-      ownsCompositionEvent: (event) => event.target instanceof Element && event.target.closest("[data-scholium-title-input]") !== null,
-      resetDocument() {
-        documentTitle2 = "";
-        documentTitleDraft = null;
-        documentTitleError = null;
-        documentTitleRenameRequest = null;
-        documentTitlePresentationRevision += 1;
-      },
-      setTitle(value) {
-        if (documentTitle2 === value && documentTitleDraft === null && documentTitleError === null && documentTitleRenameRequest === null) return;
-        documentTitle2 = value;
-        documentTitleDraft = null;
-        documentTitleError = null;
-        documentTitleRenameRequest = null;
-        documentTitlePresentationRevision += 1;
-        options.dispatch(refreshDocumentTitleEffect.of(null));
-      },
-      focus() {
-        const input = document.querySelector(
-          ".scholium-note-title-input"
-        );
-        if (!input || input.disabled) return false;
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-        return true;
-      }
-    };
-  }
-
-  // state.ts
-  function normalizedDocumentText(text) {
-    return text.replace(/\r\n/g, "\n");
-  }
-  function replacementChange(currentText, requestedText) {
-    const targetText = normalizedDocumentText(requestedText);
-    let prefix = 0;
-    const sharedLength = Math.min(currentText.length, targetText.length);
-    while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) prefix += 1;
-    let currentSuffix = currentText.length;
-    let targetSuffix = targetText.length;
-    while (currentSuffix > prefix && targetSuffix > prefix && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)) {
-      currentSuffix -= 1;
-      targetSuffix -= 1;
-    }
-    return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
-  }
-  function rope(source) {
-    return Text.of(source.split("\n"));
-  }
-  function crlfCount(source) {
-    let count2 = 0;
-    for (let index = source.indexOf("\r\n"); index >= 0; index = source.indexOf("\r\n", index + 2)) count2 += 1;
-    return count2;
-  }
-  function exactOffset(exact, normalized2, requestedOffset) {
-    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalized2.length) return null;
-    const normalizedLine = normalized2.lineAt(requestedOffset);
-    const exactLine = exact.line(normalizedLine.number);
-    const column = requestedOffset - normalizedLine.from;
-    return exactLine.from + column;
-  }
-  function exactOffsetForNormalizedOffset(exactSource, requestedOffset) {
-    return exactOffset(
-      rope(exactSource),
-      rope(normalizedDocumentText(exactSource)),
-      requestedOffset
-    );
-  }
-  var ExactSourceMirror = class _ExactSourceMirror {
-    exact;
-    normalized;
-    crlfLineBreakCount;
-    byteCount;
-    constructor(source = "") {
-      this.exact = rope(source);
-      this.normalized = rope(normalizedDocumentText(source));
-      this.crlfLineBreakCount = crlfCount(source);
-      this.byteCount = new TextEncoder().encode(source).byteLength;
-    }
-    /**
-     * Materializing the complete String is intentionally an explicit snapshot
-     * boundary. Ordinary input only edits the persistent Text ropes below.
-     */
-    get text() {
-      return this.exact.toString();
-    }
-    get utf8ByteCount() {
-      return this.byteCount;
-    }
-    get usesCRLF() {
-      return this.crlfLineBreakCount > 0;
-    }
-    copy() {
-      const result = new _ExactSourceMirror();
-      result.exact = this.exact;
-      result.normalized = this.normalized;
-      result.crlfLineBreakCount = this.crlfLineBreakCount;
-      result.byteCount = this.byteCount;
-      return result;
-    }
-    slice(from, to) {
-      const exactFrom = exactOffset(this.exact, this.normalized, from);
-      const exactTo = exactOffset(this.exact, this.normalized, to);
-      if (exactFrom === null || exactTo === null || exactTo < exactFrom) throw new RangeError("Invalid exact source range");
-      return this.exact.sliceString(exactFrom, exactTo);
-    }
-    replace(source) {
-      this.exact = rope(source);
-      this.normalized = rope(normalizedDocumentText(source));
-      this.crlfLineBreakCount = crlfCount(source);
-      this.byteCount = new TextEncoder().encode(source).byteLength;
-    }
-    apply(changes) {
-      if (changes.length === 0) return true;
-      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
-      let previousTo = -1;
-      for (const change of ordered) {
-        if (change.from < previousTo || change.to < change.from) return false;
-        previousTo = change.to;
-      }
-      const usesCRLF = this.crlfLineBreakCount > 0;
-      const exactChanges = ordered.map((change) => {
-        const from = exactOffset(this.exact, this.normalized, change.from);
-        const to = exactOffset(this.exact, this.normalized, change.to);
-        if (from === null || to === null || to < from) return null;
-        if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
-        const exactInsert = change.exactInsert ?? (usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert);
-        if (normalizedDocumentText(exactInsert) !== change.insert) return null;
-        return {
-          ...change,
-          exactFrom: from,
-          exactTo: to,
-          exactInsert,
-          removedCRLFCount: crlfCount(this.exact.sliceString(from, to)),
-          insertedCRLFCount: crlfCount(exactInsert)
-        };
-      });
-      if (exactChanges.some((change) => change === null)) return false;
-      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
-        const before = this.exact.sliceString(Math.max(0, change.exactFrom - 1), change.exactFrom);
-        const after = this.exact.sliceString(change.exactTo, Math.min(this.exact.length, change.exactTo + 1));
-        const removed = this.exact.sliceString(change.exactFrom, change.exactTo);
-        const encoder = new TextEncoder();
-        this.byteCount += encoder.encode(before + change.exactInsert + after).byteLength - encoder.encode(before + removed + after).byteLength;
-        this.exact = this.exact.replace(
-          change.exactFrom,
-          change.exactTo,
-          rope(change.exactInsert)
-        );
-        this.normalized = this.normalized.replace(
-          change.from,
-          change.to,
-          rope(change.insert)
-        );
-        this.crlfLineBreakCount += change.insertedCRLFCount - change.removedCRLFCount;
-      }
-      return true;
-    }
-  };
-  function isFrontmatterOpening(text) {
-    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
-  }
-  function frontmatterBoundary(doc2) {
-    if (!isFrontmatterOpening(doc2.line(1).text)) {
-      return { endLine: 0, unclosed: false };
-    }
-    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
-    for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
-      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
-        return { endLine: number2, unclosed: false };
-      }
-    }
-    return { endLine: 0, unclosed: true };
-  }
-
-  // passage-replacement.ts
-  function passageReplacement(source, expected, from, to, replacement) {
-    if (source !== expected || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from || to > source.length || replacement.length === 0 || from === 0 && to === 0 && source.charCodeAt(0) === 65279) return null;
-    function boundary(offset) {
-      if (offset <= 0 || offset >= source.length) return true;
-      const before = source.charCodeAt(offset - 1), after = source.charCodeAt(offset);
-      return !(before === 13 && after === 10) && !(before >= 55296 && before <= 56319 && after >= 56320 && after <= 57343);
-    }
-    if (!boundary(from) || !boundary(to)) return null;
-    return {
-      from: normalizedDocumentText(source.slice(0, from)).length,
-      to: normalizedDocumentText(source.slice(0, to)).length,
-      insert: normalizedDocumentText(replacement)
-    };
-  }
-
-  // selection-actions.ts
-  function createSelectionActions(floating, current) {
-    let id2 = null;
-    let key = null;
-    let dismissed = null;
-    function hide() {
-      if (id2 !== null) floating.hide(id2);
-      id2 = null;
-      key = null;
-    }
-    function dismiss() {
-      const visible = id2 !== null;
-      if (key !== null) dismissed = key;
-      hide();
-      return visible;
-    }
-    return {
-      dismiss,
-      update(target = current()) {
-        if (!target) {
-          hide();
-          dismissed = null;
-          return;
-        }
-        if (target.key === key || target.key === dismissed) return;
-        hide();
-        key = target.key;
-        id2 = floating.show({ ...target.anchor }, {
-          dismiss,
-          choose: () => {
-            const valid = current()?.key === target.key;
-            return valid;
-          }
-        });
-      }
-    };
-  }
-
-  // live-cursor-geometry.ts
-  function readLiveCursorGeometry(view) {
-    const selection = view.state.selection.main;
-    if (!selection.empty) return null;
-    const rect = view.coordsAtPos(selection.head, selection.assoc || 1);
-    if (!rect) return null;
-    return { left: rect.left, top: rect.top, bottom: rect.bottom };
-  }
-  function readLiveCursorSurfaceGeometry(view) {
-    const outer = view.scrollDOM.getBoundingClientRect();
-    const scaleX = view.scaleX ?? 1;
-    const scaleY = view.scaleY ?? 1;
-    return {
-      outerLeft: outer.left,
-      outerRight: outer.right,
-      outerTop: outer.top,
-      clientWidth: view.scrollDOM.clientWidth,
-      scaleX,
-      scaleY,
-      scrollLeft: view.scrollDOM.scrollLeft * scaleX,
-      scrollTop: view.scrollDOM.scrollTop * scaleY,
-      direction: view.textDirection
-    };
-  }
-  function writeLiveCursorGeometry(view, geometry, surface) {
-    if (!geometry) return;
-    const cursor = view.scrollDOM.querySelector(".cm-cursor-primary");
-    if (!cursor) return;
-    const baseLeft = surface.direction === Direction.LTR ? surface.outerLeft - surface.scrollLeft : surface.outerRight - surface.clientWidth * surface.scaleX - surface.scrollLeft;
-    const baseTop = surface.outerTop - surface.scrollTop;
-    cursor.style.left = `${(geometry.left - baseLeft) / surface.scaleX}px`;
-    cursor.style.top = `${(geometry.top - baseTop) / surface.scaleY}px`;
-    cursor.style.height = `${(geometry.bottom - geometry.top) / surface.scaleY}px`;
-  }
-
-  // syntax-presentation.ts
-  function canDisplaceSyntax(source) {
-    return /^(?:[*_~`=]{1,2}|#{1,6} ?|(?:> ?){1,3}|!?\[|\]|\(|\))$/.test(source);
-  }
-  function canRetainSyntax(source) {
-    return source.length > 0 && source.length <= 24 && /^[\x20-\x7e]+$/.test(source);
-  }
-  function syntaxToken(source, from, to, exposed, kind = "inline", className = "") {
-    return Decoration.mark({
-      class: `cm-syntax-token ${exposed ? className : ""}`.trim(),
-      attributes: {
-        "data-syntax-key": `${from}:${to}`,
-        "data-syntax-open": String(exposed),
-        "data-syntax-kind": kind,
-        "data-syntax-displace": String(canDisplaceSyntax(source)),
-        ...exposed ? {} : { "aria-hidden": "true" },
-        "data-syntax-length": String(source.length)
-      }
-    });
-  }
-  function animatedScalar(computedValue, progress, from, to) {
-    const current = Number.parseFloat(computedValue);
-    if (Number.isFinite(current)) return current;
-    if (progress !== null && Number.isFinite(progress)) return from + (to - from) * progress;
-    return from;
-  }
-  function prefixNeedsMargin(textWidth, tokenWidth, measure, availableMargin) {
-    return textWidth > measure && textWidth - tokenWidth <= measure && tokenWidth + 4 <= availableMargin;
-  }
-  var syntaxPresentation = ViewPlugin.fromClass(class {
-    constructor(view) {
-      this.view = view;
-      this.reduced.addEventListener("change", this.stop);
-      this.resize = new ResizeObserver((entries) => {
-        const width = entries[0]?.contentRect.width ?? 0;
-        if (width === this.inlineSize) return;
-        this.inlineSize = width;
-        this.stop();
-        this.borrowed.clear();
-        this.frames.clear();
-        this.frontmatterFrames.clear();
-        this.measure(false);
-      });
-      view.scrollDOM.addEventListener("scroll", this.stop, { passive: true });
-      this.resize.observe(view.scrollDOM);
-      this.measure(false);
-    }
-    view;
-    frames = /* @__PURE__ */ new Map();
-    frontmatterFrames = /* @__PURE__ */ new Map();
-    borrowed = /* @__PURE__ */ new Set();
-    transitions = /* @__PURE__ */ new Map();
-    frontmatterTransitions = /* @__PURE__ */ new Map();
-    animations = [];
-    objects = /* @__PURE__ */ new Set();
-    destroyed = false;
-    reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    resize;
-    inlineSize = 0;
-    cursorMeasureKey = {};
-    stop = () => {
-      for (const animation of this.animations) animation.cancel();
-      this.animations = [];
-      this.transitions.clear();
-      this.frontmatterTransitions.clear();
-    };
-    update(update) {
-      if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
-      const animate = !update.docChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
-      for (const [key, transition] of this.transitions) {
-        const frame = this.frames.get(key);
-        const progress = transition.animation.effect?.getComputedTiming().progress;
-        if (frame) {
-          const style = getComputedStyle(transition.node);
-          frame.color = style.color || frame.color;
-          frame.opacity = animatedScalar(
-            style.opacity,
-            typeof progress === "number" ? progress : null,
-            transition.fromOpacity,
-            transition.toOpacity
-          );
-        }
-      }
-      for (const [key, transition] of this.frontmatterTransitions) {
-        const frame = this.frontmatterFrames.get(key);
-        const progress = transition.animation.effect?.getComputedTiming().progress;
-        if (frame) {
-          const style = getComputedStyle(transition.node);
-          frame.opacity = animatedScalar(
-            style.opacity,
-            typeof progress === "number" ? progress : null,
-            transition.fromOpacity,
-            transition.toOpacity
-          );
-        }
-      }
-      this.transitions.clear();
-      this.frontmatterTransitions.clear();
-      this.stop();
-      this.measure(animate);
-    }
-    measure(animate) {
-      this.view.requestMeasure({
-        key: this,
-        read: () => ({
-          objects: [...this.view.contentDOM.querySelectorAll(
-            // Technical projections own their fade-only entry in CSS. Keeping
-            // them out of this generic object pulse avoids two animation owners
-            // competing while a widget is exchanged for its exact source.
-            ".cm-live-table-widget, .cm-live-table, .cm-live-footnote-reference-widget, .cm-live-embed"
-          )],
-          cursor: readLiveCursorGeometry(this.view),
-          cursorSurface: readLiveCursorSurfaceGeometry(this.view),
-          frontmatter: [...this.view.contentDOM.querySelectorAll(
-            ".scholium-frontmatter-delimiter-line[data-scholium-yaml-delimiter]"
-          )].map((node, index) => {
-            const style = getComputedStyle(node);
-            return {
-              node,
-              key: node.dataset.scholiumYamlDelimiter ?? String(index),
-              opacity: Number.parseFloat(style.opacity) || 0,
-              open: node.classList.contains("scholium-frontmatter-delimiter-line-active")
-            };
-          }),
-          tokens: [...this.view.contentDOM.querySelectorAll(".cm-syntax-token")].map((node) => {
-            const key = node.dataset.syntaxKey;
-            const open = node.dataset.syntaxOpen === "true";
-            const width = node.getBoundingClientRect().width;
-            const line = node.closest(".cm-line");
-            const displace = node.dataset.syntaxDisplace === "true" && !line?.matches(".cm-live-callout, .cm-live-codeblock, .cm-live-rule, .scholium-frontmatter-line");
-            let borrow = open && this.borrowed.has(key);
-            if (borrow && node.getBoundingClientRect().left < this.view.scrollDOM.getBoundingClientRect().left + 4) borrow = false;
-            if (displace && open && !this.frames.get(key)?.open && node.dataset.syntaxKind === "prefix" && line && getComputedStyle(line).direction === "ltr") {
-              const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-              let textWidth = 0;
-              while (walker.nextNode()) {
-                const text = walker.currentNode;
-                if (text.parentElement?.closest('[data-syntax-open="false"]')) continue;
-                const range = document.createRange();
-                range.selectNodeContents(text);
-                for (const rect of range.getClientRects()) textWidth += rect.width;
-              }
-              const style2 = getComputedStyle(line);
-              const measure = line.clientWidth - parseFloat(style2.paddingLeft) - parseFloat(style2.paddingRight);
-              borrow = node.offsetLeft <= parseFloat(style2.paddingLeft) + 1 && prefixNeedsMargin(
-                textWidth,
-                width,
-                measure,
-                node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left
-              );
-            }
-            const style = getComputedStyle(node);
-            return {
-              node,
-              key,
-              open,
-              width,
-              borrow,
-              activeColor: style.getPropertyValue("--scholium-syntax-active-ink").trim(),
-              secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim(),
-              opacity: Number.parseFloat(style.opacity) || 0
-            };
-          })
-        }),
-        write: ({ tokens, objects, cursor, cursorSurface, frontmatter }) => {
-          if (this.destroyed) return;
-          for (const object of objects) {
-            if (animate && this.objects.size && !this.objects.has(object) && typeof object.animate === "function") {
-              this.animations.push(object.animate(
-                [{ opacity: 0.65 }, { opacity: 1 }],
-                { duration: 100, easing: "ease-out" }
-              ));
-            }
-          }
-          this.objects = new Set(objects);
-          const nextFrontmatter = /* @__PURE__ */ new Map();
-          for (const { node, key, opacity, open } of frontmatter) {
-            const previous = this.frontmatterFrames.get(key);
-            nextFrontmatter.set(key, { opacity, open });
-            if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
-            const fromOpacity = open ? 0 : previous.opacity;
-            const toOpacity = open ? opacity : 0;
-            const animation = node.animate([
-              { opacity: fromOpacity },
-              { opacity: toOpacity }
-            ], { duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
-            this.animations.push(animation);
-            this.frontmatterTransitions.set(key, {
-              node,
-              animation,
-              fromOpacity,
-              toOpacity
-            });
-          }
-          this.frontmatterFrames = nextFrontmatter;
-          const next = /* @__PURE__ */ new Map();
-          let marginChanged = false;
-          for (const { node, key, open, width, borrow, activeColor, secondaryColor } of tokens) {
-            const previous = this.frames.get(key);
-            if (borrow) this.borrowed.add(key);
-            else this.borrowed.delete(key);
-            const targetMargin = borrow ? -width : 0;
-            if (targetMargin === 0) {
-              if (node.style.marginInlineStart) {
-                node.style.removeProperty("margin-inline-start");
-                marginChanged = true;
-              }
-            } else if (node.style.marginInlineStart !== `${targetMargin}px`) {
-              node.style.marginInlineStart = `${targetMargin}px`;
-              marginChanged = true;
-            }
-            const targetOpacity = open ? 1 : 0;
-            next.set(key, {
-              open,
-              color: open ? activeColor : secondaryColor,
-              opacity: targetOpacity
-            });
-            if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
-            const animation = node.animate([
-              { opacity: previous.opacity, color: previous.color },
-              { opacity: targetOpacity, color: open ? activeColor : secondaryColor }
-            ], { duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
-            this.animations.push(animation);
-            this.transitions.set(key, {
-              node,
-              animation,
-              fromOpacity: previous.opacity,
-              toOpacity: targetOpacity
-            });
-          }
-          this.frames = next;
-          for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
-          if (marginChanged) {
-            this.view.requestMeasure({
-              key: this.cursorMeasureKey,
-              read: () => ({
-                cursor: readLiveCursorGeometry(this.view),
-                surface: readLiveCursorSurfaceGeometry(this.view)
-              }),
-              write: ({ cursor: measuredCursor, surface }) => {
-                if (!this.destroyed) writeLiveCursorGeometry(this.view, measuredCursor, surface);
-              }
-            });
-          } else {
-            writeLiveCursorGeometry(this.view, cursor, cursorSurface);
-          }
-        }
-      });
-    }
-    destroy() {
-      this.destroyed = true;
-      this.stop();
-      this.reduced.removeEventListener("change", this.stop);
-      this.view.scrollDOM.removeEventListener("scroll", this.stop);
-      this.resize.disconnect();
-    }
-  }, { eventHandlers: {
-    compositionstart() {
-      this.stop();
-    },
-    mousedown() {
-      this.stop();
-    }
-  } });
-
-  // arrival-highlight.ts
-  var arrivalDuration = 1400;
-  var arrivalClass = "scholium-arrival-target";
-
-  // editor-arrival-highlight.ts
-  var showEditorArrival = StateEffect.define();
-  var editorArrivalState = StateField.define({
-    create: () => Decoration.none,
-    update(value, transaction) {
-      if (transaction.docChanged || transaction.reconfigured) value = Decoration.none;
-      for (const effect of transaction.effects) {
-        if (!effect.is(showEditorArrival)) continue;
-        const position = effect.value;
-        value = position !== null && position >= 0 && position <= transaction.newDoc.length ? Decoration.set([Decoration.line({ class: arrivalClass }).range(transaction.newDoc.lineAt(position).from)]) : Decoration.none;
-      }
-      return value;
-    },
-    provide: (field) => EditorView.decorations.from(field)
-  });
-  var lifetime = ViewPlugin.fromClass(class {
-    constructor(view) {
-      this.view = view;
-    }
-    view;
-    timer;
-    update(update) {
-      if (update.docChanged || update.transactions.some((transaction) => transaction.reconfigured)) {
-        clearTimeout(this.timer);
-      }
-      for (const transaction of update.transactions) for (const effect of transaction.effects) {
-        if (!effect.is(showEditorArrival)) continue;
-        clearTimeout(this.timer);
-        if (effect.value !== null) {
-          this.view.requestMeasure({
-            key: this,
-            read: (view) => view.dom.querySelector("." + arrivalClass),
-            write: (marker) => {
-              for (const animation of marker?.getAnimations() ?? []) {
-                if (animation instanceof CSSAnimation && animation.animationName === "scholium-arrival-fade") {
-                  animation.currentTime = 0;
-                  animation.play();
-                }
-              }
-            }
-          });
-          this.timer = setTimeout(() => {
-            this.view.dispatch({ effects: showEditorArrival.of(null) });
-          }, arrivalDuration);
-        }
-      }
-    }
-    destroy() {
-      clearTimeout(this.timer);
-    }
-  });
-  var editorArrivalHighlight = [editorArrivalState, lifetime];
-
-  // native-floating.ts
-  function createNativeFloatingPorts(post2) {
-    let serial = 0;
-    let active = null;
-    function activate(kind, callbacks, event2) {
-      if (active && active.kind !== kind) active.dismiss();
-      const id2 = ++serial;
-      active = { kind, id: id2, dismiss: callbacks.dismiss, event: event2 };
-      return id2;
-    }
-    function hide(kind, id2) {
-      if (active?.kind !== kind || active.id !== id2) return;
-      post2({ type: "dismissSurface", kind, id: id2 });
-      active = null;
-    }
-    const preview = {
-      show(surface, callbacks) {
-        const id2 = activate("preview", callbacks, (currentID, action, _index) => {
-          if (currentID !== id2) return false;
-          if (action === "enter") callbacks.enter?.();
-          else if (action === "leave") callbacks.leave?.();
-          else if (action === "dismiss") callbacks.dismiss();
-          else return false;
-          return true;
-        });
-        post2({ type: "previewSurface", surface: { ...surface, id: id2 } });
-        return id2;
-      },
-      hide(id2) {
-        hide("preview", id2);
-      }
-    };
-    const suggestions = {
-      show(surface, callbacks) {
-        const id2 = activate("suggestions", callbacks, (currentID, action, index) => {
-          if (currentID !== id2 || !Number.isInteger(index)) return false;
-          if (action === "dismiss") callbacks.dismiss();
-          else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
-          else if (action === "choose" && index >= 0 && index < surface.items.length) {
-            return callbacks.choose?.(index) !== false;
-          } else return false;
-          return true;
-        });
-        post2({ type: "suggestionSurface", surface: { ...surface, id: id2 } });
-        return id2;
-      },
-      hide(id2) {
-        hide("suggestions", id2);
-      }
-    };
-    const selection = {
-      show(surface, callbacks) {
-        const id2 = activate("selection", callbacks, (currentID, action, index) => {
-          if (currentID !== id2) return false;
-          if (action === "dismiss") callbacks.dismiss();
-          else if (action === "choose" && index === 0) return callbacks.choose?.(index) !== false;
-          else return false;
-          return true;
-        });
-        post2({ type: "selectionSurface", surface: { ...surface, id: id2 } });
-        return id2;
-      },
-      hide(id2) {
-        hide("selection", id2);
-      }
-    };
-    const event = (id2, action, index) => active?.id === id2 ? active.event(id2, action, index) : false;
-    window.scholiumNativeFloatingEvent = event;
-    return { preview, suggestions, selection };
-  }
-  function previewSurface(anchor, root) {
-    const css2 = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
-    return {
-      left: anchor.left,
-      top: anchor.top,
-      bottom: anchor.bottom,
-      html: root.innerHTML,
-      css: css2
-    };
   }
 
   // node_modules/@lezer/common/dist/index.js
@@ -20506,6 +19293,748 @@
     { key: "Ctrl-m", mac: "Shift-Alt-m", run: toggleTabFocusMode }
   ].concat(standardKeymap);
 
+  // state.ts
+  function normalizedDocumentText(text) {
+    return text.replace(/\r\n/g, "\n");
+  }
+  function replacementChange(currentText, requestedText) {
+    const targetText = normalizedDocumentText(requestedText);
+    let prefix = 0;
+    const sharedLength = Math.min(currentText.length, targetText.length);
+    while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) prefix += 1;
+    let currentSuffix = currentText.length;
+    let targetSuffix = targetText.length;
+    while (currentSuffix > prefix && targetSuffix > prefix && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)) {
+      currentSuffix -= 1;
+      targetSuffix -= 1;
+    }
+    return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
+  }
+  function rope(source) {
+    return Text.of(source.split("\n"));
+  }
+  function crlfCount(source) {
+    let count2 = 0;
+    for (let index = source.indexOf("\r\n"); index >= 0; index = source.indexOf("\r\n", index + 2)) count2 += 1;
+    return count2;
+  }
+  function exactOffset(exact, normalized2, requestedOffset) {
+    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalized2.length) return null;
+    const normalizedLine = normalized2.lineAt(requestedOffset);
+    const exactLine = exact.line(normalizedLine.number);
+    const column = requestedOffset - normalizedLine.from;
+    return exactLine.from + column;
+  }
+  function exactOffsetForNormalizedOffset(exactSource, requestedOffset) {
+    return exactOffset(
+      rope(exactSource),
+      rope(normalizedDocumentText(exactSource)),
+      requestedOffset
+    );
+  }
+  var ExactSourceMirror = class _ExactSourceMirror {
+    exact;
+    normalized;
+    crlfLineBreakCount;
+    byteCount;
+    constructor(source = "") {
+      this.exact = rope(source);
+      this.normalized = rope(normalizedDocumentText(source));
+      this.crlfLineBreakCount = crlfCount(source);
+      this.byteCount = new TextEncoder().encode(source).byteLength;
+    }
+    /**
+     * Materializing the complete String is intentionally an explicit snapshot
+     * boundary. Ordinary input only edits the persistent Text ropes below.
+     */
+    get text() {
+      return this.exact.toString();
+    }
+    get utf8ByteCount() {
+      return this.byteCount;
+    }
+    get usesCRLF() {
+      return this.crlfLineBreakCount > 0;
+    }
+    copy() {
+      const result = new _ExactSourceMirror();
+      result.exact = this.exact;
+      result.normalized = this.normalized;
+      result.crlfLineBreakCount = this.crlfLineBreakCount;
+      result.byteCount = this.byteCount;
+      return result;
+    }
+    slice(from, to) {
+      const exactFrom = exactOffset(this.exact, this.normalized, from);
+      const exactTo = exactOffset(this.exact, this.normalized, to);
+      if (exactFrom === null || exactTo === null || exactTo < exactFrom) throw new RangeError("Invalid exact source range");
+      return this.exact.sliceString(exactFrom, exactTo);
+    }
+    replace(source) {
+      this.exact = rope(source);
+      this.normalized = rope(normalizedDocumentText(source));
+      this.crlfLineBreakCount = crlfCount(source);
+      this.byteCount = new TextEncoder().encode(source).byteLength;
+    }
+    apply(changes) {
+      if (changes.length === 0) return true;
+      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
+      let previousTo = -1;
+      for (const change of ordered) {
+        if (change.from < previousTo || change.to < change.from) return false;
+        previousTo = change.to;
+      }
+      const usesCRLF = this.crlfLineBreakCount > 0;
+      const exactChanges = ordered.map((change) => {
+        const from = exactOffset(this.exact, this.normalized, change.from);
+        const to = exactOffset(this.exact, this.normalized, change.to);
+        if (from === null || to === null || to < from) return null;
+        if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
+        const exactInsert = change.exactInsert ?? (usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert);
+        if (normalizedDocumentText(exactInsert) !== change.insert) return null;
+        return {
+          ...change,
+          exactFrom: from,
+          exactTo: to,
+          exactInsert,
+          removedCRLFCount: crlfCount(this.exact.sliceString(from, to)),
+          insertedCRLFCount: crlfCount(exactInsert)
+        };
+      });
+      if (exactChanges.some((change) => change === null)) return false;
+      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
+        const before = this.exact.sliceString(Math.max(0, change.exactFrom - 1), change.exactFrom);
+        const after = this.exact.sliceString(change.exactTo, Math.min(this.exact.length, change.exactTo + 1));
+        const removed = this.exact.sliceString(change.exactFrom, change.exactTo);
+        const encoder = new TextEncoder();
+        this.byteCount += encoder.encode(before + change.exactInsert + after).byteLength - encoder.encode(before + removed + after).byteLength;
+        this.exact = this.exact.replace(
+          change.exactFrom,
+          change.exactTo,
+          rope(change.exactInsert)
+        );
+        this.normalized = this.normalized.replace(
+          change.from,
+          change.to,
+          rope(change.insert)
+        );
+        this.crlfLineBreakCount += change.insertedCRLFCount - change.removedCRLFCount;
+      }
+      return true;
+    }
+  };
+  function isFrontmatterOpening(text) {
+    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
+  }
+  function frontmatterBoundary(doc2) {
+    if (!isFrontmatterOpening(doc2.line(1).text)) {
+      return { endLine: 0, unclosed: false };
+    }
+    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
+    for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
+      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
+        return { endLine: number2, unclosed: false };
+      }
+    }
+    return { endLine: 0, unclosed: true };
+  }
+
+  // image-resources.ts
+  var MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+  var MAX_IMAGE_CATALOG_BYTES = 80 * 1024 * 1024;
+  var MAX_IMAGE_ENVELOPE_BYTES = 4 * Math.ceil(MAX_IMAGE_CATALOG_BYTES / 3) + 512 * 1024;
+  var dataImage = /^data:image\/(?:png|jpeg|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
+  function validImageResources(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    let totalBytes = 0;
+    let metadataBytes = 0;
+    for (const [destination, resource] of Object.entries(value)) {
+      if (!destination || destination.length > 16384 || typeof resource !== "string") return false;
+      metadataBytes += new TextEncoder().encode(destination).length + 64;
+      if (metadataBytes > 512 * 1024) return false;
+      const match = dataImage.exec(resource);
+      if (!match || match[1].length % 4 !== 0) return false;
+      const bytes = match[1].length / 4 * 3 - (match[1].endsWith("==") ? 2 : match[1].endsWith("=") ? 1 : 0);
+      if (bytes <= 0 || bytes > MAX_IMAGE_BYTES) return false;
+      totalBytes += bytes;
+      if (totalBytes > MAX_IMAGE_CATALOG_BYTES) return false;
+    }
+    return true;
+  }
+
+  // source-capacity.ts
+  var MAX_SOURCE_UTF8_BYTES = 8e6;
+  var sourceCapacityMessage = "The edited Markdown document exceeds the supported editor size.";
+  function exactSourceFits(source) {
+    return new TextEncoder().encode(source).byteLength <= MAX_SOURCE_UTF8_BYTES;
+  }
+
+  // protocol.ts
+  var EDITOR_PROTOCOL_VERSION = 44;
+  var MAX_INBOUND_BYTES = 25e5;
+  var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
+  var operationTypes = /* @__PURE__ */ new Set([
+    "suspendForDetachment",
+    "resumeAfterDetachment",
+    "initialize",
+    "setMode",
+    "setDocumentTitle",
+    "setPresentationCSS",
+    "setUserCSS",
+    "setLinkPreviews",
+    "setImageResources",
+    "setWritingContinuation",
+    "setWritingIndexContext",
+    "showPreview",
+    "measureVisibleProjection",
+    "showPreviewAt",
+    "announceStatus",
+    "goToLine",
+    "revealSourceRange",
+    "selectAll",
+    "setScrollFraction",
+    "setScrollAnchor",
+    "queryText",
+    "querySelection",
+    "queryContext",
+    "queryScrollAnchor",
+    "queryPerformance",
+    "captureRecovery",
+    "restoreRecovery",
+    "acknowledgeCommittedSnapshot",
+    "replacePassage",
+    "insertReference",
+    "beginCitation",
+    "citationCallback",
+    "finishCitation",
+    "cancelCitation",
+    "command",
+    "pasteClipboard",
+    "documentFind",
+    "clearDocumentFind",
+    "markClean",
+    "focus",
+    "focusTitle",
+    "blur"
+  ]);
+  var commandTypes = /* @__PURE__ */ new Set([
+    "bold",
+    "emphasis",
+    "strikethrough",
+    "highlight",
+    "inlineCode",
+    "markdownComment",
+    "standardLink",
+    "wikilink",
+    "annotatedWikilink",
+    "paragraph",
+    "heading1",
+    "heading2",
+    "heading3",
+    "heading4",
+    "heading5",
+    "heading6",
+    "blockQuotation",
+    "bulletList",
+    "numberedList",
+    "taskList",
+    "fencedCode",
+    "thematicBreak",
+    "calloutOrient",
+    "calloutCite",
+    "calloutConnect",
+    "calloutState",
+    "calloutIllustrate",
+    "calloutQuote",
+    "calloutFlag",
+    "insertFootnote",
+    "insertInlineFootnote",
+    "insertTable",
+    "insertImage",
+    "insertAttachment",
+    "toggleTask",
+    "tableInsertRowBefore",
+    "tableInsertRowAfter",
+    "tableDeleteRow",
+    "tableInsertColumnBefore",
+    "tableInsertColumnAfter",
+    "tableDeleteColumn",
+    "tableAlignLeft",
+    "tableAlignCenter",
+    "tableAlignRight",
+    "pastePlain",
+    "pasteMarkdown",
+    "linkSelectedText",
+    "insertCitation",
+    "insertBibliography",
+    "refreshCitations",
+    "citationStyle",
+    "cancelCitation"
+  ]);
+  function validMode(value) {
+    return value === "livePreview" || value === "source";
+  }
+  function validInitialSelection(value, normalizedLength) {
+    if (value === void 0) return true;
+    if (!value || typeof value !== "object") return false;
+    const selection = value;
+    return Number.isSafeInteger(selection.anchor) && Number(selection.anchor) >= 0 && Number(selection.anchor) <= normalizedLength && Number.isSafeInteger(selection.head) && Number(selection.head) >= 0 && Number(selection.head) <= normalizedLength;
+  }
+  function validRecoverySnapshot(value) {
+    if (!value || typeof value !== "object") return false;
+    const snapshot = value;
+    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES)) return false;
+    const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
+    return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
+  }
+  function recoveryGenerationCanReplaceCurrent(snapshotGeneration, currentGeneration) {
+    return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
+  }
+  var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
+    "setWritingContinuation",
+    "setWritingIndexContext",
+    "setDocumentTitle",
+    "queryText",
+    "querySelection",
+    "queryContext",
+    "queryScrollAnchor",
+    "queryPerformance",
+    "captureRecovery",
+    "suspendForDetachment",
+    "resumeAfterDetachment",
+    "acknowledgeCommittedSnapshot",
+    "announceStatus",
+    "focus",
+    "focusTitle",
+    "blur"
+  ]);
+  function generationCanExecuteEditorRequest(operationType, knownGeneration, currentGeneration) {
+    if (!Number.isSafeInteger(knownGeneration) || !Number.isSafeInteger(currentGeneration) || knownGeneration < 0 || currentGeneration < 0 || knownGeneration > currentGeneration) return false;
+    return knownGeneration === currentGeneration || forwardReadableOperationTypes.has(operationType);
+  }
+  function validDialect(value) {
+    if (!value || typeof value !== "object") return false;
+    const dialect = value;
+    const callouts = dialect.callouts;
+    const annotation = dialect.linkAnnotation;
+    const footnotes = dialect.footnotes;
+    const mathematics = dialect.mathematics;
+    return dialect.version === 6 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31 && callouts.every((callout) => Boolean(callout) && Object.keys(callout).length === 3 && typeof callout.identifier === "string" && callout.identifier.length <= 64 && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
+  }
+  function validCitationIdentifier(value) {
+    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
+  }
+  function validCitationReference(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const intent = value;
+    const keys2 = ["actionID", "requestID", "query", "fromUTF16", "toUTF16", "caretUTF16Offset", "editorCaretUTF16Offset", "interactionRevision"];
+    return Object.keys(intent).length === keys2.length && Object.keys(intent).every((key) => keys2.includes(key)) && intent.actionID === "insertCitation" && typeof intent.requestID === "string" && intent.requestID.length <= 128 && typeof intent.query === "string" && intent.query.length <= 512 && [intent.fromUTF16, intent.toUTF16, intent.caretUTF16Offset, intent.editorCaretUTF16Offset, intent.interactionRevision].every((n) => Number.isSafeInteger(n) && Number(n) >= 0) && intent.toUTF16 === intent.caretUTF16Offset && Number(intent.toUTF16) - Number(intent.fromUTF16) === intent.query.length + 1;
+  }
+  function validOperation(operation) {
+    switch (operation.type) {
+      case "initialize":
+        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && validDialect(operation.dialect) && validInitialSelection(
+          operation.initialSelection,
+          operation.text.replaceAll("\r\n", "\n").length
+        );
+      case "setMode":
+        return validMode(operation.mode);
+      case "setDocumentTitle":
+        return typeof operation.value === "string" && operation.value.length <= 1024;
+      case "setPresentationCSS":
+      case "setUserCSS":
+        return typeof operation.value === "string" && operation.value.length <= 1e6;
+      case "announceStatus":
+        return typeof operation.value === "string" && operation.value.length <= 500;
+      case "setLinkPreviews":
+        return Array.isArray(operation.value);
+      case "setImageResources":
+        return validImageResources(operation.value);
+      case "setWritingContinuation":
+        return typeof operation.enabled === "boolean" && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
+      case "setWritingIndexContext":
+        return typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
+      case "showPreviewAt":
+        return typeof operation.x === "number" && Number.isFinite(operation.x) && typeof operation.y === "number" && Number.isFinite(operation.y);
+      case "goToLine":
+        return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
+      case "revealSourceRange":
+        return Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
+      case "setScrollFraction":
+        return typeof operation.fraction === "number" && Number.isFinite(operation.fraction);
+      case "setScrollAnchor": {
+        const anchor = operation.anchor;
+        return Boolean(anchor) && Number.isSafeInteger(anchor?.sourceUTF16Offset) && Number.isSafeInteger(anchor?.blockUTF16LowerBound) && Number.isSafeInteger(anchor?.blockUTF16UpperBound) && typeof anchor?.relativeBlockPosition === "number" && Number.isFinite(anchor.relativeBlockPosition) && anchor.relativeBlockPosition >= 0 && anchor.relativeBlockPosition <= 1 && typeof anchor?.fallbackFraction === "number" && Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
+      }
+      case "restoreRecovery":
+        return validRecoverySnapshot(operation.snapshot);
+      case "acknowledgeCommittedSnapshot":
+        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.committedText === "string" && exactSourceFits(operation.committedText) && typeof operation.committedFingerprint === "string";
+      case "insertReference": {
+        const selection = operation.selection;
+        return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
+      }
+      case "replacePassage":
+        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string" && typeof operation.preserveSelection === "boolean" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
+      case "suspendForDetachment":
+      case "resumeAfterDetachment":
+        return typeof operation.suspensionID === "string" && operation.suspensionID.length > 0 && operation.suspensionID.length <= 128;
+      case "beginCitation":
+        return validCitationIdentifier(operation.transactionID) && ["addEditCitation", "addEditBibliography", "refresh", "setDocPrefs"].includes(String(operation.command)) && (operation.reference === void 0 || validCitationReference(operation.reference)) && Object.keys(operation).every((key) => ["type", "transactionID", "command", "reference"].includes(key));
+      case "citationCallback":
+        return validCitationIdentifier(operation.transactionID) && validZoteroCallback(operation.value) && Object.keys(operation).length === 3;
+      case "finishCitation":
+      case "cancelCitation":
+        return validCitationIdentifier(operation.transactionID) && Object.keys(operation).length === 2;
+      case "command":
+        return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
+      case "pasteClipboard":
+        return typeof operation.plainText === "string" && exactSourceFits(operation.plainText) && Array.isArray(operation.selections) && operation.selections.length > 0 && operation.selections.length <= 128 && operation.selections.every((range) => Boolean(range) && Number.isSafeInteger(range?.anchor) && Number(range?.anchor) >= 0 && Number(range?.anchor) <= MAX_SOURCE_UTF8_BYTES && Number.isSafeInteger(range?.head) && Number(range?.head) >= 0 && Number(range?.head) <= MAX_SOURCE_UTF8_BYTES);
+      case "documentFind": {
+        const value = operation.value;
+        return Boolean(value) && typeof value?.query === "string" && value.query.length <= 16384 && typeof value.replacement === "string" && value.replacement.length <= 1e6 && typeof value.caseSensitive === "boolean" && typeof value.wholeWord === "boolean" && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
+      }
+      case "queryText":
+      case "querySelection":
+      case "queryContext":
+      case "queryScrollAnchor":
+      case "queryPerformance":
+      case "captureRecovery":
+      case "showPreview":
+      case "measureVisibleProjection":
+      case "selectAll":
+      case "clearDocumentFind":
+      case "markClean":
+      case "focus":
+      case "focusTitle":
+      case "blur":
+        return true;
+      default:
+        return false;
+    }
+  }
+  function encodedByteLength(value) {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  }
+  function isEditorRequest(value) {
+    if (!value || typeof value !== "object") return false;
+    const request = value;
+    if (request.protocolVersion !== EDITOR_PROTOCOL_VERSION || typeof request.requestID !== "string" || request.requestID.length > 128 || typeof request.sessionID !== "string" || request.sessionID.length > 128 || typeof request.documentID !== "string" || request.documentID.length > 4096 || typeof request.startingFingerprint !== "string" || request.startingFingerprint.length > 256 || !Number.isSafeInteger(request.expiresAt) || request.expiresAt <= 0 || !Number.isSafeInteger(request.knownGeneration) || request.knownGeneration < 0 || !request.operation || typeof request.operation !== "object") return false;
+    const type = request.operation.type;
+    if (typeof type !== "string" || !operationTypes.has(type)) return false;
+    if (!validOperation(request.operation)) return false;
+    try {
+      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
+      const maximum = type === "setImageResources" ? MAX_IMAGE_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
+      return encodedByteLength(value) <= maximum;
+    } catch {
+      return false;
+    }
+  }
+  function rejected(requestID, generation, error) {
+    return { requestID, resultingGeneration: generation, sourceChanged: false, selections: [], accepted: false, error };
+  }
+
+  // performance.ts
+  var samples = [];
+  var sampleCapacity = 256;
+  var sampleStart = 0;
+  var sampleCount = 0;
+  function appendSample(sample) {
+    if (sampleCount < sampleCapacity) {
+      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
+      sampleCount += 1;
+      return;
+    }
+    samples[sampleStart] = sample;
+    sampleStart = (sampleStart + 1) % sampleCapacity;
+  }
+  function recordEditorMetric(name2, startedAt, observed = {}) {
+    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
+    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
+    const measureName = `scholium-editor:${name2}`;
+    try {
+      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
+    } catch {
+    } finally {
+      try {
+        performance.clearMeasures(measureName);
+      } catch {
+      }
+    }
+  }
+  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
+    requestFrame(() => {
+      scheduleTask(callback);
+    });
+  }
+  function sampleEditorMemory(documentLength) {
+    const memory = performance.memory;
+    const usedBytes = memory?.usedJSHeapSize;
+    recordEditorMetric("memory-sample", performance.now(), {
+      documentLength,
+      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
+    });
+  }
+  function editorPerformanceSamples() {
+    return Array.from({ length: sampleCount }, (_, index) => {
+      const sample = samples[(sampleStart + index) % sampleCapacity];
+      return { ...sample, observed: { ...sample.observed } };
+    });
+  }
+  function clearEditorPerformanceSamples() {
+    samples.length = 0;
+    sampleStart = 0;
+    sampleCount = 0;
+  }
+
+  // exact-source-history.ts
+  var setExactSource = StateEffect.define();
+  var sourceCapacityExceeded = StateEffect.define();
+  function admittedMirror(source) {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+    return new ExactSourceMirror(source);
+  }
+  var eventInverses = /* @__PURE__ */ new WeakMap();
+  var detachedHistoryDepth = 0;
+  function detachedHistory(operation) {
+    detachedHistoryDepth++;
+    try {
+      return operation();
+    } finally {
+      detachedHistoryDepth--;
+    }
+  }
+  var restoreLineEnding = StateEffect.define({
+    map(value, mapping) {
+      if (mapping instanceof ChangeSet) return { ...value, at: mapping.mapPos(value.at, 1) };
+      const inverse = eventInverses.get(value);
+      if (!inverse) throw new Error("Exact history mapping is unavailable");
+      const outputMapping = mapping.mapDesc(inverse, true);
+      const result = { ...value, at: outputMapping.mapPos(value.at, 1) };
+      eventInverses.set(result, inverse.mapDesc(mapping));
+      return result;
+    }
+  });
+  function exactInsertionEffects(source, at) {
+    const effects = [];
+    let position = at;
+    for (let offset = 0; offset < source.length; offset++, position++) {
+      const crlf = source[offset] === "\r" && source[offset + 1] === "\n";
+      if (crlf || source[offset] === "\n") {
+        effects.push(restoreLineEnding.of({ at: position, ending: crlf ? "\r\n" : "\n" }));
+        if (crlf) offset++;
+      }
+    }
+    return effects;
+  }
+  function transactionChanges(transaction, mirror) {
+    const endings = new Map(transaction.effects.filter((effect) => effect.is(restoreLineEnding)).map((effect) => [effect.value.at, effect.value.ending]));
+    const changes = [];
+    transaction.changes.iterChanges((from, to, fromB, _toB, inserted) => {
+      const insert2 = inserted.toString();
+      const exactInsert = insert2.replace(/\n/g, (_newline, offset) => endings.get(fromB + offset) ?? (mirror.usesCRLF ? "\r\n" : "\n"));
+      changes.push({ from, to, insert: insert2, exactInsert, removed: transaction.startState.doc.sliceString(from, to) });
+    });
+    return changes;
+  }
+  var exactSourceState = StateField.define({
+    create: (state) => admittedMirror(state.doc.toString()),
+    update(mirror, transaction) {
+      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
+      if (replacement) {
+        if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
+          throw new Error("Exact source does not match the editor document");
+        }
+        return admittedMirror(replacement.value);
+      }
+      if (!transaction.docChanged) return mirror;
+      const startedAt = performance.now();
+      const changes = transactionChanges(transaction, mirror);
+      const next = mirror.copy();
+      if (!next.apply(changes)) throw new Error("Exact source change is invalid");
+      if (next.utf8ByteCount > MAX_SOURCE_UTF8_BYTES) throw new Error(sourceCapacityMessage);
+      if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
+        changeCount: changes.length,
+        documentLength: transaction.newDoc.length
+      });
+      return next;
+    }
+  });
+  var exactSourceHistory = [
+    exactSourceState,
+    EditorState.transactionFilter.of((transaction) => {
+      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
+      const admitted = replacement ? exactSourceFits(replacement.value) : !transaction.docChanged || exactSourceFitsChanges(
+        transaction.startState,
+        transactionChanges(transaction, transaction.startState.field(exactSourceState))
+      );
+      return admitted ? transaction : { effects: sourceCapacityExceeded.of(null) };
+    }),
+    EditorState.transactionExtender.of((transaction) => {
+      if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
+        for (const command2 of [undo, redo]) {
+          let detached = transaction.startState;
+          while (detachedHistory(() => command2({ state: detached, dispatch: (historical) => {
+            for (const effect of historical.effects) {
+              if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, historical.changes.desc);
+            }
+            detached = historical.state;
+          } }))) {
+          }
+        }
+      }
+      return null;
+    }),
+    invertedEffects.of((transaction) => {
+      if (!transaction.docChanged) return [];
+      const mirror = transaction.startState.field(exactSourceState);
+      const effects = [];
+      transaction.changes.iterChanges((from, to) => {
+        const removed = mirror.slice(from, to);
+        let normalizedOffset = from;
+        for (let offset = 0; offset < removed.length; offset++, normalizedOffset++) {
+          const crlf = removed[offset] === "\r" && removed[offset + 1] === "\n";
+          if (crlf || removed[offset] === "\n") {
+            effects.push(restoreLineEnding.of({ at: normalizedOffset, ending: crlf ? "\r\n" : "\n" }));
+            if (crlf) offset++;
+          }
+        }
+      });
+      return effects;
+    })
+  ];
+  function exactSourceFitsChanges(state, changes) {
+    const source = state.field(exactSourceState, false) ?? new ExactSourceMirror(state.doc.toString());
+    if (changes.length <= 1) {
+      const next = source.copy();
+      return next.apply(changes) && next.utf8ByteCount <= MAX_SOURCE_UTF8_BYTES;
+    }
+    const encoder = new TextEncoder();
+    let bytes = 0, previous = 0, pendingHigh = "";
+    const append = (piece) => {
+      const text = pendingHigh + piece;
+      const last = text.charCodeAt(text.length - 1);
+      pendingHigh = last >= 55296 && last <= 56319 ? text.slice(-1) : "";
+      bytes += encoder.encode(pendingHigh ? text.slice(0, -1) : text).byteLength;
+      return bytes <= MAX_SOURCE_UTF8_BYTES;
+    };
+    for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
+      if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to) || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
+      const normalized2 = normalizedDocumentText(change.insert);
+      const insertion = change.exactInsert ?? (source.usesCRLF ? normalized2.replaceAll("\n", "\r\n") : normalized2);
+      if (normalizedDocumentText(insertion) !== normalized2) return false;
+      if (!append(source.slice(previous, change.from)) || !append(insertion)) return false;
+      previous = change.to;
+    }
+    return append(source.slice(previous, state.doc.length)) && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
+  }
+  function lineEndings(source) {
+    return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
+  }
+  function sourceWithEndings(source, endings) {
+    let index = 0;
+    const exact = source.replace(/\n/g, () => {
+      const ending = endings[index++];
+      if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
+      return ending === "c" ? "\r\n" : "\n";
+    });
+    if (index !== endings.length) throw new Error("Invalid history line ending count");
+    return exact;
+  }
+  var maximumRecoveryEvents = 512;
+  function captureExactHistory(state) {
+    let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
+    const capture = (command2) => {
+      let detached = state;
+      const endings = [];
+      for (let index = 0; ; index++) {
+        let changed = false;
+        if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
+          changed = transaction.docChanged;
+          transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
+            remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
+          });
+          if (remainingBytes < 0) throw new Error("History is too large");
+          detached = transaction.state;
+        } }))) break;
+        if (index >= maximumRecoveryEvents) throw new Error("History is too large");
+        const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
+        remainingBytes -= value?.length ?? 0;
+        if (remainingBytes < 0) throw new Error("History is too large");
+        endings.push(value);
+      }
+      return endings;
+    };
+    try {
+      if (remainingBytes < 0) return void 0;
+      const undoLineEndings = capture(undoSelection);
+      const redoLineEndings = capture(redoSelection);
+      const serialized = JSON.stringify({
+        state: state.toJSON({ history: historyField }),
+        undoLineEndings,
+        redoLineEndings
+      });
+      return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
+    } catch {
+      return void 0;
+    }
+  }
+  function restoreExactHistory(serialized, source, extensions) {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+    if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
+    const payload = JSON.parse(serialized);
+    const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
+    if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
+      throw new Error("Invalid history line endings");
+    }
+    let state = EditorState.fromJSON(payload.state, { extensions }, { history: historyField });
+    if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
+      throw new Error("History does not match the recovered source");
+    }
+    const recovery = new Compartment();
+    let targetEndings;
+    state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
+      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 ? null : {
+        effects: setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))
+      })
+    ))], annotations: Transaction.addToHistory.of(false) }).state;
+    function replay(command2, endings) {
+      targetEndings = endings ?? void 0;
+      try {
+        if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
+          state = transaction.state;
+        } }))) throw new Error("History could not be restored");
+      } finally {
+        targetEndings = void 0;
+      }
+    }
+    for (const endings of payload.redoLineEndings) replay(redoSelection, endings);
+    for (const _ of payload.redoLineEndings) replay(undoSelection);
+    for (const endings of payload.undoLineEndings) replay(undoSelection, endings);
+    for (const _ of payload.undoLineEndings) replay(redoSelection);
+    state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
+    if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
+    return state;
+  }
+
+  // uuid.ts
+  function boundedUUID() {
+    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = bytes[6] & 15 | 64;
+    bytes[8] = bytes[8] & 63 | 128;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+    return [
+      hex.slice(0, 4).join(""),
+      hex.slice(4, 6).join(""),
+      hex.slice(6, 8).join(""),
+      hex.slice(8, 10).join(""),
+      hex.slice(10, 16).join("")
+    ].join("-");
+  }
+
   // node_modules/@codemirror/autocomplete/dist/index.js
   var CompletionContext = class {
     /**
@@ -22349,2091 +21878,6 @@
     return setSelectedEffect.of(index);
   }
 
-  // image-resources.ts
-  var MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-  var MAX_IMAGE_CATALOG_BYTES = 80 * 1024 * 1024;
-  var MAX_IMAGE_ENVELOPE_BYTES = 4 * Math.ceil(MAX_IMAGE_CATALOG_BYTES / 3) + 512 * 1024;
-  var dataImage = /^data:image\/(?:png|jpeg|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
-  function validImageResources(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    let totalBytes = 0;
-    let metadataBytes = 0;
-    for (const [destination, resource] of Object.entries(value)) {
-      if (!destination || destination.length > 16384 || typeof resource !== "string") return false;
-      metadataBytes += new TextEncoder().encode(destination).length + 64;
-      if (metadataBytes > 512 * 1024) return false;
-      const match = dataImage.exec(resource);
-      if (!match || match[1].length % 4 !== 0) return false;
-      const bytes = match[1].length / 4 * 3 - (match[1].endsWith("==") ? 2 : match[1].endsWith("=") ? 1 : 0);
-      if (bytes <= 0 || bytes > MAX_IMAGE_BYTES) return false;
-      totalBytes += bytes;
-      if (totalBytes > MAX_IMAGE_CATALOG_BYTES) return false;
-    }
-    return true;
-  }
-
-  // source-capacity.ts
-  var MAX_SOURCE_UTF8_BYTES = 8e6;
-  var sourceCapacityMessage = "The edited Markdown document exceeds the supported editor size.";
-  function exactSourceFits(source) {
-    return new TextEncoder().encode(source).byteLength <= MAX_SOURCE_UTF8_BYTES;
-  }
-
-  // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 43;
-  var MAX_INBOUND_BYTES = 25e5;
-  var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
-  var operationTypes = /* @__PURE__ */ new Set([
-    "suspendForDetachment",
-    "resumeAfterDetachment",
-    "initialize",
-    "setMode",
-    "setDocumentTitle",
-    "setPresentationCSS",
-    "setUserCSS",
-    "setLinkPreviews",
-    "setImageResources",
-    "setWritingContinuation",
-    "setWritingIndexContext",
-    "showPreview",
-    "measureVisibleProjection",
-    "showPreviewAt",
-    "announceStatus",
-    "goToLine",
-    "revealSourceRange",
-    "selectAll",
-    "setScrollFraction",
-    "setScrollAnchor",
-    "queryText",
-    "querySelection",
-    "queryContext",
-    "queryScrollAnchor",
-    "queryPerformance",
-    "captureRecovery",
-    "restoreRecovery",
-    "acknowledgeCommittedSnapshot",
-    "replacePassage",
-    "insertReference",
-    "command",
-    "pasteClipboard",
-    "documentFind",
-    "clearDocumentFind",
-    "markClean",
-    "focus",
-    "focusTitle",
-    "blur"
-  ]);
-  var commandTypes = /* @__PURE__ */ new Set([
-    "bold",
-    "emphasis",
-    "strikethrough",
-    "highlight",
-    "inlineCode",
-    "markdownComment",
-    "standardLink",
-    "wikilink",
-    "annotatedWikilink",
-    "paragraph",
-    "heading1",
-    "heading2",
-    "heading3",
-    "heading4",
-    "heading5",
-    "heading6",
-    "blockQuotation",
-    "bulletList",
-    "numberedList",
-    "taskList",
-    "fencedCode",
-    "thematicBreak",
-    "calloutOrient",
-    "calloutCite",
-    "calloutConnect",
-    "calloutState",
-    "calloutIllustrate",
-    "calloutQuote",
-    "calloutFlag",
-    "insertFootnote",
-    "insertInlineFootnote",
-    "insertTable",
-    "insertImage",
-    "insertAttachment",
-    "toggleTask",
-    "tableInsertRowBefore",
-    "tableInsertRowAfter",
-    "tableDeleteRow",
-    "tableInsertColumnBefore",
-    "tableInsertColumnAfter",
-    "tableDeleteColumn",
-    "tableAlignLeft",
-    "tableAlignCenter",
-    "tableAlignRight",
-    "pastePlain",
-    "pasteMarkdown",
-    "linkSelectedText"
-  ]);
-  function validMode(value) {
-    return value === "livePreview" || value === "source";
-  }
-  function validInitialSelection(value, normalizedLength) {
-    if (value === void 0) return true;
-    if (!value || typeof value !== "object") return false;
-    const selection = value;
-    return Number.isSafeInteger(selection.anchor) && Number(selection.anchor) >= 0 && Number(selection.anchor) <= normalizedLength && Number.isSafeInteger(selection.head) && Number(selection.head) >= 0 && Number(selection.head) <= normalizedLength;
-  }
-  function validRecoverySnapshot(value) {
-    if (!value || typeof value !== "object") return false;
-    const snapshot = value;
-    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES)) return false;
-    const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
-    return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
-  }
-  function recoveryGenerationCanReplaceCurrent(snapshotGeneration, currentGeneration) {
-    return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
-  }
-  var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
-    "setWritingContinuation",
-    "setWritingIndexContext",
-    "setDocumentTitle",
-    "queryText",
-    "querySelection",
-    "queryContext",
-    "queryScrollAnchor",
-    "queryPerformance",
-    "captureRecovery",
-    "suspendForDetachment",
-    "resumeAfterDetachment",
-    "acknowledgeCommittedSnapshot",
-    "announceStatus",
-    "focus",
-    "focusTitle",
-    "blur"
-  ]);
-  function generationCanExecuteEditorRequest(operationType, knownGeneration, currentGeneration) {
-    if (!Number.isSafeInteger(knownGeneration) || !Number.isSafeInteger(currentGeneration) || knownGeneration < 0 || currentGeneration < 0 || knownGeneration > currentGeneration) return false;
-    return knownGeneration === currentGeneration || forwardReadableOperationTypes.has(operationType);
-  }
-  function validDialect(value) {
-    if (!value || typeof value !== "object") return false;
-    const dialect = value;
-    const callouts = dialect.callouts;
-    const annotation = dialect.linkAnnotation;
-    const footnotes = dialect.footnotes;
-    const mathematics = dialect.mathematics;
-    return dialect.version === 6 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31 && callouts.every((callout) => Boolean(callout) && Object.keys(callout).length === 3 && typeof callout.identifier === "string" && callout.identifier.length <= 64 && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
-  }
-  function validOperation(operation) {
-    switch (operation.type) {
-      case "initialize":
-        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && validDialect(operation.dialect) && validInitialSelection(
-          operation.initialSelection,
-          operation.text.replaceAll("\r\n", "\n").length
-        );
-      case "setMode":
-        return validMode(operation.mode);
-      case "setDocumentTitle":
-        return typeof operation.value === "string" && operation.value.length <= 1024;
-      case "setPresentationCSS":
-      case "setUserCSS":
-        return typeof operation.value === "string" && operation.value.length <= 1e6;
-      case "announceStatus":
-        return typeof operation.value === "string" && operation.value.length <= 500;
-      case "setLinkPreviews":
-        return Array.isArray(operation.value);
-      case "setImageResources":
-        return validImageResources(operation.value);
-      case "setWritingContinuation":
-        return typeof operation.enabled === "boolean" && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
-      case "setWritingIndexContext":
-        return typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
-      case "showPreviewAt":
-        return typeof operation.x === "number" && Number.isFinite(operation.x) && typeof operation.y === "number" && Number.isFinite(operation.y);
-      case "goToLine":
-        return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
-      case "revealSourceRange":
-        return Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
-      case "setScrollFraction":
-        return typeof operation.fraction === "number" && Number.isFinite(operation.fraction);
-      case "setScrollAnchor": {
-        const anchor = operation.anchor;
-        return Boolean(anchor) && Number.isSafeInteger(anchor?.sourceUTF16Offset) && Number.isSafeInteger(anchor?.blockUTF16LowerBound) && Number.isSafeInteger(anchor?.blockUTF16UpperBound) && typeof anchor?.relativeBlockPosition === "number" && Number.isFinite(anchor.relativeBlockPosition) && anchor.relativeBlockPosition >= 0 && anchor.relativeBlockPosition <= 1 && typeof anchor?.fallbackFraction === "number" && Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
-      }
-      case "restoreRecovery":
-        return validRecoverySnapshot(operation.snapshot);
-      case "acknowledgeCommittedSnapshot":
-        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.committedText === "string" && exactSourceFits(operation.committedText) && typeof operation.committedFingerprint === "string";
-      case "insertReference": {
-        const selection = operation.selection;
-        return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
-      }
-      case "replacePassage":
-        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string" && typeof operation.preserveSelection === "boolean" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
-      case "suspendForDetachment":
-      case "resumeAfterDetachment":
-        return typeof operation.suspensionID === "string" && operation.suspensionID.length > 0 && operation.suspensionID.length <= 128;
-      case "command":
-        return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
-      case "pasteClipboard":
-        return typeof operation.plainText === "string" && exactSourceFits(operation.plainText) && Array.isArray(operation.selections) && operation.selections.length > 0 && operation.selections.length <= 128 && operation.selections.every((range) => Boolean(range) && Number.isSafeInteger(range?.anchor) && Number(range?.anchor) >= 0 && Number(range?.anchor) <= MAX_SOURCE_UTF8_BYTES && Number.isSafeInteger(range?.head) && Number(range?.head) >= 0 && Number(range?.head) <= MAX_SOURCE_UTF8_BYTES);
-      case "documentFind": {
-        const value = operation.value;
-        return Boolean(value) && typeof value?.query === "string" && value.query.length <= 16384 && typeof value.replacement === "string" && value.replacement.length <= 1e6 && typeof value.caseSensitive === "boolean" && typeof value.wholeWord === "boolean" && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
-      }
-      case "queryText":
-      case "querySelection":
-      case "queryContext":
-      case "queryScrollAnchor":
-      case "queryPerformance":
-      case "captureRecovery":
-      case "showPreview":
-      case "measureVisibleProjection":
-      case "selectAll":
-      case "clearDocumentFind":
-      case "markClean":
-      case "focus":
-      case "focusTitle":
-      case "blur":
-        return true;
-      default:
-        return false;
-    }
-  }
-  function encodedByteLength(value) {
-    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
-  }
-  function isEditorRequest(value) {
-    if (!value || typeof value !== "object") return false;
-    const request = value;
-    if (request.protocolVersion !== EDITOR_PROTOCOL_VERSION || typeof request.requestID !== "string" || request.requestID.length > 128 || typeof request.sessionID !== "string" || request.sessionID.length > 128 || typeof request.documentID !== "string" || request.documentID.length > 4096 || typeof request.startingFingerprint !== "string" || request.startingFingerprint.length > 256 || !Number.isSafeInteger(request.expiresAt) || request.expiresAt <= 0 || !Number.isSafeInteger(request.knownGeneration) || request.knownGeneration < 0 || !request.operation || typeof request.operation !== "object") return false;
-    const type = request.operation.type;
-    if (typeof type !== "string" || !operationTypes.has(type)) return false;
-    if (!validOperation(request.operation)) return false;
-    try {
-      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-      const maximum = type === "setImageResources" ? MAX_IMAGE_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
-      return encodedByteLength(value) <= maximum;
-    } catch {
-      return false;
-    }
-  }
-  function rejected(requestID, generation, error) {
-    return { requestID, resultingGeneration: generation, sourceChanged: false, selections: [], accepted: false, error };
-  }
-
-  // tables.ts
-  var tableCommands = /* @__PURE__ */ new Set([
-    "tableInsertRowBefore",
-    "tableInsertRowAfter",
-    "tableDeleteRow",
-    "tableInsertColumnBefore",
-    "tableInsertColumnAfter",
-    "tableDeleteColumn",
-    "tableAlignLeft",
-    "tableAlignCenter",
-    "tableAlignRight"
-  ]);
-  function tableDocument(source) {
-    return typeof source === "string" ? Text.of(source.split("\n")) : source;
-  }
-  function unescapedPipes(line) {
-    const positions = [];
-    for (let index = 0; index < line.length; index += 1) {
-      if (line[index] !== "|") continue;
-      let slashCount = 0;
-      for (let cursor = index - 1; cursor >= 0 && line[cursor] === "\\"; cursor -= 1) slashCount += 1;
-      if (slashCount % 2 === 0) positions.push(index);
-    }
-    return positions;
-  }
-  function parseRow(source, from, to) {
-    const line = source.sliceString(from, to);
-    const pipes = unescapedPipes(line);
-    if (pipes.length === 0) return null;
-    const firstContent = line.search(/\S/);
-    const lastContent = line.search(/\s*$/) - 1;
-    const hasLeading = firstContent >= 0 && pipes[0] === firstContent;
-    const hasTrailing = lastContent >= 0 && pipes[pipes.length - 1] === lastContent;
-    const boundaries = [hasLeading ? pipes[0] : -1, ...pipes.slice(hasLeading ? 1 : 0, hasTrailing ? -1 : void 0), hasTrailing ? pipes[pipes.length - 1] : line.length];
-    const cells = [];
-    for (let index = 0; index < boundaries.length - 1; index += 1) {
-      const rawFrom = boundaries[index] + 1;
-      const rawTo = boundaries[index + 1];
-      if (rawTo < rawFrom) return null;
-      const raw = line.slice(rawFrom, rawTo);
-      const leading = raw.match(/^\s*/)?.[0].length ?? 0;
-      const trailing = raw.match(/\s*$/)?.[0].length ?? 0;
-      cells.push({
-        from: from + rawFrom,
-        to: from + rawTo,
-        contentFrom: from + rawFrom + leading,
-        contentTo: from + Math.max(rawFrom + leading, rawTo - trailing)
-      });
-    }
-    return cells.length >= 2 ? { lineFrom: from, lineTo: to, cells } : null;
-  }
-  function isSeparatorCell(source, cell) {
-    return /^:?-{3,}:?$/.test(source.sliceString(cell.contentFrom, cell.contentTo));
-  }
-  function rowNumber(table, rawRow) {
-    return rawRow > table.separatorIndex ? rawRow - 1 : rawRow;
-  }
-  function tableAt(source, offset) {
-    const document2 = tableDocument(source);
-    if (offset < 0 || offset > document2.length) return null;
-    const current = document2.lineAt(offset);
-    let firstLineNumber = current.number;
-    while (firstLineNumber > 1) {
-      const previous = document2.line(firstLineNumber - 1);
-      if (!parseRow(document2, previous.from, previous.to)) break;
-      firstLineNumber -= 1;
-    }
-    const rows = [];
-    for (let number2 = firstLineNumber; number2 <= document2.lines; number2 += 1) {
-      const line = document2.line(number2);
-      const row = parseRow(document2, line.from, line.to);
-      if (!row) break;
-      rows.push(row);
-    }
-    if (rows.length < 2) return null;
-    const columnCount = rows[0].cells.length;
-    if (rows.some((row) => row.cells.length !== columnCount)) return null;
-    const separators = rows.flatMap((row, index) => row.cells.every((cell) => isSeparatorCell(document2, cell)) ? [index] : []);
-    if (separators.length !== 1 || separators[0] !== 1) return null;
-    const rawRow = rows.findIndex((row) => offset >= row.lineFrom && offset <= row.lineTo);
-    if (rawRow < 0 || rawRow === separators[0]) return null;
-    const column = rows[rawRow].cells.findIndex((cell, index) => {
-      const next = rows[rawRow].cells[index + 1];
-      return offset >= cell.from && offset <= (next ? next.from - 1 : cell.to);
-    });
-    if (column < 0) return null;
-    const table = {
-      rows,
-      separatorIndex: separators[0],
-      position: { row: 0, column, rowCount: rows.length - 1, columnCount }
-    };
-    table.position.row = rowNumber(table, rawRow);
-    return table;
-  }
-  function blankRow(columnCount) {
-    return `|${Array.from({ length: columnCount }, () => "  ").join("|")}|`;
-  }
-  function transformTableCommand(source, selections, command2) {
-    if (!tableCommands.has(command2) || selections.length !== 1) return null;
-    const selection = selections[0];
-    const table = tableAt(source, selection.head);
-    if (!table) return null;
-    const rawRow = table.position.row === 0 ? 0 : table.position.row + 1;
-    const row = table.rows[rawRow];
-    const column = table.position.column;
-    if (command2 === "tableInsertRowBefore" || command2 === "tableInsertRowAfter") {
-      const before = command2 === "tableInsertRowBefore";
-      const point = before ? row.lineFrom : row.lineTo;
-      const insert2 = before ? `${blankRow(table.position.columnCount)}
-` : `
-${blankRow(table.position.columnCount)}`;
-      const cellOffset = insert2.indexOf("  ") + 1;
-      return { changes: [{ from: point, to: point, insert: insert2 }], selections: [{ anchor: point + cellOffset, head: point + cellOffset }], undoLabel: before ? "Insert Table Row Before" : "Insert Table Row After" };
-    }
-    if (command2 === "tableDeleteRow") {
-      if (table.position.row === 0 || table.position.rowCount <= 2) return null;
-      const hasFollowingNewline = row.lineTo < source.length;
-      const from = hasFollowingNewline ? row.lineFrom : Math.max(0, row.lineFrom - 1);
-      const to = hasFollowingNewline ? row.lineTo + 1 : row.lineTo;
-      return { changes: [{ from, to, insert: "" }], selections: [{ anchor: from, head: from }], undoLabel: "Delete Table Row" };
-    }
-    if (command2.startsWith("tableAlign")) {
-      const separator = table.rows[table.separatorIndex].cells[column];
-      const current = source.slice(separator.contentFrom, separator.contentTo);
-      const dashes = "-".repeat(Math.max(3, current.replaceAll(":", "").length));
-      const insert2 = command2 === "tableAlignLeft" ? `:${dashes}` : command2 === "tableAlignRight" ? `${dashes}:` : `:${dashes}:`;
-      return { changes: [{ from: separator.contentFrom, to: separator.contentTo, insert: insert2 }], selections, undoLabel: "Align Table Column" };
-    }
-    const inserting = command2 === "tableInsertColumnBefore" || command2 === "tableInsertColumnAfter";
-    if (!inserting && command2 !== "tableDeleteColumn") return null;
-    if (command2 === "tableDeleteColumn" && table.position.columnCount <= 2) return null;
-    const changes = [];
-    for (let index = 0; index < table.rows.length; index += 1) {
-      const target = table.rows[index].cells[column];
-      if (inserting) {
-        const before = command2 === "tableInsertColumnBefore";
-        const point = before ? target.from : target.to;
-        const content2 = index === table.separatorIndex ? "---" : " ";
-        changes.push({ from: point, to: point, insert: before ? `${content2} |` : `| ${content2}` });
-      } else {
-        const next = table.rows[index].cells[column + 1];
-        if (next) changes.push({ from: target.from, to: next.from, insert: "" });
-        else {
-          const previous = table.rows[index].cells[column - 1];
-          changes.push({ from: previous.to, to: target.to, insert: "" });
-        }
-      }
-    }
-    return { changes, selections, undoLabel: inserting ? "Insert Table Column" : "Delete Table Column" };
-  }
-  function tableTabAction(source, offset, backwards) {
-    const table = tableAt(source, offset);
-    if (!table) return null;
-    const editableCells = table.rows.flatMap((row, rawRow) => rawRow === table.separatorIndex ? [] : row.cells);
-    const currentIndex = editableCells.findIndex((cell) => offset >= cell.from && offset <= cell.to);
-    if (currentIndex < 0) return null;
-    const nextIndex = currentIndex + (backwards ? -1 : 1);
-    if (nextIndex >= 0 && nextIndex < editableCells.length) {
-      const next = editableCells[nextIndex];
-      return { changes: [], selections: [{ anchor: next.contentFrom, head: next.contentTo }], undoLabel: "Move Between Table Cells" };
-    }
-    if (backwards) return null;
-    const final = table.rows[table.rows.length - 1];
-    const insert2 = `
-${blankRow(table.position.columnCount)}`;
-    const firstCell = final.lineTo + insert2.indexOf("  ") + 1;
-    return { changes: [{ from: final.lineTo, to: final.lineTo, insert: insert2 }], selections: [{ anchor: firstCell, head: firstCell }], undoLabel: "Append Table Row" };
-  }
-
-  // transformations.ts
-  function toggledTaskMarker(marker) {
-    const match = /^\[([ xX])\]$/.exec(marker);
-    if (!match) return null;
-    return match[1] === " " ? "[x]" : "[ ]";
-  }
-  var inlineMarkers = {
-    bold: ["**", "**", "Bold"],
-    emphasis: ["*", "*", "Italic"],
-    strikethrough: ["~~", "~~", "Strikethrough"],
-    highlight: ["==", "==", "Highlight"],
-    markdownComment: ["%% ", " %%", "Markdown Comment"],
-    wikilink: ["[[", "]]", "Wikilink"]
-  };
-  function normalized(range) {
-    return { from: Math.min(range.anchor, range.head), to: Math.max(range.anchor, range.head) };
-  }
-  function overlaps(left, right) {
-    if (left.from === left.to) return left.from >= right.from && left.from <= right.to;
-    return left.from < right.to && left.to > right.from;
-  }
-  function lineBounds(source, range) {
-    const from = range.from === 0 ? 0 : source.lastIndexOf("\n", range.from - 1) + 1;
-    const lastPosition = range.to > range.from && source[range.to - 1] === "\n" ? range.to - 1 : range.to;
-    const newline3 = source.indexOf("\n", lastPosition);
-    return { from, to: newline3 < 0 ? source.length : newline3 };
-  }
-  function maximumRun(text, character) {
-    let maximum = 0;
-    for (const match of text.matchAll(new RegExp(`\\${character}+`, "g"))) maximum = Math.max(maximum, match[0].length);
-    return maximum;
-  }
-  function labelFor(command2) {
-    return command2.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
-  }
-  function imageArgument(argument) {
-    if (!argument || new TextEncoder().encode(argument).byteLength > 8192) return null;
-    try {
-      const value = JSON.parse(argument);
-      if (!value || typeof value !== "object" || typeof value.alt !== "string" || typeof value.destination !== "string" || value.alt.length > 1024 || /[\u0000-\u001f\u007f]/.test(value.alt) || value.destination.length === 0 || value.destination.length > 4096 || /[\u0000-\u0020\u007f\\]/.test(value.destination) || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value.destination) || !validImageDestination(value.destination)) return null;
-      return { alt: value.alt, destination: value.destination };
-    } catch {
-      return null;
-    }
-  }
-  function validImageDestination(destination) {
-    if (/%(?![0-9A-Fa-f]{2})/.test(destination)) return false;
-    const absolute = destination.startsWith("/");
-    const components = destination.split("/");
-    if (absolute) components.shift();
-    if (components.length === 0 || components.some((component) => component.length === 0)) {
-      return false;
-    }
-    return components.every((component) => !absolute && component === ".." || component !== "." && component !== ".." && /^[A-Za-z0-9._~%-]+$/.test(component));
-  }
-  function escapedImageAlt(value) {
-    return value.replace(/\\/g, "\\\\").replace(/([\[\]])/g, "\\$1");
-  }
-  function inlineChange(source, range, opening, closing2) {
-    const selected = source.slice(range.from, range.to);
-    const escapedOpening = range.from > 0 && source[range.from - 1] === "\\";
-    if (!escapedOpening && selected.startsWith(opening) && selected.endsWith(closing2) && selected.length >= opening.length + closing2.length) {
-      const insert3 = selected.slice(opening.length, selected.length - closing2.length);
-      return { change: { ...range, insert: insert3 }, selection: { anchor: range.from, head: range.from + insert3.length } };
-    }
-    const enclosingFrom = range.from - opening.length;
-    const escapedEnclosing = enclosingFrom > 0 && source[enclosingFrom - 1] === "\\";
-    if (!escapedEnclosing && source.slice(enclosingFrom, range.from) === opening && source.slice(range.to, range.to + closing2.length) === closing2) {
-      return {
-        change: { from: range.from - opening.length, to: range.to + closing2.length, insert: selected },
-        selection: { anchor: range.from - opening.length, head: range.to - opening.length }
-      };
-    }
-    const insert2 = `${opening}${selected}${closing2}`;
-    const anchor = range.from + opening.length;
-    return {
-      change: { ...range, insert: insert2 },
-      selection: { anchor, head: anchor + selected.length }
-    };
-  }
-  function transformOne(source, range, command2, argument) {
-    const marker = inlineMarkers[command2];
-    if (marker) {
-      const result = inlineChange(source, range, marker[0], marker[1]);
-      return { ...result, label: marker[2] };
-    }
-    if (command2 === "inlineCode") {
-      const selected = source.slice(range.from, range.to);
-      const fence = "`".repeat(Math.max(1, maximumRun(selected, "`") + 1));
-      const result = inlineChange(source, range, fence, fence);
-      return { ...result, label: "Inline Code" };
-    }
-    if (command2 === "standardLink" || command2 === "linkSelectedText") {
-      const selected = source.slice(range.from, range.to);
-      const destination = argument ?? "";
-      const insert2 = `[${selected}](${destination})`;
-      const anchor = selected ? range.from + selected.length + 3 : range.from + 1;
-      const head = selected ? anchor + destination.length : anchor;
-      return { change: { ...range, insert: insert2 }, selection: { anchor, head }, label: "Link" };
-    }
-    if (command2 === "annotatedWikilink") {
-      const selected = source.slice(range.from, range.to);
-      const target = selected || "Target";
-      const annotation = "Annotation";
-      const insert2 = `[[${target}]]{{${annotation}}}`;
-      const anchor = selected ? range.from + target.length + 6 : range.from + 2;
-      const head = selected ? anchor + annotation.length : anchor + target.length;
-      return {
-        change: { ...range, insert: insert2 },
-        selection: { anchor, head },
-        label: "Annotated Wikilink"
-      };
-    }
-    if (command2 === "pastePlain" || command2 === "pasteMarkdown") {
-      const insert2 = argument ?? "";
-      return { change: { ...range, insert: insert2 }, selection: { anchor: range.from + insert2.length, head: range.from + insert2.length }, label: "Paste" };
-    }
-    if (command2 === "fencedCode") {
-      const selected = source.slice(range.from, range.to);
-      const fence = "`".repeat(Math.max(3, maximumRun(selected, "`") + 1));
-      const insert2 = `${fence}
-${selected}
-${fence}`;
-      return {
-        change: { ...range, insert: insert2 },
-        selection: { anchor: range.from + fence.length + 1, head: range.from + fence.length + 1 + selected.length },
-        label: "Fenced Code"
-      };
-    }
-    if (command2 === "thematicBreak") {
-      return { change: { ...range, insert: "---" }, selection: { anchor: range.from + 3, head: range.from + 3 }, label: "Thematic Break" };
-    }
-    if (command2 === "insertTable") {
-      const insert2 = "| Column 1 | Column 2 |\n|---|---|\n|  |  |";
-      return { change: { ...range, insert: insert2 }, selection: { anchor: range.from + 2, head: range.from + 10 }, label: "Insert Table" };
-    }
-    if (command2 === "insertImage" || command2 === "insertAttachment") {
-      const image = imageArgument(argument);
-      if (!image) return null;
-      const selected = source.slice(range.from, range.to);
-      const usableSelection = selected.length <= 1024 && !/[\u0000-\u001f\u007f]/.test(selected) ? selected : "";
-      const alt = escapedImageAlt(usableSelection || image.alt);
-      const insert2 = `${command2 === "insertImage" ? "!" : ""}[${alt}](${image.destination})`;
-      const position = range.from + insert2.length;
-      return {
-        change: { ...range, insert: insert2 },
-        selection: { anchor: position, head: position },
-        label: command2 === "insertImage" ? "Insert Image" : "Insert Attachment"
-      };
-    }
-    const bounds = lineBounds(source, range);
-    const block = source.slice(bounds.from, bounds.to);
-    const heading2 = /^ {0,3}#{1,6}[ \t]+/.exec(block);
-    if (command2 === "paragraph" || /^heading[1-6]$/.test(command2)) {
-      const level = command2 === "paragraph" ? 0 : Number(command2.slice(-1));
-      const without = heading2 ? block.slice(heading2[0].length) : block;
-      const insert2 = level ? `${"#".repeat(level)} ${without}` : without;
-      return { change: { ...bounds, insert: insert2 }, selection: { anchor: bounds.from + (level ? level + 1 : 0), head: bounds.from + insert2.length }, label: level ? `Heading ${level}` : "Paragraph" };
-    }
-    const prefixByCommand = {
-      blockQuotation: "> ",
-      bulletList: "- ",
-      numberedList: "1. ",
-      taskList: "- [ ] ",
-      calloutOrient: "> [!orient] ",
-      calloutCite: "> [!cite] ",
-      calloutConnect: "> [!connect] ",
-      calloutState: "> [!state] ",
-      calloutIllustrate: "> [!illustrate] ",
-      calloutQuote: "> [!quote] ",
-      calloutFlag: "> [!flag] "
-    };
-    const prefix = prefixByCommand[command2];
-    if (prefix !== void 0) {
-      const insert2 = block.split("\n").map((line, index) => index === 0 || !prefix.startsWith("> [!") ? `${prefix}${line}` : `> ${line}`).join("\n");
-      return { change: { ...bounds, insert: insert2 }, selection: { anchor: bounds.from + prefix.length, head: bounds.from + insert2.length }, label: labelFor(command2) };
-    }
-    return null;
-  }
-  function transformMarkdown(source, selections, command2, options = {}) {
-    if (new TextEncoder().encode(source).byteLength > 8e6 || selections.length === 0) return null;
-    const ranges = selections.map(normalized).sort((left, right) => left.from - right.from || left.to - right.to);
-    if (ranges.some((range, index) => index > 0 && range.from < ranges[index - 1].to)) return null;
-    if (ranges.some((range) => options.protectedRanges?.some((protectedRange) => overlaps(range, protectedRange)))) return null;
-    const tableTransformation = transformTableCommand(source, selections, command2);
-    if (tableTransformation) return tableTransformation;
-    if (command2 === "insertFootnote") {
-      const used = new Set(Array.from(source.matchAll(/\[\^(\d+)\]/g), (match) => Number(match[1])));
-      const allocated = [];
-      let candidate = 1;
-      for (const _range of ranges) {
-        while (used.has(candidate)) candidate += 1;
-        allocated.push(candidate);
-        used.add(candidate);
-        candidate += 1;
-      }
-      const referenceChanges = ranges.map((range, index) => ({
-        from: range.from,
-        to: range.to,
-        insert: `[^${allocated[index]}]`
-      }));
-      const bodyLength = source.length + referenceChanges.reduce(
-        (total, change) => total + change.insert.length - (change.to - change.from),
-        0
-      );
-      const separator = source.length === 0 ? "" : source.endsWith("\n") ? "\n" : "\n\n";
-      let definitions = separator;
-      const definitionSelections = [];
-      for (let index = 0; index < ranges.length; index += 1) {
-        const content2 = options.argument ?? source.slice(ranges[index].from, ranges[index].to);
-        const prefix = `[^${allocated[index]}]: `;
-        const anchor = bodyLength + definitions.length + prefix.length;
-        definitions += `${prefix}${content2}
-`;
-        definitionSelections.push({ anchor, head: anchor + content2.length });
-      }
-      return {
-        changes: [...referenceChanges, { from: source.length, to: source.length, insert: definitions }],
-        selections: definitionSelections,
-        undoLabel: "Insert Footnote"
-      };
-    }
-    if (command2 === "insertInlineFootnote") {
-      const values3 = ranges.map((range) => {
-        const selected = source.slice(range.from, range.to);
-        const insert2 = `^[${selected}]`;
-        const contentFrom = range.from + 2;
-        return {
-          change: { ...range, insert: insert2 },
-          selection: { anchor: contentFrom, head: contentFrom + selected.length }
-        };
-      });
-      const changes2 = values3.map(({ change }) => change);
-      let shift3 = 0;
-      const resultSelections2 = values3.map(({ selection, change }) => {
-        const mapped = {
-          anchor: selection.anchor + shift3,
-          head: selection.head + shift3
-        };
-        shift3 += change.insert.length - (change.to - change.from);
-        return mapped;
-      });
-      return {
-        changes: changes2,
-        selections: resultSelections2,
-        undoLabel: "Insert Inline Footnote"
-      };
-    }
-    if (command2 === "toggleTask") {
-      const taskChanges = ranges.map((range) => {
-        const bounds = lineBounds(source, range);
-        const indexedItem = options.taskItems?.findLast((item) => range.from >= item.from && range.to <= item.to);
-        const fallback = options.taskItems === void 0 ? /^([ \t]*(?:(?:[-+*])|(?:\d{1,9}[.)]))[ \t]+)(\[[ xX]\])/.exec(
-          source.slice(bounds.from, bounds.to)
-        ) : null;
-        const markerFrom = indexedItem?.markerFrom ?? (fallback ? bounds.from + fallback[1].length : null);
-        const markerTo = indexedItem?.markerTo ?? (markerFrom === null ? null : markerFrom + 3);
-        if (markerFrom === null || markerTo === null) return null;
-        const insert2 = toggledTaskMarker(source.slice(markerFrom, markerTo));
-        return insert2 === null ? null : { from: markerFrom, to: markerTo, insert: insert2 };
-      });
-      if (taskChanges.some((change) => change === null)) return null;
-      const uniqueChanges = /* @__PURE__ */ new Map();
-      for (const change of taskChanges) {
-        uniqueChanges.set(`${change.from}:${change.to}`, change);
-      }
-      const changes2 = [...uniqueChanges.values()].sort((left, right) => left.from - right.from || left.to - right.to);
-      if (changes2.some((change, index) => index > 0 && change.from < changes2[index - 1].to)) return null;
-      return {
-        changes: changes2,
-        selections,
-        undoLabel: "Toggle Task"
-      };
-    }
-    const transformed = ranges.map((range) => transformOne(source, range, command2, options.argument));
-    if (transformed.some((value) => value === null)) return null;
-    const values2 = transformed;
-    const changes = values2.map((value) => value.change);
-    if (changes.some((change) => options.protectedRanges?.some((range) => overlaps(change, range)))) return null;
-    const orderedChanges = [...changes].sort((left, right) => left.from - right.from || left.to - right.to);
-    if (orderedChanges.some((change, index) => index > 0 && change.from < orderedChanges[index - 1].to)) return null;
-    let shift2 = 0;
-    const resultSelections = values2.map((value) => {
-      const selection = { anchor: value.selection.anchor + shift2, head: value.selection.head + shift2 };
-      shift2 += value.change.insert.length - (value.change.to - value.change.from);
-      return selection;
-    });
-    return { changes, selections: resultSelections, undoLabel: values2[0].label };
-  }
-
-  // interaction.ts
-  function interactionDocument(source) {
-    return typeof source === "string" ? Text.of(source.split("\n")) : source;
-  }
-  function blockquotePrefix(line) {
-    let position = 0;
-    while (position < line.length) {
-      const match = /^[ \t]{0,3}>[ \t]?/.exec(line.slice(position));
-      if (!match) break;
-      position += match[0].length;
-    }
-    return line.slice(0, position);
-  }
-  function listPrefix(line) {
-    const quotePrefix = blockquotePrefix(line);
-    const remainder = line.slice(quotePrefix.length);
-    const match = /^([ \t]*)([-*+]|(\d{1,9})([.)]))(?:([ \t]+)(\[[ xX]\])?([ \t]*)|$)/.exec(remainder);
-    if (!match) return null;
-    return {
-      quotePrefix,
-      indentation: match[1],
-      marker: match[2],
-      orderedNumber: match[3] ? Number(match[3]) : null,
-      orderedSuffix: match[4] ?? null,
-      task: match[6] !== void 0,
-      sourcePrefix: `${quotePrefix}${match[0]}`
-    };
-  }
-  function continuedListPrefix(match) {
-    const ordered = match.orderedNumber === null || match.orderedSuffix === null ? null : `${match.orderedNumber + 1}${match.orderedSuffix}`;
-    return `${match.quotePrefix}${match.indentation}${ordered ?? match.marker}${match.task ? " [ ] " : " "}`;
-  }
-  function calloutQuotePrefix(line) {
-    return /^(\s*>[ \t]?)/.exec(line);
-  }
-  function lineBelongsToCallout(document2, lineNumber) {
-    for (let number2 = lineNumber; number2 >= 1; number2 -= 1) {
-      const line = document2.line(number2).text;
-      if (!calloutQuotePrefix(line)) return false;
-      if (/^\s*>[ \t]*\[![^\]\r\n]+\](?:[+-])?(?:[ \t]|$)/.test(line)) return true;
-    }
-    return false;
-  }
-  function continueCallout(source, selections, options = {}) {
-    const document2 = interactionDocument(source);
-    if (selections.some((selection) => selection.anchor !== selection.head)) return null;
-    const entries = selections.map((selection) => {
-      const bounds = document2.lineAt(selection.head);
-      if (options.lineIsProtected?.(bounds)) return null;
-      const prefix = calloutQuotePrefix(bounds.text)?.[1];
-      if (!prefix || !lineBelongsToCallout(document2, bounds.number)) return null;
-      const quotedContent = bounds.text.slice(prefix.length);
-      const nestedList = listPrefix(quotedContent);
-      if (nestedList && quotedContent.slice(nestedList.sourcePrefix.length).trim().length === 0) {
-        return {
-          change: {
-            from: bounds.from + prefix.length,
-            to: bounds.from + prefix.length + nestedList.sourcePrefix.length,
-            insert: ""
-          },
-          localSelection: bounds.from + prefix.length,
-          undoLabel: "Exit List"
-        };
-      }
-      if (quotedContent.trim().length === 0) {
-        return {
-          change: { from: bounds.from, to: bounds.from + prefix.length, insert: "" },
-          localSelection: bounds.from,
-          undoLabel: "Exit Callout"
-        };
-      }
-      const continuedPrefix = nestedList ? `${prefix}${continuedListPrefix(nestedList)}` : prefix;
-      return {
-        change: { from: selection.head, to: selection.head, insert: `
-${continuedPrefix}` },
-        localSelection: selection.head + 1 + continuedPrefix.length,
-        undoLabel: nestedList ? "Continue List" : "Continue Callout"
-      };
-    });
-    if (entries.some((entry) => entry === null)) return null;
-    const accepted = entries;
-    const sorted = [...accepted].sort((left, right) => left.change.from - right.change.from);
-    let shift2 = 0;
-    const mapped = sorted.map((entry) => {
-      const position = entry.localSelection + shift2;
-      shift2 += entry.change.insert.length - (entry.change.to - entry.change.from);
-      return { anchor: position, head: position };
-    });
-    return {
-      changes: sorted.map((entry) => entry.change),
-      selections: mapped,
-      undoLabel: accepted.every((entry) => entry.undoLabel === accepted[0].undoLabel) ? accepted[0].undoLabel : "Continue Callout"
-    };
-  }
-  function continueList(source, selections, options = {}) {
-    const document2 = interactionDocument(source);
-    if (selections.some((selection) => selection.anchor !== selection.head)) return null;
-    const entries = selections.map((selection) => {
-      const bounds = document2.lineAt(selection.head);
-      const line = bounds.text;
-      const match = listPrefix(line);
-      if (!match || options.lineIsProtected?.(bounds)) return null;
-      const content2 = line.slice(match.sourcePrefix.length);
-      if (content2.trim().length === 0) {
-        const from = bounds.from + match.quotePrefix.length;
-        return {
-          change: { from, to: bounds.from + match.sourcePrefix.length, insert: "" },
-          localSelection: from
-        };
-      }
-      const continued = continuedListPrefix(match);
-      return { change: { from: selection.head, to: selection.head, insert: `
-${continued}` }, localSelection: selection.head + 1 + continued.length };
-    });
-    if (entries.some((entry) => entry === null)) return null;
-    const accepted = entries;
-    const sorted = [...accepted].sort((left, right) => left.change.from - right.change.from);
-    let shift2 = 0;
-    const mapped = sorted.map((entry) => {
-      const position = entry.localSelection + shift2;
-      shift2 += entry.change.insert.length - (entry.change.to - entry.change.from);
-      return { anchor: position, head: position };
-    });
-    return { changes: sorted.map((entry) => entry.change), selections: mapped, undoLabel: "Continue List" };
-  }
-  function indentList(source, selections, backwards, options = {}) {
-    const document2 = interactionDocument(source);
-    const lineStarts = [...new Set(selections.flatMap((selection) => {
-      const start = Math.min(selection.anchor, selection.head);
-      const end = Math.max(selection.anchor, selection.head);
-      const first = document2.lineAt(start);
-      const lastPosition = end > start && document2.lineAt(end).from === end ? Math.max(start, end - 1) : end;
-      const last = document2.lineAt(lastPosition);
-      const starts = [];
-      for (let number2 = first.number; number2 <= last.number; number2 += 1) {
-        starts.push(document2.line(number2).from);
-      }
-      return starts;
-    }))].sort((left, right) => left - right);
-    const changes = [];
-    for (const from of lineStarts) {
-      const bounds = document2.lineAt(from);
-      const match = listPrefix(bounds.text);
-      if (!match || options.lineIsProtected?.(bounds)) return null;
-      const indentationFrom = from + match.quotePrefix.length;
-      if (backwards) {
-        if (match.indentation.length === 0) continue;
-        const removeLength = match.indentation.startsWith("	") ? 1 : Math.min(2, match.indentation.length);
-        changes.push({
-          from: indentationFrom,
-          to: indentationFrom + removeLength,
-          insert: ""
-        });
-      } else changes.push({ from: indentationFrom, to: indentationFrom, insert: "  " });
-    }
-    const positionAfterChanges = (position) => {
-      let shift2 = 0;
-      for (const change of changes) {
-        if (position < change.from) return position + shift2;
-        if (position <= change.to) return change.from + shift2 + change.insert.length;
-        shift2 += change.insert.length - (change.to - change.from);
-      }
-      return position + shift2;
-    };
-    if (changes.length === 0) return null;
-    return {
-      changes,
-      selections: selections.map((selection) => ({ anchor: positionAfterChanges(selection.anchor), head: positionAfterChanges(selection.head) })),
-      undoLabel: backwards ? "Outdent List" : "Indent List"
-    };
-  }
-
-  // clipboard.ts
-  function escapeHTML(value) {
-    return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  }
-  function sanitizeClipboardHTML(html2) {
-    let safe = html2.slice(0, 2e6);
-    safe = safe.replace(/<!--([\s\S]*?)-->/g, "");
-    safe = safe.replace(/<(script|style|iframe|object|embed|svg|math|canvas|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
-    safe = safe.replace(/<(script|style|iframe|object|embed|svg|math|canvas|template)\b[^>]*\/?\s*>/gi, "");
-    safe = safe.replace(/<img\b([^>]*)>/gi, (_match, attributes) => {
-      const alt = /\balt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
-      return alt ? escapeHTML(alt[1] ?? alt[2] ?? alt[3] ?? "") : "";
-    });
-    safe = safe.replace(/<(?:video|audio|source|track|picture|link|meta)\b[^>]*\/?\s*>/gi, "");
-    safe = safe.replace(/\s(?:src|srcset|poster|background|style|formaction)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-    safe = safe.replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-    return safe;
-  }
-  function escapeMarkdownText(value) {
-    return value.replace(/([\\`*_[\]<>~])/g, "\\$1");
-  }
-  function safeLinkDestination(value) {
-    const trimmed = value.trim();
-    if (/^(https?:|mailto:)/i.test(trimmed)) return trimmed.replace(/[()\s]/g, (character) => encodeURIComponent(character));
-    return "";
-  }
-  function collapseBlankLines(value) {
-    return value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  }
-  function renderChildren(node) {
-    return Array.from(node.childNodes).map(renderNode).join("");
-  }
-  function renderList(node, ordered) {
-    let index = 1;
-    return Array.from(node.children).flatMap((child) => {
-      if (child.tagName.toLowerCase() !== "li") return [];
-      const prefix = ordered ? `${index++}. ` : "- ";
-      const content2 = collapseBlankLines(renderChildren(child)).replaceAll("\n", "\n  ");
-      return [`${prefix}${content2}
-`];
-    }).join("") + "\n";
-  }
-  function renderTable(node) {
-    const rows = Array.from(node.querySelectorAll("tr")).map((row) => Array.from(row.children).flatMap((cell) => {
-      if (!["td", "th"].includes(cell.tagName.toLowerCase()) || cell.hasAttribute("rowspan") || cell.hasAttribute("colspan")) return [];
-      return [collapseBlankLines(renderChildren(cell)).replaceAll("|", "\\|").replaceAll("\n", " ")];
-    }));
-    if (rows.length === 0 || rows[0].length < 2 || rows.some((row) => row.length !== rows[0].length)) {
-      return `${collapseBlankLines(renderChildren(node))}
-
-`;
-    }
-    const line = (row) => `| ${row.join(" | ")} |`;
-    return `${line(rows[0])}
-${line(rows[0].map(() => "---"))}
-${rows.slice(1).map(line).join("\n")}
-
-`;
-  }
-  function renderNode(node) {
-    if (node.nodeType === 3) return escapeMarkdownText(node.nodeValue ?? "");
-    if (node.nodeType !== 1) return "";
-    const element = node;
-    const tag = element.tagName.toLowerCase();
-    const content2 = () => renderChildren(element);
-    if (/^h[1-6]$/.test(tag)) return `${"#".repeat(Number(tag[1]))} ${collapseBlankLines(content2())}
-
-`;
-    if (["p", "div", "section", "article", "header", "footer"].includes(tag)) return `${collapseBlankLines(content2())}
-
-`;
-    if (["strong", "b"].includes(tag)) return `**${content2()}**`;
-    if (["em", "i"].includes(tag)) return `*${content2()}*`;
-    if (["del", "s", "strike"].includes(tag)) return `~~${content2()}~~`;
-    if (tag === "code" && element.parentElement?.tagName.toLowerCase() !== "pre") return `\`${content2().replaceAll("`", "\\`")}\``;
-    if (tag === "pre") {
-      const raw = element.textContent ?? "";
-      const run = Math.max(3, ...Array.from(raw.matchAll(/`+/g), (match) => match[0].length + 1));
-      const fence = "`".repeat(run);
-      return `${fence}
-${raw}
-${fence}
-
-`;
-    }
-    if (tag === "blockquote") return `${collapseBlankLines(content2()).split("\n").map((line) => `> ${line}`).join("\n")}
-
-`;
-    if (tag === "ul") return renderList(element, false);
-    if (tag === "ol") return renderList(element, true);
-    if (tag === "a") {
-      const label = content2();
-      const destination = safeLinkDestination(element.getAttribute("href") ?? "");
-      return destination ? `[${label}](${destination})` : label;
-    }
-    if (tag === "br") return "\n";
-    if (tag === "table") return renderTable(element);
-    return content2();
-  }
-  function convertClipboardHTML(html2) {
-    const inertSource = sanitizeClipboardHTML(html2);
-    const document2 = new DOMParser().parseFromString(`<html><body>${inertSource}</body></html>`, "text/html");
-    return collapseBlankLines(renderChildren(document2.body));
-  }
-  function pasteAsMarkdown(payload) {
-    if (payload.html?.trim()) {
-      try {
-        const converted = convertClipboardHTML(payload.html);
-        if (converted) return converted;
-      } catch {
-      }
-    }
-    return payload.plainText;
-  }
-  function decodeClipboardPayload(argument) {
-    if (!argument) return void 0;
-    try {
-      const value = JSON.parse(argument);
-      if (typeof value.plainText === "string" && (value.html === void 0 || typeof value.html === "string")) {
-        return { plainText: value.plainText.slice(0, 2e6), html: value.html?.slice(0, 2e6) };
-      }
-    } catch {
-    }
-    return void 0;
-  }
-  function isSingleSafeURL(value) {
-    const trimmed = value.trim();
-    return /^(https?:\/\/|mailto:)[^\s]+$/i.test(trimmed) ? trimmed : null;
-  }
-
-  // link-annotation.ts
-  function isEscaped(source, position) {
-    let backslashes = 0;
-    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) {
-      backslashes += 1;
-    }
-    return backslashes % 2 === 1;
-  }
-  function hasVisibleMarkdownContent(markdown2) {
-    let remaining = markdown2.replace(/(`+)[\s]*\1/g, "");
-    remaining = remaining.replace(/^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/gm, "").replace(/^[ \t]{0,3}(?:#{1,6}|>+|[-+*]|\d+[.)])[ \t]*$/gm, "");
-    return remaining.trim().length > 0;
-  }
-  function linkAnnotationAfter(source, linkTo) {
-    if (source.slice(linkTo, linkTo + 2) !== "{{") return null;
-    for (let cursor = linkTo + 2; cursor + 1 < source.length; cursor += 1) {
-      const pair2 = source.slice(cursor, cursor + 2);
-      if (pair2 === "{{" && !isEscaped(source, cursor)) return null;
-      if (pair2 !== "}}" || isEscaped(source, cursor)) continue;
-      const markdown2 = source.slice(linkTo + 2, cursor);
-      if (!hasVisibleMarkdownContent(markdown2)) return null;
-      return {
-        from: linkTo,
-        to: cursor + 2,
-        contentFrom: linkTo + 2,
-        contentTo: cursor,
-        markdown: markdown2
-      };
-    }
-    return null;
-  }
-
-  // semantic-projection.ts
-  function mapSemanticProjectionRanges(previous, mapPosition) {
-    const mapRange2 = (range) => ({
-      from: mapPosition(range.from),
-      to: mapPosition(range.to)
-    });
-    const blocks = previous.blocks.map((block) => ({
-      ...block,
-      from: mapPosition(block.from),
-      to: mapPosition(block.to),
-      parent: block.parent ? {
-        kind: block.parent.kind,
-        from: mapPosition(block.parent.from),
-        to: mapPosition(block.parent.to)
-      } : null,
-      markerRanges: block.markerRanges.map(mapRange2),
-      taskMarkerRange: block.taskMarkerRange ? mapRange2(block.taskMarkerRange) : null
-    }));
-    const inlines = previous.inlines.map((inline) => ({
-      ...inline,
-      from: mapPosition(inline.from),
-      to: mapPosition(inline.to),
-      markerRanges: inline.markerRanges.map(mapRange2),
-      visibleRanges: inline.visibleRanges.map(mapRange2),
-      targetRange: inline.targetRange ? mapRange2(inline.targetRange) : null,
-      aliasRange: inline.aliasRange ? mapRange2(inline.aliasRange) : null,
-      linkRange: inline.linkRange ? mapRange2(inline.linkRange) : null,
-      annotationRange: inline.annotationRange ? mapRange2(inline.annotationRange) : null,
-      annotationContentRange: inline.annotationContentRange ? mapRange2(inline.annotationContentRange) : null
-    }));
-    const literals2 = previous.literals.map((literal2) => ({
-      ...literal2,
-      from: mapPosition(literal2.from),
-      to: mapPosition(literal2.to)
-    }));
-    return { blocks, inlines, literals: literals2 };
-  }
-  var blockKinds = /* @__PURE__ */ new Map([
-    ["Paragraph", "paragraph"],
-    ["Blockquote", "blockQuote"],
-    ["FencedCode", "code"],
-    ["CodeBlock", "code"],
-    ["BulletList", "unorderedList"],
-    ["OrderedList", "orderedList"],
-    ["ListItem", "listItem"],
-    ["Table", "table"],
-    ["HorizontalRule", "thematicBreak"],
-    ["HTMLBlock", "html"],
-    // CommonMark exposes a block HTML comment as CommentBlock while Swift
-    // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
-    // on one raw-HTML presentation path so Review and Edit cannot drift.
-    ["CommentBlock", "html"],
-    ["Callout", "callout"],
-    ["FootnoteDefinition", "footnoteDefinition"],
-    ["BlockMath", "displayMath"],
-    ["ObsidianCommentBlock", "comment"],
-    ["UnclosedObsidianCommentBlock", "comment"]
-  ]);
-  var inlineKinds = /* @__PURE__ */ new Map([
-    ["StrongEmphasis", "strong"],
-    ["Emphasis", "emphasis"],
-    ["Strikethrough", "strikethrough"],
-    ["InlineCode", "code"],
-    ["Link", "link"],
-    ["Autolink", "link"],
-    ["Image", "image"],
-    ["Highlight", "highlight"],
-    ["WikiLink", "wikilink"],
-    ["InlineMath", "inlineMath"],
-    ["FootnoteReference", "footnoteReference"],
-    ["InlineFootnote", "inlineFootnote"],
-    ["ObsidianComment", "comment"]
-  ]);
-  function childRanges(root, names, stopAt = /* @__PURE__ */ new Set()) {
-    const ranges = [];
-    const visit = (node) => {
-      if (names.has(node.name)) ranges.push({ from: node.from, to: node.to });
-      if (node !== root && stopAt.has(node.name)) return;
-      for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
-    };
-    visit(root);
-    return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
-  }
-  function directChildRanges(root, name2) {
-    const ranges = [];
-    for (let child = root.firstChild; child; child = child.nextSibling) {
-      if (child.name === name2) ranges.push({ from: child.from, to: child.to });
-    }
-    return ranges;
-  }
-  function referenceLabel(source) {
-    const label = source.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "").replace(/[ \t\r\n]+/g, " ");
-    return label.replace(/[^\u0131]+/g, (part) => part.toLowerCase().toUpperCase());
-  }
-  function imageReferenceTargets(tree, source) {
-    const targets = /* @__PURE__ */ new Map();
-    tree.iterate({
-      enter(reference) {
-        if (reference.name !== "LinkReference") return;
-        const node = reference.node;
-        const label = directChildRanges(node, "LinkLabel")[0];
-        const target = directChildRanges(node, "URL")[0];
-        if (!label || !target) return false;
-        const key = referenceLabel(source.slice(label.from + 1, label.to - 1));
-        if (key && !targets.has(key)) targets.set(key, target);
-        return false;
-      }
-    });
-    return targets;
-  }
-  function complementRanges(from, to, excluded) {
-    const visible = [];
-    let position = from;
-    for (const range of excluded) {
-      if (range.from > position) visible.push({ from: position, to: range.from });
-      position = Math.max(position, range.to);
-    }
-    if (position < to) visible.push({ from: position, to });
-    return visible;
-  }
-  function presentationBlockMarkerRanges(state, node, kind, markerNames, stopAt) {
-    const ranges = childRanges(node, markerNames, stopAt);
-    if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
-    return ranges.map((range) => {
-      if (range.from !== node.from) return range;
-      let to = range.to;
-      while (to < node.to) {
-        const character = state.doc.sliceString(to, to + 1);
-        if (character !== " " && character !== "	") break;
-        to += 1;
-      }
-      return { from: range.from, to };
-    });
-  }
-  function inlinePresentation(node, kind, source, referenceTargets) {
-    const markerNames = /* @__PURE__ */ new Set();
-    switch (kind) {
-      case "strong":
-      case "emphasis":
-        markerNames.add("EmphasisMark");
-        break;
-      case "strikethrough":
-        markerNames.add("StrikethroughMark");
-        break;
-      case "code":
-        markerNames.add("CodeMark");
-        break;
-      case "link":
-      case "image":
-        markerNames.add("LinkMark");
-        break;
-      case "highlight":
-        markerNames.add("HighlightMark");
-        break;
-      case "wikilink":
-        markerNames.add("WikiLinkOpenMark");
-        markerNames.add("WikiEmbedMark");
-        markerNames.add("WikiLinkAliasMark");
-        markerNames.add("WikiLinkCloseMark");
-        break;
-      case "inlineMath":
-        markerNames.add("MathMark");
-        break;
-      case "footnoteReference":
-        markerNames.add("FootnoteOpenMark");
-        markerNames.add("FootnoteCloseMark");
-        break;
-      case "inlineFootnote":
-        markerNames.add("InlineFootnoteOpenMark");
-        markerNames.add("FootnoteCloseMark");
-        break;
-      case "comment":
-        break;
-    }
-    const markerRanges = kind === "image" ? directChildRanges(node, "LinkMark") : childRanges(node, markerNames);
-    let targetRange = null;
-    let aliasRange = null;
-    let linkRange = null;
-    let annotationRange = null;
-    let annotationContentRange = null;
-    let projectionTo = node.to;
-    let visibleRanges = complementRanges(node.from, node.to, markerRanges);
-    if (kind === "image") {
-      if (markerRanges.length < 2) return null;
-      const alt = { from: markerRanges[0].to, to: markerRanges[1].from };
-      targetRange = directChildRanges(node, "URL")[0] ?? null;
-      if (!targetRange) {
-        const label = directChildRanges(node, "LinkLabel")[0];
-        const next = source.slice(node.to, node.to + 1);
-        if (!label && (markerRanges.length !== 2 || next === "(" || next === "[")) {
-          return null;
-        }
-        const key = referenceLabel(label && label.to - label.from > 2 ? source.slice(label.from + 1, label.to - 1) : source.slice(alt.from, alt.to));
-        targetRange = referenceTargets().get(key) ?? null;
-        if (!targetRange) return null;
-      }
-      visibleRanges = [alt];
-    } else if (kind === "link") {
-      const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
-      if (explicitVisible.length === 0) return null;
-      targetRange = explicitVisible[0];
-      if (node.name === "Autolink") {
-        visibleRanges = explicitVisible;
-      } else {
-        const linkMarks = markerRanges;
-        visibleRanges = linkMarks.length >= 2 ? [{ from: linkMarks[0].to, to: linkMarks[1].from }] : [];
-      }
-    } else if (kind === "wikilink") {
-      const alias = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkAlias"]));
-      const target = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkTarget"]));
-      targetRange = target[0] ?? null;
-      aliasRange = alias[0] ?? null;
-      visibleRanges = alias.length > 0 ? alias : target;
-      linkRange = { from: node.from, to: node.to };
-      const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
-      const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
-      if (annotation) {
-        annotationRange = { from: annotation.from, to: annotation.to };
-        annotationContentRange = { from: annotation.contentFrom, to: annotation.contentTo };
-        projectionTo = annotation.to;
-      }
-    } else if (kind === "inlineMath") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["MathContent"]));
-    } else if (kind === "footnoteReference") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteIdentifier"]));
-    } else if (kind === "inlineFootnote") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteContent"]));
-    } else if (kind === "comment") {
-      visibleRanges = [];
-    }
-    return {
-      kind,
-      nodeName: node.name,
-      from: node.from,
-      to: projectionTo,
-      markerRanges,
-      visibleRanges,
-      targetRange,
-      aliasRange,
-      linkRange,
-      annotationRange,
-      annotationContentRange
-    };
-  }
-  function rangeKey(from, to) {
-    return `${from}:${to}`;
-  }
-  function boundedLinePrefix(doc2, position, limit = 512) {
-    const line = doc2.lineAt(Math.max(0, Math.min(position, doc2.length)));
-    return doc2.sliceString(line.from, Math.min(line.to, line.from + limit));
-  }
-  function boundedProjectionRanges(documentLength, visibleRanges, margin = 2e3) {
-    const expanded = visibleRanges.map((range) => ({
-      from: Math.max(0, range.from - margin),
-      to: Math.min(documentLength, range.to + margin)
-    })).sort((left, right) => left.from - right.from || left.to - right.to);
-    const merged = [];
-    for (const range of expanded) {
-      const previous = merged.at(-1);
-      if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
-      else merged.push({ ...range });
-    }
-    return merged;
-  }
-  function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state)) {
-    const result = {
-      blocks: [],
-      inlines: [],
-      literals: []
-    };
-    if (visibleRanges.length === 0) return result;
-    const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
-    const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
-    const blockStack = [];
-    const source = state.doc.toString();
-    let referenceTargets;
-    const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, source);
-    tree.iterate({
-      from,
-      to,
-      enter(reference) {
-        const node = reference.node;
-        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.exec(node.name);
-        const kind = heading2 ? "heading" : blockKinds.get(node.name);
-        if (kind) {
-          const parent = blockStack.at(-1) ?? null;
-          const markerNames = /* @__PURE__ */ new Set();
-          if (kind === "heading") markerNames.add("HeaderMark");
-          if (kind === "blockQuote") markerNames.add("QuoteMark");
-          if (kind === "listItem") {
-            markerNames.add("ListMark");
-            markerNames.add("TaskMarker");
-          }
-          if (kind === "code") markerNames.add("CodeMark");
-          if (kind === "callout") {
-            markerNames.add("CalloutQuoteMark");
-            markerNames.add("CalloutRoleMark");
-          }
-          if (kind === "displayMath") markerNames.add("MathMark");
-          const markerRanges = presentationBlockMarkerRanges(
-            state,
-            node,
-            kind,
-            markerNames,
-            kind === "listItem" ? /* @__PURE__ */ new Set(["ListItem"]) : /* @__PURE__ */ new Set()
-          );
-          const block = {
-            kind,
-            nodeName: node.name,
-            from: node.from,
-            to: node.to,
-            depth: blockStack.length,
-            parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
-            headingLevel: heading2 ? Number(heading2[1]) : null,
-            listDepth: kind === "listItem" ? blockStack.filter((block2) => block2.kind === "listItem").length : null,
-            markerRanges,
-            taskMarkerRange: kind === "listItem" ? markerRanges.find((range) => state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null : null
-          };
-          result.blocks.push(block);
-          blockStack.push(block);
-        }
-        if (node.name === "Task") {
-          const taskMarker = childRanges(node, /* @__PURE__ */ new Set(["TaskMarker"]))[0];
-          if (taskMarker) {
-            let contentFrom = taskMarker.to;
-            while (contentFrom < node.to) {
-              const character = state.doc.sliceString(contentFrom, contentFrom + 1);
-              if (character !== " " && character !== "	") break;
-              contentFrom += 1;
-            }
-            if (contentFrom < node.to) {
-              const parent = blockStack.at(-1) ?? null;
-              const paragraph = {
-                kind: "paragraph",
-                nodeName: "TaskContent",
-                from: contentFrom,
-                to: node.to,
-                depth: blockStack.length,
-                parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
-                headingLevel: null,
-                listDepth: null,
-                markerRanges: [],
-                taskMarkerRange: null
-              };
-              result.blocks.push(paragraph);
-            }
-          }
-        }
-        const inlineKind = inlineKinds.get(node.name);
-        if (inlineKind) {
-          const inline = inlinePresentation(node, inlineKind, source, resolveReferenceTargets);
-          if (inline) result.inlines.push(inline);
-        }
-        if ([
-          "HTMLTag",
-          "CommentBlock",
-          "Comment",
-          "ObsidianComment",
-          "UnclosedObsidianComment"
-        ].includes(node.name)) {
-          result.literals.push({ from: node.from, to: node.to, nodeName: node.name });
-          return false;
-        }
-      },
-      leave(reference) {
-        const node = reference.node;
-        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.test(node.name);
-        if (!heading2 && !blockKinds.has(node.name)) return;
-        const current = blockStack.at(-1);
-        if (current?.from === node.from && current.to === node.to && current.nodeName === node.name) {
-          blockStack.pop();
-        }
-      }
-    });
-    const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
-    for (const block of result.blocks) {
-      if (block.kind !== "paragraph" || paragraphIsProtected(block)) continue;
-      const paragraph = source.slice(block.from, block.to);
-      const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
-      if (!match) continue;
-      const markerFrom = block.from + match.index + match[0].indexOf("^");
-      const markerTo = markerFrom + match[1].length + 1;
-      if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
-        const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
-        if (!preceding || preceding.kind !== "paragraph" || source.slice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
-      }
-      if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
-      result.inlines.push({
-        kind: "blockAnchor",
-        nodeName: "ParagraphAnchor",
-        from: markerFrom,
-        to: markerTo,
-        markerRanges: [{ from: markerFrom, to: markerTo }],
-        visibleRanges: [],
-        targetRange: null,
-        aliasRange: null,
-        linkRange: null,
-        annotationRange: null,
-        annotationContentRange: null
-      });
-    }
-    result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
-    result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
-    result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
-    return result;
-  }
-
-  // text-transfer-ranges.ts
-  function bodyStart(state) {
-    const boundary = frontmatterBoundary(state.doc);
-    if (boundary.unclosed) return state.doc.length;
-    return boundary.endLine ? Math.min(state.doc.length, state.doc.line(boundary.endLine).to + 1) : 0;
-  }
-  function lineContentStart(state, position) {
-    const line = state.doc.lineAt(position);
-    return line.from === 0 && state.doc.sliceString(0, 1) === "\uFEFF" ? 1 : line.from;
-  }
-  function isCompleteLineSelection(state, range) {
-    if (!Number.isSafeInteger(range.from) || !Number.isSafeInteger(range.to) || range.from < 0 || range.to > state.doc.length || range.from >= range.to) return false;
-    const end = state.doc.lineAt(range.to);
-    return range.from === lineContentStart(state, range.from) && (range.to === state.doc.length || range.to === end.to || range.to === end.from);
-  }
-  function headingSourceRange(state, heading2) {
-    const start = lineContentStart(state, heading2.from);
-    const end = state.doc.lineAt(heading2.to).to;
-    return {
-      from: /^[ \t]*$/.test(state.doc.sliceString(start, heading2.from)) ? start : heading2.from,
-      to: /^[ \t]*$/.test(state.doc.sliceString(heading2.to, end)) ? end : heading2.to
-    };
-  }
-  function visibleHeadingRange(state, heading2, inlines) {
-    const hidden = [...heading2.markerRanges];
-    for (const inline of inlines) {
-      if (inline.from < heading2.from || inline.to > heading2.to) continue;
-      let from = inline.from;
-      for (const visible of inline.visibleRanges) {
-        if (visible.from > from) hidden.push({ from, to: visible.from });
-        from = Math.max(from, visible.to);
-      }
-      if (from < inline.to) hidden.push({ from, to: inline.to });
-    }
-    hidden.sort((a, b) => a.from - b.from || a.to - b.to);
-    let cursor = heading2.from;
-    let first;
-    let last = heading2.from;
-    for (const hiddenRange of [...hidden, { from: heading2.to, to: heading2.to }]) {
-      const end = Math.min(heading2.to, hiddenRange.from);
-      if (cursor < end) {
-        const text = state.doc.sliceString(cursor, end);
-        const trimmed = text.trim();
-        if (trimmed) {
-          first ??= cursor + text.length - text.trimStart().length;
-          last = end - (text.length - text.trimEnd().length);
-        }
-      }
-      cursor = Math.max(cursor, hiddenRange.to);
-    }
-    return first === void 0 ? null : { from: first, to: last };
-  }
-  function completeHeadingSelection(state, selection) {
-    const minimum = bodyStart(state);
-    const ranges = selection.ranges.map((range) => {
-      if (range.empty || range.from < minimum) return range;
-      const semantic = semanticProjectionRanges(state, [range], 0);
-      const headings = semantic.blocks.filter((heading2) => heading2.kind === "heading" && heading2.from >= minimum);
-      const inlines = semanticProjectionRanges(state, headings, 0).inlines;
-      let from = range.from, to = range.to, includesHeading = false;
-      for (const heading2 of headings) {
-        const visible = visibleHeadingRange(state, heading2, inlines);
-        if (!visible || range.from > visible.from || range.to < visible.to) continue;
-        const source = headingSourceRange(state, heading2);
-        includesHeading = true;
-        from = Math.min(from, source.from);
-        to = Math.max(to, source.to);
-      }
-      if (includesHeading && isCompleteLineSelection(state, { from, to }) && to < state.doc.length && state.doc.lineAt(to).to === to && state.doc.sliceString(to - 1, to) !== "\n") to += 1;
-      if (from === range.from && to === range.to) return range;
-      return range.anchor > range.head ? EditorSelection.range(to, from) : EditorSelection.range(from, to);
-    });
-    return ranges.every((range, index) => range === selection.ranges[index]) ? selection : EditorSelection.create(ranges, selection.mainIndex);
-  }
-  function containsCompleteHeading(state, range) {
-    const minimum = bodyStart(state);
-    if (range.from < minimum || !isCompleteLineSelection(state, range)) return false;
-    return semanticProjectionRanges(state, [range], 0).blocks.some((heading2) => {
-      if (heading2.kind !== "heading" || heading2.from < minimum) return false;
-      const source = headingSourceRange(state, heading2);
-      return source.from >= range.from && source.to <= range.to;
-    });
-  }
-
-  // performance.ts
-  var samples = [];
-  var sampleCapacity = 256;
-  var sampleStart = 0;
-  var sampleCount = 0;
-  function appendSample(sample) {
-    if (sampleCount < sampleCapacity) {
-      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
-      sampleCount += 1;
-      return;
-    }
-    samples[sampleStart] = sample;
-    sampleStart = (sampleStart + 1) % sampleCapacity;
-  }
-  function recordEditorMetric(name2, startedAt, observed = {}) {
-    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
-    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
-    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
-    const measureName = `scholium-editor:${name2}`;
-    try {
-      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
-    } catch {
-    } finally {
-      try {
-        performance.clearMeasures(measureName);
-      } catch {
-      }
-    }
-  }
-  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
-    requestFrame(() => {
-      scheduleTask(callback);
-    });
-  }
-  function sampleEditorMemory(documentLength) {
-    const memory = performance.memory;
-    const usedBytes = memory?.usedJSHeapSize;
-    recordEditorMetric("memory-sample", performance.now(), {
-      documentLength,
-      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
-    });
-  }
-  function editorPerformanceSamples() {
-    return Array.from({ length: sampleCount }, (_, index) => {
-      const sample = samples[(sampleStart + index) % sampleCapacity];
-      return { ...sample, observed: { ...sample.observed } };
-    });
-  }
-  function clearEditorPerformanceSamples() {
-    samples.length = 0;
-    sampleStart = 0;
-    sampleCount = 0;
-  }
-
-  // exact-source-history.ts
-  var setExactSource = StateEffect.define();
-  var sourceCapacityExceeded = StateEffect.define();
-  function admittedMirror(source) {
-    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-    return new ExactSourceMirror(source);
-  }
-  var eventInverses = /* @__PURE__ */ new WeakMap();
-  var detachedHistoryDepth = 0;
-  function detachedHistory(operation) {
-    detachedHistoryDepth++;
-    try {
-      return operation();
-    } finally {
-      detachedHistoryDepth--;
-    }
-  }
-  var restoreLineEnding = StateEffect.define({
-    map(value, mapping) {
-      if (mapping instanceof ChangeSet) return { ...value, at: mapping.mapPos(value.at, 1) };
-      const inverse = eventInverses.get(value);
-      if (!inverse) throw new Error("Exact history mapping is unavailable");
-      const outputMapping = mapping.mapDesc(inverse, true);
-      const result = { ...value, at: outputMapping.mapPos(value.at, 1) };
-      eventInverses.set(result, inverse.mapDesc(mapping));
-      return result;
-    }
-  });
-  function exactInsertionEffects(source, at) {
-    const effects = [];
-    let position = at;
-    for (let offset = 0; offset < source.length; offset++, position++) {
-      const crlf = source[offset] === "\r" && source[offset + 1] === "\n";
-      if (crlf || source[offset] === "\n") {
-        effects.push(restoreLineEnding.of({ at: position, ending: crlf ? "\r\n" : "\n" }));
-        if (crlf) offset++;
-      }
-    }
-    return effects;
-  }
-  function transactionChanges(transaction, mirror) {
-    const endings = new Map(transaction.effects.filter((effect) => effect.is(restoreLineEnding)).map((effect) => [effect.value.at, effect.value.ending]));
-    const changes = [];
-    transaction.changes.iterChanges((from, to, fromB, _toB, inserted) => {
-      const insert2 = inserted.toString();
-      const exactInsert = insert2.replace(/\n/g, (_newline, offset) => endings.get(fromB + offset) ?? (mirror.usesCRLF ? "\r\n" : "\n"));
-      changes.push({ from, to, insert: insert2, exactInsert, removed: transaction.startState.doc.sliceString(from, to) });
-    });
-    return changes;
-  }
-  var exactSourceState = StateField.define({
-    create: (state) => admittedMirror(state.doc.toString()),
-    update(mirror, transaction) {
-      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
-      if (replacement) {
-        if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
-          throw new Error("Exact source does not match the editor document");
-        }
-        return admittedMirror(replacement.value);
-      }
-      if (!transaction.docChanged) return mirror;
-      const startedAt = performance.now();
-      const changes = transactionChanges(transaction, mirror);
-      const next = mirror.copy();
-      if (!next.apply(changes)) throw new Error("Exact source change is invalid");
-      if (next.utf8ByteCount > MAX_SOURCE_UTF8_BYTES) throw new Error(sourceCapacityMessage);
-      if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
-        changeCount: changes.length,
-        documentLength: transaction.newDoc.length
-      });
-      return next;
-    }
-  });
-  var exactSourceHistory = [
-    exactSourceState,
-    EditorState.transactionFilter.of((transaction) => {
-      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
-      const admitted = replacement ? exactSourceFits(replacement.value) : !transaction.docChanged || exactSourceFitsChanges(
-        transaction.startState,
-        transactionChanges(transaction, transaction.startState.field(exactSourceState))
-      );
-      return admitted ? transaction : { effects: sourceCapacityExceeded.of(null) };
-    }),
-    EditorState.transactionExtender.of((transaction) => {
-      if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
-        for (const command2 of [undo, redo]) {
-          let detached = transaction.startState;
-          while (detachedHistory(() => command2({ state: detached, dispatch: (historical) => {
-            for (const effect of historical.effects) {
-              if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, historical.changes.desc);
-            }
-            detached = historical.state;
-          } }))) {
-          }
-        }
-      }
-      return null;
-    }),
-    invertedEffects.of((transaction) => {
-      if (!transaction.docChanged) return [];
-      const mirror = transaction.startState.field(exactSourceState);
-      const effects = [];
-      transaction.changes.iterChanges((from, to) => {
-        const removed = mirror.slice(from, to);
-        let normalizedOffset = from;
-        for (let offset = 0; offset < removed.length; offset++, normalizedOffset++) {
-          const crlf = removed[offset] === "\r" && removed[offset + 1] === "\n";
-          if (crlf || removed[offset] === "\n") {
-            effects.push(restoreLineEnding.of({ at: normalizedOffset, ending: crlf ? "\r\n" : "\n" }));
-            if (crlf) offset++;
-          }
-        }
-      });
-      return effects;
-    })
-  ];
-  function exactSourceFitsChanges(state, changes) {
-    const source = state.field(exactSourceState, false) ?? new ExactSourceMirror(state.doc.toString());
-    if (changes.length <= 1) {
-      const next = source.copy();
-      return next.apply(changes) && next.utf8ByteCount <= MAX_SOURCE_UTF8_BYTES;
-    }
-    const encoder = new TextEncoder();
-    let bytes = 0, previous = 0, pendingHigh = "";
-    const append = (piece) => {
-      const text = pendingHigh + piece;
-      const last = text.charCodeAt(text.length - 1);
-      pendingHigh = last >= 55296 && last <= 56319 ? text.slice(-1) : "";
-      bytes += encoder.encode(pendingHigh ? text.slice(0, -1) : text).byteLength;
-      return bytes <= MAX_SOURCE_UTF8_BYTES;
-    };
-    for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
-      if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to) || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
-      const normalized2 = normalizedDocumentText(change.insert);
-      const insertion = change.exactInsert ?? (source.usesCRLF ? normalized2.replaceAll("\n", "\r\n") : normalized2);
-      if (normalizedDocumentText(insertion) !== normalized2) return false;
-      if (!append(source.slice(previous, change.from)) || !append(insertion)) return false;
-      previous = change.to;
-    }
-    return append(source.slice(previous, state.doc.length)) && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
-  }
-  function lineEndings(source) {
-    return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
-  }
-  function sourceWithEndings(source, endings) {
-    let index = 0;
-    const exact = source.replace(/\n/g, () => {
-      const ending = endings[index++];
-      if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
-      return ending === "c" ? "\r\n" : "\n";
-    });
-    if (index !== endings.length) throw new Error("Invalid history line ending count");
-    return exact;
-  }
-  var maximumRecoveryEvents = 512;
-  function captureExactHistory(state) {
-    let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
-    const capture = (command2) => {
-      let detached = state;
-      const endings = [];
-      for (let index = 0; ; index++) {
-        let changed = false;
-        if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
-          changed = transaction.docChanged;
-          transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
-            remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
-          });
-          if (remainingBytes < 0) throw new Error("History is too large");
-          detached = transaction.state;
-        } }))) break;
-        if (index >= maximumRecoveryEvents) throw new Error("History is too large");
-        const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
-        remainingBytes -= value?.length ?? 0;
-        if (remainingBytes < 0) throw new Error("History is too large");
-        endings.push(value);
-      }
-      return endings;
-    };
-    try {
-      if (remainingBytes < 0) return void 0;
-      const undoLineEndings = capture(undoSelection);
-      const redoLineEndings = capture(redoSelection);
-      const serialized = JSON.stringify({
-        state: state.toJSON({ history: historyField }),
-        undoLineEndings,
-        redoLineEndings
-      });
-      return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
-    } catch {
-      return void 0;
-    }
-  }
-  function restoreExactHistory(serialized, source, extensions) {
-    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-    if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
-    const payload = JSON.parse(serialized);
-    const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
-    if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
-      throw new Error("Invalid history line endings");
-    }
-    let state = EditorState.fromJSON(payload.state, { extensions }, { history: historyField });
-    if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
-      throw new Error("History does not match the recovered source");
-    }
-    const recovery = new Compartment();
-    let targetEndings;
-    state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
-      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 ? null : {
-        effects: setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))
-      })
-    ))], annotations: Transaction.addToHistory.of(false) }).state;
-    function replay(command2, endings) {
-      targetEndings = endings ?? void 0;
-      try {
-        if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
-          state = transaction.state;
-        } }))) throw new Error("History could not be restored");
-      } finally {
-        targetEndings = void 0;
-      }
-    }
-    for (const endings of payload.redoLineEndings) replay(redoSelection, endings);
-    for (const _ of payload.redoLineEndings) replay(undoSelection);
-    for (const endings of payload.undoLineEndings) replay(undoSelection, endings);
-    for (const _ of payload.undoLineEndings) replay(redoSelection);
-    state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
-    if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
-    return state;
-  }
-
-  // text-transfer.ts
-  function createEditorTextTransfer(options) {
-    const handlers2 = createTextDropHandlers(options);
-    const resolve = (view, event) => handlers2.dropPosition(view, event);
-    return [
-      transferDropCursor(resolve, handlers2.dragend),
-      EditorView.domEventHandlers({
-        mousedown: handlers2.dragend,
-        dragend: handlers2.dragend,
-        drop: handlers2.drop,
-        dragstart(event, view) {
-          handlers2.dragend();
-          const selection = view.contentDOM.ownerDocument.getSelection();
-          if (!event.dataTransfer || view.composing || options.compositionActive() || !selection || selection.isCollapsed || selection.rangeCount !== 1 || !view.contentDOM.contains(selection.anchorNode) || !view.contentDOM.contains(selection.focusNode) || !Array.from(selection.getRangeAt(0).getClientRects()).some((rect) => event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom)) return false;
-          return handlers2.dragstart(event, view);
-        }
-      })
-    ];
-  }
-  function moveSelectedText(view, range, position, copy, linewise, protection) {
-    const state = view.state;
-    if (!acceptsDropTarget(view, position, false) || range.empty || !copy && position >= range.from && position <= range.to) return null;
-    const target = state.update({ selection: { anchor: position } }).state;
-    if (protection(target).some(({ from: from2, to }) => position > from2 && position < to) || !copy && protection(state).some(({ from: from2, to }) => range.from < to && range.to > from2)) return null;
-    const mirror = state.field(exactSourceState, false);
-    let exact = mirror?.slice(range.from, range.to) ?? state.sliceDoc(range.from, range.to);
-    const ending = mirror?.usesCRLF ? "\r\n" : "\n";
-    if (linewise) {
-      if (position > lineContentStart(state, position) && state.sliceDoc(position - 1, position) !== "\n") exact = ending + exact;
-      if (position < state.doc.length && !exact.endsWith("\n")) exact += ending;
-    }
-    const insert2 = normalizedDocumentText(exact);
-    const specs = [
-      ...copy ? [] : [{ from: range.from, to: range.to, insert: "", exactInsert: "" }],
-      { from: position, to: position, insert: insert2, exactInsert: exact }
-    ];
-    if (!exactSourceFitsChanges(state, specs)) return null;
-    const changes = state.changes(specs);
-    const from = changes.mapPos(position, -1);
-    view.dispatch({
-      changes,
-      selection: EditorSelection.single(from, from + insert2.length),
-      effects: exactInsertionEffects(exact, from),
-      userEvent: copy ? "input.drop" : "move.drop",
-      annotations: isolateHistory.of("full"),
-      scrollIntoView: true
-    });
-    view.focus();
-    return copy ? "Paste" : "Move";
-  }
-  function transferDropCursor(resolve, ended) {
-    return ViewPlugin.fromClass(class {
-      constructor(view) {
-        this.view = view;
-      }
-      view;
-      cursor = null;
-      event = null;
-      clear() {
-        this.event = null;
-        this.cursor?.remove();
-        this.cursor = null;
-      }
-      measure = {
-        read: () => {
-          if (!this.event) return null;
-          const pos = resolve(this.view, this.event);
-          const rect = pos === null ? null : this.view.coordsAtPos(pos);
-          if (!rect) return null;
-          const outer = this.view.scrollDOM.getBoundingClientRect();
-          return {
-            left: (rect.left - outer.left) / this.view.scaleX + this.view.scrollDOM.scrollLeft,
-            top: (rect.top - outer.top) / this.view.scaleY + this.view.scrollDOM.scrollTop,
-            height: (rect.bottom - rect.top) / this.view.scaleY
-          };
-        },
-        write: (rect) => {
-          if (!this.event || !rect) {
-            this.cursor?.remove();
-            this.cursor = null;
-            return;
-          }
-          if (!this.cursor) {
-            this.cursor = this.view.scrollDOM.appendChild(document.createElement("div"));
-            this.cursor.className = "cm-dropCursor";
-            this.cursor.setAttribute("aria-hidden", "true");
-            this.cursor.style.pointerEvents = "none";
-          }
-          Object.assign(this.cursor.style, { left: `${rect.left}px`, top: `${rect.top}px`, height: `${rect.height}px` });
-        }
-      };
-      update() {
-        if (this.event) this.view.requestMeasure(this.measure);
-      }
-      destroy() {
-        this.clear();
-        ended();
-      }
-    }, { eventObservers: {
-      dragover(event) {
-        this.event = event;
-        this.view.requestMeasure(this.measure);
-      },
-      dragleave(event) {
-        if (!this.view.contentDOM.contains(event.relatedTarget)) this.clear();
-      },
-      dragend() {
-        this.clear();
-      },
-      drop() {
-        this.clear();
-      }
-    } });
-  }
-  function acceptsDropTarget(view, position, compositionActive) {
-    return !view.state.readOnly && view.state.facet(EditorView.editable) && !view.composing && !compositionActive && position !== null && Number.isInteger(position) && position >= 0 && position <= view.state.doc.length;
-  }
-  function createTextDropHandlers(options) {
-    let localDrag = null;
-    const rawPosition = (view, event) => {
-      if (localDrag && localDrag.document === options.documentIdentity() && localDrag.linewise) {
-        const editor2 = view;
-        const block = editor2.lineBlockAtHeight(event.clientY - editor2.documentTop);
-        const before = event.clientY - editor2.documentTop <= (block.top + block.bottom) / 2;
-        const line = view.state.doc.lineAt(before ? block.from : block.to);
-        return before ? lineContentStart(view.state, line.from) : Math.min(view.state.doc.length, line.to + 1);
-      }
-      return options.projectedPosition?.(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
-    };
-    const moves = (view, event) => {
-      const policy = view.state.facet(EditorView.dragMovesSelection);
-      return policy.length ? policy[0](event) : !event.altKey;
-    };
-    const hasFiles = (event) => !!event.dataTransfer && (Array.from(event.dataTransfer.files).length > 0 || Array.from(event.dataTransfer.items).some((item) => item.kind === "file"));
-    const dropPosition = (view, event) => {
-      if (hasFiles(event)) return null;
-      const receipt = localDrag?.document === options.documentIdentity() ? localDrag : null;
-      if (receipt && receipt.doc !== view.state.doc) return null;
-      const position = rawPosition(view, event);
-      if (!acceptsDropTarget(view, position, options.compositionActive())) return null;
-      if (receipt && moves(view, event) && position >= receipt.range.from && position <= receipt.range.to) return null;
-      const target = view.state.update({ selection: { anchor: position } }).state;
-      if (options.protection(target).some(({ from, to }) => position > from && position < to)) return null;
-      return position;
-    };
-    return {
-      dropPosition,
-      dragstart(event, view) {
-        const range = view.state.selection.main;
-        localDrag = range.empty || view.state.selection.ranges.length !== 1 ? null : {
-          document: options.documentIdentity(),
-          doc: view.state.doc,
-          range,
-          linewise: containsCompleteHeading(view.state, range)
-        };
-        const receipt = localDrag;
-        setTimeout(() => {
-          if (event.defaultPrevented && localDrag === receipt) localDrag = null;
-        }, 0);
-        return false;
-      },
-      dragend() {
-        localDrag = null;
-        return false;
-      },
-      drop(event, view) {
-        const receipt = localDrag;
-        const internal = receipt !== null && receipt.document === options.documentIdentity();
-        const position = dropPosition(view, event);
-        localDrag = null;
-        const transfer = event.dataTransfer;
-        if (!transfer) return true;
-        if (hasFiles(event)) {
-          options.unsupportedFile();
-          return true;
-        }
-        if (!acceptsDropTarget(view, position, options.compositionActive())) return true;
-        if (internal) {
-          if (receipt.doc !== view.state.doc) return true;
-          const move = moves(view, event);
-          const label2 = moveSelectedText(
-            view,
-            receipt.range,
-            position,
-            !move,
-            receipt.linewise,
-            options.protection
-          );
-          if (label2) options.didInsert(label2);
-          return true;
-        }
-        const label = insertDroppedText(
-          view,
-          transfer.getData("text/plain"),
-          position,
-          options.compositionActive(),
-          options.protection
-        );
-        if (label) options.didInsert(label);
-        return true;
-      }
-    };
-  }
-  function insertDroppedText(view, text, position, compositionActive, protection) {
-    const state = view.state;
-    if (position === null || !acceptsDropTarget(view, position, compositionActive)) return null;
-    const insert2 = normalizedDocumentText(text);
-    if (!insert2) return null;
-    const targetState = state.update({ selection: { anchor: position } }).state;
-    const source = state.doc.toString();
-    const transformed = transformMarkdown(source, [{ anchor: position, head: position }], "pastePlain", {
-      argument: insert2,
-      protectedRanges: protection(targetState)
-    });
-    if (!transformed || !exactSourceFitsChanges(state, transformed.changes)) return null;
-    view.dispatch({
-      changes: transformed.changes,
-      selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),
-      userEvent: "input.drop",
-      annotations: isolateHistory.of("full"),
-      scrollIntoView: true
-    });
-    view.focus();
-    return transformed.undoLabel;
-  }
-
-  // link-target.ts
-  function linkTargetAt(source, offset) {
-    const document2 = typeof source === "string" ? Text.of(source.split("\n")) : source;
-    if (offset < 0 || offset > document2.length) return null;
-    const sourceLine = document2.lineAt(offset);
-    const lineFrom = sourceLine.from;
-    const line = sourceLine.text;
-    for (const match of line.matchAll(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
-      const from = lineFrom + match.index;
-      const to = from + match[0].length;
-      if (offset >= from && offset < to) return match[1].trim();
-    }
-    for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
-      const from = lineFrom + match.index;
-      const to = from + match[0].length;
-      if (offset >= from && offset < to) return match[1].trim();
-    }
-    return null;
-  }
-
   // node_modules/@lezer/markdown/dist/index.js
   var CompositeBlock = class _CompositeBlock {
     static create(type, value, from, parentHash, end) {
@@ -26253,7 +23697,7 @@ ${fence}
       after: "Emphasis"
     }]
   };
-  function parseRow2(cx, line, startI = 0, elts, offset = 0) {
+  function parseRow(cx, line, startI = 0, elts, offset = 0) {
     let count2 = 0, first = true, cellStart = -1, cellEnd = -1, esc = false;
     let parseCell = () => {
       elts.push(cx.elt("TableCell", offset + cellStart, offset + cellEnd, cx.parser.parseInline(line.slice(cellStart, cellEnd), offset + cellStart)));
@@ -26304,8 +23748,8 @@ ${fence}
         this.rows = false;
         let lineText;
         if ((line.next == 45 || line.next == 58 || line.next == 124) && delimiterLine.test(lineText = line.text.slice(line.pos))) {
-          let firstRow = [], firstCount = parseRow2(cx, leaf.content, 0, firstRow, leaf.start);
-          if (firstCount == parseRow2(cx, lineText, 0))
+          let firstRow = [], firstCount = parseRow(cx, leaf.content, 0, firstRow, leaf.start);
+          if (firstCount == parseRow(cx, lineText, 0))
             this.rows = [
               cx.elt("TableHeader", leaf.start, leaf.start + leaf.content.length, firstRow),
               cx.elt("TableDelimiter", cx.lineStart + line.pos, cx.lineStart + line.text.length)
@@ -26313,7 +23757,7 @@ ${fence}
         }
       } else if (this.rows) {
         let content2 = [];
-        parseRow2(cx, line.text, line.pos, content2, cx.lineStart);
+        parseRow(cx, line.text, line.pos, content2, cx.lineStart);
         this.rows.push(cx.elt("TableRow", cx.lineStart + line.pos, cx.lineStart + line.text.length, content2));
       }
       return false;
@@ -26342,7 +23786,7 @@ ${fence}
         if (leaf.parsers.some((p) => p instanceof TableParser) || !hasPipe(line.text, line.basePos))
           return false;
         let next = cx.peekLine();
-        return delimiterLine.test(next) && parseRow2(cx, line.text, line.basePos) == parseRow2(cx, next, line.basePos);
+        return delimiterLine.test(next) && parseRow(cx, line.text, line.basePos) == parseRow(cx, next, line.basePos);
       },
       before: "SetextHeading"
     }]
@@ -31743,7 +29187,7 @@ ${fence}
   function isHorizontalWhitespace(character) {
     return character === SPACE || character === TAB;
   }
-  function isEscaped2(cx, position) {
+  function isEscaped(cx, position) {
     let backslashes = 0;
     for (let cursor = position - 1; cursor >= cx.offset && cx.char(cursor) === 92; cursor -= 1) {
       backslashes += 1;
@@ -31824,7 +29268,7 @@ ${fence}
     for (let cursor = position + 2; cursor < cx.end; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 93 || isEscaped2(cx, cursor)) continue;
+      if (character !== 93 || isEscaped(cx, cursor)) continue;
       if (cx.slice(position + 2, cursor).trim().length === 0) return -1;
       return cx.addElement(cx.elt("InlineFootnote", position, cursor + 1, [
         cx.elt("InlineFootnoteOpenMark", position, position + 2),
@@ -31842,7 +29286,7 @@ ${fence}
     for (let cursor = openingTo; cursor < cx.end; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 36 || isEscaped2(cx, cursor)) continue;
+      if (character !== 36 || isEscaped(cx, cursor)) continue;
       let closingTo = cursor + 1;
       while (cx.char(closingTo) === 36) closingTo += 1;
       if (closingTo - cursor !== delimiterLength) {
@@ -31863,7 +29307,7 @@ ${fence}
     for (let cursor = position + 2; cursor < cx.end - 1; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 61 || cx.char(cursor + 1) !== 61 || cx.char(cursor + 2) === 61 || isEscaped2(cx, cursor)) continue;
+      if (character !== 61 || cx.char(cursor + 1) !== 61 || cx.char(cursor + 2) === 61 || isEscaped(cx, cursor)) continue;
       if (cx.slice(position + 2, cursor).trim().length === 0) return -1;
       return cx.addElement(cx.elt("Highlight", position, cursor + 2, [
         cx.elt("HighlightMark", position, position + 2),
@@ -31943,7 +29387,7 @@ ${fence}
     const content2 = line.text.slice(line.pos + size);
     return /^\[![^\]\r\n]+\]/.test(content2);
   }
-  function continueCallout2(cx, line) {
+  function continueCallout(cx, line) {
     const size = quoteMarkerSize(line);
     if (size < 0) return false;
     const from = cx.lineStart + line.pos;
@@ -32026,7 +29470,7 @@ ${fence}
       "Highlight",
       "HighlightMark",
       "HighlightContent",
-      { name: "Callout", block: true, composite: continueCallout2 },
+      { name: "Callout", block: true, composite: continueCallout },
       "CalloutQuoteMark",
       "CalloutRoleMark",
       "ObsidianComment",
@@ -32080,1061 +29524,6 @@ ${fence}
     content: scholiumMarkdownContentLanguage
   });
 
-  // source-highlighting.ts
-  var sourceHighlightStyle = HighlightStyle.define([
-    { tag: tags.heading, class: "cm-source-heading" },
-    { tag: tags.link, class: "cm-source-link" },
-    { tag: tags.definition(tags.propertyName), class: "cm-source-yaml-key" },
-    { tag: tags.processingInstruction, class: "cm-source-marker" },
-    { tag: tags.meta, class: "cm-source-meta" },
-    { tag: tags.url, class: "cm-source-url" },
-    { tag: tags.comment, class: "cm-source-comment" }
-  ]);
-  var sourceHighlighting = syntaxHighlighting(sourceHighlightStyle);
-
-  // frontmatter-presentation.ts
-  var frontmatterTokenClassByNodeName = {
-    Key: "cm-live-yaml-key",
-    QuotedLiteral: "cm-live-yaml-string",
-    BlockLiteralHeader: "cm-live-yaml-scalar",
-    BlockLiteralContent: "cm-live-yaml-scalar",
-    FlowSequence: "cm-live-yaml-collection",
-    FlowMapping: "cm-live-yaml-collection",
-    Comment: "cm-live-yaml-comment"
-  };
-  function frontmatterTokenClass(nodeName, parentName) {
-    if (nodeName === "Literal" && parentName !== "Key") return "cm-live-yaml-value";
-    return frontmatterTokenClassByNodeName[nodeName];
-  }
-  function frontmatterKeyHasSeparator(followingText) {
-    if (followingText[0] !== ":") return false;
-    const next = followingText[1];
-    return next === void 0 || next === " " || next === "	" || next === "\r" || next === "\n";
-  }
-  function frontmatterFallbackClass(lineText, isDelimiterLine, hasTokenClass) {
-    const trimmed = lineText.trim();
-    if (isDelimiterLine || hasTokenClass || trimmed === "" || trimmed.startsWith("#")) return void 0;
-    return "cm-live-yaml-value";
-  }
-
-  // projection-index.ts
-  function compareRanges(left, right) {
-    return left.from - right.from || left.to - right.to;
-  }
-  var prefixMaximumEnds = /* @__PURE__ */ new WeakMap();
-  function maximumEndsFor(ranges) {
-    const cached = prefixMaximumEnds.get(ranges);
-    if (cached) return cached;
-    let maximum = -1;
-    const values2 = Object.freeze(ranges.map((range) => {
-      maximum = Math.max(maximum, range.to);
-      return maximum;
-    }));
-    prefixMaximumEnds.set(ranges, values2);
-    return values2;
-  }
-  function immutableProjectionRanges(ranges) {
-    const immutable = Object.freeze(ranges.map((range) => Object.freeze({ ...range })).sort(compareRanges));
-    maximumEndsFor(immutable);
-    return immutable;
-  }
-  function projectionRangeDifference(requested, covered) {
-    const missing = [];
-    let coveredIndex = 0;
-    for (const target of requested) {
-      if (target.to <= target.from) continue;
-      while (coveredIndex < covered.length && covered[coveredIndex].to <= target.from) {
-        coveredIndex += 1;
-      }
-      let cursor = target.from;
-      let index = coveredIndex;
-      while (index < covered.length && covered[index].from < target.to) {
-        const existing = covered[index];
-        if (existing.from > cursor) {
-          missing.push({ from: cursor, to: Math.min(existing.from, target.to) });
-        }
-        cursor = Math.max(cursor, existing.to);
-        if (cursor >= target.to) break;
-        index += 1;
-      }
-      if (cursor < target.to) missing.push({ from: cursor, to: target.to });
-      coveredIndex = index;
-    }
-    return immutableProjectionRanges(missing);
-  }
-  function commandProtectionRanges(literalRanges, frontmatterRange) {
-    return immutableProjectionRanges(frontmatterRange ? [...literalRanges, frontmatterRange] : literalRanges);
-  }
-  function projectionRangesIntersecting(ranges, from, to) {
-    let low = 0;
-    let high = ranges.length;
-    while (low < high) {
-      const middle = low + high >>> 1;
-      if (ranges[middle].from < to) low = middle + 1;
-      else high = middle;
-    }
-    const maximumEnds = maximumEndsFor(ranges);
-    const matches = [];
-    for (let index = low - 1; index >= 0 && maximumEnds[index] > from; index -= 1) {
-      if (ranges[index].to > from) matches.push(ranges[index]);
-    }
-    matches.reverse();
-    return matches;
-  }
-  function projectionRangeContaining(ranges, offset) {
-    const candidates = projectionRangesIntersecting(ranges, offset, offset + 1);
-    return candidates[0] ?? null;
-  }
-  function projectionRangeAtBoundary(ranges, offset, boundary) {
-    const candidates = projectionRangesIntersecting(
-      ranges,
-      Math.max(0, offset - 1),
-      offset + 1
-    );
-    return candidates.find(
-      (range) => boundary === "start" ? range.from === offset : range.to === offset
-    ) ?? null;
-  }
-  function projectionSelectionOverlaps(ranges, selection) {
-    if (selection.from === selection.to) {
-      return projectionRangeContaining(ranges, selection.from) !== null;
-    }
-    return projectionRangesIntersecting(ranges, selection.from, selection.to).length > 0;
-  }
-  function projectionBoundaryTouches(ranges, offset) {
-    const candidates = projectionRangesIntersecting(
-      ranges,
-      Math.max(0, offset - 1),
-      offset + 1
-    );
-    return candidates.some((range) => offset >= range.from && offset <= range.to);
-  }
-
-  // projection-update.ts
-  function selectionActivatesSyntax(selection, projection) {
-    return selection.empty ? selection.head >= projection.from && selection.head <= projection.to : selection.from < projection.to && selection.to > projection.from;
-  }
-  function selectionIntersectsPhysicalLine(selection, lineFrom, lineTo, queryTo) {
-    return selection.empty ? selection.head >= lineFrom && selection.head <= lineTo : selection.from < queryTo && selection.to > lineFrom;
-  }
-  function activeProjectionSignature(selections, projections) {
-    const active = /* @__PURE__ */ new Map();
-    for (const selection of selections) {
-      const from = selection.empty ? Math.max(0, selection.head - 1) : selection.from;
-      const to = selection.empty ? selection.head + 1 : selection.to;
-      for (const projection of projectionRangesIntersecting(projections, from, to)) {
-        if (!selectionActivatesSyntax(selection, projection)) continue;
-        active.set(`${projection.from}:${projection.to}`, projection);
-      }
-    }
-    return [...active.values()].sort((left, right) => left.from - right.from || left.to - right.to).map((projection) => `${projection.from}:${projection.to}`).join("|");
-  }
-  function selectionProjectionSignature(doc2, selections, inlineProjections, listPrefixProjections = []) {
-    const activeLines = selections.map((selection) => {
-      const fromLine = doc2.lineAt(Math.max(0, Math.min(selection.from, doc2.length))).from;
-      const endPosition = selection.empty ? selection.to : Math.max(selection.from, selection.to - 1);
-      const toLine = doc2.lineAt(Math.max(0, Math.min(endPosition, doc2.length))).from;
-      return `${fromLine}:${toLine}`;
-    }).join("|");
-    return [
-      activeLines,
-      activeProjectionSignature(selections, inlineProjections),
-      activeProjectionSignature(selections, listPrefixProjections)
-    ].join("#");
-  }
-  function selectionAffectedProjectionRanges(documentLength, previousSelections, nextSelections, margin = 2e3) {
-    return immutableProjectionRanges(boundedProjectionRanges(
-      documentLength,
-      [...previousSelections, ...nextSelections].map((selection) => ({
-        from: selection.from,
-        to: selection.to
-      })),
-      margin
-    ));
-  }
-  function transactionChangedSyntaxTree(transaction) {
-    return syntaxTree(transaction.startState) !== syntaxTree(transaction.state);
-  }
-  function frontmatterPresentationNeedsRebuild(transaction, envelopeEnd, signature, previousSignature) {
-    if (transaction.docChanged) return true;
-    if (transactionChangedSyntaxTree(transaction) && syntaxTree(transaction.startState).length < envelopeEnd) {
-      return true;
-    }
-    return signature !== previousSignature;
-  }
-  function changedContextContainsMarker(transaction, from, to, marker) {
-    const doc2 = transaction.state.doc;
-    const boundedFrom = Math.max(0, Math.min(from, doc2.length));
-    const boundedTo = Math.max(boundedFrom, Math.min(to, doc2.length));
-    const firstLine = doc2.lineAt(boundedFrom);
-    const lastLine = doc2.lineAt(boundedTo);
-    const contextFrom = Math.max(firstLine.from, boundedFrom - 256);
-    const contextTo = Math.min(lastLine.to, boundedTo + 256);
-    marker.lastIndex = 0;
-    return marker.test(doc2.sliceString(contextFrom, contextTo));
-  }
-  function transactionMayCreateProjection(transaction, marker) {
-    let mayCreate = false;
-    transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
-      if (mayCreate) return;
-      if (toA > fromA || inserted.length > 8192) {
-        mayCreate = true;
-        return;
-      }
-      marker.lastIndex = 0;
-      mayCreate = marker.test(inserted.toString()) || changedContextContainsMarker(transaction, fromB, toB, marker);
-    });
-    return mayCreate;
-  }
-  function rangesOverlap(left, right) {
-    return left.from < right.to && left.to > right.from;
-  }
-  function physicalLineNeighborhood(doc2, from, to) {
-    const startLine = doc2.lineAt(Math.max(0, Math.min(from, doc2.length)));
-    const endLine = doc2.lineAt(Math.max(0, Math.min(to, doc2.length)));
-    return {
-      from: doc2.line(Math.max(1, startLine.number - 1)).from,
-      to: doc2.line(Math.min(doc2.lines, endLine.number + 1)).to
-    };
-  }
-  function mappedRange(range, transaction) {
-    return {
-      from: transaction.changes.mapPos(range.from),
-      to: transaction.changes.mapPos(range.to)
-    };
-  }
-  function mappedBlock(block, transaction) {
-    return {
-      ...block,
-      ...mappedRange(block, transaction),
-      parent: block.parent ? {
-        kind: block.parent.kind,
-        ...mappedRange(block.parent, transaction)
-      } : null,
-      markerRanges: block.markerRanges.map((range) => mappedRange(range, transaction)),
-      taskMarkerRange: block.taskMarkerRange ? mappedRange(block.taskMarkerRange, transaction) : null
-    };
-  }
-  function mappedInline(inline, transaction) {
-    return {
-      ...inline,
-      ...mappedRange(inline, transaction),
-      markerRanges: inline.markerRanges.map((range) => mappedRange(range, transaction)),
-      visibleRanges: inline.visibleRanges.map((range) => mappedRange(range, transaction)),
-      targetRange: inline.targetRange ? mappedRange(inline.targetRange, transaction) : null,
-      aliasRange: inline.aliasRange ? mappedRange(inline.aliasRange, transaction) : null
-    };
-  }
-  function rangeSignature(range) {
-    return range ? `${range.from}:${range.to}` : "-";
-  }
-  function projectionTopologySignature(projection) {
-    const blocks = projection.blocks.map((block) => [
-      "b",
-      block.kind,
-      block.nodeName,
-      block.from,
-      block.to,
-      block.depth,
-      block.parent?.kind ?? "-",
-      rangeSignature(block.parent),
-      block.headingLevel ?? "-",
-      block.listDepth ?? "-",
-      block.markerRanges.map(rangeSignature).join(","),
-      rangeSignature(block.taskMarkerRange)
-    ].join("|"));
-    const inlines = projection.inlines.map((inline) => [
-      "i",
-      inline.kind,
-      inline.nodeName,
-      inline.from,
-      inline.to,
-      inline.markerRanges.map(rangeSignature).join(","),
-      inline.visibleRanges.map(rangeSignature).join(","),
-      rangeSignature(inline.targetRange),
-      rangeSignature(inline.aliasRange)
-    ].join("|"));
-    const literals2 = projection.literals.map((literal2) => ["l", literal2.nodeName, literal2.from, literal2.to].join("|"));
-    return [...blocks, ...inlines, ...literals2].sort().join("\n");
-  }
-  function transactionCanMapProjectionTopology(transaction, marker, mutationSensitiveRanges, previousSyntax) {
-    if (!transaction.docChanged) return false;
-    const changes = [];
-    transaction.changes.iterChanges((fromA2, toA2, fromB2, toB2, inserted) => {
-      changes.push({ fromA: fromA2, toA: toA2, fromB: fromB2, toB: toB2, insert: inserted.toString() });
-    });
-    if (changes.length !== 1) return false;
-    const { fromA, toA, fromB, toB, insert: insert2 } = changes[0];
-    marker.lastIndex = 0;
-    if (insert2.length > 8192 || /[\r\n]/.test(insert2) || marker.test(insert2) || projectionBoundaryTouches(mutationSensitiveRanges, fromA)) {
-      return false;
-    }
-    if (toA > fromA) {
-      const line = transaction.startState.doc.lineAt(fromA);
-      const touchesDeletion = (range) => range.from <= toA && range.to >= fromA;
-      if (insert2.length !== 0 || toA - fromA > 8192 || fromA <= line.from || toA > line.to || !/^[\p{L}\p{N}\p{M} ]+$/u.test(transaction.startState.doc.sliceString(fromA, toA)) || mutationSensitiveRanges.some(touchesDeletion) || previousSyntax.inlines.some(touchesDeletion) || previousSyntax.blocks.some((block) => block.markerRanges.some(touchesDeletion))) {
-        return false;
-      }
-    }
-    const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
-    const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
-    const previousLocal = {
-      ...previousSyntax,
-      blocks: previousSyntax.blocks.filter((block) => rangesOverlap(block, oldNeighborhood)).map((block) => mappedBlock(block, transaction)),
-      inlines: previousSyntax.inlines.filter((inline) => rangesOverlap(inline, oldNeighborhood)).map((inline) => mappedInline(inline, transaction)),
-      literals: previousSyntax.literals.filter((literal2) => rangesOverlap(literal2, oldNeighborhood)).map((literal2) => ({ ...literal2, ...mappedRange(literal2, transaction) }))
-    };
-    const nextLocal = semanticProjectionRanges(
-      transaction.state,
-      [newNeighborhood],
-      0
-    );
-    return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
-  }
-
-  // accessibility.ts
-  function unsupportedFilePasteMessage() {
-    return localized("File and image paste is not supported in Editor 1.0.");
-  }
-  function editorAccessibilityAttributes(mode) {
-    return {
-      "aria-label": mode === "livePreview" ? localized("Markdown editor, Edit mode") : localized("Markdown source editor"),
-      role: "textbox",
-      "aria-multiline": "true",
-      spellcheck: "true",
-      autocapitalize: "sentences"
-    };
-  }
-  function activeConstructAccessibilityDescription(context) {
-    const heading2 = context.activeBlockConstructs.find((construct) => /^ATXHeading[1-6]$/.test(construct));
-    if (heading2) return localizedTemplate("Heading level {level}", { level: heading2.at(-1) ?? "" });
-    if (context.activeInlineConstructs.includes("Link")) return localized("Link");
-    if (context.activeBlockConstructs.includes("Callout")) return localized("Callout");
-    if (context.activeBlockConstructs.includes("Blockquote")) return localized("Quotation");
-    if (context.activeBlockConstructs.includes("Table")) return localized("Table");
-    if (context.activeBlockConstructs.includes("BulletList")) return localized("Bulleted list");
-    if (context.activeBlockConstructs.includes("OrderedList")) return localized("Numbered list");
-    if (context.activeInlineConstructs.includes("StrongEmphasis")) return localized("Bold text");
-    if (context.activeInlineConstructs.includes("Emphasis")) return localized("Emphasized text");
-    if (context.activeInlineConstructs.includes("InlineCode")) return localized("Inline code");
-    return void 0;
-  }
-  function updateEditorAccessibility(content2, mode, context) {
-    const attributes = editorAccessibilityAttributes(mode);
-    for (const [name2, value] of Object.entries(attributes)) {
-      if (content2.getAttribute(name2) !== value) content2.setAttribute(name2, value);
-    }
-    const description = mode === "livePreview" && context ? activeConstructAccessibilityDescription(context) : mode === "source" ? localized("Exact Markdown and YAML source") : void 0;
-    if (description) {
-      if (content2.getAttribute("aria-description") !== description) {
-        content2.setAttribute("aria-description", description);
-      }
-    } else if (content2.hasAttribute("aria-description")) {
-      content2.removeAttribute("aria-description");
-    }
-  }
-  var announcementTimers = /* @__PURE__ */ new WeakMap();
-  function cancelEditorAnnouncement(content2) {
-    window.clearTimeout(announcementTimers.get(content2));
-    announcementTimers.delete(content2);
-  }
-  function announceEditorMessage(content2, message) {
-    cancelEditorAnnouncement(content2);
-    const previous = content2.getAttribute("aria-description");
-    content2.setAttribute("aria-description", message);
-    announcementTimers.set(content2, window.setTimeout(() => {
-      announcementTimers.delete(content2);
-      if (content2.getAttribute("aria-description") !== message) return;
-      if (previous) content2.setAttribute("aria-description", previous);
-      else content2.removeAttribute("aria-description");
-    }, 4e3));
-  }
-
-  // composition.ts
-  var policies = {
-    initialize: "reject",
-    replacePassage: "reject",
-    insertReference: "reject",
-    pasteClipboard: "reject",
-    selectAll: "reject",
-    queryText: "defer",
-    querySelection: "defer",
-    captureRecovery: "defer",
-    markClean: "defer",
-    setMode: "defer",
-    setDocumentTitle: "defer",
-    setWritingContinuation: "allow",
-    setWritingIndexContext: "allow",
-    setPresentationCSS: "defer",
-    setUserCSS: "defer",
-    setLinkPreviews: "defer",
-    setImageResources: "defer",
-    goToLine: "defer",
-    revealSourceRange: "defer",
-    restoreRecovery: "defer",
-    acknowledgeCommittedSnapshot: "defer",
-    command: "defer",
-    documentFind: "defer",
-    clearDocumentFind: "defer",
-    showPreview: "defer",
-    showPreviewAt: "defer",
-    measureVisibleProjection: "defer",
-    setScrollFraction: "defer",
-    setScrollAnchor: "defer",
-    focus: "defer",
-    focusTitle: "defer",
-    blur: "defer",
-    queryContext: "allow",
-    queryScrollAnchor: "allow",
-    queryPerformance: "allow",
-    announceStatus: "allow",
-    suspendForDetachment: "defer",
-    resumeAfterDetachment: "allow"
-  };
-  function compositionRequestPolicy(operationType) {
-    return policies[operationType];
-  }
-  var CompositionRequestGate = class {
-    constructor(expired) {
-      this.expired = expired;
-    }
-    expired;
-    requests = /* @__PURE__ */ new Map();
-    owners = /* @__PURE__ */ new Map();
-    sequence = 0;
-    get active() {
-      return this.owners.size > 0;
-    }
-    begin(owner = "editor") {
-      this.owners.set(owner, ++this.sequence);
-    }
-    revision(owner) {
-      return this.owners.get(owner);
-    }
-    enqueue(request) {
-      if (request.expiresAt <= Date.now()) return Promise.resolve(this.expired(request));
-      return new Promise((resolve) => {
-        const pending = { request, resolve };
-        const expire = () => {
-          if (request.expiresAt > Date.now()) {
-            this.requests.set(pending, setTimeout(expire, Math.min(2147483647, request.expiresAt - Date.now())));
-            return;
-          }
-          this.requests.delete(pending);
-          resolve(this.expired(request));
-        };
-        this.requests.set(pending, setTimeout(expire, Math.min(2147483647, request.expiresAt - Date.now())));
-      });
-    }
-    finish(owner = "editor", revision = this.owners.get(owner)) {
-      if (revision !== this.owners.get(owner)) return [];
-      this.owners.delete(owner);
-      if (this.active) return [];
-      const pending = [...this.requests.keys()];
-      for (const timer of this.requests.values()) clearTimeout(timer);
-      this.requests.clear();
-      return pending.filter((item) => {
-        if (item.request.expiresAt > Date.now()) return true;
-        item.resolve(this.expired(item.request));
-        return false;
-      });
-    }
-    rejectAll(result) {
-      this.owners.clear();
-      for (const [pending, timer] of this.requests) {
-        clearTimeout(timer);
-        pending.resolve(result(pending.request));
-      }
-      this.requests.clear();
-    }
-  };
-
-  // bootstrap.ts
-  function createMarkdownDocumentState(source, extensions) {
-    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-    return EditorState.create({ doc: normalizedDocumentText(source), extensions }).update({
-      effects: setExactSource.of(source),
-      annotations: Transaction.addToHistory.of(false)
-    }).state;
-  }
-  function createMarkdownEditor(parent, extensions) {
-    return new EditorView({ parent, state: EditorState.create({ doc: "", extensions }) });
-  }
-
-  // mermaid-runtime-loader.ts
-  function createMermaidRuntimeLoader(host, requestRuntime) {
-    let pending = null;
-    return {
-      ensure() {
-        if (host.scholiumMermaid?.version === 2) return Promise.resolve(host.scholiumMermaid);
-        if (pending) return pending.promise;
-        let resolve;
-        const promise = new Promise((complete2) => {
-          resolve = complete2;
-        });
-        let settled = false;
-        const complete = (runtime) => {
-          if (settled) return;
-          settled = true;
-          host.clearTimeout(timeout);
-          if (host.scholiumMermaidRuntimeDidLoad === finish) host.scholiumMermaidRuntimeDidLoad = void 0;
-          if (pending === load) pending = null;
-          resolve(runtime);
-        };
-        const finish = () => complete(host.scholiumMermaid?.version === 2 ? host.scholiumMermaid : null);
-        const timeout = host.setTimeout(finish, 8e3);
-        const load = { promise, cancel: () => complete(null) };
-        pending = load;
-        host.scholiumMermaidRuntimeDidLoad = finish;
-        requestRuntime();
-        return promise;
-      },
-      resetDocument() {
-        pending?.cancel();
-      }
-    };
-  }
-
-  // rendered-interface-localization.ts
-  function localizeRenderedInterface(root, localize = (key, replacements = {}) => localizedTemplate(key, replacements)) {
-    root.querySelectorAll(".scholium-callout").forEach((callout) => {
-      const identifier4 = Object.keys(calloutLocalizationKeys).find((role2) => callout.classList.contains(`scholium-callout-${role2}`));
-      if (!identifier4) return;
-      const [labelKey, meaningKey] = calloutLocalizationKeys[identifier4];
-      const label = localize(labelKey);
-      const meaning = localize(meaningKey);
-      const role = callout.querySelector(".scholium-callout-role");
-      if (role?.closest(".scholium-callout") === callout) {
-        if (role.textContent !== label) role.textContent = label;
-        if (role.title !== meaning) role.title = meaning;
-        role.setAttribute("aria-label", localize("{label}. {meaning}", { label, meaning }));
-      }
-      const generatedTitle = callout.querySelector(".scholium-callout-default-title");
-      if (generatedTitle?.closest(".scholium-callout") === callout && generatedTitle.textContent !== label) {
-        generatedTitle.textContent = label;
-      }
-    });
-    root.querySelectorAll(".footnote-reference[data-footnote]").forEach((reference) => {
-      const ordinal = reference.dataset.footnote;
-      if (ordinal) reference.setAttribute("aria-label", localize("Footnote {ordinal}", { ordinal }));
-    });
-    root.querySelectorAll(".footnote-return[data-footnote]").forEach((reference) => {
-      const ordinal = reference.dataset.footnote;
-      if (ordinal) reference.setAttribute("aria-label", localize("Return to footnote reference {ordinal}", { ordinal }));
-    });
-    root.querySelectorAll(".footnotes").forEach((section) => {
-      section.setAttribute("aria-label", localize("Footnotes"));
-    });
-    root.querySelectorAll(".scholium-task-checkbox").forEach((checkbox) => {
-      checkbox.setAttribute("aria-label", localize(checkbox.checked ? "Completed task" : "Incomplete task"));
-    });
-    root.querySelectorAll(".scholium-table").forEach((table) => {
-      table.setAttribute("aria-label", localize("Markdown table"));
-    });
-    root.querySelectorAll("button[data-link-annotation]").forEach((button) => {
-      const title = button.dataset.linkAnnotationTarget?.trim() || button.closest(".scholium-annotated-link")?.querySelector(".wiki-link")?.textContent?.trim() || localize("linked note");
-      button.dataset.linkAnnotationTarget = title;
-      const expanded = button.getAttribute("aria-expanded") === "true";
-      button.setAttribute("aria-label", localize(
-        expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
-        { title }
-      ));
-    });
-  }
-
-  // preview-popover.ts
-  function normalizedTitle(value) {
-    return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
-  }
-  function sanitizePreviewDocument(body) {
-    body.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
-    body.querySelectorAll("*").forEach((node) => {
-      for (const attribute of Array.from(node.attributes)) {
-        if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-        if (attribute.name.toLowerCase().startsWith("data-source-")) {
-          node.removeAttribute(attribute.name);
-        }
-      }
-      node.removeAttribute("href");
-      node.removeAttribute("contenteditable");
-      node.removeAttribute("id");
-      node.removeAttribute("for");
-      node.removeAttribute("aria-describedby");
-      node.removeAttribute("aria-labelledby");
-      node.removeAttribute("aria-owns");
-      node.tabIndex = -1;
-    });
-  }
-  function renderPreviewMathNodes(root) {
-    const ownerDocument = root.nodeType === 9 ? root : root.ownerDocument;
-    const runtime = ownerDocument.defaultView?.scholiumMath;
-    if (runtime?.version !== 1) return;
-    root.querySelectorAll(
-      ".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)"
-    ).forEach((element) => {
-      try {
-        const encodedSource = element.dataset.mathSource;
-        const kind = element.dataset.mathKind;
-        if (!encodedSource || kind !== "inline" && kind !== "display") return;
-        const source = new TextDecoder().decode(
-          Uint8Array.from(atob(encodedSource), (character) => character.charCodeAt(0))
-        );
-        const result = runtime.render({ source, kind });
-        if (!result.ok) {
-          element.classList.add("scholium-math-error");
-          element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
-          return;
-        }
-        const fallback = element.querySelector(".scholium-math-source");
-        const rendered = ownerDocument.createElement("span");
-        rendered.className = "scholium-math-output";
-        rendered.innerHTML = result.html;
-        fallback?.before(rendered);
-        element.classList.add("scholium-math-rendered");
-      } catch (_) {
-        element.classList.add("scholium-math-error");
-      }
-    });
-  }
-  function populatePreviewDocument(body, preview) {
-    body.innerHTML = preview.htmlBody;
-    sanitizePreviewDocument(body);
-    localizeRenderedInterface(body);
-    renderPreviewMathNodes(body);
-    const firstHeading = body.querySelector(":scope > h1:first-child");
-    if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
-      firstHeading.remove();
-    }
-  }
-  function createPreviewPopoverController(options) {
-    let nativeID = 0;
-    let presentationRevision = 0;
-    let nativeHovered = false;
-    let editor2 = null;
-    let root = null;
-    let title = null;
-    let metadata = null;
-    let body = null;
-    let showTimer;
-    let hideTimer;
-    let pendingAnchor = null;
-    let hoveredLink = null;
-    let armedLink = null;
-    let activeAnnotationButton = null;
-    let pinnedAnnotationButton = null;
-    let activeFootnoteButton = null;
-    let pinnedFootnoteButton = null;
-    let activeKind = null;
-    let modifierPressed = false;
-    function annotationTarget(button) {
-      return button.dataset.linkAnnotationTarget?.trim() || localized("linked note");
-    }
-    function setAnnotationExpanded(button, expanded) {
-      button.setAttribute("aria-expanded", expanded ? "true" : "false");
-      button.setAttribute(
-        "aria-label",
-        localizedTemplate(
-          expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
-          { title: annotationTarget(button) }
-        )
-      );
-    }
-    function setFootnoteExpanded(button, expanded) {
-      button.setAttribute("aria-expanded", expanded ? "true" : "false");
-    }
-    function hasPinnedPreview() {
-      return pinnedAnnotationButton !== null || pinnedFootnoteButton !== null;
-    }
-    function setArmedLink(next) {
-      if (armedLink === next) return;
-      armedLink?.classList.remove("scholium-link-preview-armed");
-      armedLink = next;
-      armedLink?.classList.add("scholium-link-preview-armed");
-    }
-    function hide(retainHoveredLink = false) {
-      presentationRevision += 1;
-      nativeHovered = false;
-      options.nativeFloating.hide(nativeID);
-      window.clearTimeout(showTimer);
-      window.clearTimeout(hideTimer);
-      showTimer = void 0;
-      hideTimer = void 0;
-      pendingAnchor = null;
-      if (!retainHoveredLink) hoveredLink = null;
-      modifierPressed = false;
-      setArmedLink(null);
-      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
-      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
-      activeAnnotationButton = null;
-      pinnedAnnotationButton = null;
-      activeFootnoteButton = null;
-      pinnedFootnoteButton = null;
-      activeKind = null;
-      if (root) {
-        root.hidden = true;
-        root.style.visibility = "";
-      }
-      if (title) title.textContent = "";
-      if (metadata) metadata.textContent = "";
-      body?.replaceChildren();
-    }
-    function cancelHide() {
-      window.clearTimeout(hideTimer);
-      hideTimer = void 0;
-    }
-    function scheduleHide() {
-      if (hasPinnedPreview() || nativeHovered || options.holdOpenForPerformancePreview()) return;
-      window.clearTimeout(hideTimer);
-      hideTimer = window.setTimeout(hide, 180);
-    }
-    function position(anchor, startedAt) {
-      if (!editor2 || !root) return;
-      if (editor2.composing) {
-        hide();
-        return;
-      }
-      root.hidden = false;
-      nativeID = options.nativeFloating.show(previewSurface(anchor, root), {
-        dismiss: hide,
-        enter: () => {
-          nativeHovered = true;
-          cancelHide();
-        },
-        leave: () => {
-          nativeHovered = false;
-          scheduleHide();
-        }
-      });
-      if (startedAt !== void 0) {
-        const activeEditor = editor2;
-        const revision = presentationRevision;
-        scheduleAfterNextPaint(() => {
-          if (revision !== presentationRevision) return;
-          recordEditorMetric("cached-preview", startedAt, { documentLength: activeEditor.state.doc.length });
-        });
-      }
-    }
-    function showLinkPreview(preview, anchor, startedAt) {
-      if (!editor2 || !root || !title || !metadata || !body) return;
-      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
-      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
-      activeAnnotationButton = null;
-      activeFootnoteButton = null;
-      activeKind = "link";
-      title.textContent = preview.title;
-      metadata.textContent = preview.fragment ?? "";
-      metadata.hidden = !preview.fragment;
-      populatePreviewDocument(body, preview);
-      recordEditorMetric("cached-preview-work", startedAt, {
-        documentLength: editor2.state.doc.length
-      });
-      position(anchor, startedAt);
-    }
-    function annotationTemplate(button) {
-      const owner = button.closest(
-        ".scholium-link-annotation-disclosure, .scholium-link-annotation-marker"
-      );
-      return owner?.querySelector(":scope > template") ?? null;
-    }
-    function showAnnotation(button) {
-      if (!root || !title || !metadata || !body) return false;
-      const template = annotationTemplate(button);
-      if (!template) return false;
-      if (activeAnnotationButton && activeAnnotationButton !== button) {
-        setAnnotationExpanded(activeAnnotationButton, false);
-      }
-      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
-      activeAnnotationButton = button;
-      activeFootnoteButton = null;
-      activeKind = "annotation";
-      setAnnotationExpanded(button, true);
-      title.textContent = annotationTarget(button);
-      metadata.textContent = localized("Link Annotation");
-      metadata.hidden = false;
-      body.replaceChildren(template.content.cloneNode(true));
-      sanitizePreviewDocument(body);
-      position(button.getBoundingClientRect());
-      return true;
-    }
-    function footnoteReferenceFor(button) {
-      const identifier4 = button.dataset.footnoteIdentifier;
-      const occurrence = Number(button.dataset.footnoteOccurrence);
-      if (!identifier4 || !Number.isInteger(occurrence)) return void 0;
-      return options.footnotes().references.find((reference) => reference.identifier === identifier4 && reference.occurrence === occurrence);
-    }
-    function showFootnoteReference(reference, anchor, button = null) {
-      if (!root || !title || !metadata || !body) return false;
-      const definition = options.footnotes().definitions.find((candidate) => candidate.identifier === reference.identifier);
-      const content2 = definition?.content.trim().slice(0, 1600) ?? "";
-      if (!content2) return false;
-      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
-      if (activeFootnoteButton && activeFootnoteButton !== button) {
-        setFootnoteExpanded(activeFootnoteButton, false);
-      }
-      activeAnnotationButton = null;
-      activeFootnoteButton = button;
-      activeKind = "footnote";
-      if (button) setFootnoteExpanded(button, true);
-      title.textContent = localizedTemplate("Footnote {ordinal}", { ordinal: reference.ordinal });
-      metadata.textContent = "";
-      metadata.hidden = true;
-      body.replaceChildren();
-      options.renderFootnoteContent(content2, body);
-      sanitizePreviewDocument(body);
-      position(anchor);
-      return true;
-    }
-    function showFootnote(button) {
-      const reference = footnoteReferenceFor(button);
-      return reference ? showFootnoteReference(reference, button.getBoundingClientRect(), button) : false;
-    }
-    function showAtSelection() {
-      const startedAt = performance.now();
-      if (!editor2 || editor2.composing) return false;
-      const head = editor2.state.selection.main.head;
-      const coords = editor2.coordsAtPos(head);
-      if (!coords) return false;
-      const footnote = options.footnotes().references.find((candidate) => head >= candidate.from && head < candidate.to);
-      if (footnote) {
-        hide();
-        return showFootnoteReference(footnote, coords);
-      }
-      const preview = options.previews().find((candidate) => head >= candidate.from && head < candidate.to);
-      if (preview) {
-        hide();
-        showLinkPreview(preview, coords, startedAt);
-        return true;
-      }
-      announceEditorMessage(
-        editor2.contentDOM,
-        localized("No preview is available at the insertion point.")
-      );
-      return false;
-    }
-    function showAtPoint(x, y) {
-      const startedAt = performance.now();
-      if (!editor2 || editor2.composing) return false;
-      const anchor = linkAnchorAt(document.elementFromPoint(x, y));
-      const footnote = footnoteButtonAt(document.elementFromPoint(x, y));
-      if (footnote) {
-        hide();
-        return showFootnote(footnote);
-      }
-      if (!anchor) return showAtSelection();
-      const preview = previewForAnchor(anchor);
-      if (preview) {
-        hide();
-        showLinkPreview(preview, anchor.getBoundingClientRect(), startedAt);
-        return true;
-      }
-      return showAtSelection();
-    }
-    function annotationButtonAt(target) {
-      return target instanceof Element ? target.closest(".scholium-link-annotation-button") : null;
-    }
-    function footnoteButtonAt(target) {
-      return target instanceof Element ? target.closest(".cm-live-footnote-reference-widget .footnote-reference") : null;
-    }
-    function linkAnchorAt(target) {
-      return target instanceof Element ? target.closest(
-        "[data-link-preview-index], [data-scholium-link-target][data-scholium-source-from][data-scholium-source-to]"
-      ) : null;
-    }
-    function previewForAnchor(anchor) {
-      const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-      if (Number.isInteger(previewIndex) && anchor.dataset.linkPreviewIndex !== void 0) {
-        return options.previews()[previewIndex];
-      }
-      const from = Number(anchor.dataset.scholiumSourceFrom);
-      const to = Number(anchor.dataset.scholiumSourceTo);
-      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || to <= from) return void 0;
-      return options.previews().find((preview) => preview.from === from && preview.to === to);
-    }
-    function scheduleShow(anchor, kind) {
-      cancelHide();
-      if (anchor === pendingAnchor && kind === activeKind) return;
-      window.clearTimeout(showTimer);
-      showTimer = void 0;
-      pendingAnchor = anchor;
-      showTimer = window.setTimeout(() => {
-        if (pendingAnchor !== anchor) return;
-        if (kind === "annotation") {
-          showAnnotation(anchor);
-          return;
-        }
-        if (kind === "footnote") {
-          showFootnote(anchor);
-          return;
-        }
-        const preview = previewForAnchor(anchor);
-        if (preview) {
-          showLinkPreview(preview, anchor.getBoundingClientRect(), performance.now());
-        }
-      }, 300);
-    }
-    const handlePointerMove = (event) => {
-      if (root && event.target instanceof Node && root.contains(event.target)) {
-        cancelHide();
-        return;
-      }
-      const annotation = annotationButtonAt(event.target);
-      const footnote = footnoteButtonAt(event.target);
-      const link = linkAnchorAt(event.target);
-      hoveredLink = link;
-      if (hasPinnedPreview() && annotation !== pinnedAnnotationButton && footnote !== pinnedFootnoteButton) {
-        setArmedLink(null);
-        return;
-      }
-      const modifierActive = event.metaKey || event.ctrlKey || modifierPressed;
-      setArmedLink(modifierActive ? link : null);
-      const anchor = annotation ?? footnote ?? (modifierActive ? link : null);
-      if (!anchor) {
-        if (pendingAnchor || root && !root.hidden) scheduleHide();
-        return;
-      }
-      scheduleShow(anchor, annotation ? "annotation" : footnote ? "footnote" : "link");
-    };
-    const handlePreviewPointerEnter = () => cancelHide();
-    const handlePreviewPointerLeave = () => scheduleHide();
-    const handleKeyUp = (event) => {
-      if (event.key !== "Meta" && event.key !== "Control") return;
-      modifierPressed = false;
-      setArmedLink(null);
-      if (activeKind === "link") hide(true);
-    };
-    const handleCompositionStart = () => hide();
-    const handleKeyDown = (event) => {
-      if (event.isComposing || event.keyCode === 229) return;
-      if (event.key === "Escape" && root && !root.hidden) {
-        hide();
-        return;
-      }
-      if (event.key !== "Meta" && event.key !== "Control") return;
-      modifierPressed = true;
-      if (!hoveredLink || hasPinnedPreview()) return;
-      setArmedLink(hoveredLink);
-      scheduleShow(hoveredLink, "link");
-    };
-    const handleFocusIn = (event) => {
-      const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
-      if (!button) return;
-      cancelHide();
-      window.clearTimeout(showTimer);
-      pendingAnchor = button;
-      if (button.matches(".footnote-reference")) showFootnote(button);
-      else showAnnotation(button);
-    };
-    const handleFocusOut = (event) => {
-      const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
-      if (!button) return;
-      if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
-      scheduleHide();
-    };
-    const handleClick = (event) => {
-      const button = annotationButtonAt(event.target);
-      if (button) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (pinnedAnnotationButton === button) {
-          hide();
-          return;
-        }
-        pinnedAnnotationButton = button;
-        window.clearTimeout(showTimer);
-        pendingAnchor = button;
-        showAnnotation(button);
-        return;
-      }
-      const footnote = footnoteButtonAt(event.target);
-      if (footnote && event.detail === 0) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (pinnedFootnoteButton === footnote) {
-          hide();
-          return;
-        }
-        pinnedFootnoteButton = footnote;
-        window.clearTimeout(showTimer);
-        pendingAnchor = footnote;
-        showFootnote(footnote);
-        return;
-      }
-      if (hasPinnedPreview() && !(event.target instanceof Node && root?.contains(event.target))) hide();
-    };
-    const handleViewportExit = () => {
-      hoveredLink = null;
-      modifierPressed = false;
-      hide();
-    };
-    function mount(view) {
-      if (editor2) return;
-      editor2 = view;
-      root = document.createElement("aside");
-      root.id = "scholium-preview-popover";
-      root.className = "scholium-preview-popover";
-      root.dataset.scholiumProtected = "preview-popover";
-      root.setAttribute("role", "note");
-      root.setAttribute("aria-labelledby", "scholium-preview-title");
-      root.setAttribute("aria-live", "polite");
-      root.hidden = true;
-      title = document.createElement("h2");
-      title.id = "scholium-preview-title";
-      title.className = "scholium-preview-title";
-      metadata = document.createElement("p");
-      metadata.className = "scholium-preview-metadata";
-      metadata.hidden = true;
-      body = document.createElement("div");
-      body.className = "scholium-preview-body scholium-document";
-      body.setAttribute("role", "group");
-      body.setAttribute("aria-label", localized("Preview content"));
-      root.append(title, metadata, body);
-      root.addEventListener("pointerenter", handlePreviewPointerEnter);
-      root.addEventListener("pointerleave", handlePreviewPointerLeave);
-      document.addEventListener("pointermove", handlePointerMove, { passive: true });
-      document.addEventListener("focusin", handleFocusIn);
-      document.addEventListener("focusout", handleFocusOut);
-      document.addEventListener("click", handleClick);
-      document.addEventListener("keyup", handleKeyUp);
-      document.addEventListener("keydown", handleKeyDown);
-      document.addEventListener("compositionstart", handleCompositionStart);
-      view.scrollDOM.addEventListener("scroll", handleViewportExit, { passive: true });
-      window.addEventListener("resize", handleViewportExit);
-    }
-    function unmount(view) {
-      if (editor2 !== view) return;
-      hide();
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("focusin", handleFocusIn);
-      document.removeEventListener("focusout", handleFocusOut);
-      document.removeEventListener("click", handleClick);
-      document.removeEventListener("keyup", handleKeyUp);
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("compositionstart", handleCompositionStart);
-      view.scrollDOM.removeEventListener("scroll", handleViewportExit);
-      root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
-      root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
-      window.removeEventListener("resize", handleViewportExit);
-      root?.remove();
-      root = null;
-      title = null;
-      metadata = null;
-      body = null;
-      editor2 = null;
-      hoveredLink = null;
-      modifierPressed = false;
-    }
-    const extension = ViewPlugin.define((view) => {
-      mount(view);
-      return {
-        update(update) {
-          if (update.docChanged || update.selectionSet || update.viewportChanged) hide();
-        },
-        destroy: () => unmount(view)
-      };
-    });
-    return { extension, hide, showAtSelection, showAtPoint };
-  }
-
   // math.ts
   function scanMath(source, dialect) {
     if (dialect.inlineDelimiter !== "$" || dialect.displayDelimiter !== "$$") return [];
@@ -33183,7 +29572,7 @@ ${fence}
       while (cursor < source.length && source.charCodeAt(cursor) === 36) cursor += 1;
       const delimiterLength = cursor - openingStart;
       const opening = { from: openingStart, to: cursor };
-      if (isEscaped3(source, openingStart) || intersects(opening, inlineExcluded)) continue;
+      if (isEscaped2(source, openingStart) || intersects(opening, inlineExcluded)) continue;
       let closingStart = -1;
       for (let search2 = cursor; search2 < source.length; ) {
         if (source.charCodeAt(search2) !== 36) {
@@ -33192,7 +29581,7 @@ ${fence}
         }
         const runStart = search2;
         while (search2 < source.length && source.charCodeAt(search2) === 36) search2 += 1;
-        if (search2 - runStart === delimiterLength && !isEscaped3(source, runStart)) {
+        if (search2 - runStart === delimiterLength && !isEscaped2(source, runStart)) {
           closingStart = runStart;
           break;
         }
@@ -33222,7 +29611,7 @@ ${fence}
       position += 1;
       indentation2 += 1;
     }
-    if (indentation2 > 3 || position >= line.contentTo || source.charCodeAt(position) !== 36 || isEscaped3(source, position)) {
+    if (indentation2 > 3 || position >= line.contentTo || source.charCodeAt(position) !== 36 || isEscaped2(source, position)) {
       return null;
     }
     const start = position;
@@ -33315,7 +29704,7 @@ ${fence}
       const from = cursor;
       while (cursor < source.length && source.charCodeAt(cursor) === 96) cursor += 1;
       const length = cursor - from;
-      if (isEscaped3(source, from)) continue;
+      if (isEscaped2(source, from)) continue;
       for (let search2 = cursor; search2 < source.length; ) {
         if (source.charCodeAt(search2) !== 96) {
           search2 += 1;
@@ -33335,10 +29724,179 @@ ${fence}
   function intersects(range, candidates) {
     return candidates.some((candidate) => candidate.from < range.to && range.from < candidate.to);
   }
-  function isEscaped3(source, position) {
+  function isEscaped2(source, position) {
     let count2 = 0;
     for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) count2 += 1;
     return count2 % 2 === 1;
+  }
+
+  // tables.ts
+  var tableCommands = /* @__PURE__ */ new Set([
+    "tableInsertRowBefore",
+    "tableInsertRowAfter",
+    "tableDeleteRow",
+    "tableInsertColumnBefore",
+    "tableInsertColumnAfter",
+    "tableDeleteColumn",
+    "tableAlignLeft",
+    "tableAlignCenter",
+    "tableAlignRight"
+  ]);
+  function tableDocument(source) {
+    return typeof source === "string" ? Text.of(source.split("\n")) : source;
+  }
+  function unescapedPipes(line) {
+    const positions = [];
+    for (let index = 0; index < line.length; index += 1) {
+      if (line[index] !== "|") continue;
+      let slashCount = 0;
+      for (let cursor = index - 1; cursor >= 0 && line[cursor] === "\\"; cursor -= 1) slashCount += 1;
+      if (slashCount % 2 === 0) positions.push(index);
+    }
+    return positions;
+  }
+  function parseRow2(source, from, to) {
+    const line = source.sliceString(from, to);
+    const pipes = unescapedPipes(line);
+    if (pipes.length === 0) return null;
+    const firstContent = line.search(/\S/);
+    const lastContent = line.search(/\s*$/) - 1;
+    const hasLeading = firstContent >= 0 && pipes[0] === firstContent;
+    const hasTrailing = lastContent >= 0 && pipes[pipes.length - 1] === lastContent;
+    const boundaries = [hasLeading ? pipes[0] : -1, ...pipes.slice(hasLeading ? 1 : 0, hasTrailing ? -1 : void 0), hasTrailing ? pipes[pipes.length - 1] : line.length];
+    const cells = [];
+    for (let index = 0; index < boundaries.length - 1; index += 1) {
+      const rawFrom = boundaries[index] + 1;
+      const rawTo = boundaries[index + 1];
+      if (rawTo < rawFrom) return null;
+      const raw = line.slice(rawFrom, rawTo);
+      const leading = raw.match(/^\s*/)?.[0].length ?? 0;
+      const trailing = raw.match(/\s*$/)?.[0].length ?? 0;
+      cells.push({
+        from: from + rawFrom,
+        to: from + rawTo,
+        contentFrom: from + rawFrom + leading,
+        contentTo: from + Math.max(rawFrom + leading, rawTo - trailing)
+      });
+    }
+    return cells.length >= 2 ? { lineFrom: from, lineTo: to, cells } : null;
+  }
+  function isSeparatorCell(source, cell) {
+    return /^:?-{3,}:?$/.test(source.sliceString(cell.contentFrom, cell.contentTo));
+  }
+  function rowNumber(table, rawRow) {
+    return rawRow > table.separatorIndex ? rawRow - 1 : rawRow;
+  }
+  function tableAt(source, offset) {
+    const document2 = tableDocument(source);
+    if (offset < 0 || offset > document2.length) return null;
+    const current = document2.lineAt(offset);
+    let firstLineNumber = current.number;
+    while (firstLineNumber > 1) {
+      const previous = document2.line(firstLineNumber - 1);
+      if (!parseRow2(document2, previous.from, previous.to)) break;
+      firstLineNumber -= 1;
+    }
+    const rows = [];
+    for (let number2 = firstLineNumber; number2 <= document2.lines; number2 += 1) {
+      const line = document2.line(number2);
+      const row = parseRow2(document2, line.from, line.to);
+      if (!row) break;
+      rows.push(row);
+    }
+    if (rows.length < 2) return null;
+    const columnCount = rows[0].cells.length;
+    if (rows.some((row) => row.cells.length !== columnCount)) return null;
+    const separators = rows.flatMap((row, index) => row.cells.every((cell) => isSeparatorCell(document2, cell)) ? [index] : []);
+    if (separators.length !== 1 || separators[0] !== 1) return null;
+    const rawRow = rows.findIndex((row) => offset >= row.lineFrom && offset <= row.lineTo);
+    if (rawRow < 0 || rawRow === separators[0]) return null;
+    const column = rows[rawRow].cells.findIndex((cell, index) => {
+      const next = rows[rawRow].cells[index + 1];
+      return offset >= cell.from && offset <= (next ? next.from - 1 : cell.to);
+    });
+    if (column < 0) return null;
+    const table = {
+      rows,
+      separatorIndex: separators[0],
+      position: { row: 0, column, rowCount: rows.length - 1, columnCount }
+    };
+    table.position.row = rowNumber(table, rawRow);
+    return table;
+  }
+  function blankRow(columnCount) {
+    return `|${Array.from({ length: columnCount }, () => "  ").join("|")}|`;
+  }
+  function transformTableCommand(source, selections, command2) {
+    if (!tableCommands.has(command2) || selections.length !== 1) return null;
+    const selection = selections[0];
+    const table = tableAt(source, selection.head);
+    if (!table) return null;
+    const rawRow = table.position.row === 0 ? 0 : table.position.row + 1;
+    const row = table.rows[rawRow];
+    const column = table.position.column;
+    if (command2 === "tableInsertRowBefore" || command2 === "tableInsertRowAfter") {
+      const before = command2 === "tableInsertRowBefore";
+      const point = before ? row.lineFrom : row.lineTo;
+      const insert2 = before ? `${blankRow(table.position.columnCount)}
+` : `
+${blankRow(table.position.columnCount)}`;
+      const cellOffset = insert2.indexOf("  ") + 1;
+      return { changes: [{ from: point, to: point, insert: insert2 }], selections: [{ anchor: point + cellOffset, head: point + cellOffset }], undoLabel: before ? "Insert Table Row Before" : "Insert Table Row After" };
+    }
+    if (command2 === "tableDeleteRow") {
+      if (table.position.row === 0 || table.position.rowCount <= 2) return null;
+      const hasFollowingNewline = row.lineTo < source.length;
+      const from = hasFollowingNewline ? row.lineFrom : Math.max(0, row.lineFrom - 1);
+      const to = hasFollowingNewline ? row.lineTo + 1 : row.lineTo;
+      return { changes: [{ from, to, insert: "" }], selections: [{ anchor: from, head: from }], undoLabel: "Delete Table Row" };
+    }
+    if (command2.startsWith("tableAlign")) {
+      const separator = table.rows[table.separatorIndex].cells[column];
+      const current = source.slice(separator.contentFrom, separator.contentTo);
+      const dashes = "-".repeat(Math.max(3, current.replaceAll(":", "").length));
+      const insert2 = command2 === "tableAlignLeft" ? `:${dashes}` : command2 === "tableAlignRight" ? `${dashes}:` : `:${dashes}:`;
+      return { changes: [{ from: separator.contentFrom, to: separator.contentTo, insert: insert2 }], selections, undoLabel: "Align Table Column" };
+    }
+    const inserting = command2 === "tableInsertColumnBefore" || command2 === "tableInsertColumnAfter";
+    if (!inserting && command2 !== "tableDeleteColumn") return null;
+    if (command2 === "tableDeleteColumn" && table.position.columnCount <= 2) return null;
+    const changes = [];
+    for (let index = 0; index < table.rows.length; index += 1) {
+      const target = table.rows[index].cells[column];
+      if (inserting) {
+        const before = command2 === "tableInsertColumnBefore";
+        const point = before ? target.from : target.to;
+        const content2 = index === table.separatorIndex ? "---" : " ";
+        changes.push({ from: point, to: point, insert: before ? `${content2} |` : `| ${content2}` });
+      } else {
+        const next = table.rows[index].cells[column + 1];
+        if (next) changes.push({ from: target.from, to: next.from, insert: "" });
+        else {
+          const previous = table.rows[index].cells[column - 1];
+          changes.push({ from: previous.to, to: target.to, insert: "" });
+        }
+      }
+    }
+    return { changes, selections, undoLabel: inserting ? "Insert Table Column" : "Delete Table Column" };
+  }
+  function tableTabAction(source, offset, backwards) {
+    const table = tableAt(source, offset);
+    if (!table) return null;
+    const editableCells = table.rows.flatMap((row, rawRow) => rawRow === table.separatorIndex ? [] : row.cells);
+    const currentIndex = editableCells.findIndex((cell) => offset >= cell.from && offset <= cell.to);
+    if (currentIndex < 0) return null;
+    const nextIndex = currentIndex + (backwards ? -1 : 1);
+    if (nextIndex >= 0 && nextIndex < editableCells.length) {
+      const next = editableCells[nextIndex];
+      return { changes: [], selections: [{ anchor: next.contentFrom, head: next.contentTo }], undoLabel: "Move Between Table Cells" };
+    }
+    if (backwards) return null;
+    const final = table.rows[table.rows.length - 1];
+    const insert2 = `
+${blankRow(table.position.columnCount)}`;
+    const firstCell = final.lineTo + insert2.indexOf("  ") + 1;
+    return { changes: [{ from: final.lineTo, to: final.lineTo, insert: insert2 }], selections: [{ anchor: firstCell, head: firstCell }], undoLabel: "Append Table Row" };
   }
 
   // table-presentation.ts
@@ -33389,6 +29947,254 @@ ${fence}
     );
     symbol.setAttribute("aria-hidden", "true");
     return symbol;
+  }
+
+  // localization.ts
+  var webInterfaceLocalizationKeys = [
+    "Tab",
+    "AI",
+    "Index",
+    "Accept AI continuation: {text} (Tab)",
+    "Accept index suggestion: {text} (Tab)",
+    "AI continuation timed out.",
+    "AI continuation is preparing.",
+    "AI continuation is retrieving related context.",
+    "AI continuation is composing.",
+    "AI continuation is not enabled.",
+    "AI continuation is not connected. Connect Codex in Agents & Chat.",
+    "AI continuation is not ready. Check Writing Assistance settings.",
+    "The selected AI continuation model is unavailable. Choose an available model in Writing Assistance.",
+    "AI continuation is still stopping. Try again in a moment.",
+    "AI continuation could not connect. Check Agents & Chat.",
+    "AI continuation timed out. Library completion remains available.",
+    "AI returned no usable continuation. Library completion remains available.",
+    "AI continuation could not be used for this writing context.",
+    "AI continuation was cancelled.",
+    "AI continuation could not be generated. Library completion remains available.",
+    "The edited Markdown document exceeds the supported editor size.",
+    "Finish editing the note title before switching documents.",
+    "The insertion position changed. Confirm the cursor again.",
+    "The reference is too large.",
+    "Insert Citation\u2026",
+    "Citation Operation",
+    "The citation operation could not finish. Your text was preserved.",
+    "Footnote and endnote citation styles are unavailable. Your text was preserved.",
+    "A citation operation is already active or this editor is unavailable.",
+    "Citation completion is stale.",
+    "Citation transaction is unavailable.",
+    "Citation source changed before acceptance.",
+    "Finish composition before adopting a suggestion.",
+    "The passage changed. Request a new suggestion.",
+    "The suggestion is too large.",
+    "Copy",
+    "Expand",
+    "YAML frontmatter",
+    "File and image paste is not supported in Editor 1.0.",
+    "Markdown editor, Edit mode",
+    "Markdown source editor",
+    "Note title",
+    "Empty Note",
+    "This note has no body content.",
+    "Heading level {level}",
+    "Link",
+    "Callout",
+    "Quotation",
+    "Table",
+    "Bulleted list",
+    "Numbered list",
+    "Bold text",
+    "Emphasized text",
+    "Inline code",
+    "Exact Markdown and YAML source",
+    "Task item",
+    "Completed task",
+    "Incomplete task",
+    "Show Link Annotation for {title}",
+    "Hide Link Annotation for {title}",
+    "Link Annotation",
+    "Callout: {title}",
+    "linked note",
+    "Markdown table",
+    "Embedded note {title}",
+    "Open embedded note {title}",
+    "Embedded note content for {title}",
+    "Embedded note",
+    "Mathematics could not be rendered. Source is shown.",
+    "Diagram rendering is unavailable. Mermaid source is shown.",
+    "This Mermaid diagram is unsupported or could not be rendered. Source is shown.",
+    "This Mermaid diagram could not be isolated safely. Source is shown.",
+    "Mermaid source: {source}",
+    "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
+    "This Mermaid diagram could not be rendered. Source is shown.",
+    "Footnote {ordinal}",
+    "Footnotes",
+    "Return to footnote reference {ordinal}",
+    "Edit mode unavailable",
+    "Close the YAML frontmatter in Source mode to restore the visual projection.",
+    "The editor could not preserve the exact source line endings.",
+    "The replacement would make the document too large.",
+    "The Markdown editor could not start.",
+    "The Review renderer stopped unexpectedly.",
+    "No preview is available at the insertion point.",
+    "Preview content",
+    "Paragraph",
+    "Bold",
+    "Italic",
+    "Strikethrough",
+    "Highlight",
+    "Annotated Wikilink",
+    "Inline Code",
+    "Code Block",
+    "Blockquote",
+    "Comment",
+    "Date",
+    "Inline Math",
+    "Display Math",
+    "Mermaid",
+    "Footnote",
+    "Divider",
+    "Orientation",
+    "Introduces the note's purpose, scope, and route.",
+    "Source",
+    "Records sources that anchor the note without implying that they support every claim.",
+    "Connections",
+    "Routes the reader to a curated set of neighboring knowledge objects.",
+    "Statement",
+    "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it.",
+    "Illustration",
+    "Presents a scenario, example, thought experiment, or test case used in reasoning.",
+    "Preserves source-specific wording with attribution.",
+    "Caution",
+    "Marks a limitation, unresolved dependency, source restriction, or interpretive warning.",
+    "Note",
+    "Preserves an unsupported callout without assigning a research role.",
+    "Selection actions",
+    "Return saves \xB7 Shift-Return adds a line \xB7 Escape cancels",
+    "Submit Comment for QA",
+    "Comment for line {start}",
+    "Comment for lines {start} through {end}",
+    "Open comment at line {start}",
+    "Open comment at lines {start} through {end}",
+    "Open {count} comments at line {start}",
+    "Open {count} comments at lines {start} through {end}",
+    "Could not save. Your Comment is still here.",
+    "This Comment is too long to save here.",
+    "Saving\u2026",
+    "{label}. {meaning}"
+  ];
+  var fallbackPayload = {
+    languageTag: "en",
+    strings: {}
+  };
+  var templatePlaceholder = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+  var interfaceLanguageIdentifier = /^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{1,8})*$/;
+  function placeholders(value) {
+    return [...value.matchAll(templatePlaceholder)].map((match) => match[1]).sort().join("\0");
+  }
+  function supportedInterfaceLanguage(identifier5) {
+    if (identifier5.length > 64 || !interfaceLanguageIdentifier.test(identifier5)) return "en";
+    const normalized2 = identifier5.replaceAll("_", "-").toLowerCase();
+    const parts = normalized2.split("-");
+    return parts[0] === "zh" && (parts.length === 1 || parts[1] === "hans" || parts[1] === "cn" || parts[1] === "sg") ? "zh-Hans" : "en";
+  }
+  function validatedInterfaceLocalization(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const candidate = value;
+    if (typeof candidate.languageTag !== "string" || candidate.languageTag.length > 64 || !interfaceLanguageIdentifier.test(candidate.languageTag) || !candidate.strings || typeof candidate.strings !== "object" || Array.isArray(candidate.strings)) return null;
+    const strings = {};
+    const languageTag = supportedInterfaceLanguage(candidate.languageTag);
+    if (languageTag === "en" && !/^en(?:[-_]|$)/i.test(candidate.languageTag)) {
+      return { ...fallbackPayload };
+    }
+    const entries = candidate.strings;
+    for (const key of webInterfaceLocalizationKeys) {
+      if (!Object.hasOwn(entries, key)) continue;
+      const translation = entries[key];
+      if (typeof translation === "string" && translation.trim().length > 0 && translation.length <= 4096 && placeholders(translation) === placeholders(key)) {
+        strings[key] = translation;
+      }
+    }
+    return { languageTag, strings };
+  }
+  function interfaceLocalizationFromBase64(encoded) {
+    if (!encoded || encoded.length > 2796204) return fallbackPayload;
+    try {
+      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+      if (bytes.byteLength > 2097152) return fallbackPayload;
+      return validatedInterfaceLocalization(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))) ?? fallbackPayload;
+    } catch {
+      return fallbackPayload;
+    }
+  }
+  function payloadFromDocument() {
+    if (typeof document === "undefined") return fallbackPayload;
+    const encoded = document.querySelector(
+      'meta[name="scholium-interface-localization"]'
+    )?.content;
+    return interfaceLocalizationFromBase64(encoded ?? "");
+  }
+  var activePayload = payloadFromDocument();
+  function localized(key) {
+    return localizedFrom(activePayload, key);
+  }
+  function localizedTemplate(key, replacements) {
+    return localizedTemplateFrom(activePayload, key, replacements);
+  }
+  function localizedFrom(payload, key) {
+    return payload.strings[key] ?? key;
+  }
+  function localizedTemplateFrom(payload, key, replacements) {
+    return localizedFrom(payload, key).replace(
+      templatePlaceholder,
+      (placeholder, name2) => Object.hasOwn(replacements, name2) ? String(replacements[name2]) : placeholder
+    );
+  }
+  var calloutLocalizationKeys = {
+    orient: ["Orientation", "Introduces the note's purpose, scope, and route."],
+    cite: ["Source", "Records sources that anchor the note without implying that they support every claim."],
+    connect: ["Connections", "Routes the reader to a curated set of neighboring knowledge objects."],
+    state: ["Statement", "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it."],
+    illustrate: ["Illustration", "Presents a scenario, example, thought experiment, or test case used in reasoning."],
+    quote: ["Quotation", "Preserves source-specific wording with attribution."],
+    flag: ["Caution", "Marks a limitation, unresolved dependency, source restriction, or interpretive warning."],
+    neutral: ["Note", "Preserves an unsupported callout without assigning a research role."]
+  };
+  function localizedCallout(identifier5, fallback) {
+    if (activePayload.languageTag !== "zh-Hans") return fallback;
+    const keys2 = calloutLocalizationKeys[identifier5];
+    return keys2 ? { label: localized(keys2[0]), meaning: localized(keys2[1]) } : fallback;
+  }
+
+  // link-annotation.ts
+  function isEscaped3(source, position) {
+    let backslashes = 0;
+    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) {
+      backslashes += 1;
+    }
+    return backslashes % 2 === 1;
+  }
+  function hasVisibleMarkdownContent(markdown2) {
+    let remaining = markdown2.replace(/(`+)[\s]*\1/g, "");
+    remaining = remaining.replace(/^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/gm, "").replace(/^[ \t]{0,3}(?:#{1,6}|>+|[-+*]|\d+[.)])[ \t]*$/gm, "");
+    return remaining.trim().length > 0;
+  }
+  function linkAnnotationAfter(source, linkTo) {
+    if (source.slice(linkTo, linkTo + 2) !== "{{") return null;
+    for (let cursor = linkTo + 2; cursor + 1 < source.length; cursor += 1) {
+      const pair2 = source.slice(cursor, cursor + 2);
+      if (pair2 === "{{" && !isEscaped3(source, cursor)) return null;
+      if (pair2 !== "}}" || isEscaped3(source, cursor)) continue;
+      const markdown2 = source.slice(linkTo + 2, cursor);
+      if (!hasVisibleMarkdownContent(markdown2)) return null;
+      return {
+        from: linkTo,
+        to: cursor + 2,
+        contentFrom: linkTo + 2,
+        contentTo: cursor,
+        markdown: markdown2
+      };
+    }
+    return null;
   }
 
   // text-language.ts
@@ -33480,6 +30286,96 @@ ${fence}
     decorations: (value) => value.decorations
   });
 
+  // zotero-field-envelope.ts
+  var citationDestinationPrefix = "scholium-zotero:";
+  var bibliographyPrefix = "<!--scholium-zotero-field:";
+  var bibliographyClose = "<!--/scholium-zotero-field-->";
+  var documentPrefix = "<!--scholium-zotero-document:";
+  var maximumEnvelopeLength = 256 * 1024;
+  var maximumFallbackLength = 64 * 1024;
+  var maximumFields = 1024;
+  function encodeOpaque(value) {
+    if (/[\ud800-\udfff]/u.test(value)) throw new Error("Opaque state contains a lone surrogate.");
+    const bytes = new TextEncoder().encode(value);
+    const payload = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
+    if (payload.length > maximumEnvelopeLength) throw new Error("The citation state exceeds the supported source envelope size.");
+    return payload;
+  }
+  function decodeOpaque(value) {
+    if (value.length > maximumEnvelopeLength || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+      throw new Error("Invalid bounded base64 payload.");
+    }
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(atob(value), (char) => char.charCodeAt(0)));
+    if (encodeOpaque(decoded) !== value) throw new Error("Noncanonical encoded payload.");
+    return decoded;
+  }
+  function validFieldID(value) {
+    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
+  }
+  function decodeFieldPayload(payload, kind) {
+    const field = JSON.parse(decodeOpaque(payload));
+    if (!field || !validFieldID(field.id) || field.kind !== kind || typeof field.code !== "string" || typeof field.text !== "string" || Object.keys(field).some((key) => !["id", "kind", "code", "text"].includes(key))) {
+      throw new Error("Invalid or unsupported host field identity or payload.");
+    }
+    return { id: field.id, kind, code: field.code, text: field.text };
+  }
+  function fieldPayload(field) {
+    if (!validFieldID(field.id) || !["citation", "bibliography"].includes(field.kind) || typeof field.code !== "string" || typeof field.text !== "string") throw new Error("Invalid host field identity or payload.");
+    return encodeOpaque(JSON.stringify({ id: field.id, kind: field.kind, code: field.code, text: field.text }));
+  }
+  function isCitationDestination(destination) {
+    return /^scholium-zotero:/i.test(destination);
+  }
+  function citationLinkSource(raw) {
+    const boundary2 = raw.lastIndexOf("](");
+    if (!raw.startsWith("[") || boundary2 < 1 || !raw.endsWith(")")) return null;
+    const destination = raw.slice(boundary2 + 2, -1);
+    if (!isCitationDestination(destination)) return null;
+    if (!destination.startsWith(`${citationDestinationPrefix}1:`)) throw new Error("Unknown citation source envelope version.");
+    const field = decodeFieldPayload(destination.slice(`${citationDestinationPrefix}1:`.length), "citation");
+    const fallbackRange = { from: 1, to: boundary2 };
+    if (fallbackRange.to - fallbackRange.from > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary2))) {
+      throw new Error("Citation fallback must be bounded inline Markdown.");
+    }
+    return { field, fallbackRange };
+  }
+  function validBibliographyStyle(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const style = value;
+    return Object.keys(style).sort().join(",") === "entrySpacing,firstLineIndent,indent,lineSpacing,tabStops" && [style.firstLineIndent, style.indent, style.lineSpacing, style.entrySpacing].every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5) && style.lineSpacing > 0 && style.entrySpacing >= 0 && Array.isArray(style.tabStops) && style.tabStops.length <= 64 && style.tabStops.every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5);
+  }
+  function validSignatures(value) {
+    return Array.isArray(value) && value.length <= maximumFields && value.every((field) => field && validFieldID(field.id) && typeof field.code === "string" && Object.keys(field).sort().join(",") === "code,id") && new Set(value.map((field) => field.id)).size === value.length;
+  }
+  function decodeDocumentPayload(payload) {
+    const value = JSON.parse(decodeOpaque(payload));
+    if (!value || typeof value.data !== "string" || Object.keys(value).some((key) => !["data", "bibliographyStyle", "acceptedFields"].includes(key)) || value.bibliographyStyle !== void 0 && !validBibliographyStyle(value.bibliographyStyle) || value.acceptedFields !== void 0 && !validSignatures(value.acceptedFields)) throw new Error("Invalid document source envelope.");
+    return value;
+  }
+  function encodeDocumentData(data2, bibliographyStyle = null, acceptedFields = null) {
+    if (typeof data2 !== "string" || bibliographyStyle !== null && !validBibliographyStyle(bibliographyStyle) || acceptedFields !== null && !validSignatures(acceptedFields)) throw new Error("Invalid document source envelope.");
+    return `${documentPrefix}1:${encodeOpaque(JSON.stringify({
+      data: data2,
+      ...bibliographyStyle ? { bibliographyStyle } : {},
+      ...acceptedFields ? { acceptedFields } : {}
+    }))}-->`;
+  }
+  function isCompletedFieldCode(field) {
+    const prefix = field.kind === "citation" ? "ITEM CSL_CITATION " : "BIBL ";
+    if (!field.code.startsWith(prefix)) return false;
+    try {
+      const body = field.code.slice(prefix.length);
+      if (field.kind === "bibliography" && !body.endsWith(" CSL_BIBLIOGRAPHY")) return false;
+      const json = field.kind === "bibliography" ? body.slice(0, -" CSL_BIBLIOGRAPHY".length) : body;
+      const value = JSON.parse(json);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      if (field.kind === "bibliography") return true;
+      return Array.isArray(value.citationItems) && value.citationItems.length > 0 && value.citationItems.every((item) => item && typeof item === "object" && !Array.isArray(item) && (typeof item.id === "string" && item.id.length > 0 || typeof item.id === "number" && Number.isSafeInteger(item.id) && item.id > 0));
+    } catch {
+      return false;
+    }
+  }
+
   // markdown-fragment.ts
   var inlineMarkerNodes = /* @__PURE__ */ new Set([
     "EmphasisMark",
@@ -33556,6 +30452,24 @@ ${fence}
       return;
     }
     if (cursor.name === "Link") {
+      if (isCitationDestination(raw.slice(raw.lastIndexOf("](") + 2, -1).trim().replace(/^<|>$/g, ""))) {
+        try {
+          const citation = citationLinkSource(raw);
+          if (!citation) throw new Error("Invalid citation carrier.");
+          const span2 = document2.createElement("span");
+          span2.className = "cm-live-citation";
+          span2.dir = "auto";
+          appendInlineMarkdownPlain(
+            raw.slice(citation.fallbackRange.from, citation.fallbackRange.to),
+            span2,
+            optionsAt(options, cursor.from + citation.fallbackRange.from)
+          );
+          parent.append(span2);
+        } catch {
+          appendTextWithLanguage(raw, parent);
+        }
+        return;
+      }
       const link = /^\[([\s\S]*?)\]\(([\s\S]*?)\)$/.exec(raw);
       const span = document2.createElement("span");
       span.className = "cm-live-link";
@@ -33593,6 +30507,12 @@ ${fence}
     }
     if (cursor.name === "Escape") {
       appendTextWithLanguage(raw.startsWith("\\") ? raw.slice(1) : raw, parent);
+      return;
+    }
+    if (cursor.name === "Entity") {
+      const entity = document2.createElement("span");
+      entity.innerHTML = raw;
+      appendTextWithLanguage(entity.textContent ?? "", parent);
       return;
     }
     const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : null;
@@ -34027,6 +30947,4124 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     appendBlockChildren(cursor, source, parent, options);
   }
 
+  // zotero-fields.ts
+  var markdownParser = scholiumMarkdownContentLanguage.language.parser;
+  var literalNodeNames = /* @__PURE__ */ new Set([
+    "FencedCode",
+    "CodeBlock",
+    "InlineCode",
+    "ObsidianComment",
+    "ObsidianCommentBlock",
+    "UnclosedObsidianComment",
+    "UnclosedObsidianCommentBlock",
+    "UnclosedBlockMath",
+    "HTMLBlock"
+  ]);
+  var unsupportedNodeNames = /* @__PURE__ */ new Set([
+    "FootnoteDefinition",
+    "InlineFootnote",
+    "WikiLink",
+    "LinkReference",
+    "Autolink",
+    "Image",
+    "InlineMath",
+    "BlockMath",
+    "Table",
+    "Blockquote",
+    "Callout",
+    "BulletList",
+    "OrderedList",
+    "ATXHeading1",
+    "ATXHeading2",
+    "ATXHeading3",
+    "ATXHeading4",
+    "ATXHeading5",
+    "ATXHeading6",
+    "SetextHeading1",
+    "SetextHeading2"
+  ]);
+  var htmlDocument = (html2) => new DOMParser().parseFromString(`<html><body>${html2}</body></html>`, "text/html");
+  function citationInsertionContextSupported(state, position) {
+    if (!Number.isSafeInteger(position) || position < 0 || position > state.doc.length) return false;
+    for (let node = syntaxTree(state).resolveInner(position, -1); node; node = node.parent) {
+      if (literalNodeNames.has(node.name) || unsupportedNodeNames.has(node.name) || ["Link", "HTMLTag", "Comment", "CommentBlock", "Escape"].includes(node.name)) return false;
+      if (!node.parent) break;
+    }
+    return true;
+  }
+  function escapeMarkdown(text) {
+    return text.replace(/[!-/:-@[-`{-~]/g, "\\$&");
+  }
+  function formattingProjection(root, vendor = false) {
+    const result = [];
+    const inline = (node, paragraph, emphasis) => {
+      if (node.nodeType === 3) {
+        const text = node.textContent ?? "", previous = paragraph.at(-1);
+        if (!text) return;
+        if (previous?.emphasis === emphasis) previous.text += text;
+        else paragraph.push({ text, emphasis });
+        return;
+      }
+      const element = node;
+      if (["p", "div"].includes(element.localName)) throw new Error("Unsupported HTML block context; formatting fidelity is unproven.");
+      if (["i", "em"].includes(element.localName)) emphasis |= 1;
+      if (["b", "strong"].includes(element.localName)) emphasis |= 2;
+      for (const child of Array.from(node.childNodes)) inline(child, paragraph, emphasis);
+    };
+    const appendParagraph = (element) => {
+      if (vendor && element.localName !== "body" && !element.textContent?.trim()) {
+        throw new Error("Unsupported HTML empty block; formatting fidelity is unproven.");
+      }
+      const paragraph = [];
+      for (const child of Array.from(element.childNodes)) inline(child, paragraph, 0);
+      if (paragraph.length) result.push(paragraph);
+    };
+    const container = (element) => {
+      const children = Array.from(element.childNodes);
+      if (!children.some((child) => child.nodeType === 1 && ["p", "div"].includes(child.localName))) {
+        appendParagraph(element);
+        return;
+      }
+      for (const child of children) {
+        if (child.nodeType === 3 && !child.textContent?.trim()) continue;
+        if (child.nodeType !== 1) throw new Error("Unsupported HTML mixed block context; formatting fidelity is unproven.");
+        const block = child;
+        if (block.localName === "p" || vendor && block.className === "csl-entry") appendParagraph(block);
+        else if (vendor && block.className === "csl-bib-body") container(block);
+        else throw new Error("Unsupported HTML mixed block context; formatting fidelity is unproven.");
+      }
+    };
+    container(root);
+    return result;
+  }
+  function normalizeEmphasis(element, inherited = 0) {
+    const emphasis = element.localName === "i" ? 1 : element.localName === "b" ? 2 : 0;
+    for (const child of Array.from(element.children)) normalizeEmphasis(child, inherited | emphasis);
+    if (emphasis && inherited & emphasis) {
+      element.replaceWith(...Array.from(element.childNodes));
+      return;
+    }
+    for (const child of Array.from(element.children)) {
+      if (!["i", "b"].includes(child.localName)) continue;
+      let following = child.nextSibling, merged = false;
+      while (following?.nodeType === 1 && following.localName === child.localName) {
+        const adjacent = following;
+        child.append(...Array.from(adjacent.childNodes));
+        adjacent.remove();
+        merged = true;
+        following = child.nextSibling;
+      }
+      if (merged) normalizeEmphasis(child, inherited | emphasis);
+    }
+  }
+  function vendorTextToMarkdown(html2, newline3 = "\n") {
+    if (html2.length > maximumFallbackLength) throw new Error("The citation render cache exceeds the supported size.");
+    const stack = [];
+    let cursor = 0;
+    for (const match of html2.matchAll(/<[^>]*>/g)) {
+      if (html2.slice(cursor, match.index).includes("<")) throw new Error("Malformed HTML text.");
+      const tag = /^<(\/?)(p|i|b|div)(?: class="(csl-bib-body|csl-entry)")?[ \t]*>$/i.exec(match[0]);
+      if (!tag || tag[3] && (tag[1] || tag[2].toLowerCase() !== "div" || !["csl-bib-body", "csl-entry"].includes(tag[3]))) {
+        throw new Error("Unsupported HTML or attributes; formatting fidelity is unproven.");
+      }
+      const name2 = tag[2].toLowerCase();
+      if (tag[1]) {
+        if (stack.pop()?.name !== name2) throw new Error("Unbalanced HTML text.");
+      } else {
+        if (name2 === "div" && !tag[3]) throw new Error("Unsupported HTML block wrapper.");
+        if (["p", "div"].includes(name2) && (stack.some((value) => value.name !== "div" || value.className === "csl-entry") || tag[3] === "csl-bib-body" && stack.length)) {
+          throw new Error("Unsupported HTML nested block context; formatting fidelity is unproven.");
+        }
+        stack.push({ name: name2, className: tag[3] });
+      }
+      cursor = match.index + match[0].length;
+    }
+    if (stack.length || html2.slice(cursor).includes("<")) throw new Error("Unbalanced HTML text.");
+    const document2 = htmlDocument(html2);
+    for (const element of Array.from(document2.body.querySelectorAll("i,b"))) {
+      if (!element.textContent || /^\s|\s$/.test(element.textContent)) throw new Error("Unsupported HTML emphasis boundary.");
+    }
+    const expected = formattingProjection(document2.body, true);
+    normalizeEmphasis(document2.body);
+    const render = (node) => {
+      if (node.nodeType === 3) return escapeMarkdown(node.textContent ?? "");
+      if (node.nodeType !== 1) throw new Error("Unsupported HTML node.");
+      const element = node;
+      const children = Array.from(node.childNodes);
+      const hasBlockChildren = children.some((child) => child.nodeType === 1 && ["p", "div"].includes(child.localName));
+      const content2 = children.map((child) => {
+        if ((element.localName === "body" || element.className === "csl-bib-body") && hasBlockChildren && child.nodeType === 3 && !child.textContent?.trim()) return "";
+        return render(child);
+      }).join("");
+      switch (element.localName) {
+        case "body":
+          return content2;
+        case "p":
+          return `${content2}
+
+`;
+        case "div":
+          return element.className === "csl-entry" ? `${content2}
+
+` : content2;
+        case "i":
+        case "b":
+          if (!content2 || /^\s|\s$/.test(content2)) throw new Error("Unsupported HTML emphasis boundary.");
+          return element.localName === "i" ? `*${content2}*` : `**${content2}**`;
+        default:
+          throw new Error("Unsupported HTML node.");
+      }
+    };
+    const markdown2 = render(document2.body).replace(/\n\n$/, "");
+    const rendered = renderVisibleMarkdown(markdown2);
+    if (JSON.stringify(formattingProjection(rendered)) !== JSON.stringify(expected)) {
+      throw new Error("Unsupported HTML paragraph or emphasis boundary; Markdown formatting fidelity is unproven.");
+    }
+    return markdown2.replaceAll("\n", newline3);
+  }
+  function renderVisibleMarkdown(markdown2) {
+    const normalized2 = normalizedDocumentText(markdown2);
+    markdownParser.parse(normalized2).iterate({ enter(node) {
+      if (["Document", "Paragraph", "Emphasis", "StrongEmphasis", "EmphasisMark", "Escape", "Entity"].includes(node.name)) return;
+      throw new Error(`Unsupported visible Markdown: ${node.name}.`);
+    } });
+    const document2 = htmlDocument("");
+    const rendered = document2.createElement("div");
+    appendMarkdownBlocks(normalized2, rendered);
+    return rendered;
+  }
+  function markdownVisibleText(markdown2) {
+    return renderVisibleMarkdown(markdown2).textContent ?? "";
+  }
+  function fieldEnvelope(field, fallback, newline3 = "\n") {
+    if (fallback.length > maximumFallbackLength) throw new Error("The citation fallback exceeds the supported size.");
+    const payload = fieldPayload(field);
+    if (field.kind === "citation") {
+      if (/[\r\n]/.test(fallback)) throw new Error("Citation fields require inline Markdown.");
+      return `[${fallback}](scholium-zotero:1:${payload})`;
+    }
+    return `${bibliographyPrefix}1:${payload}-->${newline3}${newline3}${fallback}${newline3}${newline3}${bibliographyClose}`;
+  }
+  function encodeField(field, newline3 = "\n") {
+    return fieldEnvelope(field, vendorTextToMarkdown(field.text, newline3), newline3);
+  }
+  function parserContexts(source) {
+    const normalized2 = normalizedDocumentText(source);
+    const result = { ignored: [], unsupported: [], escaped: [], links: [], comments: [] };
+    const map = (range) => ({ from: exactOffsetForNormalizedOffset(source, range.from), to: exactOffsetForNormalizedOffset(source, range.to) });
+    const doc2 = Text.of(normalized2.split("\n")), metadata = frontmatterBoundary(doc2);
+    if (metadata.unclosed) result.ignored.push({ from: 0, to: source.length });
+    else if (metadata.endLine) result.ignored.push(map({ from: 0, to: Math.min(doc2.length, doc2.line(metadata.endLine).to + 1) }));
+    const htmlStack = [];
+    markdownParser.parse(normalized2).iterate({ enter(node) {
+      if (literalNodeNames.has(node.name)) {
+        result.ignored.push(map(node));
+        return false;
+      }
+      if (node.name === "Escape") {
+        result.escaped.push(map(node));
+        return false;
+      }
+      if (["Comment", "CommentBlock"].includes(node.name)) {
+        const raw = normalized2.slice(node.from, node.to);
+        if (raw.startsWith(bibliographyPrefix) || raw.startsWith(documentPrefix) || raw.startsWith(bibliographyClose)) result.comments.push(map(node));
+        else result.ignored.push(map(node));
+        return false;
+      }
+      if (node.name === "HTMLTag") {
+        const tag = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)\b/.exec(normalized2.slice(node.from, node.to));
+        if (tag) {
+          const name2 = tag[2].toLowerCase();
+          if (tag[1]) {
+            const opening = htmlStack.pop();
+            if (opening) result.ignored.push(map({ from: opening.from, to: node.to }));
+            if (opening?.name !== name2) result.ignored.push(map({ from: node.from, to: normalized2.length }));
+          } else if (!/\/\s*>$/.test(normalized2.slice(node.from, node.to)) && !["br", "hr", "img", "input", "meta", "link", "wbr"].includes(name2)) htmlStack.push({ name: name2, from: node.from });
+        }
+        result.ignored.push(map(node));
+        return false;
+      }
+      if (node.name === "Link") {
+        let reserved = false;
+        for (let child = node.node.firstChild; child; child = child.nextSibling) {
+          if (child.name === "URL" && isCitationDestination(normalized2.slice(child.from, child.to).replace(/^<|>$/g, ""))) reserved = true;
+        }
+        if (reserved) result.links.push(map(node));
+        else {
+          result.unsupported.push(map(node));
+          result.ignored.push(map(node));
+          return false;
+        }
+        return;
+      }
+      if (unsupportedNodeNames.has(node.name)) {
+        result.unsupported.push(map(node));
+        return false;
+      }
+    } });
+    for (const opening of htmlStack) result.ignored.push(map({ from: opening.from, to: normalized2.length }));
+    return result;
+  }
+  function intersects2(left, right) {
+    return left.from < right.to && left.to > right.from;
+  }
+  function markerOnly(source, range) {
+    const lineFrom = source.lastIndexOf("\n", range.from - 1) + 1;
+    const following = source.indexOf("\n", range.to);
+    const lineTo = following < 0 ? source.length : following;
+    const prefix = source.slice(lineFrom, range.from), suffix = source.slice(range.to, lineTo);
+    return (prefix === "" || lineFrom === 0 && prefix === "\uFEFF") && (suffix === "" || following >= 0 && suffix === "\r");
+  }
+  function projectFields(source) {
+    const fields = [], diagnostics = [];
+    let documentData = null, documentRange = null;
+    let bibliographyStyle = null, acceptedFields = null;
+    const contexts = parserContexts(source);
+    const diagnose = (kind, range, message) => diagnostics.push({ ...range, kind, message });
+    const protectedField = (range) => [...contexts.ignored, ...contexts.unsupported].some((other) => intersects2(range, other));
+    const append = (field, range, fallbackRange) => {
+      if (fields.length >= maximumFields) throw new Error("Too many source citation fields.");
+      if (protectedField(range)) {
+        diagnose("unsupported-context", range, "The complete field overlaps a protected source context.");
+        return;
+      }
+      const fallback = source.slice(fallbackRange.from, fallbackRange.to);
+      const generated = vendorTextToMarkdown(field.text);
+      fields.push({
+        ...field,
+        text: markdownVisibleText(fallback),
+        cachedText: field.text,
+        noteIndex: 0,
+        adjacent: false,
+        range,
+        fallbackRange,
+        manualTextChanged: normalizedDocumentText(fallback) !== generated
+      });
+    };
+    const malformed = (range, error) => diagnose(
+      error instanceof Error && /HTML|Markdown|render cache|render.*size/.test(error.message) ? "unsupported-text" : error instanceof Error && /version/.test(error.message) ? "unsupported-envelope" : "malformed-envelope",
+      range,
+      error instanceof Error ? error.message : "Invalid source field."
+    );
+    for (const range of contexts.links) {
+      if (contexts.ignored.some((other) => intersects2(range, other))) continue;
+      try {
+        const parsed = citationLinkSource(source.slice(range.from, range.to));
+        if (!parsed) throw new Error("Invalid citation link carrier.");
+        append(parsed.field, range, { from: range.from + parsed.fallbackRange.from, to: range.from + parsed.fallbackRange.to });
+      } catch (error) {
+        malformed(range, error);
+      }
+    }
+    const consumed = [];
+    for (const comment2 of contexts.comments) {
+      if (contexts.ignored.some((other) => intersects2(comment2, other)) || consumed.some((other) => intersects2(comment2, other))) continue;
+      const raw = source.slice(comment2.from, comment2.to);
+      if (!markerOnly(source, comment2) || !/^<!--[^\r\n]*-->$/.test(raw)) {
+        diagnose("malformed-envelope", comment2, "Document and bibliography markers require metadata-only lines.");
+        continue;
+      }
+      try {
+        if (raw.startsWith(documentPrefix)) {
+          const match = /^<!--scholium-zotero-document:1:([A-Za-z0-9+/=]*)-->$/.exec(raw);
+          if (!match) throw new Error("Unknown document envelope version.");
+          if (documentRange) {
+            diagnose("duplicate-document", comment2, "More than one source-owned document state.");
+            continue;
+          }
+          if (protectedField(comment2)) {
+            diagnose("unsupported-context", comment2, "Document state is inside a protected source context.");
+            continue;
+          }
+          const data2 = decodeDocumentPayload(match[1]);
+          documentData = data2.data;
+          bibliographyStyle = data2.bibliographyStyle ?? null;
+          acceptedFields = data2.acceptedFields ?? null;
+          documentRange = comment2;
+        } else if (raw === bibliographyClose) {
+          diagnose("malformed-envelope", comment2, "Bibliography close marker has no matching opening marker.");
+        } else {
+          const match = /^<!--scholium-zotero-field:1:([A-Za-z0-9+/=]*)-->$/.exec(raw);
+          if (!match) throw new Error("Unknown bibliography envelope version.");
+          const field = decodeFieldPayload(match[1], "bibliography");
+          const close = contexts.comments.find((other) => other.from > comment2.to && source.slice(other.from, other.to) === bibliographyClose);
+          if (!close || !markerOnly(source, close)) throw new Error("Missing bibliography close marker.");
+          const nested = contexts.comments.some((other) => other.from > comment2.to && other.from < close.from);
+          if (nested) throw new Error("Nested metadata markers cannot confer bibliography authority.");
+          const middle = source.slice(comment2.to, close.from);
+          const start = /^(?:\r\n|\n){2}/.exec(middle), end = /(?:\r\n|\n){2}$/.exec(middle);
+          if (!start || !end || start[0].length + end[0].length > middle.length) throw new Error("Bibliography fallback requires blank-line separators.");
+          const range = { from: comment2.from, to: close.to };
+          consumed.push(range);
+          append(field, range, { from: comment2.to + start[0].length, to: close.from - end[0].length });
+        }
+      } catch (error) {
+        malformed(comment2, error);
+      }
+    }
+    const covered = [...contexts.links, ...contexts.comments, ...consumed];
+    for (const match of source.matchAll(/scholium-zotero:|<!--scholium-zotero-(?:field|document):/gi)) {
+      const from = match.index, range = { from, to: from + match[0].length };
+      if ([...contexts.ignored, ...contexts.escaped, ...covered].some((other) => from >= other.from && from < other.to)) continue;
+      const unsupported = contexts.unsupported.find((other) => from >= other.from && from < other.to);
+      diagnose(
+        unsupported ? "unsupported-context" : "malformed-envelope",
+        unsupported ?? range,
+        "Citation metadata is not in a supported parser-owned carrier."
+      );
+    }
+    fields.sort((left, right) => left.range.from - right.range.from);
+    const counts = /* @__PURE__ */ new Map();
+    for (const field of fields) counts.set(field.id, (counts.get(field.id) ?? 0) + 1);
+    for (const field of fields) {
+      if (counts.get(field.id) > 1) diagnose("duplicate-id", field.range, `Copied host occurrence ID ${field.id} requires explicit resolution.`);
+    }
+    for (let index = fields.length - 1; index >= 0; index--) {
+      if (counts.get(fields[index].id) > 1) fields.splice(index, 1);
+    }
+    if (diagnostics.some((diagnostic) => diagnostic.kind === "duplicate-document")) {
+      documentData = null;
+      documentRange = null;
+      bibliographyStyle = null;
+      acceptedFields = null;
+    }
+    for (let index = 0; index < fields.length; index++) {
+      const field = fields[index];
+      const previous = fields[index - 1], next = fields[index + 1];
+      field.adjacent = !!(previous && source.slice(previous.range.to, field.range.from).trim() === "" || next && source.slice(field.range.to, next.range.from).trim() === "");
+    }
+    const current = fields.map(({ id: id2, code: code2 }) => ({ id: id2, code: code2 }));
+    const citationStateStale = acceptedFields === null ? fields.length > 0 : JSON.stringify(acceptedFields) !== JSON.stringify(current);
+    return { source, fields, documentData, bibliographyStyle, acceptedFields, citationStateStale, documentRange, diagnostics };
+  }
+  var stateCatalogs = /* @__PURE__ */ new WeakMap();
+  function projectFieldsForState(state) {
+    const mirror = state.field(exactSourceState, false), owner = mirror ?? state.doc;
+    const existing = stateCatalogs.get(owner);
+    if (existing) return existing;
+    let reserved = false, carry = "";
+    for (const chunk of state.doc.iter()) {
+      const scanned = carry + chunk;
+      if (/scholium-zotero/i.test(scanned)) {
+        reserved = true;
+        break;
+      }
+      carry = scanned.slice(-14);
+    }
+    const projection = reserved ? projectFields(mirror?.text ?? state.doc.toString()) : {
+      get source() {
+        return mirror?.text ?? state.doc.toString();
+      },
+      fields: [],
+      documentData: null,
+      bibliographyStyle: null,
+      acceptedFields: null,
+      citationStateStale: false,
+      documentRange: null,
+      diagnostics: []
+    };
+    stateCatalogs.set(owner, projection);
+    return projection;
+  }
+  function fieldMetadataRanges(projection) {
+    if (projection.diagnostics.length) return [];
+    const ranges = projection.documentRange ? [projection.documentRange] : [];
+    for (const field of projection.fields) {
+      if (field.kind !== "bibliography") continue;
+      ranges.push({ from: field.range.from, to: projection.source.indexOf("-->", field.range.from) + 3 });
+      ranges.push({ from: field.range.to - bibliographyClose.length, to: field.range.to });
+    }
+    return ranges;
+  }
+  function boundary(source, offset) {
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > source.length) return false;
+    if (offset === 0 || offset === source.length) return true;
+    const before = source.charCodeAt(offset - 1), after = source.charCodeAt(offset);
+    return !(before === 13 && after === 10) && !(before >= 55296 && before <= 56319 && after >= 56320 && after <= 57343);
+  }
+  function preferredNewline(source, at = 0) {
+    const following = /\r\n|\n/.exec(source.slice(at));
+    return following?.[0] ?? (/\r\n|\n/.exec(source)?.[0] ?? "\n");
+  }
+  function blockInsertion(source, range, insert2, newline3) {
+    const before = source.slice(0, range.from), after = source.slice(range.to);
+    const prefix = before.length === 0 || before === "\uFEFF" || /(?:\r\n|\n){2}$/.test(before) ? "" : /(?:\r\n|\n)$/.test(before) ? newline3 : newline3 + newline3;
+    const suffix = after.length === 0 || /^(?:\r\n|\n){2}/.test(after) ? "" : /^(?:\r\n|\n)/.test(after) ? newline3 : newline3 + newline3;
+    return prefix + insert2 + suffix;
+  }
+  function stageFieldOperation(projection, operation) {
+    if (projection.diagnostics.length) throw new Error("The source contains unresolved citation field diagnostics.");
+    const source = projection.source, changes = [], touched = /* @__PURE__ */ new Set();
+    const replace2 = (range, insert2, first = false) => {
+      const expected = source.slice(range.from, range.to);
+      if (expected !== insert2) {
+        const change = { ...range, expected, insert: insert2 };
+        if (first) changes.unshift(change);
+        else changes.push(change);
+      }
+    };
+    for (const update of operation.updates ?? []) {
+      if (touched.has(update.id)) throw new Error("A field was updated twice in one operation.");
+      touched.add(update.id);
+      const field = projection.fields.find((field2) => field2.id === update.id);
+      if (!field) throw new Error("The addressed citation field no longer exists.");
+      if ((update.delete || update.unlink) && (update.code !== void 0 || update.text !== void 0 || update.delete && update.unlink)) {
+        throw new Error("Field deletion and unlinking cannot also replace code or text.");
+      }
+      if (update.delete || update.unlink) {
+        replace2(field.range, update.unlink ? source.slice(field.fallbackRange.from, field.fallbackRange.to) : "");
+        continue;
+      }
+      const code2 = update.code ?? field.code, cachedText = update.text ?? field.cachedText;
+      const newline3 = preferredNewline(source, field.fallbackRange.from);
+      const fallback = update.text === void 0 ? source.slice(field.fallbackRange.from, field.fallbackRange.to) : vendorTextToMarkdown(update.text, newline3);
+      let kind = code2.startsWith("BIBL ") ? "bibliography" : code2.startsWith("ITEM CSL_CITATION ") ? "citation" : field.kind;
+      if (kind === "citation" && /[\r\n]/.test(fallback) && update.text === void 0) kind = field.kind;
+      let encoded = fieldEnvelope({ id: field.id, kind, code: code2, text: cachedText }, fallback, newline3);
+      if (field.kind !== "bibliography" && kind === "bibliography") encoded = blockInsertion(source, field.range, encoded, newline3);
+      replace2(field.range, encoded);
+    }
+    const contexts = parserContexts(source), ids = new Set(projection.fields.map((field) => field.id));
+    for (const insertion of operation.insertions ?? []) {
+      if (ids.has(insertion.field.id)) throw new Error("Insertion would duplicate a host occurrence ID.");
+      ids.add(insertion.field.id);
+      const range = { from: insertion.at, to: insertion.replacement?.to ?? insertion.at };
+      if (!boundary(source, range.from) || !boundary(source, range.to) || range.to < range.from) throw new Error("Insertion is not a whole-source boundary.");
+      if (insertion.replacement && source.slice(range.from, range.to) !== insertion.replacement.expected) throw new Error("Citation insertion query no longer matches its source range.");
+      const protectedRanges = [...contexts.ignored, ...contexts.escaped, ...contexts.unsupported];
+      if (protectedRanges.some((other) => range.from >= other.from && range.from < other.to || range.to > range.from && intersects2(range, other))) throw new Error("Insertion is in a protected source context.");
+      if (projection.fields.some((field) => intersects2(range, field.range) || range.from > field.range.from && range.from < field.range.to) || projection.documentRange && (intersects2(range, projection.documentRange) || range.from > projection.documentRange.from && range.from < projection.documentRange.to)) throw new Error("Insertion would split source-owned field metadata.");
+      const newline3 = preferredNewline(source, range.from);
+      let encoded = encodeField(insertion.field, newline3);
+      if (insertion.field.kind === "bibliography") encoded = blockInsertion(source, range, encoded, newline3);
+      replace2(range, encoded);
+    }
+    const apply = (patches) => {
+      let candidate2 = source;
+      for (const patch of [...patches].reverse()) candidate2 = candidate2.slice(0, patch.from) + patch.insert + candidate2.slice(patch.to);
+      return candidate2;
+    };
+    changes.sort((a, b) => a.from - b.from || a.to - b.to);
+    const candidateFields = projectFields(apply(changes));
+    if (candidateFields.diagnostics.length) throw new Error("The staged source contains unresolved citation diagnostics.");
+    const expectedIDs = projection.fields.filter((field) => !(operation.updates ?? []).some((update) => update.id === field.id && (update.delete || update.unlink))).map((field) => field.id);
+    expectedIDs.push(...(operation.insertions ?? []).map((insertion) => insertion.field.id));
+    if (expectedIDs.length !== candidateFields.fields.length || expectedIDs.some((id2) => !candidateFields.fields.some((field) => field.id === id2))) throw new Error("The candidate field is not recognized in its source context.");
+    let accepted = projection.acceptedFields;
+    if (operation.acceptCurrentFields) {
+      if (candidateFields.fields.some((field) => !isCompletedFieldCode(field))) throw new Error("The Zotero command left incomplete citation field code.");
+      accepted = candidateFields.fields.map(({ id: id2, code: code2 }) => ({ id: id2, code: code2 }));
+    }
+    const data2 = operation.documentData ?? projection.documentData;
+    const style = operation.bibliographyStyle ?? projection.bibliographyStyle;
+    if (operation.documentData !== void 0 && operation.documentData !== projection.documentData || operation.bibliographyStyle !== void 0 && JSON.stringify(style) !== JSON.stringify(projection.bibliographyStyle) || operation.acceptCurrentFields && JSON.stringify(accepted) !== JSON.stringify(projection.acceptedFields)) {
+      if (data2 === null) throw new Error("Citation acceptance and bibliography style require source-owned Zotero document data.");
+      const encoded = encodeDocumentData(data2, style, accepted);
+      if (projection.documentRange) replace2(projection.documentRange, encoded);
+      else {
+        const doc2 = Text.of(normalizedDocumentText(source).split("\n")), metadata = frontmatterBoundary(doc2);
+        const at = metadata.endLine ? exactOffsetForNormalizedOffset(source, Math.min(doc2.length, doc2.line(metadata.endLine).to + 1)) : source.charCodeAt(0) === 65279 ? 1 : 0;
+        const newline3 = preferredNewline(source, at);
+        const separator = metadata.endLine && at === source.length && !source.endsWith("\n") ? newline3 : "";
+        replace2({ from: at, to: at }, separator + encoded + newline3 + newline3, true);
+      }
+    }
+    changes.sort((a, b) => a.from - b.from || a.to - b.to);
+    const merged = [];
+    for (const change of changes) {
+      if (!boundary(source, change.from) || !boundary(source, change.to) || change.to < change.from) throw new Error("Invalid source change boundary.");
+      const previous = merged.at(-1);
+      if (previous && previous.from === previous.to && previous.from === change.from) {
+        previous.to = change.to;
+        previous.expected = change.expected;
+        previous.insert += change.insert;
+      } else {
+        if (previous && change.from < previous.to) throw new Error("Overlapping citation source changes.");
+        merged.push({ ...change });
+      }
+    }
+    const candidate = apply(merged);
+    if (!exactSourceFits(candidate)) throw new Error("The citation command exceeds the supported Markdown source size.");
+    const projected = projectFields(candidate);
+    if (projected.diagnostics.length || projected.fields.length !== candidateFields.fields.length) throw new Error("The final source is not a valid citation projection.");
+    if (operation.documentData !== void 0 && projected.documentData !== operation.documentData) throw new Error("The document state is not recognized in its source context.");
+    if (operation.bibliographyStyle !== void 0 && JSON.stringify(projected.bibliographyStyle) !== JSON.stringify(operation.bibliographyStyle)) throw new Error("The bibliography style is not recognized in its source context.");
+    if (operation.acceptCurrentFields && projected.citationStateStale) throw new Error("The citation acceptance signature does not match source.");
+    return { expectedSource: source, source: candidate, changes: merged };
+  }
+  function fieldOperationTransaction(state, operation) {
+    const source = state.field(exactSourceState).text;
+    if (source !== operation.expectedSource) return null;
+    let candidate = source, previous = -1;
+    for (const change of operation.changes) {
+      if (!boundary(source, change.from) || !boundary(source, change.to) || change.from < previous || change.to < change.from) return null;
+      previous = change.to;
+    }
+    for (const change of [...operation.changes].reverse()) candidate = candidate.slice(0, change.from) + change.insert + candidate.slice(change.to);
+    if (candidate !== operation.source) return null;
+    let shift2 = 0;
+    const effects = [], changes = [];
+    for (const change of operation.changes) {
+      if (source.slice(change.from, change.to) !== change.expected) return null;
+      const from = normalizedDocumentText(source.slice(0, change.from)).length;
+      const to = normalizedDocumentText(source.slice(0, change.to)).length;
+      const insert2 = normalizedDocumentText(change.insert);
+      changes.push({ from, to, insert: insert2, exactInsert: change.insert });
+      effects.push(...exactInsertionEffects(change.insert, from + shift2));
+      shift2 += insert2.length - (to - from);
+    }
+    if (!exactSourceFitsChanges(state, changes)) return null;
+    return { changes, effects, annotations: [Transaction.userEvent.of("input.scholium.zotero"), isolateHistory.of("full")] };
+  }
+
+  // zotero-transaction.ts
+  var unsupportedNoteCitationStyleMessage = "Footnote and endnote citation styles are unavailable. Your text was preserved.";
+  var commands = /* @__PURE__ */ new Set(["addEditCitation", "addEditBibliography", "refresh", "setDocPrefs"]);
+  function identifier4(value) {
+    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
+  }
+  function transactionIdentifier(value) {
+    return typeof value === "string" && value.length > 0 && value.length <= 128 && !/[\x00-\x1f\x7f]/.test(value);
+  }
+  function keys(value, expected) {
+    const actual = Object.keys(value);
+    return actual.length === expected.length && actual.every((key) => expected.includes(key));
+  }
+  function boundedString(value) {
+    return typeof value === "string" && value.length <= 8 * 1024 * 1024;
+  }
+  function assertSupportedDocumentData(value) {
+    const assertNoteType = (noteType) => {
+      if (noteType !== 0 && !(typeof noteType === "string" && noteType.trim() !== "" && Number(noteType) === 0)) {
+        throw new Error(unsupportedNoteCitationStyleMessage);
+      }
+    };
+    let json;
+    try {
+      json = JSON.parse(value);
+    } catch {
+    }
+    if (json && typeof json === "object" && !Array.isArray(json)) {
+      const prefs = json.prefs;
+      if (prefs && typeof prefs === "object" && !Array.isArray(prefs) && Object.hasOwn(prefs, "noteType")) {
+        assertNoteType(prefs.noteType);
+      }
+      return;
+    }
+    const trimmed = value.trimStart();
+    if (!trimmed.startsWith("<")) return;
+    const looksStandard = /<data(?=[\s/>])/u.test(trimmed);
+    if (/<!DOCTYPE\b/iu.test(trimmed)) {
+      if (looksStandard) throw new Error("Zotero document preferences are invalid.");
+      return;
+    }
+    const document2 = new DOMParser().parseFromString(value, "application/xml");
+    const root = document2.documentElement;
+    const parserError = document2.getElementsByTagName("parsererror").length > 0;
+    if ((looksStandard || root?.localName === "data") && parserError) throw new Error("Zotero document preferences are invalid.");
+    if (root?.localName !== "data") return;
+    for (const prefs of Array.from(root.children).filter((element) => element.localName === "prefs")) {
+      for (const pref of Array.from(prefs.children).filter((element) => element.localName === "pref" && element.getAttribute("name") === "noteType")) {
+        assertNoteType(pref.getAttribute("value"));
+      }
+    }
+  }
+  function validZoteroCallback(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const object = value;
+    switch (object.type) {
+      case "canInsertField":
+      case "getDocumentData":
+      case "cursorInField":
+      case "insertField":
+      case "getFields":
+        return keys(object, ["type"]);
+      case "setDocumentData":
+        return keys(object, ["type", "value"]) && boundedString(object.value);
+      case "deleteField":
+      case "selectField":
+      case "removeFieldCode":
+      case "getFieldText":
+        return keys(object, ["type", "id"]) && identifier4(object.id);
+      case "setFieldCode":
+        return keys(object, ["type", "id", "code"]) && identifier4(object.id) && boundedString(object.code);
+      case "setFieldText":
+        return keys(object, ["type", "id", "html"]) && identifier4(object.id) && boundedString(object.html);
+      case "setBibliographyStyle": {
+        if (!keys(object, ["type", "style"]) || !object.style || typeof object.style !== "object" || Array.isArray(object.style)) return false;
+        const style = object.style;
+        return keys(style, ["firstLineIndent", "indent", "lineSpacing", "entrySpacing", "tabStops"]) && [style.firstLineIndent, style.indent, style.lineSpacing, style.entrySpacing].every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 1e6) && typeof style.lineSpacing === "number" && style.lineSpacing > 0 && typeof style.entrySpacing === "number" && style.entrySpacing >= 0 && Array.isArray(style.tabStops) && style.tabStops.length <= 128 && style.tabStops.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 1e6);
+      }
+      default:
+        return false;
+    }
+  }
+  var ZoteroMarkdownTransaction = class _ZoteroMarkdownTransaction {
+    originalSource;
+    candidate;
+    aggregate;
+    capturedSelection;
+    captureContext;
+    insertionPoint;
+    replacement;
+    cursorFieldID;
+    targetFieldID;
+    selectedFieldID;
+    newFieldID;
+    inserted = false;
+    cancelledInsertion = false;
+    targetWritten = false;
+    observedFields = false;
+    closed = false;
+    cancelled = false;
+    static capture(state, context) {
+      return new _ZoteroMarkdownTransaction(state, context);
+    }
+    constructor(state, context) {
+      if (!transactionIdentifier(context.transactionID) || !commands.has(context.command) || context.composing || !Number.isSafeInteger(context.interactionRevision) || context.interactionRevision < 0 || !Number.isSafeInteger(context.compositionRevision) || context.compositionRevision < 0 || !["livePreview", "source"].includes(context.mode) || state.selection.ranges.length !== 1) throw new Error("Citation capture is unavailable.");
+      this.captureContext = { ...context, referenceRange: context.referenceRange ? { ...context.referenceRange } : void 0 };
+      this.originalSource = this.candidate = state.field(exactSourceState).text;
+      const projection = projectFields(this.originalSource);
+      if (projection.diagnostics.length) throw new Error("Citation fields require source recovery.");
+      this.aggregate = ChangeSet.empty(this.originalSource.length);
+      const selection = state.selection.main;
+      this.capturedSelection = { anchor: selection.anchor, head: selection.head };
+      const head = exactOffsetForNormalizedOffset(this.originalSource, selection.head);
+      const from = exactOffsetForNormalizedOffset(this.originalSource, selection.from);
+      const to = exactOffsetForNormalizedOffset(this.originalSource, selection.to);
+      if (head === null || from === null || to === null) throw new Error("Citation selection is invalid.");
+      const field = projection.fields.find((field2) => from >= field2.range.from && to <= field2.range.to && head < field2.range.to);
+      if (!selection.empty && !field && (context.command === "addEditCitation" || context.command === "addEditBibliography")) throw new Error("Citation insertion needs one caret.");
+      this.cursorFieldID = field?.id;
+      this.targetFieldID = context.command === "addEditBibliography" ? [...projection.fields].reverse().find((field2) => field2.kind === "bibliography")?.id : field?.id;
+      this.insertionPoint = head;
+      if (context.referenceRange) {
+        const reference = context.referenceRange;
+        const exactFrom = exactOffsetForNormalizedOffset(this.originalSource, reference.from);
+        const exactTo = exactOffsetForNormalizedOffset(this.originalSource, reference.to);
+        if (field || !selection.empty || exactFrom === null || exactTo === null || reference.to !== selection.head || reference.from >= reference.to || !/^@[^\r\n@|\]]{0,512}$/.test(reference.expected) || this.originalSource.slice(exactFrom, exactTo) !== reference.expected) throw new Error("Citation completion is stale.");
+        this.insertionPoint = exactFrom;
+        this.replacement = { to: exactTo, expected: reference.expected };
+      }
+      this.newFieldID = "host_" + boundedUUID().replaceAll("-", "");
+    }
+    current(state, context) {
+      return !this.closed && !context.composing && context.transactionID === this.captureContext.transactionID && context.mode === this.captureContext.mode && context.interactionRevision === this.captureContext.interactionRevision && context.compositionRevision === this.captureContext.compositionRevision && state.field(exactSourceState).text === this.originalSource && state.selection.ranges.length === 1 && state.selection.main.anchor === this.capturedSelection.anchor && state.selection.main.head === this.capturedSelection.head;
+    }
+    stage(operation) {
+      const planned = stageFieldOperation(projectFields(this.candidate), operation);
+      const change = ChangeSet.of(planned.changes.map((range) => ({
+        from: range.from,
+        to: range.to,
+        insert: Text.of(range.insert.split("\n"))
+      })), this.candidate.length);
+      if (planned.expectedSource !== this.candidate || change.apply(Text.of(this.candidate.split("\n"))).toString() !== planned.source) throw new Error("Citation source plan is inconsistent.");
+      this.aggregate = this.aggregate.compose(change);
+      if (!this.cursorFieldID) {
+        this.insertionPoint = change.mapPos(this.insertionPoint, -1);
+        if (this.replacement) this.replacement = { ...this.replacement, to: change.mapPos(this.replacement.to, 1) };
+      }
+      this.candidate = planned.source;
+    }
+    applyCallback(state, context, callback) {
+      try {
+        if (!this.current(state, context) || !validZoteroCallback(callback)) throw new Error("Citation transaction has lost editor authority.");
+        const projection = projectFields(this.candidate);
+        if (projection.diagnostics.length) throw new Error("Citation fields require source recovery.");
+        const field = (id2) => {
+          const value = projection.fields.find((field2) => field2.id === id2);
+          if (!value) throw new Error("Citation field identity is unavailable.");
+          return value;
+        };
+        const replyField = ({ id: id2, code: code2, text, noteIndex, adjacent }) => ({ id: id2, code: code2, text, noteIndex, adjacent });
+        switch (callback.type) {
+          case "getDocumentData":
+            return { kind: "string", value: projection.documentData ?? "" };
+          case "setDocumentData":
+            assertSupportedDocumentData(callback.value);
+            this.stage({ documentData: callback.value });
+            return { kind: "none" };
+          case "setBibliographyStyle":
+            this.stage({ bibliographyStyle: callback.style });
+            return { kind: "none" };
+          case "getFields":
+            this.observedFields = true;
+            return { kind: "fields", value: projection.fields.map(replyField) };
+          case "cursorInField": {
+            this.observedFields = true;
+            const value = projection.fields.find((field2) => field2.id === this.cursorFieldID);
+            return { kind: "field", value: value ? replyField(value) : null };
+          }
+          case "canInsertField":
+            if (this.cursorFieldID) return { kind: "boolean", value: true };
+            try {
+              stageFieldOperation(projection, { insertions: [{
+                at: this.insertionPoint,
+                replacement: this.replacement,
+                field: { id: this.newFieldID, kind: this.captureContext.command === "addEditBibliography" ? "bibliography" : "citation", code: "", text: "{Citation}" }
+              }] });
+              return { kind: "boolean", value: true };
+            } catch {
+              return { kind: "boolean", value: false };
+            }
+          case "insertField": {
+            if (this.inserted || this.cursorFieldID || !["addEditCitation", "addEditBibliography"].includes(this.captureContext.command)) throw new Error("Citation insertion is unavailable.");
+            this.stage({ insertions: [{
+              at: this.insertionPoint,
+              replacement: this.replacement,
+              field: { id: this.newFieldID, kind: this.captureContext.command === "addEditBibliography" ? "bibliography" : "citation", code: "", text: "{Citation}" }
+            }] });
+            this.inserted = true;
+            this.cursorFieldID = this.targetFieldID = this.newFieldID;
+            this.replacement = void 0;
+            return { kind: "field", value: replyField(projectFields(this.candidate).fields.find((field2) => field2.id === this.newFieldID)) };
+          }
+          case "getFieldText":
+            return { kind: "string", value: field(callback.id).text };
+          case "setFieldText":
+            field(callback.id);
+            this.stage({ updates: [{ id: callback.id, text: callback.html }] });
+            if (callback.id === this.targetFieldID) this.targetWritten = true;
+            return { kind: "none" };
+          case "setFieldCode":
+            field(callback.id);
+            this.stage({ updates: [{ id: callback.id, code: callback.code }] });
+            if (this.captureContext.command === "addEditBibliography" && !this.targetFieldID && projectFields(this.candidate).fields.find((field2) => field2.id === callback.id)?.kind === "bibliography") this.targetFieldID = callback.id;
+            if (callback.id === this.targetFieldID) this.targetWritten = true;
+            return { kind: "none" };
+          case "deleteField":
+          case "removeFieldCode": {
+            const removed = field(callback.id);
+            if (callback.type === "deleteField" && this.inserted && callback.id === this.newFieldID && !isCompletedFieldCode(removed)) this.cancelledInsertion = true;
+            this.stage({ updates: [{ id: callback.id, ...callback.type === "deleteField" ? { delete: true } : { unlink: true } }] });
+            if (this.cursorFieldID === callback.id) this.cursorFieldID = void 0;
+            if (this.selectedFieldID === callback.id) this.selectedFieldID = void 0;
+            return { kind: "none" };
+          }
+          case "selectField":
+            field(callback.id);
+            this.selectedFieldID = this.cursorFieldID = callback.id;
+            return { kind: "selection", fieldID: callback.id };
+        }
+      } catch (error) {
+        this.closed = true;
+        throw error;
+      }
+    }
+    finalize(state, context, remote) {
+      try {
+        if (this.cancelled || remote.status === "cancelled") return null;
+        if (!this.current(state, context)) throw new Error("Citation transaction has lost editor authority.");
+        if (remote.status !== "cleanedUp" || remote.remoteCleanupConfirmed !== true) throw new Error("Zotero cleanup was not confirmed.");
+        if (this.cancelledInsertion) return null;
+        if (this.candidate === this.originalSource && !this.targetWritten && (this.captureContext.command !== "refresh" || !this.observedFields)) return null;
+        const projection = projectFields(this.candidate);
+        if (projection.diagnostics.length || !projection.documentData?.trim() || projection.fields.some((field) => !isCompletedFieldCode(field) || !field.text.trim() || ["{Citation}", "{Bibliography}"].includes(field.text.trim()))) throw new Error("Citation command left incomplete source state.");
+        if (this.captureContext.command === "addEditCitation" || this.captureContext.command === "addEditBibliography") {
+          const target2 = projection.fields.find((field) => field.id === this.targetFieldID);
+          const expectedKind = this.captureContext.command === "addEditCitation" ? "citation" : "bibliography";
+          if (!target2 || target2.kind !== expectedKind || !this.targetWritten) throw new Error("Citation command did not complete the requested field.");
+        } else if (this.captureContext.command === "refresh" && !this.observedFields) throw new Error("Citation refresh did not verify document fields.");
+        else if (this.captureContext.command === "setDocPrefs" && this.candidate === this.originalSource) return null;
+        this.stage({ acceptCurrentFields: true });
+        const accepted = projectFields(this.candidate);
+        if (accepted.diagnostics.length || accepted.citationStateStale) throw new Error("Citation acceptance does not match source fields.");
+        if (this.candidate === this.originalSource) return null;
+        const changes = [];
+        this.aggregate.iterChanges((from, to, _newFrom, _newTo, text) => {
+          changes.push({ from, to, expected: this.originalSource.slice(from, to), insert: text.toString() });
+        });
+        const target = accepted.fields.find((field) => field.id === (this.selectedFieldID ?? this.targetFieldID));
+        const cursor = target ? normalizedDocumentText(this.candidate.slice(0, target.range.to)).length : void 0;
+        return {
+          expectedSource: this.originalSource,
+          source: this.candidate,
+          changes,
+          ...cursor === void 0 ? {} : { selection: { anchor: cursor, head: cursor } }
+        };
+      } finally {
+        this.closed = true;
+      }
+    }
+    cancel() {
+      this.cancelled = true;
+      this.closed = true;
+      this.candidate = this.originalSource;
+    }
+  };
+
+  // committed-snapshot-receipt.ts
+  var CommittedSnapshotReceipt = class {
+    receipt = null;
+    clear() {
+      this.receipt = null;
+    }
+    remember(identity, operation) {
+      this.receipt = {
+        sessionID: identity.sessionID,
+        documentID: identity.documentID,
+        startingFingerprint: identity.startingFingerprint,
+        ...operation
+      };
+    }
+    replay(request, current, source, dirty2) {
+      if (!this.canReplay(request, current) || request.operation.type !== "acknowledgeCommittedSnapshot") return null;
+      return { text: source, commitSuperseded: dirty2 || source !== request.operation.committedText };
+    }
+    canReplay(request, current) {
+      const receipt = this.receipt;
+      const operation = request.operation;
+      return receipt !== null && operation.type === "acknowledgeCommittedSnapshot" && request.startingFingerprint !== current.startingFingerprint && receipt.sessionID === current.sessionID && request.sessionID === receipt.sessionID && receipt.documentID === current.documentID && request.documentID === receipt.documentID && request.startingFingerprint === receipt.startingFingerprint && current.startingFingerprint === receipt.committedFingerprint && operation.committedFingerprint === receipt.committedFingerprint && operation.expectedText === receipt.expectedText && operation.committedText === receipt.committedText;
+    }
+  };
+
+  // attachment-presentation.ts
+  var attachmentSymbols = {
+    pdf: "doc-richtext",
+    doc: "doc-text",
+    docx: "doc-text",
+    odt: "doc-text",
+    rtf: "doc-text",
+    txt: "doc-text",
+    xls: "tablecells",
+    xlsx: "tablecells",
+    ods: "tablecells",
+    numbers: "tablecells",
+    csv: "tablecells",
+    tsv: "tablecells",
+    ppt: "rectangle-on-rectangle",
+    pptx: "rectangle-on-rectangle",
+    odp: "rectangle-on-rectangle",
+    key: "rectangle-on-rectangle",
+    png: "photo",
+    jpg: "photo",
+    jpeg: "photo",
+    gif: "photo",
+    webp: "photo",
+    heic: "photo",
+    heif: "photo",
+    avif: "photo",
+    tiff: "photo",
+    tif: "photo",
+    bmp: "photo",
+    svg: "photo",
+    ico: "photo",
+    zip: "doc-zipper",
+    gz: "doc-zipper",
+    gzip: "doc-zipper",
+    tar: "doc-zipper",
+    tgz: "doc-zipper",
+    bz2: "doc-zipper",
+    xz: "doc-zipper",
+    "7z": "doc-zipper",
+    rar: "doc-zipper"
+  };
+  function attachmentSymbol(destination) {
+    if (/[\u0000-\u001f\u007f]/.test(destination)) return null;
+    let path = destination.trim();
+    if (path.startsWith("<") && path.endsWith(">")) path = path.slice(1, -1);
+    else if (path.startsWith("<") || path.endsWith(">")) return null;
+    if (!path || path.startsWith("#")) return null;
+    if (/^scholium-note:/i.test(path)) {
+      path = path.slice("scholium-note:".length);
+    }
+    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(path)?.[1].toLowerCase();
+    if (scheme === "file") {
+      try {
+        const url = new URL(path);
+        if (url.hostname && url.hostname !== "localhost") return null;
+        path = url.pathname;
+      } catch {
+        return null;
+      }
+    } else if (scheme) {
+      return null;
+    }
+    path = path.split(/[?#]/, 1)[0];
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      return null;
+    }
+    if (path.startsWith("#") || /\.(?:md|markdown)[?#]/i.test(path)) return null;
+    if (!path || /[\u0000-\u001f\u007f]/.test(path) || path.startsWith("//") || path.endsWith("/") || /^[a-z][a-z\d+.-]*:/i.test(path)) return null;
+    const filename = path.slice(path.lastIndexOf("/") + 1);
+    const dot2 = filename.lastIndexOf(".");
+    if (dot2 <= 0 || dot2 === filename.length - 1) return null;
+    const extension = filename.slice(dot2 + 1).toLowerCase();
+    if (extension === "md" || extension === "markdown") return null;
+    return Object.hasOwn(attachmentSymbols, extension) ? attachmentSymbols[extension] : "paperclip";
+  }
+
+  // editor-suspension.ts
+  var setEditorSuspension = StateEffect.define();
+  var editorSuspensionState = StateField.define({
+    create: () => null,
+    update(value, transaction) {
+      if (value !== null && transaction.docChanged) throw new Error("editor is suspended for detachment");
+      const change = transaction.effects.find((effect) => effect.is(setEditorSuspension));
+      return change ? change.value : value;
+    }
+  });
+  var editorSuspension = [
+    editorSuspensionState,
+    EditorState.readOnly.from(editorSuspensionState, (token) => token !== null),
+    EditorView.editable.from(editorSuspensionState, (token) => token === null),
+    EditorView.editorAttributes.from(editorSuspensionState, (token) => token === null ? {} : { inert: "" }),
+    EditorState.transactionFilter.of((transaction) => transaction.startState.field(editorSuspensionState) !== null && transaction.docChanged ? [] : transaction)
+  ];
+
+  // document-title.ts
+  function createDocumentTitle(options) {
+    const refreshDocumentTitleEffect = StateEffect.define();
+    let documentTitle2 = "";
+    let documentTitleDraft = null;
+    let documentTitleError = null;
+    let documentTitleRenameRequest = null;
+    let documentTitlePresentationRevision = 0;
+    class DocumentTitleWidget extends WidgetType {
+      constructor(title, presentationRevision) {
+        super();
+        this.title = title;
+        this.presentationRevision = presentationRevision;
+      }
+      title;
+      presentationRevision;
+      eq(other) {
+        return other.title === this.title && other.presentationRevision === this.presentationRevision;
+      }
+      toDOM() {
+        const attachment = options.attachment();
+        const wrapper = document.createElement("div");
+        wrapper.className = "cm-live-note-title scholium-note-title";
+        wrapper.setAttribute("role", "heading");
+        wrapper.setAttribute("aria-level", "1");
+        wrapper.setAttribute("aria-label", documentTitleDraft ?? this.title);
+        wrapper.setAttribute("dir", "auto");
+        wrapper.setAttribute("data-scholium-protected", "note-title");
+        const input = document.createElement("textarea");
+        input.className = "scholium-note-title-input";
+        input.value = documentTitleDraft ?? this.title;
+        input.rows = 1;
+        input.wrap = "soft";
+        input.spellcheck = false;
+        input.maxLength = 1024;
+        input.setAttribute("aria-label", localized("Note title"));
+        input.setAttribute("data-scholium-title-input", "true");
+        input.disabled = documentTitleRenameRequest !== null;
+        if (documentTitleRenameRequest) input.setAttribute("aria-busy", "true");
+        if (documentTitleError) {
+          input.setAttribute("aria-invalid", "true");
+          input.setAttribute("aria-describedby", "scholium-note-title-error");
+        }
+        const resize = () => {
+          input.style.height = "0";
+          input.style.height = `${input.scrollHeight}px`;
+        };
+        let composing = false;
+        let commitAfterComposition = false;
+        const normalizeInput = () => {
+          if (attachment !== options.attachment()) return;
+          if (composing) {
+            documentTitleDraft = input.value;
+            wrapper.setAttribute("aria-label", input.value || this.title);
+            resize();
+            return;
+          }
+          const normalized2 = input.value.replace(/[\r\n]+/g, " ");
+          if (normalized2 !== input.value) input.value = normalized2;
+          documentTitleDraft = input.value;
+          wrapper.setAttribute("aria-label", input.value || this.title);
+          documentTitleError = null;
+          input.removeAttribute("aria-invalid");
+          input.removeAttribute("aria-describedby");
+          wrapper.querySelector(".scholium-note-title-error")?.remove();
+          resize();
+        };
+        const commit = () => {
+          if (attachment !== options.attachment() || options.isSuspended()) return;
+          if (documentTitleRenameRequest) return;
+          const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
+          documentTitleDraft = requestedTitle;
+          if (requestedTitle === documentTitle2) {
+            documentTitleDraft = null;
+            documentTitleError = null;
+            return;
+          }
+          const requestID = options.requestID();
+          documentTitleRenameRequest = {
+            requestID,
+            requestedTitle
+          };
+          input.disabled = true;
+          input.setAttribute("aria-busy", "true");
+          options.requestRename({
+            requestID,
+            expectedTitle: documentTitle2,
+            requestedTitle
+          });
+        };
+        let cancelling = false;
+        input.addEventListener("input", normalizeInput);
+        input.addEventListener("focus", () => {
+          if (attachment !== options.attachment()) return;
+          options.focusChanged();
+        });
+        input.addEventListener("compositionstart", () => {
+          if (attachment !== options.attachment()) return;
+          composing = true;
+          options.beginComposition();
+        });
+        input.addEventListener("compositionend", () => {
+          if (attachment !== options.attachment()) return;
+          composing = false;
+          options.endComposition();
+          normalizeInput();
+          if (commitAfterComposition) {
+            commitAfterComposition = false;
+            commit();
+          }
+        });
+        input.addEventListener("keydown", (event) => {
+          if (attachment !== options.attachment()) return;
+          if (composing || event.isComposing) return;
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            cancelling = true;
+            documentTitleDraft = null;
+            documentTitleError = null;
+            input.value = documentTitle2;
+            resize();
+            input.blur();
+          }
+        });
+        input.addEventListener("blur", () => {
+          if (attachment !== options.attachment()) return;
+          if (cancelling) {
+            cancelling = false;
+            return;
+          }
+          if (composing) {
+            commitAfterComposition = true;
+            return;
+          }
+          commit();
+        });
+        const stopEditorPointerHandling = (event) => event.stopPropagation();
+        input.addEventListener("pointerdown", stopEditorPointerHandling);
+        input.addEventListener("mousedown", stopEditorPointerHandling);
+        wrapper.addEventListener("pointerdown", (event) => {
+          if (event.target === input || input.disabled) return;
+          event.preventDefault();
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        });
+        wrapper.append(input);
+        if (documentTitleError) {
+          const error = document.createElement("div");
+          error.id = "scholium-note-title-error";
+          error.className = "scholium-note-title-error";
+          error.setAttribute("role", "alert");
+          error.textContent = documentTitleError;
+          wrapper.append(error);
+        }
+        queueMicrotask(resize);
+        return wrapper;
+      }
+      ignoreEvent() {
+        return true;
+      }
+    }
+    function documentTitleDecorations() {
+      if (!documentTitle2) return Decoration.none;
+      return Decoration.set([
+        Decoration.widget({
+          widget: new DocumentTitleWidget(
+            documentTitle2,
+            documentTitlePresentationRevision
+          ),
+          block: true,
+          side: -2
+        }).range(0)
+      ]);
+    }
+    function resolveDocumentTitleRename(requestID, accepted, title, error) {
+      if (!documentTitleRenameRequest || requestID !== documentTitleRenameRequest.requestID || typeof accepted !== "boolean" || typeof title !== "string" || title.length > 1024 || typeof error !== "string" || error.length > 4096) return;
+      const requestedTitle = documentTitleRenameRequest.requestedTitle;
+      documentTitleRenameRequest = null;
+      if (accepted) {
+        documentTitle2 = title;
+        documentTitleDraft = null;
+        documentTitleError = null;
+      } else {
+        documentTitleDraft = requestedTitle;
+        documentTitleError = error;
+      }
+      documentTitlePresentationRevision += 1;
+      options.dispatch(refreshDocumentTitleEffect.of(null));
+      if (!accepted) {
+        const attachment = options.attachment();
+        queueMicrotask(() => {
+          if (attachment !== options.attachment()) return;
+          const input = document.querySelector(
+            ".scholium-note-title-input"
+          );
+          input?.focus();
+          input?.setSelectionRange(input.value.length, input.value.length);
+        });
+      }
+    }
+    const liveDocumentTitle = StateField.define({
+      create: () => documentTitleDecorations(),
+      update: (decorations2, transaction) => {
+        const titleChanged = transaction.effects.some((effect) => effect.is(refreshDocumentTitleEffect));
+        return transaction.docChanged || titleChanged ? documentTitleDecorations() : decorations2;
+      },
+      provide: (field) => EditorView.decorations.from(field)
+    });
+    return {
+      extension: liveDocumentTitle,
+      resolveRename: resolveDocumentTitleRename,
+      // The native detachment transaction consults this before capturing source.
+      // Filename drafts live in this control and are not source recovery data.
+      allowsDetachment: () => documentTitleRenameRequest === null && (documentTitleDraft === null || documentTitleDraft === documentTitle2),
+      ownsCompositionEvent: (event) => event.target instanceof Element && event.target.closest("[data-scholium-title-input]") !== null,
+      resetDocument() {
+        documentTitle2 = "";
+        documentTitleDraft = null;
+        documentTitleError = null;
+        documentTitleRenameRequest = null;
+        documentTitlePresentationRevision += 1;
+      },
+      setTitle(value) {
+        if (documentTitle2 === value && documentTitleDraft === null && documentTitleError === null && documentTitleRenameRequest === null) return;
+        documentTitle2 = value;
+        documentTitleDraft = null;
+        documentTitleError = null;
+        documentTitleRenameRequest = null;
+        documentTitlePresentationRevision += 1;
+        options.dispatch(refreshDocumentTitleEffect.of(null));
+      },
+      focus() {
+        const input = document.querySelector(
+          ".scholium-note-title-input"
+        );
+        if (!input || input.disabled) return false;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        return true;
+      }
+    };
+  }
+
+  // passage-replacement.ts
+  function passageReplacement(source, expected, from, to, replacement) {
+    if (source !== expected || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from || to > source.length || replacement.length === 0 || from === 0 && to === 0 && source.charCodeAt(0) === 65279) return null;
+    function boundary2(offset) {
+      if (offset <= 0 || offset >= source.length) return true;
+      const before = source.charCodeAt(offset - 1), after = source.charCodeAt(offset);
+      return !(before === 13 && after === 10) && !(before >= 55296 && before <= 56319 && after >= 56320 && after <= 57343);
+    }
+    if (!boundary2(from) || !boundary2(to)) return null;
+    return {
+      from: normalizedDocumentText(source.slice(0, from)).length,
+      to: normalizedDocumentText(source.slice(0, to)).length,
+      insert: normalizedDocumentText(replacement)
+    };
+  }
+
+  // selection-actions.ts
+  function createSelectionActions(floating, current) {
+    let id2 = null;
+    let key = null;
+    let dismissed = null;
+    function hide() {
+      if (id2 !== null) floating.hide(id2);
+      id2 = null;
+      key = null;
+    }
+    function dismiss() {
+      const visible = id2 !== null;
+      if (key !== null) dismissed = key;
+      hide();
+      return visible;
+    }
+    return {
+      dismiss,
+      update(target = current()) {
+        if (!target) {
+          hide();
+          dismissed = null;
+          return;
+        }
+        if (target.key === key || target.key === dismissed) return;
+        hide();
+        key = target.key;
+        id2 = floating.show({ ...target.anchor }, {
+          dismiss,
+          choose: () => {
+            const valid = current()?.key === target.key;
+            return valid;
+          }
+        });
+      }
+    };
+  }
+
+  // live-cursor-geometry.ts
+  function readLiveCursorGeometry(view) {
+    const selection = view.state.selection.main;
+    if (!selection.empty) return null;
+    const rect = view.coordsAtPos(selection.head, selection.assoc || 1);
+    if (!rect) return null;
+    return { left: rect.left, top: rect.top, bottom: rect.bottom };
+  }
+  function readLiveCursorSurfaceGeometry(view) {
+    const outer = view.scrollDOM.getBoundingClientRect();
+    const scaleX = view.scaleX ?? 1;
+    const scaleY = view.scaleY ?? 1;
+    return {
+      outerLeft: outer.left,
+      outerRight: outer.right,
+      outerTop: outer.top,
+      clientWidth: view.scrollDOM.clientWidth,
+      scaleX,
+      scaleY,
+      scrollLeft: view.scrollDOM.scrollLeft * scaleX,
+      scrollTop: view.scrollDOM.scrollTop * scaleY,
+      direction: view.textDirection
+    };
+  }
+  function writeLiveCursorGeometry(view, geometry, surface) {
+    if (!geometry) return;
+    const cursor = view.scrollDOM.querySelector(".cm-cursor-primary");
+    if (!cursor) return;
+    const baseLeft = surface.direction === Direction.LTR ? surface.outerLeft - surface.scrollLeft : surface.outerRight - surface.clientWidth * surface.scaleX - surface.scrollLeft;
+    const baseTop = surface.outerTop - surface.scrollTop;
+    cursor.style.left = `${(geometry.left - baseLeft) / surface.scaleX}px`;
+    cursor.style.top = `${(geometry.top - baseTop) / surface.scaleY}px`;
+    cursor.style.height = `${(geometry.bottom - geometry.top) / surface.scaleY}px`;
+  }
+
+  // syntax-presentation.ts
+  function canDisplaceSyntax(source) {
+    return /^(?:[*_~`=]{1,2}|#{1,6} ?|(?:> ?){1,3}|!?\[|\]|\(|\))$/.test(source);
+  }
+  function canRetainSyntax(source) {
+    return source.length > 0 && source.length <= 24 && /^[\x20-\x7e]+$/.test(source);
+  }
+  function syntaxToken(source, from, to, exposed, kind = "inline", className = "") {
+    return Decoration.mark({
+      class: `cm-syntax-token ${exposed ? className : ""}`.trim(),
+      attributes: {
+        "data-syntax-key": `${from}:${to}`,
+        "data-syntax-open": String(exposed),
+        "data-syntax-kind": kind,
+        "data-syntax-displace": String(canDisplaceSyntax(source)),
+        ...exposed ? {} : { "aria-hidden": "true" },
+        "data-syntax-length": String(source.length)
+      }
+    });
+  }
+  function animatedScalar(computedValue, progress, from, to) {
+    const current = Number.parseFloat(computedValue);
+    if (Number.isFinite(current)) return current;
+    if (progress !== null && Number.isFinite(progress)) return from + (to - from) * progress;
+    return from;
+  }
+  function prefixNeedsMargin(textWidth, tokenWidth, measure, availableMargin) {
+    return textWidth > measure && textWidth - tokenWidth <= measure && tokenWidth + 4 <= availableMargin;
+  }
+  var syntaxPresentation = ViewPlugin.fromClass(class {
+    constructor(view) {
+      this.view = view;
+      this.reduced.addEventListener("change", this.stop);
+      this.resize = new ResizeObserver((entries) => {
+        const width = entries[0]?.contentRect.width ?? 0;
+        if (width === this.inlineSize) return;
+        this.inlineSize = width;
+        this.stop();
+        this.borrowed.clear();
+        this.frames.clear();
+        this.frontmatterFrames.clear();
+        this.measure(false);
+      });
+      view.scrollDOM.addEventListener("scroll", this.stop, { passive: true });
+      this.resize.observe(view.scrollDOM);
+      this.measure(false);
+    }
+    view;
+    frames = /* @__PURE__ */ new Map();
+    frontmatterFrames = /* @__PURE__ */ new Map();
+    borrowed = /* @__PURE__ */ new Set();
+    transitions = /* @__PURE__ */ new Map();
+    frontmatterTransitions = /* @__PURE__ */ new Map();
+    animations = [];
+    objects = /* @__PURE__ */ new Set();
+    destroyed = false;
+    reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    resize;
+    inlineSize = 0;
+    cursorMeasureKey = {};
+    stop = () => {
+      for (const animation of this.animations) animation.cancel();
+      this.animations = [];
+      this.transitions.clear();
+      this.frontmatterTransitions.clear();
+    };
+    update(update) {
+      if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
+      const animate = !update.docChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
+      for (const [key, transition] of this.transitions) {
+        const frame = this.frames.get(key);
+        const progress = transition.animation.effect?.getComputedTiming().progress;
+        if (frame) {
+          const style = getComputedStyle(transition.node);
+          frame.color = style.color || frame.color;
+          frame.opacity = animatedScalar(
+            style.opacity,
+            typeof progress === "number" ? progress : null,
+            transition.fromOpacity,
+            transition.toOpacity
+          );
+        }
+      }
+      for (const [key, transition] of this.frontmatterTransitions) {
+        const frame = this.frontmatterFrames.get(key);
+        const progress = transition.animation.effect?.getComputedTiming().progress;
+        if (frame) {
+          const style = getComputedStyle(transition.node);
+          frame.opacity = animatedScalar(
+            style.opacity,
+            typeof progress === "number" ? progress : null,
+            transition.fromOpacity,
+            transition.toOpacity
+          );
+        }
+      }
+      this.transitions.clear();
+      this.frontmatterTransitions.clear();
+      this.stop();
+      this.measure(animate);
+    }
+    measure(animate) {
+      this.view.requestMeasure({
+        key: this,
+        read: () => ({
+          objects: [...this.view.contentDOM.querySelectorAll(
+            // Technical projections own their fade-only entry in CSS. Keeping
+            // them out of this generic object pulse avoids two animation owners
+            // competing while a widget is exchanged for its exact source.
+            ".cm-live-table-widget, .cm-live-table, .cm-live-footnote-reference-widget, .cm-live-embed"
+          )],
+          cursor: readLiveCursorGeometry(this.view),
+          cursorSurface: readLiveCursorSurfaceGeometry(this.view),
+          frontmatter: [...this.view.contentDOM.querySelectorAll(
+            ".scholium-frontmatter-delimiter-line[data-scholium-yaml-delimiter]"
+          )].map((node, index) => {
+            const style = getComputedStyle(node);
+            return {
+              node,
+              key: node.dataset.scholiumYamlDelimiter ?? String(index),
+              opacity: Number.parseFloat(style.opacity) || 0,
+              open: node.classList.contains("scholium-frontmatter-delimiter-line-active")
+            };
+          }),
+          tokens: [...this.view.contentDOM.querySelectorAll(".cm-syntax-token")].map((node) => {
+            const key = node.dataset.syntaxKey;
+            const open = node.dataset.syntaxOpen === "true";
+            const width = node.getBoundingClientRect().width;
+            const line = node.closest(".cm-line");
+            const displace = node.dataset.syntaxDisplace === "true" && !line?.matches(".cm-live-callout, .cm-live-codeblock, .cm-live-rule, .scholium-frontmatter-line");
+            let borrow = open && this.borrowed.has(key);
+            if (borrow && node.getBoundingClientRect().left < this.view.scrollDOM.getBoundingClientRect().left + 4) borrow = false;
+            if (displace && open && !this.frames.get(key)?.open && node.dataset.syntaxKind === "prefix" && line && getComputedStyle(line).direction === "ltr") {
+              const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+              let textWidth = 0;
+              while (walker.nextNode()) {
+                const text = walker.currentNode;
+                if (text.parentElement?.closest('[data-syntax-open="false"]')) continue;
+                const range = document.createRange();
+                range.selectNodeContents(text);
+                for (const rect of range.getClientRects()) textWidth += rect.width;
+              }
+              const style2 = getComputedStyle(line);
+              const measure = line.clientWidth - parseFloat(style2.paddingLeft) - parseFloat(style2.paddingRight);
+              borrow = node.offsetLeft <= parseFloat(style2.paddingLeft) + 1 && prefixNeedsMargin(
+                textWidth,
+                width,
+                measure,
+                node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left
+              );
+            }
+            const style = getComputedStyle(node);
+            return {
+              node,
+              key,
+              open,
+              width,
+              borrow,
+              activeColor: style.getPropertyValue("--scholium-syntax-active-ink").trim(),
+              secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim(),
+              opacity: Number.parseFloat(style.opacity) || 0
+            };
+          })
+        }),
+        write: ({ tokens, objects, cursor, cursorSurface, frontmatter }) => {
+          if (this.destroyed) return;
+          for (const object of objects) {
+            if (animate && this.objects.size && !this.objects.has(object) && typeof object.animate === "function") {
+              this.animations.push(object.animate(
+                [{ opacity: 0.65 }, { opacity: 1 }],
+                { duration: 100, easing: "ease-out" }
+              ));
+            }
+          }
+          this.objects = new Set(objects);
+          const nextFrontmatter = /* @__PURE__ */ new Map();
+          for (const { node, key, opacity, open } of frontmatter) {
+            const previous = this.frontmatterFrames.get(key);
+            nextFrontmatter.set(key, { opacity, open });
+            if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
+            const fromOpacity = open ? 0 : previous.opacity;
+            const toOpacity = open ? opacity : 0;
+            const animation = node.animate([
+              { opacity: fromOpacity },
+              { opacity: toOpacity }
+            ], { duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
+            this.animations.push(animation);
+            this.frontmatterTransitions.set(key, {
+              node,
+              animation,
+              fromOpacity,
+              toOpacity
+            });
+          }
+          this.frontmatterFrames = nextFrontmatter;
+          const next = /* @__PURE__ */ new Map();
+          let marginChanged = false;
+          for (const { node, key, open, width, borrow, activeColor, secondaryColor } of tokens) {
+            const previous = this.frames.get(key);
+            if (borrow) this.borrowed.add(key);
+            else this.borrowed.delete(key);
+            const targetMargin = borrow ? -width : 0;
+            if (targetMargin === 0) {
+              if (node.style.marginInlineStart) {
+                node.style.removeProperty("margin-inline-start");
+                marginChanged = true;
+              }
+            } else if (node.style.marginInlineStart !== `${targetMargin}px`) {
+              node.style.marginInlineStart = `${targetMargin}px`;
+              marginChanged = true;
+            }
+            const targetOpacity = open ? 1 : 0;
+            next.set(key, {
+              open,
+              color: open ? activeColor : secondaryColor,
+              opacity: targetOpacity
+            });
+            if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
+            const animation = node.animate([
+              { opacity: previous.opacity, color: previous.color },
+              { opacity: targetOpacity, color: open ? activeColor : secondaryColor }
+            ], { duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
+            this.animations.push(animation);
+            this.transitions.set(key, {
+              node,
+              animation,
+              fromOpacity: previous.opacity,
+              toOpacity: targetOpacity
+            });
+          }
+          this.frames = next;
+          for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
+          if (marginChanged) {
+            this.view.requestMeasure({
+              key: this.cursorMeasureKey,
+              read: () => ({
+                cursor: readLiveCursorGeometry(this.view),
+                surface: readLiveCursorSurfaceGeometry(this.view)
+              }),
+              write: ({ cursor: measuredCursor, surface }) => {
+                if (!this.destroyed) writeLiveCursorGeometry(this.view, measuredCursor, surface);
+              }
+            });
+          } else {
+            writeLiveCursorGeometry(this.view, cursor, cursorSurface);
+          }
+        }
+      });
+    }
+    destroy() {
+      this.destroyed = true;
+      this.stop();
+      this.reduced.removeEventListener("change", this.stop);
+      this.view.scrollDOM.removeEventListener("scroll", this.stop);
+      this.resize.disconnect();
+    }
+  }, { eventHandlers: {
+    compositionstart() {
+      this.stop();
+    },
+    mousedown() {
+      this.stop();
+    }
+  } });
+
+  // arrival-highlight.ts
+  var arrivalDuration = 1400;
+  var arrivalClass = "scholium-arrival-target";
+
+  // editor-arrival-highlight.ts
+  var showEditorArrival = StateEffect.define();
+  var editorArrivalState = StateField.define({
+    create: () => Decoration.none,
+    update(value, transaction) {
+      if (transaction.docChanged || transaction.reconfigured) value = Decoration.none;
+      for (const effect of transaction.effects) {
+        if (!effect.is(showEditorArrival)) continue;
+        const position = effect.value;
+        value = position !== null && position >= 0 && position <= transaction.newDoc.length ? Decoration.set([Decoration.line({ class: arrivalClass }).range(transaction.newDoc.lineAt(position).from)]) : Decoration.none;
+      }
+      return value;
+    },
+    provide: (field) => EditorView.decorations.from(field)
+  });
+  var lifetime = ViewPlugin.fromClass(class {
+    constructor(view) {
+      this.view = view;
+    }
+    view;
+    timer;
+    update(update) {
+      if (update.docChanged || update.transactions.some((transaction) => transaction.reconfigured)) {
+        clearTimeout(this.timer);
+      }
+      for (const transaction of update.transactions) for (const effect of transaction.effects) {
+        if (!effect.is(showEditorArrival)) continue;
+        clearTimeout(this.timer);
+        if (effect.value !== null) {
+          this.view.requestMeasure({
+            key: this,
+            read: (view) => view.dom.querySelector("." + arrivalClass),
+            write: (marker) => {
+              for (const animation of marker?.getAnimations() ?? []) {
+                if (animation instanceof CSSAnimation && animation.animationName === "scholium-arrival-fade") {
+                  animation.currentTime = 0;
+                  animation.play();
+                }
+              }
+            }
+          });
+          this.timer = setTimeout(() => {
+            this.view.dispatch({ effects: showEditorArrival.of(null) });
+          }, arrivalDuration);
+        }
+      }
+    }
+    destroy() {
+      clearTimeout(this.timer);
+    }
+  });
+  var editorArrivalHighlight = [editorArrivalState, lifetime];
+
+  // native-floating.ts
+  function createNativeFloatingPorts(post2) {
+    let serial = 0;
+    let active = null;
+    function activate(kind, callbacks, event2) {
+      if (active && active.kind !== kind) active.dismiss();
+      const id2 = ++serial;
+      active = { kind, id: id2, dismiss: callbacks.dismiss, event: event2 };
+      return id2;
+    }
+    function hide(kind, id2) {
+      if (active?.kind !== kind || active.id !== id2) return;
+      post2({ type: "dismissSurface", kind, id: id2 });
+      active = null;
+    }
+    const preview = {
+      show(surface, callbacks) {
+        const id2 = activate("preview", callbacks, (currentID, action, _index) => {
+          if (currentID !== id2) return false;
+          if (action === "enter") callbacks.enter?.();
+          else if (action === "leave") callbacks.leave?.();
+          else if (action === "dismiss") callbacks.dismiss();
+          else return false;
+          return true;
+        });
+        post2({ type: "previewSurface", surface: { ...surface, id: id2 } });
+        return id2;
+      },
+      hide(id2) {
+        hide("preview", id2);
+      }
+    };
+    const suggestions = {
+      show(surface, callbacks) {
+        const id2 = activate("suggestions", callbacks, (currentID, action, index) => {
+          if (currentID !== id2 || !Number.isInteger(index)) return false;
+          if (action === "dismiss") callbacks.dismiss();
+          else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
+          else if (action === "choose" && index >= 0 && index < surface.items.length) {
+            return callbacks.choose?.(index) !== false;
+          } else return false;
+          return true;
+        });
+        post2({ type: "suggestionSurface", surface: { ...surface, id: id2 } });
+        return id2;
+      },
+      hide(id2) {
+        hide("suggestions", id2);
+      }
+    };
+    const selection = {
+      show(surface, callbacks) {
+        const id2 = activate("selection", callbacks, (currentID, action, index) => {
+          if (currentID !== id2) return false;
+          if (action === "dismiss") callbacks.dismiss();
+          else if (action === "choose" && index === 0) return callbacks.choose?.(index) !== false;
+          else return false;
+          return true;
+        });
+        post2({ type: "selectionSurface", surface: { ...surface, id: id2 } });
+        return id2;
+      },
+      hide(id2) {
+        hide("selection", id2);
+      }
+    };
+    const event = (id2, action, index) => active?.id === id2 ? active.event(id2, action, index) : false;
+    window.scholiumNativeFloatingEvent = event;
+    return { preview, suggestions, selection };
+  }
+  function previewSurface(anchor, root) {
+    const css2 = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
+    return {
+      left: anchor.left,
+      top: anchor.top,
+      bottom: anchor.bottom,
+      html: root.innerHTML,
+      css: css2
+    };
+  }
+
+  // transformations.ts
+  function toggledTaskMarker(marker) {
+    const match = /^\[([ xX])\]$/.exec(marker);
+    if (!match) return null;
+    return match[1] === " " ? "[x]" : "[ ]";
+  }
+  var inlineMarkers = {
+    bold: ["**", "**", "Bold"],
+    emphasis: ["*", "*", "Italic"],
+    strikethrough: ["~~", "~~", "Strikethrough"],
+    highlight: ["==", "==", "Highlight"],
+    markdownComment: ["%% ", " %%", "Markdown Comment"],
+    wikilink: ["[[", "]]", "Wikilink"]
+  };
+  function normalized(range) {
+    return { from: Math.min(range.anchor, range.head), to: Math.max(range.anchor, range.head) };
+  }
+  function overlaps(left, right) {
+    if (left.from === left.to) return left.from >= right.from && left.from <= right.to;
+    return left.from < right.to && left.to > right.from;
+  }
+  function lineBounds(source, range) {
+    const from = range.from === 0 ? 0 : source.lastIndexOf("\n", range.from - 1) + 1;
+    const lastPosition = range.to > range.from && source[range.to - 1] === "\n" ? range.to - 1 : range.to;
+    const newline3 = source.indexOf("\n", lastPosition);
+    return { from, to: newline3 < 0 ? source.length : newline3 };
+  }
+  function maximumRun(text, character) {
+    let maximum = 0;
+    for (const match of text.matchAll(new RegExp(`\\${character}+`, "g"))) maximum = Math.max(maximum, match[0].length);
+    return maximum;
+  }
+  function labelFor(command2) {
+    return command2.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
+  }
+  function imageArgument(argument) {
+    if (!argument || new TextEncoder().encode(argument).byteLength > 8192) return null;
+    try {
+      const value = JSON.parse(argument);
+      if (!value || typeof value !== "object" || typeof value.alt !== "string" || typeof value.destination !== "string" || value.alt.length > 1024 || /[\u0000-\u001f\u007f]/.test(value.alt) || value.destination.length === 0 || value.destination.length > 4096 || /[\u0000-\u0020\u007f\\]/.test(value.destination) || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value.destination) || !validImageDestination(value.destination)) return null;
+      return { alt: value.alt, destination: value.destination };
+    } catch {
+      return null;
+    }
+  }
+  function validImageDestination(destination) {
+    if (/%(?![0-9A-Fa-f]{2})/.test(destination)) return false;
+    const absolute = destination.startsWith("/");
+    const components = destination.split("/");
+    if (absolute) components.shift();
+    if (components.length === 0 || components.some((component) => component.length === 0)) {
+      return false;
+    }
+    return components.every((component) => !absolute && component === ".." || component !== "." && component !== ".." && /^[A-Za-z0-9._~%-]+$/.test(component));
+  }
+  function escapedImageAlt(value) {
+    return value.replace(/\\/g, "\\\\").replace(/([\[\]])/g, "\\$1");
+  }
+  function inlineChange(source, range, opening, closing2) {
+    const selected = source.slice(range.from, range.to);
+    const escapedOpening = range.from > 0 && source[range.from - 1] === "\\";
+    if (!escapedOpening && selected.startsWith(opening) && selected.endsWith(closing2) && selected.length >= opening.length + closing2.length) {
+      const insert3 = selected.slice(opening.length, selected.length - closing2.length);
+      return { change: { ...range, insert: insert3 }, selection: { anchor: range.from, head: range.from + insert3.length } };
+    }
+    const enclosingFrom = range.from - opening.length;
+    const escapedEnclosing = enclosingFrom > 0 && source[enclosingFrom - 1] === "\\";
+    if (!escapedEnclosing && source.slice(enclosingFrom, range.from) === opening && source.slice(range.to, range.to + closing2.length) === closing2) {
+      return {
+        change: { from: range.from - opening.length, to: range.to + closing2.length, insert: selected },
+        selection: { anchor: range.from - opening.length, head: range.to - opening.length }
+      };
+    }
+    const insert2 = `${opening}${selected}${closing2}`;
+    const anchor = range.from + opening.length;
+    return {
+      change: { ...range, insert: insert2 },
+      selection: { anchor, head: anchor + selected.length }
+    };
+  }
+  function transformOne(source, range, command2, argument) {
+    const marker = inlineMarkers[command2];
+    if (marker) {
+      const result = inlineChange(source, range, marker[0], marker[1]);
+      return { ...result, label: marker[2] };
+    }
+    if (command2 === "inlineCode") {
+      const selected = source.slice(range.from, range.to);
+      const fence = "`".repeat(Math.max(1, maximumRun(selected, "`") + 1));
+      const result = inlineChange(source, range, fence, fence);
+      return { ...result, label: "Inline Code" };
+    }
+    if (command2 === "standardLink" || command2 === "linkSelectedText") {
+      const selected = source.slice(range.from, range.to);
+      const destination = argument ?? "";
+      const insert2 = `[${selected}](${destination})`;
+      const anchor = selected ? range.from + selected.length + 3 : range.from + 1;
+      const head = selected ? anchor + destination.length : anchor;
+      return { change: { ...range, insert: insert2 }, selection: { anchor, head }, label: "Link" };
+    }
+    if (command2 === "annotatedWikilink") {
+      const selected = source.slice(range.from, range.to);
+      const target = selected || "Target";
+      const annotation = "Annotation";
+      const insert2 = `[[${target}]]{{${annotation}}}`;
+      const anchor = selected ? range.from + target.length + 6 : range.from + 2;
+      const head = selected ? anchor + annotation.length : anchor + target.length;
+      return {
+        change: { ...range, insert: insert2 },
+        selection: { anchor, head },
+        label: "Annotated Wikilink"
+      };
+    }
+    if (command2 === "pastePlain" || command2 === "pasteMarkdown") {
+      const insert2 = argument ?? "";
+      return { change: { ...range, insert: insert2 }, selection: { anchor: range.from + insert2.length, head: range.from + insert2.length }, label: "Paste" };
+    }
+    if (command2 === "fencedCode") {
+      const selected = source.slice(range.from, range.to);
+      const fence = "`".repeat(Math.max(3, maximumRun(selected, "`") + 1));
+      const insert2 = `${fence}
+${selected}
+${fence}`;
+      return {
+        change: { ...range, insert: insert2 },
+        selection: { anchor: range.from + fence.length + 1, head: range.from + fence.length + 1 + selected.length },
+        label: "Fenced Code"
+      };
+    }
+    if (command2 === "thematicBreak") {
+      return { change: { ...range, insert: "---" }, selection: { anchor: range.from + 3, head: range.from + 3 }, label: "Thematic Break" };
+    }
+    if (command2 === "insertTable") {
+      const insert2 = "| Column 1 | Column 2 |\n|---|---|\n|  |  |";
+      return { change: { ...range, insert: insert2 }, selection: { anchor: range.from + 2, head: range.from + 10 }, label: "Insert Table" };
+    }
+    if (command2 === "insertImage" || command2 === "insertAttachment") {
+      const image = imageArgument(argument);
+      if (!image) return null;
+      const selected = source.slice(range.from, range.to);
+      const usableSelection = selected.length <= 1024 && !/[\u0000-\u001f\u007f]/.test(selected) ? selected : "";
+      const alt = escapedImageAlt(usableSelection || image.alt);
+      const insert2 = `${command2 === "insertImage" ? "!" : ""}[${alt}](${image.destination})`;
+      const position = range.from + insert2.length;
+      return {
+        change: { ...range, insert: insert2 },
+        selection: { anchor: position, head: position },
+        label: command2 === "insertImage" ? "Insert Image" : "Insert Attachment"
+      };
+    }
+    const bounds = lineBounds(source, range);
+    const block = source.slice(bounds.from, bounds.to);
+    const heading2 = /^ {0,3}#{1,6}[ \t]+/.exec(block);
+    if (command2 === "paragraph" || /^heading[1-6]$/.test(command2)) {
+      const level = command2 === "paragraph" ? 0 : Number(command2.slice(-1));
+      const without = heading2 ? block.slice(heading2[0].length) : block;
+      const insert2 = level ? `${"#".repeat(level)} ${without}` : without;
+      return { change: { ...bounds, insert: insert2 }, selection: { anchor: bounds.from + (level ? level + 1 : 0), head: bounds.from + insert2.length }, label: level ? `Heading ${level}` : "Paragraph" };
+    }
+    const prefixByCommand = {
+      blockQuotation: "> ",
+      bulletList: "- ",
+      numberedList: "1. ",
+      taskList: "- [ ] ",
+      calloutOrient: "> [!orient] ",
+      calloutCite: "> [!cite] ",
+      calloutConnect: "> [!connect] ",
+      calloutState: "> [!state] ",
+      calloutIllustrate: "> [!illustrate] ",
+      calloutQuote: "> [!quote] ",
+      calloutFlag: "> [!flag] "
+    };
+    const prefix = prefixByCommand[command2];
+    if (prefix !== void 0) {
+      const insert2 = block.split("\n").map((line, index) => index === 0 || !prefix.startsWith("> [!") ? `${prefix}${line}` : `> ${line}`).join("\n");
+      return { change: { ...bounds, insert: insert2 }, selection: { anchor: bounds.from + prefix.length, head: bounds.from + insert2.length }, label: labelFor(command2) };
+    }
+    return null;
+  }
+  function transformMarkdown(source, selections, command2, options = {}) {
+    if (new TextEncoder().encode(source).byteLength > 8e6 || selections.length === 0) return null;
+    const ranges = selections.map(normalized).sort((left, right) => left.from - right.from || left.to - right.to);
+    if (ranges.some((range, index) => index > 0 && range.from < ranges[index - 1].to)) return null;
+    if (ranges.some((range) => options.protectedRanges?.some((protectedRange) => overlaps(range, protectedRange)))) return null;
+    const tableTransformation = transformTableCommand(source, selections, command2);
+    if (tableTransformation) return tableTransformation;
+    if (command2 === "insertFootnote") {
+      const used = new Set(Array.from(source.matchAll(/\[\^(\d+)\]/g), (match) => Number(match[1])));
+      const allocated = [];
+      let candidate = 1;
+      for (const _range of ranges) {
+        while (used.has(candidate)) candidate += 1;
+        allocated.push(candidate);
+        used.add(candidate);
+        candidate += 1;
+      }
+      const referenceChanges = ranges.map((range, index) => ({
+        from: range.from,
+        to: range.to,
+        insert: `[^${allocated[index]}]`
+      }));
+      const bodyLength = source.length + referenceChanges.reduce(
+        (total, change) => total + change.insert.length - (change.to - change.from),
+        0
+      );
+      const separator = source.length === 0 ? "" : source.endsWith("\n") ? "\n" : "\n\n";
+      let definitions = separator;
+      const definitionSelections = [];
+      for (let index = 0; index < ranges.length; index += 1) {
+        const content2 = options.argument ?? source.slice(ranges[index].from, ranges[index].to);
+        const prefix = `[^${allocated[index]}]: `;
+        const anchor = bodyLength + definitions.length + prefix.length;
+        definitions += `${prefix}${content2}
+`;
+        definitionSelections.push({ anchor, head: anchor + content2.length });
+      }
+      return {
+        changes: [...referenceChanges, { from: source.length, to: source.length, insert: definitions }],
+        selections: definitionSelections,
+        undoLabel: "Insert Footnote"
+      };
+    }
+    if (command2 === "insertInlineFootnote") {
+      const values3 = ranges.map((range) => {
+        const selected = source.slice(range.from, range.to);
+        const insert2 = `^[${selected}]`;
+        const contentFrom = range.from + 2;
+        return {
+          change: { ...range, insert: insert2 },
+          selection: { anchor: contentFrom, head: contentFrom + selected.length }
+        };
+      });
+      const changes2 = values3.map(({ change }) => change);
+      let shift3 = 0;
+      const resultSelections2 = values3.map(({ selection, change }) => {
+        const mapped = {
+          anchor: selection.anchor + shift3,
+          head: selection.head + shift3
+        };
+        shift3 += change.insert.length - (change.to - change.from);
+        return mapped;
+      });
+      return {
+        changes: changes2,
+        selections: resultSelections2,
+        undoLabel: "Insert Inline Footnote"
+      };
+    }
+    if (command2 === "toggleTask") {
+      const taskChanges = ranges.map((range) => {
+        const bounds = lineBounds(source, range);
+        const indexedItem = options.taskItems?.findLast((item) => range.from >= item.from && range.to <= item.to);
+        const fallback = options.taskItems === void 0 ? /^([ \t]*(?:(?:[-+*])|(?:\d{1,9}[.)]))[ \t]+)(\[[ xX]\])/.exec(
+          source.slice(bounds.from, bounds.to)
+        ) : null;
+        const markerFrom = indexedItem?.markerFrom ?? (fallback ? bounds.from + fallback[1].length : null);
+        const markerTo = indexedItem?.markerTo ?? (markerFrom === null ? null : markerFrom + 3);
+        if (markerFrom === null || markerTo === null) return null;
+        const insert2 = toggledTaskMarker(source.slice(markerFrom, markerTo));
+        return insert2 === null ? null : { from: markerFrom, to: markerTo, insert: insert2 };
+      });
+      if (taskChanges.some((change) => change === null)) return null;
+      const uniqueChanges = /* @__PURE__ */ new Map();
+      for (const change of taskChanges) {
+        uniqueChanges.set(`${change.from}:${change.to}`, change);
+      }
+      const changes2 = [...uniqueChanges.values()].sort((left, right) => left.from - right.from || left.to - right.to);
+      if (changes2.some((change, index) => index > 0 && change.from < changes2[index - 1].to)) return null;
+      return {
+        changes: changes2,
+        selections,
+        undoLabel: "Toggle Task"
+      };
+    }
+    const transformed = ranges.map((range) => transformOne(source, range, command2, options.argument));
+    if (transformed.some((value) => value === null)) return null;
+    const values2 = transformed;
+    const changes = values2.map((value) => value.change);
+    if (changes.some((change) => options.protectedRanges?.some((range) => overlaps(change, range)))) return null;
+    const orderedChanges = [...changes].sort((left, right) => left.from - right.from || left.to - right.to);
+    if (orderedChanges.some((change, index) => index > 0 && change.from < orderedChanges[index - 1].to)) return null;
+    let shift2 = 0;
+    const resultSelections = values2.map((value) => {
+      const selection = { anchor: value.selection.anchor + shift2, head: value.selection.head + shift2 };
+      shift2 += value.change.insert.length - (value.change.to - value.change.from);
+      return selection;
+    });
+    return { changes, selections: resultSelections, undoLabel: values2[0].label };
+  }
+
+  // interaction.ts
+  function interactionDocument(source) {
+    return typeof source === "string" ? Text.of(source.split("\n")) : source;
+  }
+  function blockquotePrefix(line) {
+    let position = 0;
+    while (position < line.length) {
+      const match = /^[ \t]{0,3}>[ \t]?/.exec(line.slice(position));
+      if (!match) break;
+      position += match[0].length;
+    }
+    return line.slice(0, position);
+  }
+  function listPrefix(line) {
+    const quotePrefix = blockquotePrefix(line);
+    const remainder = line.slice(quotePrefix.length);
+    const match = /^([ \t]*)([-*+]|(\d{1,9})([.)]))(?:([ \t]+)(\[[ xX]\])?([ \t]*)|$)/.exec(remainder);
+    if (!match) return null;
+    return {
+      quotePrefix,
+      indentation: match[1],
+      marker: match[2],
+      orderedNumber: match[3] ? Number(match[3]) : null,
+      orderedSuffix: match[4] ?? null,
+      task: match[6] !== void 0,
+      sourcePrefix: `${quotePrefix}${match[0]}`
+    };
+  }
+  function continuedListPrefix(match) {
+    const ordered = match.orderedNumber === null || match.orderedSuffix === null ? null : `${match.orderedNumber + 1}${match.orderedSuffix}`;
+    return `${match.quotePrefix}${match.indentation}${ordered ?? match.marker}${match.task ? " [ ] " : " "}`;
+  }
+  function calloutQuotePrefix(line) {
+    return /^(\s*>[ \t]?)/.exec(line);
+  }
+  function lineBelongsToCallout(document2, lineNumber) {
+    for (let number2 = lineNumber; number2 >= 1; number2 -= 1) {
+      const line = document2.line(number2).text;
+      if (!calloutQuotePrefix(line)) return false;
+      if (/^\s*>[ \t]*\[![^\]\r\n]+\](?:[+-])?(?:[ \t]|$)/.test(line)) return true;
+    }
+    return false;
+  }
+  function continueCallout2(source, selections, options = {}) {
+    const document2 = interactionDocument(source);
+    if (selections.some((selection) => selection.anchor !== selection.head)) return null;
+    const entries = selections.map((selection) => {
+      const bounds = document2.lineAt(selection.head);
+      if (options.lineIsProtected?.(bounds)) return null;
+      const prefix = calloutQuotePrefix(bounds.text)?.[1];
+      if (!prefix || !lineBelongsToCallout(document2, bounds.number)) return null;
+      const quotedContent = bounds.text.slice(prefix.length);
+      const nestedList = listPrefix(quotedContent);
+      if (nestedList && quotedContent.slice(nestedList.sourcePrefix.length).trim().length === 0) {
+        return {
+          change: {
+            from: bounds.from + prefix.length,
+            to: bounds.from + prefix.length + nestedList.sourcePrefix.length,
+            insert: ""
+          },
+          localSelection: bounds.from + prefix.length,
+          undoLabel: "Exit List"
+        };
+      }
+      if (quotedContent.trim().length === 0) {
+        return {
+          change: { from: bounds.from, to: bounds.from + prefix.length, insert: "" },
+          localSelection: bounds.from,
+          undoLabel: "Exit Callout"
+        };
+      }
+      const continuedPrefix = nestedList ? `${prefix}${continuedListPrefix(nestedList)}` : prefix;
+      return {
+        change: { from: selection.head, to: selection.head, insert: `
+${continuedPrefix}` },
+        localSelection: selection.head + 1 + continuedPrefix.length,
+        undoLabel: nestedList ? "Continue List" : "Continue Callout"
+      };
+    });
+    if (entries.some((entry) => entry === null)) return null;
+    const accepted = entries;
+    const sorted = [...accepted].sort((left, right) => left.change.from - right.change.from);
+    let shift2 = 0;
+    const mapped = sorted.map((entry) => {
+      const position = entry.localSelection + shift2;
+      shift2 += entry.change.insert.length - (entry.change.to - entry.change.from);
+      return { anchor: position, head: position };
+    });
+    return {
+      changes: sorted.map((entry) => entry.change),
+      selections: mapped,
+      undoLabel: accepted.every((entry) => entry.undoLabel === accepted[0].undoLabel) ? accepted[0].undoLabel : "Continue Callout"
+    };
+  }
+  function continueList(source, selections, options = {}) {
+    const document2 = interactionDocument(source);
+    if (selections.some((selection) => selection.anchor !== selection.head)) return null;
+    const entries = selections.map((selection) => {
+      const bounds = document2.lineAt(selection.head);
+      const line = bounds.text;
+      const match = listPrefix(line);
+      if (!match || options.lineIsProtected?.(bounds)) return null;
+      const content2 = line.slice(match.sourcePrefix.length);
+      if (content2.trim().length === 0) {
+        const from = bounds.from + match.quotePrefix.length;
+        return {
+          change: { from, to: bounds.from + match.sourcePrefix.length, insert: "" },
+          localSelection: from
+        };
+      }
+      const continued = continuedListPrefix(match);
+      return { change: { from: selection.head, to: selection.head, insert: `
+${continued}` }, localSelection: selection.head + 1 + continued.length };
+    });
+    if (entries.some((entry) => entry === null)) return null;
+    const accepted = entries;
+    const sorted = [...accepted].sort((left, right) => left.change.from - right.change.from);
+    let shift2 = 0;
+    const mapped = sorted.map((entry) => {
+      const position = entry.localSelection + shift2;
+      shift2 += entry.change.insert.length - (entry.change.to - entry.change.from);
+      return { anchor: position, head: position };
+    });
+    return { changes: sorted.map((entry) => entry.change), selections: mapped, undoLabel: "Continue List" };
+  }
+  function indentList(source, selections, backwards, options = {}) {
+    const document2 = interactionDocument(source);
+    const lineStarts = [...new Set(selections.flatMap((selection) => {
+      const start = Math.min(selection.anchor, selection.head);
+      const end = Math.max(selection.anchor, selection.head);
+      const first = document2.lineAt(start);
+      const lastPosition = end > start && document2.lineAt(end).from === end ? Math.max(start, end - 1) : end;
+      const last = document2.lineAt(lastPosition);
+      const starts = [];
+      for (let number2 = first.number; number2 <= last.number; number2 += 1) {
+        starts.push(document2.line(number2).from);
+      }
+      return starts;
+    }))].sort((left, right) => left - right);
+    const changes = [];
+    for (const from of lineStarts) {
+      const bounds = document2.lineAt(from);
+      const match = listPrefix(bounds.text);
+      if (!match || options.lineIsProtected?.(bounds)) return null;
+      const indentationFrom = from + match.quotePrefix.length;
+      if (backwards) {
+        if (match.indentation.length === 0) continue;
+        const removeLength = match.indentation.startsWith("	") ? 1 : Math.min(2, match.indentation.length);
+        changes.push({
+          from: indentationFrom,
+          to: indentationFrom + removeLength,
+          insert: ""
+        });
+      } else changes.push({ from: indentationFrom, to: indentationFrom, insert: "  " });
+    }
+    const positionAfterChanges = (position) => {
+      let shift2 = 0;
+      for (const change of changes) {
+        if (position < change.from) return position + shift2;
+        if (position <= change.to) return change.from + shift2 + change.insert.length;
+        shift2 += change.insert.length - (change.to - change.from);
+      }
+      return position + shift2;
+    };
+    if (changes.length === 0) return null;
+    return {
+      changes,
+      selections: selections.map((selection) => ({ anchor: positionAfterChanges(selection.anchor), head: positionAfterChanges(selection.head) })),
+      undoLabel: backwards ? "Outdent List" : "Indent List"
+    };
+  }
+
+  // clipboard.ts
+  function escapeHTML(value) {
+    return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  }
+  function sanitizeClipboardHTML(html2) {
+    let safe = html2.slice(0, 2e6);
+    safe = safe.replace(/<!--([\s\S]*?)-->/g, "");
+    safe = safe.replace(/<(script|style|iframe|object|embed|svg|math|canvas|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
+    safe = safe.replace(/<(script|style|iframe|object|embed|svg|math|canvas|template)\b[^>]*\/?\s*>/gi, "");
+    safe = safe.replace(/<img\b([^>]*)>/gi, (_match, attributes) => {
+      const alt = /\balt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
+      return alt ? escapeHTML(alt[1] ?? alt[2] ?? alt[3] ?? "") : "";
+    });
+    safe = safe.replace(/<(?:video|audio|source|track|picture|link|meta)\b[^>]*\/?\s*>/gi, "");
+    safe = safe.replace(/\s(?:src|srcset|poster|background|style|formaction)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+    safe = safe.replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+    return safe;
+  }
+  function escapeMarkdownText(value) {
+    return value.replace(/([\\`*_[\]<>~])/g, "\\$1");
+  }
+  function safeLinkDestination(value) {
+    const trimmed = value.trim();
+    if (/^(https?:|mailto:)/i.test(trimmed)) return trimmed.replace(/[()\s]/g, (character) => encodeURIComponent(character));
+    return "";
+  }
+  function collapseBlankLines(value) {
+    return value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  function renderChildren(node) {
+    return Array.from(node.childNodes).map(renderNode).join("");
+  }
+  function renderList(node, ordered) {
+    let index = 1;
+    return Array.from(node.children).flatMap((child) => {
+      if (child.tagName.toLowerCase() !== "li") return [];
+      const prefix = ordered ? `${index++}. ` : "- ";
+      const content2 = collapseBlankLines(renderChildren(child)).replaceAll("\n", "\n  ");
+      return [`${prefix}${content2}
+`];
+    }).join("") + "\n";
+  }
+  function renderTable(node) {
+    const rows = Array.from(node.querySelectorAll("tr")).map((row) => Array.from(row.children).flatMap((cell) => {
+      if (!["td", "th"].includes(cell.tagName.toLowerCase()) || cell.hasAttribute("rowspan") || cell.hasAttribute("colspan")) return [];
+      return [collapseBlankLines(renderChildren(cell)).replaceAll("|", "\\|").replaceAll("\n", " ")];
+    }));
+    if (rows.length === 0 || rows[0].length < 2 || rows.some((row) => row.length !== rows[0].length)) {
+      return `${collapseBlankLines(renderChildren(node))}
+
+`;
+    }
+    const line = (row) => `| ${row.join(" | ")} |`;
+    return `${line(rows[0])}
+${line(rows[0].map(() => "---"))}
+${rows.slice(1).map(line).join("\n")}
+
+`;
+  }
+  function renderNode(node) {
+    if (node.nodeType === 3) return escapeMarkdownText(node.nodeValue ?? "");
+    if (node.nodeType !== 1) return "";
+    const element = node;
+    const tag = element.tagName.toLowerCase();
+    const content2 = () => renderChildren(element);
+    if (/^h[1-6]$/.test(tag)) return `${"#".repeat(Number(tag[1]))} ${collapseBlankLines(content2())}
+
+`;
+    if (["p", "div", "section", "article", "header", "footer"].includes(tag)) return `${collapseBlankLines(content2())}
+
+`;
+    if (["strong", "b"].includes(tag)) return `**${content2()}**`;
+    if (["em", "i"].includes(tag)) return `*${content2()}*`;
+    if (["del", "s", "strike"].includes(tag)) return `~~${content2()}~~`;
+    if (tag === "code" && element.parentElement?.tagName.toLowerCase() !== "pre") return `\`${content2().replaceAll("`", "\\`")}\``;
+    if (tag === "pre") {
+      const raw = element.textContent ?? "";
+      const run = Math.max(3, ...Array.from(raw.matchAll(/`+/g), (match) => match[0].length + 1));
+      const fence = "`".repeat(run);
+      return `${fence}
+${raw}
+${fence}
+
+`;
+    }
+    if (tag === "blockquote") return `${collapseBlankLines(content2()).split("\n").map((line) => `> ${line}`).join("\n")}
+
+`;
+    if (tag === "ul") return renderList(element, false);
+    if (tag === "ol") return renderList(element, true);
+    if (tag === "a") {
+      const label = content2();
+      const destination = safeLinkDestination(element.getAttribute("href") ?? "");
+      return destination ? `[${label}](${destination})` : label;
+    }
+    if (tag === "br") return "\n";
+    if (tag === "table") return renderTable(element);
+    return content2();
+  }
+  function convertClipboardHTML(html2) {
+    const inertSource = sanitizeClipboardHTML(html2);
+    const document2 = new DOMParser().parseFromString(`<html><body>${inertSource}</body></html>`, "text/html");
+    return collapseBlankLines(renderChildren(document2.body));
+  }
+  function pasteAsMarkdown(payload) {
+    if (payload.html?.trim()) {
+      try {
+        const converted = convertClipboardHTML(payload.html);
+        if (converted) return converted;
+      } catch {
+      }
+    }
+    return payload.plainText;
+  }
+  function decodeClipboardPayload(argument) {
+    if (!argument) return void 0;
+    try {
+      const value = JSON.parse(argument);
+      if (typeof value.plainText === "string" && (value.html === void 0 || typeof value.html === "string")) {
+        return { plainText: value.plainText.slice(0, 2e6), html: value.html?.slice(0, 2e6) };
+      }
+    } catch {
+    }
+    return void 0;
+  }
+  function isSingleSafeURL(value) {
+    const trimmed = value.trim();
+    return /^(https?:\/\/|mailto:)[^\s]+$/i.test(trimmed) ? trimmed : null;
+  }
+
+  // semantic-projection.ts
+  function mapSemanticProjectionRanges(previous, mapPosition) {
+    const mapRange2 = (range) => ({
+      from: mapPosition(range.from),
+      to: mapPosition(range.to)
+    });
+    const blocks = previous.blocks.map((block) => ({
+      ...block,
+      from: mapPosition(block.from),
+      to: mapPosition(block.to),
+      parent: block.parent ? {
+        kind: block.parent.kind,
+        from: mapPosition(block.parent.from),
+        to: mapPosition(block.parent.to)
+      } : null,
+      markerRanges: block.markerRanges.map(mapRange2),
+      taskMarkerRange: block.taskMarkerRange ? mapRange2(block.taskMarkerRange) : null
+    }));
+    const inlines = previous.inlines.map((inline) => ({
+      ...inline,
+      from: mapPosition(inline.from),
+      to: mapPosition(inline.to),
+      markerRanges: inline.markerRanges.map(mapRange2),
+      visibleRanges: inline.visibleRanges.map(mapRange2),
+      targetRange: inline.targetRange ? mapRange2(inline.targetRange) : null,
+      aliasRange: inline.aliasRange ? mapRange2(inline.aliasRange) : null,
+      linkRange: inline.linkRange ? mapRange2(inline.linkRange) : null,
+      annotationRange: inline.annotationRange ? mapRange2(inline.annotationRange) : null,
+      annotationContentRange: inline.annotationContentRange ? mapRange2(inline.annotationContentRange) : null
+    }));
+    const literals2 = previous.literals.map((literal2) => ({
+      ...literal2,
+      from: mapPosition(literal2.from),
+      to: mapPosition(literal2.to)
+    }));
+    return { blocks, inlines, literals: literals2 };
+  }
+  var blockKinds = /* @__PURE__ */ new Map([
+    ["Paragraph", "paragraph"],
+    ["Blockquote", "blockQuote"],
+    ["FencedCode", "code"],
+    ["CodeBlock", "code"],
+    ["BulletList", "unorderedList"],
+    ["OrderedList", "orderedList"],
+    ["ListItem", "listItem"],
+    ["Table", "table"],
+    ["HorizontalRule", "thematicBreak"],
+    ["HTMLBlock", "html"],
+    // CommonMark exposes a block HTML comment as CommentBlock while Swift
+    // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
+    // on one raw-HTML presentation path so Review and Edit cannot drift.
+    ["CommentBlock", "html"],
+    ["Callout", "callout"],
+    ["FootnoteDefinition", "footnoteDefinition"],
+    ["BlockMath", "displayMath"],
+    ["ObsidianCommentBlock", "comment"],
+    ["UnclosedObsidianCommentBlock", "comment"]
+  ]);
+  var inlineKinds = /* @__PURE__ */ new Map([
+    ["StrongEmphasis", "strong"],
+    ["Emphasis", "emphasis"],
+    ["Strikethrough", "strikethrough"],
+    ["InlineCode", "code"],
+    ["Link", "link"],
+    ["Autolink", "link"],
+    ["Image", "image"],
+    ["Highlight", "highlight"],
+    ["WikiLink", "wikilink"],
+    ["InlineMath", "inlineMath"],
+    ["FootnoteReference", "footnoteReference"],
+    ["InlineFootnote", "inlineFootnote"],
+    ["ObsidianComment", "comment"]
+  ]);
+  function childRanges(root, names, stopAt = /* @__PURE__ */ new Set()) {
+    const ranges = [];
+    const visit = (node) => {
+      if (names.has(node.name)) ranges.push({ from: node.from, to: node.to });
+      if (node !== root && stopAt.has(node.name)) return;
+      for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+    };
+    visit(root);
+    return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+  }
+  function directChildRanges(root, name2) {
+    const ranges = [];
+    for (let child = root.firstChild; child; child = child.nextSibling) {
+      if (child.name === name2) ranges.push({ from: child.from, to: child.to });
+    }
+    return ranges;
+  }
+  function referenceLabel(source) {
+    const label = source.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "").replace(/[ \t\r\n]+/g, " ");
+    return label.replace(/[^\u0131]+/g, (part) => part.toLowerCase().toUpperCase());
+  }
+  function imageReferenceTargets(tree, source) {
+    const targets = /* @__PURE__ */ new Map();
+    tree.iterate({
+      enter(reference) {
+        if (reference.name !== "LinkReference") return;
+        const node = reference.node;
+        const label = directChildRanges(node, "LinkLabel")[0];
+        const target = directChildRanges(node, "URL")[0];
+        if (!label || !target) return false;
+        const key = referenceLabel(source.slice(label.from + 1, label.to - 1));
+        if (key && !targets.has(key)) targets.set(key, target);
+        return false;
+      }
+    });
+    return targets;
+  }
+  function complementRanges(from, to, excluded) {
+    const visible = [];
+    let position = from;
+    for (const range of excluded) {
+      if (range.from > position) visible.push({ from: position, to: range.from });
+      position = Math.max(position, range.to);
+    }
+    if (position < to) visible.push({ from: position, to });
+    return visible;
+  }
+  function presentationBlockMarkerRanges(state, node, kind, markerNames, stopAt) {
+    const ranges = childRanges(node, markerNames, stopAt);
+    if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
+    return ranges.map((range) => {
+      if (range.from !== node.from) return range;
+      let to = range.to;
+      while (to < node.to) {
+        const character = state.doc.sliceString(to, to + 1);
+        if (character !== " " && character !== "	") break;
+        to += 1;
+      }
+      return { from: range.from, to };
+    });
+  }
+  function inlinePresentation(node, kind, source, referenceTargets) {
+    const markerNames = /* @__PURE__ */ new Set();
+    switch (kind) {
+      case "strong":
+      case "emphasis":
+        markerNames.add("EmphasisMark");
+        break;
+      case "strikethrough":
+        markerNames.add("StrikethroughMark");
+        break;
+      case "code":
+        markerNames.add("CodeMark");
+        break;
+      case "link":
+      case "image":
+        markerNames.add("LinkMark");
+        break;
+      case "highlight":
+        markerNames.add("HighlightMark");
+        break;
+      case "wikilink":
+        markerNames.add("WikiLinkOpenMark");
+        markerNames.add("WikiEmbedMark");
+        markerNames.add("WikiLinkAliasMark");
+        markerNames.add("WikiLinkCloseMark");
+        break;
+      case "inlineMath":
+        markerNames.add("MathMark");
+        break;
+      case "footnoteReference":
+        markerNames.add("FootnoteOpenMark");
+        markerNames.add("FootnoteCloseMark");
+        break;
+      case "inlineFootnote":
+        markerNames.add("InlineFootnoteOpenMark");
+        markerNames.add("FootnoteCloseMark");
+        break;
+      case "comment":
+        break;
+    }
+    const markerRanges = kind === "image" ? directChildRanges(node, "LinkMark") : childRanges(node, markerNames);
+    let targetRange = null;
+    let aliasRange = null;
+    let linkRange = null;
+    let annotationRange = null;
+    let annotationContentRange = null;
+    let projectionTo = node.to;
+    let visibleRanges = complementRanges(node.from, node.to, markerRanges);
+    if (kind === "image") {
+      if (markerRanges.length < 2) return null;
+      const alt = { from: markerRanges[0].to, to: markerRanges[1].from };
+      targetRange = directChildRanges(node, "URL")[0] ?? null;
+      if (!targetRange) {
+        const label = directChildRanges(node, "LinkLabel")[0];
+        const next = source.slice(node.to, node.to + 1);
+        if (!label && (markerRanges.length !== 2 || next === "(" || next === "[")) {
+          return null;
+        }
+        const key = referenceLabel(label && label.to - label.from > 2 ? source.slice(label.from + 1, label.to - 1) : source.slice(alt.from, alt.to));
+        targetRange = referenceTargets().get(key) ?? null;
+        if (!targetRange) return null;
+      }
+      visibleRanges = [alt];
+    } else if (kind === "link") {
+      const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
+      if (explicitVisible.length === 0) return null;
+      targetRange = explicitVisible[0];
+      if (isCitationDestination(source.slice(targetRange.from, targetRange.to).replace(/^<|>$/g, ""))) {
+        if (node.name !== "Link") return null;
+        try {
+          const citation = citationLinkSource(source.slice(node.from, node.to));
+          if (!citation) return null;
+          return {
+            kind: "citation",
+            nodeName: node.name,
+            from: node.from,
+            to: node.to,
+            markerRanges,
+            visibleRanges: [{ from: node.from + citation.fallbackRange.from, to: node.from + citation.fallbackRange.to }],
+            targetRange: null,
+            aliasRange: null,
+            linkRange: null,
+            annotationRange: null,
+            annotationContentRange: null
+          };
+        } catch {
+          return null;
+        }
+      }
+      if (node.name === "Autolink") {
+        visibleRanges = explicitVisible;
+      } else {
+        const linkMarks = markerRanges;
+        visibleRanges = linkMarks.length >= 2 ? [{ from: linkMarks[0].to, to: linkMarks[1].from }] : [];
+      }
+    } else if (kind === "wikilink") {
+      const alias = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkAlias"]));
+      const target = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkTarget"]));
+      targetRange = target[0] ?? null;
+      aliasRange = alias[0] ?? null;
+      visibleRanges = alias.length > 0 ? alias : target;
+      linkRange = { from: node.from, to: node.to };
+      const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
+      const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
+      if (annotation) {
+        annotationRange = { from: annotation.from, to: annotation.to };
+        annotationContentRange = { from: annotation.contentFrom, to: annotation.contentTo };
+        projectionTo = annotation.to;
+      }
+    } else if (kind === "inlineMath") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["MathContent"]));
+    } else if (kind === "footnoteReference") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteIdentifier"]));
+    } else if (kind === "inlineFootnote") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteContent"]));
+    } else if (kind === "comment") {
+      visibleRanges = [];
+    }
+    return {
+      kind,
+      nodeName: node.name,
+      from: node.from,
+      to: projectionTo,
+      markerRanges,
+      visibleRanges,
+      targetRange,
+      aliasRange,
+      linkRange,
+      annotationRange,
+      annotationContentRange
+    };
+  }
+  function rangeKey(from, to) {
+    return `${from}:${to}`;
+  }
+  function boundedLinePrefix(doc2, position, limit = 512) {
+    const line = doc2.lineAt(Math.max(0, Math.min(position, doc2.length)));
+    return doc2.sliceString(line.from, Math.min(line.to, line.from + limit));
+  }
+  function boundedProjectionRanges(documentLength, visibleRanges, margin = 2e3) {
+    const expanded = visibleRanges.map((range) => ({
+      from: Math.max(0, range.from - margin),
+      to: Math.min(documentLength, range.to + margin)
+    })).sort((left, right) => left.from - right.from || left.to - right.to);
+    const merged = [];
+    for (const range of expanded) {
+      const previous = merged.at(-1);
+      if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
+      else merged.push({ ...range });
+    }
+    return merged;
+  }
+  function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state)) {
+    const result = {
+      blocks: [],
+      inlines: [],
+      literals: []
+    };
+    if (visibleRanges.length === 0) return result;
+    const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
+    const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
+    const blockStack = [];
+    const source = state.doc.toString();
+    let referenceTargets;
+    const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, source);
+    tree.iterate({
+      from,
+      to,
+      enter(reference) {
+        const node = reference.node;
+        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.exec(node.name);
+        const kind = heading2 ? "heading" : blockKinds.get(node.name);
+        if (kind) {
+          const parent = blockStack.at(-1) ?? null;
+          const markerNames = /* @__PURE__ */ new Set();
+          if (kind === "heading") markerNames.add("HeaderMark");
+          if (kind === "blockQuote") markerNames.add("QuoteMark");
+          if (kind === "listItem") {
+            markerNames.add("ListMark");
+            markerNames.add("TaskMarker");
+          }
+          if (kind === "code") markerNames.add("CodeMark");
+          if (kind === "callout") {
+            markerNames.add("CalloutQuoteMark");
+            markerNames.add("CalloutRoleMark");
+          }
+          if (kind === "displayMath") markerNames.add("MathMark");
+          const markerRanges = presentationBlockMarkerRanges(
+            state,
+            node,
+            kind,
+            markerNames,
+            kind === "listItem" ? /* @__PURE__ */ new Set(["ListItem"]) : /* @__PURE__ */ new Set()
+          );
+          const block = {
+            kind,
+            nodeName: node.name,
+            from: node.from,
+            to: node.to,
+            depth: blockStack.length,
+            parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
+            headingLevel: heading2 ? Number(heading2[1]) : null,
+            listDepth: kind === "listItem" ? blockStack.filter((block2) => block2.kind === "listItem").length : null,
+            markerRanges,
+            taskMarkerRange: kind === "listItem" ? markerRanges.find((range) => state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null : null
+          };
+          result.blocks.push(block);
+          blockStack.push(block);
+        }
+        if (node.name === "Task") {
+          const taskMarker = childRanges(node, /* @__PURE__ */ new Set(["TaskMarker"]))[0];
+          if (taskMarker) {
+            let contentFrom = taskMarker.to;
+            while (contentFrom < node.to) {
+              const character = state.doc.sliceString(contentFrom, contentFrom + 1);
+              if (character !== " " && character !== "	") break;
+              contentFrom += 1;
+            }
+            if (contentFrom < node.to) {
+              const parent = blockStack.at(-1) ?? null;
+              const paragraph = {
+                kind: "paragraph",
+                nodeName: "TaskContent",
+                from: contentFrom,
+                to: node.to,
+                depth: blockStack.length,
+                parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
+                headingLevel: null,
+                listDepth: null,
+                markerRanges: [],
+                taskMarkerRange: null
+              };
+              result.blocks.push(paragraph);
+            }
+          }
+        }
+        const inlineKind = inlineKinds.get(node.name);
+        if (inlineKind) {
+          const inline = inlinePresentation(node, inlineKind, source, resolveReferenceTargets);
+          if (inline) result.inlines.push(inline);
+        }
+        if ([
+          "HTMLTag",
+          "CommentBlock",
+          "Comment",
+          "ObsidianComment",
+          "UnclosedObsidianComment"
+        ].includes(node.name)) {
+          result.literals.push({ from: node.from, to: node.to, nodeName: node.name });
+          return false;
+        }
+      },
+      leave(reference) {
+        const node = reference.node;
+        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.test(node.name);
+        if (!heading2 && !blockKinds.has(node.name)) return;
+        const current = blockStack.at(-1);
+        if (current?.from === node.from && current.to === node.to && current.nodeName === node.name) {
+          blockStack.pop();
+        }
+      }
+    });
+    const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
+    for (const block of result.blocks) {
+      if (block.kind !== "paragraph" || paragraphIsProtected(block)) continue;
+      const paragraph = source.slice(block.from, block.to);
+      const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
+      if (!match) continue;
+      const markerFrom = block.from + match.index + match[0].indexOf("^");
+      const markerTo = markerFrom + match[1].length + 1;
+      if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
+        const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
+        if (!preceding || preceding.kind !== "paragraph" || source.slice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
+      }
+      if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
+      result.inlines.push({
+        kind: "blockAnchor",
+        nodeName: "ParagraphAnchor",
+        from: markerFrom,
+        to: markerTo,
+        markerRanges: [{ from: markerFrom, to: markerTo }],
+        visibleRanges: [],
+        targetRange: null,
+        aliasRange: null,
+        linkRange: null,
+        annotationRange: null,
+        annotationContentRange: null
+      });
+    }
+    result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
+    result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
+    result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
+    return result;
+  }
+
+  // text-transfer-ranges.ts
+  function bodyStart(state) {
+    const boundary2 = frontmatterBoundary(state.doc);
+    if (boundary2.unclosed) return state.doc.length;
+    return boundary2.endLine ? Math.min(state.doc.length, state.doc.line(boundary2.endLine).to + 1) : 0;
+  }
+  function lineContentStart(state, position) {
+    const line = state.doc.lineAt(position);
+    return line.from === 0 && state.doc.sliceString(0, 1) === "\uFEFF" ? 1 : line.from;
+  }
+  function isCompleteLineSelection(state, range) {
+    if (!Number.isSafeInteger(range.from) || !Number.isSafeInteger(range.to) || range.from < 0 || range.to > state.doc.length || range.from >= range.to) return false;
+    const end = state.doc.lineAt(range.to);
+    return range.from === lineContentStart(state, range.from) && (range.to === state.doc.length || range.to === end.to || range.to === end.from);
+  }
+  function headingSourceRange(state, heading2) {
+    const start = lineContentStart(state, heading2.from);
+    const end = state.doc.lineAt(heading2.to).to;
+    return {
+      from: /^[ \t]*$/.test(state.doc.sliceString(start, heading2.from)) ? start : heading2.from,
+      to: /^[ \t]*$/.test(state.doc.sliceString(heading2.to, end)) ? end : heading2.to
+    };
+  }
+  function visibleHeadingRange(state, heading2, inlines) {
+    const hidden = [...heading2.markerRanges];
+    for (const inline of inlines) {
+      if (inline.from < heading2.from || inline.to > heading2.to) continue;
+      let from = inline.from;
+      for (const visible of inline.visibleRanges) {
+        if (visible.from > from) hidden.push({ from, to: visible.from });
+        from = Math.max(from, visible.to);
+      }
+      if (from < inline.to) hidden.push({ from, to: inline.to });
+    }
+    hidden.sort((a, b) => a.from - b.from || a.to - b.to);
+    let cursor = heading2.from;
+    let first;
+    let last = heading2.from;
+    for (const hiddenRange of [...hidden, { from: heading2.to, to: heading2.to }]) {
+      const end = Math.min(heading2.to, hiddenRange.from);
+      if (cursor < end) {
+        const text = state.doc.sliceString(cursor, end);
+        const trimmed = text.trim();
+        if (trimmed) {
+          first ??= cursor + text.length - text.trimStart().length;
+          last = end - (text.length - text.trimEnd().length);
+        }
+      }
+      cursor = Math.max(cursor, hiddenRange.to);
+    }
+    return first === void 0 ? null : { from: first, to: last };
+  }
+  function completeHeadingSelection(state, selection) {
+    const minimum = bodyStart(state);
+    const ranges = selection.ranges.map((range) => {
+      if (range.empty || range.from < minimum) return range;
+      const semantic = semanticProjectionRanges(state, [range], 0);
+      const headings = semantic.blocks.filter((heading2) => heading2.kind === "heading" && heading2.from >= minimum);
+      const inlines = semanticProjectionRanges(state, headings, 0).inlines;
+      let from = range.from, to = range.to, includesHeading = false;
+      for (const heading2 of headings) {
+        const visible = visibleHeadingRange(state, heading2, inlines);
+        if (!visible || range.from > visible.from || range.to < visible.to) continue;
+        const source = headingSourceRange(state, heading2);
+        includesHeading = true;
+        from = Math.min(from, source.from);
+        to = Math.max(to, source.to);
+      }
+      if (includesHeading && isCompleteLineSelection(state, { from, to }) && to < state.doc.length && state.doc.lineAt(to).to === to && state.doc.sliceString(to - 1, to) !== "\n") to += 1;
+      if (from === range.from && to === range.to) return range;
+      return range.anchor > range.head ? EditorSelection.range(to, from) : EditorSelection.range(from, to);
+    });
+    return ranges.every((range, index) => range === selection.ranges[index]) ? selection : EditorSelection.create(ranges, selection.mainIndex);
+  }
+  function containsCompleteHeading(state, range) {
+    const minimum = bodyStart(state);
+    if (range.from < minimum || !isCompleteLineSelection(state, range)) return false;
+    return semanticProjectionRanges(state, [range], 0).blocks.some((heading2) => {
+      if (heading2.kind !== "heading" || heading2.from < minimum) return false;
+      const source = headingSourceRange(state, heading2);
+      return source.from >= range.from && source.to <= range.to;
+    });
+  }
+
+  // text-transfer.ts
+  function createEditorTextTransfer(options) {
+    const handlers2 = createTextDropHandlers(options);
+    const resolve = (view, event) => handlers2.dropPosition(view, event);
+    return [
+      transferDropCursor(resolve, handlers2.dragend),
+      EditorView.domEventHandlers({
+        mousedown: handlers2.dragend,
+        dragend: handlers2.dragend,
+        drop: handlers2.drop,
+        dragstart(event, view) {
+          handlers2.dragend();
+          const selection = view.contentDOM.ownerDocument.getSelection();
+          if (!event.dataTransfer || view.composing || options.compositionActive() || !selection || selection.isCollapsed || selection.rangeCount !== 1 || !view.contentDOM.contains(selection.anchorNode) || !view.contentDOM.contains(selection.focusNode) || !Array.from(selection.getRangeAt(0).getClientRects()).some((rect) => event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom)) return false;
+          return handlers2.dragstart(event, view);
+        }
+      })
+    ];
+  }
+  function moveSelectedText(view, range, position, copy, linewise, protection) {
+    const state = view.state;
+    if (!acceptsDropTarget(view, position, false) || range.empty || !copy && position >= range.from && position <= range.to) return null;
+    const target = state.update({ selection: { anchor: position } }).state;
+    if (protection(target).some(({ from: from2, to }) => position > from2 && position < to) || !copy && protection(state).some(({ from: from2, to }) => range.from < to && range.to > from2)) return null;
+    const mirror = state.field(exactSourceState, false);
+    let exact = mirror?.slice(range.from, range.to) ?? state.sliceDoc(range.from, range.to);
+    const ending = mirror?.usesCRLF ? "\r\n" : "\n";
+    if (linewise) {
+      if (position > lineContentStart(state, position) && state.sliceDoc(position - 1, position) !== "\n") exact = ending + exact;
+      if (position < state.doc.length && !exact.endsWith("\n")) exact += ending;
+    }
+    const insert2 = normalizedDocumentText(exact);
+    const specs = [
+      ...copy ? [] : [{ from: range.from, to: range.to, insert: "", exactInsert: "" }],
+      { from: position, to: position, insert: insert2, exactInsert: exact }
+    ];
+    if (!exactSourceFitsChanges(state, specs)) return null;
+    const changes = state.changes(specs);
+    const from = changes.mapPos(position, -1);
+    view.dispatch({
+      changes,
+      selection: EditorSelection.single(from, from + insert2.length),
+      effects: exactInsertionEffects(exact, from),
+      userEvent: copy ? "input.drop" : "move.drop",
+      annotations: isolateHistory.of("full"),
+      scrollIntoView: true
+    });
+    view.focus();
+    return copy ? "Paste" : "Move";
+  }
+  function transferDropCursor(resolve, ended) {
+    return ViewPlugin.fromClass(class {
+      constructor(view) {
+        this.view = view;
+      }
+      view;
+      cursor = null;
+      event = null;
+      clear() {
+        this.event = null;
+        this.cursor?.remove();
+        this.cursor = null;
+      }
+      measure = {
+        read: () => {
+          if (!this.event) return null;
+          const pos = resolve(this.view, this.event);
+          const rect = pos === null ? null : this.view.coordsAtPos(pos);
+          if (!rect) return null;
+          const outer = this.view.scrollDOM.getBoundingClientRect();
+          return {
+            left: (rect.left - outer.left) / this.view.scaleX + this.view.scrollDOM.scrollLeft,
+            top: (rect.top - outer.top) / this.view.scaleY + this.view.scrollDOM.scrollTop,
+            height: (rect.bottom - rect.top) / this.view.scaleY
+          };
+        },
+        write: (rect) => {
+          if (!this.event || !rect) {
+            this.cursor?.remove();
+            this.cursor = null;
+            return;
+          }
+          if (!this.cursor) {
+            this.cursor = this.view.scrollDOM.appendChild(document.createElement("div"));
+            this.cursor.className = "cm-dropCursor";
+            this.cursor.setAttribute("aria-hidden", "true");
+            this.cursor.style.pointerEvents = "none";
+          }
+          Object.assign(this.cursor.style, { left: `${rect.left}px`, top: `${rect.top}px`, height: `${rect.height}px` });
+        }
+      };
+      update() {
+        if (this.event) this.view.requestMeasure(this.measure);
+      }
+      destroy() {
+        this.clear();
+        ended();
+      }
+    }, { eventObservers: {
+      dragover(event) {
+        this.event = event;
+        this.view.requestMeasure(this.measure);
+      },
+      dragleave(event) {
+        if (!this.view.contentDOM.contains(event.relatedTarget)) this.clear();
+      },
+      dragend() {
+        this.clear();
+      },
+      drop() {
+        this.clear();
+      }
+    } });
+  }
+  function acceptsDropTarget(view, position, compositionActive) {
+    return !view.state.readOnly && view.state.facet(EditorView.editable) && !view.composing && !compositionActive && position !== null && Number.isInteger(position) && position >= 0 && position <= view.state.doc.length;
+  }
+  function createTextDropHandlers(options) {
+    let localDrag = null;
+    const rawPosition = (view, event) => {
+      if (localDrag && localDrag.document === options.documentIdentity() && localDrag.linewise) {
+        const editor2 = view;
+        const block = editor2.lineBlockAtHeight(event.clientY - editor2.documentTop);
+        const before = event.clientY - editor2.documentTop <= (block.top + block.bottom) / 2;
+        const line = view.state.doc.lineAt(before ? block.from : block.to);
+        return before ? lineContentStart(view.state, line.from) : Math.min(view.state.doc.length, line.to + 1);
+      }
+      return options.projectedPosition?.(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
+    };
+    const moves = (view, event) => {
+      const policy = view.state.facet(EditorView.dragMovesSelection);
+      return policy.length ? policy[0](event) : !event.altKey;
+    };
+    const hasFiles = (event) => !!event.dataTransfer && (Array.from(event.dataTransfer.files).length > 0 || Array.from(event.dataTransfer.items).some((item) => item.kind === "file"));
+    const dropPosition = (view, event) => {
+      if (hasFiles(event)) return null;
+      const receipt = localDrag?.document === options.documentIdentity() ? localDrag : null;
+      if (receipt && receipt.doc !== view.state.doc) return null;
+      const position = rawPosition(view, event);
+      if (!acceptsDropTarget(view, position, options.compositionActive())) return null;
+      if (receipt && moves(view, event) && position >= receipt.range.from && position <= receipt.range.to) return null;
+      const target = view.state.update({ selection: { anchor: position } }).state;
+      if (options.protection(target).some(({ from, to }) => position > from && position < to)) return null;
+      return position;
+    };
+    return {
+      dropPosition,
+      dragstart(event, view) {
+        const range = view.state.selection.main;
+        localDrag = range.empty || view.state.selection.ranges.length !== 1 ? null : {
+          document: options.documentIdentity(),
+          doc: view.state.doc,
+          range,
+          linewise: containsCompleteHeading(view.state, range)
+        };
+        const receipt = localDrag;
+        setTimeout(() => {
+          if (event.defaultPrevented && localDrag === receipt) localDrag = null;
+        }, 0);
+        return false;
+      },
+      dragend() {
+        localDrag = null;
+        return false;
+      },
+      drop(event, view) {
+        const receipt = localDrag;
+        const internal = receipt !== null && receipt.document === options.documentIdentity();
+        const position = dropPosition(view, event);
+        localDrag = null;
+        const transfer = event.dataTransfer;
+        if (!transfer) return true;
+        if (hasFiles(event)) {
+          options.unsupportedFile();
+          return true;
+        }
+        if (!acceptsDropTarget(view, position, options.compositionActive())) return true;
+        if (internal) {
+          if (receipt.doc !== view.state.doc) return true;
+          const move = moves(view, event);
+          const label2 = moveSelectedText(
+            view,
+            receipt.range,
+            position,
+            !move,
+            receipt.linewise,
+            options.protection
+          );
+          if (label2) options.didInsert(label2);
+          return true;
+        }
+        const label = insertDroppedText(
+          view,
+          transfer.getData("text/plain"),
+          position,
+          options.compositionActive(),
+          options.protection
+        );
+        if (label) options.didInsert(label);
+        return true;
+      }
+    };
+  }
+  function insertDroppedText(view, text, position, compositionActive, protection) {
+    const state = view.state;
+    if (position === null || !acceptsDropTarget(view, position, compositionActive)) return null;
+    const insert2 = normalizedDocumentText(text);
+    if (!insert2) return null;
+    const targetState = state.update({ selection: { anchor: position } }).state;
+    const source = state.doc.toString();
+    const transformed = transformMarkdown(source, [{ anchor: position, head: position }], "pastePlain", {
+      argument: insert2,
+      protectedRanges: protection(targetState)
+    });
+    if (!transformed || !exactSourceFitsChanges(state, transformed.changes)) return null;
+    view.dispatch({
+      changes: transformed.changes,
+      selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),
+      userEvent: "input.drop",
+      annotations: isolateHistory.of("full"),
+      scrollIntoView: true
+    });
+    view.focus();
+    return transformed.undoLabel;
+  }
+
+  // link-target.ts
+  function linkTargetAt(source, offset) {
+    const document2 = typeof source === "string" ? Text.of(source.split("\n")) : source;
+    if (offset < 0 || offset > document2.length) return null;
+    const sourceLine = document2.lineAt(offset);
+    const lineFrom = sourceLine.from;
+    const line = sourceLine.text;
+    for (const match of line.matchAll(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
+      const from = lineFrom + match.index;
+      const to = from + match[0].length;
+      if (offset >= from && offset < to) return match[1].trim();
+    }
+    for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
+      const from = lineFrom + match.index;
+      const to = from + match[0].length;
+      if (offset >= from && offset < to) {
+        const target = match[1].trim().replace(/^<|>$/g, "");
+        return isCitationDestination(target) ? null : match[1].trim();
+      }
+    }
+    return null;
+  }
+
+  // source-highlighting.ts
+  var sourceHighlightStyle = HighlightStyle.define([
+    { tag: tags.heading, class: "cm-source-heading" },
+    { tag: tags.link, class: "cm-source-link" },
+    { tag: tags.definition(tags.propertyName), class: "cm-source-yaml-key" },
+    { tag: tags.processingInstruction, class: "cm-source-marker" },
+    { tag: tags.meta, class: "cm-source-meta" },
+    { tag: tags.url, class: "cm-source-url" },
+    { tag: tags.comment, class: "cm-source-comment" }
+  ]);
+  var sourceHighlighting = syntaxHighlighting(sourceHighlightStyle);
+
+  // frontmatter-presentation.ts
+  var frontmatterTokenClassByNodeName = {
+    Key: "cm-live-yaml-key",
+    QuotedLiteral: "cm-live-yaml-string",
+    BlockLiteralHeader: "cm-live-yaml-scalar",
+    BlockLiteralContent: "cm-live-yaml-scalar",
+    FlowSequence: "cm-live-yaml-collection",
+    FlowMapping: "cm-live-yaml-collection",
+    Comment: "cm-live-yaml-comment"
+  };
+  function frontmatterTokenClass(nodeName, parentName) {
+    if (nodeName === "Literal" && parentName !== "Key") return "cm-live-yaml-value";
+    return frontmatterTokenClassByNodeName[nodeName];
+  }
+  function frontmatterKeyHasSeparator(followingText) {
+    if (followingText[0] !== ":") return false;
+    const next = followingText[1];
+    return next === void 0 || next === " " || next === "	" || next === "\r" || next === "\n";
+  }
+  function frontmatterFallbackClass(lineText, isDelimiterLine, hasTokenClass) {
+    const trimmed = lineText.trim();
+    if (isDelimiterLine || hasTokenClass || trimmed === "" || trimmed.startsWith("#")) return void 0;
+    return "cm-live-yaml-value";
+  }
+
+  // projection-index.ts
+  function compareRanges(left, right) {
+    return left.from - right.from || left.to - right.to;
+  }
+  var prefixMaximumEnds = /* @__PURE__ */ new WeakMap();
+  function maximumEndsFor(ranges) {
+    const cached = prefixMaximumEnds.get(ranges);
+    if (cached) return cached;
+    let maximum = -1;
+    const values2 = Object.freeze(ranges.map((range) => {
+      maximum = Math.max(maximum, range.to);
+      return maximum;
+    }));
+    prefixMaximumEnds.set(ranges, values2);
+    return values2;
+  }
+  function immutableProjectionRanges(ranges) {
+    const immutable = Object.freeze(ranges.map((range) => Object.freeze({ ...range })).sort(compareRanges));
+    maximumEndsFor(immutable);
+    return immutable;
+  }
+  function projectionRangeDifference(requested, covered) {
+    const missing = [];
+    let coveredIndex = 0;
+    for (const target of requested) {
+      if (target.to <= target.from) continue;
+      while (coveredIndex < covered.length && covered[coveredIndex].to <= target.from) {
+        coveredIndex += 1;
+      }
+      let cursor = target.from;
+      let index = coveredIndex;
+      while (index < covered.length && covered[index].from < target.to) {
+        const existing = covered[index];
+        if (existing.from > cursor) {
+          missing.push({ from: cursor, to: Math.min(existing.from, target.to) });
+        }
+        cursor = Math.max(cursor, existing.to);
+        if (cursor >= target.to) break;
+        index += 1;
+      }
+      if (cursor < target.to) missing.push({ from: cursor, to: target.to });
+      coveredIndex = index;
+    }
+    return immutableProjectionRanges(missing);
+  }
+  function commandProtectionRanges(literalRanges, frontmatterRange) {
+    return immutableProjectionRanges(frontmatterRange ? [...literalRanges, frontmatterRange] : literalRanges);
+  }
+  function projectionRangesIntersecting(ranges, from, to) {
+    let low = 0;
+    let high = ranges.length;
+    while (low < high) {
+      const middle = low + high >>> 1;
+      if (ranges[middle].from < to) low = middle + 1;
+      else high = middle;
+    }
+    const maximumEnds = maximumEndsFor(ranges);
+    const matches = [];
+    for (let index = low - 1; index >= 0 && maximumEnds[index] > from; index -= 1) {
+      if (ranges[index].to > from) matches.push(ranges[index]);
+    }
+    matches.reverse();
+    return matches;
+  }
+  function projectionRangeContaining(ranges, offset) {
+    const candidates = projectionRangesIntersecting(ranges, offset, offset + 1);
+    return candidates[0] ?? null;
+  }
+  function projectionRangeAtBoundary(ranges, offset, boundary2) {
+    const candidates = projectionRangesIntersecting(
+      ranges,
+      Math.max(0, offset - 1),
+      offset + 1
+    );
+    return candidates.find(
+      (range) => boundary2 === "start" ? range.from === offset : range.to === offset
+    ) ?? null;
+  }
+  function projectionSelectionOverlaps(ranges, selection) {
+    if (selection.from === selection.to) {
+      return projectionRangeContaining(ranges, selection.from) !== null;
+    }
+    return projectionRangesIntersecting(ranges, selection.from, selection.to).length > 0;
+  }
+  function projectionBoundaryTouches(ranges, offset) {
+    const candidates = projectionRangesIntersecting(
+      ranges,
+      Math.max(0, offset - 1),
+      offset + 1
+    );
+    return candidates.some((range) => offset >= range.from && offset <= range.to);
+  }
+
+  // projection-update.ts
+  function selectionActivatesSyntax(selection, projection) {
+    return selection.empty ? selection.head >= projection.from && selection.head <= projection.to : selection.from < projection.to && selection.to > projection.from;
+  }
+  function selectionIntersectsPhysicalLine(selection, lineFrom, lineTo, queryTo) {
+    return selection.empty ? selection.head >= lineFrom && selection.head <= lineTo : selection.from < queryTo && selection.to > lineFrom;
+  }
+  function activeProjectionSignature(selections, projections) {
+    const active = /* @__PURE__ */ new Map();
+    for (const selection of selections) {
+      const from = selection.empty ? Math.max(0, selection.head - 1) : selection.from;
+      const to = selection.empty ? selection.head + 1 : selection.to;
+      for (const projection of projectionRangesIntersecting(projections, from, to)) {
+        if (!selectionActivatesSyntax(selection, projection)) continue;
+        active.set(`${projection.from}:${projection.to}`, projection);
+      }
+    }
+    return [...active.values()].sort((left, right) => left.from - right.from || left.to - right.to).map((projection) => `${projection.from}:${projection.to}`).join("|");
+  }
+  function selectionProjectionSignature(doc2, selections, inlineProjections, listPrefixProjections = []) {
+    const activeLines = selections.map((selection) => {
+      const fromLine = doc2.lineAt(Math.max(0, Math.min(selection.from, doc2.length))).from;
+      const endPosition = selection.empty ? selection.to : Math.max(selection.from, selection.to - 1);
+      const toLine = doc2.lineAt(Math.max(0, Math.min(endPosition, doc2.length))).from;
+      return `${fromLine}:${toLine}`;
+    }).join("|");
+    return [
+      activeLines,
+      activeProjectionSignature(selections, inlineProjections),
+      activeProjectionSignature(selections, listPrefixProjections)
+    ].join("#");
+  }
+  function selectionAffectedProjectionRanges(documentLength, previousSelections, nextSelections, margin = 2e3) {
+    return immutableProjectionRanges(boundedProjectionRanges(
+      documentLength,
+      [...previousSelections, ...nextSelections].map((selection) => ({
+        from: selection.from,
+        to: selection.to
+      })),
+      margin
+    ));
+  }
+  function transactionChangedSyntaxTree(transaction) {
+    return syntaxTree(transaction.startState) !== syntaxTree(transaction.state);
+  }
+  function frontmatterPresentationNeedsRebuild(transaction, envelopeEnd, signature, previousSignature) {
+    if (transaction.docChanged) return true;
+    if (transactionChangedSyntaxTree(transaction) && syntaxTree(transaction.startState).length < envelopeEnd) {
+      return true;
+    }
+    return signature !== previousSignature;
+  }
+  function changedContextContainsMarker(transaction, from, to, marker) {
+    const doc2 = transaction.state.doc;
+    const boundedFrom = Math.max(0, Math.min(from, doc2.length));
+    const boundedTo = Math.max(boundedFrom, Math.min(to, doc2.length));
+    const firstLine = doc2.lineAt(boundedFrom);
+    const lastLine = doc2.lineAt(boundedTo);
+    const contextFrom = Math.max(firstLine.from, boundedFrom - 256);
+    const contextTo = Math.min(lastLine.to, boundedTo + 256);
+    marker.lastIndex = 0;
+    return marker.test(doc2.sliceString(contextFrom, contextTo));
+  }
+  function transactionMayCreateProjection(transaction, marker) {
+    let mayCreate = false;
+    transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+      if (mayCreate) return;
+      if (toA > fromA || inserted.length > 8192) {
+        mayCreate = true;
+        return;
+      }
+      marker.lastIndex = 0;
+      mayCreate = marker.test(inserted.toString()) || changedContextContainsMarker(transaction, fromB, toB, marker);
+    });
+    return mayCreate;
+  }
+  function rangesOverlap(left, right) {
+    return left.from < right.to && left.to > right.from;
+  }
+  function physicalLineNeighborhood(doc2, from, to) {
+    const startLine = doc2.lineAt(Math.max(0, Math.min(from, doc2.length)));
+    const endLine = doc2.lineAt(Math.max(0, Math.min(to, doc2.length)));
+    return {
+      from: doc2.line(Math.max(1, startLine.number - 1)).from,
+      to: doc2.line(Math.min(doc2.lines, endLine.number + 1)).to
+    };
+  }
+  function mappedRange(range, transaction) {
+    return {
+      from: transaction.changes.mapPos(range.from),
+      to: transaction.changes.mapPos(range.to)
+    };
+  }
+  function mappedBlock(block, transaction) {
+    return {
+      ...block,
+      ...mappedRange(block, transaction),
+      parent: block.parent ? {
+        kind: block.parent.kind,
+        ...mappedRange(block.parent, transaction)
+      } : null,
+      markerRanges: block.markerRanges.map((range) => mappedRange(range, transaction)),
+      taskMarkerRange: block.taskMarkerRange ? mappedRange(block.taskMarkerRange, transaction) : null
+    };
+  }
+  function mappedInline(inline, transaction) {
+    return {
+      ...inline,
+      ...mappedRange(inline, transaction),
+      markerRanges: inline.markerRanges.map((range) => mappedRange(range, transaction)),
+      visibleRanges: inline.visibleRanges.map((range) => mappedRange(range, transaction)),
+      targetRange: inline.targetRange ? mappedRange(inline.targetRange, transaction) : null,
+      aliasRange: inline.aliasRange ? mappedRange(inline.aliasRange, transaction) : null
+    };
+  }
+  function rangeSignature(range) {
+    return range ? `${range.from}:${range.to}` : "-";
+  }
+  function projectionTopologySignature(projection) {
+    const blocks = projection.blocks.map((block) => [
+      "b",
+      block.kind,
+      block.nodeName,
+      block.from,
+      block.to,
+      block.depth,
+      block.parent?.kind ?? "-",
+      rangeSignature(block.parent),
+      block.headingLevel ?? "-",
+      block.listDepth ?? "-",
+      block.markerRanges.map(rangeSignature).join(","),
+      rangeSignature(block.taskMarkerRange)
+    ].join("|"));
+    const inlines = projection.inlines.map((inline) => [
+      "i",
+      inline.kind,
+      inline.nodeName,
+      inline.from,
+      inline.to,
+      inline.markerRanges.map(rangeSignature).join(","),
+      inline.visibleRanges.map(rangeSignature).join(","),
+      rangeSignature(inline.targetRange),
+      rangeSignature(inline.aliasRange)
+    ].join("|"));
+    const literals2 = projection.literals.map((literal2) => ["l", literal2.nodeName, literal2.from, literal2.to].join("|"));
+    return [...blocks, ...inlines, ...literals2].sort().join("\n");
+  }
+  function transactionCanMapProjectionTopology(transaction, marker, mutationSensitiveRanges, previousSyntax) {
+    if (!transaction.docChanged) return false;
+    const changes = [];
+    transaction.changes.iterChanges((fromA2, toA2, fromB2, toB2, inserted) => {
+      changes.push({ fromA: fromA2, toA: toA2, fromB: fromB2, toB: toB2, insert: inserted.toString() });
+    });
+    if (changes.length !== 1) return false;
+    const { fromA, toA, fromB, toB, insert: insert2 } = changes[0];
+    marker.lastIndex = 0;
+    if (insert2.length > 8192 || /[\r\n]/.test(insert2) || marker.test(insert2) || projectionBoundaryTouches(mutationSensitiveRanges, fromA)) {
+      return false;
+    }
+    if (toA > fromA) {
+      const line = transaction.startState.doc.lineAt(fromA);
+      const touchesDeletion = (range) => range.from <= toA && range.to >= fromA;
+      if (insert2.length !== 0 || toA - fromA > 8192 || fromA <= line.from || toA > line.to || !/^[\p{L}\p{N}\p{M} ]+$/u.test(transaction.startState.doc.sliceString(fromA, toA)) || mutationSensitiveRanges.some(touchesDeletion) || previousSyntax.inlines.some(touchesDeletion) || previousSyntax.blocks.some((block) => block.markerRanges.some(touchesDeletion))) {
+        return false;
+      }
+    }
+    const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
+    const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
+    const previousLocal = {
+      ...previousSyntax,
+      blocks: previousSyntax.blocks.filter((block) => rangesOverlap(block, oldNeighborhood)).map((block) => mappedBlock(block, transaction)),
+      inlines: previousSyntax.inlines.filter((inline) => rangesOverlap(inline, oldNeighborhood)).map((inline) => mappedInline(inline, transaction)),
+      literals: previousSyntax.literals.filter((literal2) => rangesOverlap(literal2, oldNeighborhood)).map((literal2) => ({ ...literal2, ...mappedRange(literal2, transaction) }))
+    };
+    const nextLocal = semanticProjectionRanges(
+      transaction.state,
+      [newNeighborhood],
+      0
+    );
+    return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
+  }
+
+  // accessibility.ts
+  function unsupportedFilePasteMessage() {
+    return localized("File and image paste is not supported in Editor 1.0.");
+  }
+  function editorAccessibilityAttributes(mode) {
+    return {
+      "aria-label": mode === "livePreview" ? localized("Markdown editor, Edit mode") : localized("Markdown source editor"),
+      role: "textbox",
+      "aria-multiline": "true",
+      spellcheck: "true",
+      autocapitalize: "sentences"
+    };
+  }
+  function activeConstructAccessibilityDescription(context) {
+    const heading2 = context.activeBlockConstructs.find((construct) => /^ATXHeading[1-6]$/.test(construct));
+    if (heading2) return localizedTemplate("Heading level {level}", { level: heading2.at(-1) ?? "" });
+    if (context.activeInlineConstructs.includes("Link")) return localized("Link");
+    if (context.activeBlockConstructs.includes("Callout")) return localized("Callout");
+    if (context.activeBlockConstructs.includes("Blockquote")) return localized("Quotation");
+    if (context.activeBlockConstructs.includes("Table")) return localized("Table");
+    if (context.activeBlockConstructs.includes("BulletList")) return localized("Bulleted list");
+    if (context.activeBlockConstructs.includes("OrderedList")) return localized("Numbered list");
+    if (context.activeInlineConstructs.includes("StrongEmphasis")) return localized("Bold text");
+    if (context.activeInlineConstructs.includes("Emphasis")) return localized("Emphasized text");
+    if (context.activeInlineConstructs.includes("InlineCode")) return localized("Inline code");
+    return void 0;
+  }
+  function updateEditorAccessibility(content2, mode, context) {
+    const attributes = editorAccessibilityAttributes(mode);
+    for (const [name2, value] of Object.entries(attributes)) {
+      if (content2.getAttribute(name2) !== value) content2.setAttribute(name2, value);
+    }
+    const description = mode === "livePreview" && context ? activeConstructAccessibilityDescription(context) : mode === "source" ? localized("Exact Markdown and YAML source") : void 0;
+    if (description) {
+      if (content2.getAttribute("aria-description") !== description) {
+        content2.setAttribute("aria-description", description);
+      }
+    } else if (content2.hasAttribute("aria-description")) {
+      content2.removeAttribute("aria-description");
+    }
+  }
+  var announcementTimers = /* @__PURE__ */ new WeakMap();
+  function cancelEditorAnnouncement(content2) {
+    window.clearTimeout(announcementTimers.get(content2));
+    announcementTimers.delete(content2);
+  }
+  function announceEditorMessage(content2, message) {
+    cancelEditorAnnouncement(content2);
+    const previous = content2.getAttribute("aria-description");
+    content2.setAttribute("aria-description", message);
+    announcementTimers.set(content2, window.setTimeout(() => {
+      announcementTimers.delete(content2);
+      if (content2.getAttribute("aria-description") !== message) return;
+      if (previous) content2.setAttribute("aria-description", previous);
+      else content2.removeAttribute("aria-description");
+    }, 4e3));
+  }
+
+  // composition.ts
+  var policies = {
+    beginCitation: "reject",
+    citationCallback: "reject",
+    finishCitation: "reject",
+    cancelCitation: "allow",
+    initialize: "reject",
+    replacePassage: "reject",
+    insertReference: "reject",
+    pasteClipboard: "reject",
+    selectAll: "reject",
+    queryText: "defer",
+    querySelection: "defer",
+    captureRecovery: "defer",
+    markClean: "defer",
+    setMode: "defer",
+    setDocumentTitle: "defer",
+    setWritingContinuation: "allow",
+    setWritingIndexContext: "allow",
+    setPresentationCSS: "defer",
+    setUserCSS: "defer",
+    setLinkPreviews: "defer",
+    setImageResources: "defer",
+    goToLine: "defer",
+    revealSourceRange: "defer",
+    restoreRecovery: "defer",
+    acknowledgeCommittedSnapshot: "defer",
+    command: "defer",
+    documentFind: "defer",
+    clearDocumentFind: "defer",
+    showPreview: "defer",
+    showPreviewAt: "defer",
+    measureVisibleProjection: "defer",
+    setScrollFraction: "defer",
+    setScrollAnchor: "defer",
+    focus: "defer",
+    focusTitle: "defer",
+    blur: "defer",
+    queryContext: "allow",
+    queryScrollAnchor: "allow",
+    queryPerformance: "allow",
+    announceStatus: "allow",
+    suspendForDetachment: "defer",
+    resumeAfterDetachment: "allow"
+  };
+  function compositionRequestPolicy(operationType) {
+    return policies[operationType];
+  }
+  var CompositionRequestGate = class {
+    constructor(expired) {
+      this.expired = expired;
+    }
+    expired;
+    requests = /* @__PURE__ */ new Map();
+    owners = /* @__PURE__ */ new Map();
+    sequence = 0;
+    get active() {
+      return this.owners.size > 0;
+    }
+    begin(owner = "editor") {
+      this.owners.set(owner, ++this.sequence);
+    }
+    revision(owner) {
+      return this.owners.get(owner);
+    }
+    enqueue(request) {
+      if (request.expiresAt <= Date.now()) return Promise.resolve(this.expired(request));
+      return new Promise((resolve) => {
+        const pending = { request, resolve };
+        const expire = () => {
+          if (request.expiresAt > Date.now()) {
+            this.requests.set(pending, setTimeout(expire, Math.min(2147483647, request.expiresAt - Date.now())));
+            return;
+          }
+          this.requests.delete(pending);
+          resolve(this.expired(request));
+        };
+        this.requests.set(pending, setTimeout(expire, Math.min(2147483647, request.expiresAt - Date.now())));
+      });
+    }
+    finish(owner = "editor", revision = this.owners.get(owner)) {
+      if (revision !== this.owners.get(owner)) return [];
+      this.owners.delete(owner);
+      if (this.active) return [];
+      const pending = [...this.requests.keys()];
+      for (const timer of this.requests.values()) clearTimeout(timer);
+      this.requests.clear();
+      return pending.filter((item) => {
+        if (item.request.expiresAt > Date.now()) return true;
+        item.resolve(this.expired(item.request));
+        return false;
+      });
+    }
+    rejectAll(result) {
+      this.owners.clear();
+      for (const [pending, timer] of this.requests) {
+        clearTimeout(timer);
+        pending.resolve(result(pending.request));
+      }
+      this.requests.clear();
+    }
+  };
+
+  // bootstrap.ts
+  function createMarkdownDocumentState(source, extensions) {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+    return EditorState.create({ doc: normalizedDocumentText(source), extensions }).update({
+      effects: setExactSource.of(source),
+      annotations: Transaction.addToHistory.of(false)
+    }).state;
+  }
+  function createMarkdownEditor(parent, extensions) {
+    return new EditorView({ parent, state: EditorState.create({ doc: "", extensions }) });
+  }
+
+  // mermaid-runtime-loader.ts
+  function createMermaidRuntimeLoader(host, requestRuntime) {
+    let pending = null;
+    return {
+      ensure() {
+        if (host.scholiumMermaid?.version === 2) return Promise.resolve(host.scholiumMermaid);
+        if (pending) return pending.promise;
+        let resolve;
+        const promise = new Promise((complete2) => {
+          resolve = complete2;
+        });
+        let settled = false;
+        const complete = (runtime) => {
+          if (settled) return;
+          settled = true;
+          host.clearTimeout(timeout);
+          if (host.scholiumMermaidRuntimeDidLoad === finish) host.scholiumMermaidRuntimeDidLoad = void 0;
+          if (pending === load) pending = null;
+          resolve(runtime);
+        };
+        const finish = () => complete(host.scholiumMermaid?.version === 2 ? host.scholiumMermaid : null);
+        const timeout = host.setTimeout(finish, 8e3);
+        const load = { promise, cancel: () => complete(null) };
+        pending = load;
+        host.scholiumMermaidRuntimeDidLoad = finish;
+        requestRuntime();
+        return promise;
+      },
+      resetDocument() {
+        pending?.cancel();
+      }
+    };
+  }
+
+  // rendered-interface-localization.ts
+  function localizeRenderedInterface(root, localize = (key, replacements = {}) => localizedTemplate(key, replacements)) {
+    root.querySelectorAll(".scholium-callout").forEach((callout) => {
+      const identifier5 = Object.keys(calloutLocalizationKeys).find((role2) => callout.classList.contains(`scholium-callout-${role2}`));
+      if (!identifier5) return;
+      const [labelKey, meaningKey] = calloutLocalizationKeys[identifier5];
+      const label = localize(labelKey);
+      const meaning = localize(meaningKey);
+      const role = callout.querySelector(".scholium-callout-role");
+      if (role?.closest(".scholium-callout") === callout) {
+        if (role.textContent !== label) role.textContent = label;
+        if (role.title !== meaning) role.title = meaning;
+        role.setAttribute("aria-label", localize("{label}. {meaning}", { label, meaning }));
+      }
+      const generatedTitle = callout.querySelector(".scholium-callout-default-title");
+      if (generatedTitle?.closest(".scholium-callout") === callout && generatedTitle.textContent !== label) {
+        generatedTitle.textContent = label;
+      }
+    });
+    root.querySelectorAll(".footnote-reference[data-footnote]").forEach((reference) => {
+      const ordinal = reference.dataset.footnote;
+      if (ordinal) reference.setAttribute("aria-label", localize("Footnote {ordinal}", { ordinal }));
+    });
+    root.querySelectorAll(".footnote-return[data-footnote]").forEach((reference) => {
+      const ordinal = reference.dataset.footnote;
+      if (ordinal) reference.setAttribute("aria-label", localize("Return to footnote reference {ordinal}", { ordinal }));
+    });
+    root.querySelectorAll(".footnotes").forEach((section) => {
+      section.setAttribute("aria-label", localize("Footnotes"));
+    });
+    root.querySelectorAll(".scholium-task-checkbox").forEach((checkbox) => {
+      checkbox.setAttribute("aria-label", localize(checkbox.checked ? "Completed task" : "Incomplete task"));
+    });
+    root.querySelectorAll(".scholium-table").forEach((table) => {
+      table.setAttribute("aria-label", localize("Markdown table"));
+    });
+    root.querySelectorAll("button[data-link-annotation]").forEach((button) => {
+      const title = button.dataset.linkAnnotationTarget?.trim() || button.closest(".scholium-annotated-link")?.querySelector(".wiki-link")?.textContent?.trim() || localize("linked note");
+      button.dataset.linkAnnotationTarget = title;
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-label", localize(
+        expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
+        { title }
+      ));
+    });
+  }
+
+  // preview-popover.ts
+  function normalizedTitle(value) {
+    return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  }
+  function sanitizePreviewDocument(body) {
+    body.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
+    body.querySelectorAll("*").forEach((node) => {
+      for (const attribute of Array.from(node.attributes)) {
+        if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
+        if (attribute.name.toLowerCase().startsWith("data-source-")) {
+          node.removeAttribute(attribute.name);
+        }
+      }
+      node.removeAttribute("href");
+      node.removeAttribute("contenteditable");
+      node.removeAttribute("id");
+      node.removeAttribute("for");
+      node.removeAttribute("aria-describedby");
+      node.removeAttribute("aria-labelledby");
+      node.removeAttribute("aria-owns");
+      node.tabIndex = -1;
+    });
+  }
+  function renderPreviewMathNodes(root) {
+    const ownerDocument = root.nodeType === 9 ? root : root.ownerDocument;
+    const runtime = ownerDocument.defaultView?.scholiumMath;
+    if (runtime?.version !== 1) return;
+    root.querySelectorAll(
+      ".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)"
+    ).forEach((element) => {
+      try {
+        const encodedSource = element.dataset.mathSource;
+        const kind = element.dataset.mathKind;
+        if (!encodedSource || kind !== "inline" && kind !== "display") return;
+        const source = new TextDecoder().decode(
+          Uint8Array.from(atob(encodedSource), (character) => character.charCodeAt(0))
+        );
+        const result = runtime.render({ source, kind });
+        if (!result.ok) {
+          element.classList.add("scholium-math-error");
+          element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
+          return;
+        }
+        const fallback = element.querySelector(".scholium-math-source");
+        const rendered = ownerDocument.createElement("span");
+        rendered.className = "scholium-math-output";
+        rendered.innerHTML = result.html;
+        fallback?.before(rendered);
+        element.classList.add("scholium-math-rendered");
+      } catch (_) {
+        element.classList.add("scholium-math-error");
+      }
+    });
+  }
+  function populatePreviewDocument(body, preview) {
+    body.innerHTML = preview.htmlBody;
+    sanitizePreviewDocument(body);
+    localizeRenderedInterface(body);
+    renderPreviewMathNodes(body);
+    const firstHeading = body.querySelector(":scope > h1:first-child");
+    if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
+      firstHeading.remove();
+    }
+  }
+  function createPreviewPopoverController(options) {
+    let nativeID = 0;
+    let presentationRevision = 0;
+    let nativeHovered = false;
+    let editor2 = null;
+    let root = null;
+    let title = null;
+    let metadata = null;
+    let body = null;
+    let showTimer;
+    let hideTimer;
+    let pendingAnchor = null;
+    let hoveredLink = null;
+    let armedLink = null;
+    let activeAnnotationButton = null;
+    let pinnedAnnotationButton = null;
+    let activeFootnoteButton = null;
+    let pinnedFootnoteButton = null;
+    let activeKind = null;
+    let modifierPressed = false;
+    function annotationTarget(button) {
+      return button.dataset.linkAnnotationTarget?.trim() || localized("linked note");
+    }
+    function setAnnotationExpanded(button, expanded) {
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+      button.setAttribute(
+        "aria-label",
+        localizedTemplate(
+          expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
+          { title: annotationTarget(button) }
+        )
+      );
+    }
+    function setFootnoteExpanded(button, expanded) {
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    }
+    function hasPinnedPreview() {
+      return pinnedAnnotationButton !== null || pinnedFootnoteButton !== null;
+    }
+    function setArmedLink(next) {
+      if (armedLink === next) return;
+      armedLink?.classList.remove("scholium-link-preview-armed");
+      armedLink = next;
+      armedLink?.classList.add("scholium-link-preview-armed");
+    }
+    function hide(retainHoveredLink = false) {
+      presentationRevision += 1;
+      nativeHovered = false;
+      options.nativeFloating.hide(nativeID);
+      window.clearTimeout(showTimer);
+      window.clearTimeout(hideTimer);
+      showTimer = void 0;
+      hideTimer = void 0;
+      pendingAnchor = null;
+      if (!retainHoveredLink) hoveredLink = null;
+      modifierPressed = false;
+      setArmedLink(null);
+      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
+      activeAnnotationButton = null;
+      pinnedAnnotationButton = null;
+      activeFootnoteButton = null;
+      pinnedFootnoteButton = null;
+      activeKind = null;
+      if (root) {
+        root.hidden = true;
+        root.style.visibility = "";
+      }
+      if (title) title.textContent = "";
+      if (metadata) metadata.textContent = "";
+      body?.replaceChildren();
+    }
+    function cancelHide() {
+      window.clearTimeout(hideTimer);
+      hideTimer = void 0;
+    }
+    function scheduleHide() {
+      if (hasPinnedPreview() || nativeHovered || options.holdOpenForPerformancePreview()) return;
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(hide, 180);
+    }
+    function position(anchor, startedAt) {
+      if (!editor2 || !root) return;
+      if (editor2.composing) {
+        hide();
+        return;
+      }
+      root.hidden = false;
+      nativeID = options.nativeFloating.show(previewSurface(anchor, root), {
+        dismiss: hide,
+        enter: () => {
+          nativeHovered = true;
+          cancelHide();
+        },
+        leave: () => {
+          nativeHovered = false;
+          scheduleHide();
+        }
+      });
+      if (startedAt !== void 0) {
+        const activeEditor = editor2;
+        const revision = presentationRevision;
+        scheduleAfterNextPaint(() => {
+          if (revision !== presentationRevision) return;
+          recordEditorMetric("cached-preview", startedAt, { documentLength: activeEditor.state.doc.length });
+        });
+      }
+    }
+    function showLinkPreview(preview, anchor, startedAt) {
+      if (!editor2 || !root || !title || !metadata || !body) return;
+      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
+      activeAnnotationButton = null;
+      activeFootnoteButton = null;
+      activeKind = "link";
+      title.textContent = preview.title;
+      metadata.textContent = preview.fragment ?? "";
+      metadata.hidden = !preview.fragment;
+      populatePreviewDocument(body, preview);
+      recordEditorMetric("cached-preview-work", startedAt, {
+        documentLength: editor2.state.doc.length
+      });
+      position(anchor, startedAt);
+    }
+    function annotationTemplate(button) {
+      const owner = button.closest(
+        ".scholium-link-annotation-disclosure, .scholium-link-annotation-marker"
+      );
+      return owner?.querySelector(":scope > template") ?? null;
+    }
+    function showAnnotation(button) {
+      if (!root || !title || !metadata || !body) return false;
+      const template = annotationTemplate(button);
+      if (!template) return false;
+      if (activeAnnotationButton && activeAnnotationButton !== button) {
+        setAnnotationExpanded(activeAnnotationButton, false);
+      }
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
+      activeAnnotationButton = button;
+      activeFootnoteButton = null;
+      activeKind = "annotation";
+      setAnnotationExpanded(button, true);
+      title.textContent = annotationTarget(button);
+      metadata.textContent = localized("Link Annotation");
+      metadata.hidden = false;
+      body.replaceChildren(template.content.cloneNode(true));
+      sanitizePreviewDocument(body);
+      position(button.getBoundingClientRect());
+      return true;
+    }
+    function footnoteReferenceFor(button) {
+      const identifier5 = button.dataset.footnoteIdentifier;
+      const occurrence = Number(button.dataset.footnoteOccurrence);
+      if (!identifier5 || !Number.isInteger(occurrence)) return void 0;
+      return options.footnotes().references.find((reference) => reference.identifier === identifier5 && reference.occurrence === occurrence);
+    }
+    function showFootnoteReference(reference, anchor, button = null) {
+      if (!root || !title || !metadata || !body) return false;
+      const definition = options.footnotes().definitions.find((candidate) => candidate.identifier === reference.identifier);
+      const content2 = definition?.content.trim().slice(0, 1600) ?? "";
+      if (!content2) return false;
+      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton && activeFootnoteButton !== button) {
+        setFootnoteExpanded(activeFootnoteButton, false);
+      }
+      activeAnnotationButton = null;
+      activeFootnoteButton = button;
+      activeKind = "footnote";
+      if (button) setFootnoteExpanded(button, true);
+      title.textContent = localizedTemplate("Footnote {ordinal}", { ordinal: reference.ordinal });
+      metadata.textContent = "";
+      metadata.hidden = true;
+      body.replaceChildren();
+      options.renderFootnoteContent(content2, body);
+      sanitizePreviewDocument(body);
+      position(anchor);
+      return true;
+    }
+    function showFootnote(button) {
+      const reference = footnoteReferenceFor(button);
+      return reference ? showFootnoteReference(reference, button.getBoundingClientRect(), button) : false;
+    }
+    function showAtSelection() {
+      const startedAt = performance.now();
+      if (!editor2 || editor2.composing) return false;
+      const head = editor2.state.selection.main.head;
+      const coords = editor2.coordsAtPos(head);
+      if (!coords) return false;
+      const footnote = options.footnotes().references.find((candidate) => head >= candidate.from && head < candidate.to);
+      if (footnote) {
+        hide();
+        return showFootnoteReference(footnote, coords);
+      }
+      const preview = options.previews().find((candidate) => head >= candidate.from && head < candidate.to);
+      if (preview) {
+        hide();
+        showLinkPreview(preview, coords, startedAt);
+        return true;
+      }
+      announceEditorMessage(
+        editor2.contentDOM,
+        localized("No preview is available at the insertion point.")
+      );
+      return false;
+    }
+    function showAtPoint(x, y) {
+      const startedAt = performance.now();
+      if (!editor2 || editor2.composing) return false;
+      const anchor = linkAnchorAt(document.elementFromPoint(x, y));
+      const footnote = footnoteButtonAt(document.elementFromPoint(x, y));
+      if (footnote) {
+        hide();
+        return showFootnote(footnote);
+      }
+      if (!anchor) return showAtSelection();
+      const preview = previewForAnchor(anchor);
+      if (preview) {
+        hide();
+        showLinkPreview(preview, anchor.getBoundingClientRect(), startedAt);
+        return true;
+      }
+      return showAtSelection();
+    }
+    function annotationButtonAt(target) {
+      return target instanceof Element ? target.closest(".scholium-link-annotation-button") : null;
+    }
+    function footnoteButtonAt(target) {
+      return target instanceof Element ? target.closest(".cm-live-footnote-reference-widget .footnote-reference") : null;
+    }
+    function linkAnchorAt(target) {
+      return target instanceof Element ? target.closest(
+        "[data-link-preview-index], [data-scholium-link-target][data-scholium-source-from][data-scholium-source-to]"
+      ) : null;
+    }
+    function previewForAnchor(anchor) {
+      const previewIndex = Number(anchor.dataset.linkPreviewIndex);
+      if (Number.isInteger(previewIndex) && anchor.dataset.linkPreviewIndex !== void 0) {
+        return options.previews()[previewIndex];
+      }
+      const from = Number(anchor.dataset.scholiumSourceFrom);
+      const to = Number(anchor.dataset.scholiumSourceTo);
+      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || to <= from) return void 0;
+      return options.previews().find((preview) => preview.from === from && preview.to === to);
+    }
+    function scheduleShow(anchor, kind) {
+      cancelHide();
+      if (anchor === pendingAnchor && kind === activeKind) return;
+      window.clearTimeout(showTimer);
+      showTimer = void 0;
+      pendingAnchor = anchor;
+      showTimer = window.setTimeout(() => {
+        if (pendingAnchor !== anchor) return;
+        if (kind === "annotation") {
+          showAnnotation(anchor);
+          return;
+        }
+        if (kind === "footnote") {
+          showFootnote(anchor);
+          return;
+        }
+        const preview = previewForAnchor(anchor);
+        if (preview) {
+          showLinkPreview(preview, anchor.getBoundingClientRect(), performance.now());
+        }
+      }, 300);
+    }
+    const handlePointerMove = (event) => {
+      if (root && event.target instanceof Node && root.contains(event.target)) {
+        cancelHide();
+        return;
+      }
+      const annotation = annotationButtonAt(event.target);
+      const footnote = footnoteButtonAt(event.target);
+      const link = linkAnchorAt(event.target);
+      hoveredLink = link;
+      if (hasPinnedPreview() && annotation !== pinnedAnnotationButton && footnote !== pinnedFootnoteButton) {
+        setArmedLink(null);
+        return;
+      }
+      const modifierActive = event.metaKey || event.ctrlKey || modifierPressed;
+      setArmedLink(modifierActive ? link : null);
+      const anchor = annotation ?? footnote ?? (modifierActive ? link : null);
+      if (!anchor) {
+        if (pendingAnchor || root && !root.hidden) scheduleHide();
+        return;
+      }
+      scheduleShow(anchor, annotation ? "annotation" : footnote ? "footnote" : "link");
+    };
+    const handlePreviewPointerEnter = () => cancelHide();
+    const handlePreviewPointerLeave = () => scheduleHide();
+    const handleKeyUp = (event) => {
+      if (event.key !== "Meta" && event.key !== "Control") return;
+      modifierPressed = false;
+      setArmedLink(null);
+      if (activeKind === "link") hide(true);
+    };
+    const handleCompositionStart = () => hide();
+    const handleKeyDown = (event) => {
+      if (event.isComposing || event.keyCode === 229) return;
+      if (event.key === "Escape" && root && !root.hidden) {
+        hide();
+        return;
+      }
+      if (event.key !== "Meta" && event.key !== "Control") return;
+      modifierPressed = true;
+      if (!hoveredLink || hasPinnedPreview()) return;
+      setArmedLink(hoveredLink);
+      scheduleShow(hoveredLink, "link");
+    };
+    const handleFocusIn = (event) => {
+      const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
+      if (!button) return;
+      cancelHide();
+      window.clearTimeout(showTimer);
+      pendingAnchor = button;
+      if (button.matches(".footnote-reference")) showFootnote(button);
+      else showAnnotation(button);
+    };
+    const handleFocusOut = (event) => {
+      const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
+      if (!button) return;
+      if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
+      scheduleHide();
+    };
+    const handleClick = (event) => {
+      const button = annotationButtonAt(event.target);
+      if (button) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (pinnedAnnotationButton === button) {
+          hide();
+          return;
+        }
+        pinnedAnnotationButton = button;
+        window.clearTimeout(showTimer);
+        pendingAnchor = button;
+        showAnnotation(button);
+        return;
+      }
+      const footnote = footnoteButtonAt(event.target);
+      if (footnote && event.detail === 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (pinnedFootnoteButton === footnote) {
+          hide();
+          return;
+        }
+        pinnedFootnoteButton = footnote;
+        window.clearTimeout(showTimer);
+        pendingAnchor = footnote;
+        showFootnote(footnote);
+        return;
+      }
+      if (hasPinnedPreview() && !(event.target instanceof Node && root?.contains(event.target))) hide();
+    };
+    const handleViewportExit = () => {
+      hoveredLink = null;
+      modifierPressed = false;
+      hide();
+    };
+    function mount(view) {
+      if (editor2) return;
+      editor2 = view;
+      root = document.createElement("aside");
+      root.id = "scholium-preview-popover";
+      root.className = "scholium-preview-popover";
+      root.dataset.scholiumProtected = "preview-popover";
+      root.setAttribute("role", "note");
+      root.setAttribute("aria-labelledby", "scholium-preview-title");
+      root.setAttribute("aria-live", "polite");
+      root.hidden = true;
+      title = document.createElement("h2");
+      title.id = "scholium-preview-title";
+      title.className = "scholium-preview-title";
+      metadata = document.createElement("p");
+      metadata.className = "scholium-preview-metadata";
+      metadata.hidden = true;
+      body = document.createElement("div");
+      body.className = "scholium-preview-body scholium-document";
+      body.setAttribute("role", "group");
+      body.setAttribute("aria-label", localized("Preview content"));
+      root.append(title, metadata, body);
+      root.addEventListener("pointerenter", handlePreviewPointerEnter);
+      root.addEventListener("pointerleave", handlePreviewPointerLeave);
+      document.addEventListener("pointermove", handlePointerMove, { passive: true });
+      document.addEventListener("focusin", handleFocusIn);
+      document.addEventListener("focusout", handleFocusOut);
+      document.addEventListener("click", handleClick);
+      document.addEventListener("keyup", handleKeyUp);
+      document.addEventListener("keydown", handleKeyDown);
+      document.addEventListener("compositionstart", handleCompositionStart);
+      view.scrollDOM.addEventListener("scroll", handleViewportExit, { passive: true });
+      window.addEventListener("resize", handleViewportExit);
+    }
+    function unmount(view) {
+      if (editor2 !== view) return;
+      hide();
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("keyup", handleKeyUp);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("compositionstart", handleCompositionStart);
+      view.scrollDOM.removeEventListener("scroll", handleViewportExit);
+      root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
+      root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
+      window.removeEventListener("resize", handleViewportExit);
+      root?.remove();
+      root = null;
+      title = null;
+      metadata = null;
+      body = null;
+      editor2 = null;
+      hoveredLink = null;
+      modifierPressed = false;
+    }
+    const extension = ViewPlugin.define((view) => {
+      mount(view);
+      return {
+        update(update) {
+          if (update.docChanged || update.selectionSet || update.viewportChanged) hide();
+        },
+        destroy: () => unmount(view)
+      };
+    });
+    return { extension, hide, showAtSelection, showAtPoint };
+  }
+
   // interaction-reporting.ts
   function interactionAvailabilitySignature(context) {
     return JSON.stringify({
@@ -34037,7 +35075,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
       availableCommands: context.availableCommands,
       undoLabel: context.undoLabel ?? null,
-      redoLabel: context.redoLabel ?? null
+      redoLabel: context.redoLabel ?? null,
+      citationState: context.citationState ?? null
     });
   }
   var AnimationFrameCoalescer = class {
@@ -34127,9 +35166,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     const scrollReports = new AnimationFrameCoalescer(
       (callback) => window.requestAnimationFrame(callback),
-      (identifier4) => window.cancelAnimationFrame(identifier4),
+      (identifier5) => window.cancelAnimationFrame(identifier5),
       (callback, delay) => window.setTimeout(callback, delay),
-      (identifier4) => window.clearTimeout(identifier4)
+      (identifier5) => window.clearTimeout(identifier5)
     );
     let sessionTimer;
     let sessionStartedAt = null;
@@ -34393,6 +35432,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var suggestionSymbolByType = {
     "scholium-note": "doc-text",
     "scholium-analysis-reference": "doc-text",
+    "scholium-command-citation": "text-quote",
     "scholium-callout-role": "text-quote",
     "scholium-command-callout": "text-quote",
     "scholium-command-date": "calendar",
@@ -34414,6 +35454,17 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     return options.protectedRanges(state).some(
       (range) => position >= range.from && position < range.to
     );
+  }
+  function analysisReferenceContext(options, state, position) {
+    if (!isLiveSuggestionContext(options, state)) return null;
+    const line = state.doc.lineAt(position);
+    const scanFrom = Math.max(line.from, position - 514);
+    const beforeCursor = state.doc.sliceString(scanFrom, position);
+    const match = /(^|[\s([{])@([^\n@|\]]{0,512})$/u.exec(beforeCursor);
+    if (!match || match[2].length > 512) return null;
+    const from = scanFrom + match.index + match[1].length;
+    if (positionIsProtected(options, state, from)) return null;
+    return { from, query: match[2] };
   }
   function termSuffix(state, position, candidate) {
     const count2 = candidate.replacementUTF16Count ?? 0;
@@ -34463,20 +35514,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     if (!isWritingSuggestionContext(options, state) || positionIsProtected(options, state, position) || positionIsProtected(options, state, Math.max(0, position - 1))) return false;
     const before = state.sliceDoc(Math.max(0, position - 512), position);
     return /[\p{L}\p{N}]/u.test(before) && sentenceIsUnfinished(before) && !/\[\[[^\]\n]*$|(?:^|\s)@[^\s]*$|(?:^|\s)\/[^\s]*$/u.test(before) && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
-  }
-  function boundedUUID() {
-    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
-    bytes[6] = bytes[6] & 15 | 64;
-    bytes[8] = bytes[8] & 63 | 128;
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
-    return [
-      hex.slice(0, 4).join(""),
-      hex.slice(4, 6).join(""),
-      hex.slice(6, 8).join(""),
-      hex.slice(8, 10).join(""),
-      hex.slice(10, 16).join("")
-    ].join("-");
   }
   function localISODate(date = /* @__PURE__ */ new Date()) {
     const pad = (value) => String(value).padStart(2, "0");
@@ -34539,7 +35576,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     };
   }
   function slashCommandOptions(options, blockContext) {
-    const commands = [
+    const commands2 = [
       {
         label: "Callout",
         type: "scholium-command-callout",
@@ -34600,7 +35637,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         blockOnly: true
       }
     ];
-    return commands.filter((command2) => blockContext || !command2.blockOnly).map((command2) => ({ ...command2, filterText: command2.label, label: localized(command2.label) }));
+    return commands2.filter((command2) => blockContext || !command2.blockOnly).map((command2) => ({ ...command2, filterText: command2.label, label: localized(command2.label) }));
   }
   function applyWikilinkCandidate(candidate, didApply) {
     return (view, completion, from, to) => {
@@ -35042,16 +36079,50 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         filter: false
       }));
     };
+    let citationDocumentEpoch = 0;
+    const citationCompletionSource = (context) => {
+      if (!options.requestCitationInsertion || !options.citationContextRevision || !isLiveSuggestionContext(options, context.state) || context.state.readOnly || !context.state.facet(EditorView.editable) || options.canInsertCitation?.(context.state) === false) return null;
+      const reference = analysisReferenceContext(options, context.state, context.pos);
+      if (!reference) return null;
+      const { from, query } = reference;
+      if (options.protectedRanges(context.state).some((range) => from < range.to && context.pos > range.from)) return null;
+      const source = context.state.field(exactSourceState, false)?.text;
+      if (source === void 0) return null;
+      const fromUTF16 = exactOffsetForNormalizedOffset(source, from);
+      const toUTF16 = exactOffsetForNormalizedOffset(source, context.pos);
+      const interactionRevision = options.citationContextRevision();
+      if (fromUTF16 === null || toUTF16 === null || !Number.isSafeInteger(interactionRevision) || interactionRevision < 0 || source.slice(fromUTF16, toUTF16) !== `@${query}`) return null;
+      const documentEpoch = citationDocumentEpoch;
+      const intent = {
+        actionID: "insertCitation",
+        requestID: boundedUUID(),
+        query,
+        fromUTF16,
+        toUTF16,
+        caretUTF16Offset: toUTF16,
+        editorCaretUTF16Offset: context.pos,
+        interactionRevision
+      };
+      let accepted = false;
+      const action = {
+        actionID: "insertCitation",
+        label: localized("Insert Citation\u2026"),
+        detail: "Zotero",
+        type: "scholium-command-citation",
+        boost: 99,
+        apply: (view, _completion, currentFrom, currentTo) => {
+          if (accepted || documentEpoch !== citationDocumentEpoch || !view.hasFocus || view.composing || !isLiveSuggestionContext(options, view.state) || view.state.readOnly || !view.state.facet(EditorView.editable) || options.canInsertCitation?.(view.state) === false || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection) || view.state.field(exactSourceState, false)?.text !== source || options.citationContextRevision?.() !== interactionRevision || currentFrom !== from || currentTo !== context.pos || options.protectedRanges(view.state).some((range) => from < range.to && context.pos > range.from)) return;
+          accepted = true;
+          closeCompletion(view);
+          options.requestCitationInsertion?.(intent);
+        }
+      };
+      return { from, options: [action], filter: false };
+    };
     const analysisReferenceCompletionSource = (context) => {
-      if (!isLiveSuggestionContext(options, context.state)) return null;
-      const line = context.state.doc.lineAt(context.pos);
-      const scanFrom = Math.max(line.from, context.pos - 512);
-      const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
-      const match = /(^|[\s([{])@([^\n@|\]]{0,510})$/u.exec(beforeCursor);
-      if (!match) return null;
-      const typed = match[2];
-      const from = scanFrom + match.index + match[1].length;
-      if (positionIsProtected(options, context.state, from)) return null;
+      const reference = analysisReferenceContext(options, context.state, context.pos);
+      if (!reference) return null;
+      const { from, query: typed } = reference;
       const requestID = boundedUUID();
       const candidates = new Promise((resolve) => {
         const cancel = () => {
@@ -35222,6 +36293,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     });
     return {
       resetDocument() {
+        citationDocumentEpoch++;
         clearInlineWriting?.();
         cancelContinuations();
         for (const pending of pendingLinkQueries.values()) {
@@ -35251,6 +36323,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           slashCompletionSource,
           calloutCompletionSource,
           wikilinkCompletionSource,
+          citationCompletionSource,
           analysisReferenceCompletionSource
         ],
         activateOnCompletion: (completion) => completion.type === "scholium-command-callout",
@@ -35282,6 +36355,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       })],
       wikilinkCompletionSource,
       analysisReferenceCompletionSource,
+      citationCompletionSource,
       slashCompletionSource,
       calloutCompletionSource,
       resolveLinkCompletionQuery(requestID, value) {
@@ -35406,16 +36480,16 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const to = from + match[0].length;
       if (overlaps2(excluded, from, to) || isEscaped4(source, from)) continue;
       inlineCounter += 1;
-      const identifier4 = `inline-${inlineCounter}`;
+      const identifier5 = `inline-${inlineCounter}`;
       rawReferences.push({
-        identifier: identifier4,
+        identifier: identifier5,
         from,
         to,
         isInline: true,
         inlineContent: match[1]
       });
       rawDefinitions.push({
-        identifier: identifier4,
+        identifier: identifier5,
         content: match[1],
         contentFrom: from + scholiumFootnoteDialect.inlineOpening.length,
         from,
@@ -35747,7 +36821,16 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     return { from: range.from, to };
   }
-  function finalizedLiveProjectionIndex(doc2, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges) {
+  function finalizedLiveProjectionIndex(state, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges) {
+    const doc2 = state.doc;
+    if (syntax.inlines.some((inline) => inline.kind === "citation")) {
+      const catalog = projectFieldsForState(state);
+      const admitted = new Set(catalog.diagnostics.length ? [] : catalog.fields.filter((field) => field.kind === "citation").map((field) => rangeKey(
+        normalizedDocumentText(catalog.source.slice(0, field.range.from)).length,
+        normalizedDocumentText(catalog.source.slice(0, field.range.to)).length
+      )));
+      syntax = { ...syntax, inlines: syntax.inlines.filter((inline) => inline.kind !== "citation" || admitted.has(rangeKey(inline.from, inline.to))) };
+    }
     const immutableExcluded = immutableProjectionRanges(excluded);
     const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
     const immutableQuoteRanges = immutableProjectionRanges(indexedQuoteRanges(syntax));
@@ -35773,6 +36856,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       ...immutableMathExpressions
     ].map(({ from, to }) => ({ from, to })));
     return Object.freeze({
+      get zoteroFields() {
+        return projectFieldsForState(state);
+      },
       topologyIdentity,
       syntax,
       quoteRanges: immutableQuoteRanges,
@@ -35915,7 +37001,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }));
     const mathExpressions = mathExpressionsFromCatalog(state, syntax);
     const index = finalizedLiveProjectionIndex(
-      state.doc,
+      state,
       Object.freeze({}),
       syntax,
       excluded,
@@ -35982,7 +37068,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       to: map(index.frontmatterRange.to)
     };
     return finalizedLiveProjectionIndex(
-      transaction.state.doc,
+      transaction.state,
       index.topologyIdentity,
       syntax,
       index.literals.excluded.map((range) => ({ from: map(range.from), to: map(range.to) })),
@@ -36022,7 +37108,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       create: build,
       update(previous, transaction) {
         if (!transaction.docChanged) {
-          return transactionChangedSyntaxTree(transaction) ? build(transaction.state) : previous;
+          return transactionChangedSyntaxTree(transaction) || transaction.effects.some((effect) => effect.is(setExactSource)) ? build(transaction.state) : previous;
         }
         const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
         if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
@@ -36787,14 +37873,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       to: changes.mapPos(value.to)
     })
   });
-  function intersects2(from, to, range) {
+  function intersects3(from, to, range) {
     return from < range.to && to > range.from;
   }
   function captureLayoutAnchor(view, epoch, affected) {
     const scroll = view.scrollDOM;
     const blocks = view.viewportLineBlocks;
     if (!blocks.length) return null;
-    const stable = affected.length === 0 ? blocks : blocks.filter((candidate) => !affected.some((range) => intersects2(candidate.from, candidate.to, range)));
+    const stable = affected.length === 0 ? blocks : blocks.filter((candidate) => !affected.some((range) => intersects3(candidate.from, candidate.to, range)));
     const candidates = stable.length > 0 ? stable : blocks;
     for (const candidate of candidates) {
       return {
@@ -37479,26 +38565,26 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     function horizontalRangeAt(state, offset, forward) {
       const index = options.projections.index(state);
-      const boundary = forward ? "start" : "end";
+      const boundary2 = forward ? "start" : "end";
       const blockRange = projectionRangeAtBoundary(
         index.blockRanges.filter((range) => range.kind !== "callout"),
         offset,
-        boundary
+        boundary2
       );
       const listPrefixRange = projectionRangeAtBoundary(
         index.listPrefixRanges,
         offset,
-        boundary
+        boundary2
       );
       const mermaidRange = projectionRangeAtBoundary(
         options.mermaidPresentations(state),
         offset,
-        boundary
+        boundary2
       );
       const inlineLinkRange = projectionRangeAtBoundary(
         index.syntax.inlines.filter((candidate) => candidate.kind === "wikilink"),
         offset,
-        boundary
+        boundary2
       );
       const candidates = [
         blockRange,
@@ -38882,13 +39968,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       annotations: Transaction.userEvent.of("select.search")
     });
   }
-  function forwardMatch(view, query, boundary) {
+  function forwardMatch(view, query, boundary2) {
     const matches = matchingRanges(view.state, query);
-    return matches.find((match) => match.from >= boundary) ?? matches[0] ?? null;
+    return matches.find((match) => match.from >= boundary2) ?? matches[0] ?? null;
   }
-  function previousMatch(view, query, boundary) {
+  function previousMatch(view, query, boundary2) {
     const matches = matchingRanges(view.state, query);
-    return matches.findLast((match) => match.to <= boundary) ?? matches.at(-1) ?? null;
+    return matches.findLast((match) => match.to <= boundary2) ?? matches.at(-1) ?? null;
   }
   function currentMatch(view, query) {
     const selection = view.state.selection.main;
@@ -39143,6 +40229,19 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var webkitWindow = window;
   var nativeHandler = () => webkitWindow.webkit?.messageHandlers?.scholium;
   var documentAttachment = 0;
+  var citationInsertionRevision = 0;
+  var citationCompositionRevision = 0;
+  var citationTransaction = null;
+  var citationTransactionID = null;
+  function citationContext(transactionID) {
+    return {
+      transactionID,
+      mode: configuredEditorMode(editor.state),
+      interactionRevision: citationInsertionRevision,
+      compositionRevision: citationCompositionRevision,
+      composing: editor.composing || compositionGate.active
+    };
+  }
   var bridgeSessionID = "";
   var bridgeDocumentID = "";
   var bridgeFingerprint = "";
@@ -39214,6 +40313,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     requestRename: (request) => post({ type: "requestDocumentTitleRename", ...request }),
     focusChanged: () => setDocumentFocusTarget("title"),
     beginComposition: () => {
+      citationInsertionRevision++;
+      citationCompositionRevision++;
       compositionGate.begin("title");
       publishEditorContext();
     },
@@ -39227,7 +40328,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     strikethrough: "cm-live-strike",
     highlight: "cm-live-highlight",
     code: "cm-live-code",
-    link: "cm-live-link"
+    link: "cm-live-link",
+    citation: "cm-live-citation"
   };
   function overlaps3(ranges, from, to) {
     return ranges.some((range) => range.from < to && range.to > from);
@@ -39859,6 +40961,20 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         line = doc2.line(line.number + 1);
       }
     }
+    const citationProjection = index.zoteroFields;
+    for (const metadata of fieldMetadataRanges(citationProjection)) {
+      const from = normalizedDocumentText(citationProjection.source.slice(0, metadata.from)).length;
+      const to = normalizedDocumentText(citationProjection.source.slice(0, metadata.to)).length;
+      if (projectionSelections.some((selection) => selectionActivatesSyntax(selection, { from, to }))) continue;
+      if (!coveredRanges.some((range) => overlaps3([range], from, to))) continue;
+      const hidden = hiddenSyntax.range(from, to);
+      decorations2.push(hidden);
+      atomicRanges2.push(hidden);
+      const line = doc2.lineAt(from);
+      if (line.from === from && line.to === to) {
+        decorations2.push(Decoration.line({ attributes: { class: "cm-live-link-annotation-source-line" } }).range(line.from));
+      }
+    }
     const result = Decoration.set(decorations2, true);
     const atoms = Decoration.set(atomicRanges2, true);
     recordEditorMetric("projection", projectionStartedAt, {
@@ -40001,9 +41117,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
     if (end === 0) return Decoration.none;
     const frontmatterIsActive = lastDocumentFocusTarget !== "title" && state.selection.ranges.some((range) => range.empty ? range.head < end : range.from < end && range.to > 0);
-    const boundary = frontmatterBoundary(state.doc);
+    const boundary2 = frontmatterBoundary(state.doc);
     for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
-      const isDelimiterLine = boundary.endLine > 0 && (n === 1 || n === boundary.endLine);
+      const isDelimiterLine = boundary2.endLine > 0 && (n === 1 || n === boundary2.endLine);
       const classes = ["scholium-frontmatter-line"];
       const attributes = { "data-scholium-yaml-rendered": "true" };
       if (isDelimiterLine) {
@@ -40025,11 +41141,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       const lastLine = state.doc.lineAt(Math.max(from, clippedTo - 1)).number;
       for (let line = firstLine; line <= lastLine; line++) tokenClassLines.add(line);
     };
-    if (boundary.endLine > 0) {
+    if (boundary2.endLine > 0) {
       const opening = state.doc.line(1);
       const openingFrom = opening.text.charCodeAt(0) === 65279 ? opening.from + 1 : opening.from;
       addMark(openingFrom, Math.min(openingFrom + 3, opening.to), "cm-live-yaml-delimiter");
-      const closing2 = state.doc.line(boundary.endLine);
+      const closing2 = state.doc.line(boundary2.endLine);
       addMark(closing2.from, Math.min(closing2.from + 3, closing2.to), "cm-live-yaml-delimiter");
     }
     const ancestors = [];
@@ -40050,7 +41166,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     });
     for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
       const line = state.doc.line(n);
-      const isDelimiterLine = boundary.endLine > 0 && (n === 1 || n === boundary.endLine);
+      const isDelimiterLine = boundary2.endLine > 0 && (n === 1 || n === boundary2.endLine);
       const fallbackClass = frontmatterFallbackClass(
         line.text,
         isDelimiterLine,
@@ -40085,11 +41201,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var lastInteractionAvailabilitySignature = null;
   var interactionReporter = new AnimationFrameCoalescer(
     (callback) => window.requestAnimationFrame(callback),
-    (identifier4) => window.cancelAnimationFrame(identifier4),
+    (identifier5) => window.cancelAnimationFrame(identifier5),
     (callback, delayMilliseconds) => window.setTimeout(callback, delayMilliseconds),
-    (identifier4) => window.clearTimeout(identifier4)
+    (identifier5) => window.clearTimeout(identifier5)
   );
   var stateReporter = EditorView.updateListener.of((update) => {
+    if (update.docChanged || update.selectionSet) citationInsertionRevision++;
     const isProgrammatic = update.transactions.some(
       (transaction) => transaction.annotation(programmaticDocumentChange) === true
     );
@@ -40255,7 +41372,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         const selections = editorSelections(view.state);
         const options = interactionOptions(view);
         return applyInteraction(
-          (configuredEditorMode(view.state) === "livePreview" ? continueCallout(view.state.doc, selections, options) : null) ?? continueList(view.state.doc, selections, options),
+          (configuredEditorMode(view.state) === "livePreview" ? continueCallout2(view.state.doc, selections, options) : null) ?? continueList(view.state.doc, selections, options),
           "input.scholium.continueStructure"
         );
       }
@@ -40390,6 +41507,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   ];
   var inputSuggestions = createEditorInputSuggestions({
     nativeFloating: nativeFloating.suggestions,
+    requestCitationInsertion: (intent) => post({ type: "requestCitationInsertion", ...intent }),
+    citationContextRevision: () => citationInsertionRevision,
+    canInsertCitation: (state) => citationInsertionAvailable(state),
     mode: configuredEditorMode,
     dialect: () => editingDialect,
     isComposing: () => editor.composing,
@@ -40638,6 +41758,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       (range) => selection.from >= range.from && selection.to <= range.to
     ) ?? null;
   }
+  function citationInsertionAvailable(state) {
+    if (citationTransaction !== null || state.readOnly || state.field(editorSuspensionState) !== null || state.selection.ranges.length !== 1 || !state.selection.main.empty || liveProjectionIndex.index(state).zoteroFields.diagnostics.length || editingFrontmatterSelection(state) || projectionSelectionOverlaps(protectedCommandRanges(state), state.selection.main)) return false;
+    return citationInsertionContextSupported(state, state.selection.main.head);
+  }
   function currentEditorContext(view = editor) {
     const state = view.state;
     const inline = /* @__PURE__ */ new Set();
@@ -40673,15 +41797,25 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (command2 === "linkSelectedText") return state.selection.ranges.every((selection) => !selection.empty);
       return true;
     });
+    const fieldProjection = liveProjectionIndex.index(state).zoteroFields;
+    if (citationTransaction !== null) availableCommands.push("cancelCitation");
+    else if (fieldProjection.diagnostics.length === 0 && state.selection.ranges.length === 1 && !editingFrontmatterSelection(state)) {
+      const head = fieldProjection.fields.length ? exactOffsetForNormalizedOffset(fieldProjection.source, state.selection.main.head) : null;
+      const inField = head !== null && fieldProjection.fields.some((field) => head >= field.range.from && head < field.range.to);
+      if (inField || citationInsertionAvailable(state)) availableCommands.push("insertCitation", "insertBibliography");
+      availableCommands.push("citationStyle");
+      if (fieldProjection.fields.length) availableCommands.push("refreshCitations");
+    }
     return {
       selections: editorSelections(state),
       activeInlineConstructs: [...inline],
       activeBlockConstructs: [...block],
       tablePosition: currentTablePosition,
       composing: view.composing || compositionGate.active,
-      availableCommands: view.composing || compositionGate.active ? [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? [] : availableCommands,
+      availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter((command2) => ["cancelCitation", "refreshCitations", "insertCitation", "insertBibliography", "citationStyle"].includes(command2)) : availableCommands,
       undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
-      redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : void 0
+      redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : void 0,
+      citationState: fieldProjection.diagnostics.length ? "unresolved" : fieldProjection.citationStateStale ? "stale" : "current"
     };
   }
   function scheduleEditorInteractionReport(forceContext = false) {
@@ -40889,6 +42023,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         if (!documentTitle.allowsDetachment()) {
           return rejected(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
         }
+        citationInsertionRevision++;
         editor.dispatch({ effects: setEditorSuspension.of(operation.suspensionID) });
         const recovery = captureRecovery();
         return { ...successfulResult(request.requestID), text: recovery.source, recovery };
@@ -41002,6 +42137,76 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         const undoLabel = operation.preserveSelection ? "Create Paragraph Link" : "Adopt Suggestion";
         lastUndoLabel = lastRedoLabel = undoLabel;
         return successfulResult(request.requestID, true, undoLabel);
+      }
+      case "beginCitation": {
+        if (citationTransaction !== null || editor.state.field(editorSuspensionState) !== null || document.activeElement?.closest("[data-scholium-title-input]")) {
+          return rejected(request.requestID, documentVersion, localized("A citation operation is already active or this editor is unavailable."));
+        }
+        const reference = operation.reference;
+        const source = exactEditorSource();
+        let referenceRange;
+        if (reference) {
+          if (reference.interactionRevision !== citationInsertionRevision || reference.editorCaretUTF16Offset !== editor.state.selection.main.head || exactOffsetForNormalizedOffset(source, reference.editorCaretUTF16Offset) !== reference.caretUTF16Offset || source.slice(reference.fromUTF16, reference.toUTF16) !== `@${reference.query}`) {
+            return rejected(request.requestID, documentVersion, localized("Citation completion is stale."));
+          }
+          referenceRange = {
+            from: source.slice(0, reference.fromUTF16).replaceAll("\r\n", "\n").length,
+            to: reference.editorCaretUTF16Offset,
+            expected: `@${reference.query}`
+          };
+        }
+        citationTransaction = ZoteroMarkdownTransaction.capture(editor.state, {
+          ...citationContext(operation.transactionID),
+          command: operation.command,
+          referenceRange
+        });
+        citationTransactionID = operation.transactionID;
+        publishEditorContext();
+        break;
+      }
+      case "citationCallback": {
+        if (!citationTransaction || citationTransactionID !== operation.transactionID) return rejected(request.requestID, documentVersion, localized("Citation transaction is unavailable."));
+        try {
+          const citationReply = citationTransaction.applyCallback(editor.state, citationContext(operation.transactionID), operation.value);
+          return { ...successfulResult(request.requestID), citationReply };
+        } catch (error) {
+          if (error instanceof Error && error.message === unsupportedNoteCitationStyleMessage) {
+            return rejected(request.requestID, documentVersion, localized(unsupportedNoteCitationStyleMessage));
+          }
+          throw error;
+        }
+      }
+      case "finishCitation": {
+        if (!citationTransaction || citationTransactionID !== operation.transactionID) return rejected(request.requestID, documentVersion, localized("Citation transaction is unavailable."));
+        let staged;
+        try {
+          staged = citationTransaction.finalize(editor.state, citationContext(operation.transactionID), { status: "cleanedUp", remoteCleanupConfirmed: true });
+        } catch {
+          return rejected(request.requestID, documentVersion, localized("The citation operation could not finish. Your text was preserved."));
+        } finally {
+          citationTransaction = null;
+          citationTransactionID = null;
+          publishEditorContext();
+        }
+        if (!staged) {
+          publishEditorContext();
+          return successfulResult(request.requestID);
+        }
+        const transaction = fieldOperationTransaction(editor.state, staged);
+        if (!transaction) return rejected(request.requestID, documentVersion, localized("Citation source changed before acceptance."));
+        editor.dispatch({ ...transaction, ...staged.selection ? { selection: staged.selection } : {} });
+        lastUndoLabel = lastRedoLabel = localized("Citation Operation");
+        publishEditorContext();
+        return successfulResult(request.requestID, true, localized("Citation Operation"));
+      }
+      case "cancelCitation": {
+        if (citationTransactionID === operation.transactionID) {
+          citationTransaction?.cancel();
+          citationTransaction = null;
+          citationTransactionID = null;
+          publishEditorContext();
+        }
+        break;
       }
       case "command": {
         let argument = operation.argument;
@@ -41124,6 +42329,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   editor.contentDOM.addEventListener("compositionstart", (event) => {
     if (documentTitle.ownsCompositionEvent(event)) return;
+    citationInsertionRevision++;
+    citationCompositionRevision++;
     compositionGate.begin();
     const attachment = documentAttachment;
     window.queueMicrotask(() => {
@@ -41286,6 +42493,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint) {
+      citationTransaction?.cancel();
+      citationTransaction = null;
+      citationTransactionID = null;
+      citationInsertionRevision++;
       documentAttachment += 1;
       committedSnapshotReceipt.clear();
       interactionReporter.cancel();
@@ -41334,6 +42545,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       previewPopover.hide();
       const scrollSnapshot = editor.scrollSnapshot();
       const nextMode = mode === "livePreview" ? "livePreview" : "source";
+      if (nextMode !== configuredEditorMode(editor.state)) citationInsertionRevision++;
       editor.dispatch({
         effects: [
           modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),

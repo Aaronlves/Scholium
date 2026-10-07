@@ -1,6 +1,7 @@
 import type {EditorState, Text} from "@codemirror/state";
 import {syntaxTree} from "@codemirror/language";
 import {linkAnnotationAfter} from "./link-annotation";
+import {citationLinkSource, isCitationDestination} from "./zotero-field-envelope";
 
 export type BaseBlockKind =
   | "paragraph"
@@ -21,6 +22,7 @@ export type BaseInlineKind =
   | "highlight"
   | "code"
   | "link"
+  | "citation"
   | "image";
 
 export type PresentationBlockKind = BaseBlockKind
@@ -315,6 +317,20 @@ function inlinePresentation(
     // projection or link target.
     if (explicitVisible.length === 0) return null;
     targetRange = explicitVisible[0];
+    if (isCitationDestination(source.slice(targetRange.from, targetRange.to).replace(/^<|>$/g, ""))) {
+      if (node.name !== "Link") return null;
+      try {
+        const citation = citationLinkSource(source.slice(node.from, node.to));
+        if (!citation) return null;
+        return {
+          kind: "citation", nodeName: node.name, from: node.from, to: node.to,
+          markerRanges,
+          visibleRanges: [{from: node.from + citation.fallbackRange.from, to: node.from + citation.fallbackRange.to}],
+          targetRange: null, aliasRange: null, linkRange: null,
+          annotationRange: null, annotationContentRange: null,
+        };
+      } catch { return null; }
+    }
     if (node.name === "Autolink") {
       visibleRanges = explicitVisible;
     } else {

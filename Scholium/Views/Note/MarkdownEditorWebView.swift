@@ -728,6 +728,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         )
                     }
                 )
+            case .requestCitationInsertion(let request):
+                guard surfaceVisibility.isActive, validEnvelope(request.envelope) else { return }
+                writingContinuation.cancel()
+                Task { @MainActor [weak self, weak session] in
+                    guard let self, let session, self.surfaceVisibility.isActive, self.validEnvelope(request.envelope) else { return }
+                    do { try await session.performCitation(.addEditCitation, reference: request.reference) } catch {
+                        await session.announceCitationStatus(ScholiumErrorLocalization.message(error))
+                    }
+                }
             case .linkCompletionQuery(let request):
                 guard surfaceVisibility.isActive, validEnvelope(request.envelope) else { return }
                 let requestID = request.requestID
