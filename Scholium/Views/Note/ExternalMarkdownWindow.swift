@@ -212,6 +212,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private let grantedURL: URL
     private(set) var editorSession: MarkdownEditorSession
     private let openFile: OpenFile
+    private let isApplicationActive: @MainActor () -> Bool
     @Published private(set) var snapshot: ExternalMarkdownFileSnapshot?
     @Published private(set) var readHTML = ""
     @Published private(set) var isLoading = true
@@ -238,6 +239,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private var fileSession: ExternalMarkdownFileSession?
     private var editorObservation: AnyCancellable?
     private var findObservation: AnyCancellable?
+    private var findFocusObservation: AnyCancellable?
     private var openingID = UUID()
     private var didAllocateEditor = false
     private var pendingAcknowledgement: (MarkdownEditorPersistenceSnapshot, ExternalMarkdownFileSnapshot)?
@@ -254,6 +256,15 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     @Published private(set) var isPreparingTermination = false
     @Published private(set) var isChangingMode = false
     private var modeTransitionTask: Task<Void, Never>?
+    private struct EditorFocusIntent {
+        let id = UUID()
+        let documentID: String
+        let editor: MarkdownEditorSession
+        let mode: NotePresentationMode
+        let focusRevision: UInt64
+        weak var responder: NSResponder?
+    }
+    private var editorFocusIntent: EditorFocusIntent?
     private var inputSuspensionID: String?
     @Published private var displayFilename: String?
     private struct BoundReadSelection {
@@ -268,6 +279,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     init(
         url: URL, needsOwnershipResolution: Bool = false,
         editorSession: MarkdownEditorSession = MarkdownEditorSession(),
+        isApplicationActive: @escaping @MainActor () -> Bool = { NSApp.isActive },
         openFile: @escaping OpenFile = { url in
             try await Task.detached(priority: .userInitiated) {
                 try ExternalMarkdownFileSession.open(url)
@@ -278,11 +290,15 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         ownership = needsOwnershipResolution ? .unresolved : .external
         grantedURL = url
         self.editorSession = editorSession
+        self.isApplicationActive = isApplicationActive
         self.openFile = openFile
         super.init()
         observeEditor()
         findObservation = documentFind.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
+        }
+        findFocusObservation = documentFind.$focusRequestID.dropFirst().sink { [weak self] _ in
+            self?.editorFocusIntent = nil
         }
     }
 
@@ -360,6 +376,40 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     var retainsEditor: Bool { didAllocateEditor }
     var editorReady: Bool {
         editorSession.isLoaded && editorSession.presentedMode == mode.editorMode
+    }
+    var editorFocusExecutionID: UUID? { editorReady ? editorFocusIntent?.id : nil }
+
+    func focusEditorIfPresented() async {
+        guard editorReady, let intent = editorFocusIntent, let editorMode = intent.mode.editorMode else { return }
+        var waitsForIdle = false
+        defer { if !waitsForIdle, editorFocusIntent?.id == intent.id { editorFocusIntent = nil } }
+        // SwiftUI must first reveal the acknowledged native editor surface.
+        // Recheck the one-shot intent after that presentation boundary.
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        guard !isBusy else {
+            waitsForIdle = true
+            return
+        }
+        try? await intent.editor.focusIfPresented(
+            in: editorMode, requiringFocusRevision: intent.focusRevision
+        ) { [weak self] in
+            guard let self, !self.isClosed,
+                self.editorFocusIntent?.id == intent.id,
+                self.documentID == intent.documentID, self.editorSession === intent.editor,
+                self.mode == intent.mode, self.isApplicationActive(),
+                !self.documentFind.isPresented, !self.showsImport, self.comparison == nil,
+                let window = self.window, intent.editor.webView?.window === window,
+                window.firstResponder === intent.responder || window.firstResponder == nil || window.firstResponder === window
+                    || intent.editor.hasWritingFocus
+            else { return false }
+            guard !self.isBusy else {
+                waitsForIdle = true
+                return false
+            }
+            return self.error == nil && !self.hasConflict && self.inputResumeError == nil
+                && intent.editor.detachmentSuspensionID == nil
+        }
     }
 
     var canResumeInput: Bool {
@@ -473,6 +523,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     }
 
     private func install(_ loaded: ExternalMarkdownFileSnapshot) {
+        editorFocusIntent = nil
         let previousMode = mode
         if snapshot != nil {
             editorSession = MarkdownEditorSession()
@@ -498,6 +549,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
 
     func selectMode(_ requested: NotePresentationMode) {
         guard requested != mode, canSelectMode(requested) else { return }
+        editorFocusIntent = nil
         if requested == .read && retainsEditor {
             guard !hasConflict else { return }
             isChangingMode = true
@@ -521,6 +573,11 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         if requested != .read {
             didAllocateEditor = true
             readSelection = nil
+            if let window, window.isKeyWindow, isApplicationActive() {
+                editorFocusIntent = EditorFocusIntent(
+                    documentID: documentID, editor: editorSession, mode: requested,
+                    focusRevision: editorSession.focusRequestRevision, responder: window.firstResponder)
+            }
         }
         mode = requested
     }
@@ -824,11 +881,18 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
 
     private func refreshAfterOperation() {
         if refreshPending && inputResumeError == nil { scheduleRefresh() }
+        // Readiness can arrive while a checked refresh has suspended input.
+        // Its completion, not a coalescible view observation of busy state,
+        // resumes only the still-pending explicit mode-entry intent.
+        if !isBusy, editorFocusIntent != nil {
+            Task { @MainActor [weak self] in await self?.focusEditorIfPresented() }
+        }
     }
 
     func close() {
         guard !isClosed else { return }
         isClosed = true
+        editorFocusIntent = nil
         readSelection = nil
         modeTransitionTask?.cancel()
         openingTaskID = nil
@@ -975,6 +1039,11 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
 
     func windowDidBecomeKey(_ notification: Notification) {
         scheduleRefresh()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        if notification.object as? NSWindow === window { editorFocusIntent = nil }
+        previousDelegate?.windowDidResignKey?(notification)
     }
 
     func windowWillClose(_ notification: Notification) {

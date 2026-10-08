@@ -221,6 +221,7 @@ struct ExternalMarkdownWindowView: View {
         }
         .onAppear { ExternalMarkdownWindowRegistry.shared.register(model) }
         .task { if model.snapshot == nil { await model.open() } }
+        .task(id: model.editorFocusExecutionID) { await model.focusEditorIfPresented() }
         .onChange(of: model.mode) { _, _ in documentFind.refresh() }
         .onChange(of: model.editorSession.isLoaded) { _, loaded in
             if loaded { documentFind.refresh() }

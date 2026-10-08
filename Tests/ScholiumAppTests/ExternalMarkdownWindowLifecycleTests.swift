@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
@@ -11,6 +12,145 @@ import WebKit
 @MainActor
 @Suite("External Markdown window lifecycle", .serialized)
 struct ExternalMarkdownWindowLifecycleTests {
+    @Test("Explicit external Edit and Source entry focus once after readiness, including re-entry from Review")
+    func modeEntryFocusesAfterReadiness() async throws {
+        try await withFocusEditor { fixture, window in
+            let model = fixture.model
+            let editor = fixture.editor
+            let webView = try #require(editor.webView)
+            #expect(fixture.bridge.focusCount == 0)
+            await model.focusEditorIfPresented()
+            #expect(fixture.bridge.focusCount == 1)
+            #expect(window.firstResponder === webView)
+            await model.focusEditorIfPresented()
+            #expect(fixture.bridge.focusCount == 1)
+
+            model.selectMode(.read)
+            await model.waitForModeTransition()
+            #expect(model.mode == .read)
+            #expect(window.firstResponder !== webView)
+            model.selectMode(.livePreview)
+            #expect(model.editorFocusExecutionID == nil)
+            editor.setMode(.livePreview)
+            try await waitForEditorMode(model)
+            try await waitUntilIdle(model)
+            await model.focusEditorIfPresented()
+            #expect(fixture.bridge.focusCount == 2)
+            #expect(window.firstResponder === webView)
+            #expect(!model.isDirty)
+            #expect(try Data(contentsOf: fixture.url) == Data(editor.checkedSource.utf8))
+        }
+    }
+
+    enum SupersededFocus: CaseIterable {
+        case responder, inactiveWindow, windowReactivation, hiddenEditor, composition, blur, find, closed
+    }
+
+    @Test("Delayed mode entry does not steal newer focus or interrupt composition", arguments: SupersededFocus.allCases)
+    func supersededModeEntryDoesNotFocus(_ cause: SupersededFocus) async throws {
+        try await withFocusEditor { fixture, window in
+            let model = fixture.model
+            let editor = fixture.editor
+            let webView = try #require(editor.webView)
+            switch cause {
+            case .responder:
+                let field = NSTextView(frame: .zero)
+                window.contentView?.addSubview(field)
+                #expect(window.makeFirstResponder(field))
+            case .inactiveWindow:
+                window.reportsKeyWindow = false
+            case .windowReactivation:
+                model.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: window))
+            case .hiddenEditor:
+                webView.isHidden = true
+            case .composition:
+                editor.updateInteraction(
+                    selections: [.init(anchor: 0, head: 0)], line: 1, column: 1, lineCount: 1,
+                    documentVersion: editor.generation, interactionRevision: 1,
+                    context: .init(
+                        selections: [.init(anchor: 0, head: 0)], activeInlineConstructs: [], activeBlockConstructs: [], tablePosition: nil,
+                        composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil))
+            case .blur:
+                await editor.resignFocusAndWait()
+            case .find:
+                model.documentFind.present()
+                model.documentFind.dismiss()
+            case .closed:
+                model.close()
+            }
+            let responder = window.firstResponder
+            await model.focusEditorIfPresented()
+            #expect(fixture.bridge.focusCount == 0)
+            #expect(window.firstResponder === responder)
+            #expect(model.editorFocusExecutionID == nil)
+        }
+    }
+
+    @Test("A background external mode request never becomes focus authority after activation")
+    func backgroundModeEntryDoesNotReplayFocus() async throws {
+        try await withFocusEditor(applicationActive: false) { fixture, _ in
+            #expect(fixture.model.editorFocusExecutionID == nil)
+            await fixture.model.focusEditorIfPresented()
+            #expect(fixture.bridge.focusCount == 0)
+        }
+    }
+
+    @Test("Cancellation before the external readiness handoff consumes the intent without focus")
+    func cancelledModeEntryDoesNotFocus() async throws {
+        try await withFocusEditor { fixture, window in
+            let responder = window.firstResponder
+            let handoff = Task { @MainActor in await fixture.model.focusEditorIfPresented() }
+            handoff.cancel()
+            await handoff.value
+            #expect(fixture.bridge.focusCount == 0)
+            #expect(window.firstResponder === responder)
+            #expect(fixture.model.editorFocusExecutionID == nil)
+        }
+    }
+
+    @Test("A checked refresh resumes mode-entry focus only after input recovers", arguments: [false, true])
+    func refreshDefersModeEntryFocus(resumeFails: Bool) async throws {
+        try await withFocusEditor { fixture, window in
+            try await waitUntilIdle(fixture.model)
+            let intent = try #require(fixture.model.editorFocusExecutionID)
+            let pause = PausedBridgeRequest()
+            fixture.bridge.nextTextQueryPause = pause
+            fixture.bridge.resumeFailuresRemaining = resumeFails ? 1 : 0
+            let refresh = Task { await fixture.model.refreshFromDisk() }
+            do {
+                try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                    await pause.waitForArrival()
+                }
+                #expect(fixture.model.isBusy)
+                await fixture.model.focusEditorIfPresented()
+                #expect(fixture.bridge.focusCount == 0)
+                #expect(fixture.model.editorFocusExecutionID == intent)
+                pause.release()
+                await refresh.value
+                if resumeFails {
+                    try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                        while fixture.model.editorFocusExecutionID != nil { await Task.yield() }
+                    }
+                    #expect(fixture.model.inputResumeError != nil)
+                    #expect(fixture.bridge.focusCount == 0)
+                    await fixture.model.resumeInput()
+                    #expect(fixture.model.inputResumeError == nil)
+                    #expect(fixture.bridge.focusCount == 0)
+                } else {
+                    try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                        while fixture.bridge.focusCount == 0 { await Task.yield() }
+                    }
+                    #expect(fixture.bridge.focusCount == 1)
+                    #expect(window.firstResponder === fixture.editor.webView)
+                }
+            } catch {
+                pause.release()
+                await refresh.value
+                throw error
+            }
+        }
+    }
+
     @Test(
         "The first external Review to Edit transition constructs a ready editor in the real offscreen window hierarchy",
         arguments: [false, true])
@@ -714,6 +854,74 @@ struct ExternalMarkdownWindowLifecycleTests {
         }
     }
 
+    private func withFocusEditor(
+        applicationActive: Bool = true,
+        _ operation: @MainActor (EditorFixture, FocusTestWindow) async throws -> Void
+    ) async throws {
+        try await withFile { url, _ in
+            _ = NSApplication.shared
+            let bridge = BufferBridge()
+            let editor = MarkdownEditorSession(bridgeDispatcher: bridge)
+            let model = ExternalMarkdownWindowModel(
+                url: url, editorSession: editor, isApplicationActive: { applicationActive })
+            let window = FocusTestWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            defer {
+                model.close()
+                if let webView = editor.webView { editor.detach(webView) }
+                window.close()
+            }
+            model.attach(to: window)
+            let refreshes = AsyncStream<Bool>.makeStream()
+            let refreshObservation = model.$isRefreshing.sink { refreshes.continuation.yield($0) }
+            defer {
+                refreshObservation.cancel()
+                refreshes.continuation.finish()
+            }
+            await model.open()
+            // Opening schedules its first filesystem observation. Capture both
+            // edges before opening so a fast read cannot be missed, then enter
+            // the mode from a settled fixture rather than racing that refresh.
+            try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                var started = false
+                for await refreshing in refreshes.stream {
+                    if refreshing { started = true }
+                    if started && !refreshing { break }
+                }
+                try Task.checkCancellation()
+            }
+            try #require(!model.isBusy)
+            model.selectMode(.source)
+            await model.focusEditorIfPresented()
+            #expect(bridge.focusCount == 0)
+            let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 720, height: 520))
+            window.contentView?.addSubview(webView)
+            editor.attach(webView)
+            editor.loadDocument(try #require(model.snapshot).source, documentID: model.documentID, mode: .source)
+            editor.editorBecameReady()
+            try #require(try await editor.waitUntilLoadedForSave())
+            #expect(!window.isVisible)
+            try await operation(EditorFixture(url: url, model: model, editor: editor, bridge: bridge), window)
+            #expect(!window.isVisible)
+        }
+    }
+
+    private func waitForEditorMode(_ model: ExternalMarkdownWindowModel) async throws {
+        try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+            while !model.editorReady { await Task.yield() }
+        }
+    }
+
+    /// Native admission can be exercised without activating any application.
+    /// Actual key-window and keyboard delivery remain native QA obligations.
+    @MainActor
+    private final class FocusTestWindow: NSWindow {
+        var reportsKeyWindow = true
+        override var isKeyWindow: Bool { reportsKeyWindow }
+    }
+
     private func waitUntilIdle(_ model: ExternalMarkdownWindowModel) async throws {
         try await withScholiumLifecycleDeadline(phase: .contentFlush, timeout: .seconds(3)) {
             while model.isBusy { await Task.yield() }
@@ -890,6 +1098,7 @@ struct ExternalMarkdownWindowLifecycleTests {
         var resumeFailuresRemaining = 0
         var nextTextQueryPause: PausedBridgeRequest?
         var textQueriesBeforePause = 0
+        var focusCount = 0
 
         func insertBrowserOnly(_ exact: String) {
             source += exact
@@ -903,6 +1112,8 @@ struct ExternalMarkdownWindowLifecycleTests {
             var recovery: MarkdownEditorRecoverySnapshot?
             var superseded: Bool?
             switch request.operation {
+            case .focus, .focusTitle:
+                focusCount += 1
             case .initialize(let source, _, _, _, _):
                 self.source = source
                 generation = 0

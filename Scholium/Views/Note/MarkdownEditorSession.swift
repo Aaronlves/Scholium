@@ -241,7 +241,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var focusHandoffTask: Task<Void, Never>?
     private var automaticFocusIsAuthorized = false
     private var presentationIsClosed = false
-    private var focusRequestRevision: UInt64 = 0
+    private(set) var focusRequestRevision: UInt64 = 0
     private var automaticFocusTarget: WindowDocumentFocusTarget = .editor
     private var sourceMutationBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
@@ -1852,6 +1852,42 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         requestFocus(preferredDocumentFocusTarget ?? .editor)
     }
 
+    /// Completes a window-owned mode-entry intent only at the bridge dispatch
+    /// boundary. Loading must not revive an intent superseded by navigation,
+    /// blur, composition, or another native responder.
+    func focusIfPresented(
+        in mode: MarkdownEditorMode,
+        requiringFocusRevision revision: UInt64,
+        isStillRequested: @escaping @MainActor () -> Bool
+    ) async throws {
+        try Task.checkCancellation()
+        guard let webView else { throw SessionError.unavailable }
+        let target = preferredDocumentFocusTarget ?? .editor
+        _ = try await send(
+            focusOperation(for: target, mode: mode), in: webView,
+            admittingFocus: { [self] in
+                guard !Task.isCancelled, focusRequestRevision == revision,
+                    isReady, isLoaded, errorMessage == nil, !isComposing,
+                    presentedMode == mode, pendingMode == mode,
+                    !webView.isHiddenOrHasHiddenAncestor,
+                    let window = webView.window, window.isKeyWindow,
+                    window.attachedSheet == nil,
+                    (window.firstResponder as? any NSTextInputClient)?.hasMarkedText() != true,
+                    isStillRequested(), window.makeFirstResponder(webView)
+                else { return false }
+                // Responder callbacks may synchronously supersede the intent.
+                guard focusRequestRevision == revision, !isComposing,
+                    window.isKeyWindow, isStillRequested()
+                else { return false }
+                focusRequestRevision &+= 1
+                automaticFocusTarget = target
+                preferredDocumentFocusTarget = target
+                automaticFocusIsAuthorized = true
+                return true
+            }
+        )
+    }
+
     private func requestFocus(_ target: WindowDocumentFocusTarget) {
         focusRequestRevision &+= 1
         let revision = focusRequestRevision
@@ -2692,7 +2728,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         _ operation: MarkdownEditorOperation,
         in webView: WKWebView,
         requiringRequestEpoch requiredRequestEpoch: UInt64? = nil,
-        observingOnly: Bool = false
+        observingOnly: Bool = false,
+        admittingFocus: (@MainActor () -> Bool)? = nil
     ) async throws -> MarkdownEditorCommandResult {
         if observingOnly {
             guard case .queryText = operation else { throw SessionError.invalidResult }
@@ -2748,6 +2785,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     timeout: remaining
                 ) { [self, bridgeDispatcher] in
                     guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
+                    if let admittingFocus {
+                        switch operation {
+                        case .focus, .focusTitle:
+                            guard admittingFocus() else { throw SessionError.staleRequest }
+                        default:
+                            throw SessionError.invalidResult
+                        }
+                    }
                     if case .finishCitation(let transactionID) = operation {
                         guard
                             citationAuthority(
