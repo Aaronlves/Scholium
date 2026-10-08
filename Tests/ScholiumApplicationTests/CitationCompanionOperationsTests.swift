@@ -79,6 +79,79 @@ struct CitationCompanionOperationsTests {
         }
     }
 
+    @Test("External source absence and restoration retain exact citation authority across restart")
+    func externalSourceRestoration() async throws {
+        try await withFixture { fixture, runtime, handle in
+            let saved = try await install(fixture, handle)
+            _ = try await handle.refresh()
+            let citation = try #require(saved.citationSnapshot)
+            let control = await handle.services.controlStore
+            let identity = try #require(try await control.identityRecord(id: citation.noteID))
+            #expect(identity.citationCompanionRequired == true)
+            let companionURL = fixture.rootURL.appendingPathComponent(
+                ".scholium/citations/v1/\(citation.noteID.uuidString.lowercased()).json")
+            let companionBytes = try Data(contentsOf: companionURL)
+            let sourceURL = fixture.analysesURL.appendingPathComponent(
+                fixture.analysisNoteID.relativePath)
+            let absentSourceURL = fixture.rootURL.appendingPathComponent("Absent source.md")
+
+            // Exercise external absence/restoration with the same file outside every
+            // vault. Finder owns restoration; this fixture does not invoke system Trash.
+            try FileManager.default.moveItem(at: sourceURL, to: absentSourceURL)
+            #expect(try await handle.refresh().document(id: fixture.analysisNoteID) == nil)
+            #expect(try await control.identityRecord(id: citation.noteID) == identity)
+            #expect(try Data(contentsOf: companionURL) == companionBytes)
+            await runtime.shutdown()
+
+            let absentRuntime = makeRuntime(fixture)
+            do {
+                let absent = try await absentRuntime.openWorkspace(id: fixture.assignment.id)
+                #expect(try await absent.snapshot().document(id: fixture.analysisNoteID) == nil)
+                let reopenedControl = await absent.services.controlStore
+                #expect(try await reopenedControl.identityRecord(id: citation.noteID) == identity)
+                #expect(try Data(contentsOf: companionURL) == companionBytes)
+                #expect(try Data(contentsOf: absentSourceURL) == saved.sourceBytes)
+
+                try FileManager.default.moveItem(at: absentSourceURL, to: sourceURL)
+                let refreshed = try await absent.refresh()
+                #expect(
+                    refreshed.document(id: fixture.analysisNoteID)?.stableIdentity.resolvedID
+                        == citation.noteID)
+                let restored = try await absent.documents.load(fixture.analysisNoteID)
+                #expect(restored.sourceBytes == saved.sourceBytes)
+                #expect(restored.citationSnapshot == citation)
+                let fields = ZoteroMarkdownFields(parsing: restored)
+                #expect(fields.canMutate)
+                #expect(fields.fields.map(\.id) == ["cFirst", "cSecond"])
+                #expect(fields.fields.map(\.code) == Self.data().fields.map(\.code))
+                #expect(try await reopenedControl.identityRecord(id: citation.noteID) == identity)
+                #expect(try Data(contentsOf: companionURL) == companionBytes)
+                #expect(try await absent.recoveryRecords().isEmpty)
+                await absentRuntime.shutdown()
+            } catch {
+                await absentRuntime.shutdown()
+                throw error
+            }
+
+            let restoredRuntime = makeRuntime(fixture)
+            do {
+                let reopened = try await restoredRuntime.openWorkspace(id: fixture.assignment.id)
+                let restored = try await reopened.documents.load(fixture.analysisNoteID)
+                #expect(restored.sourceBytes == saved.sourceBytes)
+                #expect(restored.citationSnapshot == citation)
+                #expect(
+                    try await reopened.snapshot().document(id: fixture.analysisNoteID)?
+                        .stableIdentity.resolvedID == citation.noteID)
+                #expect(try Data(contentsOf: companionURL) == companionBytes)
+                #expect(try await reopened.recoveryRecords().isEmpty)
+                await restoredRuntime.shutdown()
+            } catch {
+                await restoredRuntime.shutdown()
+                throw error
+            }
+        }
+    }
+
     @Test("Ordinary source edits preserve companion authority and expose unresolved association")
     func sourceEditDoesNotRebindCompanion() async throws {
         try await withFixture { fixture, _, handle in

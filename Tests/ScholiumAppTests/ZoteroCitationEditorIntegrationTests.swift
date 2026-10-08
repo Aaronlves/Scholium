@@ -199,6 +199,143 @@ struct ZoteroCitationEditorIntegrationTests {
         }
     }
 
+    @Test("A style-only command dirties unchanged Markdown, has paired Undo and Redo, and reopens the saved companion")
+    func managedStyleOnlyUndoRedoAndReopen() async throws {
+        let source = "\u{FEFF}---\r\nunknown: 'keep' # literal\n---\r\nArgument 😀 [Same](cite:cstyle)\r\nTail e\u{301} without newline"
+        let code = #"ITEM CSL_CITATION {"citationItems":[{"id":7}],"opaque":"é 😀"}"#
+        let preferences = "<data><style id=\"synthetic-original\"/><prefs><pref name=\"noteType\" value=\"0\"/></prefs></data>"
+        let changedPreferences = preferences.replacingOccurrences(of: "synthetic-original", with: "synthetic-changed")
+        let initial = ZoteroCitationData(
+            fields: [.init(id: "cstyle", kind: .citation, code: code, text: "Same")], documentData: preferences,
+            acceptedFields: [.init(id: "cstyle", code: code)])
+        let changed = ZoteroCitationData(fields: initial.fields, documentData: changedPreferences, acceptedFields: initial.acceptedFields)
+        try await withManagedNote(source: source, citationData: initial) { capabilities, note, file in
+            let baseline = try #require(note.document.citationSnapshot)
+            let transcript = ManagedTranscript()
+            let integration = ZoteroDocumentIntegration(transport: { try await transcript.send($0) })
+            let session = MarkdownEditorSession(bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(), citationIntegration: integration)
+            let host = OffscreenEditor(session: session, source: source, sourceHead: source.utf16.count, citationSnapshot: baseline)
+            defer { host.close() }
+            try await waitForManagedEditor(session, sourceHead: source.utf16.count)
+            #expect(!session.isDirty && session.checkedCitationData == initial)
+            let selection = try #require(session.context).selections
+            await transcript.prepare(
+                documentID: session.bridgeDocumentID, command: .setDocPrefs,
+                steps: [
+                    .init("Document.getDocumentData", expected: .exact(.string(preferences))),
+                    .init("Document.getFields", [.string("Http")], expected: .exact(.array([managedReply(id: "cstyle", code: code, text: "Same")]))),
+                    .init("Document.setDocumentData", [.string(changedPreferences)]),
+                ])
+            try await performManagedCommand(.citationStyle, phase: "style-only", in: session)
+            #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+            #expect(session.checkedCitationData == changed && session.isDirty)
+            #expect(session.committedCitationSnapshot == baseline)
+            try await waitForManagedEditor(session, sourceHead: source.utf16.count)
+            #expect(session.context?.selections == selection)
+
+            try await citationHistory(session, redo: false)
+            #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+            #expect(session.checkedCitationData == initial)
+            // Undo restores the live pair; only a verified save acknowledgement
+            // establishes that source and companion still match their disk revisions.
+            #expect(session.isDirty)
+            #expect(session.committedCitationSnapshot == baseline)
+            try await citationHistory(session, redo: true)
+            #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+            #expect(session.checkedCitationData == changed && session.isDirty)
+            try await waitForManagedEditor(session, sourceHead: source.utf16.count)
+            #expect(session.context?.selections == selection)
+
+            let saved = try await saveManagedPair(session, note: note, revision: note.fingerprint, documents: capabilities.documents, file: file)
+            let savedSnapshot = try #require(saved.citationSnapshot)
+            #expect(savedSnapshot.sourceFingerprint == baseline.sourceFingerprint && savedSnapshot.revision != baseline.revision)
+            await host.closeAndDrain()
+            let reopened = MarkdownEditorSession(bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(), citationIntegration: integration)
+            let reopenedHost = OffscreenEditor(session: reopened, source: saved.rawContent, sourceHead: 0, citationSnapshot: savedSnapshot)
+            defer { reopenedHost.close() }
+            try await waitForManagedEditor(reopened, sourceHead: 0)
+            #expect(Data(try await reopened.currentText().utf8) == Data(source.utf8))
+            #expect(reopened.checkedCitationData == changed && reopened.committedCitationSnapshot == savedSnapshot && !reopened.isDirty)
+            #expect(await transcript.completedCommands == 1)
+            #expect(reopened.errorMessage == nil && reopened.citationStatus == nil)
+            await reopenedHost.closeAndDrain()
+        }
+    }
+
+    @Test("Editing the second identical label keeps the first occurrence intact through one paired Undo and Redo")
+    func managedRepeatedLabelsEditOnlyChosenOccurrence() async throws {
+        let prefix = "\u{FEFF}---\r\nunknown: 'keep' # literal\n---\r\nArgument 😀 "
+        let first = "[Same](cite:cfirst)"
+        let middle = " and e\u{301} "
+        let suffix = "\r\nTail without newline"
+        let source = prefix + first + middle + "[Same](cite:csecond)" + suffix
+        let firstCode = #"ITEM CSL_CITATION {"citationItems":[{"id":7,"locator":"1"}],"opaque":"first"}"#
+        let secondCode = #"ITEM CSL_CITATION {"citationItems":[{"id":7,"locator":"9"}],"opaque":"second"}"#
+        let editedCode = #"ITEM CSL_CITATION {"citationItems":[{"id":7,"locator":"10"}],"opaque":"second"}"#
+        let initial = ZoteroCitationData(
+            fields: [
+                .init(id: "cfirst", kind: .citation, code: firstCode, text: "Same"),
+                .init(id: "csecond", kind: .citation, code: secondCode, text: "Same"),
+            ], documentData: "<data><prefs><pref name=\"noteType\" value=\"0\"/></prefs></data>",
+            acceptedFields: [.init(id: "cfirst", code: firstCode), .init(id: "csecond", code: secondCode)])
+        let edited = ZoteroCitationData(
+            fields: [initial.fields[0], .init(id: "csecond", kind: .citation, code: editedCode, text: "<i>Changed</i>")],
+            documentData: initial.documentData,
+            acceptedFields: [.init(id: "cfirst", code: firstCode), .init(id: "csecond", code: editedCode)])
+        let expected = prefix + first + middle + "[*Changed*](cite:csecond)" + suffix
+        let sourceHead = (prefix + first + middle).utf16.count + 1
+        try await withManagedNote(source: source, citationData: initial) { capabilities, note, file in
+            let baseline = try #require(note.document.citationSnapshot)
+            let transcript = ManagedTranscript()
+            let session = MarkdownEditorSession(
+                bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
+                citationIntegration: ZoteroDocumentIntegration(transport: { try await transcript.send($0) }))
+            let host = OffscreenEditor(session: session, source: source, sourceHead: sourceHead, citationSnapshot: baseline)
+            defer { host.close() }
+            try await waitForManagedEditor(session, sourceHead: sourceHead)
+            let selection = try #require(session.context).selections
+            await transcript.prepare(
+                documentID: session.bridgeDocumentID, command: .addEditCitation,
+                steps: [
+                    .init(
+                        "Document.getFields", [.string("Http")],
+                        expected: .exact(
+                            .array([
+                                managedReply(id: "cfirst", code: firstCode, text: "Same"),
+                                managedReply(id: "csecond", code: secondCode, text: "Same"),
+                            ]))),
+                    .init("Document.cursorInField", [.string("Http")], expected: .exact(managedReply(id: "csecond", code: secondCode, text: "Same"))),
+                    .init("Field.setCode", [.string("csecond"), .string(editedCode)]),
+                    .init("Field.setText", [.string("csecond"), .string("<i>Changed</i>"), .bool(true)]),
+                ])
+            try await performManagedCommand(.insertCitation, phase: "second identical label", in: session)
+            #expect(Data(try await session.currentText().utf8) == Data(expected.utf8))
+            #expect(session.checkedCitationData == edited && session.isDirty)
+            #expect(session.committedCitationSnapshot == baseline)
+            let editedHead = expected.utf16.count - suffix.utf16.count
+            try await waitForManagedEditor(session, sourceHead: editedHead)
+
+            try await citationHistory(session, redo: false)
+            #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+            #expect(session.checkedCitationData == initial)
+            #expect(session.isDirty && session.committedCitationSnapshot == baseline)
+            try await waitForManagedEditor(session, sourceHead: sourceHead)
+            #expect(session.context?.selections == selection)
+            try await citationHistory(session, redo: true)
+            #expect(Data(try await session.currentText().utf8) == Data(expected.utf8))
+            #expect(session.checkedCitationData == edited && session.isDirty)
+            try await waitForManagedEditor(session, sourceHead: editedHead)
+            let saved = try await saveManagedPair(session, note: note, revision: note.fingerprint, documents: capabilities.documents, file: file)
+            let catalog = ZoteroMarkdownFields(parsing: saved)
+            #expect(catalog.canMutate && !catalog.citationStateStale && catalog.diagnostics.isEmpty)
+            #expect(catalog.fields.map(\.id) == ["cfirst", "csecond"])
+            #expect(catalog.fields.map(\.plainText) == ["Same", "Changed"])
+            #expect(catalog.fields.map(\.code) == [firstCode, editedCode])
+            #expect(await transcript.completedCommands == 1)
+            await host.closeAndDrain()
+        }
+    }
+
     @Test("A synthetic HTTP transcript accepts the canonical @ receipt and one Undo restores exact source")
     func syntheticCitationAcceptsQueryAndUndoesExactSource() async throws {
         let prefix = "\u{FEFF}---\r\nunknown: 'keep' # literal\r\n---\r\n"
@@ -510,6 +647,7 @@ struct ZoteroCitationEditorIntegrationTests {
 
     private func withManagedNote(
         source: String,
+        citationData: ZoteroCitationData? = nil,
         _ body: (WindowWorkspaceCapabilities, WorkspaceNoteSnapshot, URL) async throws -> Void
     ) async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -526,6 +664,12 @@ struct ZoteroCitationEditorIntegrationTests {
                 portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Synthetic citations")
             let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
             let summary = try #require(vault.documents.first { $0.id.relativePath == "Synthetic.md" })
+            if let citationData {
+                let note = try await capabilities.documents.hydrate(summary)
+                _ = try await capabilities.documents.save(
+                    .init(documentID: note.id, stableNoteID: #require(note.stableIdentity.resolvedID), revision: note.fingerprint),
+                    changeSet: .citationSource(source, .init(expectedRevision: note.document.citationSnapshot?.revision, data: citationData)))
+            }
             try await body(capabilities, capabilities.documents.hydrate(summary), file)
             await store.shutdownApplicationRuntime()
         } catch {

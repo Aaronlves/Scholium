@@ -11,12 +11,22 @@ import WebKit
 @MainActor
 @Suite("External Markdown window lifecycle", .serialized)
 struct ExternalMarkdownWindowLifecycleTests {
-    @Test("The first external Review to Edit transition constructs a ready editor in the real offscreen window hierarchy")
-    func firstReviewToEditConstructsEditor() async throws {
+    @Test(
+        "The first external Review to Edit transition constructs a ready editor in the real offscreen window hierarchy",
+        arguments: [false, true])
+    func firstReviewToEditConstructsEditor(hasFrontmatter: Bool) async throws {
         try await withFile { url, _ in
-            let prefix = "\u{FEFF}---\r\nunknown: 'keep' # fixture\r\n---\r\n"
-            let body = "First 😀 e\u{301} paragraph.\n\nTail without newline"
+            let prefix = hasFrontmatter ? "\u{FEFF}---\r\nunknown: 'keep' # fixture\r\n---\r\n" : ""
+            let expectedBodyText =
+                hasFrontmatter
+                ? "First 😀 e\u{301} paragraph."
+                : "This Markdown stays readable when Edit opens for the first time."
+            let body =
+                hasFrontmatter
+                ? expectedBodyText + "\n\nTail without newline"
+                : "# External\n\n" + expectedBodyText + "\nEnd"
             let source = prefix + body
+            if !hasFrontmatter { #expect(source.utf8.count == 80) }
             try Data(source.utf8).write(to: url)
             let host = OffscreenExternalWindow(url: url)
             do {
@@ -27,12 +37,12 @@ struct ExternalMarkdownWindowLifecycleTests {
                 let model = try #require(host.model)
                 #expect(model.mode == .read && !model.retainsEditor)
                 #expect(!model.editorSession.hasAttachedWebView)
-                try await host.waitForReadText("First 😀 e\u{301} paragraph.")
+                try await host.waitForReadText(expectedBodyText)
 
                 // The production view, not this test, must allocate, attach and
                 // initialize the editor when its owning model first requests Edit.
                 model.selectMode(.livePreview)
-                try await host.waitForEditor()
+                try await host.waitForEditor(containing: expectedBodyText)
                 let editor = model.editorSession
                 let webView = try #require(editor.webView)
                 let expectedCaret = try #require(
@@ -45,7 +55,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                 #expect(try Data(contentsOf: url) == Data(source.utf8))
 
                 model.selectMode(.source)
-                try await host.waitForEditor()
+                try await host.waitForEditor(containing: expectedBodyText)
                 #expect(model.mode == .source && editor.presentedMode == .source)
                 #expect(model.editorSession === editor && editor.webView === webView)
                 #expect(editor.context?.selections == [.init(anchor: expectedCaret, head: expectedCaret)])
@@ -53,12 +63,12 @@ struct ExternalMarkdownWindowLifecycleTests {
 
                 model.selectMode(.read)
                 try await host.waitUntil("return to Review") { model.mode == .read && !model.isBusy }
-                try await host.waitForReadText("First 😀 e\u{301} paragraph.")
+                try await host.waitForReadText(expectedBodyText)
                 #expect(model.editorSession === editor && editor.webView === webView)
                 #expect(webView.isHidden && webView.isHiddenOrHasHiddenAncestor)
 
                 model.selectMode(.livePreview)
-                try await host.waitForEditor()
+                try await host.waitForEditor(containing: expectedBodyText)
                 #expect(model.editorSession === editor && editor.webView === webView)
                 #expect(editor.context?.selections == [.init(anchor: expectedCaret, head: expectedCaret)])
                 #expect(Data(try await editor.currentText().utf8) == Data(source.utf8))
@@ -749,7 +759,7 @@ struct ExternalMarkdownWindowLifecycleTests {
             #expect(!window.isVisible)
         }
 
-        func waitForEditor() async throws {
+        func waitForEditor(containing expectedBodyText: String) async throws {
             try await waitUntil("\(model?.mode.rawValue ?? "unknown") editor readiness and native visibility") {
                 guard let model = self.model, model.editorReady, let webView = model.editorSession.webView else { return false }
                 return webView.window === self.window && !webView.isHiddenOrHasHiddenAncestor
@@ -758,8 +768,12 @@ struct ExternalMarkdownWindowLifecycleTests {
             let webView = try #require(model?.editorSession.webView)
             let hasContent =
                 try await webView.callAsyncJavaScript(
-                    "return document.querySelector('.cm-content')?.getBoundingClientRect().height > 0;",
-                    arguments: [:], in: nil, contentWorld: .page) as? Bool
+                    """
+                    const content = document.querySelector('.cm-content');
+                    const rect = content?.getBoundingClientRect();
+                    return rect?.width > 0 && rect?.height > 0 && content.textContent.includes(expectedBodyText);
+                    """,
+                    arguments: ["expectedBodyText": expectedBodyText], in: nil, contentWorld: .page) as? Bool
             #expect(hasContent == true)
         }
 
@@ -817,11 +831,24 @@ struct ExternalMarkdownWindowLifecycleTests {
 
         func closeAndDrain() async {
             close()
-            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-            while retainedModel?.editorSession.hasAttachedWebView == true, ContinuousClock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(20))
-            }
-            #expect(retainedModel?.editorSession.hasAttachedWebView != true)
+            let model = retainedModel
+            // Teardown must continue yielding even if the test was cancelled.
+            // This unstructured cleanup task does not inherit its cancellation.
+            await Task { @MainActor in
+                do {
+                    try await withScholiumLifecycleDeadline(phase: .contentFlush, timeout: .seconds(3)) {
+                        await model?.waitForModeTransition()
+                        while model?.editorSession.hasAttachedWebView == true {
+                            try Task.checkCancellation()
+                            try await Task.sleep(for: .milliseconds(20))
+                        }
+                    }
+                } catch {
+                    Issue.record(Comment(rawValue: "External window cleanup failed: \(error)"))
+                }
+                #expect(model?.editorSession.hasAttachedWebView != true)
+                #expect(model?.isChangingMode != true && model?.isSaving != true)
+            }.value
         }
 
         private func descendants(_ root: NSView) -> [NSView] {
