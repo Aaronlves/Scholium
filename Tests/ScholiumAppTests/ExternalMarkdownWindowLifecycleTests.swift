@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
+import SwiftUI
 import Testing
 import WebKit
 
@@ -10,6 +11,67 @@ import WebKit
 @MainActor
 @Suite("External Markdown window lifecycle", .serialized)
 struct ExternalMarkdownWindowLifecycleTests {
+    @Test("The first external Review to Edit transition constructs a ready editor in the real offscreen window hierarchy")
+    func firstReviewToEditConstructsEditor() async throws {
+        try await withFile { url, _ in
+            let prefix = "\u{FEFF}---\r\nunknown: 'keep' # fixture\r\n---\r\n"
+            let body = "First 😀 e\u{301} paragraph.\n\nTail without newline"
+            let source = prefix + body
+            try Data(source.utf8).write(to: url)
+            let host = OffscreenExternalWindow(url: url)
+            do {
+                try await host.waitUntil("production model attachment and file opening") {
+                    guard let model = host.model else { return false }
+                    return model.snapshot != nil && !model.isBusy
+                }
+                let model = try #require(host.model)
+                #expect(model.mode == .read && !model.retainsEditor)
+                #expect(!model.editorSession.hasAttachedWebView)
+                try await host.waitForReadText("First 😀 e\u{301} paragraph.")
+
+                // The production view, not this test, must allocate, attach and
+                // initialize the editor when its owning model first requests Edit.
+                model.selectMode(.livePreview)
+                try await host.waitForEditor()
+                let editor = model.editorSession
+                let webView = try #require(editor.webView)
+                let expectedCaret = try #require(
+                    EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: prefix.utf16.count))
+                try await host.waitUntil("initial exact body caret") {
+                    editor.context?.selections == [.init(anchor: expectedCaret, head: expectedCaret)]
+                }
+                #expect(Data(try await editor.currentText().utf8) == Data(source.utf8))
+                #expect(!model.isDirty && model.error == nil && editor.errorMessage == nil)
+                #expect(try Data(contentsOf: url) == Data(source.utf8))
+
+                model.selectMode(.source)
+                try await host.waitForEditor()
+                #expect(model.mode == .source && editor.presentedMode == .source)
+                #expect(model.editorSession === editor && editor.webView === webView)
+                #expect(editor.context?.selections == [.init(anchor: expectedCaret, head: expectedCaret)])
+                #expect(Data(try await editor.currentText().utf8) == Data(source.utf8))
+
+                model.selectMode(.read)
+                try await host.waitUntil("return to Review") { model.mode == .read && !model.isBusy }
+                try await host.waitForReadText("First 😀 e\u{301} paragraph.")
+                #expect(model.editorSession === editor && editor.webView === webView)
+                #expect(webView.isHidden && webView.isHiddenOrHasHiddenAncestor)
+
+                model.selectMode(.livePreview)
+                try await host.waitForEditor()
+                #expect(model.editorSession === editor && editor.webView === webView)
+                #expect(editor.context?.selections == [.init(anchor: expectedCaret, head: expectedCaret)])
+                #expect(Data(try await editor.currentText().utf8) == Data(source.utf8))
+                #expect(!model.isDirty && model.error == nil && editor.errorMessage == nil)
+                #expect(try Data(contentsOf: url) == Data(source.utf8))
+                await host.closeAndDrain()
+            } catch {
+                await host.closeAndDrain()
+                throw error
+            }
+        }
+    }
+
     @Test(
         "Repeated opening coalesces and close or quit releases a session that finishes opening late",
         arguments: [false, true])
@@ -645,6 +707,125 @@ struct ExternalMarkdownWindowLifecycleTests {
     private func waitUntilIdle(_ model: ExternalMarkdownWindowModel) async throws {
         try await withScholiumLifecycleDeadline(phase: .contentFlush, timeout: .seconds(3)) {
             while model.isBusy { await Task.yield() }
+        }
+    }
+
+    /// Uses the complete external window view. Its production attachment owns
+    /// the model/window connection, and SwiftUI alone constructs both surfaces.
+    /// The window is never ordered or activated.
+    @MainActor
+    private final class OffscreenExternalWindow {
+        private let window: NSWindow
+        private var hostingController: NSViewController?
+        private var retainedModel: ExternalMarkdownWindowModel?
+        private var closed = false
+
+        var model: ExternalMarkdownWindowModel? {
+            window.delegate as? ExternalMarkdownWindowModel
+        }
+
+        init(url: URL) {
+            _ = NSApplication.shared
+            // The external view reads readiness but never starts bootstrap.
+            // If that changes, its resolver still confines state to this fixture.
+            let bootstrap = ApplicationBootstrapController {
+                url.deletingLastPathComponent().appendingPathComponent("ApplicationSupport", isDirectory: true)
+            }
+            let content = ExternalMarkdownWindowView(url: url)
+                .environmentObject(bootstrap)
+                .environmentObject(ScholiumApplicationDelegate())
+            let hosting = NSHostingController(rootView: content)
+            hosting.sizingOptions = []
+            hostingController = hosting
+            window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentViewController = hosting
+            window.setContentSize(NSSize(width: 720, height: 520))
+            hosting.view.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+            hosting.view.autoresizingMask = [.width, .height]
+            hosting.view.layoutSubtreeIfNeeded()
+            #expect(!window.isVisible)
+        }
+
+        func waitForEditor() async throws {
+            try await waitUntil("\(model?.mode.rawValue ?? "unknown") editor readiness and native visibility") {
+                guard let model = self.model, model.editorReady, let webView = model.editorSession.webView else { return false }
+                return webView.window === self.window && !webView.isHiddenOrHasHiddenAncestor
+                    && webView.bounds.width > 0 && webView.bounds.height > 0
+            }
+            let webView = try #require(model?.editorSession.webView)
+            let hasContent =
+                try await webView.callAsyncJavaScript(
+                    "return document.querySelector('.cm-content')?.getBoundingClientRect().height > 0;",
+                    arguments: [:], in: nil, contentWorld: .page) as? Bool
+            #expect(hasContent == true)
+        }
+
+        func waitForReadText(_ text: String) async throws {
+            try await waitUntil("rendered Review text") {
+                guard let root = self.hostingController?.view else { return false }
+                for webView in self.descendants(root).compactMap({ $0 as? WKWebView })
+                where webView !== self.model?.editorSession.webView && !webView.isHiddenOrHasHiddenAncestor {
+                    if try await webView.callAsyncJavaScript(
+                        "return document.querySelector('#scholium-document')?.textContent.includes(expected) === true;",
+                        arguments: ["expected": text], in: nil, contentWorld: .page) as? Bool == true
+                    {
+                        return true
+                    }
+                }
+                return false
+            }
+        }
+
+        func waitUntil(_ phase: String, _ condition: @escaping @MainActor () async throws -> Bool) async throws {
+            do {
+                try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(8)) {
+                    while !(try await condition()) {
+                        try Task.checkCancellation()
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                }
+            } catch {
+                let model = model
+                let editor = model?.editorSession
+                let webView = editor?.webView
+                Issue.record(
+                    Comment(
+                        rawValue:
+                            "External window failed at \(phase): mode=\(model?.mode.rawValue ?? "none") "
+                            + "retains=\(model?.retainsEditor ?? false) ready=\(editor?.isReady ?? false) loaded=\(editor?.isLoaded ?? false) "
+                            + "presented=\(String(describing: editor?.presentedMode)) hidden=\(webView?.isHiddenOrHasHiddenAncestor ?? false) "
+                            + "frame=\(webView?.frame ?? .zero) windowAttached=\(webView?.window === window) visible=\(window.isVisible) "
+                            + "modelError=\(model?.error ?? "none") editorError=\(editor?.errorMessage ?? "none")"))
+                throw error
+            }
+            #expect(!window.isVisible)
+        }
+
+        func close() {
+            guard !closed else { return }
+            #expect(!window.isVisible)
+            closed = true
+            retainedModel = model
+            retainedModel?.close()
+            window.contentViewController = nil
+            hostingController = nil
+            window.close()
+        }
+
+        func closeAndDrain() async {
+            close()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+            while retainedModel?.editorSession.hasAttachedWebView == true, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(retainedModel?.editorSession.hasAttachedWebView != true)
+        }
+
+        private func descendants(_ root: NSView) -> [NSView] {
+            [root] + root.subviews.flatMap(descendants)
         }
     }
 
