@@ -24,7 +24,9 @@ extension DocumentSessionModel {
     func citationPresentation(committedDocument: NoteDocument, editingIsAvailable: Bool) -> DocumentCitationPresentation {
         let document =
             isEditing
-            ? NoteDocument(relativePath: committedDocument.relativePath, rawContent: retainedExactSource)
+            ? NoteDocument(
+                relativePath: committedDocument.relativePath, rawContent: retainedExactSource,
+                citationSnapshot: editorSession.currentCitationSnapshot)
             : committedDocument
         return DocumentCitationPresentation(
             document: document, status: editorSession.citationStatus,

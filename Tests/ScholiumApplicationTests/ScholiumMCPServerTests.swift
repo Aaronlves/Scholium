@@ -154,13 +154,14 @@ struct ScholiumMCPServerTests {
             #expect(try object(tool["outputSchema"])["type"] as? String == "object")
         }
         #expect(
-            Array(names.suffix(4)) == [
+            Array(names.suffix(5)) == [
                 ScholiumMCPToolName.capabilities.rawValue,
                 ScholiumMCPToolName.configureSkill.rawValue,
                 ScholiumMCPToolName.configureTool.rawValue,
                 ScholiumMCPToolName.configureChat.rawValue,
+                ScholiumMCPToolName.observeCurrentState.rawValue,
             ])
-        for tool in tools.suffix(4) {
+        for tool in tools.suffix(5) {
             let schema = try object(tool["inputSchema"])
             #expect(schema["additionalProperties"] as? Bool == false)
             #expect(try object(tool["outputSchema"])["oneOf"] as? [[String: Any]] != nil)
@@ -184,6 +185,184 @@ struct ScholiumMCPServerTests {
             ])
         let requests = await recorder.requests()
         #expect(requests.last?.conversationToken == token && requests.last?.tool == .capabilities)
+    }
+
+    @Test("Current-state observation publishes only bound metadata and closed safe failures")
+    func chatObservationSchema() async throws {
+        let server = ScholiumMCPServer(conversationToken: UUID()) { _ in .null }
+        let listed = try await rpc(server, id: 1, method: "tools/list", params: [:])
+        let tools = try #require(object(listed["result"])["tools"] as? [[String: Any]])
+        let tool = try #require(tools.first { $0["name"] as? String == ScholiumMCPToolName.observeCurrentState.rawValue })
+        let input = try object(tool["inputSchema"])
+        let bindings: Set<String> = ["triptych_id", "window_id", "conversation_id"]
+        #expect(Set(try object(input["properties"]).keys) == bindings)
+        #expect(Set(try #require(input["required"] as? [String])) == bindings)
+        #expect(input["additionalProperties"] as? Bool == false)
+        for field in try object(input["properties"]).values {
+            #expect(try object(field)["format"] as? String == "uuid")
+        }
+        let variants = try #require(object(tool["outputSchema"])["oneOf"] as? [[String: Any]])
+        let success = try #require(variants.first)
+        let fields = try object(success["properties"])
+        #expect(Set(fields.keys) == bindings.union(["schema_version", "status", "observed_at", "document_surface", "active_note", "chat"]))
+        #expect(try object(fields["observed_at"])["format"] as? String == "date-time")
+        let chat = try object(fields["chat"])
+        #expect(chat["additionalProperties"] as? Bool == false)
+        let chatFields = try object(chat["properties"])
+        #expect(
+            Set(chatFields.keys) == ["thread_id", "turn_id", "state", "pending_delivery", "queued_message_count", "approval_count", "question_count", "errors"])
+        #expect(try object(chatFields["state"])["const"] as? String == "working")
+        #expect(try object(chatFields["errors"])["uniqueItems"] as? Bool == true)
+        let activeVariants = try #require(object(fields["active_note"])["anyOf"] as? [[String: Any]])
+        let note = try #require(activeVariants.first)
+        #expect(note["additionalProperties"] as? Bool == false)
+        let noteFields = try object(note["properties"])
+        #expect(Set(noteFields.keys) == ["vault_id", "note_id", "role", "relative_path", "mode", "revision", "dirty", "saving", "conflict", "selection"])
+        #expect(try object(noteFields["relative_path"])["maxLength"] as? Int == 4_096)
+        let rangeRule = try #require((note["allOf"] as? [[String: Any]])?.first)
+        let revision = try object(object(object(rangeRule["then"])["properties"])["revision"])
+        #expect(Set(try #require(revision["required"] as? [String])) == ["origin", "fingerprint"])
+        let failure = try #require(variants.last)
+        #expect(failure["additionalProperties"] as? Bool == false)
+        let failureFields = try object(failure["properties"])
+        #expect(Set(failureFields.keys) == ["schema_version", "status", "code", "message", "recovery"])
+        #expect(try object(failureFields["message"])["maxLength"] as? Int == 1_024)
+        let annotations = try object(tool["annotations"])
+        #expect(annotations["readOnlyHint"] as? Bool == true && annotations["destructiveHint"] as? Bool == false)
+        #expect(AgentChatActivity.Kind.forTool(.observeCurrentState) == .tool)
+    }
+
+    @Test("External hosts cannot call the observation tool or reach its App owner")
+    func externalObservationRejected() async throws {
+        let recorder = MCPRequestRecorder()
+        let server = ScholiumMCPServer { request in
+            await recorder.record(request)
+            return .null
+        }
+        let response = try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": ScholiumMCPToolName.observeCurrentState.rawValue,
+                "arguments": ["triptych_id": UUID().uuidString, "window_id": UUID().uuidString, "conversation_id": UUID().uuidString],
+            ])
+        let result = try object(response["result"])
+        let failure = try object(result["structuredContent"])
+        #expect(result["isError"] as? Bool == true && failure["code"] as? String == "invalid_request")
+        #expect(Set(failure.keys) == ["schema_version", "status", "code", "message", "recovery"])
+        #expect(await recorder.requests().isEmpty)
+    }
+
+    @Test("Observation calls retain conversation and runtime scope through the helper")
+    func observationBinding() async throws {
+        let recorder = MCPRequestRecorder()
+        let token = UUID()
+        let triptych = UUID().uuidString
+        let window = UUID().uuidString
+        let conversation = UUID().uuidString
+        let server = ScholiumMCPServer(conversationToken: token) { request in
+            await recorder.record(request)
+            return .object([
+                "schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion), "status": .string("ok"),
+                "triptych_id": .string(triptych), "window_id": .string(window), "conversation_id": .string(conversation),
+                "observed_at": .string("2026-10-08T12:00:00Z"), "document_surface": .string("none"), "active_note": .null,
+                "chat": .object([
+                    "thread_id": .string("thread"), "turn_id": .string("turn"), "state": .string("working"),
+                    "pending_delivery": .bool(false), "queued_message_count": .integer(0), "approval_count": .integer(0),
+                    "question_count": .integer(0), "errors": .array([]),
+                ]),
+            ])
+        }
+        let response = try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": ScholiumMCPToolName.observeCurrentState.rawValue,
+                "arguments": ["triptych_id": triptych, "window_id": window, "conversation_id": conversation],
+                "_meta": ["x-codex-turn-metadata": ["thread_id": "thread", "turn_id": "turn"]],
+            ])
+        let result = try object(response["result"])
+        #expect(result["isError"] as? Bool == false)
+        let request = try #require(await recorder.requests().first)
+        #expect(request.conversationToken == token && request.tool == .observeCurrentState)
+        #expect(request.runtimeContext == .init(threadID: "thread", turnID: "turn"))
+        #expect(request.arguments == ["triptych_id": .string(triptych), "window_id": .string(window), "conversation_id": .string(conversation)])
+        let content = try #require(result["content"] as? [[String: Any]])
+        let text = try #require(content.first?["text"] as? String)
+        #expect(
+            try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .withoutEscapingSlashes]).count
+                <= ScholiumMCPContract.maximumChatObservationUTF8ByteCount)
+        #expect(try object(JSONSerialization.jsonObject(with: Data(text.utf8)))["window_id"] as? String == window)
+    }
+
+    @Test("Observation caps the encoded MCP result after text duplication and Unicode escaping")
+    func observationEncodedResultBound() async throws {
+        let relativePath = String(repeating: "a\"📝/", count: 1_000) + "note.md"
+        #expect(relativePath.unicodeScalars.count <= 4_096)
+        let triptych = UUID().uuidString
+        let window = UUID().uuidString
+        let conversation = UUID().uuidString
+        let metadata: MCPJSONValue = .object([
+            "schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion), "status": .string("ok"),
+            "triptych_id": .string(triptych), "window_id": .string(window), "conversation_id": .string(conversation),
+            "observed_at": .string("2026-10-08T12:00:00Z"), "document_surface": .string("triptych_note"),
+            "active_note": .object([
+                "vault_id": .string(UUID().uuidString), "note_id": .string(UUID().uuidString),
+                "role": .string("works"), "relative_path": .string(relativePath), "mode": .string("review"),
+                "revision": .object([
+                    "origin": .string("saved_source"),
+                    "fingerprint": .object(["sha256": .string(String(repeating: "a", count: 64)), "byte_count": .integer(1)]),
+                ]),
+                "dirty": .bool(false), "saving": .bool(false), "conflict": .bool(false),
+                "selection": .object(["state": .string("none")]),
+            ]),
+            "chat": .object([
+                "thread_id": .string("thread"), "turn_id": .string("turn"), "state": .string("working"),
+                "pending_delivery": .bool(false), "queued_message_count": .integer(0), "approval_count": .integer(0),
+                "question_count": .integer(0), "errors": .array([]),
+            ]),
+        ])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let raw = try encoder.encode(metadata)
+        #expect(raw.count <= ScholiumMCPContract.maximumChatObservationUTF8ByteCount)
+        let unboundedResult: MCPJSONValue = .object([
+            "content": .array([.object(["type": .string("text"), "text": .string(String(decoding: raw, as: UTF8.self))])]),
+            "structuredContent": metadata, "isError": .bool(false),
+        ])
+        #expect(try encoder.encode(unboundedResult).count > ScholiumMCPContract.maximumChatObservationUTF8ByteCount)
+        let server = ScholiumMCPServer(conversationToken: UUID()) { _ in metadata }
+        let response = try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": ScholiumMCPToolName.observeCurrentState.rawValue,
+                "arguments": ["triptych_id": triptych, "window_id": window, "conversation_id": conversation],
+            ])
+        let result = try object(response["result"])
+        #expect(result["isError"] as? Bool == true)
+        #expect(try object(result["structuredContent"])["code"] as? String == "invalid_request")
+        let encoded = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .withoutEscapingSlashes])
+        #expect(encoded.count <= ScholiumMCPContract.maximumChatObservationUTF8ByteCount)
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("📝"))
+    }
+
+    @Test("Observation failures discard raw diagnostics and oversized results", arguments: [false, true])
+    func observationFailureContainment(oversized: Bool) async throws {
+        let marker = "private-diagnostic-marker"
+        let server = ScholiumMCPServer(conversationToken: UUID()) { _ in
+            if oversized { return .object(["oversized": .string(String(repeating: marker, count: 1_000))]) }
+            throw ScholiumMCPFailure(code: .operationUncertain, message: marker, recovery: marker)
+        }
+        let response = try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": ScholiumMCPToolName.observeCurrentState.rawValue,
+                "arguments": ["triptych_id": UUID().uuidString, "window_id": UUID().uuidString, "conversation_id": UUID().uuidString],
+            ])
+        let result = try object(response["result"])
+        #expect(result["isError"] as? Bool == true)
+        let failure = try object(result["structuredContent"])
+        #expect(failure["code"] as? String == (oversized ? "invalid_request" : "internal_error"))
+        #expect(Set(failure.keys) == ["schema_version", "status", "code", "message", "recovery"])
+        #expect(!String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self).contains(marker))
     }
 
     @Test("Tool calls carry only the named tool and argument object to the App bridge")

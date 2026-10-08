@@ -146,6 +146,94 @@ struct ZoteroDocumentIntegrationTests {
         #expect(try json(requests[3]).objectValue?["error"] == .string("Scholium Document Error"))
     }
 
+    @Test("Application quit cannot abandon or cancel an active human picker")
+    func applicationTerminationPreservesActiveTransaction() async throws {
+        let wait = WaitPoint()
+        let script = Script(
+            [
+                integrationCallback("Application.getActiveDocument", document: false),
+                integrationCallback("Document.getFields", .string("Http")),
+                integrationCallback("Document.complete"),
+            ], waitAtRequest: 2, wait: wait)
+        let handler = SourceHandler(fields: [Self.first])
+        let client = ZoteroDocumentIntegration(transport: { try await script.send($0) })
+        let pending = Task {
+            await client.run(
+                transactionID: Self.transactionID, command: .addEditCitation, documentID: Self.documentID,
+                authority: { .current }, handler: { try await handler.handle($0) })
+        }
+        await wait.untilEntered()
+        #expect(!(await client.beginApplicationTermination()))
+        // The delegate cancels its quit attempt after refusal. Neither call
+        // may revoke the citation or cancel its outstanding HTTP request.
+        await client.cancelApplicationTermination()
+        #expect(await script.requests.count == 2)
+        #expect(await handler.callbacks.isEmpty)
+        await wait.release()
+        let result = await pending.value
+        #expect(result.status == .cleanedUp && result.remoteCleanupConfirmed)
+        #expect(await handler.callbacks == [.getFields])
+        let requests = await script.requests
+        #expect(requests.count == 3)
+        #expect(try json(requests[2]) == .array([fieldJSON(Self.first)]))
+        #expect(await client.beginApplicationTermination())
+    }
+
+    @Test("Application quit closes citation admission and a failed or cancelled quit reopens it")
+    func cancelledApplicationTerminationReopensAdmission() async throws {
+        let script = Script([integrationCallback("Document.complete")])
+        let client = ZoteroDocumentIntegration(transport: { try await script.send($0) })
+        #expect(await client.beginApplicationTermination())
+        let refused = await client.run(
+            transactionID: Self.transactionID, command: .refresh, documentID: Self.documentID,
+            authority: {
+                Issue.record("A quitting application must refuse before consulting document authority")
+                return .current
+            }, handler: { _ in .none })
+        #expect(refused.status == .unavailable)
+        #expect(!refused.remoteCleanupConfirmed && refused.callbackCount == 0)
+        #expect(await script.requests.isEmpty)
+
+        // Both a cancelled quit and a later save failure use this release;
+        // the integration adapter does not own their application policy.
+        await client.cancelApplicationTermination()
+        let resumed = await client.run(
+            transactionID: "after-refused-quit", command: .refresh, documentID: Self.documentID,
+            authority: { .current }, handler: { _ in .none })
+        #expect(resumed.status == .cleanedUp && resumed.remoteCleanupConfirmed)
+        #expect(await script.requests.count == 1)
+        #expect(await client.beginApplicationTermination())
+    }
+
+    @Test("A quit admitted during document-authority suspension prevents a late citation request")
+    func applicationTerminationWinsPendingAuthority() async throws {
+        let wait = WaitPoint()
+        let script = Script([integrationCallback("Document.complete")])
+        let client = ZoteroDocumentIntegration(transport: { try await script.send($0) })
+        let pending = Task {
+            await client.run(
+                transactionID: Self.transactionID, command: .refresh, documentID: Self.documentID,
+                authority: {
+                    await wait.enter()
+                    return .current
+                }, handler: { _ in .none })
+        }
+        await wait.untilEntered()
+        #expect(await client.beginApplicationTermination())
+        await wait.release()
+        let refused = await pending.value
+        #expect(refused.status == .unavailable)
+        #expect(!refused.remoteCleanupConfirmed && refused.callbackCount == 0)
+        #expect(await script.requests.isEmpty)
+
+        await client.cancelApplicationTermination()
+        let resumed = await client.run(
+            transactionID: "after-authority-race", command: .refresh, documentID: Self.documentID,
+            authority: { .current }, handler: { _ in .none })
+        #expect(resumed.status == .cleanedUp && resumed.remoteCleanupConfirmed)
+        #expect(await script.requests.count == 1)
+    }
+
     @Test("A second window's cancellation cannot revoke the active transaction")
     func foreignLocalCancellation() async throws {
         let wait = WaitPoint()

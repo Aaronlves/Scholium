@@ -15187,8 +15187,8 @@
         }
         if (i2 == groupFrom + 1) {
           if (groupSize > maxChild) {
-            let only = children2[groupFrom];
-            divide(only.children, only.positions, 0, only.children.length, positions2[groupFrom] + offset);
+            let only2 = children2[groupFrom];
+            divide(only2.children, only2.positions, 0, only2.children.length, positions2[groupFrom] + offset);
             continue;
           }
           localChildren.push(children2[groupFrom]);
@@ -19293,6 +19293,184 @@
     { key: "Ctrl-m", mac: "Shift-Alt-m", run: toggleTabFocusMode }
   ].concat(standardKeymap);
 
+  // zotero-field-envelope.ts
+  var citationDestinationPrefix = "scholium-zotero:";
+  var compactCitationPrefix = "cite:";
+  var compactBibliographyPrefix = "<!--cite-bibliography:";
+  var compactBibliographyClose = "<!--/cite-bibliography-->";
+  var bibliographyPrefix = "<!--scholium-zotero-field:";
+  var bibliographyClose = "<!--/scholium-zotero-field-->";
+  var documentPrefix = "<!--scholium-zotero-document:";
+  var maximumEnvelopeLength = 256 * 1024;
+  var maximumFallbackLength = 64 * 1024;
+  var maximumFields = 1024;
+  function encodeOpaque(value) {
+    if (/[\ud800-\udfff]/u.test(value)) throw new Error("Opaque state contains a lone surrogate.");
+    const bytes = new TextEncoder().encode(value);
+    const payload = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
+    if (payload.length > maximumEnvelopeLength) throw new Error("The citation state exceeds the supported source envelope size.");
+    return payload;
+  }
+  function decodeOpaque(value) {
+    if (value.length > maximumEnvelopeLength || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+      throw new Error("Invalid bounded base64 payload.");
+    }
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(atob(value), (char) => char.charCodeAt(0)));
+    if (encodeOpaque(decoded) !== value) throw new Error("Noncanonical encoded payload.");
+    return decoded;
+  }
+  function validFieldID(value) {
+    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
+  }
+  function decodeFieldPayload(payload, kind) {
+    const field = JSON.parse(decodeOpaque(payload));
+    if (!field || !validFieldID(field.id) || field.kind !== kind || typeof field.code !== "string" || typeof field.text !== "string" || Object.keys(field).some((key) => !["id", "kind", "code", "text"].includes(key))) {
+      throw new Error("Invalid or unsupported host field identity or payload.");
+    }
+    return { id: field.id, kind, code: field.code, text: field.text };
+  }
+  function fieldPayload(field) {
+    if (!validFieldID(field.id) || !["citation", "bibliography"].includes(field.kind) || typeof field.code !== "string" || typeof field.text !== "string") throw new Error("Invalid host field identity or payload.");
+    return encodeOpaque(JSON.stringify({ id: field.id, kind: field.kind, code: field.code, text: field.text }));
+  }
+  function isCitationDestination(destination) {
+    return /^(?:scholium-zotero|cite):/i.test(destination);
+  }
+  function citationLinkSource(raw) {
+    const boundary2 = raw.lastIndexOf("](");
+    if (!raw.startsWith("[") || boundary2 < 1 || !raw.endsWith(")")) return null;
+    const destination = raw.slice(boundary2 + 2, -1);
+    if (!isCitationDestination(destination)) return null;
+    if (!destination.startsWith(`${citationDestinationPrefix}1:`)) throw new Error("Unknown citation source envelope version.");
+    const field = decodeFieldPayload(destination.slice(`${citationDestinationPrefix}1:`.length), "citation");
+    const fallbackRange = { from: 1, to: boundary2 };
+    if (fallbackRange.to - fallbackRange.from > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary2))) {
+      throw new Error("Citation fallback must be bounded inline Markdown.");
+    }
+    return { field, fallbackRange };
+  }
+  function compactCitationLinkSource(raw) {
+    const boundary2 = raw.lastIndexOf("](");
+    if (!raw.startsWith("[") || boundary2 < 1 || !raw.endsWith(")")) return null;
+    const destination = raw.slice(boundary2 + 2, -1);
+    if (!destination.startsWith(compactCitationPrefix)) return null;
+    const id2 = destination.slice(compactCitationPrefix.length);
+    if (!validFieldID(id2) || boundary2 - 1 > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary2))) {
+      throw new Error("Invalid compact citation carrier.");
+    }
+    return { id: id2, fallbackRange: { from: 1, to: boundary2 } };
+  }
+  function validBibliographyStyle(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const style = value;
+    return Object.keys(style).sort().join(",") === "entrySpacing,firstLineIndent,indent,lineSpacing,tabStops" && [style.firstLineIndent, style.indent, style.lineSpacing, style.entrySpacing].every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5) && style.lineSpacing > 0 && style.entrySpacing >= 0 && Array.isArray(style.tabStops) && style.tabStops.length <= 64 && style.tabStops.every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5);
+  }
+  function validSignatures(value) {
+    return Array.isArray(value) && value.length <= maximumFields && value.every((field) => field && validFieldID(field.id) && typeof field.code === "string" && Object.keys(field).sort().join(",") === "code,id") && new Set(value.map((field) => field.id)).size === value.length;
+  }
+  function decodeDocumentPayload(payload) {
+    const value = JSON.parse(decodeOpaque(payload));
+    if (!value || typeof value.data !== "string" || Object.keys(value).some((key) => !["data", "bibliographyStyle", "acceptedFields"].includes(key)) || value.bibliographyStyle !== void 0 && !validBibliographyStyle(value.bibliographyStyle) || value.acceptedFields !== void 0 && !validSignatures(value.acceptedFields)) throw new Error("Invalid document source envelope.");
+    return value;
+  }
+  function encodeDocumentData(data2, bibliographyStyle = null, acceptedFields = null) {
+    if (typeof data2 !== "string" || bibliographyStyle !== null && !validBibliographyStyle(bibliographyStyle) || acceptedFields !== null && !validSignatures(acceptedFields)) throw new Error("Invalid document source envelope.");
+    return `${documentPrefix}1:${encodeOpaque(JSON.stringify({
+      data: data2,
+      ...bibliographyStyle ? { bibliographyStyle } : {},
+      ...acceptedFields ? { acceptedFields } : {}
+    }))}-->`;
+  }
+  function isCompletedFieldCode(field) {
+    const prefix = field.kind === "citation" ? "ITEM CSL_CITATION " : "BIBL ";
+    if (!field.code.startsWith(prefix)) return false;
+    try {
+      const body = field.code.slice(prefix.length);
+      if (field.kind === "bibliography" && !body.endsWith(" CSL_BIBLIOGRAPHY")) return false;
+      const json = field.kind === "bibliography" ? body.slice(0, -" CSL_BIBLIOGRAPHY".length) : body;
+      const value = JSON.parse(json);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      if (field.kind === "bibliography") return true;
+      return Array.isArray(value.citationItems) && value.citationItems.length > 0 && value.citationItems.every((item) => item && typeof item === "object" && !Array.isArray(item) && (typeof item.id === "string" && item.id.length > 0 || typeof item.id === "number" && Number.isSafeInteger(item.id) && item.id > 0));
+    } catch {
+      return false;
+    }
+  }
+
+  // zotero-citation-state.ts
+  var maximumCitationDataBytes = 8 * 1024 * 1024;
+  var maximumOpaqueLength = 256 * 1024;
+  var bounded = (value, maximum) => typeof value === "string" && value.length <= maximum && !/[\ud800-\udfff]/u.test(value);
+  var only = (value, allowed) => Object.keys(value).every((key) => allowed.includes(key));
+  function validCitationData(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const data2 = value;
+    return data2.schemaVersion === 1 && only(data2, ["schemaVersion", "fields", "documentData", "bibliographyStyle", "acceptedFields"]) && Array.isArray(data2.fields) && data2.fields.length <= maximumFields && data2.fields.every((field) => field && validFieldID(field.id) && ["citation", "bibliography"].includes(field.kind) && only(field, ["id", "kind", "code", "text"]) && bounded(field.code, maximumOpaqueLength) && bounded(field.text, maximumFallbackLength)) && new Set(data2.fields.map((field) => field.id)).size === data2.fields.length && (data2.documentData === void 0 || bounded(data2.documentData, maximumOpaqueLength)) && (data2.bibliographyStyle === void 0 || validBibliographyStyle(data2.bibliographyStyle)) && (data2.acceptedFields === void 0 || Array.isArray(data2.acceptedFields) && data2.acceptedFields.length <= maximumFields && data2.acceptedFields.every((field) => field && only(field, ["id", "code"]) && validFieldID(field.id) && bounded(field.code, maximumOpaqueLength)) && new Set(data2.acceptedFields.map((field) => field.id)).size === data2.acceptedFields.length) && new TextEncoder().encode(JSON.stringify(data2)).byteLength <= maximumCitationDataBytes;
+  }
+  function validCitationSnapshot(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const snapshot = value;
+    const uuid = (id2) => typeof id2 === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id2);
+    const fingerprint = (value2) => value2 === void 0 || value2 && only(value2, ["sha256", "byteCount"]) && /^[0-9a-f]{64}$/.test(value2.sha256) && Number.isSafeInteger(value2.byteCount) && value2.byteCount >= 0;
+    return only(snapshot, ["noteID", "vaultID", "revision", "sourceFingerprint", "data", "status"]) && uuid(snapshot.noteID) && uuid(snapshot.vaultID) && fingerprint(snapshot.revision) && fingerprint(snapshot.sourceFingerprint) && ["absent", "available", "unresolved", "unsupported"].includes(snapshot.status) && (snapshot.data === void 0 || validCitationData(snapshot.data)) && (snapshot.status !== "available" || snapshot.data !== void 0 && snapshot.sourceFingerprint !== void 0) && (snapshot.status !== "absent" || snapshot.data === void 0 && snapshot.revision === void 0);
+  }
+  function citationDataEqual(left, right) {
+    if (left === right) return true;
+    if (!left || !right) return false;
+    return JSON.stringify([
+      left.schemaVersion,
+      left.fields.map((f) => [f.id, f.kind, f.code, f.text]),
+      left.documentData,
+      left.bibliographyStyle && [
+        left.bibliographyStyle.firstLineIndent,
+        left.bibliographyStyle.indent,
+        left.bibliographyStyle.lineSpacing,
+        left.bibliographyStyle.entrySpacing,
+        left.bibliographyStyle.tabStops
+      ],
+      left.acceptedFields?.map((f) => [f.id, f.code])
+    ]) === JSON.stringify([
+      right.schemaVersion,
+      right.fields.map((f) => [f.id, f.kind, f.code, f.text]),
+      right.documentData,
+      right.bibliographyStyle && [
+        right.bibliographyStyle.firstLineIndent,
+        right.bibliographyStyle.indent,
+        right.bibliographyStyle.lineSpacing,
+        right.bibliographyStyle.entrySpacing,
+        right.bibliographyStyle.tabStops
+      ],
+      right.acceptedFields?.map((f) => [f.id, f.code])
+    ]);
+  }
+  function citationSnapshotEqual(left, right) {
+    if (left === right) return true;
+    if (!left || !right) return false;
+    return left.noteID === right.noteID && left.vaultID === right.vaultID && left.status === right.status && left.revision?.sha256 === right.revision?.sha256 && left.revision?.byteCount === right.revision?.byteCount && left.sourceFingerprint?.sha256 === right.sourceFingerprint?.sha256 && left.sourceFingerprint?.byteCount === right.sourceFingerprint?.byteCount && citationDataEqual(left.data, right.data);
+  }
+  var setCitationSnapshot = StateEffect.define();
+  var setCitationData = StateEffect.define();
+  var citationState = StateField.define({
+    create: () => void 0,
+    update(value, transaction) {
+      for (const effect of transaction.effects) {
+        if (effect.is(setCitationSnapshot)) value = effect.value ? { baseline: effect.value, data: effect.value.data } : void 0;
+        if (effect.is(setCitationData)) {
+          if (!value) throw new Error("A standalone editor cannot own a citation companion.");
+          value = { ...value, data: effect.value };
+        }
+      }
+      return value;
+    },
+    toJSON: (value) => value ?? null,
+    fromJSON(value) {
+      if (value === null) return void 0;
+      if (!value || !only(value, ["baseline", "data"]) || !validCitationSnapshot(value.baseline) || value.data !== void 0 && !validCitationData(value.data)) throw new Error("Invalid recovered citation companion.");
+      return value;
+    }
+  });
+  var citationHistory = [citationState, invertedEffects.of((transaction) => transaction.effects.some((effect) => effect.is(setCitationData)) ? [setCitationData.of(transaction.startState.field(citationState)?.data)] : [])];
+
   // state.ts
   function normalizedDocumentText(text) {
     return text.replace(/\r\n/g, "\n");
@@ -19470,7 +19648,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 44;
+  var EDITOR_PROTOCOL_VERSION = 46;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -19583,7 +19761,7 @@
   function validRecoverySnapshot(value) {
     if (!value || typeof value !== "object") return false;
     const snapshot = value;
-    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES)) return false;
+    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot !== void 0 && !validCitationSnapshot(snapshot.citationSnapshot) || snapshot.citationData !== void 0 && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES)) return false;
     const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
     return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
   }
@@ -19633,7 +19811,7 @@
   function validOperation(operation) {
     switch (operation.type) {
       case "initialize":
-        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && validDialect(operation.dialect) && validInitialSelection(
+        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && (operation.citationSnapshot === void 0 || validCitationSnapshot(operation.citationSnapshot)) && validDialect(operation.dialect) && validInitialSelection(
           operation.initialSelection,
           operation.text.replaceAll("\r\n", "\n").length
         );
@@ -19669,7 +19847,7 @@
       case "restoreRecovery":
         return validRecoverySnapshot(operation.snapshot);
       case "acknowledgeCommittedSnapshot":
-        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.committedText === "string" && exactSourceFits(operation.committedText) && typeof operation.committedFingerprint === "string";
+        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.committedText === "string" && exactSourceFits(operation.committedText) && typeof operation.committedFingerprint === "string" && (operation.expectedCitationData === void 0 || validCitationData(operation.expectedCitationData)) && (operation.committedCitationSnapshot === void 0 || validCitationSnapshot(operation.committedCitationSnapshot));
       case "insertReference": {
         const selection = operation.selection;
         return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
@@ -19731,8 +19909,8 @@
       return false;
     }
   }
-  function rejected(requestID, generation, error) {
-    return { requestID, resultingGeneration: generation, sourceChanged: false, selections: [], accepted: false, error };
+  function rejected(requestID, generation, error, interactionRevision) {
+    return { requestID, resultingGeneration: generation, interactionRevision, sourceChanged: false, selections: [], accepted: false, error };
   }
 
   // performance.ts
@@ -19949,10 +20127,11 @@
     const capture = (command2) => {
       let detached = state;
       const endings = [];
+      const citations = [];
       for (let index = 0; ; index++) {
         let changed = false;
         if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
-          changed = transaction.docChanged;
+          changed = transaction.docChanged || transaction.effects.some((effect) => effect.is(setCitationData));
           transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
             remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
           });
@@ -19964,17 +20143,23 @@
         remainingBytes -= value?.length ?? 0;
         if (remainingBytes < 0) throw new Error("History is too large");
         endings.push(value);
+        const companion = detached.field(citationState, false)?.data ?? null;
+        remainingBytes -= new TextEncoder().encode(JSON.stringify(companion)).byteLength;
+        if (remainingBytes < 0) throw new Error("History is too large");
+        citations.push(companion);
       }
-      return endings;
+      return { endings, citations };
     };
     try {
       if (remainingBytes < 0) return void 0;
-      const undoLineEndings = capture(undoSelection);
-      const redoLineEndings = capture(redoSelection);
+      const undo2 = capture(undoSelection);
+      const redo2 = capture(redoSelection);
       const serialized = JSON.stringify({
-        state: state.toJSON({ history: historyField }),
-        undoLineEndings,
-        redoLineEndings
+        state: state.toJSON(state.field(citationState, false) ? { history: historyField, citations: citationState } : { history: historyField }),
+        undoLineEndings: undo2.endings,
+        redoLineEndings: redo2.endings,
+        undoCitations: undo2.citations,
+        redoCitations: redo2.citations
       });
       return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
     } catch {
@@ -19989,30 +20174,38 @@
     if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
       throw new Error("Invalid history line endings");
     }
-    let state = EditorState.fromJSON(payload.state, { extensions }, { history: historyField });
+    const validCitations = (value, count2) => Array.isArray(value) && value.length === count2 && value.every((snapshot) => snapshot === null || validCitationData(snapshot));
+    if (!validCitations(payload.undoCitations, payload.undoLineEndings.length) || !validCitations(payload.redoCitations, payload.redoLineEndings.length)) throw new Error("Invalid citation history");
+    let state = EditorState.fromJSON(payload.state, { extensions }, payload.state.citations ? { history: historyField, citations: citationState } : { history: historyField });
     if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
       throw new Error("History does not match the recovered source");
     }
     const recovery = new Compartment();
     let targetEndings;
+    let targetCitation;
     state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
-      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 ? null : {
-        effects: setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))
+      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 && targetCitation === void 0 ? null : {
+        effects: [
+          ...targetEndings === void 0 ? [] : [setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))],
+          ...targetCitation === void 0 || JSON.stringify(transaction.startState.field(citationState, false)?.data ?? null) === JSON.stringify(targetCitation) ? [] : [setCitationData.of(targetCitation ?? void 0)]
+        ]
       })
     ))], annotations: Transaction.addToHistory.of(false) }).state;
-    function replay(command2, endings) {
+    function replay(command2, endings, citation) {
       targetEndings = endings ?? void 0;
+      targetCitation = citation;
       try {
         if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
           state = transaction.state;
         } }))) throw new Error("History could not be restored");
       } finally {
         targetEndings = void 0;
+        targetCitation = void 0;
       }
     }
-    for (const endings of payload.redoLineEndings) replay(redoSelection, endings);
+    payload.redoLineEndings.forEach((endings, index) => replay(redoSelection, endings, payload.redoCitations[index]));
     for (const _ of payload.redoLineEndings) replay(undoSelection);
-    for (const endings of payload.undoLineEndings) replay(undoSelection, endings);
+    payload.undoLineEndings.forEach((endings, index) => replay(undoSelection, endings, payload.undoCitations[index]));
     for (const _ of payload.undoLineEndings) replay(redoSelection);
     state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
     if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
@@ -30286,96 +30479,6 @@ ${blankRow(table.position.columnCount)}`;
     decorations: (value) => value.decorations
   });
 
-  // zotero-field-envelope.ts
-  var citationDestinationPrefix = "scholium-zotero:";
-  var bibliographyPrefix = "<!--scholium-zotero-field:";
-  var bibliographyClose = "<!--/scholium-zotero-field-->";
-  var documentPrefix = "<!--scholium-zotero-document:";
-  var maximumEnvelopeLength = 256 * 1024;
-  var maximumFallbackLength = 64 * 1024;
-  var maximumFields = 1024;
-  function encodeOpaque(value) {
-    if (/[\ud800-\udfff]/u.test(value)) throw new Error("Opaque state contains a lone surrogate.");
-    const bytes = new TextEncoder().encode(value);
-    const payload = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
-    if (payload.length > maximumEnvelopeLength) throw new Error("The citation state exceeds the supported source envelope size.");
-    return payload;
-  }
-  function decodeOpaque(value) {
-    if (value.length > maximumEnvelopeLength || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
-      throw new Error("Invalid bounded base64 payload.");
-    }
-    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(atob(value), (char) => char.charCodeAt(0)));
-    if (encodeOpaque(decoded) !== value) throw new Error("Noncanonical encoded payload.");
-    return decoded;
-  }
-  function validFieldID(value) {
-    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
-  }
-  function decodeFieldPayload(payload, kind) {
-    const field = JSON.parse(decodeOpaque(payload));
-    if (!field || !validFieldID(field.id) || field.kind !== kind || typeof field.code !== "string" || typeof field.text !== "string" || Object.keys(field).some((key) => !["id", "kind", "code", "text"].includes(key))) {
-      throw new Error("Invalid or unsupported host field identity or payload.");
-    }
-    return { id: field.id, kind, code: field.code, text: field.text };
-  }
-  function fieldPayload(field) {
-    if (!validFieldID(field.id) || !["citation", "bibliography"].includes(field.kind) || typeof field.code !== "string" || typeof field.text !== "string") throw new Error("Invalid host field identity or payload.");
-    return encodeOpaque(JSON.stringify({ id: field.id, kind: field.kind, code: field.code, text: field.text }));
-  }
-  function isCitationDestination(destination) {
-    return /^scholium-zotero:/i.test(destination);
-  }
-  function citationLinkSource(raw) {
-    const boundary2 = raw.lastIndexOf("](");
-    if (!raw.startsWith("[") || boundary2 < 1 || !raw.endsWith(")")) return null;
-    const destination = raw.slice(boundary2 + 2, -1);
-    if (!isCitationDestination(destination)) return null;
-    if (!destination.startsWith(`${citationDestinationPrefix}1:`)) throw new Error("Unknown citation source envelope version.");
-    const field = decodeFieldPayload(destination.slice(`${citationDestinationPrefix}1:`.length), "citation");
-    const fallbackRange = { from: 1, to: boundary2 };
-    if (fallbackRange.to - fallbackRange.from > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary2))) {
-      throw new Error("Citation fallback must be bounded inline Markdown.");
-    }
-    return { field, fallbackRange };
-  }
-  function validBibliographyStyle(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const style = value;
-    return Object.keys(style).sort().join(",") === "entrySpacing,firstLineIndent,indent,lineSpacing,tabStops" && [style.firstLineIndent, style.indent, style.lineSpacing, style.entrySpacing].every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5) && style.lineSpacing > 0 && style.entrySpacing >= 0 && Array.isArray(style.tabStops) && style.tabStops.length <= 64 && style.tabStops.every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5);
-  }
-  function validSignatures(value) {
-    return Array.isArray(value) && value.length <= maximumFields && value.every((field) => field && validFieldID(field.id) && typeof field.code === "string" && Object.keys(field).sort().join(",") === "code,id") && new Set(value.map((field) => field.id)).size === value.length;
-  }
-  function decodeDocumentPayload(payload) {
-    const value = JSON.parse(decodeOpaque(payload));
-    if (!value || typeof value.data !== "string" || Object.keys(value).some((key) => !["data", "bibliographyStyle", "acceptedFields"].includes(key)) || value.bibliographyStyle !== void 0 && !validBibliographyStyle(value.bibliographyStyle) || value.acceptedFields !== void 0 && !validSignatures(value.acceptedFields)) throw new Error("Invalid document source envelope.");
-    return value;
-  }
-  function encodeDocumentData(data2, bibliographyStyle = null, acceptedFields = null) {
-    if (typeof data2 !== "string" || bibliographyStyle !== null && !validBibliographyStyle(bibliographyStyle) || acceptedFields !== null && !validSignatures(acceptedFields)) throw new Error("Invalid document source envelope.");
-    return `${documentPrefix}1:${encodeOpaque(JSON.stringify({
-      data: data2,
-      ...bibliographyStyle ? { bibliographyStyle } : {},
-      ...acceptedFields ? { acceptedFields } : {}
-    }))}-->`;
-  }
-  function isCompletedFieldCode(field) {
-    const prefix = field.kind === "citation" ? "ITEM CSL_CITATION " : "BIBL ";
-    if (!field.code.startsWith(prefix)) return false;
-    try {
-      const body = field.code.slice(prefix.length);
-      if (field.kind === "bibliography" && !body.endsWith(" CSL_BIBLIOGRAPHY")) return false;
-      const json = field.kind === "bibliography" ? body.slice(0, -" CSL_BIBLIOGRAPHY".length) : body;
-      const value = JSON.parse(json);
-      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-      if (field.kind === "bibliography") return true;
-      return Array.isArray(value.citationItems) && value.citationItems.length > 0 && value.citationItems.every((item) => item && typeof item === "object" && !Array.isArray(item) && (typeof item.id === "string" && item.id.length > 0 || typeof item.id === "number" && Number.isSafeInteger(item.id) && item.id > 0));
-    } catch {
-      return false;
-    }
-  }
-
   // markdown-fragment.ts
   var inlineMarkerNodes = /* @__PURE__ */ new Set([
     "EmphasisMark",
@@ -30455,7 +30558,7 @@ ${blankRow(table.position.columnCount)}`;
     if (cursor.name === "Link") {
       if (isCitationDestination(raw.slice(raw.lastIndexOf("](") + 2, -1).trim().replace(/^<|>$/g, ""))) {
         try {
-          const citation = citationLinkSource(raw);
+          const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);
           if (!citation) throw new Error("Invalid citation carrier.");
           const span2 = document2.createElement("span");
           span2.className = "cm-live-citation";
@@ -31137,8 +31240,16 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function markdownVisibleText(markdown2) {
     return renderVisibleMarkdown(markdown2).textContent ?? "";
   }
-  function fieldEnvelope(field, fallback, newline3 = "\n") {
+  function fieldEnvelope(field, fallback, newline3 = "\n", managed = false) {
     if (fallback.length > maximumFallbackLength) throw new Error("The citation fallback exceeds the supported size.");
+    if (managed) {
+      if (!validFieldID(field.id)) throw new Error("Invalid host field identity.");
+      if (field.kind === "citation") {
+        if (/[\r\n]/.test(fallback)) throw new Error("Citation fields require inline Markdown.");
+        return `[${fallback}](${compactCitationPrefix}${field.id})`;
+      }
+      return `${compactBibliographyPrefix}${field.id}-->${newline3}${newline3}${fallback}${newline3}${newline3}${compactBibliographyClose}`;
+    }
     const payload = fieldPayload(field);
     if (field.kind === "citation") {
       if (/[\r\n]/.test(fallback)) throw new Error("Citation fields require inline Markdown.");
@@ -31168,7 +31279,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
       if (["Comment", "CommentBlock"].includes(node.name)) {
         const raw = normalized2.slice(node.from, node.to);
-        if (raw.startsWith(bibliographyPrefix) || raw.startsWith(documentPrefix) || raw.startsWith(bibliographyClose)) result.comments.push(map(node));
+        if (raw.startsWith(bibliographyPrefix) || raw.startsWith(documentPrefix) || raw.startsWith(bibliographyClose) || raw.startsWith(compactBibliographyPrefix) || raw.startsWith(compactBibliographyClose)) result.comments.push(map(node));
         else result.ignored.push(map(node));
         return false;
       }
@@ -31185,7 +31296,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         result.ignored.push(map(node));
         return false;
       }
-      if (node.name === "Link") {
+      if (["Link", "Autolink", "Image"].includes(node.name)) {
         let reserved = false;
         for (let child = node.node.firstChild; child; child = child.nextSibling) {
           if (child.name === "URL" && isCitationDestination(normalized2.slice(child.from, child.to).replace(/^<|>$/g, ""))) reserved = true;
@@ -31200,7 +31311,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
       if (unsupportedNodeNames.has(node.name)) {
         result.unsupported.push(map(node));
-        return false;
       }
     } });
     for (const opening of htmlStack) result.ignored.push(map({ from: opening.from, to: normalized2.length }));
@@ -31216,11 +31326,18 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const prefix = source.slice(lineFrom, range.from), suffix = source.slice(range.to, lineTo);
     return (prefix === "" || lineFrom === 0 && prefix === "\uFEFF") && (suffix === "" || following >= 0 && suffix === "\r");
   }
-  function projectFields(source) {
+  function projectFields(source, companion) {
+    const managed = companion !== void 0;
     const fields = [], diagnostics = [];
     let documentData = null, documentRange = null;
     let bibliographyStyle = null, acceptedFields = null;
     const contexts = parserContexts(source);
+    if (companion && !validCitationData(companion)) throw new Error("Invalid citation companion.");
+    if (companion) {
+      documentData = companion.documentData ?? null;
+      bibliographyStyle = companion.bibliographyStyle ?? null;
+      acceptedFields = companion.acceptedFields ?? null;
+    }
     const diagnose = (kind, range, message) => diagnostics.push({ ...range, kind, message });
     const protectedField = (range) => [...contexts.ignored, ...contexts.unsupported].some((other) => intersects2(range, other));
     const append = (field, range, fallbackRange) => {
@@ -31250,9 +31367,18 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     for (const range of contexts.links) {
       if (contexts.ignored.some((other) => intersects2(range, other))) continue;
       try {
-        const parsed = citationLinkSource(source.slice(range.from, range.to));
-        if (!parsed) throw new Error("Invalid citation link carrier.");
-        append(parsed.field, range, { from: range.from + parsed.fallbackRange.from, to: range.from + parsed.fallbackRange.to });
+        const raw = source.slice(range.from, range.to);
+        if (managed) {
+          const parsed = compactCitationLinkSource(raw);
+          if (!parsed) throw new Error("Embedded citation requires checked conversion.");
+          const field = companion?.fields.find((field2) => field2.id === parsed.id && field2.kind === "citation");
+          if (!field) throw new Error("Citation companion is missing this occurrence.");
+          append(field, range, { from: range.from + parsed.fallbackRange.from, to: range.from + parsed.fallbackRange.to });
+        } else {
+          const parsed = citationLinkSource(raw);
+          if (!parsed) throw new Error("Invalid citation link carrier.");
+          append(parsed.field, range, { from: range.from + parsed.fallbackRange.from, to: range.from + parsed.fallbackRange.to });
+        }
       } catch (error) {
         malformed(range, error);
       }
@@ -31266,6 +31392,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         continue;
       }
       try {
+        if (managed && raw.startsWith(documentPrefix)) throw new Error("Embedded document data requires checked conversion.");
         if (raw.startsWith(documentPrefix)) {
           const match = /^<!--scholium-zotero-document:1:([A-Za-z0-9+/=]*)-->$/.exec(raw);
           if (!match) throw new Error("Unknown document envelope version.");
@@ -31282,13 +31409,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           bibliographyStyle = data2.bibliographyStyle ?? null;
           acceptedFields = data2.acceptedFields ?? null;
           documentRange = comment2;
-        } else if (raw === bibliographyClose) {
+        } else if (raw === bibliographyClose || raw === compactBibliographyClose) {
           diagnose("malformed-envelope", comment2, "Bibliography close marker has no matching opening marker.");
         } else {
-          const match = /^<!--scholium-zotero-field:1:([A-Za-z0-9+/=]*)-->$/.exec(raw);
+          const match = managed ? /^<!--cite-bibliography:([A-Za-z][A-Za-z0-9_-]{0,127})-->$/.exec(raw) : /^<!--scholium-zotero-field:1:([A-Za-z0-9+/=]*)-->$/.exec(raw);
           if (!match) throw new Error("Unknown bibliography envelope version.");
-          const field = decodeFieldPayload(match[1], "bibliography");
-          const close = contexts.comments.find((other) => other.from > comment2.to && source.slice(other.from, other.to) === bibliographyClose);
+          const field = managed ? companion?.fields.find((field2) => field2.id === match[1] && field2.kind === "bibliography") : decodeFieldPayload(match[1], "bibliography");
+          if (!field) throw new Error("Bibliography companion is missing this occurrence.");
+          const close = contexts.comments.find((other) => other.from > comment2.to && source.slice(other.from, other.to) === (managed ? compactBibliographyClose : bibliographyClose));
           if (!close || !markerOnly(source, close)) throw new Error("Missing bibliography close marker.");
           const nested = contexts.comments.some((other) => other.from > comment2.to && other.from < close.from);
           if (nested) throw new Error("Nested metadata markers cannot confer bibliography authority.");
@@ -31304,7 +31432,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
     }
     const covered = [...contexts.links, ...contexts.comments, ...consumed];
-    for (const match of source.matchAll(/scholium-zotero:|<!--scholium-zotero-(?:field|document):/gi)) {
+    for (const match of source.matchAll(/scholium-zotero:|<!--(?:scholium-zotero-(?:field|document)|cite-bibliography):/gi)) {
       const from = match.index, range = { from, to: from + match[0].length };
       if ([...contexts.ignored, ...contexts.escaped, ...covered].some((other) => from >= other.from && from < other.to)) continue;
       const unsupported = contexts.unsupported.find((other) => from >= other.from && from < other.to);
@@ -31336,35 +31464,46 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     const current = fields.map(({ id: id2, code: code2 }) => ({ id: id2, code: code2 }));
     const citationStateStale = acceptedFields === null ? fields.length > 0 : JSON.stringify(acceptedFields) !== JSON.stringify(current);
-    return { source, fields, documentData, bibliographyStyle, acceptedFields, citationStateStale, documentRange, diagnostics };
+    return { source, ...managed ? { companion } : {}, fields, documentData, bibliographyStyle, acceptedFields, citationStateStale, documentRange, diagnostics };
   }
   var stateCatalogs = /* @__PURE__ */ new WeakMap();
   function projectFieldsForState(state) {
     const mirror = state.field(exactSourceState, false), owner = mirror ?? state.doc;
+    const snapshot = state.field(citationState, false);
     const existing = stateCatalogs.get(owner);
-    if (existing) return existing;
+    if (existing && existing.snapshot === snapshot) return existing.projection;
     let reserved = false, carry = "";
     for (const chunk of state.doc.iter()) {
       const scanned = carry + chunk;
-      if (/scholium-zotero/i.test(scanned)) {
+      if (/scholium-zotero|cite:|cite-bibliography/i.test(scanned)) {
         reserved = true;
         break;
       }
-      carry = scanned.slice(-14);
+      carry = scanned.slice(-32);
     }
-    const projection = reserved ? projectFields(mirror?.text ?? state.doc.toString()) : {
+    const source = () => mirror?.text ?? state.doc.toString();
+    const projection = reserved ? projectFields(source(), snapshot?.data ?? (snapshot && !/scholium-zotero/i.test(source()) ? null : void 0)) : {
       get source() {
-        return mirror?.text ?? state.doc.toString();
+        return source();
       },
+      ...snapshot ? { companion: snapshot.data ?? null } : {},
       fields: [],
-      documentData: null,
-      bibliographyStyle: null,
-      acceptedFields: null,
-      citationStateStale: false,
+      documentData: snapshot?.data?.documentData ?? null,
+      bibliographyStyle: snapshot?.data?.bibliographyStyle ?? null,
+      acceptedFields: snapshot?.data?.acceptedFields ?? null,
+      citationStateStale: Boolean(snapshot?.data?.acceptedFields?.length),
       documentRange: null,
       diagnostics: []
     };
-    stateCatalogs.set(owner, projection);
+    if (snapshot && ["unsupported", "unresolved"].includes(snapshot.baseline.status)) {
+      projection.diagnostics = [...projection.diagnostics, {
+        kind: "unsupported-envelope",
+        from: 0,
+        to: state.doc.length,
+        message: "The citation companion is unavailable for this source revision."
+      }];
+    }
+    stateCatalogs.set(owner, { snapshot, projection });
     return projection;
   }
   function fieldMetadataRanges(projection) {
@@ -31373,7 +31512,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     for (const field of projection.fields) {
       if (field.kind !== "bibliography") continue;
       ranges.push({ from: field.range.from, to: projection.source.indexOf("-->", field.range.from) + 3 });
-      ranges.push({ from: field.range.to - bibliographyClose.length, to: field.range.to });
+      ranges.push({ from: field.range.to - (projection.companion !== void 0 ? compactBibliographyClose.length : bibliographyClose.length), to: field.range.to });
     }
     return ranges;
   }
@@ -31395,6 +31534,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
   function stageFieldOperation(projection, operation) {
     if (projection.diagnostics.length) throw new Error("The source contains unresolved citation field diagnostics.");
+    const managed = projection.companion !== void 0;
+    const companionFields = projection.fields.map(({ id: id2, kind, code: code2, cachedText: text }) => ({ id: id2, kind, code: code2, text }));
     const source = projection.source, changes = [], touched = /* @__PURE__ */ new Set();
     const replace2 = (range, insert2, first = false) => {
       const expected = source.slice(range.from, range.to);
@@ -31413,6 +31554,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         throw new Error("Field deletion and unlinking cannot also replace code or text.");
       }
       if (update.delete || update.unlink) {
+        companionFields.splice(companionFields.findIndex((value) => value.id === field.id), 1);
         replace2(field.range, update.unlink ? source.slice(field.fallbackRange.from, field.fallbackRange.to) : "");
         continue;
       }
@@ -31421,11 +31563,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const fallback = update.text === void 0 ? source.slice(field.fallbackRange.from, field.fallbackRange.to) : vendorTextToMarkdown(update.text, newline3);
       let kind = code2.startsWith("BIBL ") ? "bibliography" : code2.startsWith("ITEM CSL_CITATION ") ? "citation" : field.kind;
       if (kind === "citation" && /[\r\n]/.test(fallback) && update.text === void 0) kind = field.kind;
-      let encoded = fieldEnvelope({ id: field.id, kind, code: code2, text: cachedText }, fallback, newline3);
+      const replacementField = { id: field.id, kind, code: code2, text: cachedText };
+      companionFields[companionFields.findIndex((value) => value.id === field.id)] = replacementField;
+      let encoded = fieldEnvelope(replacementField, fallback, newline3, managed);
       if (field.kind !== "bibliography" && kind === "bibliography") encoded = blockInsertion(source, field.range, encoded, newline3);
       replace2(field.range, encoded);
     }
-    const contexts = parserContexts(source), ids = new Set(projection.fields.map((field) => field.id));
+    const contexts = parserContexts(source), ids = new Set((projection.companion?.fields ?? projection.fields).map((field) => field.id));
     for (const insertion of operation.insertions ?? []) {
       if (ids.has(insertion.field.id)) throw new Error("Insertion would duplicate a host occurrence ID.");
       ids.add(insertion.field.id);
@@ -31436,7 +31580,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       if (protectedRanges.some((other) => range.from >= other.from && range.from < other.to || range.to > range.from && intersects2(range, other))) throw new Error("Insertion is in a protected source context.");
       if (projection.fields.some((field) => intersects2(range, field.range) || range.from > field.range.from && range.from < field.range.to) || projection.documentRange && (intersects2(range, projection.documentRange) || range.from > projection.documentRange.from && range.from < projection.documentRange.to)) throw new Error("Insertion would split source-owned field metadata.");
       const newline3 = preferredNewline(source, range.from);
-      let encoded = encodeField(insertion.field, newline3);
+      companionFields.push({ ...insertion.field });
+      let encoded = managed ? fieldEnvelope(insertion.field, vendorTextToMarkdown(insertion.field.text, newline3), newline3, true) : encodeField(insertion.field, newline3);
       if (insertion.field.kind === "bibliography") encoded = blockInsertion(source, range, encoded, newline3);
       replace2(range, encoded);
     }
@@ -31446,7 +31591,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       return candidate2;
     };
     changes.sort((a, b) => a.from - b.from || a.to - b.to);
-    const candidateFields = projectFields(apply(changes));
+    const citationData = managed ? {
+      schemaVersion: 1,
+      fields: companionFields,
+      ...projection.documentData !== null ? { documentData: projection.documentData } : {},
+      ...projection.bibliographyStyle ? { bibliographyStyle: projection.bibliographyStyle } : {},
+      ...projection.acceptedFields ? { acceptedFields: projection.acceptedFields } : {}
+    } : void 0;
+    const candidateFields = projectFields(apply(changes), citationData);
     if (candidateFields.diagnostics.length) throw new Error("The staged source contains unresolved citation diagnostics.");
     const expectedIDs = projection.fields.filter((field) => !(operation.updates ?? []).some((update) => update.id === field.id && (update.delete || update.unlink))).map((field) => field.id);
     expectedIDs.push(...(operation.insertions ?? []).map((insertion) => insertion.field.id));
@@ -31458,7 +31610,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     const data2 = operation.documentData ?? projection.documentData;
     const style = operation.bibliographyStyle ?? projection.bibliographyStyle;
-    if (operation.documentData !== void 0 && operation.documentData !== projection.documentData || operation.bibliographyStyle !== void 0 && JSON.stringify(style) !== JSON.stringify(projection.bibliographyStyle) || operation.acceptCurrentFields && JSON.stringify(accepted) !== JSON.stringify(projection.acceptedFields)) {
+    if (citationData) {
+      citationData.fields = candidateFields.fields.map(({ id: id2, kind, code: code2, cachedText: text }) => ({ id: id2, kind, code: code2, text }));
+      if (data2 !== null) citationData.documentData = data2;
+      if (style !== null) citationData.bibliographyStyle = style;
+      if (accepted !== null) citationData.acceptedFields = accepted;
+      if (!validCitationData(citationData)) throw new Error("The citation companion exceeds its supported format or size.");
+    }
+    if (!managed && (operation.documentData !== void 0 && operation.documentData !== projection.documentData || operation.bibliographyStyle !== void 0 && JSON.stringify(style) !== JSON.stringify(projection.bibliographyStyle) || operation.acceptCurrentFields && JSON.stringify(accepted) !== JSON.stringify(projection.acceptedFields))) {
       if (data2 === null) throw new Error("Citation acceptance and bibliography style require source-owned Zotero document data.");
       const encoded = encodeDocumentData(data2, style, accepted);
       if (projection.documentRange) replace2(projection.documentRange, encoded);
@@ -31486,16 +31645,57 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     const candidate = apply(merged);
     if (!exactSourceFits(candidate)) throw new Error("The citation command exceeds the supported Markdown source size.");
-    const projected = projectFields(candidate);
+    const projected = projectFields(candidate, citationData);
     if (projected.diagnostics.length || projected.fields.length !== candidateFields.fields.length) throw new Error("The final source is not a valid citation projection.");
     if (operation.documentData !== void 0 && projected.documentData !== operation.documentData) throw new Error("The document state is not recognized in its source context.");
     if (operation.bibliographyStyle !== void 0 && JSON.stringify(projected.bibliographyStyle) !== JSON.stringify(operation.bibliographyStyle)) throw new Error("The bibliography style is not recognized in its source context.");
     if (operation.acceptCurrentFields && projected.citationStateStale) throw new Error("The citation acceptance signature does not match source.");
-    return { expectedSource: source, source: candidate, changes: merged };
+    return {
+      expectedSource: source,
+      source: candidate,
+      changes: merged,
+      ...managed ? { expectedCitationData: projection.companion, citationData } : {}
+    };
+  }
+  function convertEmbeddedFields(source) {
+    const projection = projectFields(source);
+    if (projection.diagnostics.length) throw new Error("Embedded citation fields require source recovery.");
+    const citationData = {
+      schemaVersion: 1,
+      fields: projection.fields.map(({ id: id2, kind, code: code2, cachedText: text }) => ({ id: id2, kind, code: code2, text })),
+      ...projection.documentData !== null ? { documentData: projection.documentData } : {},
+      ...projection.bibliographyStyle ? { bibliographyStyle: projection.bibliographyStyle } : {},
+      ...projection.acceptedFields ? { acceptedFields: projection.acceptedFields } : {}
+    };
+    if (!validCitationData(citationData)) throw new Error("Invalid converted citation companion.");
+    const changes = projection.fields.flatMap((field) => {
+      if (field.kind === "bibliography") {
+        const open = { from: field.range.from, to: source.indexOf("-->", field.range.from) + 3 };
+        const close = { from: field.range.to - bibliographyClose.length, to: field.range.to };
+        return [
+          { ...open, expected: source.slice(open.from, open.to), insert: `${compactBibliographyPrefix}${field.id}-->` },
+          { ...close, expected: source.slice(close.from, close.to), insert: compactBibliographyClose }
+        ];
+      }
+      const destination = { from: field.fallbackRange.to + 2, to: field.range.to - 1 };
+      return [{ ...destination, expected: source.slice(destination.from, destination.to), insert: `${compactCitationPrefix}${field.id}` }];
+    });
+    if (projection.documentRange) changes.push({
+      ...projection.documentRange,
+      expected: source.slice(projection.documentRange.from, projection.documentRange.to),
+      insert: ""
+    });
+    changes.sort((a, b) => a.from - b.from);
+    let candidate = source;
+    for (const change of [...changes].reverse()) candidate = candidate.slice(0, change.from) + change.insert + candidate.slice(change.to);
+    if (projectFields(candidate, citationData).diagnostics.length) throw new Error("Converted citation source is invalid.");
+    return { expectedSource: source, source: candidate, changes, expectedCitationData: null, citationData };
   }
   function fieldOperationTransaction(state, operation) {
     const source = state.field(exactSourceState).text;
     if (source !== operation.expectedSource) return null;
+    const snapshot = state.field(citationState, false);
+    if (operation.expectedCitationData !== void 0 && (!snapshot || !["available", "absent"].includes(snapshot.baseline.status) || !citationDataEqual(snapshot.data, operation.expectedCitationData ?? void 0) || !operation.citationData || !validCitationData(operation.citationData))) return null;
     let candidate = source, previous = -1;
     for (const change of operation.changes) {
       if (!boundary(source, change.from) || !boundary(source, change.to) || change.from < previous || change.to < change.from) return null;
@@ -31504,7 +31704,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     for (const change of [...operation.changes].reverse()) candidate = candidate.slice(0, change.from) + change.insert + candidate.slice(change.to);
     if (candidate !== operation.source) return null;
     let shift2 = 0;
-    const effects = [], changes = [];
+    const effects = operation.citationData && snapshot ? [setCitationData.of(operation.citationData)] : [];
+    const changes = [];
     for (const change of operation.changes) {
       if (source.slice(change.from, change.to) !== change.expected) return null;
       const from = normalizedDocumentText(source.slice(0, change.from)).length;
@@ -31603,6 +31804,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var ZoteroMarkdownTransaction = class _ZoteroMarkdownTransaction {
     originalSource;
     candidate;
+    originalCitationSnapshot;
+    originalCitationData;
+    candidateCitationData;
+    managed;
     aggregate;
     capturedSelection;
     captureContext;
@@ -31615,6 +31820,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     inserted = false;
     cancelledInsertion = false;
     targetWritten = false;
+    vendorWritten = false;
     observedFields = false;
     closed = false;
     cancelled = false;
@@ -31625,7 +31831,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       if (!transactionIdentifier(context.transactionID) || !commands.has(context.command) || context.composing || !Number.isSafeInteger(context.interactionRevision) || context.interactionRevision < 0 || !Number.isSafeInteger(context.compositionRevision) || context.compositionRevision < 0 || !["livePreview", "source"].includes(context.mode) || state.selection.ranges.length !== 1) throw new Error("Citation capture is unavailable.");
       this.captureContext = { ...context, referenceRange: context.referenceRange ? { ...context.referenceRange } : void 0 };
       this.originalSource = this.candidate = state.field(exactSourceState).text;
-      const projection = projectFields(this.originalSource);
+      const snapshot = state.field(citationState, false);
+      this.originalCitationSnapshot = snapshot?.baseline;
+      this.managed = snapshot !== void 0;
+      if (snapshot && !["available", "absent"].includes(snapshot.baseline.status)) throw new Error("Citation companion requires recovery.");
+      this.originalCitationData = this.candidateCitationData = snapshot?.data;
+      const embedded = this.managed && !snapshot?.data;
+      const projection = projectFields(this.originalSource, embedded ? void 0 : this.candidateCitationData);
       if (projection.diagnostics.length) throw new Error("Citation fields require source recovery.");
       this.aggregate = ChangeSet.empty(this.originalSource.length);
       const selection = state.selection.main;
@@ -31647,13 +31859,20 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         this.insertionPoint = exactFrom;
         this.replacement = { to: exactTo, expected: reference.expected };
       }
-      this.newFieldID = "host_" + boundedUUID().replaceAll("-", "");
+      this.newFieldID = (this.managed ? "c" : "host_") + boundedUUID().replaceAll("-", "");
+      if (embedded) this.applyPlan(convertEmbeddedFields(this.originalSource));
     }
     current(state, context) {
-      return !this.closed && !context.composing && context.transactionID === this.captureContext.transactionID && context.mode === this.captureContext.mode && context.interactionRevision === this.captureContext.interactionRevision && context.compositionRevision === this.captureContext.compositionRevision && state.field(exactSourceState).text === this.originalSource && state.selection.ranges.length === 1 && state.selection.main.anchor === this.capturedSelection.anchor && state.selection.main.head === this.capturedSelection.head;
+      return !this.closed && !context.composing && context.transactionID === this.captureContext.transactionID && context.mode === this.captureContext.mode && context.interactionRevision === this.captureContext.interactionRevision && context.compositionRevision === this.captureContext.compositionRevision && state.field(exactSourceState).text === this.originalSource && (!this.managed || ["available", "absent"].includes(state.field(citationState, false)?.baseline.status ?? "")) && state.field(citationState, false)?.baseline.noteID === this.originalCitationSnapshot?.noteID && state.field(citationState, false)?.baseline.vaultID === this.originalCitationSnapshot?.vaultID && citationDataEqual(state.field(citationState, false)?.data, this.originalCitationData) && state.selection.ranges.length === 1 && state.selection.main.anchor === this.capturedSelection.anchor && state.selection.main.head === this.capturedSelection.head;
     }
-    stage(operation) {
-      const planned = stageFieldOperation(projectFields(this.candidate), operation);
+    projection() {
+      return projectFields(this.candidate, this.managed ? this.candidateCitationData ?? null : void 0);
+    }
+    stageVendorWrite(operation) {
+      this.applyPlan(stageFieldOperation(this.projection(), operation));
+      this.vendorWritten = true;
+    }
+    applyPlan(planned) {
       const change = ChangeSet.of(planned.changes.map((range) => ({
         from: range.from,
         to: range.to,
@@ -31666,11 +31885,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (this.replacement) this.replacement = { ...this.replacement, to: change.mapPos(this.replacement.to, 1) };
       }
       this.candidate = planned.source;
+      if (this.managed) this.candidateCitationData = planned.citationData;
     }
     applyCallback(state, context, callback) {
       try {
         if (!this.current(state, context) || !validZoteroCallback(callback)) throw new Error("Citation transaction has lost editor authority.");
-        const projection = projectFields(this.candidate);
+        const projection = this.projection();
         if (projection.diagnostics.length) throw new Error("Citation fields require source recovery.");
         const field = (id2) => {
           const value = projection.fields.find((field2) => field2.id === id2);
@@ -31683,16 +31903,15 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             return { kind: "string", value: projection.documentData ?? "" };
           case "setDocumentData":
             assertSupportedDocumentData(callback.value);
-            this.stage({ documentData: callback.value });
+            this.stageVendorWrite({ documentData: callback.value });
             return { kind: "none" };
           case "setBibliographyStyle":
-            this.stage({ bibliographyStyle: callback.style });
+            this.stageVendorWrite({ bibliographyStyle: callback.style });
             return { kind: "none" };
           case "getFields":
             this.observedFields = true;
             return { kind: "fields", value: projection.fields.map(replyField) };
           case "cursorInField": {
-            this.observedFields = true;
             const value = projection.fields.find((field2) => field2.id === this.cursorFieldID);
             return { kind: "field", value: value ? replyField(value) : null };
           }
@@ -31710,7 +31929,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             }
           case "insertField": {
             if (this.inserted || this.cursorFieldID || !["addEditCitation", "addEditBibliography"].includes(this.captureContext.command)) throw new Error("Citation insertion is unavailable.");
-            this.stage({ insertions: [{
+            this.stageVendorWrite({ insertions: [{
               at: this.insertionPoint,
               replacement: this.replacement,
               field: { id: this.newFieldID, kind: this.captureContext.command === "addEditBibliography" ? "bibliography" : "citation", code: "", text: "{Citation}" }
@@ -31718,26 +31937,26 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             this.inserted = true;
             this.cursorFieldID = this.targetFieldID = this.newFieldID;
             this.replacement = void 0;
-            return { kind: "field", value: replyField(projectFields(this.candidate).fields.find((field2) => field2.id === this.newFieldID)) };
+            return { kind: "field", value: replyField(this.projection().fields.find((field2) => field2.id === this.newFieldID)) };
           }
           case "getFieldText":
             return { kind: "string", value: field(callback.id).text };
           case "setFieldText":
             field(callback.id);
-            this.stage({ updates: [{ id: callback.id, text: callback.html }] });
+            this.stageVendorWrite({ updates: [{ id: callback.id, text: callback.html }] });
             if (callback.id === this.targetFieldID) this.targetWritten = true;
             return { kind: "none" };
           case "setFieldCode":
             field(callback.id);
-            this.stage({ updates: [{ id: callback.id, code: callback.code }] });
-            if (this.captureContext.command === "addEditBibliography" && !this.targetFieldID && projectFields(this.candidate).fields.find((field2) => field2.id === callback.id)?.kind === "bibliography") this.targetFieldID = callback.id;
+            this.stageVendorWrite({ updates: [{ id: callback.id, code: callback.code }] });
+            if (this.captureContext.command === "addEditBibliography" && !this.targetFieldID && this.projection().fields.find((field2) => field2.id === callback.id)?.kind === "bibliography") this.targetFieldID = callback.id;
             if (callback.id === this.targetFieldID) this.targetWritten = true;
             return { kind: "none" };
           case "deleteField":
           case "removeFieldCode": {
             const removed = field(callback.id);
             if (callback.type === "deleteField" && this.inserted && callback.id === this.newFieldID && !isCompletedFieldCode(removed)) this.cancelledInsertion = true;
-            this.stage({ updates: [{ id: callback.id, ...callback.type === "deleteField" ? { delete: true } : { unlink: true } }] });
+            this.stageVendorWrite({ updates: [{ id: callback.id, ...callback.type === "deleteField" ? { delete: true } : { unlink: true } }] });
             if (this.cursorFieldID === callback.id) this.cursorFieldID = void 0;
             if (this.selectedFieldID === callback.id) this.selectedFieldID = void 0;
             return { kind: "none" };
@@ -31758,19 +31977,20 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (!this.current(state, context)) throw new Error("Citation transaction has lost editor authority.");
         if (remote.status !== "cleanedUp" || remote.remoteCleanupConfirmed !== true) throw new Error("Zotero cleanup was not confirmed.");
         if (this.cancelledInsertion) return null;
-        if (this.candidate === this.originalSource && !this.targetWritten && (this.captureContext.command !== "refresh" || !this.observedFields)) return null;
-        const projection = projectFields(this.candidate);
+        if (!this.vendorWritten && !(this.captureContext.command === "refresh" && this.observedFields)) return null;
+        if (this.candidate === this.originalSource && citationDataEqual(this.originalCitationData, this.candidateCitationData) && !this.targetWritten && (this.captureContext.command !== "refresh" || !this.observedFields)) return null;
+        const projection = this.projection();
         if (projection.diagnostics.length || !projection.documentData?.trim() || projection.fields.some((field) => !isCompletedFieldCode(field) || !field.text.trim() || ["{Citation}", "{Bibliography}"].includes(field.text.trim()))) throw new Error("Citation command left incomplete source state.");
         if (this.captureContext.command === "addEditCitation" || this.captureContext.command === "addEditBibliography") {
           const target2 = projection.fields.find((field) => field.id === this.targetFieldID);
           const expectedKind = this.captureContext.command === "addEditCitation" ? "citation" : "bibliography";
           if (!target2 || target2.kind !== expectedKind || !this.targetWritten) throw new Error("Citation command did not complete the requested field.");
         } else if (this.captureContext.command === "refresh" && !this.observedFields) throw new Error("Citation refresh did not verify document fields.");
-        else if (this.captureContext.command === "setDocPrefs" && this.candidate === this.originalSource) return null;
-        this.stage({ acceptCurrentFields: true });
-        const accepted = projectFields(this.candidate);
+        else if (this.captureContext.command === "setDocPrefs" && this.candidate === this.originalSource && citationDataEqual(this.originalCitationData, this.candidateCitationData)) return null;
+        this.applyPlan(stageFieldOperation(this.projection(), { acceptCurrentFields: true }));
+        const accepted = this.projection();
         if (accepted.diagnostics.length || accepted.citationStateStale) throw new Error("Citation acceptance does not match source fields.");
-        if (this.candidate === this.originalSource) return null;
+        if (this.candidate === this.originalSource && citationDataEqual(this.originalCitationData, this.candidateCitationData)) return null;
         const changes = [];
         this.aggregate.iterChanges((from, to, _newFrom, _newTo, text) => {
           changes.push({ from, to, expected: this.originalSource.slice(from, to), insert: text.toString() });
@@ -31781,6 +32001,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           expectedSource: this.originalSource,
           source: this.candidate,
           changes,
+          ...this.managed ? { expectedCitationData: this.originalCitationData ?? null, citationData: this.candidateCitationData } : {},
           ...cursor === void 0 ? {} : { selection: { anchor: cursor, head: cursor } }
         };
       } finally {
@@ -31815,7 +32036,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     canReplay(request, current) {
       const receipt = this.receipt;
       const operation = request.operation;
-      return receipt !== null && operation.type === "acknowledgeCommittedSnapshot" && request.startingFingerprint !== current.startingFingerprint && receipt.sessionID === current.sessionID && request.sessionID === receipt.sessionID && receipt.documentID === current.documentID && request.documentID === receipt.documentID && request.startingFingerprint === receipt.startingFingerprint && current.startingFingerprint === receipt.committedFingerprint && operation.committedFingerprint === receipt.committedFingerprint && operation.expectedText === receipt.expectedText && operation.committedText === receipt.committedText;
+      return receipt !== null && operation.type === "acknowledgeCommittedSnapshot" && request.startingFingerprint !== current.startingFingerprint && receipt.sessionID === current.sessionID && request.sessionID === receipt.sessionID && receipt.documentID === current.documentID && request.documentID === receipt.documentID && request.startingFingerprint === receipt.startingFingerprint && current.startingFingerprint === receipt.committedFingerprint && operation.committedFingerprint === receipt.committedFingerprint && operation.expectedText === receipt.expectedText && operation.committedText === receipt.committedText && citationDataEqual(operation.expectedCitationData, receipt.expectedCitationData) && citationSnapshotEqual(operation.committedCitationSnapshot, receipt.committedCitationSnapshot);
     }
   };
 
@@ -33465,7 +33686,8 @@ ${fence}
       if (isCitationDestination(source.slice(targetRange.from, targetRange.to).replace(/^<|>$/g, ""))) {
         if (node.name !== "Link") return null;
         try {
-          const citation = citationLinkSource(source.slice(node.from, node.to));
+          const raw = source.slice(node.from, node.to);
+          const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);
           if (!citation) return null;
           return {
             kind: "citation",
@@ -37125,7 +37347,7 @@ ${fence}
       create: build,
       update(previous, transaction) {
         if (!transaction.docChanged) {
-          return transactionChangedSyntaxTree(transaction) || transaction.effects.some((effect) => effect.is(setExactSource)) ? build(transaction.state) : previous;
+          return transactionChangedSyntaxTree(transaction) || transaction.effects.some((effect) => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData)) ? build(transaction.state) : previous;
         }
         const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
         if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
@@ -40313,6 +40535,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var lastDocumentFocusTarget;
   function setDocumentFocusTarget(target) {
     const changed = lastDocumentFocusTarget !== target;
+    if (changed) citationInsertionRevision++;
     lastDocumentFocusTarget = target;
     if (changed && configuredEditorMode(editor.state) === "livePreview") {
       editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
@@ -41043,7 +41266,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     update(update) {
       const explicitlyRefreshed = update.transactions.some(
-        (transaction) => transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect))
+        (transaction) => transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect) || effect.is(setCitationSnapshot) || effect.is(setCitationData))
       );
       const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
       const viewportNeedsProjection = update.viewportChanged && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
@@ -41223,7 +41446,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     (identifier5) => window.clearTimeout(identifier5)
   );
   var stateReporter = EditorView.updateListener.of((update) => {
-    if (update.docChanged || update.selectionSet) citationInsertionRevision++;
+    const citationChanged = !citationDataEqual(update.startState.field(citationState)?.data, update.state.field(citationState)?.data);
+    if (update.docChanged || update.selectionSet || citationChanged) citationInsertionRevision++;
     const isProgrammatic = update.transactions.some(
       (transaction) => transaction.annotation(programmaticDocumentChange) === true
     );
@@ -41234,11 +41458,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     if (update.transactions.some((transaction) => transaction.effects.some((effect) => effect.is(sourceCapacityExceeded)))) {
       announceEditorMessage(update.view.contentDOM, localized(sourceCapacityMessage));
     }
-    if (update.docChanged) dirty = true;
-    if (!update.docChanged && !update.selectionSet) return;
+    if (update.docChanged || citationChanged) dirty = true;
+    if (!update.docChanged && !update.selectionSet && !citationChanged) return;
     selectionActions.dismiss();
     if (update.selectionSet && !update.docChanged) measureSelectionAction(update.view);
-    if (update.docChanged) {
+    if (update.docChanged || citationChanged) {
       const input = pendingInputStartedAt;
       pendingInputStartedAt = null;
       if (input !== null) {
@@ -41290,7 +41514,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           }
         });
       }
-      post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
+      post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes, ...citationResult() });
     }
     scheduleEditorInteractionReport();
   });
@@ -41591,6 +41815,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     request: (request) => post({ type: "contextMenuRequested", ...request })
   });
   var editorExtensions = [
+    citationHistory,
     editorArrivalHighlight,
     highlightSpecialChars(),
     history(),
@@ -41848,6 +42073,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       updateEditorAccessibility(editor.contentDOM, configuredEditorMode(editor.state), context);
       post({
         type: "interactionChanged",
+        interactionRevision: citationInsertionRevision,
         selections: context.selections,
         line: line.number,
         column: head - line.from + 1,
@@ -41860,17 +42086,26 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function publishEditorContext() {
     scheduleEditorInteractionReport(true);
   }
+  function citationResult() {
+    const snapshot = editor.state.field(citationState);
+    return { citationManaged: snapshot !== void 0, citationData: snapshot?.data };
+  }
   function successfulResult(requestID, sourceChanged = false, undoLabel) {
     return {
       requestID,
       resultingGeneration: documentVersion,
+      interactionRevision: citationInsertionRevision,
       sourceChanged,
+      ...citationResult(),
       selections: editorSelections(),
       undoLabel,
       text: sourceChanged ? exactEditorSource() : void 0,
       context: currentEditorContext(),
       accepted: true
     };
+  }
+  function rejected2(requestID, generation, error) {
+    return rejected(requestID, generation, error, citationInsertionRevision);
   }
   function captureRecovery() {
     const historyState = editor.state.update({ effects: setEditorSuspension.of(null) }).state;
@@ -41882,6 +42117,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       ranges: editorSelections(),
       source: exactEditorSource(),
       stateJSON,
+      citationSnapshot: editor.state.field(citationState)?.baseline,
+      citationData: editor.state.field(citationState)?.data,
       undoHistoryPreserved: stateJSON !== void 0,
       dirty,
       focusTarget: lastDocumentFocusTarget
@@ -41902,26 +42139,27 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   ]);
   async function executeEditorRequest(request) {
     const operation = request.operation;
-    if (request.expiresAt <= Date.now()) return rejected(request.requestID, documentVersion, "editor request expired");
+    if (request.expiresAt <= Date.now()) return rejected2(request.requestID, documentVersion, "editor request expired");
     const replayedCommit = committedSnapshotReceipt.canReplay(request, {
       sessionID: bridgeSessionID,
       documentID: bridgeDocumentID,
       startingFingerprint: bridgeFingerprint
     });
     if (editor.state.field(editorSuspensionState) !== null && !replayedCommit && !frozenReadableOperations.has(operation.type)) {
-      return rejected(request.requestID, documentVersion, "editor is suspended for detachment");
+      return rejected2(request.requestID, documentVersion, "editor is suspended for detachment");
     }
     if (operation.type === "initialize") {
       const loadStartedAt = performance.now();
-      if (request.knownGeneration !== 0 || !exactSourceFits(operation.text)) {
-        return rejected(request.requestID, documentVersion, "invalid initialization");
+      if (request.knownGeneration !== 0 || !exactSourceFits(operation.text) || operation.citationSnapshot?.status === "available" && operation.citationSnapshot.sourceFingerprint?.sha256 !== request.startingFingerprint) {
+        return rejected2(request.requestID, documentVersion, "invalid initialization");
       }
       editingDialect = operation.dialect;
       editorOperations.setDocument(
         operation.text,
         request.sessionID,
         request.documentID,
-        request.startingFingerprint
+        request.startingFingerprint,
+        operation.citationSnapshot
       );
       editorOperations.setMode(operation.mode);
       if (operation.initialSelection) {
@@ -41936,14 +42174,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return successfulResult(request.requestID);
     }
     if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID || request.startingFingerprint !== bridgeFingerprint && !replayedCommit) {
-      return rejected(request.requestID, documentVersion, "stale editor identity");
+      return rejected2(request.requestID, documentVersion, "stale editor identity");
     }
     if (!generationCanExecuteEditorRequest(
       operation.type,
       request.knownGeneration,
       documentVersion
     )) {
-      return rejected(request.requestID, documentVersion, "stale editor generation");
+      return rejected2(request.requestID, documentVersion, "stale editor generation");
     }
     if (replayedCommit && operation.type === "acknowledgeCommittedSnapshot") {
       const replay = committedSnapshotReceipt.replay(request, {
@@ -42038,7 +42276,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       case "suspendForDetachment": {
         if (!documentTitle.allowsDetachment()) {
-          return rejected(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
+          return rejected2(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
         }
         citationInsertionRevision++;
         editor.dispatch({ effects: setEditorSuspension.of(operation.suspensionID) });
@@ -42047,14 +42285,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       case "resumeAfterDetachment": {
         const suspension = editor.state.field(editorSuspensionState);
-        if (suspension !== null && suspension !== operation.suspensionID) return rejected(request.requestID, documentVersion, "stale editor suspension");
+        if (suspension !== null && suspension !== operation.suspensionID) return rejected2(request.requestID, documentVersion, "stale editor suspension");
         if (suspension !== null) editor.dispatch({ effects: setEditorSuspension.of(null) });
         return { ...successfulResult(request.requestID), text: exactEditorSource() };
       }
       case "restoreRecovery": {
         const snapshot = operation.snapshot;
-        if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion) || !exactSourceFits(snapshot.source)) {
-          return rejected(request.requestID, documentVersion, "stale recovery snapshot");
+        if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion) || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot?.noteID !== editor.state.field(citationState)?.baseline.noteID || snapshot.citationSnapshot?.vaultID !== editor.state.field(citationState)?.baseline.vaultID) {
+          return rejected2(request.requestID, documentVersion, "stale recovery snapshot");
         }
         const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
         let restoredHistory = false;
@@ -42062,8 +42300,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
           try {
             const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, editorExtensions);
+            const citations = restored.field(citationState);
+            if (!citationDataEqual(citations?.data, snapshot.citationData) || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) throw new Error("Citation history mismatch");
             recoveredState = restored.update({
               selection: recoveredSelection,
+              effects: snapshot.citationSnapshot ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
               annotations: Transaction.addToHistory.of(false)
             }).state;
             restoredHistory = true;
@@ -42073,14 +42314,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
         if (!recoveredState) {
           try {
-            recoveredState = editor.state.update({
-              changes: replacementChange(editor.state.doc.toString(), snapshot.source),
+            recoveredState = createMarkdownDocumentState(snapshot.source, editorExtensions).update({
               selection: recoveredSelection,
-              effects: setExactSource.of(snapshot.source),
+              effects: [
+                setExactSource.of(snapshot.source),
+                setCitationSnapshot.of(snapshot.citationSnapshot),
+                ...snapshot.citationSnapshot ? [setCitationData.of(snapshot.citationData)] : []
+              ],
               annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)]
             }).state;
           } catch {
-            return rejected(request.requestID, documentVersion, "invalid recovery snapshot");
+            return rejected2(request.requestID, documentVersion, "invalid recovery snapshot");
           }
         }
         const restoredMode = configuredEditorMode(editor.state);
@@ -42093,18 +42337,20 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       case "acknowledgeCommittedSnapshot": {
         if (editor.state.field(editorSuspensionState) !== null && operation.committedText !== operation.expectedText) {
-          return rejected(request.requestID, documentVersion, "a suspended editor cannot replace its captured source");
+          return rejected2(request.requestID, documentVersion, "a suspended editor cannot replace its captured source");
         }
         if (!exactSourceFits(operation.committedText)) {
-          return rejected(request.requestID, documentVersion, "committed source is too large");
+          return rejected2(request.requestID, documentVersion, "committed source is too large");
         }
         const superseded = editorOperations.acknowledgeCommittedSnapshot(
           operation.expectedText,
           operation.committedText,
-          operation.committedFingerprint
+          operation.committedFingerprint,
+          operation.expectedCitationData,
+          operation.committedCitationSnapshot
         );
         if (superseded === null) {
-          return rejected(request.requestID, documentVersion, "editor source did not reconcile");
+          return rejected2(request.requestID, documentVersion, "editor source did not reconcile");
         }
         committedSnapshotReceipt.remember(request, operation);
         return {
@@ -42116,11 +42362,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "insertReference": {
         const selection = editor.state.selection.main;
         if (documentVersion !== operation.generation || editor.composing || editor.state.selection.ranges.length !== 1 || !selection.empty || selection.anchor !== operation.selection.anchor || selection.head !== operation.selection.head || protectedCommandRanges(editor.state).some((range) => selection.head >= range.from && Math.max(0, selection.head - 1) < range.to)) {
-          return rejected(request.requestID, documentVersion, localized("The insertion position changed. Confirm the cursor again."));
+          return rejected2(request.requestID, documentVersion, localized("The insertion position changed. Confirm the cursor again."));
         }
         const text = `[[${operation.target}]]`;
         if (!exactSourceFitsChanges(editor.state, [{ from: selection.head, to: selection.head, insert: text }])) {
-          return rejected(request.requestID, documentVersion, localized("The reference is too large."));
+          return rejected2(request.requestID, documentVersion, localized("The reference is too large."));
         }
         editor.dispatch({
           changes: { from: selection.head, insert: text },
@@ -42132,7 +42378,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return successfulResult(request.requestID, true, "Insert Wikilink");
       }
       case "replacePassage": {
-        if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, localized("Finish composition before adopting a suggestion."));
+        if (editor.composing || compositionGate.active) return rejected2(request.requestID, documentVersion, localized("Finish composition before adopting a suggestion."));
         const change = passageReplacement(
           exactEditorSource(),
           operation.expectedText,
@@ -42140,9 +42386,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           operation.toUTF16,
           operation.replacement
         );
-        if (!change) return rejected(request.requestID, documentVersion, localized("The passage changed. Request a new suggestion."));
+        if (!change) return rejected2(request.requestID, documentVersion, localized("The passage changed. Request a new suggestion."));
         if (!exactSourceFitsChanges(editor.state, [change])) {
-          return rejected(request.requestID, documentVersion, localized("The suggestion is too large."));
+          return rejected2(request.requestID, documentVersion, localized("The suggestion is too large."));
         }
         editor.dispatch({
           changes: change,
@@ -42157,14 +42403,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       case "beginCitation": {
         if (citationTransaction !== null || editor.state.field(editorSuspensionState) !== null || document.activeElement?.closest("[data-scholium-title-input]")) {
-          return rejected(request.requestID, documentVersion, localized("A citation operation is already active or this editor is unavailable."));
+          return rejected2(request.requestID, documentVersion, localized("A citation operation is already active or this editor is unavailable."));
         }
         const reference = operation.reference;
         const source = exactEditorSource();
         let referenceRange;
         if (reference) {
           if (reference.interactionRevision !== citationInsertionRevision || reference.editorCaretUTF16Offset !== editor.state.selection.main.head || exactOffsetForNormalizedOffset(source, reference.editorCaretUTF16Offset) !== reference.caretUTF16Offset || source.slice(reference.fromUTF16, reference.toUTF16) !== `@${reference.query}`) {
-            return rejected(request.requestID, documentVersion, localized("Citation completion is stale."));
+            return rejected2(request.requestID, documentVersion, localized("Citation completion is stale."));
           }
           referenceRange = {
             from: source.slice(0, reference.fromUTF16).replaceAll("\r\n", "\n").length,
@@ -42182,24 +42428,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         break;
       }
       case "citationCallback": {
-        if (!citationTransaction || citationTransactionID !== operation.transactionID) return rejected(request.requestID, documentVersion, localized("Citation transaction is unavailable."));
+        if (!citationTransaction || citationTransactionID !== operation.transactionID) return rejected2(request.requestID, documentVersion, localized("Citation transaction is unavailable."));
         try {
           const citationReply = citationTransaction.applyCallback(editor.state, citationContext(operation.transactionID), operation.value);
           return { ...successfulResult(request.requestID), citationReply };
         } catch (error) {
           if (error instanceof Error && error.message === unsupportedNoteCitationStyleMessage) {
-            return rejected(request.requestID, documentVersion, localized(unsupportedNoteCitationStyleMessage));
+            return rejected2(request.requestID, documentVersion, localized(unsupportedNoteCitationStyleMessage));
           }
           throw error;
         }
       }
       case "finishCitation": {
-        if (!citationTransaction || citationTransactionID !== operation.transactionID) return rejected(request.requestID, documentVersion, localized("Citation transaction is unavailable."));
+        if (!citationTransaction || citationTransactionID !== operation.transactionID) return rejected2(request.requestID, documentVersion, localized("Citation transaction is unavailable."));
         let staged;
         try {
           staged = citationTransaction.finalize(editor.state, citationContext(operation.transactionID), { status: "cleanedUp", remoteCleanupConfirmed: true });
         } catch {
-          return rejected(request.requestID, documentVersion, localized("The citation operation could not finish. Your text was preserved."));
+          return rejected2(request.requestID, documentVersion, localized("The citation operation could not finish. Your text was preserved."));
         } finally {
           citationTransaction = null;
           citationTransactionID = null;
@@ -42210,7 +42456,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           return successfulResult(request.requestID);
         }
         const transaction = fieldOperationTransaction(editor.state, staged);
-        if (!transaction) return rejected(request.requestID, documentVersion, localized("Citation source changed before acceptance."));
+        if (!transaction) return rejected2(request.requestID, documentVersion, localized("Citation source changed before acceptance."));
         editor.dispatch({ ...transaction, ...staged.selection ? { selection: staged.selection } : {} });
         lastUndoLabel = lastRedoLabel = localized("Citation Operation");
         publishEditorContext();
@@ -42229,11 +42475,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         let argument = operation.argument;
         if (operation.command === "pasteMarkdown") {
           const payload = decodeClipboardPayload(operation.argument);
-          if (!payload) return rejected(request.requestID, documentVersion, "pasteMarkdown requires a clipboard payload");
+          if (!payload) return rejected2(request.requestID, documentVersion, "pasteMarkdown requires a clipboard payload");
           argument = editingFrontmatterSelection() ? payload.plainText : pasteAsMarkdown(payload);
         }
         const transformed = markdownCommandTransformation(editor.state, operation.command, argument);
-        if (!transformed) return rejected(request.requestID, documentVersion, "command is unavailable for the exact selection");
+        if (!transformed) return rejected2(request.requestID, documentVersion, "command is unavailable for the exact selection");
         editor.dispatch({
           changes: transformed.changes,
           selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),
@@ -42246,11 +42492,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "pasteClipboard": {
         const selections = editorSelections();
         if (selections.length !== operation.selections.length || selections.some((range, index) => range.anchor !== operation.selections[index].anchor || range.head !== operation.selections[index].head)) {
-          return rejected(request.requestID, documentVersion, "clipboard selection changed");
+          return rejected2(request.requestID, documentVersion, "clipboard selection changed");
         }
         const before = documentVersion;
         if (!pasteClipboardText(operation.plainText)) {
-          return rejected(request.requestID, documentVersion, "clipboard paste is unavailable");
+          return rejected2(request.requestID, documentVersion, "clipboard paste is unavailable");
         }
         const changed = documentVersion !== before;
         return successfulResult(request.requestID, changed, changed ? lastUndoLabel : void 0);
@@ -42278,7 +42524,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         break;
       case "focusTitle": {
         if (!documentTitle.focus()) {
-          return rejected(request.requestID, documentVersion, "document title is unavailable");
+          return rejected2(request.requestID, documentVersion, "document title is unavailable");
         }
         break;
       }
@@ -42288,7 +42534,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     return successfulResult(request.requestID);
   }
-  var compositionGate = new CompositionRequestGate((request) => rejected(request.requestID, documentVersion, "editor request expired"));
+  var compositionGate = new CompositionRequestGate((request) => rejected2(request.requestID, documentVersion, "editor request expired"));
   async function dispatchEditorRequest(value) {
     const bridgeStartedAt = performance.now();
     const requestBytes = (() => {
@@ -42300,12 +42546,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     })();
     if (!isEditorRequest(value)) {
       recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes });
-      return rejected("invalid", documentVersion, "malformed editor request");
+      return rejected2("invalid", documentVersion, "malformed editor request");
     }
-    if (value.expiresAt <= Date.now()) return rejected(value.requestID, documentVersion, "editor request expired");
+    if (value.expiresAt <= Date.now()) return rejected2(value.requestID, documentVersion, "editor request expired");
     const compositionPolicy = compositionRequestPolicy(value.operation.type);
     if ((editor.composing || compositionGate.active) && compositionPolicy === "reject") {
-      return rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
+      return rejected2(value.requestID, documentVersion, "editor identity cannot change during composition");
     }
     if ((editor.composing || compositionGate.active) && compositionPolicy === "defer") {
       const result = compositionGate.enqueue(value);
@@ -42322,7 +42568,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes, resultBytes: encodedByteLength(result) });
       return result;
     } catch (error) {
-      const result = rejected(
+      const result = rejected2(
         value.requestID,
         documentVersion,
         error instanceof Error ? error.message === sourceCapacityMessage ? localized(sourceCapacityMessage) : error.message : "editor request failed"
@@ -42509,7 +42755,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
-    setDocument(text, sessionID, documentID, startingFingerprint) {
+    setDocument(text, sessionID, documentID, startingFingerprint, citationSnapshot) {
       citationTransaction?.cancel();
       citationTransaction = null;
       citationTransactionID = null;
@@ -42525,7 +42771,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       inputSuggestions.resetDocument();
       mermaidRuntimeLoader.resetDocument();
       scrollCoordinator.resetDocument();
-      compositionGate.rejectAll((pending) => rejected(
+      compositionGate.rejectAll((pending) => rejected2(
         pending.requestID,
         documentVersion,
         "editor identity changed during composition"
@@ -42548,7 +42794,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       liveWidgetReuseCounts.footnote = 0;
       if (documentAttachment > 1) clearEditorPerformanceSamples();
       documentVersion = 0;
-      editor.setState(createMarkdownDocumentState(text, editorExtensions));
+      const state = createMarkdownDocumentState(text, editorExtensions);
+      editor.setState(state.update({
+        effects: setCitationSnapshot.of(citationSnapshot),
+        annotations: Transaction.addToHistory.of(false)
+      }).state);
       dirty = false;
       lastInteractionAvailabilitySignature = null;
       scheduleEditorInteractionReport(true);
@@ -42643,22 +42893,30 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     setScrollAnchor(anchor) {
       scrollCoordinator.setAnchor(anchor);
     },
-    acknowledgeCommittedSnapshot(expectedText, committedText, startingFingerprint) {
+    acknowledgeCommittedSnapshot(expectedText, committedText, startingFingerprint, expectedCitationData, committedCitationSnapshot) {
       const currentText = exactEditorSource();
       const normalizedCurrent = normalizedDocumentText(editor.state.doc.toString());
-      if (currentText !== expectedText) {
-        if (committedText !== expectedText || normalizedCurrent !== normalizedDocumentText(currentText)) return null;
+      const citation = editor.state.field(citationState);
+      if (citation?.baseline.noteID !== committedCitationSnapshot?.noteID || citation?.baseline.vaultID !== committedCitationSnapshot?.vaultID) return null;
+      if (currentText !== expectedText || !citationDataEqual(citation?.data, expectedCitationData)) {
+        if (committedText !== expectedText || !citationDataEqual(committedCitationSnapshot?.data, expectedCitationData) || normalizedCurrent !== normalizedDocumentText(currentText)) return null;
         bridgeFingerprint = startingFingerprint;
+        if (committedCitationSnapshot) {
+          editor.dispatch({
+            effects: [setCitationSnapshot.of(committedCitationSnapshot), setCitationData.of(citation?.data)],
+            annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)]
+          });
+        }
         dirty = true;
         scheduleEditorInteractionReport(true);
         return true;
       }
       if (normalizedCurrent !== normalizedDocumentText(expectedText)) return null;
       bridgeFingerprint = startingFingerprint;
-      if (committedText !== currentText) {
+      if (committedText !== currentText || citation?.baseline !== committedCitationSnapshot) {
         editor.dispatch({
           changes: replacementChange(editor.state.doc.toString(), committedText),
-          effects: setExactSource.of(committedText),
+          effects: [setExactSource.of(committedText), setCitationSnapshot.of(committedCitationSnapshot)],
           annotations: [
             Transaction.addToHistory.of(false),
             programmaticDocumentChange.of(true)

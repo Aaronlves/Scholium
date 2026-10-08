@@ -4,7 +4,7 @@ import ScholiumContracts
 
 /// Current operation consequences, separate from the retained technical error.
 enum AgentChatExecutionRecovery: Equatable {
-    case turnEnded, messageNotSent, deliveryUnconfirmed, historyRefreshFailed, queuedInputBlocked
+    case turnEnded, messageNotSent, deliveryUnconfirmed, historyRefreshFailed, queuedInputBlocked, stopUnconfirmed
 
     var title: String {
         switch self {
@@ -13,6 +13,7 @@ enum AgentChatExecutionRecovery: Equatable {
         case .deliveryUnconfirmed: ScholiumL10n.string("Delivery Not Confirmed")
         case .historyRefreshFailed: ScholiumL10n.string("History Could Not Be Updated")
         case .queuedInputBlocked: ScholiumL10n.string("Queued Message Needs Attention")
+        case .stopUnconfirmed: ScholiumL10n.string("Stop Not Confirmed")
         }
     }
 
@@ -23,8 +24,16 @@ enum AgentChatExecutionRecovery: Equatable {
         case .deliveryUnconfirmed: ScholiumL10n.string("Review the conversation before continuing. The unconfirmed message will not be sent again.")
         case .historyRefreshFailed: ScholiumL10n.string("The saved conversation and draft remain available. Retry updating its runtime history.")
         case .queuedInputBlocked: ScholiumL10n.string("The next queued message is retained. Resolve its sending issue or remove it from the queue.")
+        case .stopUnconfirmed: ScholiumL10n.string("The turn may still be running. Retry stopping it.")
         }
     }
+}
+
+/// The failed interrupt represented by a rendered Retry Stop action.
+struct AgentChatStopRetryTarget: Equatable {
+    let conversationID: UUID
+    let turnID: String
+    let interruptRequestID: UUID
 }
 
 /// Ephemeral state of one conversation on one connection. No UI selection or source ownership.
@@ -44,7 +53,17 @@ struct AgentChatExecutionState {
         error = detail
         self.recovery = recovery
     }
-    var turnID: String?
+    var turnID: String? {
+        didSet {
+            guard oldValue != turnID else { return }
+            interruptTask?.cancel()
+            interruptTask = nil
+            interruptRequestedTurnID = nil
+            interruptRequestID = nil
+            interruptFailedTurnID = nil
+            if recovery == .stopUnconfirmed { error = nil }
+        }
+    }
     var routeToken: UUID?
     var admissionID: UUID?
     var displayScope: AgentChatDisplayScope?
@@ -62,6 +81,9 @@ struct AgentChatExecutionState {
     var runtimeItems: [String: CodexChatOperationContext] = [:]
     var configuration: [String: MCPJSONValue] = [:]
     var interruptRequestedTurnID: String?
+    var interruptRequestID: UUID?
+    /// A failed request remains deduplicated until the researcher retries Stop.
+    var interruptFailedTurnID: String?
     var approvals: [AgentChatApproval] = []
     var questionAnswers: [UUID: [String: AgentChatQuestionAnswer]] = [:]
     var replies: [UUID: (AgentChatInteractionReply) -> Void] = [:]

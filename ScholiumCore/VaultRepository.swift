@@ -671,7 +671,7 @@ public actor VaultRepository {
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
     ) throws -> NoteMoveResult {
-        let sourceURL = try existingFileURL(relativePath: relativePath)
+        _ = try existingFileURL(relativePath: relativePath)
         let currentData = try readSource(relativePath: relativePath)
         let currentFingerprint = DocumentFingerprint(data: currentData)
         guard currentFingerprint == expectedRevision else {
@@ -703,7 +703,6 @@ public actor VaultRepository {
             guard let content = NoteDocument.decodeUTF8PreservingBOM(readback) else {
                 throw CocoaError(.fileReadInapplicableStringEncoding)
             }
-            removeEmptyParentDirectories(startingAt: sourceURL.deletingLastPathComponent())
             return NoteMoveResult(
                 document: NoteDocument(relativePath: destinationRelativePath, rawContent: content),
                 previousRelativePath: relativePath,
@@ -718,7 +717,6 @@ public actor VaultRepository {
                 destinationData == currentData,
                 let content = NoteDocument.decodeUTF8PreservingBOM(destinationData)
             {
-                removeEmptyParentDirectories(startingAt: sourceURL.deletingLastPathComponent())
                 return NoteMoveResult(
                     document: NoteDocument(
                         relativePath: destinationRelativePath,
@@ -945,7 +943,7 @@ public actor VaultRepository {
         guard current == createdRevision else {
             throw VaultRepositoryError.conflict(expected: createdRevision, current: current)
         }
-        let recheckedURL = try existingFileURL(relativePath: relativePath)
+        _ = try existingFileURL(relativePath: relativePath)
         let recheckedData = try readSource(relativePath: relativePath)
         let rechecked = DocumentFingerprint(data: recheckedData)
         guard rechecked == createdRevision else {
@@ -955,7 +953,6 @@ public actor VaultRepository {
             path: markdownRelativePath(relativePath),
             expected: recheckedData
         )
-        removeEmptyParentDirectories(startingAt: recheckedURL.deletingLastPathComponent())
     }
 
     /// Lists only exact, startup-retained save candidates. The source state is
@@ -1460,15 +1457,6 @@ public actor VaultRepository {
         }
         try ensureSafeDirectory(standardized.deletingLastPathComponent())
         try fileManager.createDirectory(at: standardized, withIntermediateDirectories: false)
-    }
-
-    private func removeEmptyParentDirectories(startingAt directory: URL) {
-        var current = directory.standardizedFileURL
-        while current.path != canonicalRoot.path {
-            guard let contents = try? fileManager.contentsOfDirectory(atPath: current.path), contents.isEmpty else { return }
-            try? fileManager.removeItem(at: current)
-            current.deleteLastPathComponent()
-        }
     }
 
 }

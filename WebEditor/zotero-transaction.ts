@@ -2,7 +2,8 @@ import {ChangeSet, EditorState, Text} from "@codemirror/state";
 import {exactSourceState} from "./exact-source-history";
 import {boundedUUID} from "./uuid";
 import {exactOffsetForNormalizedOffset, normalizedDocumentText} from "./state";
-import {isCompletedFieldCode, projectFields, stageFieldOperation,
+import {citationState, citationDataEqual, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
+import {convertEmbeddedFields, isCompletedFieldCode, projectFields, stageFieldOperation,
   type BibliographyStyle, type FieldOperation, type ProjectedField, type SourceReplacement,
   type StagedFieldOperation} from "./zotero-fields";
 
@@ -119,11 +120,15 @@ export function validZoteroCallback(value: unknown): value is ZoteroCallback {
   }
 }
 
-/** Owns one disposable candidate derived from an immutable source capture.
+/** Owns one disposable candidate derived from immutable source and citation data.
  * No callback changes the live EditorState or its source/history authority. */
 export class ZoteroMarkdownTransaction {
   readonly originalSource: string;
   private candidate: string;
+  private readonly originalCitationSnapshot: ZoteroCitationSnapshot | undefined;
+  private readonly originalCitationData: ZoteroCitationData | undefined;
+  private candidateCitationData: ZoteroCitationData | undefined;
+  private readonly managed: boolean;
   private aggregate: ChangeSet;
   private readonly capturedSelection: {anchor: number; head: number};
   private readonly captureContext: ZoteroTransactionCapture;
@@ -136,6 +141,7 @@ export class ZoteroMarkdownTransaction {
   private inserted = false;
   private cancelledInsertion = false;
   private targetWritten = false;
+  private vendorWritten = false;
   private observedFields = false;
   private closed = false;
   private cancelled = false;
@@ -151,7 +157,13 @@ export class ZoteroMarkdownTransaction {
       || !["livePreview", "source"].includes(context.mode) || state.selection.ranges.length !== 1) throw new Error("Citation capture is unavailable.");
     this.captureContext = {...context, referenceRange: context.referenceRange ? {...context.referenceRange} : undefined};
     this.originalSource = this.candidate = state.field(exactSourceState).text;
-    const projection = projectFields(this.originalSource);
+    const snapshot = state.field(citationState, false);
+    this.originalCitationSnapshot = snapshot?.baseline;
+    this.managed = snapshot !== undefined;
+    if (snapshot && !["available", "absent"].includes(snapshot.baseline.status)) throw new Error("Citation companion requires recovery.");
+    this.originalCitationData = this.candidateCitationData = snapshot?.data;
+    const embedded = this.managed && !snapshot?.data;
+    const projection = projectFields(this.originalSource, embedded ? undefined : this.candidateCitationData);
     if (projection.diagnostics.length) throw new Error("Citation fields require source recovery.");
     this.aggregate = ChangeSet.empty(this.originalSource.length);
     const selection = state.selection.main;
@@ -177,19 +189,30 @@ export class ZoteroMarkdownTransaction {
       this.replacement = {to: exactTo, expected: reference.expected};
     }
     // Host occurrence identity is independent of Zotero item/citation IDs.
-    this.newFieldID = "host_" + boundedUUID().replaceAll("-", "");
+    this.newFieldID = (this.managed ? "c" : "host_") + boundedUUID().replaceAll("-", "");
+    if (embedded) this.applyPlan(convertEmbeddedFields(this.originalSource));
   }
 
   private current(state: EditorState, context: ZoteroTransactionContext) {
     return !this.closed && !context.composing && context.transactionID === this.captureContext.transactionID
       && context.mode === this.captureContext.mode && context.interactionRevision === this.captureContext.interactionRevision
       && context.compositionRevision === this.captureContext.compositionRevision
-      && state.field(exactSourceState).text === this.originalSource && state.selection.ranges.length === 1
+      && state.field(exactSourceState).text === this.originalSource
+      && (!this.managed || ["available", "absent"].includes(state.field(citationState, false)?.baseline.status ?? ""))
+      && state.field(citationState, false)?.baseline.noteID === this.originalCitationSnapshot?.noteID
+      && state.field(citationState, false)?.baseline.vaultID === this.originalCitationSnapshot?.vaultID
+      && citationDataEqual(state.field(citationState, false)?.data, this.originalCitationData) && state.selection.ranges.length === 1
       && state.selection.main.anchor === this.capturedSelection.anchor && state.selection.main.head === this.capturedSelection.head;
   }
 
-  private stage(operation: FieldOperation) {
-    const planned = stageFieldOperation(projectFields(this.candidate), operation);
+  private projection() { return projectFields(this.candidate, this.managed ? this.candidateCitationData ?? null : undefined); }
+
+  private stageVendorWrite(operation: FieldOperation) {
+    this.applyPlan(stageFieldOperation(this.projection(), operation));
+    this.vendorWritten = true;
+  }
+
+  private applyPlan(planned: StagedFieldOperation) {
     const change = ChangeSet.of(planned.changes.map(range => ({from: range.from, to: range.to,
       insert: Text.of(range.insert.split("\n"))})), this.candidate.length);
     if (planned.expectedSource !== this.candidate
@@ -200,12 +223,13 @@ export class ZoteroMarkdownTransaction {
       if (this.replacement) this.replacement = {...this.replacement, to: change.mapPos(this.replacement.to, 1)};
     }
     this.candidate = planned.source;
+    if (this.managed) this.candidateCitationData = planned.citationData;
   }
 
   applyCallback(state: EditorState, context: ZoteroTransactionContext, callback: ZoteroCallback): ZoteroCallbackReply {
     try {
       if (!this.current(state, context) || !validZoteroCallback(callback)) throw new Error("Citation transaction has lost editor authority.");
-      const projection = projectFields(this.candidate);
+      const projection = this.projection();
       if (projection.diagnostics.length) throw new Error("Citation fields require source recovery.");
       const field = (id: string) => {
         const value = projection.fields.find(field => field.id === id);
@@ -216,11 +240,10 @@ export class ZoteroMarkdownTransaction {
       switch (callback.type) {
       case "getDocumentData": return {kind: "string", value: projection.documentData ?? ""};
       case "setDocumentData":
-        assertSupportedDocumentData(callback.value); this.stage({documentData: callback.value}); return {kind: "none"};
-      case "setBibliographyStyle": this.stage({bibliographyStyle: callback.style}); return {kind: "none"};
+        assertSupportedDocumentData(callback.value); this.stageVendorWrite({documentData: callback.value}); return {kind: "none"};
+      case "setBibliographyStyle": this.stageVendorWrite({bibliographyStyle: callback.style}); return {kind: "none"};
       case "getFields": this.observedFields = true; return {kind: "fields", value: projection.fields.map(replyField)};
       case "cursorInField": {
-        this.observedFields = true;
         const value = projection.fields.find(field => field.id === this.cursorFieldID);
         return {kind: "field", value: value ? replyField(value) : null};
       }
@@ -233,22 +256,22 @@ export class ZoteroMarkdownTransaction {
         } catch {return {kind: "boolean", value: false};}
       case "insertField": {
         if (this.inserted || this.cursorFieldID || !["addEditCitation", "addEditBibliography"].includes(this.captureContext.command)) throw new Error("Citation insertion is unavailable.");
-        this.stage({insertions: [{at: this.insertionPoint, replacement: this.replacement,
+        this.stageVendorWrite({insertions: [{at: this.insertionPoint, replacement: this.replacement,
           field: {id: this.newFieldID, kind: this.captureContext.command === "addEditBibliography" ? "bibliography" : "citation", code: "", text: "{Citation}"}}]});
         this.inserted = true;
         this.cursorFieldID = this.targetFieldID = this.newFieldID;
         this.replacement = undefined;
-        return {kind: "field", value: replyField(projectFields(this.candidate).fields.find(field => field.id === this.newFieldID)!)};
+        return {kind: "field", value: replyField(this.projection().fields.find(field => field.id === this.newFieldID)!)};
       }
       case "getFieldText": return {kind: "string", value: field(callback.id).text};
       case "setFieldText":
-        field(callback.id); this.stage({updates: [{id: callback.id, text: callback.html}]});
+        field(callback.id); this.stageVendorWrite({updates: [{id: callback.id, text: callback.html}]});
         if (callback.id === this.targetFieldID) this.targetWritten = true;
         return {kind: "none"};
       case "setFieldCode":
-        field(callback.id); this.stage({updates: [{id: callback.id, code: callback.code}]});
+        field(callback.id); this.stageVendorWrite({updates: [{id: callback.id, code: callback.code}]});
         if (this.captureContext.command === "addEditBibliography" && !this.targetFieldID
-          && projectFields(this.candidate).fields.find(field => field.id === callback.id)?.kind === "bibliography") this.targetFieldID = callback.id;
+          && this.projection().fields.find(field => field.id === callback.id)?.kind === "bibliography") this.targetFieldID = callback.id;
         if (callback.id === this.targetFieldID) this.targetWritten = true;
         return {kind: "none"};
       case "deleteField": case "removeFieldCode": {
@@ -256,7 +279,7 @@ export class ZoteroMarkdownTransaction {
         // Zotero deletes the new TEMP occurrence when its citation picker is canceled.
         // The captured query remains authoritative until an accepted final command.
         if (callback.type === "deleteField" && this.inserted && callback.id === this.newFieldID && !isCompletedFieldCode(removed)) this.cancelledInsertion = true;
-        this.stage({updates: [{id: callback.id, ...(callback.type === "deleteField" ? {delete: true} : {unlink: true})}]});
+        this.stageVendorWrite({updates: [{id: callback.id, ...(callback.type === "deleteField" ? {delete: true} : {unlink: true})}]});
         if (this.cursorFieldID === callback.id) this.cursorFieldID = undefined;
         if (this.selectedFieldID === callback.id) this.selectedFieldID = undefined;
         return {kind: "none"};
@@ -274,9 +297,12 @@ export class ZoteroMarkdownTransaction {
       if (!this.current(state, context)) throw new Error("Citation transaction has lost editor authority.");
       if (remote.status !== "cleanedUp" || remote.remoteCleanupConfirmed !== true) throw new Error("Zotero cleanup was not confirmed.");
       if (this.cancelledInsertion) return null;
-      if (this.candidate === this.originalSource && !this.targetWritten
+      // Constructor conversion is only a staged storage change. Protocol cleanup
+      // and read callbacks cannot accept it without a vendor write or Refresh.
+      if (!this.vendorWritten && !(this.captureContext.command === "refresh" && this.observedFields)) return null;
+      if (this.candidate === this.originalSource && citationDataEqual(this.originalCitationData, this.candidateCitationData) && !this.targetWritten
         && (this.captureContext.command !== "refresh" || !this.observedFields)) return null;
-      const projection = projectFields(this.candidate);
+      const projection = this.projection();
       if (projection.diagnostics.length || !projection.documentData?.trim() || projection.fields.some(field => !isCompletedFieldCode(field)
         || !field.text.trim() || ["{Citation}", "{Bibliography}"].includes(field.text.trim()))) throw new Error("Citation command left incomplete source state.");
       if (this.captureContext.command === "addEditCitation" || this.captureContext.command === "addEditBibliography") {
@@ -284,11 +310,12 @@ export class ZoteroMarkdownTransaction {
         const expectedKind = this.captureContext.command === "addEditCitation" ? "citation" : "bibliography";
         if (!target || target.kind !== expectedKind || !this.targetWritten) throw new Error("Citation command did not complete the requested field.");
       } else if (this.captureContext.command === "refresh" && !this.observedFields) throw new Error("Citation refresh did not verify document fields.");
-      else if (this.captureContext.command === "setDocPrefs" && this.candidate === this.originalSource) return null;
-      this.stage({acceptCurrentFields: true});
-      const accepted = projectFields(this.candidate);
+      else if (this.captureContext.command === "setDocPrefs" && this.candidate === this.originalSource
+        && citationDataEqual(this.originalCitationData, this.candidateCitationData)) return null;
+      this.applyPlan(stageFieldOperation(this.projection(), {acceptCurrentFields: true}));
+      const accepted = this.projection();
       if (accepted.diagnostics.length || accepted.citationStateStale) throw new Error("Citation acceptance does not match source fields.");
-      if (this.candidate === this.originalSource) return null;
+      if (this.candidate === this.originalSource && citationDataEqual(this.originalCitationData, this.candidateCitationData)) return null;
       const changes: SourceReplacement[] = [];
       this.aggregate.iterChanges((from, to, _newFrom, _newTo, text) => {
         changes.push({from, to, expected: this.originalSource.slice(from, to), insert: text.toString()});
@@ -296,6 +323,7 @@ export class ZoteroMarkdownTransaction {
       const target = accepted.fields.find(field => field.id === (this.selectedFieldID ?? this.targetFieldID));
       const cursor = target ? normalizedDocumentText(this.candidate.slice(0, target.range.to)).length : undefined;
       return {expectedSource: this.originalSource, source: this.candidate, changes,
+        ...(this.managed ? {expectedCitationData: this.originalCitationData ?? null, citationData: this.candidateCitationData} : {}),
         ...(cursor === undefined ? {} : {selection: {anchor: cursor, head: cursor}})};
     } finally {this.closed = true;}
   }

@@ -196,7 +196,8 @@ struct ContentView: View {
                             return try appState.prepareChatNoteMaterials(in: conversationID)
                         },
                         openReference: { appState.openChatReference($0) },
-                        openAttachment: { attachment in Task { await appState.openChatAttachment(attachment) }
+                        openAttachment: { attachment, disposition in
+                            Task { await appState.openChatAttachment(attachment, disposition: disposition) }
                         },
                         showInLibrary: { url in
                             if appState.openChatReference(url) {

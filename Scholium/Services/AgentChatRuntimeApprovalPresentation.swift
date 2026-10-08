@@ -35,55 +35,11 @@ extension AgentChatRuntimeApproval {
         return reason
     }
 
-    /// A readable overview retaining exact targets and restrictions.
-    func accessOverview(locale: Locale = .current) -> [String] {
-        var lines: [String] = []
-        if let host = networkHost { lines.append(ScholiumL10n.string("Connect to \(host)", locale: locale)) }
-        if let permissions {
-            if permissions.network == true { lines.append(ScholiumL10n.string("Connect to the internet", locale: locale)) }
-            for rule in permissions.rules {
-                let target: String
-                switch rule.path {
-                case .literal(let path): target = path
-                case .pattern(let pattern):
-                    let base = String(pattern.dropLast(min(pattern.count, "/**/*.md".count)))
-                    if pattern.hasSuffix("/**/*.md"), !base.isEmpty,
-                        !base.contains(where: { "*?[]{}\\".contains($0) }), permissions.globScanMaxDepth == nil
-                    {
-                        let folder = base
-                        target = ScholiumL10n.string("Markdown files in \(folder) and its subfolders", locale: locale)
-                    } else {
-                        target = pattern
-                    }
-                case .special(let root, let subpath): target = root.label(locale: locale) + (subpath.map { " / " + $0 } ?? "")
-                }
-                switch rule.access {
-                case .read: lines.append(ScholiumL10n.string("Read: \(target)", locale: locale))
-                case .write: lines.append(ScholiumL10n.string("Change: \(target)", locale: locale))
-                case .deny: lines.append(ScholiumL10n.string("Keep inaccessible: \(target)", locale: locale))
-                }
-            }
-        }
-        for file in files {
-            let name = URL(fileURLWithPath: file.path).lastPathComponent
-            let action =
-                switch file.kind {
-                case .add: ScholiumL10n.string("Create File", locale: locale)
-                case .delete: ScholiumL10n.string("Delete File", locale: locale)
-                case .update: ScholiumL10n.string("Edit File", locale: locale)
-                }
-            let target = name + (file.destination.map { " → " + URL(fileURLWithPath: $0).lastPathComponent } ?? "")
-            lines.append(ScholiumL10n.string("\(action): \(target)", locale: locale))
-        }
-        if let grantRoot { lines.append(ScholiumL10n.string("Change files in: \(grantRoot)", locale: locale)) }
-        return lines
-    }
-
+    /// Supplied operation scope, without inferring effective access from its rules.
     func scopeLines(locale: Locale = .current) -> [String] {
         var lines: [String] = []
-        if let toolServer { lines.append(toolServer) }
         if let networkHost {
-            let destination = (networkProtocol ?? "") + " · " + networkHost
+            let destination = [networkProtocol, networkHost].compactMap { $0 }.joined(separator: " · ")
             lines.append(ScholiumL10n.string("\(ScholiumL10n.string("Network Destination", locale: locale)): \(destination)", locale: locale))
         }
         if let cwd { lines.append(ScholiumL10n.string("\(ScholiumL10n.string("Working Directory", locale: locale)): \(cwd)", locale: locale)) }
@@ -106,7 +62,7 @@ extension AgentChatRuntimeApproval {
         return lines
     }
     var publicDescription: String {
-        ([title(), kind == .network ? nil : command, reason].compactMap { $0 } + scopeLines()
+        ([title(), kind == .network ? nil : command, reason, toolServer].compactMap { $0 } + scopeLines()
             + files.map {
                 $0.label() + "\n" + $0.diff
             }).joined(separator: "\n\n")
@@ -159,6 +115,10 @@ extension AgentChatRuntimeApproval.Root {
 }
 
 extension AgentChatRuntimeApproval.File {
+    func displayedDiff(locale: Locale = .current) -> String {
+        diff.isEmpty ? ScholiumL10n.string("No diff text was supplied.", locale: locale) : diff
+    }
+
     func label(locale: Locale = .current) -> String {
         let effect =
             switch kind {

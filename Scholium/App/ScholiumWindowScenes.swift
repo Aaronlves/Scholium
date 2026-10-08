@@ -48,6 +48,8 @@ struct BootstrapWindowRoute: Codable, Hashable {
 struct ScholiumApp: App {
     @NSApplicationDelegateAdaptor(ScholiumApplicationDelegate.self) private var applicationDelegate
     @StateObject private var applicationBootstrap = ApplicationBootstrapController()
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Document tabs live inside the central split item. Native window
@@ -73,15 +75,25 @@ struct ScholiumApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.automatic)
         .defaultLaunchBehavior(.automatic)
+        // The AppKit delegate owns file routing. Exclude these scenes from
+        // SwiftUI's implicit URL fallback, which otherwise opens a workspace
+        // when a file arrives after the last window closes.
+        .handlesExternalEvents(matching: [])
         .restorationBehavior(.disabled)
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
+        .onChange(of: scenePhase, initial: true) {
+            applicationDelegate.markdownFiles.connect(
+                bootstrap: applicationBootstrap,
+                openWindow: openWindow,
+                lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
+            )
+        }
 
         WindowGroup(
             id: "scholium-main",
             for: TriptychWindowRoute.self,
-            content: makeMainWindowContent,
-            defaultValue: { TriptychWindowRoute() }
+            content: makeMainWindowContent
         )
         .defaultSize(
             width: ScholiumRuntimeIsolation.initialWorkspaceWidth()
@@ -90,6 +102,7 @@ struct ScholiumApp: App {
         )
         .windowResizability(.automatic)
         .defaultLaunchBehavior(.suppressed)
+        .handlesExternalEvents(matching: [])
         .restorationBehavior(
             ScholiumRuntimeIsolation.disablesSystemWindowRestoration()
                 ? .disabled
@@ -111,6 +124,7 @@ struct ScholiumApp: App {
         }
         .defaultSize(width: 880, height: 700)
         .defaultLaunchBehavior(.suppressed)
+        .handlesExternalEvents(matching: [])
         .restorationBehavior(.disabled)
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
@@ -121,6 +135,7 @@ struct ScholiumApp: App {
         }
         .defaultSize(width: 920, height: 700)
         .windowResizability(.contentMinSize)
+        .handlesExternalEvents(matching: [])
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
     }
@@ -137,7 +152,7 @@ private func makeBootstrapWindowContent(
 }
 
 private func makeMainWindowContent(
-    _ route: Binding<TriptychWindowRoute>
+    _ route: Binding<TriptychWindowRoute?>
 ) -> ScholiumMainWindowContent {
     ScholiumMainWindowContent(route: route)
 }
@@ -152,59 +167,22 @@ private struct ScholiumBootstrapWindowContent: View {
     var body: some View {
         ScholiumBootstrapWindowEnvironmentContent(route: $route)
             .modifier(SystemNotificationRouting())
-            .modifier(MarkdownFileOpeningRouting())
     }
 }
 
 @MainActor
 private struct ScholiumBootstrapWindowEnvironmentContent: View {
     @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
-    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
     @Binding var route: BootstrapWindowRoute
 
     var body: some View {
-        ScholiumBootstrapLaunchGate(
-            fileOpening: applicationDelegate.markdownFiles,
-            purpose: route.purpose
-        ) {
-            ApplicationBootstrapGate(controller: applicationBootstrap) {
-                ScholiumBootstrapWindowReadyContent(route: $route)
-            }
+        ApplicationBootstrapGate(controller: applicationBootstrap) {
+            ScholiumBootstrapWindowReadyContent(route: $route)
         }
         .focusedSceneValue(
             \.scholiumApplicationBootstrapStatus,
             ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
         )
-    }
-}
-
-/// Launch admission precedes storage and registration presentation. External
-/// reading must not create a Triptych failure window when its registry is ill.
-@MainActor
-private struct ScholiumBootstrapLaunchGate<Content: View>: View {
-    @ObservedObject var fileOpening: MarkdownFileOpeningController
-    @Environment(\.dismissWindow) private var dismissWindow
-    let purpose: BootstrapPurpose
-    @ViewBuilder let content: () -> Content
-    @State private var admitsBootstrap: Bool?
-
-    var body: some View {
-        Group {
-            if admitsBootstrap == true { content() } else { Color.clear }
-        }
-        .task(id: fileOpening.launchPresentation) {
-            guard admitsBootstrap == nil else { return }
-            if purpose != .firstConfiguration {
-                admitsBootstrap = true
-            } else if fileOpening.launchPresentation != .awaitingLaunch {
-                if fileOpening.consumeLaunchBootstrapSuppression() {
-                    admitsBootstrap = false
-                    dismissWindow()
-                } else {
-                    admitsBootstrap = true
-                }
-            }
-        }
     }
 }
 
@@ -224,23 +202,22 @@ private struct ScholiumBootstrapWindowReadyContent: View {
 }
 
 private struct ScholiumMainWindowContent: View {
-    @Binding var route: TriptychWindowRoute
+    @Binding var route: TriptychWindowRoute?
 
-    nonisolated init(route: Binding<TriptychWindowRoute>) {
+    nonisolated init(route: Binding<TriptychWindowRoute?>) {
         self._route = route
     }
 
     var body: some View {
         ScholiumMainWindowEnvironmentContent(route: $route)
             .modifier(SystemNotificationRouting())
-            .modifier(MarkdownFileOpeningRouting())
     }
 }
 
 @MainActor
 private struct ScholiumMainWindowEnvironmentContent: View {
     @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
-    @Binding var route: TriptychWindowRoute
+    @Binding var route: TriptychWindowRoute?
 
     var body: some View {
         ApplicationBootstrapGate(controller: applicationBootstrap) {
@@ -254,17 +231,31 @@ private struct ScholiumMainWindowEnvironmentContent: View {
 }
 
 @MainActor
-private struct ScholiumMainWindowReadyContent: View {
+struct ScholiumMainWindowReadyContent: View {
     @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
     @EnvironmentObject private var workspaceStore: WorkspaceStore
-    @Binding var route: TriptychWindowRoute
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+    @Binding var route: TriptychWindowRoute?
 
     var body: some View {
-        ScholiumWindowRoot(
-            workspaceStore: workspaceStore,
-            route: route,
-            lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
-        )
+        if let route {
+            ScholiumWindowRoot(
+                workspaceStore: workspaceStore,
+                route: route,
+                lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
+            )
+        } else {
+            ContentUnavailableView {
+                Label("No Triptych Open", systemImage: "macwindow")
+            } actions: {
+                Button("New Window") {
+                    openWindow(id: "scholium-main", value: TriptychWindowRoute())
+                    dismissWindow()
+                }
+            }
+            .accessibilityIdentifier("scholium.unresolvedWorkspaceRoute")
+        }
     }
 }
 

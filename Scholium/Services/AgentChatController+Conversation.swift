@@ -73,21 +73,11 @@ extension AgentChatController {
         // Copies shared when deletion begins stay with their remaining owner.
         // A later in-memory removal must not erase bytes still referenced by
         // the deletion's saved snapshot before that owner's save succeeds.
-        let materials = unreferencedMaterials(in: removed)
+        for material in unreferencedMaterials(in: removed) {
+            pendingDeletionMaterials[material.id] = material
+        }
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                try await saveNow()
-            } catch {
-                connectionError = String(localized: "Conversation not saved: \(error.localizedDescription)")
-                return
-            }
-            do {
-                for material in materials { try await releaseMaterialIfUnreferenced(material) }
-            } catch {
-                connectionError = String(
-                    localized: "Conversation deleted, but its retained material could not be removed: \(error.localizedDescription)")
-            }
+            try? await self?.saveNow()
         }
     }
 
@@ -380,18 +370,72 @@ extension AgentChatController {
     /// pending-message state with an older, unconsumed draft snapshot.
     private func enqueueHistorySave() -> Task<Void, Error> {
         let snapshot = historySnapshot()
+        let deletionMaterials = Array(pendingDeletionMaterials.values)
+        let saveID = UUID()
+        pendingHistorySaveReferences[saveID] = referencedMaterialIDs(in: snapshot)
         let previous = persistenceTask
         let saveHistory = saveHistory
-        let operation = Task { @MainActor in
+        let operation = Task<Void, Error> { @MainActor [weak self] in
             await previous?.value
-            try await saveHistory(snapshot)
-        }
-        persistenceTask = Task { [weak self] in
-            do { try await operation.value } catch {
-                self?.connectionError = String(localized: "Conversation not saved: \(error.localizedDescription)")
+            defer { self?.pendingHistorySaveReferences.removeValue(forKey: saveID) }
+            do {
+                try await saveHistory(snapshot)
+                self?.historySaveError = nil
+                await self?.releaseDeletedMaterials(deletionMaterials, afterSaving: snapshot)
+            } catch {
+                self?.historySaveError = String(localized: "Conversation not saved: \(error.localizedDescription)")
+                throw error
             }
         }
+        // Publication is part of the ordered operation: an older completion
+        // cannot clear or replace a newer save's failure.
+        persistenceTask = Task { _ = try? await operation.value }
         return operation
+    }
+
+    private func releaseDeletedMaterials(_ materials: [AgentChatLocalMaterial], afterSaving snapshot: [AgentChatConversation]) async {
+        guard !materials.isEmpty else { return }
+        let savedReferences = referencedMaterialIDs(in: snapshot)
+        // Only a write enqueued after deletion can discharge its obligation.
+        // Later queued snapshots may retain a copy that live memory has since
+        // released; those snapshots must complete before that copy is removed.
+        for material in materials where pendingDeletionMaterials[material.id] != nil {
+            // A later in-memory removal may not yet be durable. Conversely,
+            // newly retained context may not be part of this saved snapshot.
+            guard !savedReferences.contains(material.id),
+                !referencedMaterialIDs(in: conversations).contains(material.id),
+                !pendingHistorySaveReferences.values.contains(where: { $0.contains(material.id) })
+            else { continue }
+            do {
+                try await releaseMaterialIfUnreferenced(material)
+                pendingDeletionMaterials.removeValue(forKey: material.id)
+            } catch {
+                materialCleanupError = String(
+                    localized: "Conversation deleted, but its retained material could not be removed: \(error.localizedDescription)")
+            }
+        }
+        if pendingDeletionMaterials.isEmpty { materialCleanupError = nil }
+    }
+
+    private func referencedMaterialIDs(in snapshot: [AgentChatConversation]) -> Set<UUID> {
+        Set(
+            snapshot.flatMap { conversation in
+                (conversation.localMaterials
+                    + conversation.queuedMessages.flatMap(\.localMaterials)
+                    + conversation.messages.flatMap(\.localMaterials)).map(\.id)
+            })
+    }
+
+    func retryHistorySave() {
+        guard isLoaded, historySaveError != nil, !isRetryingHistorySave else { return }
+        isRetryingHistorySave = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { isRetryingHistorySave = false }
+            // Take the current snapshot through the ordinary writer. Retrying
+            // persistence never dispatches an input or reuses a failed snapshot.
+            try? await saveNow()
+        }
     }
 
     private func scheduleHistorySave() {

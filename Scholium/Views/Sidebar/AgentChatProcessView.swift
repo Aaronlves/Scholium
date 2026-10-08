@@ -1,32 +1,44 @@
 import ScholiumContracts
 import SwiftUI
 
-/// A bounded presentation window over a retained process. The runtime history
-/// remains complete; only the rows currently needed for browsing are mounted.
-struct AgentChatProcessWindow {
+/// A bounded tail while following latest; a stable first identity while reading
+/// history. The conversation's reading session owns both paging and continuity.
+struct AgentChatProcessWindow: Equatable {
     static let pageSize = 32
+    private(set) var first: String?
 
-    static func indices(
-        messages: [AgentChatMessage], loadedCount: Int, inspectedIDs: Set<String>
-    ) -> [Int] {
-        let start = max(0, messages.count - max(Self.pageSize, loadedCount))
+    func indices(messages: [AgentChatMessage], inspectedIDs: Set<String>) -> [Int] {
+        let start = startIndex(in: messages)
         let inspected = Set(
             messages.indices.filter { inspectedIDs.contains(messages[$0].id) })
         return messages.indices.filter { $0 >= start || inspected.contains($0) }
     }
 
-    static func hasEarlier(messages: [AgentChatMessage], loadedCount: Int) -> Bool {
-        messages.count > max(Self.pageSize, loadedCount)
+    func hasEarlier(messages: [AgentChatMessage]) -> Bool {
+        startIndex(in: messages) > 0
     }
 
-    static func nextCount(messages: [AgentChatMessage], loadedCount: Int) -> Int {
-        min(messages.count, max(Self.pageSize, loadedCount) + Self.pageSize)
+    mutating func reconcile(in messages: [AgentChatMessage], preservesReading: Bool) {
+        guard !messages.isEmpty else { return }
+        let start = preservesReading ? startIndex(in: messages) : max(0, messages.count - Self.pageSize)
+        first = messages[start].id
+    }
+
+    mutating func earlier(in messages: [AgentChatMessage]) {
+        guard !messages.isEmpty else { return }
+        first = messages[max(0, startIndex(in: messages) - Self.pageSize)].id
+    }
+
+    private func startIndex(in messages: [AgentChatMessage]) -> Int {
+        first.flatMap { first in messages.firstIndex { $0.id == first } }
+            ?? max(0, messages.count - Self.pageSize)
     }
 }
 
 /// A disclosure over retained public items; it owns no execution or inferred reasoning.
 struct AgentChatProcessView<Row: View>: View {
     let messages: [AgentChatMessage]
+    @Binding var window: AgentChatProcessWindow
     let isActive: Bool
     let forceExpanded: Bool
     var status: AgentChatTurnPresentation? = nil
@@ -39,7 +51,6 @@ struct AgentChatProcessView<Row: View>: View {
     @ViewBuilder let row: (AgentChatMessage) -> Row
     @Environment(\.locale) private var locale
     @State private var isExpanded = false
-    @State private var loadedMessageCount = AgentChatProcessWindow.pageSize
 
     private var needsAttention: Bool {
         messages.contains {
@@ -51,13 +62,11 @@ struct AgentChatProcessView<Row: View>: View {
     }
 
     private var visibleMessages: [AgentChatMessage] {
-        AgentChatProcessWindow.indices(
-            messages: messages, loadedCount: loadedMessageCount, inspectedIDs: inspectedActivityIDs
-        ).map { messages[$0] }
+        window.indices(messages: messages, inspectedIDs: inspectedActivityIDs).map { messages[$0] }
     }
 
     private var hasEarlierMessages: Bool {
-        AgentChatProcessWindow.hasEarlier(messages: messages, loadedCount: loadedMessageCount)
+        window.hasEarlier(messages: messages)
     }
 
     private var processTitle: String {
@@ -84,8 +93,7 @@ struct AgentChatProcessView<Row: View>: View {
                 if hasEarlierMessages {
                     Button {
                         inspect()
-                        loadedMessageCount = AgentChatProcessWindow.nextCount(
-                            messages: messages, loadedCount: loadedMessageCount)
+                        window.earlier(in: messages)
                     } label: {
                         Label("Load Earlier Activity", systemImage: ScholiumSidebarAction.earlier.symbol)
                     }
@@ -123,8 +131,11 @@ struct AgentChatProcessView<Row: View>: View {
         }
         .onChange(of: forceExpanded) { _, force in if force { isExpanded = true } }
         .onChange(of: needsAttention) { _, needed in if needed { isExpanded = true } }
-        .onChange(of: messages.count) { _, count in
-            loadedMessageCount = min(max(AgentChatProcessWindow.pageSize, loadedMessageCount), count)
+        .onChange(of: messages.count, initial: true) { _, _ in
+            window.reconcile(in: messages, preservesReading: preservesReading)
+        }
+        .onChange(of: preservesReading) { _, preservesReading in
+            window.reconcile(in: messages, preservesReading: preservesReading)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.chat.process.\(messages.first?.id ?? "")")

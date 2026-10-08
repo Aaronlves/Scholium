@@ -56,6 +56,9 @@ public struct NoteIdentityRecord: Codable, Hashable, Identifiable, Sendable {
     public let createdAt: Date
     public var updatedAt: Date
     public var duplicatedFrom: UUID?
+    /// True means this Note requires essential portable citation authority,
+    /// including document-only settings with no visible citation occurrences.
+    public var citationCompanionRequired: Bool?
 
     public init(
         id: UUID = UUID(),
@@ -64,7 +67,8 @@ public struct NoteIdentityRecord: Codable, Hashable, Identifiable, Sendable {
         fingerprint: DocumentFingerprint,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        duplicatedFrom: UUID? = nil
+        duplicatedFrom: UUID? = nil,
+        citationCompanionRequired: Bool? = nil
     ) {
         self.id = id
         self.vaultID = vaultID
@@ -73,6 +77,7 @@ public struct NoteIdentityRecord: Codable, Hashable, Identifiable, Sendable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.duplicatedFrom = duplicatedFrom
+        self.citationCompanionRequired = citationCompanionRequired
     }
 }
 

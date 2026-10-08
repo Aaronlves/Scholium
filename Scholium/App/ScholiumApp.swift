@@ -511,7 +511,12 @@ final class WindowModel: ObservableObject {
     // MARK: Window Presentation
 
     func registerNoteDisplayWindow(_ window: AgentNoteDisplayWindow) {
-        workspaceStore.registerNoteDisplayWindow(id: nativeWindowID, window: window)
+        var registration = window
+        registration.observe = { [weak self] admitted in
+            guard let self else { throw ScholiumMCPFailure.chatObservation(.workspaceNotReady) }
+            return try await self.observeChatDocument(admitted: admitted)
+        }
+        workspaceStore.registerNoteDisplayWindow(id: nativeWindowID, window: registration)
     }
 
     func unregisterNoteDisplayWindow() {

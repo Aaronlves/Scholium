@@ -332,7 +332,7 @@ private struct SidebarSizingFixtureContent: View {
                 sources: (0..<state.count).map { .init(url: AgentChatReference.url(noteID: UUID()), title: "Source \($0) 原文") }, close: {}, open: { _ in })
         case .materials:
             AgentChatMaterialsView(
-                context: materialContext, openAttachment: { _ in },
+                context: materialContext, openAttachment: { _, _ in },
                 previewMaterial: { _ in
                     throw CancellationError()
                 }, close: {})

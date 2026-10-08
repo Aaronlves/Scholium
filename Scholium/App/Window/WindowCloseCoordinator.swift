@@ -23,7 +23,7 @@ final class WindowCloseCoordinator {
     private let presentationSnapshot: PresentationSnapshot
     private let recordPersistenceFailure: PersistenceFailureHandler
     private let finalizeDependencies: Finalizer
-    private var closeAttemptSequence: UInt64 = 0
+    private(set) var closeAttemptSequence: UInt64 = 0
     private var currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
     private var preparedOutcome: WindowClosePreparationOutcome?
     private var resumePreparedContent: Finalizer?

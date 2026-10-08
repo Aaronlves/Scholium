@@ -18,12 +18,6 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
             name: NSMenu.didSendActionNotification, object: nil)
     }
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        markdownFiles.finishLaunching(
-            isDefaultLaunch: notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true
-        )
-    }
-
     @objc private func applicationMenuDidSendAction(_ notification: Notification) {
         guard let menu = notification.object as? NSMenu,
             let item = notification.userInfo?["MenuItem"] as? NSMenuItem
@@ -65,25 +59,49 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !windowLifecycleRegistry.isTerminationAttemptInProgress else { return .terminateLater }
-        guard
-            windowLifecycleRegistry.hasRegisteredWindows
-                || ExternalMarkdownWindowRegistry.shared.hasOpenWindows
-        else {
-            return .terminateNow
-        }
         windowLifecycleRegistry.beginTerminationAttempt()
         markdownFiles.prepareTermination()
         Task { @MainActor in
-            do {
-                try await windowLifecycleRegistry.flushAll()
-                try await ExternalMarkdownWindowRegistry.shared.flushAll()
-                sender.reply(toApplicationShouldTerminate: true)
-            } catch {
-                windowLifecycleRegistry.endTerminationAttempt()
-                markdownFiles.cancelTermination()
-                sender.reply(toApplicationShouldTerminate: false)
+            let outcome = await prepareApplicationTermination()
+            sender.reply(toApplicationShouldTerminate: outcome == .ready)
+            if outcome == .citationPending {
+                let alert = NSAlert()
+                alert.alertStyle = .informational
+                alert.messageText = ScholiumL10n.string("Citation Operation in Progress")
+                alert.informativeText = ScholiumL10n.string("Finish or cancel the open Zotero dialog before quitting Scholium.")
+                if let window = sender.keyWindow {
+                    await alert.beginSheetModal(for: window)
+                } else {
+                    alert.runModal()
+                }
             }
         }
         return .terminateLater
+    }
+
+    enum TerminationPreparation {
+        case ready, citationPending, failed
+    }
+
+    /// The adapter owns admission even when its originating window has closed.
+    /// Acquire it before flushing editors, which can revoke citation authority.
+    func prepareApplicationTermination(
+        citations: CitationTerminationCapabilities = WorkspaceStore.citationTermination
+    ) async -> TerminationPreparation {
+        guard await citations.begin() else {
+            windowLifecycleRegistry.endTerminationAttempt()
+            markdownFiles.cancelTermination()
+            return .citationPending
+        }
+        do {
+            try await windowLifecycleRegistry.flushAll()
+            try await ExternalMarkdownWindowRegistry.shared.flushAll()
+            return .ready
+        } catch {
+            await citations.cancel()
+            windowLifecycleRegistry.endTerminationAttempt()
+            markdownFiles.cancelTermination()
+            return .failed
+        }
     }
 }

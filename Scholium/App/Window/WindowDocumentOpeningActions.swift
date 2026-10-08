@@ -557,6 +557,10 @@ extension WindowModel {
     }
 
     func openInternalLink(_ targetWithFragment: String, from sourcePath: String) {
+        guard
+            !ZoteroMarkdownFields.isCitationDestination(
+                targetWithFragment.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { return }
         guard let sourceContext = activeDocumentContext(for: sourcePath),
             let graph = workspaceCatalog?.graph
         else {

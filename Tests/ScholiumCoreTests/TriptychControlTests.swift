@@ -796,9 +796,7 @@ struct TriptychControlTests {
         )
 
         let recovered = try await store.moveIdentity(
-            id: original.id,
-            vaultID: vaultID,
-            from: "Work.md",
+            original,
             to: "Archive/Work.md",
             fingerprint: fingerprint
         )
@@ -813,6 +811,77 @@ struct TriptychControlTests {
         #expect(stored?.vaultID == recovered.vaultID)
         #expect(stored?.relativePath == recovered.relativePath)
         #expect(stored?.fingerprint == recovered.fingerprint)
+    }
+
+    @Test("Move reconstruction preserves citation ownership or refuses a replacement identity", arguments: [nil, "Work.md", "Moved.md"] as [String?])
+    func lifecycleMoveRecoversCitationOwnership(replacementPath: String?) async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let triptychID = UUID()
+        let vaultID = UUID()
+        let local = fixture.root.appendingPathComponent("local", isDirectory: true)
+        let coordinationURL = local.appendingPathComponent("Triptychs/\(triptychID.uuidString)", isDirectory: true)
+        let store = try TriptychControlStore(worksVaultURL: fixture.works, coordinationURL: coordinationURL)
+        _ = try await store.bootstrap(
+            vaultIDs: [.paperAnalysis: UUID(), .topicKnowledge: UUID(), .output: vaultID],
+            preferredTriptychID: triptychID)
+        let repository = try VaultRepository(
+            vaultURL: fixture.works,
+            identity: .init(id: vaultID, canonicalPath: fixture.works.path, bookmarkData: nil),
+            applicationSupportURL: local)
+        let source = "\u{FEFF}Research without citations\r\n"
+        let document = try await repository.create(relativePath: "Work.md", content: source)
+        let original = try #require(
+            try await store.identity(forVaultID: vaultID, relativePath: "Work.md", fingerprint: document.fingerprint))
+        let recovery = try TriptychMutationRecoveryStore(storageURL: coordinationURL.appendingPathComponent("transactions", isDirectory: true))
+        let coordinator = ZoteroCitationSaveCoordinator(
+            triptychID: triptychID, repositories: [vaultID: repository], controlStore: store, recoveryStore: recovery)
+        let saved = try await coordinator.save(
+            target: .init(documentID: .init(vaultID: vaultID, relativePath: "Work.md"), stableNoteID: original.id, revision: document.fingerprint),
+            source: source, edit: .init(expectedRevision: nil, data: .init(documentData: "document-only-style")))
+        #expect(saved.document.citationSnapshot?.status == .available)
+        #expect(saved.document.citationSnapshot?.data?.fields.isEmpty == true)
+        let captured = try #require(try await store.identityRecord(id: original.id))
+        #expect(captured.citationCompanionRequired == true)
+        let companionURL = fixture.root.appendingPathComponent(".scholium/citations/v1/\(original.id.uuidString.lowercased()).json")
+        let companionBytes = try Data(contentsOf: companionURL)
+
+        // Lose the inventory entry after the source move but before its identity
+        // commit, while the captured preflight record and companion still exist.
+        try FileManager.default.moveItem(
+            at: fixture.works.appendingPathComponent("Work.md"), to: fixture.works.appendingPathComponent("Moved.md"))
+        _ = try await store.purgeIdentity(id: original.id, vaultID: vaultID, relativePath: "Work.md")
+        #expect(try await store.identityRecord(id: original.id) == nil)
+        if let replacementPath {
+            let replacement = try #require(
+                try await store.identity(forVaultID: vaultID, relativePath: replacementPath, fingerprint: document.fingerprint))
+            let identitiesURL = fixture.root.appendingPathComponent(".scholium/identities.json")
+            let identitiesBefore = try Data(contentsOf: identitiesURL)
+            await #expect(throws: TriptychControlError.self) {
+                try await store.moveIdentity(captured, to: "Moved.md", fingerprint: document.fingerprint)
+            }
+            #expect(try await store.identityRecord(id: original.id) == nil)
+            #expect(try await store.identityRecord(id: replacement.id) == replacement)
+            #expect(try Data(contentsOf: identitiesURL) == identitiesBefore)
+            #expect(try Data(contentsOf: companionURL) == companionBytes)
+            #expect(try Data(contentsOf: fixture.works.appendingPathComponent("Moved.md")) == Data(source.utf8))
+            return
+        }
+        let recovered = try await store.moveIdentity(captured, to: "Moved.md", fingerprint: document.fingerprint)
+        #expect(recovered.id == captured.id)
+        #expect(recovered.createdAt == captured.createdAt)
+        #expect(recovered.citationCompanionRequired == true)
+        #expect(try Data(contentsOf: companionURL) == companionBytes)
+
+        let reopened = try TriptychControlStore(worksVaultURL: fixture.works, coordinationURL: coordinationURL)
+        let available = try await reopened.citationSnapshot(noteID: recovered.id, vaultID: vaultID, sourceFingerprint: document.fingerprint)
+        #expect(available.status == .available)
+        #expect(available.data?.documentData == "document-only-style")
+        try FileManager.default.removeItem(at: companionURL)
+        let missing = try await reopened.citationSnapshot(noteID: recovered.id, vaultID: vaultID, sourceFingerprint: document.fingerprint)
+        #expect(missing.status == .unresolved)
+        #expect(try await reopened.identityRecord(id: recovered.id)?.relativePath == "Moved.md")
+        #expect(try Data(contentsOf: fixture.works.appendingPathComponent("Moved.md")) == Data(source.utf8))
     }
 
     @Test("Creation rollback purges portable identity and pending rebinding state")

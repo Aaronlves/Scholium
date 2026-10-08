@@ -576,6 +576,7 @@ struct NoteContentView<ShellNotices: View>: View {
             let source = note.document.rawContent
             let relativePath = note.id.relativePath
             let fingerprint = noteFingerprint
+            let citationSnapshot = note.document.citationSnapshot
             if !isEditing {
                 documentSession.readSelection = nil
                 // Entering Review now starts this task too. Preserve an
@@ -607,10 +608,13 @@ struct NoteContentView<ShellNotices: View>: View {
                     source: source,
                     fingerprint: fingerprint,
                     workspaceID: state.currentVaultID,
-                    semantic: note.cachedSemanticDocument
+                    semantic: note.cachedSemanticDocument,
+                    citationSnapshot: citationSnapshot
                 )
             }
-            guard let html, !Task.isCancelled, fingerprint == noteFingerprint else { return }
+            guard let html, !Task.isCancelled, fingerprint == noteFingerprint,
+                citationSnapshot == note.document.citationSnapshot
+            else { return }
             PerformanceProbe.shared.markReadHTMLReady(documentID: relativePath)
             renderedReadHTML = html
             renderedReadFingerprint = fingerprint.sha256
@@ -731,6 +735,7 @@ struct NoteContentView<ShellNotices: View>: View {
 
     private var readProjectionTaskIdentity: String? {
         documentSession.readProjectionTaskIdentity(relativePath: note.id.relativePath, fingerprint: noteFingerprint)
+            .map { "\($0):\(note.document.citationSnapshot?.revision?.sha256 ?? "absent"):\(note.document.citationSnapshot?.status.rawValue ?? "standalone")" }
     }
 
     private var outlineSource: String {
@@ -854,7 +859,8 @@ struct NoteContentView<ShellNotices: View>: View {
                 } ?? "",
                 writingContinuationQuery: actions.writingContinuation,
                 imageResourceContextKey: "\(note.id.vaultID):\(note.id.relativePath):\(indexedImageAvailabilityGeneration)",
-                imageResourcesQuery: queryEditorImageResources
+                imageResourcesQuery: queryEditorImageResources,
+                citationSnapshot: note.document.citationSnapshot
             )
             .id(editorSession.viewReconstructionID)
             .allowsHitTesting(!returnToReadAfterSave)
@@ -1218,6 +1224,8 @@ struct NoteContentView<ShellNotices: View>: View {
     private var readConfigurationRevision: String {
         [
             noteFingerprint.sha256,
+            note.document.citationSnapshot?.revision?.sha256 ?? "absent",
+            note.document.citationSnapshot?.status.rawValue ?? "standalone",
             String(note.summary.title.hashValue),
         ].joined(separator: ":")
     }
@@ -1292,6 +1300,10 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private func openAuthoredLink(_ destination: String) {
+        guard
+            !ZoteroMarkdownFields.isCitationDestination(
+                destination.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { return }
         if let url = URL(string: destination),
             ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
         {
@@ -1845,6 +1857,14 @@ private struct ConflictComparisonSheet: View {
     let onReloadFromDisk: () -> Void
     @State private var isDocumentExpanded = true
 
+    private var revisionDifferenceDescription: Text {
+        Text(
+            conflict.hasCitationConflict
+                ? "Citation metadata changed; Reload also replaces it."
+                : "Editor and disk revisions differ"
+        )
+    }
+
     var body: some View {
         ExactSourceComparisonSheetLayout(
             title: "Compare Changes",
@@ -1877,7 +1897,7 @@ private struct ConflictComparisonSheet: View {
                                         resting: .primaryText,
                                         emphasized: .accent
                                     )
-                                Text("Editor and disk revisions differ")
+                                revisionDifferenceDescription
                                     .font(ScholiumTypography.interface(.small))
                                     .scholiumForeground(.attention)
                             }
@@ -1895,7 +1915,10 @@ private struct ConflictComparisonSheet: View {
                             style: .continuous
                         )
                     )
-                    .accessibilityLabel(conflict.relativePath)
+                    .accessibilityLabel { _ in
+                        Text(verbatim: conflict.relativePath)
+                        revisionDifferenceDescription
+                    }
                     .accessibilityValue(
                         isDocumentExpanded ? "Expanded" : "Collapsed"
                     )

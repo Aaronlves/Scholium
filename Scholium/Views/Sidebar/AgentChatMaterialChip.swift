@@ -8,9 +8,7 @@ struct AgentChatMaterialChip: View {
     let attachment: AgentChatAttachment
     var isEmbeddedInComposer = false
     let remove: (() -> Void)?
-    let open: () -> Void
-    @Environment(\.openChatNoteInNewTab) private var openInNewTab
-    @Environment(\.openChatNoteInSeparateWindow) private var openInSeparateWindow
+    let open: (WindowOpenDisposition) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
     @FocusState private var noteIsFocused: Bool
@@ -19,8 +17,6 @@ struct AgentChatMaterialChip: View {
     private var revealsRemove: Bool {
         remove != nil && (isHovered || noteIsFocused || removeIsFocused)
     }
-
-    private var noteURL: URL { AgentChatReference.url(noteID: attachment.noteID) }
 
     private var title: String {
         URL(fileURLWithPath: attachment.relativePath).deletingPathExtension().lastPathComponent
@@ -42,7 +38,9 @@ struct AgentChatMaterialChip: View {
     var body: some View {
         AgentChatMaterialContainer(isEmbeddedInComposer: isEmbeddedInComposer) {
             ZStack(alignment: .topTrailing) {
-                Button(action: open) {
+                Button {
+                    open(.replaceCurrent)
+                } label: {
                     HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         Image(systemName: attachment.extent == .wholeNote ? ScholiumSidebarItem.note.symbol : ScholiumSidebarItem.passage.symbol)
                             .font(.subheadline)
@@ -91,9 +89,9 @@ struct AgentChatMaterialChip: View {
                 .focused($noteIsFocused)
                 .overlay {
                     AgentChatNoteSecondaryClick(
-                        open: open,
-                        openNewTab: openInNewTab.map { action in { action(noteURL) } },
-                        openSeparate: openInSeparateWindow.map { action in { action(noteURL) } },
+                        open: { open(.replaceCurrent) },
+                        openNewTab: { open(.newTab) },
+                        openSeparate: { open(.separateWindow) },
                         hoverChanged: { isHovered = $0 }
                     )
                 }

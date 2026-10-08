@@ -25,25 +25,19 @@ accessor. The system-managed sibling backup is retained until reconciliation.
 Foundation owns preservation/adjustment of standard filesystem metadata; Scholium
 does not reconstruct or compare the full ACL/xattr/ownership/flags envelope.
 
-Before replacement, durable machine-local recovery binds exact expected/candidate
-bytes, fingerprints and path. Pre-replacement failure leaves canonical source
-unchanged. Post-replacement failure never triggers an automatic compensating write.
-Canonical no-follow readback plus parent identity proves commit or leaves recovery
-uncertain; no generic Saved result is allowed without that proof.
+Durable machine-local recovery binds exact expected/candidate bytes, fingerprints
+and path before replacement. Prewrite failure preserves source; postwrite failure
+never compensates automatically. No-follow canonical/backup reads and parent
+identity must prove commit before Saved or cleanup. Differing displaced bytes
+are durably transaction-bound before backup removal; failure retains backup for
+startup reconciliation at its exact location. Expected, candidate and displaced
+bytes survive uncertainty even when candidate bytes are canonical. Proven saves
+retain no history.
 
-Backup bytes are no-follow read before success/transaction removal. Differing
-displaced source is durably retained and bound to the same transaction before
-backup cleanup. Failure preserves the backup; startup reconciles its exact
-transaction-bound location first. Expected, candidate and displaced bytes survive
-uncertainty even if canonical bytes equal the attempted candidate. Ordinary proven
-saves leave no history.
-
-Recovery read/reveal/copy is nonauthorizing. Explicit restore carries exact vault,
-path, revisions and retained creation identity, flushes Triptych editors, and uses
-the same revision-checked repository writer only while canonical source remains at
-the expected revision. Window/Research owners borrow recovery projections, not
-filesystem transaction ownership. Unsupported records remain unchanged and
-nonauthorizing.
+Recovery inspection grants no writes. Explicit restore binds vault/path/revisions
+and retained creation identity, flushes Triptych editors, then uses the repository
+writer only against expected source. Window/Research owners borrow projections;
+unsupported records remain unchanged and nonauthorizing.
 
 Core `DocumentReviewStore` keeps source baselines, captures, batches and
 receipt-version coverage outside vaults. Application `DocumentChangeOperations`
@@ -52,19 +46,21 @@ compares identity-checked saved source and increments snapshot generation;
 without vault activation. MCP receipts and Undo remain with
 [Agent Collaboration](02-agent-collaboration.md#note-mutation-authority-and-evidence).
 
-Bounded JSON stores share Core's contained, size-limited, atomic secure-record
-primitive and advisory locking. Each store retains schema and transaction
-semantics; the primitive interprets no research object.
-Portable settings and machine-local style manifests share exact-byte coordinated
-replacement, exclusive recovery copies and checked absence creation. Application
-owns independent appearance/snippet load failures; Settings retains target-bound
-drafts and recovery confirmation. The style adapter serializes requests through
-returned-snapshot publication; failed reload publishes repair availability while
-retaining the loaded profile and draft. Unsupported settings project safe defaults
-without rewriting their saved envelope.
-Portable identity bootstrap uses no-replace creation. Identity mutation carries
-its exact decoded preimage through coordinated swap and readback, preventing a
-stale writer from erasing newer identity. Source bytes alone never grant identity.
+Bounded JSON stores share Core's contained atomic secure-record primitive and
+advisory locking. Stores own schema/transactions; the primitive interprets no
+research. Portable settings and machine-local style manifests use exact-byte
+coordinated replacement, exclusive recovery copies and checked absence. Application
+owns independent appearance/snippet failures; Settings retains target-bound
+drafts/recovery. Style requests serialize through snapshot publication; failed
+reload retains profile/draft and repair availability. Unsupported settings project
+defaults without rewriting. Identity bootstrap is no-replace; updates carry exact
+decoded preimages through coordinated swap/readback. Source never grants identity.
+
+`TriptychControlStore` owns essential UUID-keyed citation companions;
+`ZoteroCitationSaveCoordinator` uses Application's source lease and
+`TriptychMutationRecoveryStore`'s exact paired evidence. Source/companion revisions
+and portable ownership declarations govern commit, absence and recovery;
+derived projections cannot reconstruct authority.
 
 ## System Trash and coordinated source boundary
 

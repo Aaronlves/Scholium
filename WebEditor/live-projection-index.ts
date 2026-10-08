@@ -29,6 +29,7 @@ import {
   type SemanticProjectionRanges,
 } from "./semantic-projection";
 import {frontmatterBoundary, normalizedDocumentText} from "./state";
+import {setCitationSnapshot, setCitationData} from "./zotero-citation-state";
 import {setExactSource} from "./exact-source-history";
 import {projectFieldsForState, type FieldProjection} from "./zotero-fields";
 import {
@@ -625,7 +626,7 @@ export function createLiveProjectionIndexController(
     create: build,
     update(previous, transaction) {
       if (!transaction.docChanged) {
-        return transactionChangedSyntaxTree(transaction) || transaction.effects.some(effect => effect.is(setExactSource))
+        return transactionChangedSyntaxTree(transaction) || transaction.effects.some(effect => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData))
           ? build(transaction.state)
           : previous;
       }

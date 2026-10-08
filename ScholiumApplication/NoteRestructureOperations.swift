@@ -90,6 +90,13 @@ extension WorkspaceHandle {
             guard identity.id == target.stableNoteID else {
                 throw NoteRestructureError.unavailable("A note's identity changed. Open its current location before reorganizing it.")
             }
+            let citations = try await services.controlStore.citationSnapshot(
+                noteID: identity.id, vaultID: target.documentID.vaultID,
+                sourceFingerprint: target.revision)
+            guard citations.status == .absent else {
+                throw NoteRestructureError.unavailable(
+                    "Notes with retained citation companions cannot be extracted or merged. Their source and citation data remain unchanged.")
+            }
         }
     }
 }

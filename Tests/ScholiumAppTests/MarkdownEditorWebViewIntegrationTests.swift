@@ -8861,7 +8861,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 in: webView
             )
             if !didSuspend,
-                case .initialize(_, _, _, .some) = request.operation
+                case .initialize(_, _, _, .some, _) = request.operation
             {
                 didSuspend = true
                 await withCheckedContinuation { continuation = $0 }
@@ -8905,7 +8905,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 requestJSON: requestJSON,
                 in: webView
             )
-            guard case .initialize(_, _, _, .some) = request.operation,
+            guard case .initialize(_, _, _, .some, _) = request.operation,
                 var object = result as? [String: Any]
             else {
                 return result

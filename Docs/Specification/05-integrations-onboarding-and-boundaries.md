@@ -88,20 +88,49 @@ citation styles are supported. Note styles and automatic footnote/endnote
 conversion are unavailable; requests leave source unchanged and explain the
 limitation.
 
-Exact Markdown carries each citation as a standard link with a readable fallback
-label and versioned `scholium-zotero:1:` destination. The encoded payload retains
-stable host occurrence identity and opaque Zotero field data, including supplied
-item references and metadata. Bibliography is readable Markdown between paired
-field comments; a document comment retains Zotero document/style data and the
-accepted field state. No hidden rich text or sidecar becomes citation authority.
-Citekeys and title matching cannot replace Zotero's library-qualified references.
+Managed Notes carry citations as standard Markdown links with readable formatted
+citation labels and `cite:occurrence-id` destinations. The collision-safe ID
+identifies one occurrence, not a Zotero item or
+visible label. Bibliography remains readable Markdown between
+`<!--cite-bibliography:occurrence-id-->` and `<!--/cite-bibliography-->`.
+Opaque Zotero field codes, supplied item references/metadata, document/style data
+and accepted field state live losslessly in the bounded versioned companion
+`.scholium/citations/v1/<Note UUID>.json`, bound to Note/vault identity and exact
+Markdown revision. This is essential portable authority, not a rebuildable cache.
+Markdown owns current visible writing; vendor HTML never reconstructs it.
+Citekeys, matching text and occurrence order cannot substitute for identity.
+
+Standalone Markdown retains its self-contained `scholium-zotero:1:` links and
+embedded bibliography/document comments, including live Zotero editing. Opening
+or saving it adds no companion beside the original. Existing embedded managed
+fields convert only through an accepted Zotero command, with exact prior source
+and companion absence recoverable through Undo and paired persistence. Import
+preserves source bytes; it performs no implicit conversion or private-note migration.
+
+`cite:` remains internal even when malformed or unresolved: it never opens an
+external application or resolves as a Note link. Ordinary Note links, Zotero
+item/PDF/page/annotation locators and web URLs keep their existing meanings.
+Readable citations gain no inline icon; destination-specific actions belong in
+existing previews or context menus. Static exports retain readable citation text,
+not executable citation destinations or live Zotero fields.
 
 Each operation stages callbacks against the current exact source and selection.
-Only a validated accepted candidate applies in one Undo, preserving bytes outside
-changed ranges. Completion alone confirms protocol cleanup, not acceptance.
+Only a validated accepted candidate applies in one Undo, including companion-only
+changes, preserving bytes outside changed ranges. Redo restores the same pair.
+Completion alone confirms protocol cleanup, not acceptance.
 Composition, selection, mode or document changes revoke pending acceptance;
 cancellation or failure preserves typed input and source. Protocol cleanup cannot
-publish partial fields.
+publish partial fields. Source and companion saves check both revisions and retain
+exact pair recovery under §14; a metadata-only change is dirty even with unchanged
+Markdown. A peer's changed companion cannot be overwritten by a stale editor.
+
+Managed Duplicate copies opaque metadata and remints every occurrence identity.
+Ordinary copying/pasting or importing compact links transfers no companion
+authority; unmatched or duplicate IDs remain readable and unresolved. Moves and
+Trash retain Note-owned companions; restoration requires resolved original
+identity. Untracked source changes, including Agent edits and link rewrites,
+preserve companion bytes but invalidate their source association. No arbitrary
+external-edit rebinding, fuzzy relocation or matching by citation text is promised.
 
 Changed field identities, codes or order mark citation state stale. Manual
 fallback edits remain source; Zotero handles their citation consequences on
@@ -109,8 +138,10 @@ Refresh. **Refresh Citations** delegates the complete ordered clusters and
 bibliography to Zotero; **Citation Style…** changes style there. Library metadata
 changes require explicit Refresh. Offline Notes retain exact fields and their
 last readable fallback; disconnected formatting is Unavailable, never fresh
-output. Unknown versions, malformed/duplicate fields and unresolved sources retain
-bytes. Stale/unresolved state stays visible in a native Document notice with guarded
+output. Unknown versions, malformed/duplicate fields, missing companions and
+revision mismatches retain bytes and refuse live mutation. Missing companion
+authority is detected by a retained Note ownership declaration even without visible fields. Stale/unresolved state
+stays visible in a native Document notice with guarded
 **Refresh Citations** and **Source** repair; identity is never guessed. §18.4 owns
 insertion and export presentation.
 
@@ -166,7 +197,9 @@ If existing portable control state is damaged or from an unsupported schema,
 registration first performs a read-only whole-bundle preflight. Confirmed
 **Archive and Rebuild…** atomically renames the entire unchanged `.scholium`
 directory to one unique sibling before creating current control state.
-Research vaults remain byte-exact. Archive, removal, and rebuild are unavailable
+The archive retains citation authority; rebuild cannot reconstruct it from prose
+or silently restore live editing. Research vaults remain byte-exact.
+Archive, removal, and rebuild are unavailable
 while that Triptych has an active workspace runtime. Settings manages and opens
 registered Triptychs.
 

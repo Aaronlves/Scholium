@@ -209,7 +209,9 @@ struct DocumentDetachedPersistenceTests {
                     reference: .init(
                         vaultID: key.vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
                         relativePath: "Source.md", stableNoteID: key.noteID.uuidString)))
-            let fixture = try await makeEditor(source: original)
+            let citationSnapshot = try #require(snapshot.document.citationSnapshot)
+            #expect(citationSnapshot.status == .absent)
+            let fixture = try await makeEditor(source: original, citationSnapshot: citationSnapshot)
             let session = DocumentSessionModel(key: key, editorSession: fixture.editor)
             let controller = DocumentController()
             controller.bind(to: capabilities.documents)
@@ -242,6 +244,8 @@ struct DocumentDetachedPersistenceTests {
                     #expect(fixture.editor.detachmentSuspensionID == nil)
                     #expect(fixture.dispatcher.suspensionID == nil)
                     #expect(fixture.editor.startingFingerprint == session.editingRevision?.sha256)
+                    #expect(fixture.dispatcher.citationSnapshot == fixture.editor.committedCitationSnapshot)
+                    #expect(fixture.dispatcher.citationData == fixture.editor.checkedCitationData)
                 }
                 try fixture.insert("Input after the committed snapshot.\r\n")
             }
@@ -268,6 +272,8 @@ struct DocumentDetachedPersistenceTests {
                 #expect(!fixture.editor.hasAttachedWebView)
                 #expect(fixture.editor.hasDetachedPersistenceSnapshot)
                 #expect(session.pendingEditorCommit == nil)
+                #expect(fixture.editor.committedCitationSnapshot == citationSnapshot)
+                #expect(fixture.editor.checkedCitationData == nil)
                 let reconstructed = fixture.editor.sourceForViewAttachment(proposedSource: original, documentID: fixture.editor.bridgeDocumentID)
                 #expect(Data(reconstructed.utf8) == Data(expected.utf8))
                 // Another lifecycle flush joins the same committed detached state.
@@ -280,12 +286,12 @@ struct DocumentDetachedPersistenceTests {
         }
     }
 
-    private func makeEditor(source: String = "Original\r\n") async throws -> Fixture {
+    private func makeEditor(source: String = "Original\r\n", citationSnapshot: ZoteroCitationSnapshot? = nil) async throws -> Fixture {
         let dispatcher = CaptureDispatcher()
         let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher)
         let webView = WKWebView()
         editor.attach(webView)
-        editor.loadDocument(source, documentID: editor.bridgeDocumentID, mode: .source)
+        editor.loadDocument(source, documentID: editor.bridgeDocumentID, mode: .source, citationSnapshot: citationSnapshot)
         editor.editorBecameReady()
         let loaded = try await editor.waitUntilLoadedForSave()
         try #require(loaded)
@@ -306,7 +312,8 @@ struct DocumentDetachedPersistenceTests {
                 editor.acceptEditorChanges(
                     [
                         .init(from: end, to: end, insert: exact.replacingOccurrences(of: "\r\n", with: "\n"), exactInsert: exact)
-                    ], baseGeneration: editor.generation, resultingGeneration: nextGeneration))
+                    ], baseGeneration: editor.generation, resultingGeneration: nextGeneration,
+                    citationManaged: dispatcher.citationSnapshot != nil, citationData: dispatcher.citationData))
             dispatcher.source += exact
             dispatcher.generation = nextGeneration
             try #require(Data(editor.checkedSource.utf8) == Data(dispatcher.source.utf8))
@@ -319,6 +326,8 @@ struct DocumentDetachedPersistenceTests {
     private final class CaptureDispatcher: MarkdownEditorBridgeDispatching {
         var source = ""
         var generation = 0
+        private(set) var citationSnapshot: ZoteroCitationSnapshot?
+        private(set) var citationData: ZoteroCitationData?
         var suspensionID: String?
         var failNextAcknowledgement = false
         var holdNextResumeReply = false
@@ -348,8 +357,10 @@ struct DocumentDetachedPersistenceTests {
             var recovery: MarkdownEditorRecoverySnapshot?
             var commitSuperseded: Bool?
             switch request.operation {
-            case .initialize(let source, _, _, let initialSelection):
+            case .initialize(let source, _, _, let initialSelection, let citationSnapshot):
                 self.source = source
+                self.citationSnapshot = citationSnapshot
+                citationData = citationSnapshot?.data
                 generation = 0
                 suspensionID = nil
                 selections = initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
@@ -379,13 +390,17 @@ struct DocumentDetachedPersistenceTests {
                 }
             case .queryText:
                 text = source
-            case .acknowledgeCommittedSnapshot(let expected, let committed, _):
+            case .acknowledgeCommittedSnapshot(let expected, let committed, _, let expectedCitationData, let committedCitationSnapshot):
                 if failNextAcknowledgement {
                     failNextAcknowledgement = false
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
-                let superseded = !source.utf8.elementsEqual(expected.utf8)
-                if !superseded { source = committed }
+                let superseded = !source.utf8.elementsEqual(expected.utf8) || citationData != expectedCitationData
+                citationSnapshot = committedCitationSnapshot
+                if !superseded {
+                    source = committed
+                    citationData = committedCitationSnapshot?.data
+                }
                 text = source
                 commitSuperseded = superseded
             default:
@@ -397,14 +412,19 @@ struct DocumentDetachedPersistenceTests {
             var result: [String: Any] = [
                 "requestID": request.requestID.uuidString,
                 "resultingGeneration": generation,
+                "interactionRevision": generation,
                 "sourceChanged": false,
                 "selections": selections.map { ["anchor": $0.anchor, "head": $0.head] },
                 "accepted": true,
+                "citationManaged": citationSnapshot != nil,
             ]
+            if let citationData {
+                result["citationData"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationData))
+            }
             if let text { result["text"] = text }
             if let commitSuperseded { result["commitSuperseded"] = commitSuperseded }
             if let recovery {
-                result["recovery"] = [
+                var payload: [String: Any] = [
                     "documentID": recovery.documentID,
                     "fingerprint": recovery.fingerprint,
                     "generation": recovery.generation,
@@ -414,6 +434,13 @@ struct DocumentDetachedPersistenceTests {
                     "dirty": recovery.dirty,
                     "focusTarget": "editor",
                 ]
+                if let citationSnapshot = recovery.citationSnapshot {
+                    payload["citationSnapshot"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationSnapshot))
+                }
+                if let citationData = recovery.citationData {
+                    payload["citationData"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationData))
+                }
+                result["recovery"] = payload
             }
             return result
         }
@@ -422,7 +449,8 @@ struct DocumentDetachedPersistenceTests {
             MarkdownEditorRecoverySnapshot(
                 documentID: request.documentID, fingerprint: request.startingFingerprint,
                 generation: generation, ranges: selections, source: source,
-                stateJSON: nil, undoHistoryPreserved: false, dirty: generation > 0, focusTarget: .editor)
+                stateJSON: nil, undoHistoryPreserved: false, dirty: generation > 0, focusTarget: .editor,
+                citationSnapshot: citationSnapshot, citationData: citationData)
         }
     }
 }

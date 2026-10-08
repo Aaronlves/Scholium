@@ -351,10 +351,20 @@ Watchers and sync observations are refresh evidence only. External absence or
 restoration passes through ordinary identity and exact-byte reconciliation and
 never authorizes changes to research prose.
 
+Managed citation saves (§15.5) retain exact source and companion preimages and
+candidates before either write. Both revisions and ownership must match; two
+file replacements or separate sync deliveries are not an atomic pair. A partial
+save remains Recovery. Reconciliation may finish the retained companion only
+against the intended source and expected companion; it never overwrites newer
+source to compensate. Unknown or incoherent pairs retain their evidence.
+Explicit completion of a proven original or intended pair retains displaced
+revisions and a bound completion receipt; it never discards external bytes.
+
 After Saving, a writable Document has exactly three outcomes:
 
-- **Saved** only when canonical Markdown readback exactly matches the validated
-  candidate and the replaced source is accounted for; success is silent;
+- **Saved** only when canonical Markdown and any changed citation companion
+  exactly match their validated candidates and displaced bytes are accounted for;
+  success is silent;
 - **Conflict** when the expected revision differs, retaining the buffer and
   routing to comparison; or
 - **Autosave Failed** when commit, exact readback, or displaced-source safety

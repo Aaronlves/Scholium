@@ -84,6 +84,8 @@ public enum NoteChangeSet: Sendable {
     /// Replace the user-editable Markdown source. Creation and modification
     /// time are app-owned History data, not injected frontmatter properties.
     case source(String)
+    /// Exact source and durable citation data form one checked mutation.
+    case citationSource(String, ZoteroCitationEdit)
     /// Restore an exact historical snapshot without adding a new timestamp.
     case exactContent(String)
 }
@@ -102,6 +104,9 @@ public struct NoteDocument: Sendable {
     public let newlineStyle: NewlineStyle
     public let fingerprint: DocumentFingerprint
     public let validationWarnings: [String]
+    /// Nil identifies an independent standalone document; managed Notes always
+    /// carry a checked companion status, including absence and load failures.
+    public let citationSnapshot: ZoteroCitationSnapshot?
 
     /// Exact CodeMirror UTF-16 position at which authored body content begins.
     /// A valid frontmatter envelope may therefore have an empty body even when
@@ -159,8 +164,9 @@ public struct NoteDocument: Sendable {
         return content
     }
 
-    public init(relativePath: String, rawContent: String) {
+    public init(relativePath: String, rawContent: String, citationSnapshot: ZoteroCitationSnapshot? = nil) {
         self.relativePath = relativePath
+        self.citationSnapshot = citationSnapshot
         self.sourceBytes = Data(rawContent.utf8)
         self.rawContent = rawContent
         self.newlineStyle = rawContent.contains("\r\n") ? .crlf : .lf
@@ -206,6 +212,10 @@ public struct NoteDocument: Sendable {
         }
     }
 
+    public func withCitationSnapshot(_ snapshot: ZoteroCitationSnapshot?) -> Self {
+        .init(relativePath: relativePath, rawContent: rawContent, citationSnapshot: snapshot)
+    }
+
     public func applying(
         _ changeSet: NoteChangeSet,
         timestampKey: String?,
@@ -213,6 +223,8 @@ public struct NoteDocument: Sendable {
     ) throws -> String {
         switch changeSet {
         case .exactContent(let content):
+            return content
+        case .citationSource(let content, _):
             return content
         case .source(let content):
             let proposed = NoteDocument(relativePath: relativePath, rawContent: content)

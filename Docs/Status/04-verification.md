@@ -31,15 +31,16 @@ Logs: `.build/verification/` and `.build/verification-release/`; local candidate
 
 ## Current feature coverage
 
-**2026-10-07 UTC — Existing-feature audit:** `.build/feature-audit/feature-matrix.json`
-records 51 areas, exact working diff from `e693109f`, checks and acceptance limits;
-`review-final.json` and `navigation-repair-review.json` record independent review hashes. Native Zotero 10.0.5 picker,
-insertion/Undo/Redo and bibliography rendering passed on disposable manuscripts.
-Refresh exposed citation deletion before a bibliography; callback regressions
-prove the repair. Computer Use disconnected before native recheck. Root dragging,
-cold/windowless opening, physical input and complete adaptations remain unverified.
-`native/native-proof.json` retains source snapshots; all 506 fixture hashes and
-preexisting recovery are preserved.
+**2026-10-08 UTC — Coordinated development checkpoint:**
+`.build/coordinated-checkpoint-20261008T131206Z/result.json` binds source, checks
+and review, including prior daily/headless and citation/offscreen evidence.
+Compact citations, paired recovery and static exports have scoped proof.
+Conflict comparison explicitly names companion replacement for accessibility;
+native AX/VoiceOver remains unverified. Foreground suites, native Chat/citation
+acceptance, external Review-to-Edit blankness, physical input and adaptations
+remain open; the full product gate is incomplete. Earlier native file/window
+and embedded Zotero proof remains under `.build/feature-audit/` and
+`.build/file-move-qa/`; fixture hashes and recovery are preserved.
 
 **2026-10-04 — Retained native baseline:** Thirty-three journeys across baseline
 and extension passed; two organization/passage journeys remain qualified by

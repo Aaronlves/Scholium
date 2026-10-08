@@ -816,6 +816,146 @@ public actor TriptychControlStore {
         try identityPayload().records.first { $0.id == id }
     }
 
+    /// Citation ownership is portable authority. Absence is returned only after
+    /// a contained no-follow read proves it; malformed bytes are never an empty store.
+    public func citationSnapshot(
+        noteID: UUID,
+        vaultID: UUID,
+        sourceFingerprint: DocumentFingerprint? = nil
+    ) throws -> ZoteroCitationSnapshot {
+        guard let bytes = try citationCompanionBytes(noteID: noteID) else {
+            let required = try identityRecord(id: noteID)?.citationCompanionRequired == true
+            return ZoteroCitationSnapshot(noteID: noteID, vaultID: vaultID, status: required ? .unresolved : .absent)
+        }
+        let revision = DocumentFingerprint(data: bytes)
+        let companion: ZoteroCitationCompanion
+        do {
+            companion = try ZoteroCitationCompanion.decode(bytes)
+            try companion.validate(noteID: noteID, vaultID: vaultID)
+        } catch {
+            return ZoteroCitationSnapshot(
+                noteID: noteID, vaultID: vaultID, revision: revision,
+                status: (error as? ZoteroCitationError) == .unsupportedVersion ? .unsupported : .unresolved
+            )
+        }
+        return ZoteroCitationSnapshot(
+            noteID: noteID, vaultID: vaultID, revision: revision,
+            sourceFingerprint: companion.sourceFingerprint, data: companion.data,
+            status: sourceFingerprint == nil || sourceFingerprint == companion.sourceFingerprint
+                ? .available : .unresolved
+        )
+    }
+
+    func citationCompanionBytes(noteID: UUID) throws -> Data? {
+        try citationStorage.readIfPresent(directory: nil, fileName: citationFileName(noteID))
+    }
+
+    static func citationCompanionEncoding(_ companion: ZoteroCitationCompanion) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let bytes = try encoder.encode(companion)
+        guard bytes.count <= ZoteroCitationCompanion.maximumEncodedByteCount else {
+            throw ZoteroCitationSaveError.invalidCompanion("The citation companion exceeds its byte limit.")
+        }
+        return bytes
+    }
+
+    /// Only the paired-save owner invokes this CAS after persisting recovery.
+    /// Nil expectedRevision is checked absence, never an unreadable default.
+    func replaceCitationCompanionBytes(
+        noteID: UUID, expectedRevision: DocumentFingerprint?, candidate: Data?, transactionID: UUID
+    ) throws {
+        guard (candidate?.count ?? 0) <= ZoteroCitationCompanion.maximumEncodedByteCount else {
+            throw ZoteroCitationSaveError.invalidCompanion("The citation companion exceeds its byte limit.")
+        }
+        try withPortableControlLock {
+            let storage = citationStorage
+            try storage.ensureDirectories([])
+            let before = try storage.readIfPresent(directory: nil, fileName: citationFileName(noteID))
+            guard before.map({ DocumentFingerprint(data: $0) }) == expectedRevision else {
+                throw ZoteroCitationSaveError.companionConflict
+            }
+            guard let candidate else {
+                if let before {
+                    try storage.remove(directory: nil, fileName: citationFileName(noteID), expected: before)
+                }
+                guard try storage.readIfPresent(directory: nil, fileName: citationFileName(noteID)) == nil else {
+                    throw ZoteroCitationSaveError.companionConflict
+                }
+                return
+            }
+            let url = storage.directoryURL.appendingPathComponent(citationFileName(noteID))
+            let readback: Data
+            do {
+                readback = try ExactFileReplacement.replace(
+                    at: url, expected: before, candidate: candidate,
+                    transactionID: transactionID,
+                    preCommitHook: { [controlWriteHook] target in
+                        // Re-walk every component without following links at the
+                        // final replacement boundary, including checked absence.
+                        guard try storage.readIfPresent(directory: nil, fileName: target.lastPathComponent) == before else {
+                            throw ZoteroCitationSaveError.companionConflict
+                        }
+                        try controlWriteHook?(target)
+                    },
+                    postCommitHook: controlPostSwapHook
+                ).data
+            } catch ExactFileReplacementError.revisionConflict {
+                throw ZoteroCitationSaveError.companionConflict
+            }
+            guard readback == candidate,
+                try storage.read(directory: nil, fileName: citationFileName(noteID)) == candidate
+            else {
+                throw ZoteroCitationSaveError.invalidCompanion("The citation companion readback changed.")
+            }
+        }
+    }
+
+    private var citationStorage: SecureRecordDirectory {
+        SecureRecordDirectory(
+            trustedRootURL: controlURL.deletingLastPathComponent(),
+            components: [controlURL.lastPathComponent, "citations", "v1"],
+            directoryMode: 0o700, fileMode: 0o600,
+            maximumByteCount: ZoteroCitationCompanion.maximumEncodedByteCount
+        )
+    }
+
+    private func citationFileName(_ noteID: UUID) -> String {
+        "\(noteID.uuidString.lowercased()).json"
+    }
+
+    func citationReplacementRemainders(noteID: UUID, transactionID: UUID) throws -> [(String, Data)] {
+        try [
+            ExactFileReplacement.transactionStagingName(fileName: citationFileName(noteID), transactionID: transactionID),
+            ".scholium-deleting-\(citationFileName(noteID))",
+        ].compactMap { name in
+            try citationStorage.readIfPresent(directory: nil, fileName: name).map { (name, $0) }
+        }
+    }
+
+    func discardCitationReplacementRemainder(name: String, expected: Data) throws {
+        try citationStorage.remove(directory: nil, fileName: name, expected: expected)
+    }
+
+    func setCitationCompanionRequired(
+        noteID: UUID, vaultID: UUID, relativePath: String, required: Bool, expectedRequired: Bool
+    ) throws {
+        try withPortableControlLock {
+            var snapshot = try identitySnapshot()
+            guard let index = snapshot.payload.records.firstIndex(where: { $0.id == noteID }),
+                snapshot.payload.records[index].vaultID == vaultID,
+                snapshot.payload.records[index].relativePath == relativePath,
+                (snapshot.payload.records[index].citationCompanionRequired == true) == expectedRequired
+            else {
+                throw ZoteroCitationSaveError.identityChanged
+            }
+            guard required != expectedRequired else { return }
+            var payload = snapshot.payload
+            payload.records[index].citationCompanionRequired = required ? true : nil
+            try commitIdentityPayload(payload, replacing: &snapshot)
+        }
+    }
+
     public func moveIdentity(
         id: UUID,
         to relativePath: String,
@@ -860,18 +1000,31 @@ public actor TriptychControlStore {
     /// The filesystem move and this identity write are separate actors, so a
     /// watcher or explicit refresh may leave the in-memory ID one step ahead
     /// of the portable file. Resolve by stable ID first, then by the expected
-    /// source path, and finally recreate the same stable ID if the record was
-    /// lost. The operation is idempotent when the destination is already
-    /// assigned to that identity.
+    /// source path, and finally restore the captured record if it was lost.
+    /// Reconstruction retains its portable authority and provenance, including
+    /// the declaration that citation companion data is required. The operation
+    /// is idempotent when the destination is already assigned to that identity.
     public func moveIdentity(
-        id: UUID,
-        vaultID: UUID,
-        from sourcePath: String,
+        _ capturedIdentity: NoteIdentityRecord,
         to relativePath: String,
         fingerprint: DocumentFingerprint
     ) throws -> NoteIdentityRecord {
+        let id = capturedIdentity.id
+        let vaultID = capturedIdentity.vaultID
+        let sourcePath = capturedIdentity.relativePath
         var snapshot = try identitySnapshot()
         var payload = snapshot.payload
+
+        if capturedIdentity.citationCompanionRequired == true,
+            let replacement = payload.records.first(where: {
+                $0.id != id && $0.vaultID == vaultID
+                    && ($0.relativePath == sourcePath || $0.relativePath == relativePath)
+            })
+        {
+            // Citation authority belongs to the captured UUID. A path fallback
+            // must not silently move another identity and orphan that authority.
+            throw TriptychControlError.identityPathAlreadyAssigned(replacement.relativePath)
+        }
 
         let index: Int
         if let byID = payload.records.firstIndex(where: { $0.id == id }) {
@@ -914,12 +1067,10 @@ public actor TriptychControlStore {
             try commitIdentityPayload(payload, replacing: &snapshot)
             return snapshot.payload.records[byDestination]
         } else {
-            let recovered = NoteIdentityRecord(
-                id: id,
-                vaultID: vaultID,
-                relativePath: relativePath,
-                fingerprint: fingerprint
-            )
+            var recovered = capturedIdentity
+            recovered.relativePath = relativePath
+            recovered.fingerprint = fingerprint
+            recovered.updatedAt = Date()
             payload.records.append(recovered)
             try commitIdentityPayload(payload, replacing: &snapshot)
             guard

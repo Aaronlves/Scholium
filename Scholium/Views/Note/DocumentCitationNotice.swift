@@ -35,7 +35,8 @@ struct DocumentCitationNotice: View {
         case .unresolved:
             ScholiumDocumentStatusNotice(
                 ScholiumL10n.string("Citation metadata needs repair"),
-                detail: ScholiumL10n.string("Repair copied or damaged citation fields in Source. Your text is preserved."),
+                detail: ScholiumL10n.string(
+                    "Live citation data could not be verified. Review Source or restore the matching citation data. Your text is preserved."),
                 kind: .attention
             ) {
                 sourceAction

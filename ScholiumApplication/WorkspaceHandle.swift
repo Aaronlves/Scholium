@@ -73,6 +73,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     var derivedStateRequiresRefresh = false
     var isShutDown = false
     var liveWatcherTask: Task<Void, Never>?
+    var citationControlWatcher: WorkspaceFileEventWatcher?
+    var citationControlWatcherTask: Task<Void, Never>?
+    var citationControlInvalidationTask: Task<Void, Never>?
+    var citationControlInvalidationPending = false
     var openingCompletionTask: Task<Void, Never>?
     let openingPresentationSignal = AsyncStream<Void>.makeStream(
         bufferingPolicy: .bufferingNewest(1)
@@ -183,6 +187,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
 
         var leases: [SecurityScopeLease] = []
+        var citationWatcher: WorkspaceFileEventWatcher?
         do {
             var repositories: [UUID: VaultRepository] = [:]
             var resolvedURLs: [WorkspaceVaultSlot: URL] = [:]
@@ -330,10 +335,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             let servicesReady = clock.now
             var watcherStreams: [UUID: AsyncStream<VaultWatchEvent>] = [:]
+            var citationEvents: AsyncStream<VaultWatchEvent>?
             if mode == .live {
                 for (vaultID, pooled) in pooledVaults {
                     watcherStreams[vaultID] = await pooled.events()
                 }
+                let watcher = WorkspaceFileEventWatcher(rootURL: controlURL, scope: .citationControl)
+                citationWatcher = watcher
+                citationEvents = try await watcher.start()
             }
             let watchersReady = clock.now
             let usesProgressiveOpening = mode == .live && openingVault != nil
@@ -398,6 +407,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 changes: documentChangeOperations
             )
             await reference.bind(handle)
+            if let citationWatcher, let citationEvents {
+                await handle.startCitationControlObservation(watcher: citationWatcher, events: citationEvents)
+            }
             await handle.initializeDocumentReviewsFromOpeningSnapshot(initialSnapshot)
             if case .live = access {
                 let activationInventory: [VaultQualifiedNoteID: DocumentFingerprint]
@@ -426,6 +438,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             return handle
         } catch {
+            await citationWatcher?.stop()
             for lease in leases.reversed() where lease.started {
                 lease.url.stopAccessingSecurityScopedResource()
             }
@@ -504,6 +517,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         sourceCommitRefresh?.cancel()
         await refreshCoordinator.shutdown()
         let watcher = liveWatcherTask
+        let citationWatcher = citationControlWatcher
+        let citationWatcherTask = citationControlWatcherTask
+        let citationInvalidation = citationControlInvalidationTask
+        citationControlWatcher = nil
+        citationControlWatcherTask = nil
+        citationControlInvalidationTask = nil
+        citationControlInvalidationPending = false
         let openingCompletion = openingCompletionTask
         let refresh = liveIndexRefreshTask?.task
         liveWatcherTask = nil
@@ -512,10 +532,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         pendingLiveEvents.removeAll()
         shutDownWorkspaceSourceOperationGate()
         watcher?.cancel()
+        citationWatcherTask?.cancel()
+        citationInvalidation?.cancel()
+        await citationWatcher?.stop()
         openingCompletion?.cancel()
         openingPresentationSignal.continuation.finish()
         refresh?.cancel()
         await watcher?.value
+        await citationWatcherTask?.value
+        await citationInvalidation?.value
         await openingCompletion?.value
         await refresh?.value
         await sourceCommitRefresh?.value
@@ -529,7 +554,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func loadDocument(_ id: VaultQualifiedNoteID) async throws -> NoteDocument {
         try requireActive()
         let repository = try repository(vaultID: id.vaultID)
-        return try await repository.load(relativePath: id.relativePath)
+        let document = try await repository.load(relativePath: id.relativePath)
+        return try await documentWithCitationSnapshot(document, id: id)
     }
 
     func hydrate(_ expected: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot {
@@ -557,12 +583,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let finalCatalogVersion = await catalog.sourceVersion(
             relativePath: expected.id.relativePath,
             fingerprint: expected.fingerprint)
+        let document = try await documentWithCitationSnapshot(
+            loaded.document, id: expected.id, expectedNoteID: expected.stableIdentity.resolvedID)
         try requireActive()
         guard finalCatalogVersion == version,
             let current = currentSnapshot.document(id: expected.id),
-            Self.sameSourceBinding(current, expected)
+            Self.sameSourceBinding(current, expected),
+            try await repository.sourceVersionIsCurrent(
+                relativePath: expected.id.relativePath, version: version)
         else { throw WorkspaceHydrationError.staleSnapshot }
-        return WorkspaceNoteSnapshot(summary: current, document: loaded.document)
+        return WorkspaceNoteSnapshot(summary: current, document: document)
     }
 
     private nonisolated static func sameSourceBinding(

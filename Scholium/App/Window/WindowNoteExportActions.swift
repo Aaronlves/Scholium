@@ -15,6 +15,7 @@ extension WindowModel {
             do {
                 let session = self.documentController.session(for: descriptor)
                 let source: String
+                let citationSnapshot: ZoteroCitationSnapshot?
                 if session.hasUnsavedChanges || session.retainsEditorSurface {
                     guard !session.editorSession.isComposing else {
                         throw NoteExportActionError.composing
@@ -25,13 +26,15 @@ extension WindowModel {
                         !session.editorSession.isComposing
                     else { throw NoteExportActionError.changedDuringPreparation }
                     source = snapshot.text
+                    citationSnapshot = session.editorSession.currentCitationSnapshot
                 } else {
                     source = note.document.rawContent
+                    citationSnapshot = note.document.citationSnapshot
                 }
                 guard self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey else {
                     throw NoteExportActionError.changedDuringPreparation
                 }
-                let document = NoteDocument(relativePath: note.id.relativePath, rawContent: source)
+                let document = NoteDocument(relativePath: note.id.relativePath, rawContent: source, citationSnapshot: citationSnapshot)
                 guard let capabilities = self.windowWorkspaceController.activeCapabilities else {
                     throw NoteExportActionError.changedDuringPreparation
                 }

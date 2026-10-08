@@ -1210,7 +1210,9 @@ struct WorkspaceRuntimeTests {
         let beforeSecond = try #require(
             try await second.snapshot().document(id: fixture.analysisNoteID)?.fingerprint
         )
-        try Data("# Agency\n\nShared pooled event.\n".utf8).write(
+        let updatedSource = "# Agency\n\nShared pooled event.\n"
+        let updatedFingerprint = DocumentFingerprint(content: updatedSource)
+        try Data(updatedSource.utf8).write(
             to: fixture.analysesURL.appendingPathComponent("Agency.md"),
             options: .atomic
         )
@@ -1228,17 +1230,21 @@ struct WorkspaceRuntimeTests {
             }
         }
         #expect(bothObserved)
-        guard case .inventoryChanged = try #require(await firstIterator.next()) else {
-            Issue.record("The first Triptych missed the pooled vault event.")
-            await runtime.shutdown()
-            return
-        }
-        guard case .inventoryChanged = try #require(await secondIterator.next()) else {
-            Issue.record("The second Triptych missed the pooled vault event.")
-            await runtime.shutdown()
-            return
-        }
+        // Slow subscribers retain the latest complete snapshot. An identity
+        // write can publish citation invalidation after inventoryChanged and
+        // replace that event in the stream's single pending slot.
+        let firstEvent = try #require(await firstIterator.next())
+        let secondEvent = try #require(await secondIterator.next())
+        #expect(firstEvent.snapshot.document(id: fixture.analysisNoteID)?.fingerprint == updatedFingerprint)
+        #expect(secondEvent.snapshot.document(id: fixture.analysisNoteID)?.fingerprint == updatedFingerprint)
         await runtime.shutdown()
+        // Finishing preserves at most one already-buffered latest event.
+        if let pending = await firstIterator.next() {
+            #expect(pending.snapshot.document(id: fixture.analysisNoteID)?.fingerprint == updatedFingerprint)
+        }
+        if let pending = await secondIterator.next() {
+            #expect(pending.snapshot.document(id: fixture.analysisNoteID)?.fingerprint == updatedFingerprint)
+        }
         #expect(await firstIterator.next() == nil)
         #expect(await secondIterator.next() == nil)
     }

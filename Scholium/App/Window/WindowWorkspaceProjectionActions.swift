@@ -120,6 +120,7 @@ extension WindowModel {
         }
 
         if case .researchConfigurationInvalidated = event {
+            documentController.refreshCitationSnapshots(affectedNoteIDs: nil)
             _ = workspaceProjectionController.receive(
                 event,
                 runtimeIdentity: capabilities.runtimeIdentity,
@@ -129,6 +130,9 @@ extension WindowModel {
         }
 
         let documentReconciliation = reconcilePublishedDocuments(event.snapshot)
+        // Events are coalesced; any delivered generation can follow a citation
+        // invalidation. Recheck only retained Notes, keeping source summaries light.
+        documentController.refreshCitationSnapshots(affectedNoteIDs: nil)
         researchController.receive(event.snapshot)
         researchController.observeDocumentChangesGeneration(
             event.snapshot.documentChangesGeneration
@@ -137,7 +141,7 @@ extension WindowModel {
         case .sourceCommitted, .inventoryChanged:
             researchController.scheduleAgentChangesRefresh()
             researchController.noteDocumentChangesInvalidated()
-        case .documentChangesChanged:
+        case .documentChangesChanged, .citationAuthorityInvalidated:
             break
         case .snapshot, .derivedStateChanged, .researchStateChanged,
             .researchConfigurationInvalidated, .vaultAccessInvalidated,

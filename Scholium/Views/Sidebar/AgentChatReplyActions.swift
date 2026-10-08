@@ -74,7 +74,7 @@ struct AgentChatReplyActions: View {
     let text: String
     let openNote: (URL) -> Void
     let context: AgentChatReplySourceContext
-    let openAttachment: (AgentChatAttachment) -> Void
+    let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
     let previewMaterial: (AgentChatLocalMaterial) async throws -> URL
     @Environment(\.openURL) private var openURL
     @State private var showsSources = false
@@ -220,7 +220,7 @@ struct AgentChatSourcesView: View {
 /// from what the reply cites or links.
 struct AgentChatMaterialsView: View {
     let context: AgentChatReplySourceContext
-    let openAttachment: (AgentChatAttachment) -> Void
+    let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
     let previewMaterial: (AgentChatLocalMaterial) async throws -> URL
     let close: () -> Void
 
@@ -239,7 +239,7 @@ struct AgentChatMaterialsView: View {
                     ForEach(context.attachments) { attachment in
                         AgentChatMaterialChip(
                             attachment: attachment, remove: nil,
-                            open: { openAttachment(attachment) })
+                            open: { openAttachment(attachment, $0) })
                     }
                     ForEach(context.localMaterials) { material in
                         AgentChatLocalMaterialChip(

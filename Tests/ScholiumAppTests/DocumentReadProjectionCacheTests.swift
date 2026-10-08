@@ -68,6 +68,55 @@ struct DocumentReadProjectionCacheTests {
         #expect(reused == SafeMarkdownRenderer.render(document).htmlBody)
     }
 
+    @Test("Same-source companion revisions refresh bibliography layout without reusing stale semantics")
+    func citationRevisionRefreshesProjection() async {
+        let cache = DocumentReadProjectionCache()
+        let workspaceID = UUID()
+        let noteID = UUID()
+        let vaultID = UUID()
+        let source = "\u{FEFF}# References\r\n\r\n<!--cite-bibliography:cbib-->\r\n\r\nAuthor. *Current Title.*\r\n\r\n<!--/cite-bibliography-->\r\n"
+        let sourceFingerprint = DocumentFingerprint(content: source)
+        let code = "BIBL {} CSL_BIBLIOGRAPHY"
+        func snapshot(indent: Double) -> ZoteroCitationSnapshot {
+            ZoteroCitationSnapshot(
+                noteID: noteID, vaultID: vaultID,
+                revision: DocumentFingerprint(content: "companion-indent-\(indent)"),
+                sourceFingerprint: sourceFingerprint,
+                data: ZoteroCitationData(
+                    fields: [.init(id: "cbib", kind: .bibliography, code: code, text: "CACHED TEXT")],
+                    documentData: "opaque preferences",
+                    bibliographyStyle: .init(
+                        firstLineIndent: -indent, indent: indent, lineSpacing: 240,
+                        entrySpacing: 0, tabStops: []),
+                    acceptedFields: [.init(id: "cbib", code: code)]),
+                status: .available)
+        }
+        func key(_ citation: ZoteroCitationSnapshot) -> DocumentReadProjectionKey {
+            DocumentReadProjectionKey(
+                workspaceID: workspaceID, stableTarget: noteID.uuidString,
+                relativePath: "References.md", fingerprint: sourceFingerprint,
+                citationRevision: citation.revision, citationStatus: citation.status)
+        }
+        let first = snapshot(indent: 720)
+        let changed = snapshot(indent: 1_440)
+        let firstDocument = NoteDocument(relativePath: "References.md", rawContent: source, citationSnapshot: first)
+        let staleSemantic = MarkdownSemanticDocument(parsing: firstDocument)
+        let initialHTML = await cache.html(
+            for: key(first), source: source, semantic: staleSemantic, citationSnapshot: first)
+        let changedHTML = await cache.html(
+            for: key(changed), source: source, semantic: staleSemantic, citationSnapshot: changed)
+
+        #expect(key(first) != key(changed))
+        #expect(initialHTML.contains("margin-left:36.0pt;text-indent:-36.0pt;"))
+        #expect(changedHTML.contains("margin-left:72.0pt;text-indent:-72.0pt;"))
+        #expect(!changedHTML.contains("margin-left:36.0pt;"))
+        #expect(changedHTML.contains("<em>Current Title.</em>"))
+        #expect(!changedHTML.contains("CACHED TEXT"))
+        #expect(await cache.html(for: key(changed), source: source, citationSnapshot: changed) == changedHTML)
+        #expect(await cache.entryCount(workspaceID: workspaceID) == 1)
+        #expect(firstDocument.sourceBytes == Data(source.utf8))
+    }
+
     @Test("Authorized image availability and content participate in cache validity", arguments: [false, true])
     func imageRevisionControlsReuse(reuseSemantic: Bool) async throws {
         let cache = DocumentReadProjectionCache()

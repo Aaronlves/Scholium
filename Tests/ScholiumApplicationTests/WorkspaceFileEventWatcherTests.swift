@@ -5,6 +5,16 @@ import Testing
 
 @Suite("Workspace file-event watcher")
 struct WorkspaceFileEventWatcherTests {
+    @Test("Portable citation observation includes metadata without widening vault source observation")
+    func citationControlScope() {
+        #expect(WorkspaceFileEventScope.citationControl.includes("identities.json"))
+        #expect(WorkspaceFileEventScope.citationControl.includes("citations/v1/note.json"))
+        #expect(!WorkspaceFileEventScope.citationControl.includes("settings.json"))
+        #expect(!WorkspaceFileEventScope.citationControl.includes("attachments/v2/item.json"))
+        #expect(!WorkspaceFileEventScope.markdown.includes("citations/v1/note.json"))
+        #expect(WorkspaceFileEventScope.markdown.includes("Note.md"))
+    }
+
     @Test("A dropped raw callback becomes one complete reconciliation request")
     func rawCallbackDropRequiresReconciliation() async throws {
         let pair = WorkspaceWatchEventBuffer.makeStream()

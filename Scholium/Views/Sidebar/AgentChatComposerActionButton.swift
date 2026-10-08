@@ -99,6 +99,6 @@ struct AgentChatStopCommand: View {
     var body: some View {
         Button("Stop Agent", action: controller.stop)
             .keyboardShortcut(".", modifiers: .command)
-            .disabled(controller.state != .working && controller.state != .compacting)
+            .disabled(controller.state != .working && controller.state != .compacting && !controller.canRetryStop)
     }
 }

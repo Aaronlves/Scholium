@@ -10,7 +10,9 @@ import Testing
 @Suite("Document controller convergence")
 @MainActor
 struct DocumentControllerConvergenceTests {
-    @Test("Retained presentation binds Review and Edit to hydrated source while a newer summary is pending", arguments: [false, true])
+    @Test(
+        "Retained presentation binds Review and Edit to hydrated source while a newer summary is pending",
+        arguments: [false, true])
     func retainedPresentationDuringHydration(enterSource: Bool) async throws {
         _ = NSApplication.shared
         let vaultID = UUID()
@@ -23,7 +25,9 @@ struct DocumentControllerConvergenceTests {
             source: base.document.rawContent + "\r\nExternal revision.\r\n")
         let gate = HydrationGate()
         let controller = DocumentController(hydrationLoader: { expected in
-            guard expected.hasSameSourceBinding(as: external.summary) else { throw WorkspaceHydrationError.staleSnapshot }
+            guard expected.hasSameSourceBinding(as: external.summary) else {
+                throw WorkspaceHydrationError.staleSnapshot
+            }
             await gate.pause()
             return external
         })
@@ -34,12 +38,14 @@ struct DocumentControllerConvergenceTests {
         session.preparePresentationMode(.read)
         controller.installOpenedDocument(other, vaultName: "Analyses", vaultRole: .sourceCorpus)
         let second = try #require(controller.selectedDocument)
-        controller.receive(workspace(vaultID: vaultID, notes: [external, other]), openDocuments: [first, second])
+        controller.receive(
+            workspace(vaultID: vaultID, notes: [external, other]), openDocuments: [first, second])
         await gate.waitUntilStarted()
         defer { gate.release() }
         #expect(controller.selectRetainedDocument(first))
         let projection = RetainedPresentationProjection(notes: [external, other])
-        let host = NSHostingView(rootView: RetainedPresentationFixture(controller: controller, projection: projection))
+        let host = NSHostingView(
+            rootView: RetainedPresentationFixture(controller: controller, projection: projection))
         host.sizingOptions = []
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
@@ -73,9 +79,13 @@ struct DocumentControllerConvergenceTests {
             let end = base.document.rawContent.utf16.count
             let editorEnd = EditorSourceOffsetMap(source: base.document.rawContent).editorUTF16Length
             session.editorSession.revealSourceRange(fromUTF16: end, toUTF16: end)
-            try await waitForPresentation { session.editorSession.context?.selections.first?.head == editorEnd }
+            try await waitForPresentation {
+                session.editorSession.context?.selections.first?.head == editorEnd
+            }
             try await session.editorSession.perform(.pastePlain, argument: insertion)
-            try await waitForPresentation { session.editorSession.checkedSource.utf8.elementsEqual(exactDraft.utf8) }
+            try await waitForPresentation {
+                session.editorSession.checkedSource.utf8.elementsEqual(exactDraft.utf8)
+            }
             #expect(session.hasUnsavedChanges)
         }
         gate.release()
@@ -85,7 +95,8 @@ struct DocumentControllerConvergenceTests {
             #expect(session.editingRevision == base.fingerprint)
             #expect(session.editingSource.utf8.elementsEqual(exactDraft.utf8))
             #expect(session.conflict?.baseRevision == base.fingerprint)
-            #expect(session.conflict?.diskSource.utf8.elementsEqual(external.document.rawContent.utf8) == true)
+            #expect(
+                session.conflict?.diskSource.utf8.elementsEqual(external.document.rawContent.utf8) == true)
         } else {
             try await waitForPresentation { session.renderedReadHTML.contains("External revision") }
             #expect(session.renderedReadFingerprint == external.fingerprint.sha256)
@@ -117,21 +128,34 @@ struct DocumentControllerConvergenceTests {
             let state = DocumentFeatureState(
                 notes: projection.notes.map { .workspace($0.summary) }, activeNote: active,
                 selectedDocumentPath: controller.selectedDocumentPath,
-                ordinarySearchScope: .triptych, currentVaultID: active?.id.vaultID, vaultRole: .sourceCorpus,
-                noteIdentityByPath: Dictionary(uniqueKeysWithValues: projection.notes.map { ($0.id.relativePath, $0.stableIdentity.resolvedID!) }),
-                workspaceCatalog: nil, canEdit: true, documentTextScale: 1, appearanceCSS: "", readCSS: "", livePreviewCSS: "",
-                initialScrollFraction: 0, requestedPresentationMode: projection.requestedMode, sourceLocationRequest: nil,
-                identityAmbiguity: nil, pendingIdentityRebinding: nil, identityMigrationFailureMessage: nil, isResolvingIdentity: false
+                ordinarySearchScope: .triptych, currentVaultID: active?.id.vaultID,
+                vaultRole: .sourceCorpus,
+                noteIdentityByPath: Dictionary(
+                    uniqueKeysWithValues: projection.notes.map {
+                        ($0.id.relativePath, $0.stableIdentity.resolvedID!)
+                    }),
+                workspaceCatalog: nil, canEdit: true, documentTextScale: 1, appearanceCSS: "", readCSS: "",
+                livePreviewCSS: "",
+                initialScrollFraction: 0, requestedPresentationMode: projection.requestedMode,
+                sourceLocationRequest: nil,
+                identityAmbiguity: nil, pendingIdentityRebinding: nil, identityMigrationFailureMessage: nil,
+                isResolvingIdentity: false
             )
             let actions = DocumentFeatureActions(
                 requestIdentityResolution: {}, retryIdentityRecovery: {}, beginSearch: { _ in },
-                clearRequestedPresentationMode: { projection.requestedMode = nil }, consumeSourceLocation: { _ in },
-                navigateToSourceLine: { _, _ in }, rememberScrollPosition: { _ in }, openInternalLink: { _ in },
-                openExternalURL: { _ in }, enterCSSSafeMode: { _ in }, rememberPresentationMode: { controller.rememberPresentationMode($0) },
-                setSidebarVisible: { _ in }, setResearchInspectorVisible: { _ in }, openingDocumentPresentationDidComplete: {},
+                clearRequestedPresentationMode: { projection.requestedMode = nil },
+                consumeSourceLocation: { _ in },
+                navigateToSourceLine: { _, _ in }, rememberScrollPosition: { _ in },
+                openInternalLink: { _ in },
+                openExternalURL: { _ in }, enterCSSSafeMode: { _ in },
+                rememberPresentationMode: { controller.rememberPresentationMode($0) },
+                setSidebarVisible: { _ in }, setResearchInspectorVisible: { _ in },
+                openingDocumentPresentationDidComplete: {},
                 renameNote: { _, _, title in title }, notify: { _, _ in }
             )
-            DocumentFeatureView(controller: controller, state: state, actions: actions, hasShellNotices: false) { EmptyView() }
+            DocumentFeatureView(
+                controller: controller, state: state, actions: actions, hasShellNotices: false
+            ) { EmptyView() }
         }
     }
 
@@ -207,13 +231,20 @@ struct DocumentControllerConvergenceTests {
 
     enum ReloadInterleaving: CaseIterable { case unchanged, newerConflict, sourceNormalization }
 
-    @Test("Reload completes only the accepted conflict and preserves concurrent changes", arguments: ReloadInterleaving.allCases)
+    @Test(
+        "Reload completes only the accepted conflict and preserves concurrent changes",
+        arguments: ReloadInterleaving.allCases)
     func conflictReloadCompletion(interleaving: ReloadInterleaving) async throws {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/conflict-reload-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
-        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let vaults = ["Analyses", "Topics", "Works"].map {
+            root.appendingPathComponent("Triptych/" + $0)
+        }
+        for vault in vaults {
+            try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        }
         let base = "Original\n"
         let draft = "Researcher's unsaved café\n"
         let normalizedDraft = draft.replacingOccurrences(of: "é", with: "e\u{301}")
@@ -221,12 +252,15 @@ struct DocumentControllerConvergenceTests {
         let later = "Newer external revision\n"
         let file = vaults[1].appendingPathComponent("Source.md")
         try Data(accepted.utf8).write(to: file)
-        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        let store = try WorkspaceStore(
+            applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
         do {
             let capabilities = try await store.configureTriptychCapabilities(
                 paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
-                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Conflict reload fixture")
-            let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
+                portableContainerURL: root.appendingPathComponent("Triptych"),
+                triptychName: "Conflict reload fixture")
+            let vault = try #require(
+                try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
             let summary = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
             let snapshot = try await capabilities.documents.hydrate(summary)
             let controller = DocumentController()
@@ -241,11 +275,13 @@ struct DocumentControllerConvergenceTests {
             session.editingSource = draft
             session.conflict = .init(
                 relativePath: "Source.md", editorSource: draft,
-                diskSource: accepted, baseRevision: DocumentFingerprint(content: base))
+                diskSource: accepted, baseRevision: DocumentFingerprint(content: base),
+                diskCitationSnapshot: snapshot.document.citationSnapshot)
             session.presentConflictComparison()
             let newerConflict = DocumentConflictSnapshot(
                 relativePath: "Source.md", editorSource: draft,
-                diskSource: later, baseRevision: DocumentFingerprint(content: base))
+                diskSource: later, baseRevision: DocumentFingerprint(content: base),
+                diskCitationSnapshot: snapshot.document.citationSnapshot)
             controller.bind(
                 to: capabilities.documents,
                 documentDidCommit: { _ in
@@ -277,7 +313,8 @@ struct DocumentControllerConvergenceTests {
                 try await controller.reloadFromDisk(session: session, target: target)
                 #expect(session.conflict == nil && session.editError == nil)
                 #expect(!session.isEditing && !session.hasUnsavedChanges)
-                #expect(session.editingSource == accepted && session.editorSession.checkedSource == accepted)
+                #expect(
+                    session.editingSource == accepted && session.editorSession.checkedSource == accepted)
                 #expect(try Data(contentsOf: file) == Data(accepted.utf8))
             }
             await store.shutdownApplicationRuntime()
@@ -287,7 +324,8 @@ struct DocumentControllerConvergenceTests {
         }
     }
 
-    @Test("Review completion rejects input accepted after the saved snapshot", arguments: [false, true])
+    @Test(
+        "Review completion rejects input accepted after the saved snapshot", arguments: [false, true])
     func reviewCompletionChecksLatestBuffer(lateInput: Bool) async throws {
         let vault = UUID()
         let id = UUID()
@@ -389,7 +427,9 @@ struct DocumentControllerConvergenceTests {
         #expect(session.autosaveToken == nextToken && session.autosaveTask != nil)
     }
 
-    @Test("External publication reconciles inactive retained editors without changing selection", arguments: [false, true])
+    @Test(
+        "External publication reconciles inactive retained editors without changing selection",
+        arguments: [false, true])
     func inactiveExternalPublication(dirty: Bool) async throws {
         let vault = UUID()
         let id = UUID()
@@ -439,6 +479,141 @@ struct DocumentControllerConvergenceTests {
         }
         #expect(controller.selectRetainedDocument(firstDocument))
         #expect((session.conflict != nil) == dirty)
+    }
+
+    @Test(
+        "Citation invalidation after source publication hydrates the published pair",
+        arguments: [false, true])
+    func citationInvalidationAfterSourcePublication(dirty: Bool) async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = citationNote(
+            vaultID: vault, noteID: id, source: "Original\r\n", preferences: "baseline")
+        let external = citationNote(
+            vaultID: vault, noteID: id, source: "External revision\r\n", preferences: "peer")
+        var hydrationCount = 0
+        let controller = DocumentController(hydrationLoader: { expected in
+            hydrationCount += 1
+            guard expected.hasSameSourceBinding(as: external.summary) else {
+                throw WorkspaceHydrationError.staleSnapshot
+            }
+            return external
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let document = try #require(controller.selectedDocument)
+        let session = controller.session(for: document.editingTarget)
+        defer {
+            session.cancelScheduledWork()
+            controller.unbind()
+        }
+        controller.beginEditing(
+            session: session, target: document.editingTarget, source: original.document.rawContent,
+            revision: original.fingerprint, mode: .source)
+        session.editorSession.loadDocument(
+            original.document.rawContent, documentID: session.editorSession.bridgeDocumentID,
+            mode: .source, citationSnapshot: original.document.citationSnapshot)
+        if dirty {
+            session.suppressAutosave = true
+            #expect(
+                session.editorSession.acceptEditorChanges(
+                    [
+                        .init(
+                            from: 0, to: EditorSourceOffsetMap(source: original.document.rawContent).editorUTF16Length,
+                            insert: "Researcher's draft\n", exactInsert: "Researcher's draft\r\n")
+                    ],
+                    baseGeneration: 0, resultingGeneration: 1, citationManaged: true,
+                    citationData: original.document.citationSnapshot?.data))
+        }
+
+        // This is the Window workspace-event ordering: a new source summary
+        // is published while the retained snapshot still contains the old source.
+        controller.receive(workspace(vaultID: vault, notes: [external]))
+        controller.refreshCitationSnapshots(affectedNoteIDs: nil)
+        await controller.waitForPendingHydrations()
+
+        #expect(hydrationCount == 1)
+        #expect(controller.pendingHydrationCount == 0)
+        #expect(controller.activeSnapshot?.document.sourceBytes == external.document.sourceBytes)
+        #expect(controller.activeSnapshot?.document.citationSnapshot == external.document.citationSnapshot)
+        if dirty {
+            #expect(session.editingSource == "Researcher's draft\r\n")
+            #expect(session.editingRevision == original.fingerprint)
+            #expect(session.conflict?.diskSource == external.document.rawContent)
+            #expect(session.conflict?.baseCitationSnapshot == original.document.citationSnapshot)
+            #expect(session.conflict?.diskCitationSnapshot == external.document.citationSnapshot)
+        } else {
+            #expect(session.editorSession.checkedSource == external.document.rawContent)
+            #expect(session.editorSession.committedCitationSnapshot == external.document.citationSnapshot)
+            #expect(!session.hasUnsavedChanges)
+            #expect(session.conflict == nil)
+        }
+    }
+
+    @Test("A companion invalidation supersedes an in-flight read of unchanged source")
+    func citationInvalidationSupersedesInflightRead() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = citationNote(
+            vaultID: vault, noteID: id, source: "Same source\n", preferences: "baseline")
+        let external = citationNote(
+            vaultID: vault, noteID: id, source: "Same source\n", preferences: "peer")
+        let gate = HydrationGate()
+        var hydrationCount = 0
+        let controller = DocumentController(hydrationLoader: { expected in
+            #expect(expected.hasSameSourceBinding(as: external.summary))
+            hydrationCount += 1
+            if hydrationCount == 1 {
+                await gate.pause()
+                return original
+            }
+            return external
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        defer {
+            gate.release()
+            controller.unbind()
+        }
+        controller.refreshCitationSnapshots(affectedNoteIDs: [id])
+        await gate.waitUntilStarted()
+        controller.refreshCitationSnapshots(affectedNoteIDs: [id])
+        await controller.waitForPendingHydrations()
+        #expect(hydrationCount == 2)
+        #expect(
+            controller.activeSnapshot?.document.citationSnapshot == external.document.citationSnapshot)
+        gate.release()
+        await gate.waitUntilReturned()
+        await Task.yield()
+        #expect(
+            controller.activeSnapshot?.document.citationSnapshot == external.document.citationSnapshot)
+    }
+
+    @Test("An authoritative companion install cancels an older in-flight read")
+    func citationInstallSupersedesInflightRead() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = citationNote(
+            vaultID: vault, noteID: id, source: "Same source\n", preferences: "baseline")
+        let external = citationNote(
+            vaultID: vault, noteID: id, source: "Same source\n", preferences: "peer")
+        let gate = HydrationGate()
+        let controller = DocumentController(hydrationLoader: { _ in
+            await gate.pause()
+            return original
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        defer {
+            gate.release()
+            controller.unbind()
+        }
+        controller.refreshCitationSnapshots(affectedNoteIDs: [id])
+        await gate.waitUntilStarted()
+        controller.installOpenedDocument(external, vaultName: "Works", vaultRole: .draftProject)
+        #expect(controller.pendingHydrationCount == 0)
+        gate.release()
+        await gate.waitUntilReturned()
+        await Task.yield()
+        #expect(
+            controller.activeSnapshot?.document.citationSnapshot == external.document.citationSnapshot)
     }
 
     @Test("Unchanged and metadata-only publications do not hydrate retained source")
@@ -555,7 +730,9 @@ struct DocumentControllerConvergenceTests {
         #expect(controller.retainedFullSnapshotCount == 1)
     }
 
-    @Test("Accepted workspace updates invalidate attachment listings without replacing an unsaved document")
+    @Test(
+        "Accepted workspace updates invalidate attachment listings without replacing an unsaved document"
+    )
     func attachmentRefreshKeepsDraft() throws {
         let vault = UUID()
         let id = UUID()
@@ -569,7 +746,9 @@ struct DocumentControllerConvergenceTests {
         #expect(session.editingRevision == original.fingerprint)
     }
 
-    @Test("Source navigation is document-bound and stale acknowledgements cannot consume a newer activation")
+    @Test(
+        "Source navigation is document-bound and stale acknowledgements cannot consume a newer activation"
+    )
     func sourceNavigationOwnership() throws {
         let controller = DocumentController()
         let vault = UUID()
@@ -797,6 +976,7 @@ struct DocumentControllerConvergenceTests {
             column: 1,
             lineCount: 1,
             documentVersion: session.editorSession.generation,
+            interactionRevision: 0,
             context: MarkdownEditorContext(
                 selections: [selection],
                 activeInlineConstructs: [],
@@ -1053,20 +1233,25 @@ struct DocumentControllerConvergenceTests {
                 ],
                 baseGeneration: session.editorSession.generation,
                 resultingGeneration: session.editorSession.generation + 1))
-        let later = note(vaultID: vault, noteID: noteID, path: "Source.md", source: "External change.\n")
+        let later = note(
+            vaultID: vault, noteID: noteID, path: "Source.md", source: "External change.\n")
         controller.recordCommittedSnapshot(later, vaultName: "Topics", vaultRole: .topicKnowledge)
         #expect(session.editingSource == "Researcher's newer draft.\n")
         #expect(session.conflict != nil)
     }
 
-    @Test("A detached Review session adopts external bytes before its editor is reconstructed", arguments: [false, true])
+    @Test(
+        "A detached Review session adopts external bytes before its editor is reconstructed",
+        arguments: [false, true])
     func detachedReviewAdoptsExternalSource(normalizationOnly: Bool) throws {
         let vaultID = UUID()
         let noteID = UUID()
-        let original = note(vaultID: vaultID, noteID: noteID, path: "Source.md", source: "\u{FEFF}Old café\r\n")
+        let original = note(
+            vaultID: vaultID, noteID: noteID, path: "Source.md", source: "\u{FEFF}Old café\r\n")
         let external = note(
             vaultID: vaultID, noteID: noteID, path: "Source.md",
-            source: normalizationOnly ? "\u{FEFF}Old cafe\u{301}\r\n" : "\u{FEFF}External cafe\u{301} 🦉\r\n")
+            source: normalizationOnly
+                ? "\u{FEFF}Old cafe\u{301}\r\n" : "\u{FEFF}External cafe\u{301} 🦉\r\n")
         let other = note(vaultID: vaultID, noteID: UUID(), path: "Other.md", source: "Other\n")
         let controller = DocumentController()
         controller.installOpenedDocument(original, vaultName: "Topics", vaultRole: .topicKnowledge)
@@ -1081,7 +1266,9 @@ struct DocumentControllerConvergenceTests {
         try controller.finishEditing(session: session, target: document.editingTarget)
         controller.installOpenedDocument(other, vaultName: "Topics", vaultRole: .topicKnowledge)
         let selected = controller.selectedDocument
-        #expect(!session.isEditing && !session.editorSession.hasAttachedWebView && session.retainsEditorSurface)
+        #expect(
+            !session.isEditing && !session.editorSession.hasAttachedWebView
+                && session.retainsEditorSurface)
 
         controller.recordCommittedSnapshot(external, vaultName: "Topics", vaultRole: .topicKnowledge)
 
@@ -1094,7 +1281,8 @@ struct DocumentControllerConvergenceTests {
         #expect(!session.hasUnsavedChanges)
     }
 
-    @Test("A detached conflict compares incremental editor input rather than the last lifecycle snapshot")
+    @Test(
+        "A detached conflict compares incremental editor input rather than the last lifecycle snapshot")
     func detachedConflictUsesCheckedSource() throws {
         let vaultID = UUID()
         let noteID = UUID()
@@ -1114,7 +1302,11 @@ struct DocumentControllerConvergenceTests {
         let insertion = "Researcher's cafe\u{301} 🦉\r\n"
         #expect(
             session.editorSession.acceptEditorChanges(
-                [.init(from: 0, to: 0, insert: insertion.replacingOccurrences(of: "\r\n", with: "\n"), exactInsert: insertion)],
+                [
+                    .init(
+                        from: 0, to: 0, insert: insertion.replacingOccurrences(of: "\r\n", with: "\n"),
+                        exactInsert: insertion)
+                ],
                 baseGeneration: 0, resultingGeneration: 1))
         #expect(session.editingSource == original.document.rawContent)
         #expect(session.hasUnsavedChanges && !session.editorSession.isLoaded)
@@ -1123,12 +1315,15 @@ struct DocumentControllerConvergenceTests {
         controller.recordCommittedSnapshot(external, vaultName: "Topics", vaultRole: .topicKnowledge)
 
         let conflict = try #require(session.conflict)
-        #expect(Data(conflict.editorSource.utf8) == Data((insertion + original.document.rawContent).utf8))
+        #expect(
+            Data(conflict.editorSource.utf8) == Data((insertion + original.document.rawContent).utf8))
         #expect(Data(session.retainedExactSource.utf8) == Data(conflict.editorSource.utf8))
         #expect(session.editingRevision == original.fingerprint)
     }
 
-    @Test("Joining a save retains its confirmed commit when editor acknowledgement fails", arguments: [false, true])
+    @Test(
+        "Joining a save retains its confirmed commit when editor acknowledgement fails",
+        arguments: [false, true])
     func joinedSaveCommitReceipt(commitsBeforeFailure: Bool) async throws {
         let controller = DocumentController()
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
@@ -1252,6 +1447,18 @@ struct DocumentControllerConvergenceTests {
                 ambiguous: 0
             )
         )
+    }
+
+    private func citationNote(vaultID: UUID, noteID: UUID, source: String, preferences: String)
+        -> WorkspaceNoteSnapshot
+    {
+        let snapshot = note(vaultID: vaultID, noteID: noteID, path: "Citations.md", source: source)
+        let data = ZoteroCitationData(documentData: preferences)
+        let citation = ZoteroCitationSnapshot(
+            noteID: noteID, vaultID: vaultID, revision: DocumentFingerprint(data: Data(preferences.utf8)),
+            sourceFingerprint: snapshot.fingerprint, data: data, status: .available)
+        return WorkspaceNoteSnapshot(
+            summary: snapshot.summary, document: snapshot.document.withCitationSnapshot(citation))
     }
 
     private func workspace(

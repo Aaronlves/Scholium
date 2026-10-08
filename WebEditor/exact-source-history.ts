@@ -4,6 +4,7 @@ import {ExactSourceMirror, normalizedDocumentText, type NormalizedSourceChange} 
 import {MAX_INBOUND_BYTES} from "./protocol";
 import {MAX_SOURCE_UTF8_BYTES, exactSourceFits, sourceCapacityMessage} from "./source-capacity";
 export {exactSourceFits, sourceCapacityMessage} from "./source-capacity";
+import {citationState, setCitationData, validCitationData, type ZoteroCitationData} from "./zotero-citation-state";
 import {recordEditorMetric} from "./performance";
 
 /** Exact bytes are part of the retained editor state, alongside its history. */
@@ -175,17 +176,19 @@ function sourceWithEndings(source: string, endings: string) {
 
 const maximumRecoveryEvents = 512;
 
-/** CodeMirror omits custom effects from its JSON. Capture only the missing
- * newline metadata through public Undo/Redo on detached immutable states. */
+/** CodeMirror omits custom effects from its JSON. Capture exact separators and
+ * semantic citation data through public Undo/Redo on detached immutable states.
+ * The current disk baseline is serialized once and never traverses history. */
 export function captureExactHistory(state: EditorState): string | undefined {
   let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
   const capture = (command: typeof undo) => {
     let detached = state;
     const endings: (string | null)[] = [];
+    const citations: (ZoteroCitationData | null)[] = [];
     for (let index = 0; ; index++) {
       let changed = false;
       if (!detachedHistory(() => command({state: detached, dispatch: transaction => {
-        changed = transaction.docChanged;
+        changed = transaction.docChanged || transaction.effects.some(effect => effect.is(setCitationData));
         // Inverse insertions are the source material serialized by history.
         // Bound it before constructing CodeMirror's full JSON object.
         transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
@@ -199,17 +202,23 @@ export function captureExactHistory(state: EditorState): string | undefined {
       remainingBytes -= value?.length ?? 0;
       if (remainingBytes < 0) throw new Error("History is too large");
       endings.push(value);
+      const companion = detached.field(citationState, false)?.data ?? null;
+      remainingBytes -= new TextEncoder().encode(JSON.stringify(companion)).byteLength;
+      if (remainingBytes < 0) throw new Error("History is too large");
+      citations.push(companion);
     }
-    return endings;
+    return {endings, citations};
   };
   try {
     if (remainingBytes < 0) return undefined;
-    const undoLineEndings = capture(undoSelection);
-    const redoLineEndings = capture(redoSelection);
+    const undo = capture(undoSelection);
+    const redo = capture(redoSelection);
     const serialized = JSON.stringify({
-      state: state.toJSON({history: historyField}),
-      undoLineEndings,
-      redoLineEndings,
+      state: state.toJSON(state.field(citationState, false) ? {history: historyField, citations: citationState} : {history: historyField}),
+      undoLineEndings: undo.endings,
+      redoLineEndings: redo.endings,
+      undoCitations: undo.citations,
+      redoCitations: redo.citations,
     });
     return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : undefined;
   } catch { return undefined; }
@@ -226,7 +235,12 @@ export function restoreExactHistory(serialized: string, source: string, extensio
   if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
     throw new Error("Invalid history line endings");
   }
-  let state = EditorState.fromJSON(payload.state, {extensions}, {history: historyField});
+  const validCitations = (value: unknown, count: number): value is (ZoteroCitationData | null)[] => Array.isArray(value)
+    && value.length === count && value.every(snapshot => snapshot === null || validCitationData(snapshot));
+  if (!validCitations(payload.undoCitations, payload.undoLineEndings.length)
+      || !validCitations(payload.redoCitations, payload.redoLineEndings.length)) throw new Error("Invalid citation history");
+  let state = EditorState.fromJSON(payload.state, {extensions}, payload.state.citations
+    ? {history: historyField, citations: citationState} : {history: historyField});
   if (state.doc.toString() !== normalizedDocumentText(source)
       || undoDepth(state) !== payload.undoLineEndings.filter((value: string | null) => value !== null).length
       || redoDepth(state) !== payload.redoLineEndings.filter((value: string | null) => value !== null).length) {
@@ -234,22 +248,28 @@ export function restoreExactHistory(serialized: string, source: string, extensio
   }
   const recovery = new Compartment();
   let targetEndings: string | undefined;
+  let targetCitation: ZoteroCitationData | null | undefined;
   state = state.update({effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
-    EditorState.transactionExtender.of(transaction => targetEndings === undefined ? null : {
-      effects: setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings)),
+    EditorState.transactionExtender.of(transaction => targetEndings === undefined && targetCitation === undefined ? null : {
+      effects: [
+        ...(targetEndings === undefined ? [] : [setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))]),
+        ...(targetCitation === undefined || JSON.stringify(transaction.startState.field(citationState, false)?.data ?? null) === JSON.stringify(targetCitation)
+          ? [] : [setCitationData.of(targetCitation ?? undefined)]),
+      ],
     }),
   ))], annotations: Transaction.addToHistory.of(false)}).state;
-  function replay(command: typeof undo, endings?: string | null) {
+  function replay(command: typeof undo, endings?: string | null, citation?: ZoteroCitationData | null) {
     targetEndings = endings ?? undefined;
+    targetCitation = citation;
     try {
       if (!detachedHistory(() => command({state, dispatch: transaction => { state = transaction.state; }}))) throw new Error("History could not be restored");
-    } finally { targetEndings = undefined; }
+    } finally { targetEndings = undefined; targetCitation = undefined; }
   }
   // Redo creates exact inverses for the existing undone branch; undo it back
   // before rebuilding the done branch in the same way.
-  for (const endings of payload.redoLineEndings) replay(redoSelection, endings);
+  payload.redoLineEndings.forEach((endings: string | null, index: number) => replay(redoSelection, endings, payload.redoCitations[index]));
   for (const _ of payload.redoLineEndings) replay(undoSelection);
-  for (const endings of payload.undoLineEndings) replay(undoSelection, endings);
+  payload.undoLineEndings.forEach((endings: string | null, index: number) => replay(undoSelection, endings, payload.undoCitations[index]));
   for (const _ of payload.undoLineEndings) replay(redoSelection);
   state = state.update({effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false)}).state;
   if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");

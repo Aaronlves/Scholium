@@ -302,7 +302,8 @@ Authorization URLs remain ephemeral, accept secure web destinations only, and
 are never recorded in conversations or portable research data. A late response
 from a disconnected runtime cannot open a page or update the new connection.
 
-In-app Chat publishes token-scoped controls for Skills, inspection, tool sign-in
+In-app Chat publishes token-scoped controls for Skills, inspection,
+[metadata observation](03-agent-collaboration-and-workflows.md#83-tool-contract), tool sign-in
 and next-turn settings. Permission reductions affect subsequent turns only;
 Full Access and connection writes remain researcher-controlled.
 

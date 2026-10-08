@@ -12,6 +12,11 @@ extension WorkspaceHandle {
         for effect in move.effects {
             let identity = try await resolvedIdentity(for: effect.destination, expectedRevision: effect.afterFingerprint)
             guard identity.id == effect.noteID else { throw AgentChangeError.mismatchedBinding(evidence.change.id) }
+            if effect.beforeFingerprint != effect.afterFingerprint {
+                try await requireSourceOnlyAgentUndo(
+                    noteID: effect.noteID, vaultID: effect.destination.vaultID,
+                    changeID: evidence.change.id)
+            }
         }
         let context = try await freshScopedMoveProjectionContext()
         let candidateIDs = Set(

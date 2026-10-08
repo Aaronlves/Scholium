@@ -958,7 +958,7 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("workspaceSplitRegistryDidChange"))
         #expect(!appSource.contains("findWorkspaceSplitView"))
         #expect(!appSource.contains("attemptWorkspaceToolbarInstallation"))
-        #expect(appSource.contains("defaultValue: { TriptychWindowRoute() }"))
+        #expect(!appSource.contains("defaultValue: { TriptychWindowRoute() }"))
         #expect(!contentSource.contains("ToolbarItem(placement:"))
         #expect(!contentSource.contains("TriptychActionsMenu"))
         #expect(!sidebarSource.contains("scholium.triptychManagement"))

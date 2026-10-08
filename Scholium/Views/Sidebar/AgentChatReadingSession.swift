@@ -8,6 +8,7 @@ final class AgentChatReadingSession {
     var isAwayFromLatest = false
     var expandedActivities: Set<String> = []
     var processExpansions: [String: Bool] = [:]
+    var processWindows: [String: AgentChatProcessWindow] = [:]
     var planExpansions: [String: Bool] = [:]
     var history = AgentChatHistoryWindow()
     var position: ReadingPosition = .followingLatest

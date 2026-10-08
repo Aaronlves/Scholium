@@ -23,7 +23,7 @@ struct AgentChatVisualEvidenceTests {
         for scheme in [ColorScheme.light, .dark] {
             let content = VStack(alignment: .leading, spacing: 20) {
                 AgentChatProcessView(
-                    messages: process, isActive: false, forceExpanded: false,
+                    messages: process, window: .constant(.init()), isActive: false, forceExpanded: false,
                     status: .init(state: .completed, timing: .init(durationMilliseconds: 38_500)), animates: false, userExpansion: .constant(nil)
                 ) {
                     AgentChatMarkdown(text: $0.text)
@@ -39,7 +39,7 @@ struct AgentChatVisualEvidenceTests {
                 AgentChatReplyActions(
                     text: text, openNote: { _ in },
                     context: .init(reply: .init(role: .assistant, text: text), history: []),
-                    openAttachment: { _ in }, previewMaterial: { _ in throw AgentChatNoteMaterialError.unavailable })
+                    openAttachment: { _, _ in }, previewMaterial: { _ in throw AgentChatNoteMaterialError.unavailable })
                 Divider()
                 AgentChatSourcesView(sources: AgentChatReplySource.collect(text), close: {}, open: { _ in })
             }.padding().frame(width: 350)
@@ -152,7 +152,7 @@ struct AgentChatVisualEvidenceTests {
             let content = AgentChatView(
                 controller: controller, transcriptReaderID: UUID(), isVisible: false, addSelection: { _ in false },
                 noteChoices: [], prepareNotes: { _ in { _ in } },
-                openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
+                openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
             )
             .frame(width: 340, height: 560)
@@ -487,7 +487,7 @@ struct AgentChatVisualEvidenceTests {
         for scheme in [ColorScheme.light, .dark] {
             let content = AgentChatView(
                 controller: controller, transcriptReaderID: UUID(), isVisible: false, addSelection: { _ in false },
-                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
+                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
             )
             .frame(width: 340, height: 700).background(Color(nsColor: .windowBackgroundColor))
@@ -846,6 +846,7 @@ struct AgentChatVisualEvidenceTests {
             let content = VStack(alignment: .leading, spacing: 10) {
                 AgentChatProcessView(
                     messages: [AgentChatMessage(role: .operation, text: "", activity: noteActivity)],
+                    window: .constant(.init()),
                     isActive: false, forceExpanded: true,
                     status: .init(state: .completed, timing: .init(durationMilliseconds: 656_000)),
                     animates: false, userExpansion: .constant(false)
@@ -909,6 +910,7 @@ struct AgentChatVisualEvidenceTests {
                                 text: "",
                                 activity: .init(kind: .read, status: .running, source: .scholium))
                         ],
+                        window: .constant(.init()),
                         isActive: false,
                         forceExpanded: false,
                         status: .init(state: .reading, timing: .init(startedAt: Date(timeIntervalSinceNow: -6))),

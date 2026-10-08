@@ -64,6 +64,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
     var imageResourceContextKey = ""
     var imageResourcesQuery: EditorImageResourceQuery = { _ in [:] }
+    var citationSnapshot: ZoteroCitationSnapshot? = nil
 
     static func requiresMathRuntime(linkPreviews: [DocumentLinkPreview]) -> Bool {
         linkPreviews.contains {
@@ -243,7 +244,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.attach(webView)
         session.installImageResourceQuery(imageResourcesQuery, contextKey: imageResourceContextKey)
         session.webViewPool?.registerAttached(webView)
-        session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
+        session.loadDocument(attachmentSource, documentID: documentID, mode: mode, citationSnapshot: citationSnapshot)
 
         guard let editorHTML = Self.editorHTML(localization: interfaceLocalization),
             Self.editorScript != nil
@@ -351,7 +352,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             context.coordinator.documentID = documentID
             context.coordinator.source = source
             context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
-            session.loadDocument(source, documentID: documentID, mode: mode)
+            session.loadDocument(source, documentID: documentID, mode: mode, citationSnapshot: citationSnapshot)
             session.setLinkPreviews(linkPreviews, in: source)
             session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         } else if context.coordinator.lastModeInput != mode {
@@ -597,6 +598,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     column: interaction.column,
                     lineCount: interaction.lineCount,
                     documentVersion: interaction.envelope.documentVersion,
+                    interactionRevision: interaction.interactionRevision,
                     focusTarget: interaction.focusTarget,
                     context: interaction.context
                 )
@@ -1119,7 +1121,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 session.acceptEditorChanges(
                     change.changes,
                     baseGeneration: change.baseGeneration,
-                    resultingGeneration: change.resultingGeneration
+                    resultingGeneration: change.resultingGeneration,
+                    citationManaged: change.citationManaged, citationData: change.citationData
                 )
             else {
                 if let webView,

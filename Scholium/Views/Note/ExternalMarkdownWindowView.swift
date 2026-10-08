@@ -66,7 +66,10 @@ struct ExternalMarkdownWindowView: View {
                         htmlBody: model.readHTML,
                         presentationCSS: ScholiumDocumentPresentationConfiguration(textScale: model.documentTextScale).css,
                         userCSS: "",
-                        onLinkClick: { _ in }, onOpenExternalURL: { NSWorkspace.shared.open($0) },
+                        onLinkClick: { _ in },
+                        onOpenExternalURL: { url in
+                            WorkspaceStore.openExternal(url) { NSWorkspace.shared.open($0) }
+                        },
                         onSelectionChange: { model.acceptReadSelection($0, documentID: documentID, fingerprint: snapshot.fingerprint) },
                         onRenderingFailure: { error in
                             guard model.documentID == documentID, model.snapshot?.fingerprint == snapshot.fingerprint else { return }
@@ -203,7 +206,6 @@ struct ExternalMarkdownWindowView: View {
         }
         .focusedSceneObject(model)
         .focusedSceneValue(\.scholiumApplicationBootstrapStatus, ScholiumApplicationBootstrapStatus(isReady: bootstrap.isReady))
-        .modifier(MarkdownFileOpeningRouting())
         .confirmationDialog("Discard changes and reload the original file?", isPresented: $confirmsReload) {
             Button("Reload from Disk", role: .destructive) { Task { await model.reloadFromDisk() } }
             Button("Cancel", role: .cancel) {}

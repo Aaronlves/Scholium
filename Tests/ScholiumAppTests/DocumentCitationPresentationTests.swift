@@ -42,6 +42,23 @@ struct DocumentCitationPresentationTests {
         #expect(document.rawContent.utf8.elementsEqual(source.utf8))
     }
 
+    @Test("Malformed YAML cannot hide known companion repair in cold Review", arguments: [ZoteroCitationSnapshot.Status.unresolved, .unsupported])
+    func malformedFrontmatterCompanionNotice(status: ZoteroCitationSnapshot.Status) {
+        let source = "\u{FEFF}---\r\nbroken: [\r\n---\r\nReadable 😀 e\u{301} prose."
+        let document = NoteDocument(
+            relativePath: "Malformed.md", rawContent: source,
+            citationSnapshot: .init(noteID: UUID(), vaultID: UUID(), status: status))
+        let session = DocumentSessionModel(key: nil)
+        #expect(document.frontmatterState == .malformed)
+
+        let notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+
+        #expect(notice.integrity == .unresolved && notice.isVisible)
+        #expect(!notice.canRefresh && notice.canOpenSource)
+        #expect(!session.retainsEditorSurface && !session.editorSession.hasAttachedWebView)
+        #expect(document.sourceBytes == Data(source.utf8))
+    }
+
     @Test("Edit uses the exact checked buffer and returning to Review restores committed-source authority")
     func editThenReviewChangesSourceOwner() throws {
         let committedSource = try source(for: .fresh)
@@ -131,15 +148,12 @@ struct DocumentCitationPresentationTests {
             let model = ExternalMarkdownWindowModel(url: url, needsOwnershipResolution: true)
             defer { model.close() }
             await model.open()
-            try await waitUntilIdle(model)
             if managed {
-                try #require(model.canRetryOwnership)
-                await model.retryOwnership {
+                try await retryOwnershipWhenAvailable(model) {
                     .managed(
                         .init(vaultID: UUID(), vaultName: "Synthetic Works", vaultRole: .draftProject, relativePath: "Synthetic.md"),
                         triptychID: UUID())
                 }
-                try await waitUntilIdle(model)
             }
             let readonly = try #require(model.citationPresentation)
             #expect(readonly.integrity == .unresolved && readonly.isVisible)
@@ -153,13 +167,17 @@ struct DocumentCitationPresentationTests {
             if !managed {
                 // The explicit existing ownership recovery authorizes editing;
                 // merely deriving a citation notice never resolves ownership.
-                try #require(model.canRetryOwnership)
-                await model.retryOwnership { .external }
-                try await waitUntilIdle(model)
-                #expect(model.citationPresentation?.canOpenSource == true)
-                model.selectMode(.source)
-                #expect(model.mode == .source && model.retainsEditor)
-                #expect(model.citationPresentation?.canOpenSource == false)
+                try await retryOwnershipWhenAvailable(model) { .external }
+                try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                    while model.isBusy {
+                        try Task.checkCancellation()
+                        await Task.yield()
+                    }
+                    #expect(model.citationPresentation?.canOpenSource == true)
+                    model.selectMode(.source)
+                    #expect(model.mode == .source && model.retainsEditor)
+                    #expect(model.citationPresentation?.canOpenSource == false)
+                }
                 #expect(try Data(contentsOf: url) == Data(exact.utf8))
             }
         }
@@ -280,6 +298,7 @@ struct DocumentCitationPresentationTests {
         let selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
         editor.updateInteraction(
             selections: selections, line: 1, column: 1, lineCount: 1, documentVersion: editor.generation,
+            interactionRevision: 0,
             context: .init(
                 selections: selections, activeInlineConstructs: [], activeBlockConstructs: [], tablePosition: nil,
                 composing: composing, availableCommands: [.refreshCitations], undoLabel: nil, redoLabel: nil))
@@ -295,13 +314,18 @@ struct DocumentCitationPresentationTests {
         try await operation(url, source)
     }
 
-    private func waitUntilIdle(_ model: ExternalMarkdownWindowModel) async throws {
+    private func retryOwnershipWhenAvailable(
+        _ model: ExternalMarkdownWindowModel,
+        using classify: @escaping @MainActor () async throws -> ExternalMarkdownOwnershipState
+    ) async throws {
         try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
-            // Opening queues the existing filesystem observation refresh.
-            // Let it enter its operation before testing command availability.
-            await Task.yield()
-            await Task.yield()
-            while model.isBusy { await Task.yield() }
+            // Filesystem observation may begin after an earlier idle read.
+            // Admit the action in the same actor turn as its availability check.
+            while !model.canRetryOwnership {
+                try Task.checkCancellation()
+                await Task.yield()
+            }
+            await model.retryOwnership(using: classify)
         }
     }
 

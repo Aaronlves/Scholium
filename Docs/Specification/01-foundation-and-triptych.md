@@ -121,9 +121,14 @@ same Triptych:
 - manifest and stable identity mappings;
 - the Triptych Guide and Triptych-local settings;
 - Chat instructions in `AGENTS.md` and local Skills in `skills/<name>/SKILL.md`;
-- attachment file identity/location catalogs, without Note relationships.
+- attachment file identity/location catalogs, without Note relationships;
+- essential per-Note citation companions in `citations/v1/`, with durable Note
+  ownership declarations, under §15.5.
 
 Researcher-authored research content belongs in ordinary Markdown Notes.
+Citation companions preserve opaque Zotero fields and document preferences;
+they cannot be rebuilt from readable text. Backups and synchronized Triptych
+copies preserving live citations include `.scholium/` and the Notes together.
 
 Application Support contains machine-local access and execution state: security-scoped
 bookmarks and paths, window sessions, in-app Chat drafts and public conversation

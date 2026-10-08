@@ -342,6 +342,7 @@ struct ExternalMarkdownWindowLifecycleTests {
             fixture.editor.updateInteraction(
                 selections: [selection], line: 1, column: 1, lineCount: 1,
                 documentVersion: fixture.editor.generation,
+                interactionRevision: 0,
                 context: MarkdownEditorContext(
                     selections: [selection], activeInlineConstructs: [], activeBlockConstructs: [],
                     tablePosition: nil,
@@ -354,6 +355,7 @@ struct ExternalMarkdownWindowLifecycleTests {
             fixture.editor.updateInteraction(
                 selections: [selection], line: 1, column: 1, lineCount: 1,
                 documentVersion: fixture.editor.generation,
+                interactionRevision: 0,
                 context: MarkdownEditorContext(
                     selections: [selection], activeInlineConstructs: [], activeBlockConstructs: [],
                     tablePosition: nil,
@@ -693,7 +695,7 @@ struct ExternalMarkdownWindowLifecycleTests {
             var recovery: MarkdownEditorRecoverySnapshot?
             var superseded: Bool?
             switch request.operation {
-            case .initialize(let source, _, _, _):
+            case .initialize(let source, _, _, _, _):
                 self.source = source
                 generation = 0
             case .queryText:
@@ -718,7 +720,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                     throw MarkdownEditorSession.SessionError.bridgeRejected("Synthetic input resume failure.")
                 }
                 suspensionID = nil
-            case .acknowledgeCommittedSnapshot(let expected, let committed, _):
+            case .acknowledgeCommittedSnapshot(let expected, let committed, _, _, _):
                 superseded = !source.utf8.elementsEqual(expected.utf8)
                 if superseded == false { source = committed }
                 text = source
@@ -728,6 +730,7 @@ struct ExternalMarkdownWindowLifecycleTests {
             var result: [String: Any] = [
                 "requestID": request.requestID.uuidString,
                 "resultingGeneration": generation,
+                "interactionRevision": generation,
                 "sourceChanged": false,
                 "selections": [["anchor": 0, "head": 0]],
                 "accepted": true,

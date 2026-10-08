@@ -179,6 +179,7 @@ struct DocumentSessionLifecycleTests {
             column: 2,
             lineCount: 3,
             documentVersion: 0,
+            interactionRevision: 0,
             focusTarget: .editor,
             context: nil
         )
@@ -210,6 +211,7 @@ struct DocumentSessionLifecycleTests {
             column: 2,
             lineCount: 3,
             documentVersion: 0,
+            interactionRevision: 0,
             focusTarget: .editor,
             context: nil
         )
@@ -226,6 +228,7 @@ struct DocumentSessionLifecycleTests {
             column: 2,
             lineCount: 3,
             documentVersion: 0,
+            interactionRevision: 0,
             focusTarget: .editor,
             context: nil
         )
@@ -251,7 +254,7 @@ struct DocumentSessionLifecycleTests {
         let selection = MarkdownEditorSelectionRange(anchor: 3, head: 3)
         session.editorSession.updateInteraction(
             selections: [selection], line: 1, column: 4, lineCount: 1,
-            documentVersion: 0, focusTarget: .editor,
+            documentVersion: 0, interactionRevision: 0, focusTarget: .editor,
             context: MarkdownEditorContext(
                 selections: [selection], activeInlineConstructs: [],
                 activeBlockConstructs: [], tablePosition: nil,
@@ -311,7 +314,7 @@ struct DocumentSessionLifecycleTests {
         editor.loadDocument(old, documentID: editor.bridgeDocumentID, mode: .source)
         editor.updateInteraction(
             selections: [selected], line: 2, column: 6, lineCount: 2,
-            documentVersion: 0, focusTarget: .editor, context: nil
+            documentVersion: 0, interactionRevision: 0, focusTarget: .editor, context: nil
         )
         editor.prepareSelectionForCleanExternalRevision(
             from: old, to: updated, scrollFraction: 0.4
@@ -398,6 +401,7 @@ struct DocumentSessionLifecycleTests {
                 column: 1,
                 lineCount: 1,
                 documentVersion: session.editorSession.generation,
+                interactionRevision: 0,
                 context: MarkdownEditorContext(
                     selections: [selection],
                     activeInlineConstructs: [],

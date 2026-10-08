@@ -217,7 +217,7 @@ final class ApplicationBootstrapController: ObservableObject {
             )
         }
         #if DEBUG
-            if bundleIdentifier == ScholiumRuntimeIsolation.qaBundleIdentifier {
+            if ScholiumRuntimeIsolation.isQABundleIdentifier(bundleIdentifier) {
                 throw CocoaError(.fileNoSuchFile)
             }
         #endif

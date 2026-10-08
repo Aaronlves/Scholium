@@ -46,9 +46,76 @@ struct ZoteroCitationExportTests {
         return NoteDocument(relativePath: "Synthetic-Citations.md", rawContent: source)
     }
 
+    private func companionFixture() throws -> NoteDocument {
+        let source =
+            "\u{FEFF}---\r\nunknown: 'keep' # exact source\n---\r\n"
+            + "Ordinary prose [(Current, p. 12)](cite:cite_a).\n\n"
+            + "<!--cite-bibliography:bib_a-->\r\n\r\nAlpha. "
+            + Array(repeating: "Synthetic bibliography wrapping text.", count: 10).joined(separator: " ")
+            + " *Current Title.* 中文。\r\n\r\nBeta. **Second Title.**\r\n\r\n<!--/cite-bibliography-->\r\n\nUnchanged tail."
+        let data = ZoteroCitationData(
+            fields: [
+                .init(id: "cite_a", kind: .citation, code: citationCode, text: "CACHED CITATION MUST NOT DISPLAY"),
+                .init(id: "bib_a", kind: .bibliography, code: bibliographyCode, text: "<script>CACHED BIBLIOGRAPHY MUST NOT DISPLAY</script>"),
+            ],
+            documentData: "opaque-vendor-document-data",
+            bibliographyStyle: .init(firstLineIndent: -720, indent: 720, lineSpacing: 360, entrySpacing: 120, tabStops: [720, 1440]),
+            acceptedFields: [.init(id: "cite_a", code: citationCode), .init(id: "bib_a", code: bibliographyCode)])
+        let companion = ZoteroCitationCompanion(
+            noteID: UUID(), vaultID: UUID(), sourceFingerprint: DocumentFingerprint(content: source), data: data)
+        let bytes = try JSONEncoder().encode(companion)
+        let decoded = try ZoteroCitationCompanion.decode(bytes)
+        try ZoteroMarkdownFields.validateCompanion(source: source, data: decoded.data)
+        return NoteDocument(
+            relativePath: "Managed-Citations.md", rawContent: source,
+            citationSnapshot: .init(
+                noteID: decoded.noteID, vaultID: decoded.vaultID, revision: DocumentFingerprint(data: bytes),
+                sourceFingerprint: decoded.sourceFingerprint, data: decoded.data, status: .available))
+    }
+
+    private func expectNoCitationAuthority(in output: String) {
+        for forbidden in [
+            "cite:", "cite-bibliography:", "scholium-zotero:", "<!--scholium-zotero", "ITEM CSL_CITATION", "CSL_BIBLIOGRAPHY", "synthetic-item",
+            "opaque-vendor", "CACHED",
+        ] {
+            #expect(!output.contains(forbidden), "Static output retained citation authority: \(forbidden)")
+        }
+    }
+
+    private func expectCitationAndBibliographyOrder(in output: String) throws {
+        let text = output as NSString
+        let positions = try ["(Current, p. 12)", "Alpha.", "Beta.", "Unchanged tail."].map { value in
+            let range = text.range(of: value)
+            #expect(range.location != NSNotFound, "Static output omitted \(value)")
+            return try #require(range.location != NSNotFound ? range.location : nil)
+        }
+        #expect(positions == positions.sorted())
+    }
+
+    @Test("A managed companion exports readable adjacent citation and bibliography through HTML, Word and PDF")
+    func compactCompanionExports() async throws {
+        let note = try companionFixture()
+        let snapshot = try #require(note.citationSnapshot)
+        let catalog = MarkdownSemanticDocument(parsing: note).zoteroFields
+        #expect(snapshot.sourceFingerprint == note.fingerprint)
+        #expect(snapshot.revision != nil)
+        #expect(catalog.canMutate && !catalog.citationStateStale)
+        #expect(catalog.fields.map(\.id) == ["cite_a", "bib_a"])
+        #expect(catalog.fields.map(\.code) == [citationCode, bibliographyCode])
+        #expect(catalog.fields.first?.plainText == "(Current, p. 12)")
+        #expect(!note.rawContent.contains("opaque-vendor") && !note.rawContent.contains("CACHED"))
+        try await checkHTMLFallback(note, style: .apa7)
+        try await checkDOCXLayout(note, style: .apa7)
+        try await checkPDFLayout(note, paperSize: .letter)
+        #expect(note.citationSnapshot == snapshot)
+    }
+
     @Test("Static citation HTML and Word preview use current fallback and source bibliography layout", arguments: [NoteExportStyle.document, .apa7, .mla9])
     func htmlUsesCurrentFallback(style: NoteExportStyle) async throws {
-        let note = try fixture()
+        try await checkHTMLFallback(fixture(), style: style)
+    }
+
+    private func checkHTMLFallback(_ note: NoteDocument, style: NoteExportStyle) async throws {
         let source = note.sourceBytes
         #expect(MarkdownSemanticDocument(parsing: note).zoteroFields.fields.count == 2)
         for data in [
@@ -70,6 +137,8 @@ struct ZoteroCitationExportTests {
             #expect(!html.contains("opaque-vendor-document-data"))
             #expect(!html.contains("scholium-zotero:1:"))
             #expect(!html.contains("<!--scholium-zotero"))
+            expectNoCitationAuthority(in: html)
+            try expectCitationAndBibliographyOrder(in: html)
         }
         #expect(note.sourceBytes == source)
         #expect(NoteDocument.decodeUTF8PreservingBOM(source) == note.rawContent)
@@ -78,7 +147,10 @@ struct ZoteroCitationExportTests {
 
     @Test("Static DOCX keeps bibliography layout after every page preset without live Zotero fields", arguments: [NoteExportStyle.document, .apa7, .mla9])
     func docxLayoutOverridesProse(style: NoteExportStyle) async throws {
-        let note = try fixture()
+        try await checkDOCXLayout(fixture(), style: style)
+    }
+
+    private func checkDOCXLayout(_ note: NoteDocument, style: NoteExportStyle) async throws {
         let source = note.sourceBytes
         let data = try await NoteExportService.render(
             document: note, title: "Synthetic", format: .docx,
@@ -116,7 +188,90 @@ struct ZoteroCitationExportTests {
         #expect(!xml.contains("scholium-zotero:"))
         #expect(!xml.contains("opaque-vendor"))
         #expect(!xml.contains("CACHED"))
+        try expectCitationAndBibliographyOrder(in: try #require(document.rootElement()?.stringValue))
+        for (path, bytes) in package where path.hasSuffix(".xml") || path.hasSuffix(".rels") {
+            expectNoCitationAuthority(in: try #require(String(data: bytes, encoding: .utf8)))
+        }
         #expect(note.sourceBytes == source)
+    }
+
+    @Test("Compact export requires a supported companion bound to the exact source revision")
+    func compactCompanionAdmission() async throws {
+        let original = try companionFixture()
+        let authority = try #require(original.citationSnapshot)
+        let missing = original.withCitationSnapshot(nil)
+        let unavailable = original.withCitationSnapshot(
+            .init(noteID: authority.noteID, vaultID: authority.vaultID, status: .unresolved))
+        let unsupported = original.withCitationSnapshot(
+            .init(noteID: authority.noteID, vaultID: authority.vaultID, revision: authority.revision, status: .unsupported))
+        let mismatched = NoteDocument(
+            relativePath: original.relativePath, rawContent: original.rawContent + "\n", citationSnapshot: authority)
+        #expect(NoteExportService.citationExportIssue(in: original) == nil)
+        for note in [missing, unavailable, unsupported, mismatched] {
+            let source = note.sourceBytes
+            guard case .citationSourceUnresolved? = NoteExportService.citationExportIssue(in: note) else {
+                Issue.record("Unavailable companion authority admitted a compact citation export.")
+                continue
+            }
+            do {
+                try NoteExportService.requireCitationExportAdmission(in: note)
+                Issue.record("Unavailable companion authority passed export admission.")
+            } catch NoteExportError.citationSourceUnresolved {}
+            #expect(note.sourceBytes == source)
+        }
+        // One representative missing-companion case exercises each public
+        // format entry point; admission must fail before any renderer starts.
+        for format in [NoteExportFormat.html, .docx, .pdf] {
+            do {
+                _ = try await NoteExportService.render(
+                    document: missing, title: "Synthetic", format: format,
+                    style: .document, textSize: 12, paperSize: .letter)
+                Issue.record("Missing companion reached a format renderer without saved-text authorization.")
+            } catch NoteExportError.citationSourceUnresolved {}
+        }
+        let saved = try await NoteExportService.render(
+            document: missing, title: "Synthetic", format: .html,
+            style: .document, textSize: 12, paperSize: .letter, allowSavedCitationText: true)
+        let html = try #require(String(data: saved, encoding: .utf8))
+        try expectCitationAndBibliographyOrder(in: html)
+        // Explicit literal saved-text export may show escaped unresolved
+        // markers; those must never become executable citation destinations.
+        #expect(html.range(of: #"href\s*=\s*["'](?:cite|scholium-zotero):"#, options: [.regularExpression, .caseInsensitive]) == nil)
+        #expect(!html.contains("opaque-vendor") && !html.contains("CACHED"))
+        #expect(!html.contains("class=\"scholium-zotero-citation\""))
+        #expect(!html.contains("margin-left:36.0pt;text-indent:-36.0pt;line-height:1.5;margin-bottom:6.0pt;"))
+        #expect(missing.sourceBytes == original.sourceBytes)
+        #expect(mismatched.citationSnapshot == authority)
+    }
+
+    @Test("Malformed YAML with unresolved companion authority requires explicit saved-text export")
+    func malformedFrontmatterCompanionAdmission() async throws {
+        let source = "\u{FEFF}---\r\nbroken: [\r\nReadable 😀 e\u{301} prose."
+        for status in [ZoteroCitationSnapshot.Status.unresolved, .unsupported] {
+            let note = NoteDocument(
+                relativePath: "Malformed.md", rawContent: source,
+                citationSnapshot: .init(noteID: UUID(), vaultID: UUID(), status: status))
+            #expect(note.frontmatterState == .malformed)
+            guard case .citationSourceUnresolved? = NoteExportService.citationExportIssue(in: note) else {
+                Issue.record("Malformed YAML hid known unavailable citation authority.")
+                continue
+            }
+            for format in [NoteExportFormat.html, .docx, .pdf] {
+                do {
+                    _ = try await NoteExportService.render(
+                        document: note, title: "Synthetic", format: format,
+                        style: .document, textSize: 12, paperSize: .letter)
+                    Issue.record("Malformed YAML bypassed citation export admission.")
+                } catch NoteExportError.citationSourceUnresolved {}
+            }
+            let saved = try await NoteExportService.render(
+                document: note, title: "Synthetic", format: .html,
+                style: .document, textSize: 12, paperSize: .letter, allowSavedCitationText: true)
+            let html = try #require(String(data: saved, encoding: .utf8))
+            #expect(html.contains("class=\"export-source-fallback\""))
+            #expect(html.contains(source))
+            #expect(note.sourceBytes == Data(source.utf8))
+        }
     }
 
     @Test("Bibliography without declared layout receives no academic prose first-line indent")
@@ -293,7 +448,10 @@ struct ZoteroCitationExportTests {
 
     @Test("Static PDF preserves physical paper, margin, bibliography indent and line spacing", arguments: [NoteExportPaperSize.letter, .a4])
     func pdfHangingIndent(paperSize: NoteExportPaperSize) async throws {
-        let note = try fixture(longEntry: true)
+        try await checkPDFLayout(fixture(longEntry: true), paperSize: paperSize)
+    }
+
+    private func checkPDFLayout(_ note: NoteDocument, paperSize: NoteExportPaperSize) async throws {
         let source = note.sourceBytes
         let data = try await NoteExportService.render(
             document: note, title: "Synthetic", format: .pdf,
@@ -317,7 +475,13 @@ struct ZoteroCitationExportTests {
         #expect(
             abs(firstBounds.minY - nextBounds.minY - 18) < 2,
             "PDF bibliography line spacing: \(firstBounds.minY - nextBounds.minY)")
-        #expect(!(try #require(document.string)).contains("CACHED"))
+        let exportedText = try #require(document.string)
+        expectNoCitationAuthority(in: exportedText)
+        try expectCitationAndBibliographyOrder(in: exportedText)
+        for index in 0..<document.pageCount {
+            let page = try #require(document.page(at: index))
+            #expect(page.annotations.allSatisfy { ($0.action as? PDFActionURL)?.url == nil })
+        }
         #expect(note.sourceBytes == source)
     }
 }

@@ -3,25 +3,117 @@ import AppKit
 
 extension ScholiumUITests {
     @MainActor
-    func testExternalMarkdownColdSavedSceneAndWarmWindowlessOpeningStayIndependent() throws {
-        // Start without another QA journey's native routes, while allowing
-        // this scene to save state at the graceful quit. The copied Triptych
-        // is already registered; later launches must resolve that same home
-        // without the QA fixture's explicit Note-opening path.
+    func testExternalMarkdownColdUnconfiguredOpeningRoutesWithoutWorkspace() throws {
         app.terminate()
         XCTAssertTrue(waitUntil(timeout: 10) { self.app.state == .notRunning })
-        app = configuredApplication(
-            sessionID: sessionID, usesFixtureWorkspace: false,
-            ignoresSystemWindowRestoration: true, openNote: nil)
-        app.launchEnvironment["SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION"] = "1"
-        app.launchArguments += ["-NSQuitAlwaysKeepsWindows", "YES"]
+        let emptyHome = testDirectory.appendingPathComponent("unconfigured-home", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptyHome, withIntermediateDirectories: true)
+        let externalURL = testDirectory.appendingPathComponent("QA Unconfigured External.md")
+        let bytes = Data("# Independent reading\n\nSynthetic cold opening without a Triptych.\n".utf8)
+        try bytes.write(to: externalURL)
+        try externalQALaunchServicesOpen(externalURL, homeOverride: emptyHome)
+        let external = externalQAWindow(externalURL.lastPathComponent)
+        XCTAssertTrue(external.waitForExistence(timeout: 20))
+        let mode = external.descendants(matching: .any)["scholium.externalMarkdown.mode"].firstMatch
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        XCTAssertEqual(mode.value as? String, "Review")
+        externalQAAssertWindowSet([external.identifier])
+        XCTAssertEqual(try Data(contentsOf: externalURL), bytes)
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
+        XCTAssertEqual(running.count, 1)
+        let pid = try XCTUnwrap(running.first).processIdentifier
+        external.buttons["_XCUI:CloseWindow"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { self.app.windows.count == 0 })
+        XCTAssertNotEqual(app.state, .notRunning)
+        try externalQALaunchServicesOpen(nil)
+        XCTAssertTrue(app.buttons["scholium.bootstrap.connectExisting"].waitForExistence(timeout: 15))
+        XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").map(\.processIdentifier), [pid])
+        XCTAssertEqual(try Data(contentsOf: externalURL), bytes)
+    }
+
+    @MainActor
+    func testExternalMarkdownWarmWindowlessOpeningStaysIndependent() throws {
+        let main = stableWorkspaceWindow(app.windows.firstMatch)
+        let registryURL = homeDirectory.appendingPathComponent("ApplicationSupport/Workspace/workspace-registration-v3.json")
+        let registryBefore = try Data(contentsOf: registryURL)
+        let notesBefore = try externalQANoteBytes()
+        XCTAssertEqual(notesBefore.count, 500)
+        let externalURL = testDirectory.appendingPathComponent("QA Warm External.markdown")
+        let bytes = Data("# Warm external\n\nSynthetic windowless opening.\n".utf8)
+        try bytes.write(to: externalURL)
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
+        XCTAssertEqual(running.count, 1)
+        let pid = try XCTUnwrap(running.first).processIdentifier
+        focusWorkspaceWindow(main)
+        main.buttons["_XCUI:CloseWindow"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { self.app.windows.count == 0 })
+        XCTAssertNotEqual(app.state, .notRunning)
+
+        try externalQALaunchServicesOpen(externalURL)
+        let external = externalQAWindow(externalURL.lastPathComponent)
+        XCTAssertTrue(external.waitForExistence(timeout: 15))
+        let mode = external.descendants(matching: .any)["scholium.externalMarkdown.mode"].firstMatch
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        XCTAssertEqual(mode.value as? String, "Review")
+        externalQAAssertWindowSet([external.identifier])
+        XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").map(\.processIdentifier), [pid])
+        XCTAssertEqual(try Data(contentsOf: externalURL), bytes)
+        XCTAssertEqual(try Data(contentsOf: registryURL), registryBefore)
+        XCTAssertTrue(try externalQANoteBytes() == notesBefore)
+        externalQACaptureBoundary("Warm windowless external opening", window: external)
+
+        // Explicit workspace creation and a later ordinary reopen remain
+        // available after URL-driven implicit scene creation is excluded.
+        externalQAFocus(external)
+        app.menuBars.menuBarItems["File"].click()
+        let newWindow = app.menuItems["New Window"].firstMatch
+        XCTAssertTrue(newWindow.isEnabled)
+        newWindow.click()
+        let explicitMain = app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'scholium-main-' ")).firstMatch
+        XCTAssertTrue(explicitMain.waitForExistence(timeout: 15))
+        XCTAssertTrue(explicitMain.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].waitForExistence(timeout: 30))
+        externalQAAssertWindowSet([explicitMain.identifier, external.identifier])
+        explicitMain.buttons["_XCUI:CloseWindow"].click()
+        external.buttons["_XCUI:CloseWindow"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { self.app.windows.count == 0 })
+        XCTAssertNotEqual(app.state, .notRunning)
+        XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").map(\.processIdentifier), [pid])
+        try externalQALaunchServicesOpen(nil)
+        let reopenedMain = app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'scholium-main-' ")).firstMatch
+        XCTAssertTrue(reopenedMain.waitForExistence(timeout: 15))
+        XCTAssertTrue(reopenedMain.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].waitForExistence(timeout: 30))
+        externalQAAssertWindowSet([reopenedMain.identifier])
+        XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").map(\.processIdentifier), [pid])
+        XCTAssertEqual(try Data(contentsOf: externalURL), bytes)
+        XCTAssertEqual(try Data(contentsOf: registryURL), registryBefore)
+        XCTAssertTrue(try externalQANoteBytes() == notesBefore)
+    }
+
+    @MainActor
+    func testExternalMarkdownColdSavedSceneRestorationStaysIndependent() throws {
+        guard ProcessInfo.processInfo.environment["SCHOLIUM_QA_NATIVE_RESTORATION"] == "1" else {
+            throw XCTSkip("Requires the dedicated native scene-restoration QA journey.")
+        }
+        // Native restoration is keyed by bundle identity, not SCHOLIUM_HOME.
+        // Use a fresh task-owned bundle identity from its first launch.
+        app.terminate()
+        XCTAssertTrue(waitUntil(timeout: 10) { self.app.state == .notRunning })
+        homeDirectory = testDirectory.appendingPathComponent("restoration-home", isDirectory: true)
+        let restorationBundle = try externalQAStageRestorationBundle()
+        let configuration = configuredApplication(
+            sessionID: sessionID, ignoresSystemWindowRestoration: false)
+        app = XCUIApplication(url: restorationBundle)
+        app.launchArguments = configuration.launchArguments
+        app.launchEnvironment = configuration.launchEnvironment
         app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
         let main = app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'scholium-main-' ")).firstMatch
         XCTAssertTrue(main.waitForExistence(timeout: 20))
+        externalQAFocus(main)
         XCTAssertTrue(main.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].waitForExistence(timeout: 30))
         let mainID = main.identifier
         let savedWindowID = try XCTUnwrap(UUID(uuidString: String(mainID.dropFirst("scholium-main-".count))))
-        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: main)
+        XCTAssertTrue(waitUntil(timeout: 30) { self.documentSurfaceIsUsable(for: "QA Autosave A.md") })
         // A non-fixture launch can create a different native route from the
         // initial setup session. Bind both persistence checks to the window
         // actually observed above, never the harness's initial session UUID.
@@ -38,16 +130,14 @@ extension ScholiumUITests {
         let notesBefore = try externalQANoteBytes()
         XCTAssertEqual(notesBefore.count, 500)
         let coldURL = testDirectory.appendingPathComponent("QA Cold External.md")
-        let warmURL = testDirectory.appendingPathComponent("QA Warm External.markdown")
-        let coldBytes = Data("\u{FEFF}---\r\nsummary: 'Outside the saved Triptych' # preserve\r\n---\r\n\r\n# Cold external\r\n\r\nSynthetic independent reading.\r\n".utf8)
-        let warmBytes = Data("# Warm external\n\nSynthetic windowless opening.\n".utf8)
+        let coldBytes = Data(
+            "\u{FEFF}---\r\nsummary: 'Outside the saved Triptych' # preserve\r\n---\r\n\r\n# Cold external\r\n\r\nSynthetic independent reading.\r\n".utf8)
         try coldBytes.write(to: coldURL)
-        try warmBytes.write(to: warmURL)
         app.typeKey("q", modifierFlags: [.command])
         XCTAssertTrue(waitUntil(timeout: 15) { self.app.state == .notRunning })
         XCTAssertEqual((try savedSession()["selectedDocument"] as? [String: Any])?["relativePath"] as? String, "QA Autosave A.md")
 
-        try externalQALaunchServicesOpen(coldURL, preservingSavedHome: true)
+        try externalQAOpenWithRestorationBundle(coldURL, bundle: restorationBundle)
         let coldExternal = externalQAWindow(coldURL.lastPathComponent)
         XCTAssertTrue(coldExternal.waitForExistence(timeout: 20))
         let restoredMain = app.windows[mainID]
@@ -70,32 +160,6 @@ extension ScholiumUITests {
         XCTAssertTrue(try externalQANoteBytes() == notesBefore, "Cold external opening must preserve every copied Note byte.")
         externalQACaptureBoundary("Cold external with saved native workspace", window: coldExternal)
 
-        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
-        XCTAssertEqual(running.count, 1)
-        let coldPID = try XCTUnwrap(running.first).processIdentifier
-        externalQAFocus(coldExternal)
-        app.typeKey("w", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 10) { !coldExternal.exists && self.app.windows.count == 1 })
-        focusWorkspaceWindow(restoredMain)
-        app.typeKey("w", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 10) { self.app.windows.count == 0 })
-        XCTAssertNotEqual(app.state, .notRunning, "Closing the final window must leave this warm process available for a file event.")
-
-        try externalQALaunchServicesOpen(warmURL)
-        let warmExternal = externalQAWindow(warmURL.lastPathComponent)
-        XCTAssertTrue(warmExternal.waitForExistence(timeout: 15))
-        let warmMode = warmExternal.descendants(matching: .any)["scholium.externalMarkdown.mode"].firstMatch
-        XCTAssertTrue(warmMode.waitForExistence(timeout: 10))
-        XCTAssertEqual(warmMode.value as? String, "Review")
-        externalQAAssertWindowSet([warmExternal.identifier])
-        XCTAssertEqual(
-            NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").map(\.processIdentifier), [coldPID],
-            "The windowless file event must use the already-running isolated QA process.")
-        XCTAssertEqual(try Data(contentsOf: coldURL), coldBytes)
-        XCTAssertEqual(try Data(contentsOf: warmURL), warmBytes)
-        XCTAssertEqual(try Data(contentsOf: registryURL), registryBefore)
-        XCTAssertTrue(try externalQANoteBytes() == notesBefore, "Warm external opening must preserve every copied Note byte.")
-        externalQACaptureBoundary("Warm windowless external opening", window: warmExternal)
     }
 
     private func externalQANoteBytes() throws -> [String: Data] {
@@ -108,6 +172,61 @@ extension ScholiumUITests {
             }
         }
         return result
+    }
+
+    private func externalQAStageRestorationBundle() throws -> URL {
+        let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = sourceRoot.appendingPathComponent(".build/qa-runtime/Scholium-QA.app", isDirectory: true)
+        XCTAssertEqual(Bundle(url: source)?.bundleIdentifier, "com.scholium.qa")
+        XCTAssertTrue(testDirectory.standardizedFileURL.path.hasPrefix(sourceRoot.appendingPathComponent(".build/qa-runtime/journeys/").path))
+        let staged = testDirectory.appendingPathComponent("Scholium-Restoration-QA.app", isDirectory: true)
+        try FileManager.default.copyItem(at: source, to: staged)
+        let plistURL = staged.appendingPathComponent("Contents/Info.plist")
+        var plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), format: nil) as? [String: Any])
+        plist["CFBundleIdentifier"] = "com.scholium.qa.restoration." + UUID().uuidString.lowercased()
+        plist["CFBundleName"] = "Scholium Restoration QA"
+        // This test app must never be selected as a default Markdown handler.
+        var documentTypes = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
+        for index in documentTypes.indices { documentTypes[index]["LSHandlerRank"] = "None" }
+        plist["CFBundleDocumentTypes"] = documentTypes
+        plist["LSEnvironment"] = [
+            "SCHOLIUM_HOME": homeDirectory.path,
+            "CFFIXED_USER_HOME": homeDirectory.path,
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": "",
+            "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION": "1",
+        ]
+        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: plistURL)
+        XCTAssertEqual(
+            try Data(contentsOf: staged.appendingPathComponent("Contents/MacOS/Scholium")),
+            try Data(contentsOf: source.appendingPathComponent("Contents/MacOS/Scholium")))
+        let signing = Process()
+        signing.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        signing.arguments = ["--force", "--deep", "--sign", "-", staged.path]
+        try signing.run()
+        signing.waitUntilExit()
+        XCTAssertEqual(signing.terminationStatus, 0)
+        return staged
+    }
+
+    @MainActor
+    private func externalQAOpenWithRestorationBundle(_ url: URL, bundle: URL) throws {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.allowsRunningApplicationSubstitution = false
+        configuration.addsToRecentItems = false
+        configuration.arguments = ["-ApplePersistenceIgnoreState", "NO", "-NSQuitAlwaysKeepsWindows", "YES"]
+        configuration.environment = [
+            "SCHOLIUM_HOME": homeDirectory.path,
+            "CFFIXED_USER_HOME": homeDirectory.path,
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": "",
+            "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION": "1",
+        ]
+        let opened = expectation(description: "Open the exact restoration QA bundle")
+        NSWorkspace.shared.open([url], withApplicationAt: bundle, configuration: configuration) { running, error in
+            XCTAssertNil(error)
+            XCTAssertEqual(running?.bundleURL?.standardizedFileURL, bundle.standardizedFileURL)
+            opened.fulfill()
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [opened], timeout: 20), .completed)
     }
 
     @MainActor
@@ -476,7 +595,7 @@ extension ScholiumUITests {
     }
 
     private func externalQALaunchServicesOpen(
-        _ url: URL?, withoutFixtureStartup: Bool = false, preservingSavedHome: Bool = false
+        _ url: URL?, withoutFixtureStartup: Bool = false, homeOverride: URL? = nil
     ) throws {
         let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let bundle = try XCTUnwrap(NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.scholium.qa"))
@@ -489,20 +608,16 @@ extension ScholiumUITests {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         var arguments = ["-a", bundle.path]
-        if withoutFixtureStartup || preservingSavedHome {
+        if withoutFixtureStartup || homeOverride != nil {
             arguments += ["--env", "SCHOLIUM_UI_TEST_WORKSPACE_ROOT="]
         }
-        if preservingSavedHome {
+        if let homeOverride {
             arguments += [
-                "--env", "SCHOLIUM_HOME=" + homeDirectory.path,
-                "--env", "CFFIXED_USER_HOME=" + homeDirectory.path,
-                "--env", "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION=1",
+                "--env", "SCHOLIUM_HOME=" + homeOverride.path,
+                "--env", "CFFIXED_USER_HOME=" + homeOverride.path,
             ]
         }
         if let url { arguments.append(url.path) }
-        if preservingSavedHome {
-            arguments += ["--args", "-ApplePersistenceIgnoreState", "NO", "-NSQuitAlwaysKeepsWindows", "YES"]
-        }
         process.arguments = arguments
         try process.run()
         process.waitUntilExit()

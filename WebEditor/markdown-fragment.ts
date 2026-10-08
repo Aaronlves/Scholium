@@ -9,7 +9,7 @@ import {systemSymbolElement} from "./system-symbols";
 import {localized, localizedTemplate} from "./localization";
 import {linkAnnotationAfter} from "./link-annotation";
 import {cjkPresentationRanges, languageForText} from "./text-language";
-import {citationLinkSource, isCitationDestination} from "./zotero-field-envelope";
+import {citationLinkSource, compactCitationLinkSource, isCitationDestination} from "./zotero-field-envelope";
 
 export interface MarkdownFragmentCallout {
   identifier: string;
@@ -134,7 +134,7 @@ function appendInlineMarkdownNode(
   if (cursor.name === "Link") {
     if (isCitationDestination(raw.slice(raw.lastIndexOf("](") + 2, -1).trim().replace(/^<|>$/g, ""))) {
       try {
-        const citation = citationLinkSource(raw);
+        const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);
         if (!citation) throw new Error("Invalid citation carrier.");
         const span = document.createElement("span");
         span.className = "cm-live-citation";

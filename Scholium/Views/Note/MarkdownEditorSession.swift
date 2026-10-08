@@ -77,6 +77,7 @@ struct MarkdownEditorPresentationState: Equatable, Sendable {
 struct MarkdownEditorTextSnapshot: Equatable, Sendable {
     let text: String
     let generation: Int
+    var citationData: ZoteroCitationData? = nil
 }
 
 typealias EditorImageResourceQuery = @MainActor (String) async -> [String: RenderedMarkdownImage]
@@ -89,6 +90,8 @@ struct MarkdownEditorPersistenceSnapshot: Sendable {
     let documentID: String
     let fingerprint: String
     let suspensionID: String?
+    var citationData: ZoteroCitationData? = nil
+    var companionRevision: DocumentFingerprint? = nil
 }
 
 enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
@@ -164,6 +167,23 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     // survive that rotation for reconstruction to admit its selection/history.
     let bridgeDocumentID = UUID().uuidString
     private(set) var startingFingerprint = ""
+    private(set) var committedCitationSnapshot: ZoteroCitationSnapshot?
+    private(set) var checkedCitationData: ZoteroCitationData?
+
+    /// Checked in-memory state uses current source coordinates; the committed
+    /// snapshot remains the independent portable-file CAS preimage.
+    var currentCitationSnapshot: ZoteroCitationSnapshot? {
+        guard let base = committedCitationSnapshot else { return nil }
+        if base.status == .unresolved || base.status == .unsupported { return base }
+        guard let data = checkedCitationData else {
+            return ZoteroCitationSnapshot(noteID: base.noteID, vaultID: base.vaultID, status: .absent)
+        }
+        return ZoteroCitationSnapshot(
+            noteID: base.noteID, vaultID: base.vaultID,
+            revision: base.revision, sourceFingerprint: DocumentFingerprint(content: checkedSource),
+            data: data, status: .available)
+    }
+
     private(set) var generation = 0 {
         didSet {
             guard generation != oldValue else { return }
@@ -189,6 +209,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     @Published private(set) var citationStatus: String?
     private var citationCancellationRequested = false
     private var citationInteractionRevision: UInt64 = 0
+    private(set) var rendererInteractionRevision: Int?
     private let citationIntegration: any ZoteroDocumentIntegrating
     private var pendingSource: String?
     private var pendingDocumentID = ""
@@ -256,7 +277,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
     private var lastKnownSelectionSnapshot: MarkdownEditorSelectionSnapshot?
     private var pendingWindowPresentation: WindowDocumentPresentationSnapshot?
-    private(set) var preferredDocumentFocusTarget: WindowDocumentFocusTarget?
+    private(set) var preferredDocumentFocusTarget: WindowDocumentFocusTarget? {
+        didSet {
+            if preferredDocumentFocusTarget != oldValue { citationInteractionRevision &+= 1 }
+        }
+    }
     #if DEBUG
         private static let qaTerminationNotification = Notification.Name(
             "com.scholium.qa.simulate-editor-process-termination"
@@ -485,6 +510,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingScrollAnchor = nil
         reconstructionScrollAnchor = nil
         checkedSourceBuffer.replace(with: "")
+        committedCitationSnapshot = nil
+        checkedCitationData = nil
         checkedEditorUTF16Length = 0
         sourceOffsetMap = EditorSourceOffsetMap(source: "")
         recoverySnapshot = nil
@@ -504,7 +531,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         flushPendingState()
     }
 
-    /// Applies the rAF-coalesced v5 interaction envelope. Exact cursor
+    /// Applies the rAF-coalesced interaction envelope. Exact cursor
     /// coordinates stay readable for commands and recovery, but they are not
     /// Observable state. Only a semantic availability change invalidates UI.
     func updateInteraction(
@@ -513,19 +540,24 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         column: Int,
         lineCount: Int,
         documentVersion: Int,
+        interactionRevision: Int,
         focusTarget: WindowDocumentFocusTarget? = nil,
         context semanticContext: MarkdownEditorContext?
     ) {
         guard !presentationIsClosed else { return }
         let previousSelection = lastKnownSelectionSnapshot?.ranges
+        let previousRendererRevision = rendererInteractionRevision
         let wasComposing = context?.composing == true
         guard documentVersion == generation,
+            markdownEditorInteractionRevisionIsValid(interactionRevision),
+            previousRendererRevision.map({ interactionRevision >= $0 }) ?? true,
             markdownEditorSelectionRangesAreValid(
                 selections,
                 forEditorUTF16Length: checkedEditorUTF16Length
             ),
             semanticContext?.selections == nil || semanticContext?.selections == selections
         else { return }
+        rendererInteractionRevision = interactionRevision
         lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
             documentID: documentID,
             fingerprint: startingFingerprint,
@@ -549,7 +581,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         if wasComposing, context?.composing == false {
             reconvergePendingPresentationState()
         }
-        if previousSelection != selections || wasComposing != isComposing {
+        if previousSelection != selections || wasComposing != isComposing || previousRendererRevision != interactionRevision {
             citationInteractionRevision &+= 1
             writingContextChanges.send()
             selectionChanges.send(hasNonemptySelection)
@@ -618,7 +650,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         _ source: String,
         documentID: String,
         mode: MarkdownEditorMode,
-        initialSourceRange: Range<Int>? = nil
+        initialSourceRange: Range<Int>? = nil,
+        citationSnapshot: ZoteroCitationSnapshot? = nil
     ) {
         detachmentCapture = nil
         updatePublished(\.citationStatus, to: nil)
@@ -646,8 +679,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 $0.documentID == documentID
                     && $0.fingerprint == startingFingerprint
                     && $0.source.utf8.elementsEqual(source.utf8)
+                    && committedCitationSnapshot == citationSnapshot
             } ?? false
         let retainedStartingFingerprint = preservesRecovery ? startingFingerprint : nil
+        if !preservesRecovery {
+            committedCitationSnapshot = citationSnapshot
+            checkedCitationData = citationSnapshot?.data
+        }
         if !preservesRecovery {
             if canRestoreWindowPresentation, let restoredPresentation {
                 recoverySnapshot = MarkdownEditorRecoverySnapshot(
@@ -659,7 +697,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     stateJSON: nil,
                     undoHistoryPreserved: false,
                     dirty: false,
-                    focusTarget: restoredPresentation.focusTarget
+                    focusTarget: restoredPresentation.focusTarget,
+                    citationSnapshot: citationSnapshot,
+                    citationData: citationSnapshot?.data
                 )
                 lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
                     documentID: documentID,
@@ -711,8 +751,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             updatePresentation {
                 $0.beginLoading()
             }
-            updatePublished(\.isDirty, to: false)
         }
+        if !preservesRecovery { updatePublished(\.isDirty, to: false) }
         flushPendingState()
     }
 
@@ -1227,6 +1267,43 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         try await writingContextSnapshot(mode: .selectionOnly).snapshot
     }
 
+    /// A read request may not reconcile the mirror, dispatch queued selection
+    /// intents, or provoke an autosave. The ordinary editor stream remains its owner.
+    func currentChatMetadata() async throws -> (AgentChatDocumentObservation.Revision, AgentChatDocumentObservation.Selection) {
+        if isComposing { return (.unavailable(.composing), .unavailable(.composing)) }
+        guard isReady, isLoaded, let webView else { return (.unavailable(.loading), .unavailable(.loading)) }
+        let epoch = requestEpoch
+        let interaction = citationInteractionRevision
+        guard let rendererInteraction = rendererInteractionRevision else {
+            throw ScholiumMCPFailure.chatObservation(.staleRevision)
+        }
+        let modeEpoch = modeTransitionEpoch
+        let result: MarkdownEditorCommandResult
+        do {
+            result = try await send(.queryText, in: webView, observingOnly: true)
+        } catch {
+            guard epoch == requestEpoch, interaction == citationInteractionRevision,
+                rendererInteraction == rendererInteractionRevision, modeEpoch == modeTransitionEpoch,
+                self.webView === webView, !Task.isCancelled
+            else { throw ScholiumMCPFailure.chatObservation(.staleRevision) }
+            if case SessionError.staleRequest = error { throw ScholiumMCPFailure.chatObservation(.staleRevision) }
+            if case SessionError.invalidResult = error { throw ScholiumMCPFailure.chatObservation(.staleRevision) }
+            return (.unavailable(.sourceSnapshotUnavailable), .unavailable(.sourceMappingUnavailable))
+        }
+        guard epoch == requestEpoch, interaction == citationInteractionRevision,
+            rendererInteraction == rendererInteractionRevision, result.interactionRevision == rendererInteraction,
+            modeEpoch == modeTransitionEpoch,
+            self.webView === webView, !Task.isCancelled, !isComposing,
+            result.resultingGeneration == generation, let source = result.text,
+            result.context?.composing != true,
+            result.selections == lastKnownSelectionSnapshot?.ranges
+        else { throw ScholiumMCPFailure.chatObservation(.staleRevision) }
+        let selection: AgentChatDocumentObservation.Selection =
+            preferredDocumentFocusTarget == .title
+            ? .unavailable(.sourceMappingUnavailable) : .editor(source: source, selections: result.selections)
+        return (.editorSnapshot(DocumentFingerprint(content: source)), selection)
+    }
+
     func writingContextSnapshot(mode: MarkdownWritingContextCaptureMode) async throws -> (
         snapshot: MarkdownSourceSelectionSnapshot, point: MarkdownEditorInsertionPoint?
     ) {
@@ -1280,7 +1357,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         else { throw SessionError.invalidResult }
         return MarkdownEditorTextSnapshot(
             text: text,
-            generation: result.resultingGeneration
+            generation: result.resultingGeneration,
+            citationData: result.citationData
         )
     }
 
@@ -1333,7 +1411,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     capture.snapshot.documentID == documentID,
                     capture.snapshot.fingerprint == startingFingerprint,
                     capture.snapshot.generation == generation,
-                    capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8)
+                    capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+                    capture.snapshot.citationSnapshot == committedCitationSnapshot,
+                    capture.snapshot.citationData == checkedCitationData
                 else { return nil }
                 return capture
             }
@@ -1352,6 +1432,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         snapshot.fingerprint == startingFingerprint,
                         snapshot.generation == generation,
                         snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+                        snapshot.citationSnapshot == committedCitationSnapshot,
+                        snapshot.citationData == checkedCitationData,
                         markdownEditorSelectionRangesAreValid(snapshot.ranges, forEditorUTF16Length: checkedEditorUTF16Length)
                     else { throw SessionError.invalidResult }
                     recoverySnapshot = snapshot
@@ -1419,7 +1501,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             capture.snapshot.documentID == documentID,
             capture.snapshot.fingerprint == startingFingerprint,
             capture.snapshot.generation == generation,
-            capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8)
+            capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+            capture.snapshot.citationSnapshot == committedCitationSnapshot,
+            capture.snapshot.citationData == checkedCitationData
         else { return nil }
         return capture
     }
@@ -1433,7 +1517,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             return MarkdownEditorPersistenceSnapshot(
                 text: capture.snapshot.source, generation: generation,
                 documentID: documentID, fingerprint: startingFingerprint,
-                suspensionID: capture.suspensionID
+                suspensionID: capture.suspensionID,
+                citationData: capture.snapshot.citationData,
+                companionRevision: committedCitationSnapshot?.revision
             )
         }
         let snapshot = try await currentTextSnapshot(for: documentID)
@@ -1443,14 +1529,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         return MarkdownEditorPersistenceSnapshot(
             text: snapshot.text, generation: snapshot.generation,
             documentID: documentID, fingerprint: startingFingerprint,
-            suspensionID: nil
+            suspensionID: nil,
+            citationData: snapshot.citationData, companionRevision: committedCitationSnapshot?.revision
         )
     }
 
     func acknowledgePersistenceSnapshot(
         _ snapshot: MarkdownEditorPersistenceSnapshot,
         committedText: String,
-        fingerprint: DocumentFingerprint
+        fingerprint: DocumentFingerprint,
+        citationSnapshot: ZoteroCitationSnapshot? = nil
     ) async throws -> MarkdownEditorCommitAcknowledgement {
         guard snapshot.documentID == documentID, snapshot.fingerprint == startingFingerprint else {
             throw SessionError.staleRequest
@@ -1461,7 +1549,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             guard try await waitUntilLoadedForSave() else { throw SessionError.unavailable }
             return try await acknowledgeCommittedSnapshot(
                 expectedText: snapshot.text, committedText: committedText,
-                fingerprint: fingerprint, documentID: snapshot.documentID
+                fingerprint: fingerprint, documentID: snapshot.documentID,
+                expectedCitationData: snapshot.citationData, citationSnapshot: citationSnapshot
             )
         }
         guard let capture = validDetachmentCapture,
@@ -1471,15 +1560,21 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             DocumentFingerprint(content: committedText) == fingerprint
         else { throw SessionError.invalidResult }
         let recovered = capture.snapshot
-        let superseded = !recovered.source.utf8.elementsEqual(committedText.utf8)
+        let superseded =
+            !recovered.source.utf8.elementsEqual(committedText.utf8)
+            || recovered.citationData != citationSnapshot?.data
+        committedCitationSnapshot = citationSnapshot
         let committed = MarkdownEditorRecoverySnapshot(
             documentID: documentID, fingerprint: fingerprint.sha256,
             generation: generation, ranges: recovered.ranges,
             source: recovered.source, stateJSON: recovered.stateJSON,
             undoHistoryPreserved: recovered.undoHistoryPreserved, dirty: superseded,
-            focusTarget: recovered.focusTarget
+            focusTarget: recovered.focusTarget,
+            citationSnapshot: committedCitationSnapshot,
+            citationData: checkedCitationData
         )
         startingFingerprint = fingerprint.sha256
+        committedCitationSnapshot = citationSnapshot
         recoverySnapshot = committed
         detachmentCapture = DetachmentCapture(
             suspensionID: capture.suspensionID, transportSessionID: capture.transportSessionID, snapshot: committed
@@ -1511,6 +1606,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             snapshot.fingerprint == startingFingerprint,
             snapshot.generation == generation,
             snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+            snapshot.citationSnapshot == committedCitationSnapshot,
+            snapshot.citationData == checkedCitationData,
             markdownEditorSelectionRangesAreValid(
                 snapshot.ranges,
                 forEditorUTF16Length: checkedEditorUTF16Length
@@ -1634,7 +1731,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         expectedText: String,
         committedText: String,
         fingerprint: DocumentFingerprint,
-        documentID expectedDocumentID: String
+        documentID expectedDocumentID: String,
+        expectedCitationData: ZoteroCitationData? = nil,
+        citationSnapshot: ZoteroCitationSnapshot? = nil
     ) async throws -> MarkdownEditorCommitAcknowledgement {
         guard expectedDocumentID == documentID,
             isReady, isLoaded, let webView
@@ -1645,7 +1744,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             .acknowledgeCommittedSnapshot(
                 expected: expectedText,
                 committed: committedText,
-                fingerprint: fingerprint.sha256
+                fingerprint: fingerprint.sha256,
+                expectedCitationData: expectedCitationData,
+                committedCitationSnapshot: citationSnapshot
             ),
             in: webView
         )
@@ -1659,8 +1760,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             currentText.utf8.elementsEqual(checkedSource.utf8)
         else { throw SessionError.invalidResult }
         let rebasedRanges = currentValidSelectionRanges()
-        invalidateRequestQueue()
+        // Rebasing a committed fingerprint does not replace the live renderer.
+        // Its validated response already admitted the current interaction revision.
+        invalidateRequestQueue(preservingRendererInteraction: true)
         startingFingerprint = fingerprint.sha256
+        committedCitationSnapshot = citationSnapshot
         lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
             documentID: documentID,
             fingerprint: startingFingerprint,
@@ -1679,7 +1783,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             stateJSON: nil,
             undoHistoryPreserved: false,
             dirty: commitSuperseded,
-            focusTarget: preferredDocumentFocusTarget
+            focusTarget: preferredDocumentFocusTarget,
+            citationSnapshot: committedCitationSnapshot,
+            citationData: checkedCitationData
         )
         updatePublished(\.isDirty, to: commitSuperseded)
         committedTextSynchronizer?(checkedSource, fingerprint.sha256)
@@ -2034,12 +2140,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func acceptEditorChanges(
         _ rawChanges: [EditorBridgeChange],
         baseGeneration: Int,
-        resultingGeneration: Int
+        resultingGeneration: Int,
+        citationManaged: Bool? = nil,
+        citationData: ZoteroCitationData? = nil
     ) -> Bool {
-        guard !rawChanges.isEmpty,
+        guard !rawChanges.isEmpty || citationManaged == true,
             rawChanges.count <= 512,
             baseGeneration == generation,
-            resultingGeneration == baseGeneration + 1
+            resultingGeneration == baseGeneration + 1,
+            (citationManaged ?? false) == (committedCitationSnapshot != nil),
+            citationData == nil || citationManaged == true,
+            citationData.map({ (try? $0.validate()) != nil }) ?? true
         else { return false }
         var changes: [MarkdownEditorDelta] = []
         var resultingEditorUTF16Length = checkedEditorUTF16Length
@@ -2078,6 +2189,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             resultingCharacterAt: checkedSourceBuffer.character(atUTF16:)
         )
         checkedEditorUTF16Length = resultingEditorUTF16Length
+        checkedCitationData = citationData
         generation = resultingGeneration
         updatePublished(\.isDirty, to: true)
         sourceChangeHandler?()
@@ -2176,6 +2288,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             snapshot.fingerprint == startingFingerprint,
             snapshot.generation == generation,
             snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+            snapshot.citationSnapshot == committedCitationSnapshot,
+            snapshot.citationData == checkedCitationData,
             markdownEditorSelectionRangesAreValid(
                 snapshot.ranges,
                 forEditorUTF16Length: checkedEditorUTF16Length
@@ -2193,7 +2307,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 stateJSON: snapshot.stateJSON,
                 undoHistoryPreserved: snapshot.undoHistoryPreserved,
                 dirty: isDirty,
-                focusTarget: preferredDocumentFocusTarget
+                focusTarget: preferredDocumentFocusTarget,
+                citationSnapshot: committedCitationSnapshot,
+                citationData: checkedCitationData
             )
         } else {
             recoverySnapshot = MarkdownEditorRecoverySnapshot(
@@ -2205,7 +2321,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 stateJSON: nil,
                 undoHistoryPreserved: false,
                 dirty: isDirty,
-                focusTarget: preferredDocumentFocusTarget
+                focusTarget: preferredDocumentFocusTarget,
+                citationSnapshot: committedCitationSnapshot,
+                citationData: checkedCitationData
             )
         }
         let recoverySource = checkedSource
@@ -2215,7 +2333,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         loadDocument(
             recoverySource,
             documentID: recoveryDocumentID,
-            mode: recoveryMode
+            mode: recoveryMode,
+            citationSnapshot: committedCitationSnapshot
         )
     }
 
@@ -2270,7 +2389,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         text: source,
                         mode: mode,
                         dialect: .current,
-                        initialSelection: initialSelection
+                        initialSelection: initialSelection,
+                        citationSnapshot: committedCitationSnapshot
                     ),
                     in: webView,
                     requiringRequestEpoch: intendedRequestEpoch
@@ -2571,8 +2691,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func send(
         _ operation: MarkdownEditorOperation,
         in webView: WKWebView,
-        requiringRequestEpoch requiredRequestEpoch: UInt64? = nil
+        requiringRequestEpoch requiredRequestEpoch: UInt64? = nil,
+        observingOnly: Bool = false
     ) async throws -> MarkdownEditorCommandResult {
+        if observingOnly {
+            guard case .queryText = operation else { throw SessionError.invalidResult }
+        }
         let requestDeadline = ContinuousClock.now.advanced(by: lifecyclePolicy.bridgeRequest)
         let duration = lifecyclePolicy.bridgeRequest.components
         let durationMilliseconds =
@@ -2656,7 +2780,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             guard result.accepted else {
                 throw SessionError.bridgeRejected(result.error ?? ScholiumL10n.string("The Markdown editor rejected the request."))
             }
-            guard result.resultingGeneration >= 0 else {
+            guard result.resultingGeneration >= 0,
+                markdownEditorInteractionRevisionIsValid(result.interactionRevision)
+            else {
                 throw SessionError.invalidResult
             }
 
@@ -2669,6 +2795,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 }) ?? true,
                 !result.sourceChanged || result.text != nil
             else { throw SessionError.invalidResult }
+            if result.text != nil {
+                guard (result.citationManaged ?? false) == (committedCitationSnapshot != nil),
+                    result.citationData == nil || result.citationManaged == true,
+                    result.citationData.map({ (try? $0.validate()) != nil }) ?? true
+                else { throw SessionError.invalidResult }
+            }
 
             let responseEditorLength =
                 result.text.map {
@@ -2685,17 +2817,32 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             {
                 throw SessionError.invalidResult
             }
+            if observingOnly {
+                guard case .queryText = operation,
+                    result.resultingGeneration == context.generation, generation == context.generation,
+                    let text = result.text, checkedSourceBuffer.isEqual(to: text), !result.sourceChanged,
+                    result.citationData == checkedCitationData
+                else { throw SessionError.staleRequest }
+                return result
+            }
             // A later full snapshot can overtake queued deltas. An unexplained
             // same-generation mismatch cannot silently replace the checked source.
             if let text = result.text, result.resultingGeneration >= generation {
                 if result.resultingGeneration == generation,
-                    !checkedSourceBuffer.isEqual(to: text)
+                    !checkedSourceBuffer.isEqual(to: text) || result.citationData != checkedCitationData
                 {
                     updatePublished(\.isDirty, to: true)
                     sourceChangeHandler?()
                     throw SessionError.invalidResult
                 }
-                try reconcileMirror(with: text, publish: result.resultingGeneration > generation)
+                let citationChanged = result.citationData != checkedCitationData
+                let advanced = result.resultingGeneration > generation
+                try reconcileMirror(with: text, publish: advanced)
+                checkedCitationData = result.citationData
+                if advanced && citationChanged {
+                    updatePublished(\.isDirty, to: true)
+                    sourceChangeHandler?()
+                }
                 generation = result.resultingGeneration
             }
             if result.resultingGeneration == generation,
@@ -2707,6 +2854,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     column: column,
                     lineCount: lineCount,
                     documentVersion: result.resultingGeneration,
+                    interactionRevision: result.interactionRevision,
                     context: result.context
                 )
             }
@@ -2772,8 +2920,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         private func removeQATerminationObserver() {}
     #endif
 
-    private func invalidateRequestQueue(clearingRecoveryReport: Bool = true) {
+    private func invalidateRequestQueue(
+        clearingRecoveryReport: Bool = true,
+        preservingRendererInteraction: Bool = false
+    ) {
         requestEpoch &+= 1
+        if !preservingRendererInteraction { rendererInteractionRevision = nil }
         imageResourceQueryTask?.cancel()
         imageResourceQueryTask = nil
         imageResourceQueryID = nil
@@ -2819,6 +2971,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             snapshot.fingerprint == startingFingerprint,
             snapshot.generation == generation,
             snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+            snapshot.citationSnapshot == committedCitationSnapshot,
+            snapshot.citationData == checkedCitationData,
             markdownEditorSelectionRangesAreValid(
                 snapshot.ranges,
                 forEditorUTF16Length: checkedEditorUTF16Length

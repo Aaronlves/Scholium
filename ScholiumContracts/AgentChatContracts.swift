@@ -293,7 +293,7 @@ extension AgentChatActivity.Kind {
         case .createNote: .create
         case .updateNote, .undoChange: .update
         case .trashNote: .trash
-        case .capabilities, .configureSkill, .configureTool, .configureChat: .tool
+        case .capabilities, .configureSkill, .configureTool, .configureChat, .observeCurrentState: .tool
         }
     }
 

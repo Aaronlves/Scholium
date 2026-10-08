@@ -5,6 +5,7 @@ import ScholiumCore
 /// A bounded, cancellation-aware stream of typed workspace generations.
 public actor WorkspaceEventSource {
     private var currentSnapshot: WorkspaceSnapshot
+    private var currentDerivedRefreshStatus: WorkspaceDerivedRefreshStatus
     private var generation: UInt64 = 0
     private var continuations: [UUID: AsyncStream<WorkspaceEvent>.Continuation] = [:]
     private var vaultAccessInvalidation: WorkspaceVaultAccessInvalidatedEvent?
@@ -12,6 +13,10 @@ public actor WorkspaceEventSource {
 
     init(initialSnapshot: WorkspaceSnapshot) {
         currentSnapshot = initialSnapshot
+        currentDerivedRefreshStatus =
+            initialSnapshot.phase.isComplete
+            ? .current(WorkspaceDerivedRefreshEvidence(snapshot: initialSnapshot))
+            : .opening(WorkspaceDerivedRefreshEvidence(snapshot: initialSnapshot))
     }
 
     /// The first element is always the latest snapshot. During progressive
@@ -121,6 +126,14 @@ public actor WorkspaceEventSource {
         )
     }
 
+    func publishCitationAuthorityInvalidated(snapshot: WorkspaceSnapshot) {
+        publish(
+            .citationAuthorityInvalidated(
+                .init(
+                    generation: nextGeneration(), snapshot: snapshot,
+                    derivedRefreshStatus: currentDerivedRefreshStatus)), snapshot: snapshot)
+    }
+
     func publishVaultAccessInvalidated(
         snapshot: WorkspaceSnapshot,
         unavailableVaultPaths: [UUID: String]
@@ -179,6 +192,7 @@ public actor WorkspaceEventSource {
             return
         }
         currentSnapshot = snapshot
+        currentDerivedRefreshStatus = event.derivedRefreshStatus
         for continuation in continuations.values {
             continuation.yield(event)
         }

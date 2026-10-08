@@ -26,6 +26,7 @@ pending_questions = {}
 pending_approvals = {}
 pending_child_reads = []
 pending_turn_acks = []
+pending_interrupt_replies = []
 client_capabilities = {}
 tool_config_file = home / 'fixture-tool-config.json'
 
@@ -185,6 +186,14 @@ for line in sys.stdin:
         result = {'authorizationUrl': 'file:///fixture' if (home / 'unsafe-auth-url').exists()
             else 'https://auth.example.test/authorize?state=fixture'}
     elif method == 'account/rateLimits/read':
+        interrupt_release = home / 'release-interrupt-reply'
+        if interrupt_release.exists():
+            interrupt_succeeded = interrupt_release.read_text() == 'success'
+            interrupt_release.unlink()
+            for request_id in pending_interrupt_replies:
+                write({'id': request_id, 'result': {}} if interrupt_succeeded else {
+                    'id': request_id, 'error': {'code': -32603, 'message': 'Fixture interrupt unavailable'}})
+            pending_interrupt_replies.clear()
         if (home / 'release-input-ack').exists():
             (home / 'release-input-ack').unlink()
             for response in pending_turn_acks:
@@ -554,6 +563,20 @@ source → interpretation → objection
             event('turn/completed', {'threadId': tid, 'turn': turn})
         save()
     elif method == 'turn/interrupt':
+        counter = home / 'interrupt-count'
+        counter.write_text(str(int(counter.read_text()) + 1) if counter.exists() else '1')
+        (home / 'last-interrupt.json').write_text(json.dumps(params))
+        if (home / 'disconnect-on-interrupt').exists():
+            sys.exit(0)
+        if (home / 'hold-interrupt-reply').exists():
+            pending_interrupt_replies.append(request['id'])
+            continue
+        if (home / 'fail-interrupt').exists():
+            write({'id': request['id'], 'error': {'code': -32603, 'message': 'Fixture interrupt unavailable'}})
+            continue
+        if (home / 'acknowledge-interrupt-only').exists():
+            write({'id': request['id'], 'result': {}})
+            continue
         tid = params['threadId']
         turn = threads[tid]['turns'][-1]
         if threads[tid].get('parentThreadId'):

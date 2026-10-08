@@ -97,13 +97,9 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-# The shared enum is closed: sixteen external research tools plus four
-# in-app Chat capability controls. The latter are filtered from the standalone
-# server surface by ScholiumMCPToolName.isChatControl.
-if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "20" ]]; then
-  echo "MCP surface guard failed: expected 20 identities (16 external plus 4 Chat controls)." >&2
-  exit 1
-fi
+# Pin exact wire identities and Chat-only classification before runtime checks.
+python3 "${ROOT}/Tools/Tests/test-mcp-surface.py"
+python3 "${ROOT}/Tools/Scripts/verify-agent-helper.py" --surface-only
 
 # Note and Folder deletion has one clean system-Trash route. Prevent the
 # retired Set Aside/internal-Trash lifecycle, commands, contracts, and routed

@@ -15,7 +15,7 @@ struct AgentChatConversationDetailView: View {
     let noteChoices: [WorkspaceCatalogNote]
     let prepareNotes: @MainActor (UUID) throws -> (@MainActor (WorkspaceCatalogNote) async throws -> Void)
     let openReference: (URL) -> Bool
-    let openAttachment: (AgentChatAttachment) -> Void
+    let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
     let showInLibrary: (URL) -> Void
     let showChanges: (UUID) -> Void
     let showConversationChanges: ([UUID]) -> Void
@@ -525,6 +525,9 @@ struct AgentChatConversationDetailView: View {
             let activeActivityID = projection.activeActivityID(for: turnID)
             AgentChatProcessView(
                 messages: item.messages,
+                window: Binding(
+                    get: { readingSession.processWindows[item.id] ?? .init() },
+                    set: { readingSession.processWindows[item.id] = $0 }),
                 isActive: controller.isBusy && controller.currentTurnID != nil && item.messages.first?.turnID == controller.currentTurnID,
                 forceExpanded: presentation.showsFind && item.messages.contains { $0.id == presentation.find.selectedID },
                 status: status,
@@ -597,7 +600,7 @@ struct AgentChatConversationDetailView: View {
                         ScrollView(.horizontal) {
                             HStack(spacing: 8) {
                                 ForEach(message.attachments) { attachment in
-                                    AgentChatMaterialChip(attachment: attachment, remove: nil, open: { openAttachment(attachment) })
+                                    AgentChatMaterialChip(attachment: attachment, remove: nil, open: { openAttachment(attachment, $0) })
                                 }
                                 ForEach(message.localMaterials) { material in
                                     AgentChatLocalMaterialChip(
@@ -1380,7 +1383,7 @@ struct AgentChatConversationDetailView: View {
                             AgentChatMaterialChip(
                                 attachment: attachment, isEmbeddedInComposer: true,
                                 remove: { if isCurrentConversation { controller.removeAttachment(attachment.id) } },
-                                open: { openAttachment(attachment) })
+                                open: { openAttachment(attachment, $0) })
                         }
                         ForEach(controller.selected?.localMaterials ?? []) { material in
                             AgentChatLocalMaterialChip(

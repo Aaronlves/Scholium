@@ -235,7 +235,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.summary = summary
         self.document = document
         self.cachedSemanticDocument =
-            cachedSemanticDocument?.fingerprint == document.fingerprint
+            document.citationSnapshot == nil && cachedSemanticDocument?.fingerprint == document.fingerprint
             ? cachedSemanticDocument : nil
     }
 
@@ -259,11 +259,12 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.summary == rhs.summary
+        lhs.summary == rhs.summary && lhs.document.citationSnapshot == rhs.document.citationSnapshot
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(summary)
+        hasher.combine(document.citationSnapshot)
     }
 
     /// Immediate window projection after a checked portable Metadata read or commit.
@@ -641,6 +642,25 @@ public struct WorkspaceDocumentChangesChangedEvent: Sendable {
     }
 }
 
+/// Essential portable citation data may change independently of Markdown.
+/// Recipients reread their retained Notes; the event itself grants no authority.
+public struct WorkspaceCitationAuthorityInvalidatedEvent: Sendable {
+    public let generation: UInt64
+    public let affectedNoteIDs: Set<UUID>?
+    public let snapshot: WorkspaceSnapshot
+    public let derivedRefreshStatus: WorkspaceDerivedRefreshStatus
+
+    public init(
+        generation: UInt64, affectedNoteIDs: Set<UUID>? = nil,
+        snapshot: WorkspaceSnapshot, derivedRefreshStatus: WorkspaceDerivedRefreshStatus
+    ) {
+        self.generation = generation
+        self.affectedNoteIDs = affectedNoteIDs
+        self.snapshot = snapshot
+        self.derivedRefreshStatus = derivedRefreshStatus
+    }
+}
+
 /// Invalidates projections that resolve mutable Research Guidance state.
 /// The event deliberately does not claim that an attempted configuration
 /// mutation committed: consumers reread the exact current Method, Skill,
@@ -709,6 +729,7 @@ public enum WorkspaceEvent: Sendable {
     case derivedStateChanged(WorkspaceDerivedStateChangedEvent)
     case researchStateChanged(WorkspaceResearchStateChangedEvent)
     case documentChangesChanged(WorkspaceDocumentChangesChangedEvent)
+    case citationAuthorityInvalidated(WorkspaceCitationAuthorityInvalidatedEvent)
     case researchConfigurationInvalidated(
         WorkspaceResearchConfigurationInvalidatedEvent
     )
@@ -723,6 +744,7 @@ public enum WorkspaceEvent: Sendable {
         case .derivedStateChanged(let event): event.generation
         case .researchStateChanged(let event): event.generation
         case .documentChangesChanged(let event): event.generation
+        case .citationAuthorityInvalidated(let event): event.generation
         case .researchConfigurationInvalidated(let event): event.generation
         case .vaultAccessInvalidated(let event): event.generation
         case .runtimeReloaded(let event): event.generation
@@ -737,6 +759,7 @@ public enum WorkspaceEvent: Sendable {
         case .derivedStateChanged(let event): event.snapshot
         case .researchStateChanged(let event): event.snapshot
         case .documentChangesChanged(let event): event.snapshot
+        case .citationAuthorityInvalidated(let event): event.snapshot
         case .researchConfigurationInvalidated(let event): event.snapshot
         case .vaultAccessInvalidated(let event): event.snapshot
         case .runtimeReloaded(let event): event.snapshot
@@ -750,6 +773,8 @@ public enum WorkspaceEvent: Sendable {
         switch self {
         case .derivedStateChanged(let event):
             event.status
+        case .citationAuthorityInvalidated(let event):
+            event.derivedRefreshStatus
         case .vaultAccessInvalidated(let event):
             .stale(
                 WorkspaceDerivedRefreshIssue(

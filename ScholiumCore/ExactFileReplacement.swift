@@ -15,12 +15,14 @@ public enum ExactFileReplacement {
         expected: Data?,
         candidate: Data,
         preserveOriginal: Bool = false,
+        transactionID: UUID? = nil,
         preCommitHook: (@Sendable (URL) throws -> Void)? = nil,
         postCommitHook: (@Sendable (URL) throws -> Void)? = nil
     ) throws -> ExactFileReplacementResult {
         try replace(
             at: url, expected: expected, candidate: candidate,
             preserveOriginal: preserveOriginal,
+            transactionID: transactionID,
             preCommitHook: preCommitHook, postCommitHook: postCommitHook,
             preRollbackHook: nil
         )
@@ -33,6 +35,7 @@ public enum ExactFileReplacement {
         expected: Data?,
         candidate: Data,
         preserveOriginal: Bool = false,
+        transactionID: UUID? = nil,
         preCommitHook: (@Sendable (URL) throws -> Void)? = nil,
         postCommitHook: (@Sendable (URL) throws -> Void)? = nil,
         preRollbackHook: (@Sendable (URL) throws -> Void)?
@@ -68,7 +71,10 @@ public enum ExactFileReplacement {
                     preservedURL = parentURL.appendingPathComponent(backupName)
                 }
 
-                let stagingName = ".\(name)-staging-\(UUID().uuidString.lowercased())"
+                let stagingName =
+                    transactionID.map {
+                        transactionStagingName(fileName: name, transactionID: $0)
+                    } ?? ".\(name)-staging-\(UUID().uuidString.lowercased())"
                 var stagingExists = false
                 defer { if stagingExists { _ = unlinkat(directory, stagingName, 0) } }
                 try writeExclusive(candidate, directory: directory, name: stagingName)
@@ -155,6 +161,10 @@ public enum ExactFileReplacement {
         }
         guard let outcome else { throw POSIXError(.EIO) }
         return try outcome.get()
+    }
+
+    static func transactionStagingName(fileName: String, transactionID: UUID) -> String {
+        ".\(fileName)-staging-\(transactionID.uuidString.lowercased()).json"
     }
 
     private static func directoryMatches(_ descriptor: Int32, url: URL) -> Bool {

@@ -544,7 +544,7 @@ public enum MarkdownSemanticParser {
             inlines: original.inlines, headings: original.headings, callouts: original.callouts,
             footnoteDefinitions: original.footnoteDefinitions, footnoteReferences: original.footnoteReferences,
             mathExpressions: original.mathExpressions,
-            links: original.links.filter { !$0.target.lowercased().hasPrefix(ZoteroMarkdownFields.citationScheme) },
+            links: original.links.filter { !ZoteroMarkdownFields.isCitationDestination($0.target) },
             diagnostics: original.diagnostics, zoteroFields: zoteroFields
         )
     }

@@ -3,6 +3,7 @@ import Foundation
 public enum ScholiumMCPContract {
     public static let maximumDocumentUTF8ByteCount = 512 * 1_024
     public static let currentToolSchemaVersion = 9
+    public static let maximumChatObservationUTF8ByteCount = 16 * 1_024
 }
 
 /// JSON values accepted at the MCP delivery boundary. Domain owners decode
@@ -101,13 +102,14 @@ public enum ScholiumMCPToolName: String, Codable, CaseIterable, Sendable {
     case configureSkill = "scholium_configure_skill"
     case configureTool = "scholium_configure_tool"
     case configureChat = "scholium_configure_chat"
+    case observeCurrentState = "scholium_observe_current_state"
 
     /// These controls belong to the in-app Agent conversation. They are not
     /// part of the standalone external research MCP surface because that
-    /// surface has no conversation-owned runtime configuration target.
+    /// surface has no conversation-owned runtime or originating-window target.
     public var isChatControl: Bool {
         switch self {
-        case .capabilities, .configureSkill, .configureTool, .configureChat: true
+        case .capabilities, .configureSkill, .configureTool, .configureChat, .observeCurrentState: true
         default: false
         }
     }
@@ -148,6 +150,38 @@ public struct ScholiumMCPFailure: Codable, Hashable, Sendable, Error {
         self.message = message
         self.recovery = recovery
         self.recoveryDetails = recoveryDetails
+    }
+}
+
+extension ScholiumMCPFailure {
+    /// Observation failures reveal no source, foreign identity or raw diagnostics.
+    public static func chatObservation(_ code: ScholiumMCPFailureCode) -> Self {
+        let message: String
+        let recovery: String
+        let safeCode: ScholiumMCPFailureCode
+        switch code {
+        case .appUnavailable:
+            safeCode = code
+            message = "The Scholium App is unavailable for this observation."
+            recovery = "Return to Scholium and use an available in-app Chat conversation."
+        case .workspaceNotReady:
+            safeCode = code
+            message = "The originating window or conversation is unavailable for this observation."
+            recovery = "Keep the intended window and conversation visible, then request a fresh observation during admitted work."
+        case .staleRevision:
+            safeCode = code
+            message = "The document or selection changed during this observation."
+            recovery = "Request a fresh observation of the current context."
+        case .invalidRequest:
+            safeCode = code
+            message = "The observation request does not match its closed, bound contract."
+            recovery = "Supply only the exact Triptych, window and conversation UUIDs for the admitted Chat turn."
+        default:
+            safeCode = .internalError
+            message = "The current state observation could not be completed."
+            recovery = "Inspect the current context in Scholium before requesting another observation."
+        }
+        return .init(code: safeCode, message: message, recovery: recovery)
     }
 }
 

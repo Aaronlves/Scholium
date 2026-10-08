@@ -92,6 +92,8 @@ extension WorkspaceHandle {
                 resolved: change.noteID,
                 relativePath: id.relativePath
             )
+            try await requireSourceOnlyAgentUndo(
+                noteID: change.noteID, vaultID: id.vaultID, changeID: undoAgentChangeID)
             undoEvidence = change
         } else {
             undoEvidence = nil
@@ -118,11 +120,30 @@ extension WorkspaceHandle {
                     || sourceAheadIdentityRecords[id]?.id == identity.id
             else { throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath) }
         }
-        let save = try await repository.saveOutcome(
-            relativePath: id.relativePath,
-            changeSet: changeSet,
-            expectedRevision: expectedRevision
-        )
+        let save: VaultSaveOutcome
+        if case .citationSource(let source, let edit) = changeSet {
+            guard undoAgentChangeID == nil,
+                let identity = try await services.controlStore.identityRecord(
+                    vaultID: id.vaultID, relativePath: id.relativePath)
+            else { throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath) }
+            try requireExpectedIdentity(
+                expectedStableNoteID, resolved: identity.id, relativePath: id.relativePath)
+            do {
+                let result = try await citationSaveCoordinator().save(
+                    target: NoteMutationTarget(
+                        documentID: id, stableNoteID: identity.id, revision: expectedRevision),
+                    source: source, edit: edit)
+                save = .committed(result)
+            } catch ZoteroCitationSaveError.sourceNotWritten(let reason) {
+                save = .notWritten(reason)
+            }
+        } else {
+            save = try await repository.saveOutcome(
+                relativePath: id.relativePath,
+                changeSet: changeSet,
+                expectedRevision: expectedRevision
+            )
+        }
         switch save {
         case .notWritten(let reason):
             return .notWritten(reason)
@@ -153,6 +174,23 @@ extension WorkspaceHandle {
                     throw AgentCollaborationError.changeConfirmationUncertain(undoEvidence.id)
                 }
             }
+            // Ordinary source operations preserve companion bytes. Reading
+            // them against this revision exposes unresolved association after
+            // untracked edits instead of silently rebinding citation identity.
+            let committedResult: SaveResult
+            if result.document.citationSnapshot != nil {
+                committedResult = result
+            } else {
+                let unavailable =
+                    expectedStableNoteID.map {
+                        result.document.withCitationSnapshot(
+                            .init(
+                                noteID: $0, vaultID: id.vaultID, status: .unresolved))
+                    } ?? result.document
+                committedResult = SaveResult(
+                    document: (try? await documentWithCitationSnapshot(result.document, id: id))
+                        ?? unavailable)
+            }
             if completion == .sourceOnly {
                 // Queue before releasing the mutation lease so the matching
                 // watcher event cannot start a competing refresh first.
@@ -176,7 +214,7 @@ extension WorkspaceHandle {
             }
             return .committed(
                 WorkspaceMutationOutcome(
-                    committedValue: result,
+                    committedValue: committedResult,
                     derivedRefreshWarning: derivedRefreshWarning
                 ))
         }
@@ -502,6 +540,19 @@ extension WorkspaceHandle {
             } catch {
                 issues.append("Vault \(vaultID.uuidString): \(error.localizedDescription)")
             }
+        }
+        do {
+            for recovery in try await services.transactionRecoveryStore.pendingCitationSaves() {
+                do {
+                    try await reconcileCitationSaveRecovery(recovery)
+                    scheduleSourceCommitRefresh(
+                        id: .init(vaultID: recovery.vaultID, relativePath: recovery.relativePath), kind: .save)
+                } catch {
+                    issues.append("Citation save for \(recovery.relativePath): \(error.localizedDescription)")
+                }
+            }
+        } catch {
+            issues.append("Citation save recovery: \(error.localizedDescription)")
         }
         return issues
     }

@@ -47,10 +47,16 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     enum ConnectionState { case disconnected, connecting, ready }
     @Published var contextPresentationID: UUID?
     @Published var conversations: [AgentChatConversation] = []
-    @Published var selectedID: UUID?
+    @Published var selectedID: UUID? {
+        didSet { if oldValue != selectedID { selectionDepartureEpoch &+= 1 } }
+    }
+    private(set) var selectionDepartureEpoch: UInt64 = 0
     @Published var connectionState: ConnectionState = .disconnected
     @Published var executions: [UUID: AgentChatExecutionState] = [:]
     @Published var connectionError: String?
+    @Published var historySaveError: String?
+    @Published var isRetryingHistorySave = false
+    @Published var materialCleanupError: String?
     @Published var isRenewingSettings = false
     @Published var settingsRenewalError: String?
     var settingsRenewalID: UUID?
@@ -59,7 +65,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var connectedAutomaticallyDiscovered = false
     var state: State { state(for: selectedID) }
     var approvals: [AgentChatApproval] { selectedID.flatMap { executions[$0]?.approvals } ?? [] }
-    var error: String? { localHistoryError ?? selectedID.flatMap { executions[$0]?.error } ?? connectionError }
+    var error: String? {
+        localHistoryError ?? selectedID.flatMap { executions[$0]?.error }
+            ?? historySaveError ?? materialCleanupError ?? connectionError
+    }
     var token: UUID? {
         guard let id = selectedID, executions[id]?.admissionID != nil else { return nil }
         return executions[id]?.routeToken
@@ -91,6 +100,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var materialTasks: [UUID: Task<Bool, Never>] = [:]
     let toolHandler: @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     let displayWindow: @MainActor (UUID) -> AgentChatDisplayScope?
+    let observeCurrentState: @MainActor (AgentChatDisplayScope, UUID, @escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation
     let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
     var runtime: CodexAppServer?
     @Published var writingAssistanceExecution: CodexWritingAssistance?
@@ -99,6 +109,9 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var persistenceTask: Task<Void, Never>?
     var scheduledPersistenceTask: Task<Void, Never>?
     var persistenceDirty = false
+    // A failed deletion save cannot abandon the copies it will later release.
+    var pendingDeletionMaterials: [UUID: AgentChatLocalMaterial] = [:]
+    var pendingHistorySaveReferences: [UUID: Set<UUID>] = [:]
     // Each mounted Chat owns one token; closing one window cannot mark a
     // conversation unread while another window still displays its transcript.
     var transcriptReaders: [UUID: UUID] = [:]
@@ -122,6 +135,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         methodDefaults: UserDefaults = .standard,
         saveHistory: (@MainActor ([AgentChatConversation]) async throws -> Void)? = nil,
         displayWindow: @escaping @MainActor (UUID) -> AgentChatDisplayScope? = { _ in nil },
+        observeCurrentState: @escaping @MainActor (AgentChatDisplayScope, UUID, @escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation =
+            { _, _, _ in
+                throw ScholiumMCPFailure.chatObservation(.workspaceNotReady)
+            },
         notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
         previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview = { _ in
             throw AgentCollaborationError.invalidRequest("Note comparison is unavailable.")
@@ -132,6 +149,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         self.workspaceDirectory = workspaceDirectory
         self.toolHandler = toolHandler
         self.displayWindow = displayWindow
+        self.observeCurrentState = observeCurrentState
         self.previewUpdate = previewUpdate
         self.notificationSink = notificationSink
         connectionDefaults = methodDefaults

@@ -63,11 +63,15 @@ struct AgentChatReferenceNavigationTests {
             let passage = SearchSourceRange(
                 utf16LowerBound: exact.location, utf16UpperBound: NSMaxRange(exact),
                 line: 3, column: 9, endLine: 3, endColumn: 15)
+            #expect(window.openChatReference(AgentChatReference.url(noteID: thirdID)))
+            await window.waitForPendingDocumentTransitionsForTesting()
             await window.openChatAttachment(
                 .init(
                     noteID: noteID, vaultID: note.reference.vaultID,
-                    relativePath: "Source.md", text: "source", fingerprint: fingerprint, sourceLine: 3, sourceRange: passage))
+                    relativePath: "Source.md", text: "source", fingerprint: fingerprint, sourceLine: 3, sourceRange: passage),
+                disposition: .newTab)
             await window.waitForPendingDocumentTransitionsForTesting()
+            #expect(window.documentTabController.tabs.contains { $0.document.workspaceDescriptor?.sessionKey.noteID == thirdID })
             #expect(window.documentController.sourceLocationRequest?.range == passage)
             #expect(window.documentController.sourceLocationRequest?.sourceFingerprint == fingerprint.sha256)
             #expect(window.documentController.sourceLocationRequest?.requiresExactSelection == true)
@@ -102,7 +106,8 @@ struct AgentChatReferenceNavigationTests {
             await window.openChatAttachment(
                 .init(
                     noteID: noteID, vaultID: note.reference.vaultID,
-                    relativePath: "Source.md", text: "Old source", fingerprint: DocumentFingerprint(content: "Old source"), sourceLine: 2))
+                    relativePath: "Source.md", text: "Old source", fingerprint: DocumentFingerprint(content: "Old source"), sourceLine: 2),
+                disposition: .newTab)
             await window.waitForPendingDocumentTransitionsForTesting()
             #expect(window.documentController.sourceLocationRequest?.line == nil)
             let changedNotice = window.shellState.operationIssues.last?.message

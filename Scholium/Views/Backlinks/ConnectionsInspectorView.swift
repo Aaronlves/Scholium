@@ -393,6 +393,17 @@ struct ConnectionsInspectorView: View {
                     .disabled(!link.canOpen)
                     .help(link.destination)
                     .contextMenu {
+                        if (try? ZoteroReference(url: link.url)) != nil {
+                            Button("Open in Zotero", systemImage: "books.vertical") {
+                                context.openExternalURL(link.url)
+                            }
+                            .disabled(!link.canOpen)
+                        } else if ["http", "https"].contains(link.url.scheme?.lowercased() ?? "") {
+                            Button("Open Website", systemImage: "globe") {
+                                context.openExternalURL(link.url)
+                            }
+                            .disabled(!link.canOpen)
+                        }
                         Button("Copy Link") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(link.destination, forType: .string)
@@ -418,7 +429,7 @@ struct ConnectionsInspectorView: View {
                 separatesFromPreviousGroup: separatesFromPrevious
             ) {
                 if let peer = group.items.first?.peer {
-                    Button("Open Linked Note") { context.openReference(peer.reference, nil, nil) }
+                    Button("Open Linked Note", systemImage: "doc.text") { context.openReference(peer.reference, nil, nil) }
                 }
                 keptPassageMenus(for: group)
             }

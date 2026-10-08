@@ -158,7 +158,8 @@ struct DocumentSessionTransfer {
 final class DocumentController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
     typealias DocumentCommitHandler = @MainActor (SaveResult) async -> Void
-    typealias HydrationLoader = @MainActor (WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot
+    typealias HydrationLoader =
+        @MainActor (WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot
 
     @Published private(set) var selectedDocument: WindowSelectedDocument? {
         didSet {
@@ -190,7 +191,8 @@ final class DocumentController: ObservableObject {
     /// Workspace publications are invalidations, not a second source owner.
     /// While one session is saving, retain only its latest complete snapshot
     /// and reconcile it immediately after the save releases ownership.
-    private var deferredWorkspaceSnapshotsDuringSave: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
+    private var deferredWorkspaceSnapshotsDuringSave: [DocumentSessionKey: WorkspaceNoteSnapshot] =
+        [:]
     private struct PendingHydration {
         let token: UUID
         let expected: WorkspaceNoteSummary
@@ -199,7 +201,8 @@ final class DocumentController: ObservableObject {
     private var pendingHydrations: [DocumentEditingTarget: PendingHydration] = [:]
     private var publishedSummaries: [DocumentEditingTarget: WorkspaceNoteSummary] = [:]
     private var hydrationEpoch: UInt64 = 0
-    private var restoredPresentationsByVault: [UUID: [String: WindowDocumentPresentationSnapshot]] = [:]
+    private var restoredPresentationsByVault: [UUID: [String: WindowDocumentPresentationSnapshot]] =
+        [:]
     private var restoredUnqualifiedPresentations: [String: WindowDocumentPresentationSnapshot] = [:]
     private let intentHandler: IntentHandler
     private var operations: (any DocumentUseCases)?
@@ -360,7 +363,8 @@ final class DocumentController: ObservableObject {
         source: String,
         fingerprint: DocumentFingerprint,
         workspaceID: UUID?,
-        semantic: MarkdownSemanticDocument? = nil
+        semantic: MarkdownSemanticDocument? = nil,
+        citationSnapshot: ZoteroCitationSnapshot? = nil
     ) async -> String {
         guard !Task.isCancelled, DocumentFingerprint(content: source) == fingerprint else { return "" }
         let epoch = hydrationEpoch
@@ -383,11 +387,13 @@ final class DocumentController: ObservableObject {
                 workspaceID: workspaceID,
                 stableTarget: stableTarget,
                 relativePath: relativePath,
-                fingerprint: fingerprint
+                fingerprint: fingerprint,
+                citationRevision: citationSnapshot?.revision, citationStatus: citationSnapshot?.status
             ),
             source: source,
             semantic: semantic,
-            embeddedImages: embeddedImages
+            embeddedImages: embeddedImages,
+            citationSnapshot: citationSnapshot
         )
         guard !Task.isCancelled, hydrationEpoch == epoch else { return "" }
         return html
@@ -483,7 +489,9 @@ final class DocumentController: ObservableObject {
         )
     }
 
-    func sourceAttachment(for destination: String, target: SourceAttachmentTarget) async throws -> DocumentAttachmentSnapshot? {
+    func sourceAttachment(for destination: String, target: SourceAttachmentTarget) async throws
+        -> DocumentAttachmentSnapshot?
+    {
         try await requireOperations().sourceAttachment(for: destination, target: target)
     }
 
@@ -507,7 +515,8 @@ final class DocumentController: ObservableObject {
         defer { session.isAttachingDocument = false }
         let copiesFile = mode == .copyIntoTriptych
         let request = ScholiumFileSelectionRequest(
-            title: copiesFile ? String(localized: "Attach a Copy") : String(localized: "Reference Original"),
+            title: copiesFile
+                ? String(localized: "Attach a Copy") : String(localized: "Reference Original"),
             message: copiesFile
                 ? String(localized: "Choose a document to copy into this Triptych's Attachments folder.")
                 : String(localized: "Choose a document to reference in its current Finder location."),
@@ -965,7 +974,9 @@ final class DocumentController: ObservableObject {
                     if acknowledgedPendingCommit, session.conflict == nil {
                         session.editError = nil
                         session.canRetrySave = false
-                        if self.selectedDocument?.editingTarget == document.editingTarget { self.setSaveError(nil) }
+                        if self.selectedDocument?.editingTarget == document.editingTarget {
+                            self.setSaveError(nil)
+                        }
                     }
                     self.scheduleAutosave(session: session, target: document.editingTarget)
                 } catch {
@@ -999,7 +1010,8 @@ final class DocumentController: ObservableObject {
         try Task.checkCancellation()
         let token = UUID()
         let preparation = Task { @MainActor in
-            try await self.performSessionTransferPreparation(document, session: session, admittedSave: admittedSave)
+            try await self.performSessionTransferPreparation(
+                document, session: session, admittedSave: admittedSave)
             // Ownership handoff belongs inside the serialized acquisition;
             // a retry cannot reuse its token before close retains its release.
             try onSuspended(session.editorSession.detachmentSuspensionID)
@@ -1028,7 +1040,9 @@ final class DocumentController: ObservableObject {
         // this actor. Finish it before freezing the next navigation snapshot.
         if let resume = session.detachmentResumeTask { await resume.value }
         try Task.checkCancellation()
-        guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
+        guard !session.editorSession.isComposing else {
+            throw DocumentControllerError.editorUnavailable
+        }
         session.cancelAutosave()
         do {
             if let admittedSave { _ = try await admittedSave.value }
@@ -1042,12 +1056,16 @@ final class DocumentController: ObservableObject {
             }
             if session.editorSession.hasAttachedWebView {
                 try Task.checkCancellation()
-                try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+                try await session.editorSession.captureStateForViewReconstruction(
+                    suspendForDetachment: true)
             }
             try Task.checkCancellation()
-            guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
+            guard !session.editorSession.isComposing else {
+                throw DocumentControllerError.editorUnavailable
+            }
         } catch {
-            resumeAutosave(afterTransferOf: document, suspensionID: session.editorSession.detachmentSuspensionID)
+            resumeAutosave(
+                afterTransferOf: document, suspensionID: session.editorSession.detachmentSuspensionID)
             throw error
         }
     }
@@ -1194,6 +1212,10 @@ final class DocumentController: ObservableObject {
     ) {
         guard let stableID = snapshot.stableIdentity.resolvedID else { return }
         let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: stableID)
+        let target = DocumentEditingTarget.workspace(key)
+        pendingHydrations[target]?.task.cancel()
+        pendingHydrations[target] = nil
+        publishedSummaries[target] = snapshot.summary
         let descriptor = WindowDocumentDescriptor(
             sessionKey: key,
             reference: VaultNoteReference(
@@ -1284,7 +1306,19 @@ final class DocumentController: ObservableObject {
         guard let noteID = summary.stableIdentity.resolvedID else { return }
         let key = DocumentSessionKey(vaultID: summary.id.vaultID, noteID: noteID)
         guard sessions.retainedSession(for: .workspace(key)) != nil else { return }
-        let document = NoteDocument(relativePath: summary.id.relativePath, rawContent: rawContent)
+        let priorCitation = snapshots[key]?.document.citationSnapshot
+        let citation = priorCitation.map { baseline in
+            guard baseline.status == .available, baseline.sourceFingerprint != summary.fingerprint else {
+                return baseline
+            }
+            return ZoteroCitationSnapshot(
+                noteID: baseline.noteID, vaultID: baseline.vaultID,
+                revision: baseline.revision, sourceFingerprint: baseline.sourceFingerprint,
+                data: baseline.data, status: .unresolved)
+        }
+        let document = NoteDocument(
+            relativePath: summary.id.relativePath, rawContent: rawContent,
+            citationSnapshot: citation)
         guard document.fingerprint == summary.fingerprint else { return }
         recordCommittedSnapshot(
             WorkspaceNoteSnapshot(summary: summary, document: document),
@@ -1458,7 +1492,8 @@ final class DocumentController: ObservableObject {
             restoredUnqualifiedPresentations[destinationPath] = presentation
         }
         let migratedKeys = retainedReferences.compactMap { key, reference in
-            key.noteID == noteID && reference.vaultID == vaultID && reference.relativePath == sourcePath ? key : nil
+            key.noteID == noteID && reference.vaultID == vaultID && reference.relativePath == sourcePath
+                ? key : nil
         }
         for key in migratedKeys {
             guard let reference = retainedReferences[key] else { continue }
@@ -1722,7 +1757,9 @@ final class DocumentController: ObservableObject {
         session: DocumentSessionModel,
         target: DocumentEditingTarget
     ) throws {
-        guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
+        guard !session.editorSession.isComposing else {
+            throw DocumentControllerError.editorUnavailable
+        }
         if let conflict = repositoryConflict(for: session) { throw conflict }
         guard !session.hasUnsavedChanges, !session.isSavingEdit, session.activeSaveTask == nil,
             session.pendingEditorCommit == nil
@@ -1847,7 +1884,8 @@ final class DocumentController: ObservableObject {
     ) async throws {
         session.cancelAutosave()
         for _ in 0..<4 {
-            let outcome = try await saveEditingSource(session: session, target: target, onCommitted: onCommitted)
+            let outcome = try await saveEditingSource(
+                session: session, target: target, onCommitted: onCommitted)
             if outcome != .changedDuringSave { return }
         }
         throw DocumentControllerError.changedDuringSave
@@ -1898,6 +1936,8 @@ final class DocumentController: ObservableObject {
         let comparedConflict = session.conflictComparison ?? conflict
         let attemptedPath = relativePath(for: target)
         let sourceBeforeReload = session.retainedExactSource
+        let generationBeforeReload = session.editorSession.generation
+        let citationsBeforeReload = session.editorSession.checkedCitationData
         do {
             let document = try await loadDocument(for: target)
             guard document.fingerprint == comparedConflict.diskRevision else {
@@ -1906,10 +1946,16 @@ final class DocumentController: ObservableObject {
                     current: document.fingerprint
                 )
             }
+            guard document.citationSnapshot == comparedConflict.diskCitationSnapshot else {
+                throw ZoteroCitationSaveError.companionConflict
+            }
             await documentDidCommit(SaveResult(document: document))
             let currentSource = session.retainedExactSource
             guard session.conflict == conflict,
                 conflict.diskRevision == comparedConflict.diskRevision,
+                conflict.diskCitationSnapshot == comparedConflict.diskCitationSnapshot,
+                session.editorSession.generation == generationBeforeReload,
+                session.editorSession.checkedCitationData == citationsBeforeReload,
                 currentSource.utf8.elementsEqual(sourceBeforeReload.utf8),
                 relativePath(for: target) == attemptedPath,
                 !session.editorSession.isComposing, !session.isSavingEdit, session.activeSaveTask == nil
@@ -1925,7 +1971,8 @@ final class DocumentController: ObservableObject {
             session.editorSession.loadDocument(
                 document.rawContent,
                 documentID: session.editorSession.bridgeDocumentID,
-                mode: session.retainedEditorMode
+                mode: session.retainedEditorMode,
+                citationSnapshot: document.citationSnapshot
             )
             session.suppressAutosave = false
             // The exact conflict accepted by this reload has been resolved.
@@ -2062,7 +2109,8 @@ final class DocumentController: ObservableObject {
 
         try await acknowledgePendingEditorCommit(session: session)
 
-        let editorSnapshot = try await session.editorSession.persistenceSnapshot(expectedRevision: revision)
+        let editorSnapshot = try await session.editorSession.persistenceSnapshot(
+            expectedRevision: revision)
         let sourceBeingSaved = editorSnapshot.text
         try Task.checkCancellation()
         guard relativePath(for: target) == path else {
@@ -2082,7 +2130,14 @@ final class DocumentController: ObservableObject {
         let result = try await saveDocument(
             sourceBeingSaved,
             target: target,
-            expectedRevision: revision
+            expectedRevision: revision,
+            citationEdit: session.editorSession.committedCitationSnapshot.flatMap { baseline in
+                guard baseline.status == .available || baseline.status == .absent,
+                    editorSnapshot.citationData != nil || editorSnapshot.companionRevision != nil
+                else { return nil }
+                return ZoteroCitationEdit(
+                    expectedRevision: editorSnapshot.companionRevision, data: editorSnapshot.citationData)
+            }
         )
         let saved = result.document
         receipt.document = saved
@@ -2094,7 +2149,8 @@ final class DocumentController: ObservableObject {
         let acknowledgement = try await session.editorSession.acknowledgePersistenceSnapshot(
             editorSnapshot,
             committedText: saved.rawContent,
-            fingerprint: saved.fingerprint
+            fingerprint: saved.fingerprint,
+            citationSnapshot: saved.citationSnapshot
         )
         session.pendingEditorCommit = nil
         switch acknowledgement {
@@ -2116,9 +2172,12 @@ final class DocumentController: ObservableObject {
         }
         _ = try await session.editorSession.acknowledgePersistenceSnapshot(
             pending.snapshot, committedText: pending.document.rawContent,
-            fingerprint: pending.document.fingerprint
+            fingerprint: pending.document.fingerprint,
+            citationSnapshot: pending.document.citationSnapshot
         )
-        guard session.pendingEditorCommit?.document.fingerprint == pending.document.fingerprint else { return }
+        guard session.pendingEditorCommit?.document.fingerprint == pending.document.fingerprint else {
+            return
+        }
         session.pendingEditorCommit = nil
         session.editingSource = session.editorSession.checkedSource
     }
@@ -2126,7 +2185,8 @@ final class DocumentController: ObservableObject {
     private func saveDocument(
         _ source: String,
         target: DocumentEditingTarget,
-        expectedRevision: DocumentFingerprint
+        expectedRevision: DocumentFingerprint,
+        citationEdit: ZoteroCitationEdit? = nil
     ) async throws -> SaveResult {
         switch target {
         case .workspace(let key):
@@ -2138,7 +2198,7 @@ final class DocumentController: ObservableObject {
                     stableNoteID: key.noteID,
                     revision: expectedRevision
                 ),
-                changeSet: .source(source)
+                changeSet: citationEdit.map { .citationSource(source, $0) } ?? .source(source)
             )
         case .unavailable:
             throw DocumentControllerError.documentUnavailable
@@ -2165,7 +2225,7 @@ final class DocumentController: ObservableObject {
     ) async {
         let message = ScholiumErrorLocalization.message(error)
         setSaveError(message)
-        if case VaultRepositoryError.conflict = error,
+        if Self.isRevisionConflict(error),
             let diskDocument = try? await loadDocument(for: target),
             let baseRevision = session.editingRevision
         {
@@ -2175,7 +2235,10 @@ final class DocumentController: ObservableObject {
                 relativePath: relativePath(for: target),
                 editorSource: editorSource,
                 diskSource: diskDocument.rawContent,
-                baseRevision: baseRevision
+                baseRevision: baseRevision,
+                baseCitationSnapshot: session.editorSession.committedCitationSnapshot,
+                editorCitationData: session.editorSession.checkedCitationData,
+                diskCitationSnapshot: diskDocument.citationSnapshot
             )
             session.canRetrySave = false
         } else {
@@ -2185,7 +2248,14 @@ final class DocumentController: ObservableObject {
         session.editError = message
     }
 
+    private static func isRevisionConflict(_ error: Error) -> Bool {
+        if case VaultRepositoryError.conflict = error { return true }
+        if case ZoteroCitationSaveError.companionConflict = error { return true }
+        return false
+    }
+
     static func saveFailureAllowsRetry(_ error: Error) -> Bool {
+        if error is ZoteroCitationSaveError { return false }
         if (error as? DocumentControllerError) == .documentUnavailable {
             return false
         }
@@ -2404,7 +2474,8 @@ final class DocumentController: ObservableObject {
                 ? current.document
                 : NoteDocument(
                     relativePath: note.id.relativePath,
-                    rawContent: current.document.rawContent
+                    rawContent: current.document.rawContent,
+                    citationSnapshot: current.document.citationSnapshot
                 )
             snapshots[key] = WorkspaceNoteSnapshot(
                 summary: note, document: document,
@@ -2414,6 +2485,25 @@ final class DocumentController: ObservableObject {
         } else {
             scheduleHydration(note, for: document.editingTarget)
         }
+    }
+
+    func refreshCitationSnapshots(affectedNoteIDs: Set<UUID>?) {
+        for key in snapshots.keys where affectedNoteIDs?.contains(key.noteID) ?? true {
+            // The retained source can lag the published generation while its
+            // hydration is pending. Never replace that read with its old revision.
+            guard let summary = publishedSummaries[.workspace(key)] else { continue }
+            refreshCitationSnapshot(for: summary)
+        }
+    }
+
+    func refreshCitationSnapshot(for summary: WorkspaceNoteSummary) {
+        guard let noteID = summary.stableIdentity.resolvedID else { return }
+        let key = DocumentSessionKey(vaultID: summary.id.vaultID, noteID: noteID)
+        guard sessions.retainedSession(for: .workspace(key)) != nil else { return }
+        let target = DocumentEditingTarget.workspace(key)
+        pendingHydrations[target]?.task.cancel()
+        pendingHydrations[target] = nil
+        scheduleHydration(summary, for: target)
     }
 
     private func scheduleHydration(
@@ -2433,6 +2523,7 @@ final class DocumentController: ObservableObject {
         let epoch = hydrationEpoch
         let retainedSession = sessions.retainedSession(for: target)
         let task = Task { @MainActor [weak self] in
+            guard !Task.isCancelled else { return }
             let result: Result<WorkspaceNoteSnapshot, Error>
             do {
                 if let hydrationLoader {
@@ -2504,7 +2595,8 @@ final class DocumentController: ObservableObject {
         session.conflict = nil
         session.canRetrySave = false
         let message = String(
-            localized: "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery.",
+            localized:
+                "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery.",
             table: "Localizable",
             bundle: .module
         )
@@ -2562,7 +2654,9 @@ final class DocumentController: ObservableObject {
             session.editingRevision = snapshot.fingerprint
             return
         }
-        guard baseRevision != snapshot.fingerprint else { return }
+        let citationChanged =
+            session.editorSession.committedCitationSnapshot != snapshot.document.citationSnapshot
+        guard baseRevision != snapshot.fingerprint || citationChanged else { return }
 
         // The handle publishes the committed generation before its save call
         // resumes on the main actor. Let the in-flight save install the exact
@@ -2581,15 +2675,17 @@ final class DocumentController: ObservableObject {
                 relativePath: snapshot.id.relativePath,
                 editorSource: editorSource,
                 diskSource: diskSource,
-                baseRevision: baseRevision
+                baseRevision: baseRevision,
+                baseCitationSnapshot: session.editorSession.committedCitationSnapshot,
+                editorCitationData: session.editorSession.checkedCitationData,
+                diskCitationSnapshot: snapshot.document.citationSnapshot
             )
             session.canRetrySave = false
-            session.editError = ScholiumErrorLocalization.message(
-                VaultRepositoryError.conflict(
-                    expected: baseRevision,
-                    current: snapshot.fingerprint
-                )
-            )
+            session.editError =
+                baseRevision == snapshot.fingerprint
+                ? ScholiumErrorLocalization.message(ZoteroCitationSaveError.companionConflict)
+                : ScholiumErrorLocalization.message(
+                    VaultRepositoryError.conflict(expected: baseRevision, current: snapshot.fingerprint))
             if selectedDocument?.sessionKey == session.key { setSaveError(session.editError) }
             return
         }
@@ -2628,7 +2724,8 @@ final class DocumentController: ObservableObject {
                 diskSource,
                 documentID: session.editorSession.bridgeDocumentID,
                 mode: session.retainedEditorMode,
-                initialSourceRange: managedBodyStart.map { $0..<$0 }
+                initialSourceRange: managedBodyStart.map { $0..<$0 },
+                citationSnapshot: snapshot.document.citationSnapshot
             )
         }
     }
@@ -2645,19 +2742,26 @@ enum DocumentControllerError: LocalizedError, Equatable {
         switch self {
         case .saveFailed(let message):
             String(
-                localized: "Scholium kept the current editor open because it could not safely save this note. \(message)", table: "Localizable", bundle: .module
+                localized:
+                    "Scholium kept the current editor open because it could not safely save this note. \(message)",
+                table: "Localizable", bundle: .module
             )
         case .editorUnavailable:
             String(
-                localized: "Scholium kept the current editor open because it could not retrieve the complete Markdown buffer.", table: "Localizable",
+                localized:
+                    "Scholium kept the current editor open because it could not retrieve the complete Markdown buffer.",
+                table: "Localizable",
                 bundle: .module)
         case .changedDuringSave:
             String(
-                localized: "Scholium kept the current editor open because the note continued changing while it was being saved.", table: "Localizable",
+                localized:
+                    "Scholium kept the current editor open because the note continued changing while it was being saved.",
+                table: "Localizable",
                 bundle: .module)
         case .documentUnavailable:
             String(
-                localized: "Scholium kept the exact editor buffer open because this document is no longer available through the active Triptych.",
+                localized:
+                    "Scholium kept the exact editor buffer open because this document is no longer available through the active Triptych.",
                 table: "Localizable", bundle: .module)
         }
     }

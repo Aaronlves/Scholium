@@ -44,7 +44,7 @@ struct AgentChatDisclosureTests {
             var parentMounted = false
             let host = NSHostingView(
                 rootView: AgentChatProcessView(
-                    messages: [message], isActive: false, forceExpanded: false,
+                    messages: [message], window: .constant(.init()), isActive: false, forceExpanded: false,
                     status: .init(state: .completed), preservesReading: true,
                     hasInspectedActivity: true, animates: false,
                     userExpansion: .constant(savedExpansion)

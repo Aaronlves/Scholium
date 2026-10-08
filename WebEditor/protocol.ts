@@ -1,5 +1,6 @@
-export const EDITOR_PROTOCOL_VERSION = 44;
+export const EDITOR_PROTOCOL_VERSION = 46;
 export const MAX_INBOUND_BYTES = 2_500_000;
+import {validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
 import {validZoteroCallback, type ZoteroCallback, type ZoteroCallbackReply, type ZoteroTransactionCommand} from "./zotero-transaction";
 import type {EditorCitationSuggestionIntent} from "./input-suggestions";
@@ -34,6 +35,8 @@ export interface SelectionSnapshot {
 }
 export interface RecoverySnapshot extends SelectionSnapshot {
   source: string;
+  citationSnapshot?: ZoteroCitationSnapshot;
+  citationData?: ZoteroCitationData;
   stateJSON?: string;
   undoHistoryPreserved: boolean;
   dirty: boolean;
@@ -108,6 +111,7 @@ export type EditorOperation =
     mode: EditorMode;
     dialect: MarkdownEditingDialect;
     initialSelection?: SelectionRange;
+    citationSnapshot?: ZoteroCitationSnapshot;
   }
   | {type: "setMode"; mode: EditorMode}
   | {type: "setDocumentTitle"; value: string}
@@ -132,7 +136,7 @@ export type EditorOperation =
   | {type: "clearDocumentFind"}
   | {type: "captureRecovery"}
   | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
-  | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string}
+  | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string; expectedCitationData?: ZoteroCitationData; committedCitationSnapshot?: ZoteroCitationSnapshot}
   | {type: "insertReference"; selection: SelectionRange; generation: number; target: string}
   | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string; preserveSelection: boolean}
   | {type: "beginCitation"; transactionID: string; command: ZoteroTransactionCommand; reference?: EditorCitationSuggestionIntent}
@@ -157,10 +161,13 @@ export interface EditorRequest {
 export interface EditorCommandResult {
   requestID: string;
   resultingGeneration: number;
+  interactionRevision: number;
   sourceChanged: boolean;
   selections: SelectionRange[];
   undoLabel?: string;
   text?: string;
+  citationManaged?: boolean;
+  citationData?: ZoteroCitationData;
   context?: EditorContext;
   selection?: SelectionSnapshot;
   recovery?: RecoverySnapshot;
@@ -210,6 +217,8 @@ function validRecoverySnapshot(value: unknown): value is RecoverySnapshot {
       || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256
       || !Number.isSafeInteger(snapshot.generation) || snapshot.generation! < 0
       || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source)
+      || (snapshot.citationSnapshot !== undefined && !validCitationSnapshot(snapshot.citationSnapshot))
+      || (snapshot.citationData !== undefined && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)))
       || typeof snapshot.undoHistoryPreserved !== "boolean"
       || typeof snapshot.dirty !== "boolean"
       || (snapshot.focusTarget !== undefined
@@ -323,6 +332,7 @@ function validOperation(operation: Record<string, unknown>) {
   switch (operation.type) {
   case "initialize":
     return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode)
+      && (operation.citationSnapshot === undefined || validCitationSnapshot(operation.citationSnapshot))
       && validDialect(operation.dialect)
       && validInitialSelection(
         operation.initialSelection,
@@ -367,7 +377,9 @@ function validOperation(operation: Record<string, unknown>) {
   case "acknowledgeCommittedSnapshot":
     return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText)
       && typeof operation.committedText === "string" && exactSourceFits(operation.committedText)
-      && typeof operation.committedFingerprint === "string";
+      && typeof operation.committedFingerprint === "string"
+      && (operation.expectedCitationData === undefined || validCitationData(operation.expectedCitationData))
+      && (operation.committedCitationSnapshot === undefined || validCitationSnapshot(operation.committedCitationSnapshot));
   case "insertReference": {
     const selection = operation.selection as Partial<SelectionRange> | undefined;
     return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0
@@ -441,6 +453,6 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
     return encodedByteLength(value) <= maximum;
   } catch { return false; }
 }
-export function rejected(requestID: string, generation: number, error: string): EditorCommandResult {
-  return {requestID, resultingGeneration: generation, sourceChanged: false, selections: [], accepted: false, error};
+export function rejected(requestID: string, generation: number, error: string, interactionRevision: number): EditorCommandResult {
+  return {requestID, resultingGeneration: generation, interactionRevision, sourceChanged: false, selections: [], accepted: false, error};
 }

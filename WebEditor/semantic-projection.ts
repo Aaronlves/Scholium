@@ -1,7 +1,7 @@
 import type {EditorState, Text} from "@codemirror/state";
 import {syntaxTree} from "@codemirror/language";
 import {linkAnnotationAfter} from "./link-annotation";
-import {citationLinkSource, isCitationDestination} from "./zotero-field-envelope";
+import {citationLinkSource, compactCitationLinkSource, isCitationDestination} from "./zotero-field-envelope";
 
 export type BaseBlockKind =
   | "paragraph"
@@ -320,7 +320,8 @@ function inlinePresentation(
     if (isCitationDestination(source.slice(targetRange.from, targetRange.to).replace(/^<|>$/g, ""))) {
       if (node.name !== "Link") return null;
       try {
-        const citation = citationLinkSource(source.slice(node.from, node.to));
+        const raw = source.slice(node.from, node.to);
+        const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);
         if (!citation) return null;
         return {
           kind: "citation", nodeName: node.name, from: node.from, to: node.to,

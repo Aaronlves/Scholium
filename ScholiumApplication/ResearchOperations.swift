@@ -18,6 +18,21 @@ extension WorkspaceHandle {
                 "The selected recovery record is unavailable for this Triptych."
             )
         }
+        if let citationRecovery = try await services.transactionRecoveryStore.pendingCitationSaves()
+            .first(where: { $0.id == id })
+        {
+            let lease = try await beginSourceMutation()
+            var ownsLease = true
+            defer { if ownsLease { endSourceMutation(lease) } }
+            try await reconcileCitationSaveRecovery(citationRecovery, explicitlyCompleting: true)
+            endSourceMutation(lease)
+            ownsLease = false
+            _ = try await refresh(
+                publication: .sourceCommitted(
+                    VaultQualifiedNoteID(
+                        vaultID: citationRecovery.vaultID, relativePath: citationRecovery.relativePath), .save))
+            return
+        }
         if let plan = record.systemTrashDeletionPlan,
             plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown })
         {

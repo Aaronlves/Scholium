@@ -36,7 +36,7 @@ struct AgentChatSidebarLifecycleTests {
             rootView: AgentChatView(
                 controller: controller, transcriptReaderID: readerID, isVisible: true, addSelection: { _ in false },
                 noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
-                openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }
             )
             .environment(\.scholiumVisualEnvironmentOverride, .init(reduceMotion: reduceMotion)))
@@ -125,7 +125,7 @@ struct AgentChatSidebarLifecycleTests {
             AgentChatConversationDetailView(
                 controller: controller, isVisible: visible, addSelection: { _ in false },
                 noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
-                openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }, presentation: presentation,
                 readingSession: readingSession, nativeSession: nativeSession,
                 focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
@@ -235,7 +235,7 @@ struct AgentChatSidebarLifecycleTests {
             AgentChatConversationDetailView(
                 controller: controller, isVisible: visible, addSelection: { _ in false },
                 noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
-                openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }, presentation: presentation,
                 readingSession: readingSession, nativeSession: nativeSession,
                 focusRequest: pendingFocus,
@@ -299,7 +299,7 @@ struct AgentChatSidebarLifecycleTests {
                 AgentChatConversationDetailView(
                     controller: controller, isVisible: true, addSelection: { _ in false },
                     noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
-                    openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                    openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                     showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: nativeSession,
                     focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
                     newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
@@ -393,7 +393,7 @@ struct AgentChatSidebarLifecycleTests {
         func detail(visible: Bool) -> some View {
             AgentChatConversationDetailView(
                 controller: controller, isVisible: visible, addSelection: { _ in false }, noteChoices: [], prepareNotes: { _ in { _ in } },
-                openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: native,
                 focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
                 newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {},
@@ -507,7 +507,7 @@ struct AgentChatSidebarLifecycleTests {
         let detail = AgentChatConversationDetailView(
             controller: controller, isVisible: true, addSelection: { _ in false },
             noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
-            openAttachment: { _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+            openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in },
             showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: nativeSession,
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },

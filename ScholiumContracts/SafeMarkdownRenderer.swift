@@ -191,7 +191,7 @@ public enum SafeMarkdownRenderer {
                 replacements.append(Replacement(range: relative, text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"))
             }
         }
-        if semantic.zoteroFields.canMutate, let state = semantic.zoteroFields.documentState,
+        if semantic.zoteroFields.canMutate, let state = semantic.zoteroFields.documentState, !state.span.utf16Range.isEmpty,
             let relative = relativeRange(state.span, bodyStart: bodyStart, bodyLength: bodyLength)
         {
             replacements.append(Replacement(range: relative, text: ""))
@@ -1111,6 +1111,10 @@ private struct SafeHTMLVisitor: MarkupWalker {
     }
     mutating func visitLink(_ link: Link) {
         let destination = link.destination ?? ""
+        if ZoteroMarkdownFields.isCitationDestination(destination) {
+            descendInto(link)
+            return
+        }
         let href: String
         if isApprovedExternal(destination) {
             href = destination

@@ -57,7 +57,7 @@ struct DocumentSessionTransferTests {
         session.editorSession.loadDocument(session.editingSource, documentID: "First.md", mode: initialMode)
         session.editorSession.updateInteraction(
             selections: [.init(anchor: 8, head: 13)], line: 1, column: 9, lineCount: 2,
-            documentVersion: 0, focusTarget: .editor, context: nil
+            documentVersion: 0, interactionRevision: 0, focusTarget: .editor, context: nil
         )
         let presentation = session.windowPresentationSnapshot
         controller.installOpenedDocument(
@@ -132,7 +132,7 @@ struct DocumentSessionTransferTests {
         original.editorSession.loadDocument(original.editingSource, documentID: "A.md", mode: .source)
         original.editorSession.updateInteraction(
             selections: [.init(anchor: 9, head: 12)], line: 3, column: 2, lineCount: 3,
-            documentVersion: 0, focusTarget: .editor, context: nil
+            documentVersion: 0, interactionRevision: 0, focusTarget: .editor, context: nil
         )
         let presentation = original.windowPresentationSnapshot
         try await source.prepareSessionTransfer(note)
@@ -200,7 +200,7 @@ struct DocumentSessionTransferTests {
         original.editorSession.loadDocument(exactSource, documentID: "Saving.md", mode: .source)
         original.editorSession.updateInteraction(
             selections: [.init(anchor: 9, head: 12)], line: 3, column: 2, lineCount: 3,
-            documentVersion: 0, focusTarget: .editor, context: nil
+            documentVersion: 0, interactionRevision: 0, focusTarget: .editor, context: nil
         )
         original.scrollFraction = 0.61
         original.suppressAutosave = true

@@ -637,15 +637,15 @@ Owners retain state and context; §20 owns accessibility and persistent
 repair. Fields, rows and notices keep
 purpose-specific presentations using this vocabulary.
 
-These Document states retain their source-specific meanings:
+Document states retain these meanings:
 
 | State | Meaning |
 | --- | --- |
-| **Edited** | Buffer differs from committed source. |
+| **Edited** | Uncommitted source or citation changes. |
 | **Saving** | Revision-checked commit is running. |
-| **Saved** | Canonical Markdown readback exactly matches the validated candidate. |
+| **Saved** | Source and changed companion readbacks match validated candidates (§14). |
 | **Autosave Failed** | Commit cannot be proven; retain buffer and recovery. |
-| **Conflict** | Expected revision differs from disk; retain buffer and compare. |
+| **Conflict** | Source or citation revision diverged; retain the pair for comparison. |
 | **Refreshing** | Derived consumers are catching up to committed source. |
 | **Derived State Stale** | A consumer reflects an older committed revision. |
 | **Fully Up to Date** | Source and named consumers share one committed revision. |

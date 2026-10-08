@@ -202,7 +202,7 @@ visible; attachment storage exclusion is shared with MCP without changing files.
 
 ### Document tabs and native shell
 
-Each window has one ordered tab collection and guarded selection across vaults.
+Each resolved scene owns one window, ordered tabs and guarded cross-vault selection.
 Document owns sessions and Find; the native toolbar projects committed tabs.
 WindowModel validates selected target, session and registration for editor commands;
 stale teardown cannot revoke a replacement. Transfer moves session, autosave and
@@ -213,9 +213,9 @@ transfers. Separate windows share source guards without sidebars or native group
 Persistence retains open identities and fingerprint-bound position/focus, never
 source, Undo or closed tabs.
 
-The App file-opening coordinator sequences Finder, File and Chat routes, resolves
-registered Note ownership before external opening, and queues launch requests until
-scene routing is ready. Launch intent gates automatic workspace creation.
+The App coordinator queues Finder, File and Chat requests and resolves registered
+Note ownership before external opening. App scene routing connects without windows;
+scenes reject implicit URL creation. Native launch and restoration own window admission.
 ExternalMarkdownWindowRegistry owns file-window deduplication
 and close/quit admission. Each external model owns its editor, observation,
 conflict and import presentation; ExternalMarkdownFileSession owns guarded file

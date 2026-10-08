@@ -100,10 +100,10 @@ public actor ScholiumMCPServer {
     }
 
     private func callTool(params: MCPJSONValue?) async -> MCPJSONValue {
+        let requestedTool = params?.objectValue?["name"]?.stringValue.flatMap(ScholiumMCPToolName.init(rawValue:))
         do {
             guard let params = params?.objectValue,
-                let rawName = params["name"]?.stringValue,
-                let tool = ScholiumMCPToolName(rawValue: rawName)
+                let tool = requestedTool
             else {
                 throw ScholiumMCPFailure(
                     code: .invalidRequest,
@@ -114,7 +114,7 @@ public actor ScholiumMCPServer {
             guard !tool.isChatControl || conversationToken != nil else {
                 throw ScholiumMCPFailure(
                     code: .invalidRequest,
-                    message: "This capability-management tool requires an in-app Scholium Chat conversation.",
+                    message: "This tool requires an in-app Scholium Chat conversation.",
                     recovery: "Open Scholium Chat and use its connected Scholium tool, or call one of the external research tools."
                 )
             }
@@ -148,9 +148,17 @@ public actor ScholiumMCPServer {
                     conversationToken: conversationToken,
                     runtimeContext: context
                 ))
-            return toolResult(result, isError: false, includesImage: tool == .readAttachment)
+            let response = toolResult(result, isError: false, includesImage: tool == .readAttachment)
+            if tool == .observeCurrentState {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+                guard try encoder.encode(response).count <= ScholiumMCPContract.maximumChatObservationUTF8ByteCount else {
+                    throw ScholiumMCPFailure.chatObservation(.invalidRequest)
+                }
+            }
+            return response
         } catch let failure as ScholiumMCPFailure {
-            return toolResult(failureValue(failure), isError: true)
+            return toolResult(failureValue(failure, for: requestedTool), isError: true)
         } catch let error as ScholiumAppBridgeError {
             let failure: ScholiumMCPFailure
             switch error {
@@ -173,7 +181,7 @@ public actor ScholiumMCPServer {
                     recovery: "Restart Scholium and begin again with workspace status."
                 )
             }
-            return toolResult(failureValue(failure), isError: true)
+            return toolResult(failureValue(failure, for: requestedTool), isError: true)
         } catch {
             return toolResult(
                 failureValue(
@@ -181,7 +189,7 @@ public actor ScholiumMCPServer {
                         code: .internalError,
                         message: "The local Scholium MCP adapter failed.",
                         recovery: "Restart Scholium and begin again with workspace status."
-                    )), isError: true)
+                    ), for: requestedTool), isError: true)
         }
     }
 
@@ -203,15 +211,17 @@ public actor ScholiumMCPServer {
         return .object(["content": .array(content), "structuredContent": value, "isError": .bool(isError)])
     }
 
-    private func failureValue(_ failure: ScholiumMCPFailure) -> MCPJSONValue {
-        .object([
+    private func failureValue(_ failure: ScholiumMCPFailure, for tool: ScholiumMCPToolName?) -> MCPJSONValue {
+        let failure = tool == .observeCurrentState ? ScholiumMCPFailure.chatObservation(failure.code) : failure
+        var value: [String: MCPJSONValue] = [
             "schema_version": .integer(failure.schemaVersion),
             "status": .string(failure.status),
             "code": .string(failure.code.rawValue),
             "message": .string(failure.message),
             "recovery": .string(failure.recovery),
-            "recovery_details": failure.recoveryDetails?.jsonValue ?? .null,
-        ])
+        ]
+        if tool != .observeCurrentState { value["recovery_details"] = failure.recoveryDetails?.jsonValue ?? .null }
+        return .object(value)
     }
 
     private func responseResult(id: MCPJSONValue, result: MCPJSONValue)
@@ -573,6 +583,20 @@ public actor ScholiumMCPServer {
             destructive: false,
             idempotent: true
         ),
+        tool(
+            .observeCurrentState,
+            description:
+                "Observe metadata in the exact window, Triptych and conversation bound to this admitted Chat turn. Returns current Note identity, revision and selection coordinates without source text, drafts, queued input, raw errors or external-document paths. No navigation, save, provider request or new authority. Unavailable revision or selection is explicit; departed or revoked context fails without retargeting. Encoded tool results are capped at 16 KiB without truncation.",
+            properties: [
+                "triptych_id": uuidSchema("Exact admitted Triptych UUID."),
+                "window_id": uuidSchema("Original visible window UUID captured for this turn."),
+                "conversation_id": uuidSchema("Exact admitted Chat conversation UUID."),
+            ],
+            required: ["triptych_id", "window_id", "conversation_id"],
+            readOnly: true,
+            destructive: false,
+            idempotent: true
+        ),
     ]
 
     private static func tool(
@@ -802,6 +826,8 @@ public actor ScholiumMCPServer {
                             "action": simpleSchema("string"), "applies_to": simpleSchema("string"), "conversation": simpleSchema("object"),
                         ], required: ["action", "applies_to", "conversation"])
                 ]
+            case .observeCurrentState:
+                [chatObservationSchema]
             case .workspaceStatus:
                 [
                     successSchema(
@@ -1162,12 +1188,104 @@ public actor ScholiumMCPServer {
             }
         return .object([
             "type": .string("object"),
-            "oneOf": .array(successes + [failureSchema]),
+            "oneOf": .array(successes + [tool == .observeCurrentState ? chatObservationFailureSchema : failureSchema]),
         ])
     }
 
     private static var noteContextSchema: MCPJSONValue {
         closedObject(properties: ["attachments": attachmentListingSchema], required: ["attachments"])
+    }
+
+    private static var chatObservationSchema: MCPJSONValue {
+        let availableRevision = closedObject(
+            properties: ["origin": enumSchema(["saved_source", "editor_snapshot"]), "fingerprint": fingerprintSchema],
+            required: ["origin", "fingerprint"])
+        let unavailableRevision = closedObject(
+            properties: [
+                "origin": enumSchema(["unavailable"]),
+                "reason": enumSchema(["loading", "composing", "source_snapshot_unavailable"]),
+            ], required: ["origin", "reason"])
+        let noSelection = closedObject(properties: ["state": enumSchema(["none"])], required: ["state"])
+        let unavailableSelection = closedObject(
+            properties: [
+                "state": enumSchema(["unavailable"]),
+                "reason": enumSchema(["loading", "composing", "multiple_selections", "stale_renderer", "source_mapping_unavailable"]),
+            ], required: ["state", "reason"])
+        let positiveInteger: MCPJSONValue = .object(["type": .string("integer"), "minimum": .integer(1)])
+        let selectedRange = closedObject(
+            properties: [
+                "state": enumSchema(["range"]), "start_utf8": nonnegativeIntegerSchema,
+                "end_utf8": positiveInteger, "byte_count": positiveInteger,
+                "start_line": positiveInteger, "end_line": positiveInteger,
+            ], required: ["state", "start_utf8", "end_utf8", "byte_count", "start_line", "end_line"])
+        var note =
+            closedObject(
+                properties: [
+                    "vault_id": uuidSchema("Active Note vault UUID."), "note_id": uuidSchema("Active Note UUID."),
+                    "role": roleSchema, "relative_path": boundedStringSchema(maximum: 4_096),
+                    "mode": enumSchema(["review", "edit", "source"]),
+                    "revision": .object(["oneOf": .array([availableRevision, unavailableRevision])]),
+                    "dirty": booleanSchema, "saving": booleanSchema, "conflict": booleanSchema,
+                    "selection": .object(["oneOf": .array([noSelection, selectedRange, unavailableSelection])]),
+                ], required: ["vault_id", "note_id", "role", "relative_path", "mode", "revision", "dirty", "saving", "conflict", "selection"]
+            ).objectValue ?? [:]
+        note["allOf"] = .array([
+            .object([
+                "if": .object([
+                    "properties": .object([
+                        "selection": .object(["properties": .object(["state": enumSchema(["range"])])])
+                    ])
+                ]),
+                "then": .object(["properties": .object(["revision": availableRevision])]),
+            ])
+        ])
+        let activeNote = MCPJSONValue.object(note)
+        let errors: MCPJSONValue = .object([
+            "type": .string("array"), "uniqueItems": .bool(true), "maxItems": .integer(9),
+            "items": enumSchema([
+                "connection", "history_load", "history_save", "material_cleanup", "history_refresh",
+                "execution", "queued_input", "document_save", "document_conflict",
+            ]),
+        ])
+        let chat = closedObject(
+            properties: [
+                "thread_id": boundedStringSchema(maximum: 512), "turn_id": boundedStringSchema(maximum: 512),
+                "state": .object(["type": .string("string"), "const": .string("working")]), "pending_delivery": booleanSchema,
+                "queued_message_count": nonnegativeIntegerSchema, "approval_count": nonnegativeIntegerSchema,
+                "question_count": nonnegativeIntegerSchema, "errors": errors,
+            ], required: ["thread_id", "turn_id", "state", "pending_delivery", "queued_message_count", "approval_count", "question_count", "errors"])
+        var result =
+            successSchema(
+                properties: [
+                    "triptych_id": uuidSchema("Admitted Triptych UUID."), "window_id": uuidSchema("Originating window UUID."),
+                    "conversation_id": uuidSchema("Admitted conversation UUID."),
+                    "observed_at": .object(["type": .string("string"), "format": .string("date-time")]),
+                    "document_surface": enumSchema(["none", "triptych_note", "external_document", "unavailable"]),
+                    "active_note": nullable(activeNote), "chat": chat,
+                ], required: ["triptych_id", "window_id", "conversation_id", "observed_at", "document_surface", "active_note", "chat"]
+            ).objectValue ?? [:]
+        result["allOf"] = .array([
+            .object([
+                "if": .object(["properties": .object(["document_surface": enumSchema(["triptych_note"])])]),
+                "then": .object(["properties": .object(["active_note": activeNote])]),
+                "else": .object(["properties": .object(["active_note": simpleSchema("null")])]),
+            ])
+        ])
+        return .object(result)
+    }
+
+    private static var chatObservationFailureSchema: MCPJSONValue {
+        closedObject(
+            properties: [
+                "schema_version": .object(["type": .string("integer"), "const": .integer(ScholiumMCPContract.currentToolSchemaVersion)]),
+                "status": .object(["type": .string("string"), "const": .string("failed")]),
+                "code": enumSchema(["app_unavailable", "workspace_not_ready", "stale_revision", "invalid_request", "internal_error"]),
+                "message": boundedStringSchema(maximum: 1_024), "recovery": boundedStringSchema(maximum: 1_024),
+            ], required: ["schema_version", "status", "code", "message", "recovery"])
+    }
+
+    private static func boundedStringSchema(maximum: Int) -> MCPJSONValue {
+        .object(["type": .string("string"), "minLength": .integer(1), "maxLength": .integer(maximum)])
     }
 
     private static var attachmentListingSchema: MCPJSONValue {

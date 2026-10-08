@@ -28,7 +28,7 @@ struct AgentChatView: View {
     let noteChoices: [WorkspaceCatalogNote]
     let prepareNotes: @MainActor (UUID) throws -> (@MainActor (WorkspaceCatalogNote) async throws -> Void)
     let openReference: (URL) -> Bool
-    let openAttachment: (AgentChatAttachment) -> Void
+    let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
     let showInLibrary: (URL) -> Void
     let showChanges: (UUID) -> Void
     let showConversationChanges: ([UUID]) -> Void

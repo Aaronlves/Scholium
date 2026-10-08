@@ -20,10 +20,18 @@ struct AgentChatRuntimeApprovalView: View {
                     if request.kind == .command || request.kind == .terminalInput, let command = request.command {
                         Text(verbatim: command).font(.callout.monospaced()).textSelection(.enabled)
                     }
-                    ForEach(Array(request.accessOverview(locale: locale).enumerated()), id: \.offset) { _, line in
-                        Text(verbatim: line).font(.body).fixedSize(horizontal: false, vertical: true)
+                    ForEach(Array(request.scopeLines(locale: locale).enumerated()), id: \.offset) { _, line in
+                        Text(verbatim: line).font(.body).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-
+                    ForEach(Array(request.files.enumerated()), id: \.offset) { _, file in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(verbatim: file.label(locale: locale)).font(.body)
+                            Text(verbatim: file.displayedDiff(locale: locale)).font(.callout.monospaced())
+                        }
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
             if let decision {

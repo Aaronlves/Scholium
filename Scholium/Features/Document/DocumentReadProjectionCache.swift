@@ -2,30 +2,36 @@ import Foundation
 import ScholiumContracts
 
 struct DocumentReadProjectionKey: Hashable, Sendable {
-    static let rendererContractVersion = 1
+    static let rendererContractVersion = 2
 
     let workspaceID: UUID?
     let stableTarget: String
     let relativePath: String
     let fingerprint: DocumentFingerprint
     let rendererContractVersion: Int
+    let citationRevision: DocumentFingerprint?
+    let citationStatus: ZoteroCitationSnapshot.Status?
 
     init(
         workspaceID: UUID?,
         stableTarget: String,
         relativePath: String,
         fingerprint: DocumentFingerprint,
-        rendererContractVersion: Int = Self.rendererContractVersion
+        rendererContractVersion: Int = Self.rendererContractVersion,
+        citationRevision: DocumentFingerprint? = nil,
+        citationStatus: ZoteroCitationSnapshot.Status? = nil
     ) {
         self.workspaceID = workspaceID
         self.stableTarget = stableTarget
         self.relativePath = relativePath
         self.fingerprint = fingerprint
         self.rendererContractVersion = rendererContractVersion
+        self.citationRevision = citationRevision
+        self.citationStatus = citationStatus
     }
 }
 
-/// Bounded derived HTML. Exact Markdown remains the only writable authority.
+/// Bounded derived HTML keyed by exact Markdown and essential citation authority.
 actor DocumentReadProjectionCache {
     #if DEBUG
         struct QADiagnosticStats: Sendable {
@@ -63,7 +69,8 @@ actor DocumentReadProjectionCache {
         for key: DocumentReadProjectionKey,
         source: String,
         semantic: MarkdownSemanticDocument? = nil,
-        embeddedImages: [String: RenderedMarkdownImage] = [:]
+        embeddedImages: [String: RenderedMarkdownImage] = [:],
+        citationSnapshot: ZoteroCitationSnapshot? = nil
     ) -> String {
         guard DocumentFingerprint(content: source) == key.fingerprint else {
             return ""
@@ -92,10 +99,11 @@ actor DocumentReadProjectionCache {
 
         let document = NoteDocument(
             relativePath: key.relativePath,
-            rawContent: source
+            rawContent: source,
+            citationSnapshot: citationSnapshot
         )
         let html =
-            if let semantic {
+            if let semantic, citationSnapshot == nil {
                 SafeMarkdownRenderer.render(document, semantic: semantic, embeddedImages: embeddedImages).htmlBody
             } else {
                 SafeMarkdownRenderer.render(document, embeddedImages: embeddedImages).htmlBody

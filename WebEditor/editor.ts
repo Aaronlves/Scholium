@@ -1,3 +1,4 @@
+import {citationState, citationHistory, setCitationSnapshot, setCitationData, citationDataEqual, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {ZoteroMarkdownTransaction, type ZoteroTransactionContext, unsupportedNoteCitationStyleMessage} from "./zotero-transaction";
 import {fieldOperationTransaction, fieldMetadataRanges, citationInsertionContextSupported} from "./zotero-fields";
 import {CommittedSnapshotReceipt} from "./committed-snapshot-receipt";
@@ -81,7 +82,7 @@ import {
   generationCanExecuteEditorRequest,
   isEditorRequest,
   recoveryGenerationCanReplaceCurrent,
-  rejected,
+  rejected as rejectedCommand,
 } from "./protocol";
 import {
   transformMarkdown,
@@ -297,6 +298,7 @@ let lastDocumentFocusTarget: EditorFocusTarget | undefined;
 
 function setDocumentFocusTarget(target: EditorFocusTarget) {
   const changed = lastDocumentFocusTarget !== target;
+  if (changed) citationInsertionRevision++;
   lastDocumentFocusTarget = target;
   if (changed && configuredEditorMode(editor.state) === "livePreview") {
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
@@ -1245,7 +1247,7 @@ class LivePreviewPlugin {
   }
   update(update: ViewUpdate) {
     const explicitlyRefreshed = update.transactions.some((transaction) =>
-      transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect)),
+      transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect) || effect.is(setCitationSnapshot) || effect.is(setCitationData)),
     );
     const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
     const viewportNeedsProjection = update.viewportChanged
@@ -1473,7 +1475,8 @@ const interactionReporter = new AnimationFrameCoalescer(
 /** @type {number | null} */
 
 const stateReporter = EditorView.updateListener.of((update) => {
-  if (update.docChanged || update.selectionSet) citationInsertionRevision++;
+  const citationChanged = !citationDataEqual(update.startState.field(citationState)?.data, update.state.field(citationState)?.data);
+  if (update.docChanged || update.selectionSet || citationChanged) citationInsertionRevision++;
   const isProgrammatic = update.transactions.some(
     (transaction) => transaction.annotation(programmaticDocumentChange) === true,
   );
@@ -1481,12 +1484,12 @@ const stateReporter = EditorView.updateListener.of((update) => {
   if (update.transactions.some(transaction => transaction.effects.some(effect => effect.is(sourceCapacityExceeded)))) {
     announceEditorMessage(update.view.contentDOM, localized(sourceCapacityMessage));
   }
-  if (update.docChanged) dirty = true;
-  if (!update.docChanged && !update.selectionSet) return;
+  if (update.docChanged || citationChanged) dirty = true;
+  if (!update.docChanged && !update.selectionSet && !citationChanged) return;
   selectionActions.dismiss();
   if (update.selectionSet && !update.docChanged) measureSelectionAction(update.view);
 
-  if (update.docChanged) {
+  if (update.docChanged || citationChanged) {
     const input = pendingInputStartedAt;
     pendingInputStartedAt = null;
     if (input !== null) {
@@ -1552,7 +1555,7 @@ const stateReporter = EditorView.updateListener.of((update) => {
         }
       });
     }
-    post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
+    post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes, ...citationResult() });
   }
 
   scheduleEditorInteractionReport();
@@ -1921,6 +1924,7 @@ const editorContextMenu = createEditorContextMenuExtension({
 });
 
 const editorExtensions = [
+  citationHistory,
   editorArrivalHighlight,
   highlightSpecialChars(),
   history(),
@@ -2161,6 +2165,7 @@ function scheduleEditorInteractionReport(forceContext = false) {
     updateEditorAccessibility(editor.contentDOM, configuredEditorMode(editor.state), context);
     post({
       type: "interactionChanged",
+      interactionRevision: citationInsertionRevision,
       selections: context.selections,
       line: line.number,
       column: head - line.from + 1,
@@ -2175,11 +2180,18 @@ function publishEditorContext() {
   scheduleEditorInteractionReport(true);
 }
 
+function citationResult() {
+  const snapshot = editor.state.field(citationState);
+  return {citationManaged: snapshot !== undefined, citationData: snapshot?.data};
+}
+
 function successfulResult(requestID: string, sourceChanged = false, undoLabel?: string): EditorCommandResult {
   return {
     requestID,
     resultingGeneration: documentVersion,
+    interactionRevision: citationInsertionRevision,
     sourceChanged,
+    ...citationResult(),
     selections: editorSelections(),
     undoLabel,
     text: sourceChanged ? exactEditorSource() : undefined,
@@ -2188,12 +2200,16 @@ function successfulResult(requestID: string, sourceChanged = false, undoLabel?: 
   };
 }
 
+function rejected(requestID: string, generation: number, error: string): EditorCommandResult {
+  return rejectedCommand(requestID, generation, error, citationInsertionRevision);
+}
+
 function captureRecovery(): RecoverySnapshot {
   const historyState = editor.state.update({effects: setEditorSuspension.of(null)}).state;
   const stateJSON = captureExactHistory(historyState);
   return {
     documentID: bridgeDocumentID, fingerprint: bridgeFingerprint, generation: documentVersion,
-    ranges: editorSelections(), source: exactEditorSource(), stateJSON,
+    ranges: editorSelections(), source: exactEditorSource(), stateJSON, citationSnapshot: editor.state.field(citationState)?.baseline, citationData: editor.state.field(citationState)?.data,
     undoHistoryPreserved: stateJSON !== undefined, dirty, focusTarget: lastDocumentFocusTarget,
   };
 }
@@ -2213,12 +2229,13 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   if (operation.type === "initialize") {
     const loadStartedAt = performance.now();
     if (request.knownGeneration !== 0
-        || !exactSourceFits(operation.text)) {
+        || !exactSourceFits(operation.text)
+        || (operation.citationSnapshot?.status === "available" && operation.citationSnapshot.sourceFingerprint?.sha256 !== request.startingFingerprint)) {
       return rejected(request.requestID, documentVersion, "invalid initialization");
     }
     editingDialect = operation.dialect;
     editorOperations.setDocument(
-      operation.text, request.sessionID, request.documentID, request.startingFingerprint,
+      operation.text, request.sessionID, request.documentID, request.startingFingerprint, operation.citationSnapshot,
     );
     editorOperations.setMode(operation.mode);
     if (operation.initialSelection) {
@@ -2324,7 +2341,9 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     const snapshot = operation.snapshot;
     if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint
         || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion)
-        || !exactSourceFits(snapshot.source)) {
+        || !exactSourceFits(snapshot.source)
+        || snapshot.citationSnapshot?.noteID !== editor.state.field(citationState)?.baseline.noteID
+        || snapshot.citationSnapshot?.vaultID !== editor.state.field(citationState)?.baseline.vaultID) {
       return rejected(request.requestID, documentVersion, "stale recovery snapshot");
     }
     const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) =>
@@ -2334,17 +2353,24 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
       try {
         const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, editorExtensions);
+        const citations = restored.field(citationState);
+        if (!citationDataEqual(citations?.data, snapshot.citationData)
+          || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID
+          || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) throw new Error("Citation history mismatch");
+        // A detached save may advance the outer checked disk baseline after
+        // stateJSON was captured. Rebase it without changing semantic Undo.
         recoveredState = restored.update({selection: recoveredSelection,
+          effects: snapshot.citationSnapshot ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
           annotations: Transaction.addToHistory.of(false)}).state;
         restoredHistory = true;
       } catch { restoredHistory = false; }
     }
     if (!recoveredState) {
       try {
-        recoveredState = editor.state.update({
-        changes: replacementChange(editor.state.doc.toString(), snapshot.source),
+        recoveredState = createMarkdownDocumentState(snapshot.source, editorExtensions).update({
         selection: recoveredSelection,
-        effects: setExactSource.of(snapshot.source),
+        effects: [setExactSource.of(snapshot.source), setCitationSnapshot.of(snapshot.citationSnapshot),
+          ...(snapshot.citationSnapshot ? [setCitationData.of(snapshot.citationData)] : [])],
         annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)],
         }).state;
       } catch {
@@ -2373,6 +2399,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     }
     const superseded = editorOperations.acknowledgeCommittedSnapshot(
       operation.expectedText, operation.committedText, operation.committedFingerprint,
+      operation.expectedCitationData, operation.committedCitationSnapshot,
     );
     if (superseded === null) {
       return rejected(request.requestID, documentVersion, "editor source did not reconcile");
@@ -2804,7 +2831,7 @@ window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change",
 
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
-  setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
+  setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string, citationSnapshot?: ZoteroCitationSnapshot) {
     citationTransaction?.cancel(); citationTransaction = null; citationTransactionID = null; citationInsertionRevision++;
     documentAttachment += 1;
     committedSnapshotReceipt.clear();
@@ -2844,7 +2871,9 @@ const editorOperations = {
     documentVersion = 0;
     // setState destroys old view plugins as well as replacing all fields.
     // Recovery is a separate, identity-checked operation after initialization.
-    editor.setState(createMarkdownDocumentState(text, editorExtensions));
+    const state = createMarkdownDocumentState(text, editorExtensions);
+    editor.setState(state.update({effects: setCitationSnapshot.of(citationSnapshot),
+      annotations: Transaction.addToHistory.of(false)}).state);
     dirty = false;
     lastInteractionAvailabilitySignature = null;
     scheduleEditorInteractionReport(true);
@@ -2957,26 +2986,34 @@ const editorOperations = {
     scrollCoordinator.setAnchor(anchor);
   },
 
-  acknowledgeCommittedSnapshot(expectedText: string, committedText: string, startingFingerprint: string) {
+  acknowledgeCommittedSnapshot(expectedText: string, committedText: string, startingFingerprint: string,
+    expectedCitationData?: ZoteroCitationData, committedCitationSnapshot?: ZoteroCitationSnapshot) {
     const currentText = exactEditorSource();
     const normalizedCurrent = normalizedDocumentText(editor.state.doc.toString());
-    if (currentText !== expectedText) {
+    const citation = editor.state.field(citationState);
+    if (citation?.baseline.noteID !== committedCitationSnapshot?.noteID || citation?.baseline.vaultID !== committedCitationSnapshot?.vaultID) return null;
+    if (currentText !== expectedText || !citationDataEqual(citation?.data, expectedCitationData)) {
       // Typing is allowed to advance while the immutable snapshot is written.
       // When the repository committed that snapshot byte-for-byte, advance
       // only the disk base identity and keep the newer CodeMirror buffer dirty.
       if (committedText !== expectedText
+          || !citationDataEqual(committedCitationSnapshot?.data, expectedCitationData)
           || normalizedCurrent !== normalizedDocumentText(currentText)) return null;
       bridgeFingerprint = startingFingerprint;
+      if (committedCitationSnapshot) {
+        editor.dispatch({effects: [setCitationSnapshot.of(committedCitationSnapshot), setCitationData.of(citation?.data)],
+          annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)]});
+      }
       dirty = true;
       scheduleEditorInteractionReport(true);
       return true;
     }
     if (normalizedCurrent !== normalizedDocumentText(expectedText)) return null;
     bridgeFingerprint = startingFingerprint;
-    if (committedText !== currentText) {
+    if (committedText !== currentText || citation?.baseline !== committedCitationSnapshot) {
       editor.dispatch({
         changes: replacementChange(editor.state.doc.toString(), committedText),
-        effects: setExactSource.of(committedText),
+        effects: [setExactSource.of(committedText), setCitationSnapshot.of(committedCitationSnapshot)],
         annotations: [
           Transaction.addToHistory.of(false),
           programmaticDocumentChange.of(true),

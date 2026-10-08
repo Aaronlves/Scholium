@@ -134,7 +134,7 @@ private struct BootstrapFlowView: View {
             }
         } message: {
             Text(
-                "Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state."
+                "Scholium will archive the entire .scholium folder unchanged in a uniquely named recovery folder, then create new control state. Analyses, Topics, and Works stay unchanged. Live citation data remains in the archive and cannot be rebuilt from Markdown."
             )
         }
         .accessibilityElement(children: .contain)

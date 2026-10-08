@@ -476,6 +476,8 @@ extension WorkspaceHandle {
         guard current.fingerprint == expectedAfterFingerprint else {
             throw AgentCollaborationError.staleRevision(expected: expectedAfterFingerprint, current: current.fingerprint)
         }
+        try await requireSourceOnlyAgentUndo(
+            noteID: change.noteID, vaultID: target.id.vaultID, changeID: id)
         let beforeData = try await services.agentChangeStore.beforeDataForUndo(id: id, expectedAfterFingerprint: expectedAfterFingerprint)
         return (change, target, current, beforeData)
     }

@@ -807,6 +807,34 @@ extension AgentChatController {
         }
     }
 
+    var canRetryStop: Bool { stopRetryTarget != nil }
+
+    var stopRetryTarget: AgentChatStopRetryTarget? {
+        guard let selectedID, canRetryStop(in: selectedID),
+            let turnID = executions[selectedID]?.turnID,
+            let requestID = executions[selectedID]?.interruptRequestID
+        else { return nil }
+        return .init(conversationID: selectedID, turnID: turnID, interruptRequestID: requestID)
+    }
+
+    func retryStop(_ target: AgentChatStopRetryTarget) {
+        guard selectedID == target.conversationID,
+            executions[target.conversationID]?.turnID == target.turnID,
+            executions[target.conversationID]?.interruptRequestID == target.interruptRequestID,
+            canRetryStop(in: target.conversationID)
+        else { return }
+        stop(in: target.conversationID)
+    }
+
+    private func canRetryStop(in conversationID: UUID) -> Bool {
+        guard connectionState == .ready, runtime != nil, connectionID != nil,
+            conversation(conversationID)?.threadID != nil,
+            let execution = executions[conversationID], execution.state == .stopping,
+            let turnID = execution.turnID, !execution.completedTurns.contains(turnID)
+        else { return false }
+        return execution.interruptFailedTurnID == turnID
+    }
+
     func stop() {
         guard let selectedID else { return }
         stop(in: selectedID)
@@ -823,8 +851,9 @@ extension AgentChatController {
                     "Branch creation was stopped. No new conversation has been confirmed.")
             return
         }
+        let retriesInterrupt = canRetryStop(in: conversationID)
         guard let execution = executions[conversationID],
-            execution.state == .working || execution.state == .compacting || execution.isSending
+            execution.state == .working || execution.state == .compacting || execution.isSending || retriesInterrupt
         else { return }
         if execution.isSending && conversation(conversationID)?.pendingMessageID == nil {
             executions[conversationID]?.operationTask?.cancel()
@@ -833,26 +862,46 @@ extension AgentChatController {
         }
         executions[conversationID]?.state = .stopping
         executions[conversationID]?.admissionID = nil
+        if retriesInterrupt { executions[conversationID]?.interruptRequestedTurnID = nil }
         finishQuestions(in: conversationID)
         for id in Array(execution.replies.keys) { answer(id, allow: false) }
         interruptActiveTurn(in: conversationID)
     }
 
     func interruptActiveTurn(in conversationID: UUID) {
-        guard let runtime, let thread = conversation(conversationID)?.threadID,
+        guard let runtime, let connection = connectionID,
+            let thread = conversation(conversationID)?.threadID,
             let turnID = executions[conversationID]?.turnID,
+            executions[conversationID]?.state == .stopping,
             executions[conversationID]?.interruptRequestedTurnID != turnID
         else { return }
-        let connection = connectionID
+        let requestID = UUID()
         executions[conversationID]?.interruptRequestedTurnID = turnID
+        executions[conversationID]?.interruptRequestID = requestID
+        executions[conversationID]?.interruptFailedTurnID = nil
+        if executions[conversationID]?.recovery == .stopUnconfirmed { executions[conversationID]?.error = nil }
         for approval in executions[conversationID]?.approvals ?? [] { answer(approval.id, allow: false) }
         executions[conversationID]?.interruptTask = Task { [weak self] in
+            let failure: String?
             do {
                 _ = try await runtime.request("turn/interrupt", params: ["threadId": .string(thread), "turnId": .string(turnID)])
+                failure = nil
             } catch {
-                guard let self, self.connectionID == connection, !Task.isCancelled else { return }
-                self.executions[conversationID]?.error = ScholiumErrorLocalization.message(error)
+                failure = ScholiumErrorLocalization.message(error)
             }
+            guard let self, !Task.isCancelled, self.connectionID == connection,
+                self.conversation(conversationID)?.threadID == thread,
+                self.executions[conversationID]?.turnID == turnID,
+                self.executions[conversationID]?.state == .stopping,
+                self.executions[conversationID]?.interruptRequestID == requestID
+            else { return }
+            self.executions[conversationID]?.interruptTask = nil
+            if let failure {
+                self.executions[conversationID]?.interruptFailedTurnID = turnID
+                self.executions[conversationID]?.report(.stopUnconfirmed, detail: failure)
+            }
+            // Even a successful acknowledgement does not complete the turn.
+            // Runtime terminal events remain the only completion authority.
         }
     }
 

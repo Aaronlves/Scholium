@@ -187,6 +187,45 @@ struct AgentChatReadingTests {
         #expect(store.session(for: a).processExpansions["turn"] == false)
     }
 
+    @Test("Returning to a conversation restores its loaded process extent and reading anchor")
+    func retainedProcessWindow() {
+        let store = AgentChatReadingStore()
+        let a = UUID()
+        let b = UUID()
+        let processID = "activity-0"
+        var messages = (0..<100).map {
+            AgentChatMessage(id: "activity-\($0)", role: .operation, text: "Synthetic activity")
+        }
+        let session = store.session(for: a)
+        session.processWindows[processID, default: .init()].reconcile(in: messages, preservesReading: false)
+        session.pause()
+        session.processWindows[processID, default: .init()].earlier(in: messages)
+        session.processExpansions[processID] = true
+        session.anchor = .init(id: processID, offset: -170)
+
+        let other = store.session(for: b)
+        other.processWindows[processID, default: .init()].reconcile(in: messages, preservesReading: false)
+        #expect(other.processWindows[processID]?.first == "activity-68")
+        #expect(other.anchor == nil)
+
+        // A replaced detail view remounts against the conversation's existing
+        // window, including activity received while another conversation was open.
+        messages.append(.init(id: "activity-100", role: .operation, text: "New activity"))
+        let returned = store.session(for: a)
+        returned.processWindows[processID, default: .init()].reconcile(in: messages, preservesReading: returned.isRetainingPosition)
+        returned.mount(in: [processID])
+        #expect(returned === session)
+        #expect(returned.processWindows[processID]?.indices(messages: messages, inspectedIDs: []) == Array(36..<101))
+        #expect(returned.processExpansions[processID] == true)
+        #expect(returned.anchor == .init(id: processID, offset: -170))
+        #expect(returned.viewportRequest?.target == .anchor(.init(id: processID, offset: -170)))
+        #expect(other.processWindows[processID]?.first == "activity-68")
+
+        returned.latest(in: [processID])
+        returned.processWindows[processID, default: .init()].reconcile(in: messages, preservesReading: returned.isRetainingPosition)
+        #expect(returned.processWindows[processID]?.indices(messages: messages, inspectedIDs: []) == Array(69..<101))
+    }
+
     @Test("Native reading anchor survives earlier row reflow and viewport reattachment")
     func nativeAnchor() async throws {
         let session = AgentChatReadingSession()
@@ -303,7 +342,7 @@ struct AgentChatReadingTests {
             rootView: HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 AgentChatReplyActions(
                     text: reply.text, openNote: { _ in },
-                    context: .init(reply: reply, history: [input, reply]), openAttachment: { _ in },
+                    context: .init(reply: reply, history: [input, reply]), openAttachment: { _, _ in },
                     previewMaterial: { _ in URL(fileURLWithPath: "/synthetic/paper.pdf") })
                 Group {
                     Button("Branch from This Turn", systemImage: "arrow.triangle.branch") {}

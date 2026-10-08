@@ -69,11 +69,24 @@ struct WindowResearchCapabilities: Sendable {
     let recoveryRecordsURL: URL
 }
 
+/// Process termination receives admission only, not the document transport.
+struct CitationTerminationCapabilities: Sendable {
+    let begin: @Sendable () async -> Bool
+    let cancel: @Sendable () async -> Void
+}
+
 @MainActor
 final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     static var citationIntegration: any ZoteroDocumentIntegrating {
         ZoteroDocumentIntegration.shared
     }
+
+    static let citationTermination: CitationTerminationCapabilities = {
+        let integration = ZoteroDocumentIntegration.shared
+        return CitationTerminationCapabilities(
+            begin: { await integration.beginApplicationTermination() },
+            cancel: { await integration.cancelApplicationTermination() })
+    }()
 
     static func unpackWordDocument(_ data: Data) async throws -> [String: Data] {
         try await WordDocumentArchiveOperations.unpack(data)
@@ -105,6 +118,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 return try await workspace.agentChatWorkspaceURL()
             },
             displayWindow: { [weak self] triptych, conversation in self?.chatDisplayWindow(triptychID: triptych, conversationID: conversation) },
+            observeCurrentState: { [weak self] triptych, scope, conversation, admitted in
+                guard let self else { throw ScholiumMCPFailure.chatObservation(.appUnavailable) }
+                return try await self.observeAgentCurrentState(triptychID: triptych, conversationID: conversation, scope: scope, admitted: admitted)
+            },
             notificationSink: { route, isCurrent in
                 SystemNotificationService.shared.receive(route, isCurrent: isCurrent)
             },
@@ -326,6 +343,20 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
 
     @discardableResult
     func openExternal(_ url: URL) -> Bool {
+        Self.openExternal(url) { destination in
+            #if canImport(AppKit)
+                NSWorkspace.shared.open(destination)
+            #else
+                false
+            #endif
+        }
+    }
+
+    /// Citation destinations identify document fields, including when their
+    /// companion is missing or malformed. They never dispatch to another app.
+    @discardableResult
+    static func openExternal(_ url: URL, using open: (URL) -> Bool) -> Bool {
+        guard !ZoteroMarkdownFields.isCitationDestination(url.absoluteString) else { return false }
         let destination: URL
         if url.scheme?.lowercased() == "zotero" {
             guard let reference = try? ZoteroReference(url: url) else { return false }
@@ -333,11 +364,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         } else {
             destination = url
         }
-        #if canImport(AppKit)
-            return NSWorkspace.shared.open(destination)
-        #else
-            return false
-        #endif
+        return open(destination)
     }
 
     func registeredTriptychs() async throws -> [TriptychAssignment] {

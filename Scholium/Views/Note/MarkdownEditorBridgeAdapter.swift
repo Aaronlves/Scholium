@@ -119,6 +119,7 @@ struct EditorBridgeEnvelope: Equatable, Sendable {
 
 struct EditorInteractionMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
+    let interactionRevision: Int
     let selections: [MarkdownEditorSelectionRange]
     let line: Int
     let column: Int
@@ -132,6 +133,8 @@ struct EditorDocumentChangeMessage: Equatable, Sendable {
     let baseGeneration: Int
     let resultingGeneration: Int
     let changes: [EditorBridgeChange]
+    var citationManaged: Bool? = nil
+    var citationData: ZoteroCitationData? = nil
 }
 
 struct EditorPerformanceMessage: Equatable, Sendable {
@@ -319,8 +322,10 @@ enum EditorBridgeMessageDecoder {
                 hasOnlyKeys(
                     object,
                     additional: [
-                        "type", "selections", "line", "column", "lineCount", "focusTarget", "context",
+                        "type", "interactionRevision", "selections", "line", "column", "lineCount", "focusTarget", "context",
                     ]),
+                let interactionRevision = integer(object["interactionRevision"]),
+                markdownEditorInteractionRevisionIsValid(interactionRevision),
                 let selections: [MarkdownEditorSelectionRange] = decodable(object["selections"]),
                 selections.count <= markdownEditorMaximumSelectionRangeCount,
                 let line = nonnegativeInteger(object["line"]),
@@ -332,6 +337,7 @@ enum EditorBridgeMessageDecoder {
             return .interactionChanged(
                 EditorInteractionMessage(
                     envelope: envelope,
+                    interactionRevision: interactionRevision,
                     selections: selections,
                     line: line,
                     column: column,
@@ -344,19 +350,25 @@ enum EditorBridgeMessageDecoder {
                 hasOnlyKeys(
                     object,
                     additional: [
-                        "type", "baseGeneration", "resultingGeneration", "changes",
+                        "type", "baseGeneration", "resultingGeneration", "changes", "citationManaged", "citationData",
                     ]),
                 let baseGeneration = nonnegativeInteger(object["baseGeneration"]),
                 let resultingGeneration = nonnegativeInteger(object["resultingGeneration"]),
                 envelope.documentVersion == resultingGeneration,
-                let changes = changes(object["changes"])
+                let changes = changes(object["changes"]),
+                object["citationManaged"] == nil || boolean(object["citationManaged"]) != nil,
+                let citationData: ZoteroCitationData? = optionalDecodable(object["citationData"]),
+                !changes.isEmpty || boolean(object["citationManaged"]) == true,
+                citationData == nil || boolean(object["citationManaged"]) == true,
+                citationData.map({ (try? $0.validate()) != nil }) ?? true
             else { return nil }
             return .documentChanged(
                 EditorDocumentChangeMessage(
                     envelope: envelope,
                     baseGeneration: baseGeneration,
                     resultingGeneration: resultingGeneration,
-                    changes: changes
+                    changes: changes,
+                    citationManaged: boolean(object["citationManaged"]), citationData: citationData
                 ))
         case "performanceSample":
             guard
@@ -589,7 +601,6 @@ enum EditorBridgeMessageDecoder {
 
     private static func changes(_ value: Any?) -> [EditorBridgeChange]? {
         guard let rawChanges = value as? [Any],
-            !rawChanges.isEmpty,
             rawChanges.count <= 512
         else { return nil }
         var insertedUTF8Bytes = 0
@@ -648,6 +659,13 @@ enum EditorBridgeMessageDecoder {
         let integer = number.intValue
         guard NSNumber(value: integer) == number else { return nil }
         return integer
+    }
+
+    private static func boolean(_ value: Any?) -> Bool? {
+        guard let number = value as? NSNumber,
+            CFGetTypeID(number) == CFBooleanGetTypeID()
+        else { return nil }
+        return number.boolValue
     }
 
     private static func nonnegativeInteger(_ value: Any?) -> Int? {

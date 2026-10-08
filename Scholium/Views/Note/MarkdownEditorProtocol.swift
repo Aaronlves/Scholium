@@ -1,7 +1,12 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 44
+let markdownEditorProtocolVersion = 46
+let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
+
+func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
+    (0...markdownEditorMaximumInteractionRevision).contains(revision)
+}
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 // Two exact-source strings may each require six JSON bytes per source byte.
@@ -86,6 +91,8 @@ struct MarkdownEditorRecoverySnapshot: Codable, Hashable, Sendable {
     let undoHistoryPreserved: Bool
     let dirty: Bool
     let focusTarget: WindowDocumentFocusTarget?
+    var citationSnapshot: ZoteroCitationSnapshot? = nil
+    var citationData: ZoteroCitationData? = nil
 }
 
 /// A revision-bound position shared by the Read and editable projections.
@@ -225,7 +232,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         text: String,
         mode: MarkdownEditorMode,
         dialect: MarkdownEditingDialect,
-        initialSelection: MarkdownEditorSelectionRange?
+        initialSelection: MarkdownEditorSelectionRange?,
+        citationSnapshot: ZoteroCitationSnapshot? = nil
     )
     case setMode(MarkdownEditorMode)
     case setDocumentTitle(String)
@@ -250,7 +258,9 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case suspendForDetachment(suspensionID: String)
     case resumeAfterDetachment(suspensionID: String)
     case restoreRecovery(MarkdownEditorRecoverySnapshot)
-    case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
+    case acknowledgeCommittedSnapshot(
+        expected: String, committed: String, fingerprint: String,
+        expectedCitationData: ZoteroCitationData? = nil, committedCitationSnapshot: ZoteroCitationSnapshot? = nil)
     case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String, preserveSelection: Bool)
     case insertReference(selection: MarkdownEditorSelectionRange, generation: Int, target: String)
     case beginCitation(transactionID: String, command: String, reference: MarkdownEditorCitationReference?)
@@ -287,6 +297,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
         case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
             enabled, contextKey, plainText, selections, transactionID, reference
+        case citationSnapshot, expectedCitationData, committedCitationSnapshot
     }
     private enum Kind: String, Codable {
         case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setImageResources,
@@ -312,7 +323,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 initialSelection: container.decodeIfPresent(
                     MarkdownEditorSelectionRange.self,
                     forKey: .initialSelection
-                )
+                ),
+                citationSnapshot: container.decodeIfPresent(ZoteroCitationSnapshot.self, forKey: .citationSnapshot)
             )
         case .setMode: self = try .setMode(container.decode(MarkdownEditorMode.self, forKey: .mode))
         case .setDocumentTitle:
@@ -361,7 +373,9 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             self = try .acknowledgeCommittedSnapshot(
                 expected: container.decode(String.self, forKey: .expectedText),
                 committed: container.decode(String.self, forKey: .committedText),
-                fingerprint: container.decode(String.self, forKey: .committedFingerprint)
+                fingerprint: container.decode(String.self, forKey: .committedFingerprint),
+                expectedCitationData: container.decodeIfPresent(ZoteroCitationData.self, forKey: .expectedCitationData),
+                committedCitationSnapshot: container.decodeIfPresent(ZoteroCitationSnapshot.self, forKey: .committedCitationSnapshot)
             )
         case .replacePassage:
             self = try .replacePassage(
@@ -414,7 +428,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .initialize(let text, let mode, let dialect, let initialSelection):
+        case .initialize(let text, let mode, let dialect, let initialSelection, let citationSnapshot):
             try container.encode(Kind.initialize, forKey: .type)
             try container.encode(text, forKey: .text)
             try container.encode(mode, forKey: .mode)
@@ -423,6 +437,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 initialSelection,
                 forKey: .initialSelection
             )
+            try container.encodeIfPresent(citationSnapshot, forKey: .citationSnapshot)
         case .setMode(let mode): try pair(.setMode, mode, .mode, into: &container)
         case .setDocumentTitle(let value):
             try pair(.setDocumentTitle, value, .value, into: &container)
@@ -467,11 +482,13 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .resumeAfterDetachment(let suspensionID):
             try pair(.resumeAfterDetachment, suspensionID, .suspensionID, into: &container)
         case .restoreRecovery(let snapshot): try pair(.restoreRecovery, snapshot, .snapshot, into: &container)
-        case .acknowledgeCommittedSnapshot(let expected, let committed, let fingerprint):
+        case .acknowledgeCommittedSnapshot(let expected, let committed, let fingerprint, let expectedCitationData, let committedCitationSnapshot):
             try container.encode(Kind.acknowledgeCommittedSnapshot, forKey: .type)
             try container.encode(expected, forKey: .expectedText)
             try container.encode(committed, forKey: .committedText)
             try container.encode(fingerprint, forKey: .committedFingerprint)
+            try container.encodeIfPresent(expectedCitationData, forKey: .expectedCitationData)
+            try container.encodeIfPresent(committedCitationSnapshot, forKey: .committedCitationSnapshot)
         case .replacePassage(let expectedText, let fromUTF16, let toUTF16, let replacement, let preserveSelection):
             try container.encode(Kind.replacePassage, forKey: .type)
             try container.encode(expectedText, forKey: .expectedText)
@@ -562,6 +579,7 @@ struct MarkdownEditorRequest: Codable, Hashable, Sendable {
 struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
     let requestID: UUID
     let resultingGeneration: Int
+    let interactionRevision: Int
     let sourceChanged: Bool
     let selections: [MarkdownEditorSelectionRange]
     let undoLabel: String?
@@ -574,6 +592,8 @@ struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
     let find: DocumentFindResult?
     let commitSuperseded: Bool?
     var citationReply: MarkdownEditorCitationReply? = nil
+    var citationManaged: Bool? = nil
+    var citationData: ZoteroCitationData? = nil
     let accepted: Bool
     let error: String?
 }

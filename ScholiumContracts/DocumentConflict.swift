@@ -10,12 +10,21 @@ public struct DocumentConflictSnapshot: Hashable, Sendable {
     public let baseRevision: DocumentFingerprint
     public let editorRevision: DocumentFingerprint
     public let diskRevision: DocumentFingerprint
+    public let baseCitationSnapshot: ZoteroCitationSnapshot?
+    public let editorCitationData: ZoteroCitationData?
+    public let diskCitationSnapshot: ZoteroCitationSnapshot?
+    public var hasCitationConflict: Bool {
+        baseCitationSnapshot != diskCitationSnapshot || editorCitationData != diskCitationSnapshot?.data
+    }
 
     public init(
         relativePath: String,
         editorSource: String,
         diskSource: String,
-        baseRevision: DocumentFingerprint
+        baseRevision: DocumentFingerprint,
+        baseCitationSnapshot: ZoteroCitationSnapshot? = nil,
+        editorCitationData: ZoteroCitationData? = nil,
+        diskCitationSnapshot: ZoteroCitationSnapshot? = nil
     ) {
         self.relativePath = relativePath
         self.editorSource = editorSource
@@ -23,6 +32,9 @@ public struct DocumentConflictSnapshot: Hashable, Sendable {
         self.baseRevision = baseRevision
         self.editorRevision = DocumentFingerprint(content: editorSource)
         self.diskRevision = DocumentFingerprint(content: diskSource)
+        self.baseCitationSnapshot = baseCitationSnapshot
+        self.editorCitationData = editorCitationData
+        self.diskCitationSnapshot = diskCitationSnapshot
     }
 
     public func exactComparison() throws -> ExactSourceComparison {

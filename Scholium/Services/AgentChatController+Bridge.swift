@@ -14,6 +14,7 @@ extension AgentChatController {
     }
 
     func handle(_ request: ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse {
+        if request.tool == .observeCurrentState { return await handleCurrentStateObservation(request) }
         func refusal(_ message: String) -> ScholiumMCPBridgeResponse {
             try! .init(
                 requestID: request.requestID,

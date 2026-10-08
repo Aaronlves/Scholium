@@ -3,27 +3,11 @@ import AppKit
 
 extension ScholiumUITests {
     @MainActor
-    func testAuthorizedCleanupInterruptedZoteroWarningOnly() throws {
-        guard ProcessInfo.processInfo.environment["SCHOLIUM_QA_REAL_ZOTERO"] == "1" else {
-            throw XCTSkip("Only the already-authorized interrupted native QA run owns this cleanup.")
-        }
-        let zotero = XCUIApplication(bundleIdentifier: "org.zotero.zotero")
-        let message = "A word processor integration command is already running."
-        let dialogs = zotero.dialogs.allElementsBoundByIndex + zotero.alerts.allElementsBoundByIndex
-            + zotero.windows.allElementsBoundByIndex
-        let warning = try XCTUnwrap(dialogs.first {
-            $0.descendants(matching: .any).matching(
-                NSPredicate(format: "value == %@ OR label == %@", message, message)).firstMatch.exists
-        }, "Only dismiss the exact warning produced by the interrupted QA operation.")
-        XCTAssertTrue(warning.buttons["OK"].exists)
-        warning.buttons["OK"].click()
-        XCTAssertTrue(waitUntil(timeout: 8) { !warning.exists })
-    }
-
-    @MainActor
     func testAuthorizedRealZoteroRefreshStyleAndCancelPreserveManuscriptFields() throws {
-        guard ProcessInfo.processInfo.environment["SCHOLIUM_QA_REAL_ZOTERO"] == "1" else {
-            throw XCTSkip("Requires explicit researcher authorization for the already-running Zotero picker and a disposable manuscript.")
+        guard ProcessInfo.processInfo.environment["SCHOLIUM_QA_REAL_ZOTERO"] == "1",
+            ProcessInfo.processInfo.environment["SCHOLIUM_QA_KEEP_ARTIFACTS"] == "1"
+        else {
+            throw XCTSkip("Run this authorized Zotero journey alone, retaining its disposable manuscript and recovery state.")
         }
         let runningZotero = NSRunningApplication.runningApplications(withBundleIdentifier: "org.zotero.zotero")
         XCTAssertEqual(runningZotero.count, 1, "This journey never launches or restarts the researcher's Zotero.")
@@ -31,24 +15,27 @@ extension ScholiumUITests {
         let zotero = XCUIApplication(bundleIdentifier: "org.zotero.zotero")
         let preferences = zotero.windows["Zotero - Document Preferences"]
         let picker = zotero.windows["Citation Dialog"]
-        if ProcessInfo.processInfo.environment["SCHOLIUM_QA_CANCEL_OWNED_ZOTERO_DIALOG"] == "1" {
-            // Explicit recovery for a prior interrupted QA invocation only.
-            // Normal runs refuse to take over any preexisting citation dialog.
-            XCTAssertTrue(preferences.exists && !picker.exists)
-            preferences.buttons["Cancel"].click()
-            XCTAssertTrue(waitUntil(timeout: 10) { !preferences.exists })
-        }
         XCTAssertFalse(preferences.exists || picker.exists, "Do not take over an existing researcher citation operation.")
-        addTeardownBlock {
-            await MainActor.run {
-            // Cancel only dialogs created by this authorized journey. Never
-            // close Zotero's library, documents, or application.
+        let cleanup: @MainActor () -> Void = {
+            guard self.testRun?.failureCount ?? 0 > 0 else { return }
+            guard let qa = self.app else { return }
+            // Fail closed before any XCTest action can abort this block.
+            self.app = nil
+            // Only this journey's dialogs are owned; Zotero stays running.
             for dialog in [preferences, picker] where dialog.exists {
                 let cancel = dialog.buttons["Cancel"].firstMatch
                 if cancel.exists && cancel.isEnabled { cancel.click() }
             }
+            let dialogsClosed = self.waitUntil(timeout: 10) { !preferences.exists && !picker.exists }
+            if dialogsClosed && self.realZoteroWaitForFailedJourneyCleanup(in: qa) {
+                self.app = qa
+            } else {
+                // Base tearDown must not kill the callback owner while its
+                // remote cleanup is uncertain. This opt-in journey runs alone.
+                XCTFail("Zotero cleanup is unconfirmed. The isolated QA process and manuscript were retained; stop native journeys until recovery is complete.")
             }
         }
+        addTeardownBlock { await cleanup() }
         let workspace = stableWorkspaceWindow(app.windows.firstMatch)
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let original = try String(contentsOf: noteURL, encoding: .utf8)
@@ -63,7 +50,10 @@ extension ScholiumUITests {
         search.click()
         search.typeText("Slaves of the Passions")
         XCTAssertTrue(
-            waitUntil(timeout: 10) { picker.staticTexts.containing(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "Slaves of the Passions", "Slaves of the Passions")).count > 0 },
+            waitUntil(timeout: 10) {
+                picker.staticTexts.containing(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "Slaves of the Passions", "Slaves of the Passions"))
+                    .count > 0
+            },
             "The authorized published-item fixture must resolve in Zotero; never substitute another source.")
         search.typeKey(.return, modifierFlags: [])
         let accept = picker.buttons["Accept"]
@@ -121,23 +111,34 @@ extension ScholiumUITests {
         XCTAssertTrue(styledFields[0]["text"]?.contains("Schroeder") == true)
         XCTAssertTrue(styledFields[1]["text"]?.localizedCaseInsensitiveContains("Slaves of the Passions") == true)
         let styleData = try XCTUnwrap(realZoteroDocument(at: noteURL)["data"] as? String)
-        XCTAssertTrue(styleData.contains("/chicago") && styleData.contains("author-date"), "The accepted document must use the selected Chicago author-date style.")
+        XCTAssertTrue(
+            styleData.contains("/chicago") && styleData.contains("author-date"), "The accepted document must use the selected Chicago author-date style.")
         XCTAssertFalse(issue.exists || unresolved.exists || stale.exists)
         realZoteroAttachSource(noteURL, name: "real-zotero-after-style-change")
         app.activate()
         focusWorkspaceWindow(workspace)
         app.typeKey("z", modifierFlags: .command)
-        XCTAssertTrue(waitUntil(timeout: 12) { (try? Data(contentsOf: noteURL)) == beforeStyle }, "One Undo must restore exact source before the accepted style change.")
+        XCTAssertTrue(
+            waitUntil(timeout: 12) { (try? Data(contentsOf: noteURL)) == beforeStyle }, "One Undo must restore exact source before the accepted style change.")
 
         realZoteroCommand("Citation Style…", nested: true)
         XCTAssertTrue(preferences.waitForExistence(timeout: 15))
+        let pendingStyle = preferences.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label == %@ OR value == %@",
+                "Chicago Manual of Style 18th edition (author-date)", "Chicago Manual of Style 18th edition (author-date)")
+        ).firstMatch
+        XCTAssertTrue(pendingStyle.waitForExistence(timeout: 5))
+        pendingStyle.click()
         preferences.buttons["Cancel"].click()
         XCTAssertTrue(waitUntil(timeout: 10) { !preferences.exists })
         realZoteroWaitForIdle()
         selectDocumentMode("Source", in: workspace)
         let sourceEditor = workspace.textViews["Markdown source editor"].firstMatch
         XCTAssertTrue(sourceEditor.waitForExistence(timeout: 10))
-        XCTAssertEqual(sourceEditor.value as? String, String(data: beforeStyle, encoding: .utf8), "Cancellation must preserve the current editor source, not only the previous saved file.")
+        XCTAssertEqual(
+            sourceEditor.value as? String, String(data: beforeStyle, encoding: .utf8),
+            "Cancellation must preserve the current editor source, not only the previous saved file.")
         selectDocumentMode("Review", in: workspace)
         XCTAssertEqual(try Data(contentsOf: noteURL), beforeStyle, "Cancellation must retain both exact fields and document metadata.")
         XCTAssertFalse(issue.exists || unresolved.exists || stale.exists)
@@ -148,6 +149,19 @@ extension ScholiumUITests {
         shot.name = "Real Zotero citation and bibliography after Refresh, style Undo and cancellation"
         shot.lifetime = .keepAlways
         add(shot)
+    }
+
+    @MainActor
+    private func realZoteroWaitForFailedJourneyCleanup(in application: XCUIApplication) -> Bool {
+        application.activate()
+        application.menuBars.menuBarItems["Insert"].click()
+        let insertion = application.menuItems["Citation…"].firstMatch
+        application.menuItems["Citations"].firstMatch.hover()
+        let cancel = application.menuItems["Cancel Citation Operation"].firstMatch
+        let idle = waitUntil(timeout: 15) { insertion.exists && insertion.isEnabled && cancel.exists && !cancel.isEnabled }
+        application.typeKey(.escape, modifierFlags: [])
+        application.typeKey(.escape, modifierFlags: [])
+        return idle && !application.descendants(matching: .any)["scholium.document.citations.issue"].exists
     }
 
     @MainActor

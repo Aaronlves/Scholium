@@ -279,10 +279,33 @@ The external first-release surface exposes no MCP Resources, Prompts, Sampling,
 Roots, Elicitation, long-running Tasks, dynamic tool list, or provider-specific
 tool variant. A token-scoped in-app Chat connection additionally publishes the
 fixed `scholium_capabilities`, `scholium_configure_skill`,
-`scholium_configure_tool` and `scholium_configure_chat` controls. Their
-configuration changes remain runtime-owned and do not create an
+`scholium_configure_tool`, `scholium_configure_chat` and
+`scholium_observe_current_state` controls. Configuration changes remain
+runtime-owned and do not create an
 application-owned research lifecycle under another name. MCP Tasks must not
 recreate such a lifecycle either.
+
+Current-state observation requires exact `triptych_id`, `window_id` and
+`conversation_id`, bound to the live Chat turn's originally registered visible
+window. It returns capture time; document-surface kind; active Note identity,
+role, relative path, mode, available exact-source revision, dirty/save/conflict
+flags and selection coordinates; and that conversation's admitted thread/turn,
+pending-delivery flag, queue/input counts and named error categories. External
+documents return no identity. Unavailable revision or selection stays explicit;
+a selection range requires its matching revision. It returns no Note or selected
+text, drafts, queued text, operation payloads, raw diagnostics or absolute paths.
+The encoded result is at most 16 KiB, without truncation. Its closed failure
+envelope uses fixed safe guidance without recovery details or foreign identities.
+It grants no read, navigation or mutation authority beyond the current task.
+Observation is one explicit request, never an automatic attachment or
+subscription. It neither flushes/saves an editor, reads another tab, scans a
+vault, changes focus/selection/Undo nor calls the provider. Departure and return
+during capture invalidate it; matching final identities cannot restore it.
+Stop, completion, disconnection, hidden/disabled Chat and replaced turns admit
+no observation. Source or selection changes reject stale coordinates; loading
+and composition retain unavailable metadata. Failure never retargets or retries
+automatically. Results may remain in ordinary runtime/tool history without a
+separate observation store.
 
 ### 8.4 Currentness, mutation evidence, and recovery
 

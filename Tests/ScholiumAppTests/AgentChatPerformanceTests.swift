@@ -103,19 +103,56 @@ struct AgentChatPerformanceTests {
         let messages = (0..<100).map {
             AgentChatMessage(id: "activity-\($0)", role: .operation, text: "Synthetic activity")
         }
-        let tail = AgentChatProcessWindow.indices(
-            messages: messages, loadedCount: AgentChatProcessWindow.pageSize, inspectedIDs: [])
+        var window = AgentChatProcessWindow()
+        window.reconcile(in: messages, preservesReading: false)
+        let tail = window.indices(messages: messages, inspectedIDs: [])
         #expect(tail == Array(68..<100))
-        #expect(AgentChatProcessWindow.hasEarlier(messages: messages, loadedCount: tail.count))
+        #expect(window.hasEarlier(messages: messages))
 
-        let inspected = AgentChatProcessWindow.indices(
-            messages: messages, loadedCount: tail.count, inspectedIDs: ["activity-5"])
+        let inspected = window.indices(messages: messages, inspectedIDs: ["activity-5"])
         #expect(inspected.contains(5))
         #expect(inspected.last == 99)
 
-        let expanded = AgentChatProcessWindow.nextCount(
-            messages: messages, loadedCount: tail.count)
-        #expect(expanded == 64)
+        window.earlier(in: messages)
+        #expect(window.indices(messages: messages, inspectedIDs: []) == Array(36..<100))
+    }
+
+    @Test("New process activity keeps the earlier loaded reading window mounted")
+    func processWindowRetainsEarlierActivityAcrossAppend() {
+        var messages = (0..<100).map {
+            AgentChatMessage(id: "activity-\($0)", role: .operation, text: "Synthetic activity")
+        }
+        var window = AgentChatProcessWindow()
+        window.reconcile(in: messages, preservesReading: false)
+        window.earlier(in: messages)
+        #expect(window.first == "activity-36")
+
+        messages.append(.init(id: "activity-100", role: .operation, text: "New activity"))
+        window.reconcile(in: messages, preservesReading: true)
+        #expect(window.indices(messages: messages, inspectedIDs: []) == Array(36..<101))
+        #expect(window.indices(messages: messages, inspectedIDs: ["activity-5"]) == [5] + Array(36..<101))
+        #expect(window.first == "activity-36")
+
+        window.earlier(in: messages)
+        #expect(window.first == "activity-4")
+        window.earlier(in: messages)
+        #expect(!window.hasEarlier(messages: messages))
+        #expect(window.indices(messages: messages, inspectedIDs: []) == Array(messages.indices))
+
+        window.reconcile(in: messages, preservesReading: false)
+        #expect(window.indices(messages: messages, inspectedIDs: []) == Array(69..<101))
+    }
+
+    @Test("Following latest keeps a long active process bounded as activity arrives")
+    func followingLatestProcessWindowStaysBounded() {
+        var window = AgentChatProcessWindow()
+        var messages: [AgentChatMessage] = []
+        for index in 0..<400 {
+            messages.append(.init(id: "activity-\(index)", role: .operation, text: "New activity"))
+            window.reconcile(in: messages, preservesReading: false)
+            let visible = window.indices(messages: messages, inspectedIDs: [])
+            #expect(visible == Array(max(0, messages.count - AgentChatProcessWindow.pageSize)..<messages.count))
+        }
     }
 
     @Test("Long process presentation measures the mounted activity group")
@@ -132,6 +169,7 @@ struct AgentChatPerformanceTests {
         let content = ScrollView {
             AgentChatProcessView(
                 messages: messages,
+                window: .constant(.init()),
                 isActive: true,
                 forceExpanded: true,
                 status: .init(state: .working, timing: .init(startedAt: Date(timeIntervalSinceNow: -12))),

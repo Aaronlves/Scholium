@@ -31,8 +31,23 @@ const dialect = {
 };
 
 describe("editor protocol", () => {
-  it("uses the exact-insertion byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(44);
+  it("uses the interaction-revision byte bridge protocol", () => {
+    expect(EDITOR_PROTOCOL_VERSION).toBe(46);
+  });
+  it("admits bounded managed citation snapshots without weakening standalone initialization", () => {
+    const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent"};
+    const operation = {type: "initialize", text: "Argument", mode: "source", dialect, citationSnapshot};
+    expect(isEditorRequest({...request, operation})).toBe(true);
+    expect(isEditorRequest({...request, operation: {...operation, citationSnapshot: {...citationSnapshot, status: "available"}}})).toBe(false);
+    expect(isEditorRequest({...request, operation: {...operation, citationSnapshot: {...citationSnapshot, data: {schemaVersion: 2, fields: []}}}})).toBe(false);
+    const data = {schemaVersion: 1, fields: [], documentData: "opaque"};
+    const committedCitationSnapshot = {...citationSnapshot, status: "available", data,
+      sourceFingerprint: {sha256: "a".repeat(64), byteCount: 8}};
+    // Recovered draft bytes may differ from the saved disk baseline before
+    // restoreRecovery supplies the checked draft's semantic data and history.
+    expect(isEditorRequest({...request, operation: {...operation, text: "A longer recovered draft", citationSnapshot: committedCitationSnapshot}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "acknowledgeCommittedSnapshot", expectedText: "Argument", committedText: "Argument",
+      committedFingerprint: "a".repeat(64), expectedCitationData: data, committedCitationSnapshot}})).toBe(true);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("admits only closed citation operations with bounded completion coordinates", () => {
@@ -202,8 +217,8 @@ describe("editor protocol", () => {
     expect(isEditorRequest({...request, operation: {type: "setUserCSS", value: "x".repeat(MAX_INBOUND_BYTES)}})).toBe(false);
   });
   it("returns a non-mutating typed rejection", () => {
-    expect(rejected("r", 9, "stale generation")).toEqual({
-      requestID: "r", resultingGeneration: 9, sourceChanged: false,
+    expect(rejected("r", 9, "stale generation", 17)).toEqual({
+      requestID: "r", resultingGeneration: 9, interactionRevision: 17, sourceChanged: false,
       selections: [], accepted: false, error: "stale generation",
     });
   });

@@ -314,7 +314,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 44,
+              "protocolVersion": \(markdownEditorProtocolVersion),
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -352,7 +352,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 44,
+            "protocolVersion": markdownEditorProtocolVersion,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -383,7 +383,7 @@ struct MarkdownEditorProtocolTests {
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 44,
+            "protocolVersion": markdownEditorProtocolVersion,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -420,15 +420,16 @@ struct MarkdownEditorProtocolTests {
                 ]) { _, next in next }) == nil)
     }
 
-    @Test("Interaction messages carry only a typed document focus target")
+    @Test("Interaction messages require a bounded revision and typed document focus target")
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 44,
+            "protocolVersion": markdownEditorProtocolVersion,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
             "documentVersion": 3,
+            "interactionRevision": 17,
             "selections": [["anchor": 4, "head": 4]],
             "line": 1,
             "column": 5,
@@ -441,17 +442,63 @@ struct MarkdownEditorProtocolTests {
             return
         }
         #expect(message.focusTarget == .title)
+        #expect(message.interactionRevision == 17)
 
         var malformed = envelope
         malformed["focusTarget"] = "sidebar"
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        let invalidRevisions: [Any?] = [nil, -1, true, 1.5, "17", markdownEditorMaximumInteractionRevision + 1]
+        for revision in invalidRevisions {
+            malformed = envelope
+            malformed["interactionRevision"] = revision
+            #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        }
+        malformed = envelope
+        malformed["interactionRevision"] = markdownEditorMaximumInteractionRevision
+        #expect(EditorBridgeMessageDecoder.decode(malformed) != nil)
+    }
+
+    @MainActor
+    @Test("Coalesced equal selections retain renderer departures and reject earlier reports")
+    func rendererInteractionRevisionAdmission() {
+        let session = MarkdownEditorSession()
+        session.loadDocument("same selection", documentID: "renderer-revision", mode: .source)
+        let selection = [MarkdownEditorSelectionRange(anchor: 1, head: 4)]
+        session.updateInteraction(
+            selections: selection, line: 1, column: 5, lineCount: 1,
+            documentVersion: 0, interactionRevision: 10, context: nil)
+        var departures = 0
+        let observation = session.writingContextChanges.sink { departures += 1 }
+
+        // A frame can contain a departure and return while keeping the same
+        // final coordinates. Its monotonic renderer revision still invalidates readers.
+        session.updateInteraction(
+            selections: selection, line: 1, column: 5, lineCount: 1,
+            documentVersion: 0, interactionRevision: 12, context: nil)
+        #expect(session.rendererInteractionRevision == 12 && departures == 1)
+        #expect(session.windowPresentationSnapshot(scrollFraction: 0).selections == [.init(anchor: 1, head: 4)])
+        for revision in [11, -1, markdownEditorMaximumInteractionRevision + 1] {
+            session.updateInteraction(
+                selections: [.init(anchor: 0, head: 0)], line: 1, column: 1, lineCount: 1,
+                documentVersion: 0, interactionRevision: revision, context: nil)
+        }
+        #expect(session.rendererInteractionRevision == 12 && departures == 1)
+        #expect(session.windowPresentationSnapshot(scrollFraction: 0).selections == [.init(anchor: 1, head: 4)])
+
+        session.loadDocument("new document", documentID: "new-renderer-revision", mode: .source)
+        #expect(session.rendererInteractionRevision == nil)
+        session.updateInteraction(
+            selections: [.init(anchor: 0, head: 0)], line: 1, column: 1, lineCount: 1,
+            documentVersion: 0, interactionRevision: 0, context: nil)
+        #expect(session.rendererInteractionRevision == 0)
+        _ = observation
     }
 
     @Test("A drop focus request admits only the current exact editor envelope")
     func dropFocusRequestUsesExactEnvelope() throws {
         let object: [String: Any] = [
             "type": "requestEditorFocus",
-            "protocolVersion": 44,
+            "protocolVersion": markdownEditorProtocolVersion,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -484,7 +531,7 @@ struct MarkdownEditorProtocolTests {
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 44,
+            "protocolVersion": markdownEditorProtocolVersion,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -666,6 +713,7 @@ struct MarkdownEditorProtocolTests {
             column: 5,
             lineCount: 20,
             documentVersion: 0,
+            interactionRevision: 0,
             context: collapsed
         )
         #expect(invalidationCount == 1)
@@ -678,6 +726,7 @@ struct MarkdownEditorProtocolTests {
                 column: offset,
                 lineCount: 20,
                 documentVersion: 0,
+                interactionRevision: 0,
                 context: nil
             )
         }
@@ -703,6 +752,7 @@ struct MarkdownEditorProtocolTests {
             column: 7,
             lineCount: 20,
             documentVersion: 0,
+            interactionRevision: 0,
             context: selected
         )
         #expect(invalidationCount == 1)
@@ -799,6 +849,7 @@ struct MarkdownEditorProtocolTests {
             column: 3,
             lineCount: 1,
             documentVersion: 0,
+            interactionRevision: 0,
             context: initialContext
         )
 
@@ -808,6 +859,7 @@ struct MarkdownEditorProtocolTests {
             column: 4,
             lineCount: 1,
             documentVersion: 1,
+            interactionRevision: 0,
             context: nil
         )
         session.updateInteraction(
@@ -816,6 +868,7 @@ struct MarkdownEditorProtocolTests {
             column: 1,
             lineCount: 1,
             documentVersion: 0,
+            interactionRevision: 0,
             context: nil
         )
         session.updateInteraction(
@@ -824,6 +877,7 @@ struct MarkdownEditorProtocolTests {
             column: 8,
             lineCount: 1,
             documentVersion: 0,
+            interactionRevision: 0,
             context: nil
         )
 

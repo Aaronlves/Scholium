@@ -65,6 +65,23 @@ extension WorkspaceServices {
 }
 
 enum WorkspaceSnapshotBuilder {
+    /// A journaled duplicate owns its reserved UUID before source creation.
+    /// Inventory must never mint another identity during that interruption gap.
+    private static func citationCreationReservations(
+        vaultID: UUID, dependencies: WorkspaceSnapshotBuilderDependencies
+    ) async throws -> Set<String> {
+        var paths: Set<String> = []
+        for recovery in try await dependencies.transactionRecoveryStore.pendingCitationSaves()
+        where recovery.vaultID == vaultID && recovery.sourceBefore == nil {
+            if try await dependencies.controlStore.identityRecord(
+                vaultID: vaultID, relativePath: recovery.relativePath)?.id != recovery.noteID
+            {
+                paths.insert(recovery.relativePath)
+            }
+        }
+        return paths
+    }
+
     private struct LoadedVault: Sendable {
         let slot: WorkspaceVaultSlot
         let vault: RegisteredVault
@@ -148,9 +165,12 @@ enum WorkspaceSnapshotBuilder {
             failures: []
         )
         do {
+            let reservedCitationPaths = try await citationCreationReservations(
+                vaultID: vault.id, dependencies: dependencies)
             let recovery = try await dependencies.identityRecoveryCoordinator.reconcile(
                 vaultID: vault.id,
-                documents: projections.map { ($0.relativePath, $0.fingerprint) },
+                documents: projections.filter { !reservedCitationPaths.contains($0.relativePath) }
+                    .map { ($0.relativePath, $0.fingerprint) },
                 repository: repository
             )
             identityRecovery = recovery
@@ -168,6 +188,9 @@ enum WorkspaceSnapshotBuilder {
                 identityStates[pending.relativePath] = .pending(pending.noteID)
             }
             identityHealthIssues.append(contentsOf: recovery.failures.map(\.message))
+            if !reservedCitationPaths.isEmpty {
+                identityHealthIssues.append("Citation creation recovery must establish its reserved Note identities before inventory can assign them.")
+            }
         } catch {
             identityHealthIssues.append(
                 "Portable note identity for \(vault.name): \(error.localizedDescription)"
@@ -383,9 +406,12 @@ enum WorkspaceSnapshotBuilder {
                 failures: []
             )
             do {
+                let reservedCitationPaths = try await citationCreationReservations(
+                    vaultID: vault.id, dependencies: dependencies)
                 let recovery = try await dependencies.identityRecoveryCoordinator.reconcile(
                     vaultID: vault.id,
-                    documents: projections.map { ($0.relativePath, $0.fingerprint) },
+                    documents: projections.filter { !reservedCitationPaths.contains($0.relativePath) }
+                        .map { ($0.relativePath, $0.fingerprint) },
                     repository: repository
                 )
                 identityRecovery = recovery
@@ -403,6 +429,9 @@ enum WorkspaceSnapshotBuilder {
                     identityStates[pending.relativePath] = .pending(pending.noteID)
                 }
                 identityHealthIssues.append(contentsOf: recovery.failures.map(\.message))
+                if !reservedCitationPaths.isEmpty {
+                    identityHealthIssues.append("Citation creation recovery must establish its reserved Note identities before inventory can assign them.")
+                }
             } catch {
                 identityHealthIssues.append(
                     "Portable note identity for \(vault.name): \(error.localizedDescription)"

@@ -100,8 +100,8 @@ struct AgentChatConversationDeletionTests {
         #expect(try await history(controller, root: root).load().isEmpty)
     }
 
-    @Test("A failed deletion save preserves every staged byte and the saved archived conversation")
-    func failedSavePreservesCopies() async throws {
+    @Test("A failed deletion save preserves copies until explicit retry or later autosave commits the deletion", arguments: [false, true])
+    func failedSavePreservesCopies(retryExplicitly: Bool) async throws {
         let root = try fixtureRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptychID = UUID()
@@ -126,11 +126,73 @@ struct AgentChatConversationDeletionTests {
         gate.failFollowingSaves = true
 
         controller.deleteConversation(id)
-        try await eventually { controller.connectionError == expectedError }
+        try await eventually { controller.historySaveError == expectedError }
         await controller.persistenceTask?.value
+        #expect(controller.connectionError == nil && controller.materialCleanupError == nil)
         #expect(try Data(contentsOf: copy) == bytes)
         #expect(try Data(contentsOf: source) == bytes)
         #expect(try await storage.load() == before)
+
+        gate.failFollowingSaves = false
+        if retryExplicitly {
+            controller.retryHistorySave()
+        } else {
+            controller.newConversation()
+            controller.editDraft("An ordinary edit retries the retained deletion")
+        }
+        try await eventually { !FileManager.default.fileExists(atPath: copy.path) && !controller.isRetryingHistorySave }
+        await controller.persistenceTask?.value
+        #expect(controller.historySaveError == nil && controller.materialCleanupError == nil)
+        #expect(!(try await storage.load()).contains { $0.id == id })
+        #expect(try Data(contentsOf: source) == bytes)
+    }
+
+    @Test("Deletion recovery retains references added before or during its successful save", arguments: [false, true])
+    func recoveryPreservesNewReferences(referenceDuringSave: Bool) async throws {
+        let root = try fixtureRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptychID = UUID()
+        let storage = AgentChatStorage(root: root.appendingPathComponent(triptychID.uuidString))
+        let gate = ConversationDeletionSaveGate(storage: storage)
+        defer { gate.finish(failure: true) }
+        let controller = AgentChatController(
+            triptychID: triptychID, root: root,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptychID) },
+            saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
+        try #require(await controller.waitUntilLoaded())
+        let id = try #require(controller.selectedID)
+        let source = root.appendingPathComponent("reused.txt")
+        let bytes = Data("Retained by a newer conversation.\n".utf8)
+        try bytes.write(to: source)
+        await controller.addLocalFiles([source], to: id)
+        let material = try #require(controller.selected?.localMaterials.first)
+        let copy = try await controller.previewLocalMaterial(material)
+        controller.setArchived(id, archived: true)
+        try await controller.flushPersistence()
+        gate.failFollowingSaves = true
+        controller.deleteConversation(id)
+        try await eventually { controller.historySaveError != nil }
+
+        gate.failFollowingSaves = false
+        if referenceDuringSave {
+            gate.pauseNextSave = true
+            controller.retryHistorySave()
+            try await eventually { gate.isWaiting }
+        }
+        controller.newConversation()
+        let newID = try #require(controller.selectedID)
+        controller.update { $0.localMaterials = [material] }
+        if referenceDuringSave { gate.finish() } else { controller.retryHistorySave() }
+        try await eventually { !controller.isRetryingHistorySave }
+        #expect(try Data(contentsOf: copy) == bytes)
+        try await controller.flushPersistence()
+        #expect((try await storage.load()).first { $0.id == newID }?.localMaterials == [material])
+
+        controller.update { $0.localMaterials = [] }
+        try await controller.flushPersistence()
+        #expect(!FileManager.default.fileExists(atPath: copy.path))
+        #expect(controller.historySaveError == nil && controller.materialCleanupError == nil)
+        #expect(try Data(contentsOf: source) == bytes)
     }
 
     @Test("Cleanup failure reports a committed deletion separately from a failed history save")
@@ -155,9 +217,19 @@ struct AgentChatConversationDeletionTests {
         let expectedPrefix = String(localized: "Conversation deleted, but its retained material could not be removed: \("")")
 
         controller.deleteConversation(id)
-        try await eventually { controller.connectionError?.hasPrefix(expectedPrefix) == true }
+        try await eventually { controller.materialCleanupError?.hasPrefix(expectedPrefix) == true }
+        #expect(controller.historySaveError == nil && controller.connectionError == nil)
         #expect(try await history(controller, root: root).load().isEmpty)
         #expect(try Data(contentsOf: preserved.appendingPathComponent(name)) == bytes)
+        #expect(try Data(contentsOf: source) == bytes)
+
+        // A later successful save retries the retained cleanup obligation,
+        // clearing its diagnosis only once the copy is actually released.
+        try FileManager.default.removeItem(at: materialRoot)
+        try FileManager.default.moveItem(at: preserved, to: materialRoot)
+        try await controller.flushPersistence()
+        #expect(controller.materialCleanupError == nil)
+        #expect(!FileManager.default.fileExists(atPath: materialRoot.appendingPathComponent(name).path))
         #expect(try Data(contentsOf: source) == bytes)
     }
 
@@ -204,6 +276,75 @@ struct AgentChatConversationDeletionTests {
         #expect(try Data(contentsOf: copy) == bytes)
     }
 
+    @Test("Earlier saves and queued reattachments cannot erase a later committed material reference", arguments: [false, true])
+    func queuedSnapshotsProtectMaterial(deletionPrecedesHeldSave: Bool) async throws {
+        let root = try fixtureRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptychID = UUID()
+        let storage = AgentChatStorage(root: root.appendingPathComponent(triptychID.uuidString))
+        let gate = ConversationDeletionSaveGate(storage: storage)
+        defer { gate.finish(failure: true) }
+        let controller = AgentChatController(
+            triptychID: triptychID, root: root,
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptychID) },
+            saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
+        try #require(await controller.waitUntilLoaded())
+        let originalID = try #require(controller.selectedID)
+        let source = root.appendingPathComponent("queued-reference.txt")
+        let bytes = Data("A committed queued snapshot must retain these bytes.\n".utf8)
+        try bytes.write(to: source)
+        let material = try await controller.materialStore.stage(source)
+        let copy = try await controller.previewLocalMaterial(material)
+        var oldestSave: Task<Void, Error>?
+        if deletionPrecedesHeldSave {
+            controller.update { $0.localMaterials = [material] }
+            controller.setArchived(originalID, archived: true)
+        }
+        try await controller.flushPersistence()
+        gate.pauseNextSave = true
+        if deletionPrecedesHeldSave {
+            // S0 already owns cleanup candidates. A queued new conversation
+            // will regain this immutable material before S0 completes.
+            controller.deleteConversation(originalID)
+        } else {
+            // S0 predates the attachment and deletion; it may never process
+            // cleanup candidates added after its snapshot was enqueued.
+            oldestSave = Task { try await controller.flushPersistence() }
+        }
+        try await eventually { gate.isWaiting }
+        if deletionPrecedesHeldSave { controller.newConversation() }
+        let retainedID = try #require(controller.selectedID)
+        controller.update { $0.localMaterials = [material] }
+        let referencingSave = Task { try await controller.flushPersistence() }
+        try await eventually { controller.pendingHistorySaveReferences.count == 2 }
+
+        controller.setArchived(retainedID, archived: true)
+        gate.shouldFail = { !$0.contains { $0.id == retainedID } }
+        controller.deleteConversation(retainedID)
+        try await eventually { controller.pendingHistorySaveReferences.count == 3 }
+        gate.finish()
+        try await oldestSave?.value
+        try await referencingSave.value
+        await controller.persistenceTask?.value
+
+        #expect(controller.historySaveError != nil)
+        #expect(controller.pendingHistorySaveReferences.isEmpty)
+        #expect(controller.conversations.allSatisfy { $0.id != retainedID })
+        #expect((try await storage.load()).first { $0.id == retainedID }?.localMaterials == [material])
+        #expect(try Data(contentsOf: copy) == bytes)
+        #expect(try Data(contentsOf: source) == bytes)
+
+        gate.shouldFail = nil
+        controller.retryHistorySave()
+        try await eventually { !controller.isRetryingHistorySave }
+        await controller.persistenceTask?.value
+        #expect(controller.historySaveError == nil && controller.materialCleanupError == nil)
+        #expect(controller.pendingDeletionMaterials.isEmpty && controller.pendingHistorySaveReferences.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: copy.path))
+        #expect(try await storage.load().isEmpty)
+        #expect(try Data(contentsOf: source) == bytes)
+    }
+
     private func fixtureRoot() throws -> URL {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -240,6 +381,7 @@ private final class ConversationDeletionSaveGate {
     let storage: AgentChatStorage
     var pauseNextSave = false
     var failFollowingSaves = false
+    var shouldFail: (([AgentChatConversation]) -> Bool)?
     private var continuation: CheckedContinuation<Void, Error>?
     var isWaiting: Bool { continuation != nil }
 
@@ -249,7 +391,7 @@ private final class ConversationDeletionSaveGate {
         if pauseNextSave {
             pauseNextSave = false
             try await withCheckedThrowingContinuation { continuation = $0 }
-        } else if failFollowingSaves {
+        } else if failFollowingSaves || shouldFail?(values) == true {
             throw CocoaError(.fileWriteOutOfSpace)
         }
         try await storage.save(values)

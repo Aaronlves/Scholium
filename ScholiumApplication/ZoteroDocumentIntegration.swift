@@ -23,6 +23,7 @@ public actor ZoteroDocumentIntegration: ZoteroDocumentIntegrating {
     private let maximumCallbacks: Int
     private let maximumDrainCallbacks: Int
     private var active: (transactionID: String, control: Control)?
+    private var applicationTerminationPending = false
 
     public init() {
         let transport = DocumentTransport()
@@ -51,6 +52,19 @@ public actor ZoteroDocumentIntegration: ZoteroDocumentIntegrating {
         await active.control.cancel()
     }
 
+    /// Keeps a live callback pump in its process. An idle adapter instead
+    /// closes admission until the application quits or cancels its attempt.
+    public func beginApplicationTermination() -> Bool {
+        guard active == nil else { return false }
+        applicationTerminationPending = true
+        return true
+    }
+
+    /// A refused save or cancelled quit restores normal citation admission.
+    public func cancelApplicationTermination() {
+        applicationTerminationPending = false
+    }
+
     public func run(
         transactionID: String,
         command: ZoteroDocumentCommand,
@@ -58,6 +72,7 @@ public actor ZoteroDocumentIntegration: ZoteroDocumentIntegrating {
         authority: @escaping Authority,
         handler: @escaping Handler
     ) async -> ZoteroDocumentIntegrationResult {
+        guard !applicationTerminationPending else { return Self.result(.unavailable) }
         guard active == nil else { return Self.result(.busy) }
         guard Self.validIdentifier(documentID), !transactionID.isEmpty, transactionID.utf8.count <= 128,
             !transactionID.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 })
@@ -69,7 +84,9 @@ public actor ZoteroDocumentIntegration: ZoteroDocumentIntegrating {
         guard initialAuthority == .current else {
             return Self.result(initialAuthority == .cancelled ? .cancelled : .unavailable)
         }
-        // Another call can enter while the asynchronous authority check runs.
+        // Another transaction or application quit can enter while the
+        // asynchronous authority check runs.
+        guard !applicationTerminationPending else { return Self.result(.unavailable) }
         guard active == nil else { return Self.result(.busy) }
         guard !Task.isCancelled else { return Self.result(.cancelled) }
         let control = Control()

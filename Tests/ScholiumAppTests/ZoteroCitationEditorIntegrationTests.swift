@@ -11,6 +11,194 @@ import WebKit
 @Suite("Synthetic Zotero citation editor integration", .serialized)
 @MainActor
 struct ZoteroCitationEditorIntegrationTests {
+    @Test("Accepted managed conversion saves the exact pair and one Undo restores embedded source and companion absence")
+    func managedConversionUndoRedoAndPairedSave() async throws {
+        let code = #"ITEM CSL_CITATION {"citationItems":[{"id":7}],"opaque":"é 😀"}"#
+        let preferences = "<data>\r\n<prefs><pref name=\"noteType\" value=\"0\"/></prefs></data>"
+        let field = try JSONSerialization.data(withJSONObject: ["id": "existing", "kind": "citation", "code": code, "text": "<i>Original</i>"])
+        let document = try JSONSerialization.data(withJSONObject: ["data": preferences, "acceptedFields": [["id": "existing", "code": code]]])
+        let prefix = "\u{FEFF}---\r\nunknown: 'keep' # literal\n---\r\nArgument 😀 "
+        let suffix = "\r\nTail e\u{301} without newline"
+        let source =
+            prefix + "[*Original*](scholium-zotero:1:\(field.base64EncodedString()))\r\n\r\n"
+            + "<!--scholium-zotero-document:1:\(document.base64EncodedString())-->" + suffix
+        let expected = prefix + "[*Original*](cite:existing)\r\n\r\n" + suffix
+        try await withManagedNote(source: source) { capabilities, note, file in
+            let baseline = try #require(note.document.citationSnapshot)
+            #expect(baseline.status == .absent && baseline.revision == nil)
+            let transcript = ManagedTranscript()
+            let session = MarkdownEditorSession(
+                bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
+                citationIntegration: ZoteroDocumentIntegration(transport: { try await transcript.send($0) }))
+            let host = OffscreenEditor(session: session, source: source, sourceHead: prefix.utf16.count, citationSnapshot: baseline)
+            defer { host.close() }
+            try await waitForManagedEditor(session, sourceHead: prefix.utf16.count)
+            #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+            #expect(session.checkedCitationData == nil && !session.isDirty)
+            await transcript.prepare(
+                documentID: session.bridgeDocumentID, command: .refresh,
+                steps: [
+                    .init("Document.getDocumentData", expected: .exact(.string(preferences))),
+                    .init("Document.getFields", [.string("Http")], expected: .exact(.array([managedReply(id: "existing", code: code, text: "Original")]))),
+                ])
+            try await session.perform(.refreshCitations)
+            let convertedSource = try await session.currentText()
+            let converted = try #require(session.checkedCitationData)
+            #expect(Data(convertedSource.utf8) == Data(expected.utf8))
+            #expect(converted.fields == [.init(id: "existing", kind: .citation, code: code, text: "<i>Original</i>")])
+            #expect(converted.fields.first.map { Data($0.code.utf8) } == Data(code.utf8))
+            #expect(converted.documentData == preferences)
+            #expect(converted.acceptedFields == [.init(id: "existing", code: code)])
+            var saved = try await saveManagedPair(session, note: note, revision: note.fingerprint, documents: capabilities.documents, file: file)
+            #expect(saved.citationSnapshot?.data == converted)
+
+            try await citationHistory(session, redo: false)
+            #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+            #expect(session.checkedCitationData == nil && session.currentCitationSnapshot?.status == .absent)
+            #expect(session.committedCitationSnapshot == saved.citationSnapshot)
+            saved = try await saveManagedPair(
+                session, note: note, revision: DocumentFingerprint(content: saved.rawContent), documents: capabilities.documents, file: file)
+            #expect(saved.citationSnapshot?.status == .absent && saved.citationSnapshot?.revision == nil)
+            #expect(saved.citationSnapshot?.noteID == baseline.noteID && saved.citationSnapshot?.vaultID == baseline.vaultID)
+
+            try await citationHistory(session, redo: true)
+            #expect(Data(try await session.currentText().utf8) == Data(expected.utf8))
+            #expect(session.checkedCitationData == converted)
+            _ = try await saveManagedPair(
+                session, note: note, revision: DocumentFingerprint(content: saved.rawContent), documents: capabilities.documents, file: file)
+            #expect(await transcript.completedCommands == 1)
+            await host.closeAndDrain()
+        }
+    }
+
+    @Test("Managed compact insert, edit, bibliography and Refresh cross the native bridge and reopen the saved pair")
+    func managedCompactLifecycleAndReopen() async throws {
+        let prefix = "\u{FEFF}---\r\nunknown: 'keep' # literal\n---\r\nArgument 😀 "
+        let suffix = "\r\n\r\nTail e\u{301} without newline"
+        let source = prefix + suffix
+        let code = #"ITEM CSL_CITATION {"citationItems":[{"id":7}],"opaque":"é 😀"}"#
+        let editedCode = #"ITEM CSL_CITATION {"citationItems":[{"id":7,"locator":"4"}],"opaque":"é 😀"}"#
+        let bibliographyCode = #"BIBL {"uncited":[],"opaque":"保持"} CSL_BIBLIOGRAPHY"#
+        let preferences = "<data>\r\n<prefs><pref name=\"noteType\" value=\"0\"/></prefs></data>"
+        let refreshedPreferences = preferences.replacingOccurrences(of: "<data>", with: "<data synthetic=\"refresh\">")
+        try await withManagedNote(source: source) { capabilities, note, file in
+            let baseline = try #require(note.document.citationSnapshot)
+            let transcript = ManagedTranscript()
+            let integration = ZoteroDocumentIntegration(transport: { try await transcript.send($0) })
+            let session = MarkdownEditorSession(bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(), citationIntegration: integration)
+            let host = OffscreenEditor(session: session, source: source, sourceHead: prefix.utf16.count, citationSnapshot: baseline)
+            defer { host.close() }
+            try await waitForManagedEditor(session, sourceHead: prefix.utf16.count)
+            await transcript.prepare(
+                documentID: session.bridgeDocumentID, command: .addEditCitation,
+                steps: [
+                    .init("Document.setDocumentData", [.string(preferences)]),
+                    .init("Document.canInsertField", [.string("Http")], expected: .exact(.bool(true))),
+                    .init("Document.cursorInField", [.string("Http")]),
+                    .init("Document.insertField", [.string("Http"), .integer(0)], expected: .inserted),
+                    .init("Field.setCode", [.string("$inserted"), .string(code)]),
+                    .init("Field.setText", [.string("$inserted"), .string("First"), .bool(true)]),
+                ])
+            try await performManagedCommand(.insertCitation, phase: "insert", in: session)
+            let id = try #require(await transcript.insertedID)
+            let insertedSource = prefix + "[First](cite:\(id))" + suffix
+            #expect(Data(try await session.currentText().utf8) == Data(insertedSource.utf8))
+            #expect(session.checkedCitationData?.fields == [.init(id: id, kind: .citation, code: code, text: "First")])
+            #expect(session.committedCitationSnapshot == baseline && session.isDirty)
+
+            let editCaret = try #require(
+                EditorSourceOffsetMap(source: insertedSource).editorUTF16Offset(forSourceUTF16Offset: prefix.utf16.count + 1))
+            _ = try await session.send(.revealSourceRange(fromUTF16: editCaret, toUTF16: editCaret), in: #require(session.webView))
+            try await waitForManagedEditor(session, sourceHead: prefix.utf16.count + 1)
+            await transcript.prepare(
+                documentID: session.bridgeDocumentID, command: .addEditCitation,
+                steps: [
+                    .init("Document.cursorInField", [.string("Http")], expected: .exact(managedReply(id: id, code: code, text: "First"))),
+                    .init("Field.setCode", [.string(id), .string(editedCode)]),
+                    .init("Field.setText", [.string(id), .string("<i>Edited</i>"), .bool(true)]),
+                ])
+            try await performManagedCommand(.insertCitation, phase: "edit", in: session)
+            let editedSource = prefix + "[*Edited*](cite:\(id))" + suffix
+            #expect(Data(try await session.currentText().utf8) == Data(editedSource.utf8))
+            #expect(session.checkedCitationData?.fields == [.init(id: id, kind: .citation, code: editedCode, text: "<i>Edited</i>")])
+
+            // Insert immediately after the citation. A bibliography must not make
+            // the preceding citation adjacent=true in Zotero's field transcript.
+            let bibliographyHead = (editedSource as NSString).range(of: suffix).location
+            let bibliographyCaret = try #require(EditorSourceOffsetMap(source: editedSource).editorUTF16Offset(forSourceUTF16Offset: bibliographyHead))
+            _ = try await session.send(.revealSourceRange(fromUTF16: bibliographyCaret, toUTF16: bibliographyCaret), in: #require(session.webView))
+            try await waitForManagedEditor(session, sourceHead: bibliographyHead)
+            await transcript.prepare(
+                documentID: session.bridgeDocumentID, command: .addEditBibliography,
+                steps: [
+                    .init("Document.insertField", [.string("Http"), .integer(0)], expected: .inserted),
+                    .init("Field.setCode", [.string("$inserted"), .string(bibliographyCode)]),
+                    .init("Field.setText", [.string("$inserted"), .string("<p>Synthetic <i>Book</i></p>"), .bool(true)]),
+                ])
+            try await performManagedCommand(.insertBibliography, phase: "bibliography", in: session)
+            let bibliographyID = try #require(await transcript.insertedID)
+            #expect(bibliographyID != id)
+            let bibliography = "\r\n\r\n<!--cite-bibliography:\(bibliographyID)-->\r\n\r\nSynthetic *Book*\r\n\r\n<!--/cite-bibliography-->"
+            let beforeRefresh = prefix + "[*Edited*](cite:\(id))" + bibliography + suffix
+            #expect(Data(try await session.currentText().utf8) == Data(beforeRefresh.utf8))
+            let beforeRefreshData = try #require(session.checkedCitationData)
+            await transcript.prepare(
+                documentID: session.bridgeDocumentID, command: .refresh,
+                steps: [
+                    .init("Document.getDocumentData", expected: .exact(.string(preferences))),
+                    .init(
+                        "Document.getFields", [.string("Http")],
+                        expected: .exact(
+                            .array([
+                                managedReply(id: id, code: editedCode, text: "Edited"),
+                                managedReply(id: bibliographyID, code: bibliographyCode, text: "Synthetic Book"),
+                            ]))),
+                    .init("Document.setDocumentData", [.string(refreshedPreferences)]),
+                    .init("Field.setText", [.string(id), .string("Refreshed"), .bool(true)]),
+                ])
+            try await performManagedCommand(.refreshCitations, phase: "refresh", in: session)
+            let expected = prefix + "[Refreshed](cite:\(id))" + bibliography + suffix
+            let refreshedSource = try await session.currentText()
+            let accepted = try #require(session.checkedCitationData)
+            #expect(Data(refreshedSource.utf8) == Data(expected.utf8))
+            #expect(accepted.documentData == refreshedPreferences)
+            #expect(
+                accepted.fields == [
+                    .init(id: id, kind: .citation, code: editedCode, text: "Refreshed"),
+                    .init(id: bibliographyID, kind: .bibliography, code: bibliographyCode, text: "<p>Synthetic <i>Book</i></p>"),
+                ])
+            #expect(accepted.acceptedFields == [.init(id: id, code: editedCode), .init(id: bibliographyID, code: bibliographyCode)])
+            #expect(
+                !session.checkedSource.contains("scholium-zotero") && !session.checkedSource.contains("CSL_CITATION")
+                    && !session.checkedSource.contains("<data"))
+            #expect(accepted.fields.first.map { Data($0.code.utf8) } == Data(editedCode.utf8))
+            #expect(accepted.documentData.map { Data($0.utf8) } == Data(refreshedPreferences.utf8))
+            try await citationHistory(session, redo: false)
+            #expect(Data(try await session.currentText().utf8) == Data(beforeRefresh.utf8))
+            #expect(session.checkedCitationData == beforeRefreshData)
+            try await citationHistory(session, redo: true)
+            #expect(Data(try await session.currentText().utf8) == Data(expected.utf8))
+            #expect(session.checkedCitationData == accepted)
+
+            let saved = try await saveManagedPair(session, note: note, revision: note.fingerprint, documents: capabilities.documents, file: file)
+            let savedSnapshot = try #require(saved.citationSnapshot)
+            await host.closeAndDrain()
+            let reopened = MarkdownEditorSession(bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(), citationIntegration: integration)
+            let reopenedHost = OffscreenEditor(session: reopened, source: saved.rawContent, sourceHead: 0, citationSnapshot: savedSnapshot)
+            defer { reopenedHost.close() }
+            try await waitForManagedEditor(reopened, sourceHead: 0)
+            #expect(Data(try await reopened.currentText().utf8) == Data(expected.utf8))
+            #expect(reopened.checkedCitationData == accepted && reopened.committedCitationSnapshot == savedSnapshot)
+            #expect(!reopened.isDirty)
+            let catalog = ZoteroMarkdownFields(parsing: saved)
+            #expect(catalog.canMutate && !catalog.citationStateStale && catalog.diagnostics.isEmpty)
+            #expect(catalog.fields.map(\.id) == [id, bibliographyID])
+            #expect(await transcript.completedCommands == 4)
+            #expect(session.errorMessage == nil && session.citationStatus == nil)
+            await reopenedHost.closeAndDrain()
+        }
+    }
+
     @Test("A synthetic HTTP transcript accepts the canonical @ receipt and one Undo restores exact source")
     func syntheticCitationAcceptsQueryAndUndoesExactSource() async throws {
         let prefix = "\u{FEFF}---\r\nunknown: 'keep' # literal\r\n---\r\n"
@@ -320,6 +508,111 @@ struct ZoteroCitationEditorIntegrationTests {
         await foreignHost.closeAndDrain()
     }
 
+    private func withManagedNote(
+        source: String,
+        _ body: (WindowWorkspaceCapabilities, WorkspaceNoteSnapshot, URL) async throws -> Void
+    ) async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/managed-citation-editor-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
+        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let file = vaults[1].appendingPathComponent("Synthetic.md")
+        try Data(source.utf8).write(to: file)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Synthetic citations")
+            let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
+            let summary = try #require(vault.documents.first { $0.id.relativePath == "Synthetic.md" })
+            try await body(capabilities, capabilities.documents.hydrate(summary), file)
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    private func saveManagedPair(
+        _ session: MarkdownEditorSession, note: WorkspaceNoteSnapshot, revision: DocumentFingerprint,
+        documents: any DocumentUseCases, file: URL
+    ) async throws -> NoteDocument {
+        let noteID = try #require(note.stableIdentity.resolvedID)
+        let captured = try await session.persistenceSnapshot(expectedRevision: revision)
+        let result = try await documents.save(
+            .init(documentID: note.id, stableNoteID: noteID, revision: revision),
+            changeSet: .citationSource(captured.text, .init(expectedRevision: captured.companionRevision, data: captured.citationData)))
+        let saved = result.committedValue.document
+        let snapshot = try #require(saved.citationSnapshot)
+        #expect(snapshot.noteID == noteID && snapshot.vaultID == note.id.vaultID)
+        #expect(Data(saved.rawContent.utf8) == Data(captured.text.utf8))
+        #expect(try Data(contentsOf: file) == Data(captured.text.utf8))
+        #expect(snapshot.data == captured.citationData)
+        // The fixture's shared control root is Triptych, one level above Topics.
+        let companionURL = file.deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".scholium/citations/v1/\(noteID.uuidString.lowercased()).json")
+        if let data = captured.citationData {
+            let bytes = try Data(contentsOf: companionURL)
+            let companion = try ZoteroCitationCompanion.decode(bytes)
+            #expect(companion.noteID == noteID && companion.vaultID == note.id.vaultID)
+            #expect(companion.sourceFingerprint == DocumentFingerprint(content: captured.text))
+            #expect(companion.data == data && snapshot.revision == DocumentFingerprint(data: bytes))
+            for (persisted, captured) in zip(companion.data.fields, data.fields) {
+                #expect(Data(persisted.code.utf8) == Data(captured.code.utf8))
+                #expect(Data(persisted.text.utf8) == Data(captured.text.utf8))
+            }
+            #expect(companion.data.documentData.map { Data($0.utf8) } == data.documentData.map { Data($0.utf8) })
+        } else {
+            #expect(!FileManager.default.fileExists(atPath: companionURL.path))
+        }
+        #expect(try await documents.load(note.id).citationSnapshot == snapshot)
+        let acknowledged = try await session.acknowledgePersistenceSnapshot(
+            captured, committedText: saved.rawContent, fingerprint: DocumentFingerprint(content: saved.rawContent), citationSnapshot: snapshot)
+        #expect(acknowledged == .clean && !session.isDirty)
+        return try await documents.load(note.id)
+    }
+
+    private func waitForManagedEditor(_ session: MarkdownEditorSession, sourceHead: Int) async throws {
+        try await waitUntil(
+            "managed editor and exact caret",
+            diagnostics: {
+                "ready=\(session.isReady) loaded=\(session.isLoaded) head=\(session.context?.selections.first?.head ?? -1) sourceHead=\(sourceHead) error=\(session.errorMessage ?? "none")"
+            }
+        ) {
+            session.isReady && session.isLoaded && session.canRecycleWebView
+                && session.context?.selections.first?.head
+                    == EditorSourceOffsetMap(source: session.checkedSource).editorUTF16Offset(forSourceUTF16Offset: sourceHead)
+        }
+    }
+
+    private func performManagedCommand(_ command: MarkdownEditorCommand, phase: String, in session: MarkdownEditorSession) async throws {
+        do {
+            try await session.perform(command)
+        } catch {
+            Issue.record(Comment(rawValue: "Managed citation stage \(phase) failed at generation \(session.generation): \(error)"))
+            throw error
+        }
+    }
+
+    private func citationHistory(_ session: MarkdownEditorSession, redo: Bool) async throws {
+        let web = try #require(session.webView)
+        let handled =
+            try await web.callAsyncJavaScript(
+                """
+                const event = new KeyboardEvent('keydown', {key: redo ? 'Z' : 'z', code: 'KeyZ', keyCode: 90,
+                    which: 90, metaKey: true, shiftKey: redo, bubbles: true, cancelable: true});
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """, arguments: ["redo": redo], in: nil, contentWorld: .page) as? Bool
+        #expect(handled == true)
+        _ = try await session.currentText()
+    }
+
+    private func managedReply(id: String, code: String, text: String) -> MCPJSONValue {
+        .object(["id": .string(id), "code": .string(code), "text": .string(text), "noteIndex": .integer(0), "adjacent": .bool(false)])
+    }
+
     private func syntheticSnapshot(vaultID: UUID, noteID: UUID, path: String, source: String) -> WorkspaceNoteSnapshot {
         let document = NoteDocument(relativePath: path, rawContent: source)
         return WorkspaceNoteSnapshot(
@@ -393,6 +686,7 @@ struct ZoteroCitationEditorIntegrationTests {
     ) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(10))
         while !(try await condition()) {
+            try Task.checkCancellation()
             guard ContinuousClock.now < deadline else {
                 Issue.record(Comment(rawValue: "Synthetic citation fixture timed out at \(phase): \(await diagnostics())"))
                 throw FixtureFailure.timedOut
@@ -404,7 +698,7 @@ struct ZoteroCitationEditorIntegrationTests {
     private enum FixtureFailure: Error { case timedOut, unexpectedRequest }
 
     /// The real representable owns page loading and message delivery. No window
-    /// ordering, app activation, filesystem fixture or private vault is involved.
+    /// ordering, app activation or private vault is involved.
     @MainActor
     private final class OffscreenEditor {
         let session: MarkdownEditorSession
@@ -412,7 +706,7 @@ struct ZoteroCitationEditorIntegrationTests {
         private var hostingController: NSViewController?
         private var closed = false
 
-        init(session: MarkdownEditorSession, source: String, sourceHead: Int) {
+        init(session: MarkdownEditorSession, source: String, sourceHead: Int, citationSnapshot: ZoteroCitationSnapshot? = nil) {
             self.session = session
             _ = NSApplication.shared
             session.revealSourceRange(fromUTF16: sourceHead, toUTF16: sourceHead)
@@ -423,7 +717,7 @@ struct ZoteroCitationEditorIntegrationTests {
                 linkCompletionQuery: { _, _ in [] }, linkPreviews: [], initialScrollFraction: 0, initialScrollAnchor: nil,
                 onDocumentActivity: {}, onRequestSave: {}, onRequestFind: { _ in },
                 onRequestDocumentTitleRename: { _, requested in requested }, onPasteImage: { _ in false },
-                onLinkActivation: { _ in }, onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in })
+                onLinkActivation: { _ in }, onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in }, citationSnapshot: citationSnapshot)
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
                 styleMask: [.titled], backing: .buffered, defer: false)
@@ -436,10 +730,12 @@ struct ZoteroCitationEditorIntegrationTests {
             hosting.view.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
             hosting.view.autoresizingMask = [.width, .height]
             hosting.view.layoutSubtreeIfNeeded()
+            #expect(!window.isVisible)
         }
 
         func close() {
             guard !closed else { return }
+            #expect(!window.isVisible)
             closed = true
             window.contentViewController = nil
             hostingController = nil
@@ -560,6 +856,86 @@ struct ZoteroCitationEditorIntegrationTests {
             continuation?.resume()
             continuation = nil
             isHeld = false
+        }
+    }
+
+    private struct ManagedStep: Sendable {
+        enum Reply: Sendable {
+            case exact(MCPJSONValue)
+            case inserted
+        }
+        let command: String
+        let arguments: [MCPJSONValue]
+        let expected: Reply
+
+        init(_ command: String, _ arguments: [MCPJSONValue] = [], expected: Reply = .exact(.null)) {
+            self.command = command
+            self.arguments = arguments
+            self.expected = expected
+        }
+    }
+
+    /// Scripted engine responses exercise the production HTTP callback decoder.
+    /// No request leaves this actor; every host reply must match the transcript.
+    private actor ManagedTranscript {
+        private var documentID = ""
+        private var command = ZoteroDocumentCommand.refresh
+        private var steps: [ManagedStep] = []
+        private var index = 0
+        private(set) var insertedID: String?
+        private(set) var completedCommands = 0
+
+        func prepare(documentID: String, command: ZoteroDocumentCommand, steps: [ManagedStep]) {
+            self.documentID = documentID
+            self.command = command
+            self.steps = steps
+            index = 0
+            insertedID = nil
+        }
+
+        func send(_ request: URLRequest) throws -> ZoteroDocumentHTTPResponse {
+            let endpoint = index == 0 ? "execCommand" : "respond"
+            guard request.httpMethod == "POST",
+                request.url?.absoluteString == "http://127.0.0.1:23119/connector/document/\(endpoint)",
+                let body = request.httpBody, index <= steps.count
+            else { throw FixtureFailure.unexpectedRequest }
+            let reply = try JSONDecoder().decode(MCPJSONValue.self, from: body)
+            if index == 0 {
+                guard reply == .object(["command": .string(command.rawValue), "docId": .string(documentID)]) else {
+                    throw FixtureFailure.unexpectedRequest
+                }
+            } else {
+                switch steps[index - 1].expected {
+                case .exact(let expected):
+                    guard reply == expected else {
+                        Issue.record(
+                            Comment(rawValue: "Managed citation transcript reply \(index) for \(steps[index - 1].command): \(reply), expected \(expected)"))
+                        throw FixtureFailure.unexpectedRequest
+                    }
+                case .inserted:
+                    guard let object = reply.objectValue, let id = object["id"]?.stringValue,
+                        id.range(of: #"\Ac[0-9a-f]{32}\z"#, options: .regularExpression) != nil,
+                        object["code"] == .string(""), object["text"] == .string("{Citation}"),
+                        object["noteIndex"] == .integer(0), object["adjacent"] == .bool(false)
+                    else { throw FixtureFailure.unexpectedRequest }
+                    insertedID = id
+                }
+            }
+            let callback: MCPJSONValue
+            if index == steps.count {
+                completedCommands += 1
+                callback = .object(["command": .string("Document.complete"), "arguments": .array([.string(documentID)])])
+            } else {
+                let step = steps[index]
+                let arguments = try step.arguments.map { argument -> MCPJSONValue in
+                    guard argument == .string("$inserted") else { return argument }
+                    guard let insertedID else { throw FixtureFailure.unexpectedRequest }
+                    return .string(insertedID)
+                }
+                callback = .object(["command": .string(step.command), "arguments": .array([.string(documentID)] + arguments)])
+            }
+            index += 1
+            return .init(statusCode: 200, body: try JSONEncoder().encode(callback))
         }
     }
 

@@ -18,7 +18,7 @@ public enum SourceResourceReferences {
         public var id: Int { occurrence }
         public var canOpen: Bool {
             switch url.scheme?.lowercased() {
-            case "javascript", "data", "vbscript": false
+            case "javascript", "data", "vbscript", "cite", "scholium-zotero": false
             case "zotero": (try? ZoteroReference(url: url)) != nil
             default: true
             }
@@ -99,6 +99,7 @@ private struct ResourceWalker: MarkupWalker {
     }
     private func externalURL(_ destination: String) -> URL? {
         guard !destination.isEmpty, !destination.hasPrefix("#"), !destination.contains("\0") else { return nil }
+        guard !ZoteroMarkdownFields.isCitationDestination(destination) else { return nil }
         if destination.hasPrefix("//") { return URL(string: "https:" + destination) }
         guard let parsed = URL(string: destination) else { return nil }
         if let scheme = parsed.scheme, scheme.lowercased() != "file" {

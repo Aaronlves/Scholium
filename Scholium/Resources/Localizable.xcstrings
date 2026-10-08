@@ -1,12 +1,20 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "No diff text was supplied.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No diff text was supplied."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "未提供差异文本。"}}}},
+    "Retry Stop": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retry Stop"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重试停止"}}}},
+    "The turn may still be running. Retry stopping it.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The turn may still be running. Retry stopping it."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "本轮可能仍在运行。请重试停止。"}}}},
+    "Stop Not Confirmed": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Stop Not Confirmed"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "尚未确认停止"}}}},
+    "Conversation Not Saved": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Conversation Not Saved"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "对话未保存"}}}},
+    "Retry Saving": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retry Saving"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重试保存"}}}},
+    "Your latest conversation changes remain in memory.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Your latest conversation changes remain in memory."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "最新的对话更改仍保留在内存中。"}}}},
+    "Material Cleanup Failed": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Material Cleanup Failed"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "材料清理失败"}}}},
     "The note exceeds the supported source limit of %lld bytes and is unavailable for processing: %@. Its file remains unchanged.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The note exceeds the supported source limit of %lld bytes and is unavailable for processing: %@. Its file remains unchanged."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "笔记超过支持的来源大小上限（%lld 字节），无法进行处理：%@。原文件保持不变。"}}}},
     "Footnote and endnote citation styles are unavailable. Your text was preserved.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Footnote and endnote citation styles are unavailable. Your text was preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "脚注和尾注引用样式不可用。您的文本已保留。"}}}},
     "Citations need updating": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citations need updating"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用需要更新"}}}},
     "Refresh citations and bibliography in Zotero.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Refresh citations and bibliography in Zotero."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "在 Zotero 中刷新引用和参考文献。"}}}},
     "Citation metadata needs repair": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citation metadata needs repair"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用元数据需要修复"}}}},
-    "Repair copied or damaged citation fields in Source. Your text is preserved.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Repair copied or damaged citation fields in Source. Your text is preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请在“源文本”中修复复制或损坏的引用字段。您的文本已保留。"}}}},
+    "Live citation data could not be verified. Review Source or restore the matching citation data. Your text is preserved.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Live citation data could not be verified. Review Source or restore the matching citation data. Your text is preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法验证动态引文数据。请检查源码或恢复匹配的引文数据。您的文本已保留。"}}}},
     "Export Saved Text": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Export Saved Text"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "导出已保存文本"}}}},
     "The citations changed. Refresh Citations or choose Export Saved Text.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The citations changed. Refresh Citations or choose Export Saved Text."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用已更改。请选择“刷新引用”或“导出已保存文本”。"}}}},
     "The citation source is unresolved. Repair it or choose Export Saved Text.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The citation source is unresolved. Repair it or choose Export Saved Text."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用源无法解析。请修复它，或选择“导出已保存文本”。"}}}},
@@ -15,6 +23,8 @@
     "Citations": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citations"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用"}}}},
     "Refresh Citations": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Refresh Citations"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "刷新引用"}}}},
     "Citation Style…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citation Style…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用样式…"}}}},
+    "Citation Operation in Progress": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citation Operation in Progress"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用操作进行中"}}}},
+    "Finish or cancel the open Zotero dialog before quitting Scholium.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finish or cancel the open Zotero dialog before quitting Scholium."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请先完成或取消已打开的 Zotero 对话框，再退出 Scholium。"}}}},
     "Cancel Citation Operation": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Cancel Citation Operation"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "取消引用操作"}}}},
     "Citation cancelled. Finish or cancel any open Zotero dialog.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citation cancelled. Finish or cancel any open Zotero dialog."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用操作已取消。请完成或取消仍打开的 Zotero 对话框。"}}}},
     "Zotero is handling another citation operation. Finish or cancel its open dialog, then try again.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Zotero is handling another citation operation. Finish or cancel its open dialog, then try again."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Zotero 正在处理另一项引用操作。请完成或取消其已打开的对话框，再重试。"}}}},
@@ -12647,6 +12657,12 @@
         }
       }
     },
+    "Citation metadata changed; Reload also replaces it." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Citation metadata changed; Reload also replaces it." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "引文元数据已更改；重新载入也会替换它。" } }
+      }
+    },
     "Editor and disk revisions differ" : {
       "localizations" : {
         "en" : {
@@ -20098,6 +20114,12 @@
         }
       }
     },
+    "Open Website" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Website" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开网站" } }
+      }
+    },
     "Open in Zotero" : {
       "localizations" : {
         "en" : {
@@ -25319,12 +25341,12 @@
         }
       }
     },
-    "Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state." : {
+    "Scholium will archive the entire .scholium folder unchanged in a uniquely named recovery folder, then create new control state. Analyses, Topics, and Works stay unchanged. Live citation data remains in the archive and cannot be rebuilt from Markdown." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 会将现有的整个 .scholium 文件夹移至一个名称唯一的同级恢复文件夹，原样保留其中的文件，且不会解释旧 schema。Analyses、Topics 和 Works 不会被更改。随后 Scholium 会创建当前版本的便携控制数据。"
+            "value" : "Scholium 会将整个 .scholium 文件夹原样归档到一个名称唯一的恢复文件夹，再创建新的控制状态。分析、主题和作品保持不变。动态引文数据保留在归档中，无法从 Markdown 重建。"
           }
         }
       }

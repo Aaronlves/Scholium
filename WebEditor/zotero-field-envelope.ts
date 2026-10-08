@@ -16,6 +16,9 @@ export interface DocumentEnvelope {
   acceptedFields?: readonly FieldSignature[];
 }
 export const citationDestinationPrefix = "scholium-zotero:";
+export const compactCitationPrefix = "cite:";
+export const compactBibliographyPrefix = "<!--cite-bibliography:";
+export const compactBibliographyClose = "<!--/cite-bibliography-->";
 export const bibliographyPrefix = "<!--scholium-zotero-field:";
 export const bibliographyClose = "<!--/scholium-zotero-field-->";
 export const documentPrefix = "<!--scholium-zotero-document:";
@@ -56,7 +59,7 @@ export function fieldPayload(field: FieldInput) {
   return encodeOpaque(JSON.stringify({id: field.id, kind: field.kind, code: field.code, text: field.text}));
 }
 export function isCitationDestination(destination: string) {
-  return /^scholium-zotero:/i.test(destination);
+  return /^(?:scholium-zotero|cite):/i.test(destination);
 }
 
 /** Called only for a Link range proved by the existing Markdown parser. */
@@ -72,6 +75,18 @@ export function citationLinkSource(raw: string): {field: FieldInput; fallbackRan
     throw new Error("Citation fallback must be bounded inline Markdown.");
   }
   return {field, fallbackRange};
+}
+/** Visible fallback parsing grants no companion or mutation authority. */
+export function compactCitationLinkSource(raw: string): {id: string; fallbackRange: SourceRange} | null {
+  const boundary = raw.lastIndexOf("](");
+  if (!raw.startsWith("[") || boundary < 1 || !raw.endsWith(")")) return null;
+  const destination = raw.slice(boundary + 2, -1);
+  if (!destination.startsWith(compactCitationPrefix)) return null;
+  const id = destination.slice(compactCitationPrefix.length);
+  if (!validFieldID(id) || boundary - 1 > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary))) {
+    throw new Error("Invalid compact citation carrier.");
+  }
+  return {id, fallbackRange: {from: 1, to: boundary}};
 }
 export function validBibliographyStyle(value: unknown): value is BibliographyStyle {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

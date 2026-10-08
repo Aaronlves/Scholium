@@ -5,6 +5,96 @@ import Testing
 
 @Suite("QA runtime isolation")
 struct ScholiumRuntimeIsolationTests {
+    private let restorationBundleIdentifier =
+        "com.scholium.qa.restoration.a7304eb3-ca16-468a-80cc-be313aee0aef"
+
+    @Test("Restoration QA identities require an exact prefix and canonical lowercase UUID")
+    func restorationBundleIdentityIsStrict() {
+        #expect(ScholiumRuntimeIsolation.isQABundleIdentifier(ScholiumRuntimeIsolation.qaBundleIdentifier))
+        #expect(ScholiumRuntimeIsolation.isQABundleIdentifier(restorationBundleIdentifier))
+        let rejected: [String?] = [
+            nil, "", "com.scholium.app", "com.scholium.qa.other",
+            "com.scholium.qa.restoration", "com.scholium.qa.restoration.",
+            "com.scholium.qa.restoration.invalid",
+            "com.scholium.qa.restoration.A7304EB3-CA16-468A-80CC-BE313AEE0AEF",
+            "com.scholium.qa.restoration.a7304eb3ca16468a80ccbe313aee0aef",
+            "com.scholium.qa.restoration.{a7304eb3-ca16-468a-80cc-be313aee0aef}",
+            restorationBundleIdentifier + ".other", restorationBundleIdentifier + " ",
+            "other." + restorationBundleIdentifier,
+        ]
+        for identifier in rejected {
+            #expect(!ScholiumRuntimeIsolation.isQABundleIdentifier(identifier))
+        }
+    }
+
+    @Test("A restoration QA home is explicit and never synthesized from the bundle identity")
+    func restorationHomeRequiresExplicitPath() {
+        for environment in [[:], ["SCHOLIUM_HOME": " \n\t"]] {
+            #expect(
+                ScholiumRuntimeIsolation.homeURL(
+                    environment: environment, bundleIdentifier: restorationBundleIdentifier) == nil)
+        }
+        let home = URL(fileURLWithPath: "/fixture/restoration/home", isDirectory: true)
+        #expect(
+            ScholiumRuntimeIsolation.homeURL(
+                environment: ["SCHOLIUM_HOME": home.path],
+                bundleIdentifier: restorationBundleIdentifier) == home)
+    }
+
+    @Test("Restoration QA uses the fixture session owner and explicitly opts into native restoration")
+    func restorationJourneyAdmissionIsBounded() {
+        let windowID = UUID()
+        #expect(
+            ScholiumRuntimeIsolation.initialWindowSessionID(
+                environment: ["SCHOLIUM_UI_TEST_SESSION_ID": windowID.uuidString],
+                bundleIdentifier: restorationBundleIdentifier) == windowID)
+        #expect(
+            ScholiumRuntimeIsolation.initialWindowSessionID(
+                environment: ["SCHOLIUM_UI_TEST_WORKSPACE_ROOT": "/fixture/Triptych"],
+                bundleIdentifier: restorationBundleIdentifier) == ScholiumRuntimeIsolation.qaFixtureWindowSessionID)
+        #expect(
+            ScholiumRuntimeIsolation.initialWindowSessionID(
+                environment: [:], bundleIdentifier: restorationBundleIdentifier) == nil)
+        #expect(
+            ScholiumRuntimeIsolation.initialWindowSessionID(
+                environment: ["SCHOLIUM_UI_TEST_SESSION_ID": windowID.uuidString],
+                bundleIdentifier: restorationBundleIdentifier + ".other") == nil)
+        #expect(
+            ScholiumRuntimeIsolation.disablesSystemWindowRestoration(
+                environment: [:], bundleIdentifier: restorationBundleIdentifier))
+        #expect(
+            ScholiumRuntimeIsolation.disablesSystemWindowRestoration(
+                environment: ["SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION": "true"],
+                bundleIdentifier: restorationBundleIdentifier))
+        #expect(
+            !ScholiumRuntimeIsolation.disablesSystemWindowRestoration(
+                environment: ["SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION": "1"],
+                bundleIdentifier: restorationBundleIdentifier))
+    }
+
+    @Test("A restoration QA identity grants no packaged Release isolation")
+    func restorationIdentityDoesNotAuthorizeReleaseIsolation() {
+        let environment = [
+            "SCHOLIUM_HOME": "/fixture/home",
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": "/fixture/Triptych",
+            "SCHOLIUM_UI_TEST_SESSION_ID": UUID().uuidString,
+            "SCHOLIUM_PERFORMANCE_RUN_ID": "restoration",
+        ]
+        let arguments = [ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument]
+        #expect(
+            !ScholiumRuntimeIsolation.allowsExplicitHome(
+                environment: environment, arguments: arguments,
+                bundleIdentifier: restorationBundleIdentifier, isDebugBuild: false))
+        #expect(
+            ScholiumRuntimeIsolation.fixtureRootURL(
+                environment: environment, arguments: arguments,
+                bundleIdentifier: restorationBundleIdentifier, isDebugBuild: false) == nil)
+        #expect(
+            ScholiumRuntimeIsolation.initialWindowSessionID(
+                environment: environment, arguments: arguments,
+                bundleIdentifier: restorationBundleIdentifier, isDebugBuild: false) == nil)
+    }
+
     @Test("An explicit isolated home always wins")
     func explicitHomeWins() throws {
         let explicit = FileManager.default.temporaryDirectory

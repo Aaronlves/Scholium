@@ -22,13 +22,10 @@ struct AgentChatRuntimeApprovalTests {
             environmentID: nil, reason: nil, networkHost: nil, networkProtocol: nil,
             permissions: permissions, files: [], grantRoot: nil, grants: [.turn], rejection: .decline)
         let locale = Locale(identifier: "en")
-        let overview = request.accessOverview(locale: locale).joined(separator: "\n")
-        #expect(overview.contains("Markdown files in /fixture/output and its subfolders"))
-        #expect(overview.contains("/fixture/[ab]/*.txt"))
-        #expect(overview.contains("Connect to the internet"))
         let exact = request.scopeLines(locale: locale).joined(separator: "\n")
         #expect(exact.contains("/fixture/output/**/*.md") && exact.contains("/fixture/private"))
-        #expect(exact.contains("/fixture/sources"))
+        #expect(exact.contains("/fixture/sources") && exact.contains("/fixture/[ab]/*.txt"))
+        #expect(exact.contains("Network Access: Enabled"))
     }
 
     @Test("Expired approval clears its tool's waiting state without inventing a tool outcome", arguments: [false, true])

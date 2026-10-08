@@ -597,6 +597,7 @@ struct AppCompositionRootTests {
             column: 6,
             lineCount: 1,
             documentVersion: 0,
+            interactionRevision: 0,
             focusTarget: .editor,
             context: nil
         )

@@ -1,3 +1,4 @@
+import {citationDataEqual, citationSnapshotEqual} from "./zotero-citation-state";
 import type {EditorOperation, EditorRequest} from "./protocol";
 
 type Commit = Extract<EditorOperation, {type: "acknowledgeCommittedSnapshot"}>;
@@ -40,6 +41,8 @@ export class CommittedSnapshotReceipt {
       && current.startingFingerprint === receipt.committedFingerprint
       && operation.committedFingerprint === receipt.committedFingerprint
       && operation.expectedText === receipt.expectedText
-      && operation.committedText === receipt.committedText;
+      && operation.committedText === receipt.committedText
+      && citationDataEqual(operation.expectedCitationData, receipt.expectedCitationData)
+      && citationSnapshotEqual(operation.committedCitationSnapshot, receipt.committedCitationSnapshot);
   }
 }

@@ -134,12 +134,15 @@ surface. Review admits bounded read-page extensions; Chat owns reply lifecycle,
 projection, WebView and events outside the neutral reader.
 
 Application's `ZoteroDocumentIntegration` implements Contracts' callback port,
-composed by `WorkspaceStore`. `MarkdownEditorSession` and `zotero-transaction.ts` stage against exact
-source/selection for one Undo. Contracts and editor parse versioned Markdown
-carriers; display uses readable fallback, never vendor HTML. Zotero owns
-picker/CSL. Completion confirms cleanup only; cancellation revokes acceptance
-and drains callbacks. Document notices derive integrity from committed Review
-source or the exact editing buffer. Status retains runtime acceptance.
+composed by `WorkspaceStore`; Zotero owns picker/CSL. `MarkdownEditorSession` and
+`zotero-transaction.ts` stage exact source/selection and companion metadata in one
+CodeMirror history, including metadata-only Undo and dirty state. Managed snapshots
+bind compact `cite:` occurrences to checked companions; standalone documents keep
+embedded fields. Contracts/editor project readable source, never vendor HTML;
+native routing rejects reserved citation URLs. Completion confirms cleanup only;
+cancellation revokes acceptance and drains callbacks. Document notices inspect
+committed Review source/companion or the retained editor pair. Persistence belongs
+to [Source Storage](05-source-storage-and-read-models.md#vault-write-and-prewrite-recovery-boundary).
 
 Writing continuation shares the retained editor's inline suggestion owner, with
 separate generation-bound request/cancellation messages. A short post-input pause

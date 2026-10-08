@@ -6,29 +6,30 @@ import notify
 extension ScholiumUITests {
     @MainActor
     func terminateRunningQAApplications() {
-        let bundleIdentifier = "com.scholium.qa"
-        let runningApplications = NSRunningApplication.runningApplications(
-            withBundleIdentifier: bundleIdentifier
-        )
-        runningApplications.forEach { $0.terminate() }
-        if !waitUntil(
-            timeout: 5,
-            condition: {
-                NSRunningApplication.runningApplications(
-                    withBundleIdentifier: bundleIdentifier
-                ).isEmpty
-            })
-        {
-            NSRunningApplication.runningApplications(
-                withBundleIdentifier: bundleIdentifier
-            ).forEach { $0.forceTerminate() }
+        let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let journeys = sourceRoot.appendingPathComponent(".build/qa-runtime/journeys", isDirectory: true)
+        func ownedProcesses() -> [NSRunningApplication] {
+            NSWorkspace.shared.runningApplications.filter { process in
+                guard let identifier = process.bundleIdentifier else { return false }
+                if identifier == "com.scholium.qa" { return true }
+                let prefix = "com.scholium.qa.restoration."
+                guard identifier.hasPrefix(prefix),
+                    let id = UUID(uuidString: String(identifier.dropFirst(prefix.count))),
+                    identifier == prefix + id.uuidString.lowercased(),
+                    let bundle = process.bundleURL?.standardizedFileURL,
+                    bundle.lastPathComponent == "Scholium-Restoration-QA.app",
+                    UUID(uuidString: bundle.deletingLastPathComponent().lastPathComponent) != nil,
+                    bundle.deletingLastPathComponent().deletingLastPathComponent() == journeys
+                else { return false }
+                return true
+            }
+        }
+        ownedProcesses().forEach { $0.terminate() }
+        if !waitUntil(timeout: 5, condition: { ownedProcesses().isEmpty }) {
+            ownedProcesses().forEach { $0.forceTerminate() }
         }
         XCTAssertTrue(
-            waitUntil(timeout: 5) {
-                NSRunningApplication.runningApplications(
-                    withBundleIdentifier: bundleIdentifier
-                ).isEmpty
-            },
+            waitUntil(timeout: 5) { ownedProcesses().isEmpty },
             "The previous isolated QA process did not terminate before launch."
         )
     }

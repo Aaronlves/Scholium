@@ -8,6 +8,8 @@ final class AgentChatRegistry {
     private let root: URL
     private let workspaceDirectory: @MainActor (UUID) async throws -> URL
     private let displayWindow: @MainActor (UUID, UUID) -> AgentChatDisplayScope?
+    private let observeCurrentState:
+        @MainActor (UUID, AgentChatDisplayScope, UUID, @escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation
     private let handler: @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     private let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
     private let notificationSink: AgentChatNotificationSink
@@ -16,6 +18,11 @@ final class AgentChatRegistry {
         root: URL,
         workspaceDirectory: @escaping @MainActor (UUID) async throws -> URL,
         displayWindow: @escaping @MainActor (UUID, UUID) -> AgentChatDisplayScope? = { _, _ in nil },
+        observeCurrentState:
+            @escaping @MainActor (UUID, AgentChatDisplayScope, UUID, @escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation = {
+                _, _, _, _ in
+                throw ScholiumMCPFailure.chatObservation(.workspaceNotReady)
+            },
         notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
         previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview,
         handler: @escaping @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
@@ -23,6 +30,7 @@ final class AgentChatRegistry {
         self.root = root
         self.workspaceDirectory = workspaceDirectory
         self.displayWindow = displayWindow
+        self.observeCurrentState = observeCurrentState
         self.handler = handler
         self.previewUpdate = previewUpdate
         self.notificationSink = notificationSink
@@ -36,6 +44,9 @@ final class AgentChatRegistry {
             root: root,
             workspaceDirectory: { [workspaceDirectory] in try await workspaceDirectory(triptychID) },
             displayWindow: { displayWindow(triptychID, $0) },
+            observeCurrentState: { [observeCurrentState] scope, conversation, admitted in
+                try await observeCurrentState(triptychID, scope, conversation, admitted)
+            },
             notificationSink: notificationSink,
             previewUpdate: previewUpdate,
             toolHandler: handler
@@ -56,6 +67,9 @@ final class AgentChatRegistry {
             let controller = controllers.values.first(where: { $0.owns(token: token) })
         {
             return await controller.handle(request)
+        }
+        if request.tool == .observeCurrentState {
+            return try! .init(requestID: request.requestID, error: .chatObservation(.workspaceNotReady))
         }
         return try! .init(
             requestID: request.requestID,

@@ -43,12 +43,31 @@ struct AgentMCPServiceTests {
         let external = try AgentMCPService.helperHandler(arguments: ["mcp", "serve"], environment: environment)
         let scoped = try AgentMCPService.helperHandler(
             arguments: ["mcp", "serve", "--conversation-token", UUID().uuidString], environment: environment)
-        for (handler, expectedCount) in [(external, 16), (scoped, 20)] {
+        let chatControls: [ScholiumMCPToolName] = [
+            .capabilities, .configureSkill, .configureTool, .configureChat, .observeCurrentState,
+        ]
+        let researchTools = ScholiumMCPToolName.allCases.filter { !chatControls.contains($0) }
+        #expect(researchTools.count == 16)
+        #expect(ScholiumMCPToolName.allCases.filter(\.isChatControl) == chatControls)
+        for (handler, expectedTools) in [(external, researchTools), (scoped, researchTools + chatControls)] {
             let data = try #require(await handler(Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#.utf8)))
             let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
             let result = try #require(object["result"] as? [String: Any])
             let tools = try #require(result["tools"] as? [[String: Any]])
-            #expect(tools.count == expectedCount)
+            #expect(tools.compactMap { $0["name"] as? String } == expectedTools.map(\.rawValue))
+            #expect(tools.count == expectedTools.count)
+        }
+        for (index, tool) in chatControls.enumerated() {
+            let request: [String: Any] = [
+                "jsonrpc": "2.0", "id": index + 3, "method": "tools/call",
+                "params": ["name": tool.rawValue, "arguments": [:]],
+            ]
+            let data = try #require(await external(JSONSerialization.data(withJSONObject: request)))
+            let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let result = try #require(object["result"] as? [String: Any])
+            let failure = try #require(result["structuredContent"] as? [String: Any])
+            #expect(result["isError"] as? Bool == true)
+            #expect(failure["code"] as? String == "invalid_request")
         }
         let response = try #require(
             await external(

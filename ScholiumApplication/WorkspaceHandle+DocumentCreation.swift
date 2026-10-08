@@ -391,6 +391,14 @@ extension WorkspaceHandle {
                     }
                 }
 
+                if let noteID = stableIdentity.resolvedID {
+                    committedDocument =
+                        (try? await documentWithCitationSnapshot(
+                            committedDocument, id: id, expectedNoteID: noteID))
+                        ?? committedDocument.withCitationSnapshot(
+                            .init(
+                                noteID: noteID, vaultID: id.vaultID, status: .unresolved))
+                }
                 sourceAheadIdentityRecords[id] = createdIdentityRecord
                 // Queue the only complete derived rebuild before releasing the
                 // source lease. A matching watcher event therefore remains
@@ -623,6 +631,25 @@ extension WorkspaceHandle {
             resolved: identity.id,
             relativePath: id.relativePath
         )
+        let loaded = try await repository.load(relativePath: id.relativePath)
+        let original = try await documentWithCitationSnapshot(
+            loaded, id: id, expectedNoteID: identity.id)
+        guard original.fingerprint == expectedRevision else {
+            throw VaultRepositoryError.conflict(expected: expectedRevision, current: original.fingerprint)
+        }
+        if original.citationSnapshot?.status == .available {
+            let clone = try ZoteroMarkdownFields.duplicateCompanion(in: original)
+            let destination = VaultQualifiedNoteID(vaultID: id.vaultID, relativePath: destinationRelativePath)
+            let created = try await citationSaveCoordinator().create(
+                id: destination, noteID: UUID(), source: clone.source, data: clone.data)
+            endSourceMutation(mutationLease)
+            ownsMutation = false
+            return await finishCreatedDocumentMutation(
+                id: destination, document: created.document, identityRecoveryWarning: nil)
+        }
+        guard original.citationSnapshot?.status == .absent else {
+            throw ZoteroCitationError.unavailable
+        }
         let document = try await repository.duplicate(
             relativePath: id.relativePath,
             to: destinationRelativePath,
@@ -738,8 +765,9 @@ extension WorkspaceHandle {
         } catch {
             derivedRefreshWarning = error.localizedDescription
         }
+        let committedDocument = (try? await documentWithCitationSnapshot(document, id: id)) ?? document
         return WorkspaceMutationOutcome(
-            committedValue: document,
+            committedValue: committedDocument,
             derivedRefreshWarning: derivedRefreshWarning,
             identityRecoveryWarning: identityRecoveryWarning,
         )

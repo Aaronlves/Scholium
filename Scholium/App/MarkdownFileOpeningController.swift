@@ -5,17 +5,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The application entry for Finder, File > Open and Chat. Scene opening is
-/// bound once available; requests received during launch retain their URLs.
+/// bound by the App scene graph before any window is needed; requests received
+/// earlier during launch retain their URLs.
 @MainActor
 final class MarkdownFileOpeningController: ObservableObject {
-    enum LaunchPresentation: Equatable {
-        case awaitingLaunch
-        case defaultWorkspace
-        case requestedScene
-    }
-
     static let contentType = UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)
-    @Published private(set) var launchPresentation = LaunchPresentation.awaitingLaunch
     private var pending: [URL] = []
     private var task: Task<Void, Never>?
     private var bootstrapObservation: AnyCancellable?
@@ -27,22 +21,6 @@ final class MarkdownFileOpeningController: ObservableObject {
     private var lifecycleRegistry: ScholiumWindowLifecycleRegistry?
     private var selectionPanel: NSOpenPanel?
     private var acceptsRequests = true
-    private var launchSuppressionConsumed = false
-
-    /// AppKit names the launch intent even when its file event arrives later.
-    /// A saved-scene, file, notification or service launch already has another
-    /// route; only a default launch may create the initial workspace.
-    func finishLaunching(isDefaultLaunch: Bool) {
-        guard launchPresentation == .awaitingLaunch else { return }
-        launchPresentation = isDefaultLaunch ? .defaultWorkspace : .requestedScene
-    }
-
-    func consumeLaunchBootstrapSuppression() -> Bool {
-        guard launchPresentation == .requestedScene, !launchSuppressionConsumed else { return false }
-        launchSuppressionConsumed = true
-        return true
-    }
-
     func prepareTermination() {
         acceptsRequests = false
         task?.cancel()
@@ -102,9 +80,6 @@ final class MarkdownFileOpeningController: ObservableObject {
 
     func requestOpen(_ urls: [URL]) {
         guard acceptsRequests, !urls.isEmpty else { return }
-        if launchPresentation == .awaitingLaunch {
-            launchPresentation = .requestedScene
-        }
         for url in urls where !pending.contains(where: { ExternalMarkdownWindowRegistry.referToSameFile($0, url) }) {
             pending.append(url)
         }
@@ -305,20 +280,5 @@ final class MarkdownFileOpeningController: ObservableObject {
                 fileURL: url,
                 needsOwnershipResolution: url.pathExtension.lowercased() == "md" && workspaceStore == nil
             ))
-    }
-}
-
-struct MarkdownFileOpeningRouting: ViewModifier {
-    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
-    @EnvironmentObject private var bootstrap: ApplicationBootstrapController
-    @Environment(\.openWindow) private var openWindow
-
-    func body(content: Content) -> some View {
-        content.onAppear {
-            applicationDelegate.markdownFiles.connect(
-                bootstrap: bootstrap, openWindow: openWindow,
-                lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
-            )
-        }
     }
 }

@@ -154,9 +154,7 @@ extension WorkspaceHandle {
         var movedIdentityRecord: NoteIdentityRecord?
         do {
             movedIdentityRecord = try await services.controlStore.moveIdentity(
-                id: identity.id,
-                vaultID: source.vaultID,
-                from: source.relativePath,
+                identity,
                 to: destinationRelativePath,
                 fingerprint: commit.committedRevision
             )

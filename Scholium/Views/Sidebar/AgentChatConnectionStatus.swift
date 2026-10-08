@@ -9,14 +9,16 @@ struct AgentChatConnectionStatus: View {
     @Environment(\.openSettings) private var openSettings
     @State private var showsDetails = false
 
-    private enum Action: Hashable {
-        case retryLocalHistory, retryConnection, connect, signIn, retrySettings
-        case retryHistory, newConversation, refreshSkills, continueWithoutResending, settings
+    enum Action: Hashable {
+        case retryLocalHistory, retryHistorySave, retryConnection, connect, signIn, retrySettings
+        case retryHistory, retryStop, newConversation, refreshSkills, continueWithoutResending, settings
 
         var title: String {
             switch self {
             case .retryLocalHistory, .retryConnection, .retrySettings, .retryHistory:
                 ScholiumL10n.string("Retry")
+            case .retryHistorySave: ScholiumL10n.string("Retry Saving")
+            case .retryStop: ScholiumL10n.string("Retry Stop")
             case .connect: ScholiumL10n.string("Connect Codex")
             case .signIn: ScholiumL10n.string("Sign in with ChatGPT")
             case .newConversation: ScholiumL10n.string("New Conversation")
@@ -27,7 +29,7 @@ struct AgentChatConnectionStatus: View {
         }
     }
 
-    private struct Status: Identifiable {
+    struct Status: Identifiable {
         let id: String
         let title: String
         var symbol = "exclamationmark.triangle"
@@ -75,7 +77,7 @@ struct AgentChatConnectionStatus: View {
         }
     }
 
-    private var statuses: [Status] {
+    var statuses: [Status] {
         if !controller.isLoaded {
             guard let error = controller.localHistoryError else { return [] }
             return [
@@ -88,13 +90,31 @@ struct AgentChatConnectionStatus: View {
         var result: [Status] = []
         if let recovery = executionRecovery {
             var actions: [Action] = recovery == .historyRefreshFailed ? [.retryHistory] : []
+            if controller.canRetryStop { actions.append(.retryStop) }
             if controller.selected?.pendingMessageID != nil, !controller.isBusy { actions.append(.continueWithoutResending) }
             result.append(Status(id: "execution", title: recovery.title, explanation: recovery.explanation, error: executionError, actions: actions))
         } else if let error = executionError {
             result.append(
                 Status(
                     id: "execution", title: ScholiumL10n.string("Conversation Needs Attention"), error: error,
-                    actions: controller.connectionState == .disconnected ? [.settings] : []))
+                    actions: controller.canRetryStop ? [.retryStop] : controller.connectionState == .disconnected ? [.settings] : []))
+        } else if controller.canRetryStop {
+            result.append(
+                Status(
+                    id: "execution", title: AgentChatExecutionRecovery.stopUnconfirmed.title,
+                    explanation: AgentChatExecutionRecovery.stopUnconfirmed.explanation, actions: [.retryStop]))
+        }
+        if let error = controller.historySaveError {
+            result.append(
+                Status(
+                    id: "historySave", title: ScholiumL10n.string("Conversation Not Saved"),
+                    isProgress: controller.isRetryingHistorySave,
+                    explanation: ScholiumL10n.string("Your latest conversation changes remain in memory."),
+                    error: error, actions: [.retryHistorySave]))
+        }
+        if let error = controller.materialCleanupError {
+            result.append(
+                Status(id: "materialCleanup", title: ScholiumL10n.string("Material Cleanup Failed"), error: error))
         }
         if controller.isRenewingSettings {
             result.append(
@@ -125,7 +145,6 @@ struct AgentChatConnectionStatus: View {
         if let primary = statuses.first {
             let actions = primary.actions
             let visibleActions = directActions(for: primary, statuses: statuses)
-            let connectionActions = visibleActions.filter { !actions.contains($0) }
             let hasDetails = primary.explanation != nil || statuses.count > 1 || statuses.contains { $0.error != nil }
             VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) {
                 if !hasDetails, actions.count <= 1 {
@@ -138,7 +157,6 @@ struct AgentChatConnectionStatus: View {
                     HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
                         statusTitle(primary)
                         Spacer(minLength: ScholiumSidebarLayout.textSpacing)
-                        actionButtons(connectionActions).fixedSize(horizontal: true, vertical: false)
                         Button {
                             showsDetails.toggle()
                         } label: {
@@ -151,11 +169,11 @@ struct AgentChatConnectionStatus: View {
                         )
                         .popover(isPresented: $showsDetails) { statusDetails(statuses, directActions: visibleActions) }
                     }
-                    if !actions.isEmpty {
+                    if !visibleActions.isEmpty {
                         ViewThatFits(in: .horizontal) {
-                            HStack(spacing: ScholiumSidebarLayout.itemSpacing) { actionButtons(actions) }
+                            HStack(spacing: ScholiumSidebarLayout.itemSpacing) { actionButtons(visibleActions) }
                                 .fixedSize(horizontal: true, vertical: false)
-                            VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) { actionButtons(actions) }
+                            VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) { actionButtons(visibleActions) }
                         }
                     }
                 }
@@ -176,6 +194,9 @@ struct AgentChatConnectionStatus: View {
 
     private func directActions(for primary: Status, statuses: [Status]) -> [Action] {
         var actions = primary.actions
+        if primary.id != "historySave", let save = statuses.first(where: { $0.id == "historySave" }) {
+            actions += save.actions
+        }
         if primary.id != "localHistory", primary.id != "connection", let connection = statuses.first(where: { $0.id == "connection" }) {
             actions += connection.actions
         }
@@ -221,8 +242,9 @@ struct AgentChatConnectionStatus: View {
     }
 
     private func actionButtons(_ actions: [Action]) -> some View {
-        ForEach(actions, id: \.self) { action in
-            Button(action.title) { perform(action) }
+        let stopRetryTarget = controller.stopRetryTarget
+        return ForEach(actions, id: \.self) { action in
+            Button(action.title) { perform(action, stopRetryTarget: stopRetryTarget) }
                 .disabled(!isEnabled(action))
                 .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
                 .accessibilityIdentifier(
@@ -233,6 +255,8 @@ struct AgentChatConnectionStatus: View {
     private func isEnabled(_ action: Action) -> Bool {
         switch action {
         case .retryLocalHistory: !controller.isLoadingLocalHistory
+        case .retryHistorySave: !controller.isRetryingHistorySave
+        case .retryStop: controller.canRetryStop
         case .signIn: !controller.isBusy
         case .retryHistory: !controller.isBusy && controller.connectionState == .ready
         case .refreshSkills: !controller.isBusy && !controller.capabilities.isRefreshing
@@ -241,9 +265,12 @@ struct AgentChatConnectionStatus: View {
         }
     }
 
-    private func perform(_ action: Action) {
+    private func perform(_ action: Action, stopRetryTarget: AgentChatStopRetryTarget?) {
         switch action {
         case .retryLocalHistory: controller.retryLocalHistory()
+        case .retryHistorySave: controller.retryHistorySave()
+        case .retryStop:
+            if let stopRetryTarget { controller.retryStop(stopRetryTarget) }
         case .retryConnection, .connect: controller.connectConfigured()
         case .signIn: controller.login()
         case .retrySettings: controller.renewSettingsWhenIdle()

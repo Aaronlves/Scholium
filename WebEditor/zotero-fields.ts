@@ -1,4 +1,4 @@
-import {EditorState, Text, Transaction, type TransactionSpec} from "@codemirror/state";
+import {EditorState, Text, Transaction, type StateEffect, type TransactionSpec} from "@codemirror/state";
 import {isolateHistory} from "@codemirror/commands";
 import {syntaxTree} from "@codemirror/language";
 import {scholiumMarkdownContentLanguage} from "./language";
@@ -6,7 +6,9 @@ import {appendMarkdownBlocks} from "./markdown-fragment";
 import {exactInsertionEffects, exactSourceFitsChanges, exactSourceState} from "./exact-source-history";
 import {exactOffsetForNormalizedOffset, frontmatterBoundary, normalizedDocumentText} from "./state";
 import {exactSourceFits} from "./source-capacity";
-import {bibliographyPrefix, bibliographyClose, documentPrefix, maximumFallbackLength, maximumFields,
+import {citationState, setCitationData, validCitationData, citationDataEqual, type ZoteroCitationData} from "./zotero-citation-state";
+import {compactCitationPrefix, compactBibliographyPrefix, compactBibliographyClose, compactCitationLinkSource, validFieldID,
+  bibliographyPrefix, bibliographyClose, documentPrefix, maximumFallbackLength, maximumFields,
   citationLinkSource, decodeFieldPayload, decodeDocumentPayload, fieldPayload, encodeDocumentData, isCitationDestination, isCompletedFieldCode,
   type SourceRange, type FieldKind, type FieldInput, type BibliographyStyle, type FieldSignature} from "./zotero-field-envelope";
 export {encodeDocumentData, isCompletedFieldCode} from "./zotero-field-envelope";
@@ -26,6 +28,8 @@ export interface ProjectionDiagnostic extends SourceRange {
 }
 export interface FieldProjection {
   source: string;
+  /** Undefined is standalone embedded storage; null is a managed empty companion. */
+  companion?: ZoteroCitationData | null;
   fields: readonly ProjectedField[];
   documentData: string | null;
   bibliographyStyle: BibliographyStyle | null;
@@ -42,7 +46,7 @@ export interface FieldOperation {
   bibliographyStyle?: BibliographyStyle;
   acceptCurrentFields?: boolean;
 }
-export interface StagedFieldOperation {expectedSource: string; source: string; changes: readonly SourceReplacement[]}
+export interface StagedFieldOperation {expectedSource: string; source: string; changes: readonly SourceReplacement[]; expectedCitationData?: ZoteroCitationData | null; citationData?: ZoteroCitationData}
 const markdownParser = scholiumMarkdownContentLanguage.language.parser;
 const literalNodeNames = new Set(["FencedCode", "CodeBlock", "InlineCode", "ObsidianComment", "ObsidianCommentBlock",
   "UnclosedObsidianComment", "UnclosedObsidianCommentBlock", "UnclosedBlockMath", "HTMLBlock"]);
@@ -213,8 +217,16 @@ export function markdownVisibleText(markdown: string): string {
   return renderVisibleMarkdown(markdown).textContent ?? "";
 }
 
-function fieldEnvelope(field: FieldInput, fallback: string, newline = "\n") {
+function fieldEnvelope(field: FieldInput, fallback: string, newline = "\n", managed = false) {
   if (fallback.length > maximumFallbackLength) throw new Error("The citation fallback exceeds the supported size.");
+  if (managed) {
+    if (!validFieldID(field.id)) throw new Error("Invalid host field identity.");
+    if (field.kind === "citation") {
+      if (/[\r\n]/.test(fallback)) throw new Error("Citation fields require inline Markdown.");
+      return `[${fallback}](${compactCitationPrefix}${field.id})`;
+    }
+    return `${compactBibliographyPrefix}${field.id}-->${newline}${newline}${fallback}${newline}${newline}${compactBibliographyClose}`;
+  }
   const payload = fieldPayload(field);
   if (field.kind === "citation") {
     if (/[\r\n]/.test(fallback)) throw new Error("Citation fields require inline Markdown.");
@@ -248,7 +260,7 @@ function parserContexts(source: string): ParserContexts {
     if (node.name === "Escape") { result.escaped.push(map(node)); return false; }
     if (["Comment", "CommentBlock"].includes(node.name)) {
       const raw = normalized.slice(node.from, node.to);
-      if (raw.startsWith(bibliographyPrefix) || raw.startsWith(documentPrefix) || raw.startsWith(bibliographyClose)) result.comments.push(map(node));
+      if (raw.startsWith(bibliographyPrefix) || raw.startsWith(documentPrefix) || raw.startsWith(bibliographyClose) || raw.startsWith(compactBibliographyPrefix) || raw.startsWith(compactBibliographyClose)) result.comments.push(map(node));
       else result.ignored.push(map(node));
       return false;
     }
@@ -264,7 +276,7 @@ function parserContexts(source: string): ParserContexts {
       }
       result.ignored.push(map(node)); return false;
     }
-    if (node.name === "Link") {
+    if (["Link", "Autolink", "Image"].includes(node.name)) {
       let reserved = false;
       for (let child = node.node.firstChild; child; child = child.nextSibling) {
         if (child.name === "URL" && isCitationDestination(normalized.slice(child.from, child.to).replace(/^<|>$/g, ""))) reserved = true;
@@ -274,7 +286,9 @@ function parserContexts(source: string): ParserContexts {
       return;
     }
     if (unsupportedNodeNames.has(node.name)) {
-      result.unsupported.push(map(node)); return false;
+      // Continue through parser-owned children so a reserved destination inside
+      // a list/table/heading is diagnosed without treating prose `cite:` as metadata.
+      result.unsupported.push(map(node));
     }
   }});
   for (const opening of htmlStack) result.ignored.push(map({from: opening.from, to: normalized.length}));
@@ -292,12 +306,16 @@ function markerOnly(source: string, range: SourceRange) {
     && (suffix === "" || (following >= 0 && suffix === "\r"));
 }
 
-/** Exact source is the sole authority; this parsed projection grants no mutation. */
-export function projectFields(source: string): FieldProjection {
+/** Source owns locations and visible text; a managed companion owns opaque field data.
+ * This parsed projection itself grants no mutation authority. */
+export function projectFields(source: string, companion?: ZoteroCitationData | null): FieldProjection {
+  const managed = companion !== undefined;
   const fields: ProjectedField[] = [], diagnostics: ProjectionDiagnostic[] = [];
   let documentData: string | null = null, documentRange: SourceRange | null = null;
   let bibliographyStyle: BibliographyStyle | null = null, acceptedFields: readonly FieldSignature[] | null = null;
   const contexts = parserContexts(source);
+  if (companion && !validCitationData(companion)) throw new Error("Invalid citation companion.");
+  if (companion) { documentData = companion.documentData ?? null; bibliographyStyle = companion.bibliographyStyle ?? null; acceptedFields = companion.acceptedFields ?? null; }
   const diagnose = (kind: ProjectionDiagnostic["kind"], range: SourceRange, message: string) => diagnostics.push({...range, kind, message});
   const protectedField = (range: SourceRange) => [...contexts.ignored, ...contexts.unsupported].some(other => intersects(range, other));
   const append = (field: FieldInput, range: SourceRange, fallbackRange: SourceRange) => {
@@ -314,9 +332,18 @@ export function projectFields(source: string): FieldProjection {
   for (const range of contexts.links) {
     if (contexts.ignored.some(other => intersects(range, other))) continue;
     try {
-      const parsed = citationLinkSource(source.slice(range.from, range.to));
-      if (!parsed) throw new Error("Invalid citation link carrier.");
-      append(parsed.field, range, {from: range.from + parsed.fallbackRange.from, to: range.from + parsed.fallbackRange.to});
+      const raw = source.slice(range.from, range.to);
+      if (managed) {
+        const parsed = compactCitationLinkSource(raw);
+        if (!parsed) throw new Error("Embedded citation requires checked conversion.");
+        const field = companion?.fields.find(field => field.id === parsed.id && field.kind === "citation");
+        if (!field) throw new Error("Citation companion is missing this occurrence.");
+        append(field, range, {from: range.from + parsed.fallbackRange.from, to: range.from + parsed.fallbackRange.to});
+      } else {
+        const parsed = citationLinkSource(raw);
+        if (!parsed) throw new Error("Invalid citation link carrier.");
+        append(parsed.field, range, {from: range.from + parsed.fallbackRange.from, to: range.from + parsed.fallbackRange.to});
+      }
     } catch (error) { malformed(range, error); }
   }
   const consumed: SourceRange[] = [];
@@ -327,6 +354,7 @@ export function projectFields(source: string): FieldProjection {
       diagnose("malformed-envelope", comment, "Document and bibliography markers require metadata-only lines."); continue;
     }
     try {
+      if (managed && raw.startsWith(documentPrefix)) throw new Error("Embedded document data requires checked conversion.");
       if (raw.startsWith(documentPrefix)) {
         const match = /^<!--scholium-zotero-document:1:([A-Za-z0-9+/=]*)-->$/.exec(raw);
         if (!match) throw new Error("Unknown document envelope version.");
@@ -334,13 +362,16 @@ export function projectFields(source: string): FieldProjection {
         if (protectedField(comment)) { diagnose("unsupported-context", comment, "Document state is inside a protected source context."); continue; }
         const data = decodeDocumentPayload(match[1]);
         documentData = data.data; bibliographyStyle = data.bibliographyStyle ?? null; acceptedFields = data.acceptedFields ?? null; documentRange = comment;
-      } else if (raw === bibliographyClose) {
+      } else if (raw === bibliographyClose || raw === compactBibliographyClose) {
         diagnose("malformed-envelope", comment, "Bibliography close marker has no matching opening marker.");
       } else {
-        const match = /^<!--scholium-zotero-field:1:([A-Za-z0-9+/=]*)-->$/.exec(raw);
+        const match = managed ? /^<!--cite-bibliography:([A-Za-z][A-Za-z0-9_-]{0,127})-->$/.exec(raw)
+          : /^<!--scholium-zotero-field:1:([A-Za-z0-9+/=]*)-->$/.exec(raw);
         if (!match) throw new Error("Unknown bibliography envelope version.");
-        const field = decodeFieldPayload(match[1], "bibliography");
-        const close = contexts.comments.find(other => other.from > comment.to && source.slice(other.from, other.to) === bibliographyClose);
+        const field = managed ? companion?.fields.find(field => field.id === match[1] && field.kind === "bibliography")
+          : decodeFieldPayload(match[1], "bibliography");
+        if (!field) throw new Error("Bibliography companion is missing this occurrence.");
+        const close = contexts.comments.find(other => other.from > comment.to && source.slice(other.from, other.to) === (managed ? compactBibliographyClose : bibliographyClose));
         if (!close || !markerOnly(source, close)) throw new Error("Missing bibliography close marker.");
         const nested = contexts.comments.some(other => other.from > comment.to && other.from < close.from);
         if (nested) throw new Error("Nested metadata markers cannot confer bibliography authority.");
@@ -356,7 +387,7 @@ export function projectFields(source: string): FieldProjection {
   // Reserved source tokens not owned by proved carrier syntax are diagnostics,
   // never alternate regex authority or ordinary external links.
   const covered = [...contexts.links, ...contexts.comments, ...consumed];
-  for (const match of source.matchAll(/scholium-zotero:|<!--scholium-zotero-(?:field|document):/gi)) {
+  for (const match of source.matchAll(/scholium-zotero:|<!--(?:scholium-zotero-(?:field|document)|cite-bibliography):/gi)) {
     const from = match.index!, range = {from, to: from + match[0].length};
     if ([...contexts.ignored, ...contexts.escaped, ...covered].some(other => from >= other.from && from < other.to)) continue;
     const unsupported = contexts.unsupported.find(other => from >= other.from && from < other.to);
@@ -384,29 +415,34 @@ export function projectFields(source: string): FieldProjection {
   }
   const current = fields.map(({id, code}) => ({id, code}));
   const citationStateStale = acceptedFields === null ? fields.length > 0 : JSON.stringify(acceptedFields) !== JSON.stringify(current);
-  return {source, fields, documentData, bibliographyStyle, acceptedFields, citationStateStale, documentRange, diagnostics};
+  return {source, ...(managed ? {companion} : {}), fields, documentData, bibliographyStyle, acceptedFields, citationStateStale, documentRange, diagnostics};
 }
 
-const stateCatalogs = new WeakMap<object, FieldProjection>();
-/** Same immutable exact-source owner means the same catalog across caret/focus changes. */
+const stateCatalogs = new WeakMap<object, {snapshot: unknown; projection: FieldProjection}>();
+/** Same immutable source and companion yield one citation projection. */
 export function projectFieldsForState(state: EditorState): FieldProjection {
   const mirror = state.field(exactSourceState, false), owner = mirror ?? state.doc;
+  const snapshot = state.field(citationState, false);
   const existing = stateCatalogs.get(owner);
-  if (existing) return existing;
+  if (existing && existing.snapshot === snapshot) return existing.projection;
   let reserved = false, carry = "";
   for (const chunk of state.doc.iter()) {
     const scanned = carry + chunk;
-    if (/scholium-zotero/i.test(scanned)) { reserved = true; break; }
-    carry = scanned.slice(-14);
+    if (/scholium-zotero|cite:|cite-bibliography/i.test(scanned)) { reserved = true; break; }
+    carry = scanned.slice(-32);
   }
+  const source = () => mirror?.text ?? state.doc.toString();
   const projection: FieldProjection = reserved
-    ? projectFields(mirror?.text ?? state.doc.toString())
-    : {
-      get source() { return mirror?.text ?? state.doc.toString(); },
-      fields: [], documentData: null, bibliographyStyle: null, acceptedFields: null,
-      citationStateStale: false, documentRange: null, diagnostics: [],
-    };
-  stateCatalogs.set(owner, projection);
+    ? projectFields(source(), snapshot?.data ?? (snapshot && !/scholium-zotero/i.test(source()) ? null : undefined))
+    : {get source() {return source();}, ...(snapshot ? {companion: snapshot.data ?? null} : {}), fields: [],
+      documentData: snapshot?.data?.documentData ?? null, bibliographyStyle: snapshot?.data?.bibliographyStyle ?? null,
+      acceptedFields: snapshot?.data?.acceptedFields ?? null, citationStateStale: Boolean(snapshot?.data?.acceptedFields?.length),
+      documentRange: null, diagnostics: []};
+  if (snapshot && ["unsupported", "unresolved"].includes(snapshot.baseline.status)) {
+    projection.diagnostics = [...projection.diagnostics, {kind: "unsupported-envelope", from: 0, to: state.doc.length,
+      message: "The citation companion is unavailable for this source revision."}];
+  }
+  stateCatalogs.set(owner, {snapshot, projection});
   return projection;
 }
 
@@ -417,7 +453,7 @@ export function fieldMetadataRanges(projection: FieldProjection): readonly Sourc
   for (const field of projection.fields) {
     if (field.kind !== "bibliography") continue;
     ranges.push({from: field.range.from, to: projection.source.indexOf("-->", field.range.from) + 3});
-    ranges.push({from: field.range.to - bibliographyClose.length, to: field.range.to});
+    ranges.push({from: field.range.to - (projection.companion !== undefined ? compactBibliographyClose.length : bibliographyClose.length), to: field.range.to});
   }
   return ranges;
 }
@@ -444,6 +480,8 @@ function blockInsertion(source: string, range: SourceRange, insert: string, newl
 /** Pure staging against one immutable source; caller owns command/lifecycle authority. */
 export function stageFieldOperation(projection: FieldProjection, operation: FieldOperation): StagedFieldOperation {
   if (projection.diagnostics.length) throw new Error("The source contains unresolved citation field diagnostics.");
+  const managed = projection.companion !== undefined;
+  const companionFields = projection.fields.map(({id, kind, code, cachedText: text}) => ({id, kind, code, text}));
   const source = projection.source, changes: SourceReplacement[] = [], touched = new Set<string>();
   const replace = (range: SourceRange, insert: string, first = false) => {
     const expected = source.slice(range.from, range.to);
@@ -461,6 +499,7 @@ export function stageFieldOperation(projection: FieldProjection, operation: Fiel
       throw new Error("Field deletion and unlinking cannot also replace code or text.");
     }
     if (update.delete || update.unlink) {
+      companionFields.splice(companionFields.findIndex(value => value.id === field.id), 1);
       replace(field.range, update.unlink ? source.slice(field.fallbackRange.from, field.fallbackRange.to) : "");
       continue;
     }
@@ -474,11 +513,13 @@ export function stageFieldOperation(projection: FieldProjection, operation: Fiel
     // Keep the representable block until its inline text arrives; finish rejects
     // an incomplete code/kind pairing rather than committing that intermediate.
     if (kind === "citation" && /[\r\n]/.test(fallback) && update.text === undefined) kind = field.kind;
-    let encoded = fieldEnvelope({id: field.id, kind, code, text: cachedText}, fallback, newline);
+    const replacementField = {id: field.id, kind, code, text: cachedText};
+    companionFields[companionFields.findIndex(value => value.id === field.id)] = replacementField;
+    let encoded = fieldEnvelope(replacementField, fallback, newline, managed);
     if (field.kind !== "bibliography" && kind === "bibliography") encoded = blockInsertion(source, field.range, encoded, newline);
     replace(field.range, encoded);
   }
-  const contexts = parserContexts(source), ids = new Set(projection.fields.map(field => field.id));
+  const contexts = parserContexts(source), ids = new Set((projection.companion?.fields ?? projection.fields).map(field => field.id));
   for (const insertion of operation.insertions ?? []) {
     if (ids.has(insertion.field.id)) throw new Error("Insertion would duplicate a host occurrence ID.");
     ids.add(insertion.field.id);
@@ -492,7 +533,8 @@ export function stageFieldOperation(projection: FieldProjection, operation: Fiel
       || (projection.documentRange && (intersects(range, projection.documentRange)
         || range.from > projection.documentRange.from && range.from < projection.documentRange.to))) throw new Error("Insertion would split source-owned field metadata.");
     const newline = preferredNewline(source, range.from);
-    let encoded = encodeField(insertion.field, newline);
+    companionFields.push({...insertion.field});
+    let encoded = managed ? fieldEnvelope(insertion.field, vendorTextToMarkdown(insertion.field.text, newline), newline, true) : encodeField(insertion.field, newline);
     if (insertion.field.kind === "bibliography") encoded = blockInsertion(source, range, encoded, newline);
     replace(range, encoded);
   }
@@ -502,7 +544,11 @@ export function stageFieldOperation(projection: FieldProjection, operation: Fiel
     return candidate;
   };
   changes.sort((a, b) => a.from - b.from || a.to - b.to);
-  const candidateFields = projectFields(apply(changes));
+  const citationData: ZoteroCitationData | undefined = managed ? {schemaVersion: 1, fields: companionFields,
+    ...(projection.documentData !== null ? {documentData: projection.documentData} : {}),
+    ...(projection.bibliographyStyle ? {bibliographyStyle: projection.bibliographyStyle} : {}),
+    ...(projection.acceptedFields ? {acceptedFields: projection.acceptedFields} : {})} : undefined;
+  const candidateFields = projectFields(apply(changes), citationData);
   if (candidateFields.diagnostics.length) throw new Error("The staged source contains unresolved citation diagnostics.");
   const expectedIDs = projection.fields.filter(field => !(operation.updates ?? []).some(update => update.id === field.id && (update.delete || update.unlink))).map(field => field.id);
   expectedIDs.push(...(operation.insertions ?? []).map(insertion => insertion.field.id));
@@ -514,9 +560,16 @@ export function stageFieldOperation(projection: FieldProjection, operation: Fiel
   }
   const data = operation.documentData ?? projection.documentData;
   const style = operation.bibliographyStyle ?? projection.bibliographyStyle;
-  if ((operation.documentData !== undefined && operation.documentData !== projection.documentData)
+  if (citationData) {
+    citationData.fields = candidateFields.fields.map(({id, kind, code, cachedText: text}) => ({id, kind, code, text}));
+    if (data !== null) citationData.documentData = data;
+    if (style !== null) citationData.bibliographyStyle = style;
+    if (accepted !== null) citationData.acceptedFields = accepted;
+    if (!validCitationData(citationData)) throw new Error("The citation companion exceeds its supported format or size.");
+  }
+  if (!managed && ((operation.documentData !== undefined && operation.documentData !== projection.documentData)
     || (operation.bibliographyStyle !== undefined && JSON.stringify(style) !== JSON.stringify(projection.bibliographyStyle))
-    || (operation.acceptCurrentFields && JSON.stringify(accepted) !== JSON.stringify(projection.acceptedFields))) {
+    || (operation.acceptCurrentFields && JSON.stringify(accepted) !== JSON.stringify(projection.acceptedFields)))) {
     if (data === null) throw new Error("Citation acceptance and bibliography style require source-owned Zotero document data.");
     const encoded = encodeDocumentData(data, style, accepted);
     if (projection.documentRange) replace(projection.documentRange, encoded);
@@ -543,18 +596,53 @@ export function stageFieldOperation(projection: FieldProjection, operation: Fiel
   }
   const candidate = apply(merged);
   if (!exactSourceFits(candidate)) throw new Error("The citation command exceeds the supported Markdown source size.");
-  const projected = projectFields(candidate);
+  const projected = projectFields(candidate, citationData);
   if (projected.diagnostics.length || projected.fields.length !== candidateFields.fields.length) throw new Error("The final source is not a valid citation projection.");
   if (operation.documentData !== undefined && projected.documentData !== operation.documentData) throw new Error("The document state is not recognized in its source context.");
   if (operation.bibliographyStyle !== undefined && JSON.stringify(projected.bibliographyStyle) !== JSON.stringify(operation.bibliographyStyle)) throw new Error("The bibliography style is not recognized in its source context.");
   if (operation.acceptCurrentFields && projected.citationStateStale) throw new Error("The citation acceptance signature does not match source.");
-  return {expectedSource: source, source: candidate, changes: merged};
+  return {expectedSource: source, source: candidate, changes: merged,
+    ...(managed ? {expectedCitationData: projection.companion, citationData} : {})};
+}
+
+/** Conversion is a staged source operation; read, cancellation and failed commands never write it. */
+export function convertEmbeddedFields(source: string): StagedFieldOperation & {citationData: ZoteroCitationData} {
+  const projection = projectFields(source);
+  if (projection.diagnostics.length) throw new Error("Embedded citation fields require source recovery.");
+  const citationData: ZoteroCitationData = {schemaVersion: 1,
+    fields: projection.fields.map(({id, kind, code, cachedText: text}) => ({id, kind, code, text})),
+    ...(projection.documentData !== null ? {documentData: projection.documentData} : {}),
+    ...(projection.bibliographyStyle ? {bibliographyStyle: projection.bibliographyStyle} : {}),
+    ...(projection.acceptedFields ? {acceptedFields: projection.acceptedFields} : {})};
+  if (!validCitationData(citationData)) throw new Error("Invalid converted citation companion.");
+  const changes: SourceReplacement[] = projection.fields.flatMap(field => {
+    // Replace carrier bytes only. Separators and manually edited fallback are
+    // exact authored source, including independently mixed newline styles.
+    if (field.kind === "bibliography") {
+      const open = {from: field.range.from, to: source.indexOf("-->", field.range.from) + 3};
+      const close = {from: field.range.to - bibliographyClose.length, to: field.range.to};
+      return [{...open, expected: source.slice(open.from, open.to), insert: `${compactBibliographyPrefix}${field.id}-->`},
+        {...close, expected: source.slice(close.from, close.to), insert: compactBibliographyClose}];
+    }
+    const destination = {from: field.fallbackRange.to + 2, to: field.range.to - 1};
+    return [{...destination, expected: source.slice(destination.from, destination.to), insert: `${compactCitationPrefix}${field.id}`}];
+  });
+  if (projection.documentRange) changes.push({...projection.documentRange,
+    expected: source.slice(projection.documentRange.from, projection.documentRange.to), insert: ""});
+  changes.sort((a, b) => a.from - b.from);
+  let candidate = source;
+  for (const change of [...changes].reverse()) candidate = candidate.slice(0, change.from) + change.insert + candidate.slice(change.to);
+  if (projectFields(candidate, citationData).diagnostics.length) throw new Error("Converted citation source is invalid.");
+  return {expectedSource: source, source: candidate, changes, expectedCitationData: null, citationData};
 }
 
 /** One checked event owns visible text and every opaque metadata replacement. */
 export function fieldOperationTransaction(state: EditorState, operation: StagedFieldOperation): TransactionSpec | null {
   const source = state.field(exactSourceState).text;
   if (source !== operation.expectedSource) return null;
+  const snapshot = state.field(citationState, false);
+  if (operation.expectedCitationData !== undefined && (!snapshot || !["available", "absent"].includes(snapshot.baseline.status) || !citationDataEqual(snapshot.data, operation.expectedCitationData ?? undefined)
+    || !operation.citationData || !validCitationData(operation.citationData))) return null;
   let candidate = source, previous = -1;
   for (const change of operation.changes) {
     if (!boundary(source, change.from) || !boundary(source, change.to) || change.from < previous || change.to < change.from) return null;
@@ -563,7 +651,8 @@ export function fieldOperationTransaction(state: EditorState, operation: StagedF
   for (const change of [...operation.changes].reverse()) candidate = candidate.slice(0, change.from) + change.insert + candidate.slice(change.to);
   if (candidate !== operation.source) return null;
   let shift = 0;
-  const effects = [], changes = [];
+  const effects: StateEffect<unknown>[] = operation.citationData && snapshot ? [setCitationData.of(operation.citationData)] : [];
+  const changes = [];
   for (const change of operation.changes) {
     if (source.slice(change.from, change.to) !== change.expected) return null;
     const from = normalizedDocumentText(source.slice(0, change.from)).length;

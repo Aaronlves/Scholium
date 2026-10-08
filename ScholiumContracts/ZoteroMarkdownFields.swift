@@ -132,6 +132,9 @@ public struct ZoteroMarkdownReadingProjection: Hashable, Sendable {
 /// citation admission. Malformed source remains unchanged and nonauthorizing.
 public struct ZoteroMarkdownFields: Codable, Hashable, Sendable {
     public static let citationScheme = "scholium-zotero:"
+    public static let compactCitationScheme = "cite:"
+    public static let bibliographyPrefix = "<!--cite-bibliography:"
+    public static let bibliographyClose = "<!--/cite-bibliography-->"
     public static let maximumEnvelopeUTF16Count = 256 * 1_024
     public static let maximumFallbackUTF16Count = 64 * 1_024
     public static let maximumFieldCount = 1_024
@@ -147,10 +150,93 @@ public struct ZoteroMarkdownFields: Codable, Hashable, Sendable {
     }
     public var metadataSpans: [SourceSpan] {
         guard canMutate else { return [] }
-        return fields.flatMap(\.markerSpans) + (documentState.map { [$0.span] } ?? [])
+        return fields.flatMap(\.markerSpans) + (documentState.flatMap { $0.span.utf16Range.isEmpty ? nil : [$0.span] } ?? [])
     }
 
     public init(parsing document: NoteDocument) { self = MarkdownSemanticDocument(parsing: document).zoteroFields }
+
+    /// Reserved even when the carrier or companion is malformed or missing.
+    public static func isCitationDestination(_ destination: String) -> Bool {
+        let lower = destination.lowercased()
+        return lower.hasPrefix(citationScheme) || lower.hasPrefix(compactCitationScheme)
+    }
+
+    /// Validates a proposed pair without reading or writing storage. The save
+    /// owner must separately prove Note ownership and both expected revisions.
+    public static func validateCompanion(source: String, data: ZoteroCitationData) throws {
+        try data.validate()
+        let snapshot = ZoteroCitationSnapshot(
+            noteID: UUID(), vaultID: UUID(), sourceFingerprint: DocumentFingerprint(content: source), data: data, status: .available)
+        let document = NoteDocument(relativePath: "Citation.md", rawContent: source, citationSnapshot: snapshot)
+        let catalog = Self(parsing: document)
+        guard document.frontmatterState != .malformed, catalog.canMutate, catalog.fields.allSatisfy(\.isCompleted)
+        else { throw ZoteroCitationError.invalidSource }
+    }
+
+    /// Explicit, in-memory conversion only. The managed mutation owner persists
+    /// this candidate and its companion as one checked, recoverable operation.
+    public static func convertEmbeddedToCompanion(in document: NoteDocument) throws -> ZoteroCitationConversion {
+        guard document.citationSnapshot == nil || document.citationSnapshot?.status == .absent,
+            document.frontmatterState != .malformed
+        else { throw ZoteroCitationError.unavailable }
+        let catalog = Self(parsing: document)
+        guard catalog.canMutate, catalog.fields.allSatisfy(\.isCompleted) else { throw ZoteroCitationError.invalidSource }
+        let data = ZoteroCitationData(
+            fields: catalog.fields.map { .init(id: $0.id, kind: $0.kind, code: $0.code, text: $0.text) },
+            documentData: catalog.documentState?.data, bibliographyStyle: catalog.documentState?.bibliographyStyle,
+            acceptedFields: catalog.documentState?.acceptedFields)
+        try data.validate()
+        var replacements: [(NSRange, String)] = []
+        for field in catalog.fields {
+            replacements += try compactMarkerReplacements(for: field, id: field.id)
+        }
+        if let state = catalog.documentState { replacements.append((state.span.nsRange, "")) }
+        let source = try replacingMarkers(in: document.rawContent, replacements: replacements)
+        try validateCompanion(source: source, data: data)
+        return .init(source: source, data: data)
+    }
+
+    /// A managed duplicate has new host occurrences. Visible labels never
+    /// establish identity; every marker and accepted-state ID is rekeyed together.
+    public static func duplicateCompanion(in document: NoteDocument) throws -> ZoteroCitationConversion {
+        guard let snapshot = document.citationSnapshot, snapshot.status == .available,
+            snapshot.sourceFingerprint == document.fingerprint, let data = snapshot.data
+        else { throw ZoteroCitationError.unavailable }
+        try data.validate()
+        let catalog = Self(parsing: document)
+        guard catalog.canMutate else { throw ZoteroCitationError.invalidSource }
+        let oldIDs = Set(data.fields.map(\.id) + (data.acceptedFields?.map(\.id) ?? []))
+        let identities = Dictionary(uniqueKeysWithValues: oldIDs.map { ($0, ZoteroCitationData.newOccurrenceID()) })
+        let duplicate = ZoteroCitationData(
+            fields: data.fields.map { .init(id: identities[$0.id]!, kind: $0.kind, code: $0.code, text: $0.text) },
+            documentData: data.documentData, bibliographyStyle: data.bibliographyStyle,
+            acceptedFields: data.acceptedFields?.map { .init(id: identities[$0.id]!, code: $0.code) })
+        let replacements = try catalog.fields.flatMap { field in
+            try compactMarkerReplacements(for: field, id: identities[field.id]!)
+        }
+        let source = try replacingMarkers(in: document.rawContent, replacements: replacements)
+        try validateCompanion(source: source, data: duplicate)
+        return .init(source: source, data: duplicate)
+    }
+
+    private static func compactMarkerReplacements(for field: ZoteroMarkdownField, id: String) throws -> [(NSRange, String)] {
+        guard field.markerSpans.count == 2 else { throw ZoteroCitationError.invalidSource }
+        if field.kind == .citation {
+            return [(field.markerSpans[1].nsRange, "](cite:\(id))")]
+        }
+        return [(field.markerSpans[0].nsRange, bibliographyPrefix + id + "-->"), (field.markerSpans[1].nsRange, bibliographyClose)]
+    }
+
+    private static func replacingMarkers(in source: String, replacements: [(NSRange, String)]) throws -> String {
+        let output = NSMutableString(string: source)
+        var upperBound = output.length
+        for (range, replacement) in replacements.sorted(by: { $0.0.location > $1.0.location }) {
+            guard range.location >= 0, range.length >= 0, NSMaxRange(range) <= upperBound else { throw ZoteroCitationError.invalidSource }
+            output.replaceCharacters(in: range, with: replacement)
+            upperBound = range.location
+        }
+        return output as String
+    }
 
     init(fingerprint: DocumentFingerprint, fields: [ZoteroMarkdownField], documentState: ZoteroMarkdownDocumentState?, diagnostics: [ZoteroMarkdownDiagnostic])
     {
@@ -187,13 +273,31 @@ public struct ZoteroMarkdownFields: Codable, Hashable, Sendable {
     }
 
     static func parse(_ document: NoteDocument, semantic: MarkdownSemanticDocument, inlineHTMLSpans: [SourceSpan]) -> Self {
-        guard document.frontmatterState != .malformed else { return .empty(fingerprint: document.fingerprint) }
-        guard
+        let hasSourceMarkers =
             document.rawContent.range(of: citationScheme, options: .caseInsensitive) != nil
-                || document.rawContent.contains(ZoteroMarkdownFieldParser.fieldPrefix)
-                || document.rawContent.contains(ZoteroMarkdownFieldParser.documentPrefix)
-                || document.rawContent.contains(ZoteroMarkdownFieldParser.fieldClose)
-        else { return .empty(fingerprint: document.fingerprint) }
+            || document.rawContent.range(of: compactCitationScheme, options: .caseInsensitive) != nil
+            || document.rawContent.contains(bibliographyPrefix)
+            || document.rawContent.contains(bibliographyClose)
+            || document.rawContent.contains(ZoteroMarkdownFieldParser.fieldPrefix)
+            || document.rawContent.contains(ZoteroMarkdownFieldParser.documentPrefix)
+            || document.rawContent.contains(ZoteroMarkdownFieldParser.fieldClose)
+        guard hasSourceMarkers || document.citationSnapshot != nil else { return .empty(fingerprint: document.fingerprint) }
+        if document.frontmatterState == .malformed {
+            let hasCompanionAuthority =
+                document.citationSnapshot.map {
+                    $0.status != .absent || $0.data != nil || $0.revision != nil || $0.sourceFingerprint != nil
+                } ?? false
+            guard hasSourceMarkers || hasCompanionAuthority else { return .empty(fingerprint: document.fingerprint) }
+            // An invalid YAML boundary cannot admit citation fields, but it
+            // must not erase a known companion problem or permit silent export.
+            // The complete exact string always has valid endpoint mappings.
+            let span = SemanticSourceMapper(document.rawContent).span(for: NSRange(location: 0, length: document.rawContent.utf16.count))!
+            return .init(
+                fingerprint: document.fingerprint, fields: [], documentState: nil,
+                diagnostics: [
+                    .init(kind: .unsupportedContext, span: span, message: "Repair malformed YAML before verifying citation authority.")
+                ])
+        }
         return ZoteroMarkdownFieldParser(document: document, semantic: semantic, inlineHTMLSpans: inlineHTMLSpans).parse()
     }
 
@@ -246,6 +350,7 @@ private struct ZoteroMarkdownFieldParser {
                     + inlineHTMLSpans.filter { span in
                         let raw = exactSource.substring(with: span.nsRange)
                         return raw.hasPrefix(Self.documentPrefix) || raw.hasPrefix(Self.fieldPrefix) || raw.hasPrefix(Self.fieldClose)
+                            || raw.hasPrefix(ZoteroMarkdownFields.bibliographyPrefix) || raw.hasPrefix(ZoteroMarkdownFields.bibliographyClose)
                     })
         ).sorted { $0.utf16LowerBound < $1.utf16LowerBound }
     }
@@ -259,12 +364,45 @@ private struct ZoteroMarkdownFieldParser {
             guard let span = mapper.span(for: range) else { return }
             diagnostics.append(.init(kind: kind, span: span, message: message))
         }
+        let bodyRange = NSRange(location: document.bodyUTF16Offset, length: source.length - document.bodyUTF16Offset)
+        var companion: ZoteroCitationData?
+        if let snapshot = document.citationSnapshot {
+            switch snapshot.status {
+            case .available:
+                do {
+                    guard let data = snapshot.data else { throw ZoteroCitationError.unavailable }
+                    try data.validate()
+                    guard snapshot.sourceFingerprint == document.fingerprint else { throw ZoteroCitationError.sourceMismatch }
+                    companion = data
+                    if data.documentData != nil || data.bibliographyStyle != nil || data.acceptedFields != nil,
+                        let span = mapper.span(for: NSRange(location: document.bodyUTF16Offset, length: 0))
+                    {
+                        states.append(
+                            .init(
+                                data: data.documentData ?? "", bibliographyStyle: data.bibliographyStyle,
+                                acceptedFields: data.acceptedFields, span: span))
+                    }
+                } catch {
+                    diagnose(.malformedEnvelope, bodyRange, error.localizedDescription)
+                }
+            case .absent:
+                if snapshot.data != nil || snapshot.revision != nil || snapshot.sourceFingerprint != nil {
+                    diagnose(.malformedEnvelope, bodyRange, "Citation absence was not checked safely.")
+                }
+            case .unresolved:
+                diagnose(.malformedEnvelope, bodyRange, "The citation companion is missing, changed or unavailable.")
+            case .unsupported:
+                diagnose(.unsupportedEnvelope, bodyRange, "The citation companion uses an unsupported format.")
+            }
+        }
+        var hasEmbedded = false
+        var hasCompact = false
         for inline in semantic.inlines where inline.kind == .link {
             let range = inline.span.nsRange
             let raw = source.substring(with: range)
             guard
                 semantic.links.contains(where: {
-                    $0.linkSpan == inline.span && $0.target.lowercased().hasPrefix(ZoteroMarkdownFields.citationScheme)
+                    $0.linkSpan == inline.span && ZoteroMarkdownFields.isCitationDestination($0.target)
                 })
             else { continue }
             guard !ignoredInlineHTML.contains(where: { $0.overlaps(inline.span.utf16Range) }) else { continue }
@@ -272,6 +410,27 @@ private struct ZoteroMarkdownFieldParser {
                 diagnose(.unsupportedContext, range, "Citations require an ordinary body paragraph.")
                 continue
             }
+            if semantic.links.contains(where: { $0.linkSpan == inline.span && $0.target.lowercased().hasPrefix(ZoteroMarkdownFields.compactCitationScheme) }) {
+                hasCompact = true
+                guard let expression = try? NSRegularExpression(pattern: #"^\[([\s\S]*)\]\(cite:([A-Za-z][A-Za-z0-9_-]{0,127})\)$"#),
+                    let match = expression.firstMatch(in: raw, range: NSRange(location: 0, length: (raw as NSString).length))
+                else {
+                    diagnose(.malformedEnvelope, range, "Invalid compact citation marker.")
+                    continue
+                }
+                let id = (raw as NSString).substring(with: match.range(at: 2))
+                identities.append((id, inline.span))
+                let fallback = NSRange(location: range.location + match.range(at: 1).location, length: match.range(at: 1).length)
+                do {
+                    guard let payload = companion?.fields.first(where: { $0.id == id && $0.kind == .citation }) else {
+                        throw ZoteroCitationError.unavailable
+                    }
+                    fields.append(
+                        try field(.init(id: payload.id, kind: payload.kind, code: payload.code, text: payload.text), range: range, fallback: fallback))
+                } catch { diagnose(.malformedEnvelope, range, "The citation marker has no validated companion field.") }
+                continue
+            }
+            hasEmbedded = true
             guard let expression = try? NSRegularExpression(pattern: #"^\[([\s\S]*)\]\(scholium-zotero:1:([A-Za-z0-9+/=]*)\)$"#),
                 let match = expression.firstMatch(in: raw, range: NSRange(location: 0, length: (raw as NSString).length))
             else {
@@ -291,8 +450,32 @@ private struct ZoteroMarkdownFieldParser {
             let range = marker.nsRange
             let raw = source.substring(with: range)
             let candidate = raw.trimmingCharacters(in: .whitespaces)
+            if candidate.hasPrefix(ZoteroMarkdownFields.bibliographyPrefix) {
+                guard !ignoredInlineHTML.contains(where: { $0.overlaps(marker.utf16Range) }) else { continue }
+                hasCompact = true
+                do {
+                    guard markerOnly(range), ordinaryContext(range, allowing: marker),
+                        raw.hasPrefix(ZoteroMarkdownFields.bibliographyPrefix), raw.hasSuffix("-->")
+                    else { throw ParseFailure.invalid }
+                    let id = String(raw.dropFirst(ZoteroMarkdownFields.bibliographyPrefix.count).dropLast(3))
+                    guard validID(id) else { throw ParseFailure.invalid }
+                    identities.append((id, marker))
+                    guard let payload = companion?.fields.first(where: { $0.id == id && $0.kind == .bibliography }),
+                        let close = sourceHTMLSpans.first(where: {
+                            $0.utf16LowerBound >= NSMaxRange(range) && source.substring(with: $0.nsRange) == ZoteroMarkdownFields.bibliographyClose
+                        }), markerOnly(close.nsRange)
+                    else { throw ParseFailure.invalid }
+                    let full = NSRange(location: range.location, length: close.utf16UpperBound - range.location)
+                    guard ordinaryContext(full, allowing: marker, extraAllowed: close),
+                        let fallback = bibliographyFallbackRange(NSMaxRange(range)..<close.utf16LowerBound)
+                    else { throw ParseFailure.invalid }
+                    fields.append(try field(.init(id: payload.id, kind: payload.kind, code: payload.code, text: payload.text), range: full, fallback: fallback))
+                } catch { diagnose(.malformedEnvelope, range, "The bibliography markers have no validated paired companion field.") }
+                continue
+            }
             guard candidate.hasPrefix(Self.documentPrefix) || candidate.hasPrefix(Self.fieldPrefix) else { continue }
             guard !ignoredInlineHTML.contains(where: { $0.overlaps(marker.utf16Range) }) else { continue }
+            hasEmbedded = true
             guard markerOnly(range), raw.hasPrefix(Self.documentPrefix) || raw.hasPrefix(Self.fieldPrefix) else {
                 diagnose(.malformedEnvelope, range, "Zotero markers require an exact marker-only source line.")
                 continue
@@ -347,7 +530,7 @@ private struct ZoteroMarkdownFieldParser {
 
         fields.sort { $0.span.utf16LowerBound < $1.span.utf16LowerBound }
         for marker in sourceHTMLSpans
-        where source.substring(with: marker.nsRange).trimmingCharacters(in: .whitespaces) == Self.fieldClose
+        where [Self.fieldClose, ZoteroMarkdownFields.bibliographyClose].contains(source.substring(with: marker.nsRange).trimmingCharacters(in: .whitespaces))
             && !ignoredInlineHTML.contains(where: { $0.overlaps(marker.utf16Range) })
             && !fields.contains(where: { $0.kind == .bibliography && $0.span.utf16Range.contains(marker.utf16LowerBound) })
         {
@@ -357,7 +540,7 @@ private struct ZoteroMarkdownFieldParser {
         // parser-proved Link and HTMLBlock paths above can confer field authority.
         let owned =
             semantic.inlines.filter { $0.kind == .link }.map(\.span.utf16Range)
-            + semantic.links.filter { !$0.target.lowercased().hasPrefix(ZoteroMarkdownFields.citationScheme) }.map(\.span.utf16Range)
+            + semantic.links.filter { !ZoteroMarkdownFields.isCitationDestination($0.target) }.map(\.span.utf16Range)
         let ignored =
             semantic.blocks.filter { $0.kind == .code || $0.kind == .html }.map(\.span.utf16Range)
             + semantic.inlines.filter { $0.kind == .code }.map(\.span.utf16Range)
@@ -366,7 +549,9 @@ private struct ZoteroMarkdownFieldParser {
             semantic.blocks.filter { ![MarkdownBlockKind.paragraph, .html, .code].contains($0.kind) }.map(\.span.utf16Range)
             + semantic.callouts.map(\.span.utf16Range) + semantic.footnoteDefinitions.map(\.span.utf16Range)
             + semantic.footnoteReferences.map(\.span.utf16Range) + semantic.mathExpressions.map(\.span.utf16Range)
-        if let expression = try? NSRegularExpression(pattern: #"scholium-zotero:|<!--scholium-zotero-(?:field|document):"#, options: .caseInsensitive) {
+        if let expression = try? NSRegularExpression(
+            pattern: #"scholium-zotero:|<!--scholium-zotero-(?:field|document):|<!--/?cite-bibliography(?::|-->)"#, options: .caseInsensitive)
+        {
             for match in expression.matches(
                 in: source as String, range: NSRange(location: document.bodyUTF16Offset, length: source.length - document.bodyUTF16Offset))
             {
@@ -386,6 +571,9 @@ private struct ZoteroMarkdownFieldParser {
             diagnose(.duplicateID, span.nsRange, "Copied or duplicate field identity; reinsert the citation.")
         }
         fields.removeAll { duplicates.contains($0.id) }
+        if hasEmbedded && (hasCompact || companion != nil) {
+            diagnose(.malformedEnvelope, bodyRange, "Embedded fields and citation companions cannot be mixed.")
+        }
         if fields.count > ZoteroMarkdownFields.maximumFieldCount {
             for field in fields { diagnose(.malformedEnvelope, field.span.nsRange, "Too many Zotero fields.") }
             fields.removeAll()
@@ -459,7 +647,7 @@ private struct ZoteroMarkdownFieldParser {
         else { return nil }
         return NSRange(location: range.lowerBound + start.range.length, length: middle.length - start.range.length - end.range.length)
     }
-    private func validID(_ id: String) -> Bool { id.range(of: #"^[A-Za-z][A-Za-z0-9_-]{0,127}$"#, options: .regularExpression) != nil }
+    private func validID(_ id: String) -> Bool { ZoteroCitationData.isValidOccurrenceID(id) }
     /// Only tags already classified by the shared Markdown parser may open a raw
     /// HTML context. Source resembling HTML in code, escapes or text has no role.
     private static func inlineHTMLContainers(in source: NSString, spans: [SourceSpan]) -> [Range<Int>] {
@@ -470,6 +658,9 @@ private struct ZoteroMarkdownFieldParser {
         for span in spans.sorted(by: { $0.utf16LowerBound < $1.utf16LowerBound }) {
             let raw = source.substring(with: span.nsRange) as NSString
             if (raw as String).hasPrefix(documentPrefix) || (raw as String).hasPrefix(fieldPrefix) || (raw as String).hasPrefix(fieldClose) { continue }
+            if (raw as String).hasPrefix(ZoteroMarkdownFields.bibliographyPrefix) || (raw as String).hasPrefix(ZoteroMarkdownFields.bibliographyClose) {
+                continue
+            }
             ranges.append(span.utf16Range)
             guard let match = tagExpression?.firstMatch(in: raw as String, range: NSRange(location: 0, length: raw.length)) else { continue }
             let name = raw.substring(with: match.range(at: 2)).lowercased()

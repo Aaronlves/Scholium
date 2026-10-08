@@ -49,8 +49,7 @@ struct NoteIdentityRecoveryTests {
             at: fixture.works.appendingPathComponent("Old.md"),
             to: fixture.works.appendingPathComponent("New.md"))
         _ = try await stores.control.moveIdentity(
-            id: identity.id, vaultID: fixture.worksID,
-            from: "Old.md", to: "New.md", fingerprint: original.fingerprint)
+            identity, to: "New.md", fingerprint: original.fingerprint)
         let coordinator = NoteIdentityRecoveryCoordinator(control: stores.control, windowSessions: stores.sessions)
         let failures = await coordinator.resumePendingRebindings(vaultID: fixture.worksID, repository: repository)
         #expect(failures.isEmpty)
@@ -101,8 +100,7 @@ struct NoteIdentityRecoveryTests {
             at: fixture.works.appendingPathComponent("Old.md"),
             to: fixture.works.appendingPathComponent("New.md"))
         _ = try await stores.control.moveIdentity(
-            id: identity.id, vaultID: fixture.worksID,
-            from: "Old.md", to: "New.md", fingerprint: original.fingerprint)
+            identity, to: "New.md", fingerprint: original.fingerprint)
         let coordinator = NoteIdentityRecoveryCoordinator(control: stores.control, windowSessions: stores.sessions)
 
         for _ in 0..<2 {

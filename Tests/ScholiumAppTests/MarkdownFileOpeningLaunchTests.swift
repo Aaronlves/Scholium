@@ -9,16 +9,6 @@ import Testing
 @MainActor
 @Suite("Markdown file launch routing", .serialized)
 struct MarkdownFileOpeningLaunchTests {
-    @Test("Initial Bootstrap cannot route before AppKit establishes the launch intent")
-    func bootstrapWaitsForLaunchIntent() {
-        let opening = MarkdownFileOpeningController()
-        #expect(opening.launchPresentation == .awaitingLaunch)
-        #expect(!opening.consumeLaunchBootstrapSuppression())
-        opening.finishLaunching(isDefaultLaunch: true)
-        #expect(opening.launchPresentation == .defaultWorkspace)
-        #expect(!opening.consumeLaunchBootstrapSuppression())
-    }
-
     @Test("Managed routing respects the Note inventory and leaves attachment originals external")
     func inventoryRoutingEligibility() {
         let root = URL(fileURLWithPath: "/nonexistent-scholium-routing-fixture/Topics")
@@ -93,74 +83,74 @@ struct MarkdownFileOpeningLaunchTests {
         }
     }
 
-    @Test("A queued launch file suppresses only the initial Bootstrap, even when it attaches after launch finishes")
-    func pendingLaunchSurvivesUntilBootstrapConsumesIt() {
+    @Test("Startup connection drains queued external files once without requiring a workspace scene")
+    func startupConnectionDrainsPendingFilesOnce() async throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/MarkdownFileOpeningLaunchTests-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appendingPathComponent("Before Connection.md")
+        let second = root.appendingPathComponent("After Connection.markdown")
+        let firstBytes = Data("\u{FEFF}# Queued before startup\r\n".utf8)
+        let secondBytes = Data("# Later external file\n\nKeep this final line".utf8)
+        try firstBytes.write(to: first)
+        try secondBytes.write(to: second)
+        var storageResolutions = 0
+        let bootstrap = ApplicationBootstrapController {
+            storageResolutions += 1
+            return root.appendingPathComponent("ApplicationSupport", isDirectory: true)
+        }
         let opening = MarkdownFileOpeningController()
-        opening.requestOpen([file("Initial.md")])
-        opening.finishLaunching(isDefaultLaunch: true)
-
-        #expect(opening.launchPresentation == .requestedScene)
-        #expect(opening.consumeLaunchBootstrapSuppression())
-        #expect(!opening.consumeLaunchBootstrapSuppression())
-    }
-
-    @Test("A file launch suppresses Bootstrap when the file event arrives after didFinishLaunching")
-    func lateInitialFileDoesNotOpenWorkspace() {
-        let delegate = ScholiumApplicationDelegate()
-        delegate.applicationDidFinishLaunching(
-            Notification(
-                name: NSApplication.didFinishLaunchingNotification,
-                userInfo: [NSApplication.launchIsDefaultUserInfoKey: false]
+        let registry = ScholiumWindowLifecycleRegistry()
+        let external = Routes<ExternalMarkdownWindowRoute>()
+        let workspace = Routes<TriptychWindowRoute>()
+        let openExternal: (ExternalMarkdownWindowRoute) -> Void = { external.values.append($0) }
+        let openWorkspace: (TriptychWindowRoute) -> Void = { workspace.values.append($0) }
+        do {
+            opening.requestOpen([first])
+            #expect(external.values.isEmpty)
+            #expect(!bootstrap.isReady)
+            opening.connect(
+                bootstrap: bootstrap, openExternalWindow: openExternal,
+                openWorkspaceWindow: openWorkspace, lifecycleRegistry: registry
             )
-        )
-        #expect(delegate.markdownFiles.launchPresentation == .requestedScene)
-        delegate.application(NSApplication.shared, open: [file("Late.md")])
-        #expect(delegate.markdownFiles.consumeLaunchBootstrapSuppression())
-        #expect(!delegate.markdownFiles.consumeLaunchBootstrapSuppression())
-    }
+            // Startup and scene-phase callbacks can bind the same scene
+            // action again while asynchronous bootstrap is still starting.
+            opening.connect(
+                bootstrap: bootstrap, openExternalWindow: openExternal,
+                openWorkspaceWindow: openWorkspace, lifecycleRegistry: registry
+            )
+            #expect(storageResolutions == 0)
+            #expect(external.values.isEmpty)
+            try await waitUntil { !external.values.isEmpty }
+            #expect(bootstrap.isReady)
+            #expect(external.values == [ExternalMarkdownWindowRoute(fileURL: first)])
 
-    @Test("A restored-scene launch suppresses only its redundant initial Bootstrap")
-    func restoredSceneDoesNotCreateDefaultWorkspace() {
-        let opening = MarkdownFileOpeningController()
-        opening.finishLaunching(isDefaultLaunch: false)
-        #expect(opening.launchPresentation == .requestedScene)
-        #expect(opening.consumeLaunchBootstrapSuppression())
-        #expect(!opening.consumeLaunchBootstrapSuppression())
-    }
-
-    @Test("Several initial file events cannot rearm suppression after the launch Bootstrap consumes it")
-    func multipleLaunchFilesConsumeOnlyOneBootstrap() {
-        let opening = MarkdownFileOpeningController()
-        opening.requestOpen([file("First.md")])
-        #expect(opening.consumeLaunchBootstrapSuppression())
-
-        opening.requestOpen([file("Second.markdown"), file("Third.md")])
-
-        #expect(opening.launchPresentation == .requestedScene)
-        #expect(!opening.consumeLaunchBootstrapSuppression())
-    }
-
-    @Test("Opening a file in a running app cannot suppress a later ordinary Bootstrap or Dock reopen")
-    func warmOpeningDoesNotSuppressBootstrap() {
-        let opening = MarkdownFileOpeningController()
-        opening.finishLaunching(isDefaultLaunch: true)
-        opening.requestOpen([file("Later.md")])
-
-        #expect(opening.launchPresentation == .defaultWorkspace)
-        #expect(!opening.consumeLaunchBootstrapSuppression())
-    }
-
-    @Test("Empty events and rejected termination-time events never acquire launch suppression")
-    func nonadmittedRequestsDoNotSuppressBootstrap() {
-        let opening = MarkdownFileOpeningController()
-        opening.requestOpen([])
-        #expect(!opening.consumeLaunchBootstrapSuppression())
+            opening.connect(
+                bootstrap: bootstrap, openExternalWindow: openExternal,
+                openWorkspaceWindow: openWorkspace, lifecycleRegistry: registry
+            )
+            // This later file is a serial-queue witness: it can route only
+            // after the original pending request has finished.
+            opening.requestOpen([second])
+            try await waitUntil { external.values.count >= 2 }
+            #expect(
+                external.values == [
+                    ExternalMarkdownWindowRoute(fileURL: first),
+                    ExternalMarkdownWindowRoute(fileURL: second),
+                ])
+            #expect(storageResolutions == 1)
+            #expect(workspace.values.isEmpty)
+            #expect(!registry.hasRegisteredWindows)
+            #expect(try Data(contentsOf: first) == firstBytes)
+            #expect(try Data(contentsOf: second) == secondBytes)
+        } catch {
+            opening.prepareTermination()
+            if case .ready(let store) = bootstrap.state { await store.shutdownApplicationRuntime() }
+            throw error
+        }
         opening.prepareTermination()
-        opening.requestOpen([file("Rejected.md")])
-        #expect(!opening.consumeLaunchBootstrapSuppression())
-        opening.cancelTermination()
-        opening.requestOpen([file("Admitted.md")])
-        #expect(opening.consumeLaunchBootstrapSuppression())
+        if case .ready(let store) = bootstrap.state { await store.shutdownApplicationRuntime() }
     }
 
     @Test("External files route independently and leave an existing workspace lifecycle untouched")
@@ -172,7 +162,6 @@ struct MarkdownFileOpeningLaunchTests {
             defer { registry.unregister(id: workspaceID) }
             registry.markAttached(id: workspaceID)
             registry.markReady(id: workspaceID)
-            opening.finishLaunching(isDefaultLaunch: true)
             let first = root.appendingPathComponent("First.md")
             let second = root.appendingPathComponent("Second.markdown")
             let bytes = Data("\u{FEFF}# Independent reader\r\n".utf8)
@@ -186,7 +175,6 @@ struct MarkdownFileOpeningLaunchTests {
             #expect(workspaceFlushes == 0)
             #expect(registry.hasRegisteredWindows)
             try await registry.waitUntilReady(id: workspaceID)
-            #expect(opening.launchPresentation == .defaultWorkspace)
             #expect(try Data(contentsOf: first) == bytes)
             #expect(try Data(contentsOf: second) == bytes)
         }
@@ -208,7 +196,6 @@ struct MarkdownFileOpeningLaunchTests {
                 model.close()
                 registry.unregister(model)
             }
-            opening.finishLaunching(isDefaultLaunch: true)
             opening.requestOpen([url])
             // Follow the serial request queue with another distinct file. Its
             // presentation proves that the preceding reveal finished.
@@ -547,11 +534,5 @@ struct MarkdownFileOpeningLaunchTests {
             try await Task.sleep(for: .milliseconds(5))
         }
         #expect(condition())
-    }
-
-    private func file(_ name: String) -> URL {
-        // Routing is deliberately unbound: these URL events exercise launch
-        // admission without opening a window, file session or real vault.
-        URL(fileURLWithPath: "/nonexistent-scholium-launch-fixture/\(name)")
     }
 }

@@ -16,6 +16,7 @@ struct AgentNoteDisplayWindow {
     }
     let state: () -> State?
     let display: (AgentNoteDisplayTarget, @escaping @MainActor () -> Bool) async throws -> Void
+    var observe: ((@escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation)? = nil
 }
 
 extension WorkspaceStore {
@@ -49,6 +50,30 @@ extension WorkspaceStore {
         }
         guard admitted() else { throw Self.displayUnavailable() }
         try await window.display(target, admitted)
+    }
+
+    func observeAgentCurrentState(
+        triptychID: UUID, conversationID: UUID, scope: AgentChatDisplayScope,
+        admitted: @escaping @MainActor () -> Bool
+    ) async throws -> AgentChatDocumentObservation {
+        guard let window = noteDisplayWindows[scope.windowID], window.registrationID == scope.registrationID,
+            let observe = window.observe
+        else { throw ScholiumMCPFailure.chatObservation(.workspaceNotReady) }
+        func current() -> Bool {
+            guard !Task.isCancelled, admitted(),
+                noteDisplayWindows[scope.windowID]?.registrationID == scope.registrationID,
+                let state = window.state()
+            else { return false }
+            return state.triptychID == triptychID && state.canDisplay && state.visibleConversationID == conversationID
+        }
+        guard current() else { throw ScholiumMCPFailure.chatObservation(.workspaceNotReady) }
+        let result: AgentChatDocumentObservation
+        do { result = try await observe(current) } catch {
+            guard current() else { throw ScholiumMCPFailure.chatObservation(.workspaceNotReady) }
+            throw error
+        }
+        guard current() else { throw ScholiumMCPFailure.chatObservation(.workspaceNotReady) }
+        return result
     }
 
     static func displayUnavailable() -> ScholiumMCPFailure {

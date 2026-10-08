@@ -11,6 +11,19 @@ enum ScholiumRuntimeIsolation {
 
     static let productionBundleIdentifier = "com.scholium.app"
     static let qaBundleIdentifier = "com.scholium.qa"
+
+    /// A native-restoration journey gets its own bundle identity because
+    /// AppKit's saved scenes are not isolated by the application home alone.
+    static func isQABundleIdentifier(_ bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else { return false }
+        if bundleIdentifier == qaBundleIdentifier { return true }
+        let prefix = qaBundleIdentifier + ".restoration."
+        guard bundleIdentifier.hasPrefix(prefix) else { return false }
+        let suffix = String(bundleIdentifier.dropFirst(prefix.count))
+        guard let identifier = UUID(uuidString: suffix) else { return false }
+        return suffix == identifier.uuidString.lowercased()
+    }
+
     /// One fallback identity per QA process. Reusing it inside the process
     /// prevents repeated bootstrap tasks from opening new scenes, while a new
     /// launch receives a fresh value and cannot collide with stale native
@@ -133,7 +146,7 @@ enum ScholiumRuntimeIsolation {
     ) -> UUID? {
         let debugBuild = isDebugBuild ?? currentBuildIsDebug
         if debugBuild {
-            guard bundleIdentifier == qaBundleIdentifier else { return nil }
+            guard isQABundleIdentifier(bundleIdentifier) else { return nil }
             if let rawID = nonempty(environment["SCHOLIUM_UI_TEST_SESSION_ID"]) {
                 return UUID(uuidString: rawID)
             }
@@ -237,7 +250,7 @@ enum ScholiumRuntimeIsolation {
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> Bool {
         #if DEBUG
-            guard bundleIdentifier == qaBundleIdentifier else { return false }
+            guard isQABundleIdentifier(bundleIdentifier) else { return false }
             return environment["SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION"] != "1"
         #else
             return false

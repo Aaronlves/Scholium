@@ -6,14 +6,30 @@ import ScholiumCore
 /// only cross-queue capability; all stream ownership remains in the actor.
 private final class WorkspaceFSEventCallbackContext: Sendable {
     let rootURL: URL
+    let scope: WorkspaceFileEventScope
     let continuation: AsyncStream<VaultWatchEvent>.Continuation
 
     init(
         rootURL: URL,
+        scope: WorkspaceFileEventScope,
         continuation: AsyncStream<VaultWatchEvent>.Continuation
     ) {
         self.rootURL = rootURL
+        self.scope = scope
         self.continuation = continuation
+    }
+}
+
+enum WorkspaceFileEventScope: Sendable {
+    case markdown
+    case citationControl
+
+    func includes(_ relativePath: String) -> Bool {
+        switch self {
+        case .markdown: relativePath.lowercased().hasSuffix(".md")
+        case .citationControl:
+            relativePath == "identities.json" || relativePath.hasPrefix("citations/")
+        }
     }
 }
 
@@ -65,6 +81,7 @@ enum WorkspaceFileEventWatcherError: LocalizedError, Sendable {
 /// its `WorkspaceHandle`; windows never own or replace this stream.
 actor WorkspaceFileEventWatcher {
     nonisolated let rootURL: URL
+    private let scope: WorkspaceFileEventScope
     private let callbackQueue: DispatchQueue
 
     private var nativeStream: FSEventStreamRef?
@@ -72,8 +89,9 @@ actor WorkspaceFileEventWatcher {
     private var continuation: AsyncStream<VaultWatchEvent>.Continuation?
     private var eventStream: AsyncStream<VaultWatchEvent>?
 
-    init(rootURL: URL) {
+    init(rootURL: URL, scope: WorkspaceFileEventScope = .markdown) {
         self.rootURL = rootURL.resolvingSymlinksInPath().standardizedFileURL
+        self.scope = scope
         callbackQueue = DispatchQueue(
             label: "app.scholium.workspace-watcher.\(UUID().uuidString)",
             qos: .utility
@@ -95,6 +113,7 @@ actor WorkspaceFileEventWatcher {
         let pair = WorkspaceWatchEventBuffer.makeStream()
         let contextOwner = WorkspaceFSEventCallbackContext(
             rootURL: rootURL,
+            scope: scope,
             continuation: pair.continuation
         )
         var context = FSEventStreamContext(
@@ -175,7 +194,7 @@ actor WorkspaceFileEventWatcher {
                             let relativePath = VaultPath.relativePath(
                                 for: URL(fileURLWithPath: fullPath),
                                 in: owner.rootURL
-                            ), relativePath.lowercased().hasSuffix(".md")
+                            ), owner.scope.includes(relativePath)
                         else {
                             continue
                         }

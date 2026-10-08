@@ -679,6 +679,58 @@ struct VaultRepositoryTests {
         #expect(try await repository.load(relativePath: moved.relativePath).rawContent == original.rawContent)
     }
 
+    @Test("Moving the last Note preserves its empty nested source folders")
+    func movePreservesEmptySourceFolders() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let repository = try VaultRepository(vaultURL: f.root, identity: identity, applicationSupportURL: f.support)
+        let folders = ["Reserved", "Reserved/Empty", "Reserved/Empty/Nested"]
+        try FileManager.default.createDirectory(
+            at: f.root.appendingPathComponent(folders[2]), withIntermediateDirectories: true)
+        let path = folders[2] + "/note.md"
+        let original = try await repository.create(relativePath: path, content: "# Reserved Note\n\nExact source.\n")
+        let bytes = try Data(contentsOf: f.root.appendingPathComponent(path))
+
+        let moved = try await repository.move(
+            relativePath: path, to: "Moved.md", expectedRevision: original.fingerprint)
+
+        #expect(!FileManager.default.fileExists(atPath: f.root.appendingPathComponent(path).path))
+        #expect(try Data(contentsOf: f.root.appendingPathComponent("Moved.md")) == bytes)
+        let inventory = Set(try await repository.folderRelativePaths().map(\.rawValue))
+        for folder in folders {
+            #expect(inventory.contains(folder))
+            #expect(try f.root.appendingPathComponent(folder).resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true)
+        }
+        let returned = try await repository.move(
+            relativePath: moved.relativePath, to: path, expectedRevision: moved.document.fingerprint)
+        #expect(returned.relativePath == path)
+        #expect(try Data(contentsOf: f.root.appendingPathComponent(path)) == bytes)
+    }
+
+    @Test("Creation rollback preserves preexisting empty nested folders")
+    func creationRollbackPreservesExistingFolders() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let repository = try VaultRepository(vaultURL: f.root, identity: identity, applicationSupportURL: f.support)
+        let folders = ["Reserved", "Reserved/Empty", "Reserved/Empty/Nested"]
+        try FileManager.default.createDirectory(
+            at: f.root.appendingPathComponent(folders[2]), withIntermediateDirectories: true)
+        let path = folders[2] + "/Created.md"
+        let created = try await repository.create(relativePath: path, content: "# Rolled back\n")
+
+        try await repository.removeCreatedFileForRollback(
+            relativePath: path, createdRevision: created.fingerprint)
+
+        #expect(!FileManager.default.fileExists(atPath: f.root.appendingPathComponent(path).path))
+        let inventory = Set(try await repository.folderRelativePaths().map(\.rawValue))
+        for folder in folders {
+            #expect(inventory.contains(folder))
+            #expect(try f.root.appendingPathComponent(folder).resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true)
+        }
+    }
+
     @Test("Native system Trash is revision checked and leaves no internal copy")
     func systemTrashMove() async throws {
         let f = try fixture()
